@@ -65,6 +65,8 @@ Dextopは実行時に端末の能力を検査し、複数のバックエンド�
 | デバイス | モデル | 検証済みソフトウェア | 対応状況 |
 | --- | --- | --- | --- |
 | Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ Confirmed working |
+| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / `F968NKSS6BZG3` | 🧪 Experimental |
+| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / `F971QOPU1AZGI` | 🟡 Partial |
 | Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / `F966QOPU1BZF1` | ✅ Confirmed working |
 
 _コミュニティから提出され、レビューされた動作報告_
@@ -88,6 +90,17 @@ _コミュニティから提出され、レビューされた動作報告_
 | デバイス | モデル | 検証済みソフトウェア | 対応状況 |
 | --- | --- | --- | --- |
 | HONOR Magic 8 Pro | BKQ-AN10 (`HNBKQ`) | Android 16 (API 36) / `10DLDLD170SP5C00E167` | 🧪 Experimental |
+
+_コミュニティから提出され、レビューされた動作報告_
+
+</details>
+
+<details>
+<summary><strong>sony</strong></summary>
+
+| デバイス | モデル | 検証済みソフトウェア | 対応状況 |
+| --- | --- | --- | --- |
+| Xperia 1 III | XQ-BC42 (`XQ-BC42`) | Android 13 (API 33) / `061002A0000472A1434898470` | ❌ Not working at this time |
 
 _コミュニティから提出され、レビューされた動作報告_
 
