@@ -38,6 +38,8 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 | Dextop session startup | ✅ Confirmed | Dextop operates on the firmware listed above. |
 | Individual optional features | Not separately recorded | Add separate results when each feature is retested on this build. |
 
+</details>
+
 <!-- DEXTOP-REPORT-CONSOLE:SAMSUNG:BEGIN -->
 <details>
 <summary><strong>Galaxy Z Fold7 — SM-F966Q</strong> / q7q / F966QOPU1BZF1 — ✅ Confirmed working</summary>
@@ -94,7 +96,6 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 </details>
 <!-- DEXTOP-REPORT-CONSOLE:SAMSUNG:END -->
 
-</details>
 </details>
 
 <details>
