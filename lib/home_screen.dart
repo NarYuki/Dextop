@@ -452,17 +452,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _showMultiTouchUpgradeNoticeIfNeeded() async {
     const installedVersionKey = 'last_launched_app_version';
+    const noticeAcknowledgedKey = 'multi_touch_upgrade_notice_acknowledged';
     final preferences = await SharedPreferences.getInstance();
     final currentVersion = appVersion.trim();
     if (currentVersion.isEmpty) return;
-    final previousVersion = preferences.getString(installedVersionKey);
-    // No stored version means this is the first launch after installation,
-    // not an update. Establish the baseline without showing an upgrade notice.
-    if (previousVersion == null || previousVersion.isEmpty) {
-      await preferences.setString(installedVersionKey, currentVersion);
-      return;
-    }
-    if (previousVersion == currentVersion) return;
+    final noticeAcknowledged =
+        preferences.getBool(noticeAcknowledgedKey) ?? false;
+    final setupCompleted = preferences.getBool('setup_completed') ?? false;
+    final upgradedAcrossGestureChange =
+        setupCompleted && _compareVersions(currentVersion, '1.1.0') >= 0;
+    await preferences.setString(installedVersionKey, currentVersion);
+    if (noticeAcknowledged || !upgradedAcrossGestureChange) return;
     if (!mounted) return;
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
@@ -470,7 +470,25 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         builder: (_) => const _MultiTouchUpgradeFlow(),
       ),
     );
-    await preferences.setString(installedVersionKey, currentVersion);
+    await preferences.setBool(noticeAcknowledgedKey, true);
+  }
+
+  int _compareVersions(String left, String right) {
+    List<int> parts(String value) => value
+        .split('+')
+        .first
+        .split('.')
+        .map((part) => int.tryParse(part) ?? 0)
+        .toList(growable: false);
+    final leftParts = parts(left);
+    final rightParts = parts(right);
+    final length = max(leftParts.length, rightParts.length);
+    for (var index = 0; index < length; index++) {
+      final leftPart = index < leftParts.length ? leftParts[index] : 0;
+      final rightPart = index < rightParts.length ? rightParts[index] : 0;
+      if (leftPart != rightPart) return leftPart.compareTo(rightPart);
+    }
+    return 0;
   }
 
   Future<void> _checkLatestGitHubRelease({bool manual = false}) async {

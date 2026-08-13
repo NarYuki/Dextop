@@ -20,10 +20,19 @@ class _DextopAppState extends State<DextopApp> {
 
   Future<void> loadSetupState() async {
     final preferences = await SharedPreferences.getInstance();
-    if (mounted) {
-      setState(
-        () => setupCompleted = preferences.getBool('setup_completed') ?? false,
+    final completed = preferences.getBool('setup_completed') ?? false;
+    if (!completed) {
+      // Mark the current gesture guide as known as soon as a fresh 1.1.0+
+      // installation starts. Updated installations already have setup marked
+      // complete, so they remain eligible for the one-time migration guide.
+      await preferences.setBool(
+        'multi_touch_upgrade_notice_acknowledged',
+        true,
       );
+      await preferences.setString('last_launched_app_version', '1.1.0');
+    }
+    if (mounted) {
+      setState(() => setupCompleted = completed);
     }
   }
 
