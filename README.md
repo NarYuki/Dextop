@@ -57,7 +57,7 @@ Dextop probes device capabilities at runtime and tries compatible backends in or
 <details>
 <summary><strong>Supported devices</strong></summary>
 
-The status below applies only to the firmware versions that were actually tested. Open a vendor to see its devices. For build details and feature-by-feature results, see the [Device compatibility wiki](https://github.com/NarYuki/Dextop/wiki/Device-Compatibility).
+The status below applies only to firmware versions that were actually tested. Open a vendor to see its devices. For feature-by-feature results, see the [Device compatibility wiki](https://github.com/NarYuki/Dextop/wiki/Device-Compatibility).
 
 <details>
 <summary><strong>Samsung</strong></summary>
@@ -65,20 +65,31 @@ The status below applies only to the firmware versions that were actually tested
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
 | Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ Confirmed working |
+| Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / `F966QOPU1BZF1` | ✅ Confirmed working |
+
+_Community-submitted and reviewed device report_
 
 </details>
 
 <details>
 <summary><strong>Google</strong></summary>
 
-No model and firmware combination has been confirmed yet. Pixel support remains limited and incomplete.
+| Device | Model | Tested software | Status |
+| --- | --- | --- | --- |
+| Pixel 9a | Pixel 9a (`tegu`) | Android 17 (API 37) / `15641320` | 🟡 Partial |
+
+_Community-submitted and reviewed device report_
 
 </details>
 
 <details>
-<summary><strong>Other vendors</strong></summary>
+<summary><strong>HONOR</strong></summary>
 
-No model and firmware combination has been confirmed yet.
+| Device | Model | Tested software | Status |
+| --- | --- | --- | --- |
+| HONOR Magic 8 Pro | BKQ-AN10 (`HNBKQ`) | Android 16 (API 36) / `10DLDLD170SP5C00E167` | 🧪 Experimental |
+
+_Community-submitted and reviewed device report_
 
 </details>
 

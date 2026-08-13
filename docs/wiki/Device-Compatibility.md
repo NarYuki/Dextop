@@ -164,6 +164,8 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 <details>
 <summary><strong>HONOR</strong></summary>
 
+<br>
+
 <details>
 <summary><strong>HONOR Magic 8 Pro — BKQ-AN10</strong> / HNBKQ / 10DLDLD170SP5C00E167 — 🧪 Experimental</summary>
 
