@@ -1135,7 +1135,10 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
 
   String _diagnosticLabel(String key) =>
       {
-        'shizuku': AppStrings.tr('uiShizukuConnection'),
+        'shizuku': AppStrings.tr('uiShizukuConnection').replaceAll(
+          'Shizuku',
+          '${diagnostics['privilegeProviderName'] ?? 'Stellar'}',
+        ),
         'secureSettings': AppStrings.tr('uiSecureSettingsPermission'),
         'accessibility': AppStrings.tr('uiAccessibilityServices'),
         'overlayWritable': AppStrings.tr('uiAccessibilityOverlay'),

@@ -25,6 +25,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   Timer? statusTimer;
   var statusRequest = 0;
   var shizukuSetupConfirmed = false;
+  var providerChoiceShown = false;
   AppLocalizations get l => AppLocalizations.of(context);
 
   @override
@@ -72,6 +73,47 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         'shizukuGranted': installed && value['shizukuGranted'] == true,
       };
     });
+    if (value['privilegeProviderSelectionRequired'] == true &&
+        !providerChoiceShown &&
+        mounted) {
+      providerChoiceShown = true;
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) => choosePrivilegeProvider(),
+      );
+    }
+  }
+
+  String get providerName => '${status['privilegeProviderName'] ?? 'Stellar'}';
+
+  String providerText(String value) =>
+      value.replaceAll('Shizuku', providerName);
+
+  Future<void> choosePrivilegeProvider() async {
+    if (!mounted) return;
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.admin_panel_settings_rounded),
+        title: const Text('Select privilege service / 特権サービスを選択'),
+        content: const Text(
+          'Stellar and Shizuku are both installed. Choose which one Dextop should use. The selection is saved until either app is uninstalled.',
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, 'shizuku'),
+            child: const Text('Shizuku'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'stellar'),
+            child: const Text('Stellar (recommended)'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    await channel.invokeMethod('selectPrivilegeProvider', {'provider': choice});
+    await refreshStatus(clearPrevious: true);
   }
 
   void go(int target) {
@@ -90,10 +132,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     if (!requestingPermission) setState(() => loading = true);
     try {
       if (status['shizukuInstalled'] != true) {
-        await channel.invokeMethod('openUrl', {
-          'url':
-              'https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api',
-        });
+        await channel.invokeMethod('openShizuku');
       } else if (status['shizukuRunning'] != true) {
         await channel.invokeMethod('openShizuku');
       } else {
@@ -304,15 +343,18 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         ),
         const SizedBox(height: 24),
         Text(
-          l.setupShizukuTitle,
+          providerText(l.setupShizukuTitle),
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 12),
-        Text(l.setupShizukuDescription),
+        Text(providerText(l.setupShizukuDescription)),
         const SizedBox(height: 24),
-        _StatusTile(label: l.setupInstallShizuku, complete: installed),
         _StatusTile(
-          label: l.setupConfigureShizuku,
+          label: providerText(l.setupInstallShizuku),
+          complete: installed,
+        ),
+        _StatusTile(
+          label: providerText(l.setupConfigureShizuku),
           complete: shizukuSetupConfirmed,
         ),
         AnimatedSwitcher(
@@ -327,7 +369,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
-                        l.setupShizukuHint,
+                        providerText(l.setupShizukuHint),
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                           color: Theme.of(context).colorScheme.onSurfaceVariant,
                         ),
@@ -336,7 +378,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                       FilledButton.icon(
                         onPressed: loading ? null : requestShizuku,
                         icon: const Icon(Icons.open_in_new_rounded),
-                        label: Text(l.setupOpenShizuku),
+                        label: Text(providerText(l.setupOpenShizuku)),
                       ),
                       const SizedBox(height: 8),
                       FilledButton.tonalIcon(
@@ -361,7 +403,12 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                   )
                 : Icon(!installed ? Icons.download_rounded : Icons.key_rounded),
             label: Text(
-              !installed ? l.setupInstallPlay : l.setupAllowPermission,
+              !installed
+                  ? (status['privilegeProvider'] == 'stellar' ||
+                            (status['sdk'] as int? ?? 0) >= 36
+                        ? 'GitHubからダウンロード'
+                        : l.setupInstallPlay)
+                  : providerText(l.setupAllowPermission),
             ),
           ),
       ],

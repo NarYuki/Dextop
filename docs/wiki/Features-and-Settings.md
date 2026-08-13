@@ -44,7 +44,7 @@
 - Application and available memory
 - Battery percentage and estimated power usage
 - Current input mode
-- Compatibility checks for Shizuku, secure settings, accessibility, overlay, physical input, virtual display, launcher, Quick Settings, and foldable layout
+- Compatibility checks for the selected Stellar or Shizuku service, secure settings, accessibility, overlay, physical input, virtual display, launcher, Quick Settings, and foldable layout
 
 ### Device and permissions
 

@@ -405,10 +405,16 @@ extension _HomeContent on _HomeScreenState {
   Widget shizukuPanel() {
     final colors = Theme.of(context).colorScheme;
     final title = !shizukuInstalled
-        ? AppStrings.tr('uiInstallShizuku')
+        ? AppStrings.tr(
+            'uiInstallShizuku',
+          ).replaceAll('Shizuku', privilegeProviderName)
         : !shizukuRunning
-        ? AppStrings.tr('uiCheckingShizukuConnection')
-        : AppStrings.tr('uiAllowShizukuPermissions');
+        ? AppStrings.tr(
+            'uiCheckingShizukuConnection',
+          ).replaceAll('Shizuku', privilegeProviderName)
+        : AppStrings.tr(
+            'uiAllowShizukuPermissions',
+          ).replaceAll('Shizuku', privilegeProviderName);
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: 4),
       leading: Icon(Icons.warning_amber_rounded, color: colors.error),

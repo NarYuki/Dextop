@@ -196,6 +196,12 @@ class NativeBridge {
   }
 
   Future<void> openShizuku() => channel.invokeMethod('openShizuku');
+  Future<Map<String, dynamic>> selectPrivilegeProvider(String provider) async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'selectPrivilegeProvider',
+        {'provider': provider},
+      ) ??
+      {};
   Future<void> openAccessibility() => channel.invokeMethod('openAccessibility');
   Future<void> openWirelessDebugging() =>
       channel.invokeMethod('openWirelessDebugging');

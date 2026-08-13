@@ -1,6 +1,6 @@
 # Dextop Wiki
 
-Dextop creates a controllable virtual desktop display on Android using Shizuku and Android system services.
+Dextop creates a controllable virtual desktop display on Android using Stellar or Shizuku and Android system services.
 
 ## User documentation
 

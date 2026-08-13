@@ -17,6 +17,24 @@ import rikka.shizuku.Shizuku
 
 internal class DeviceDiagnostics(private val context: Context) {
     fun report(): Map<String, Any> {
+        val stellarInstalled = runCatching {
+            context.packageManager.getPackageInfo("roro.stellar.manager", 0)
+        }.isSuccess
+        val originalShizukuInstalled = runCatching {
+            context.packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
+        }.isSuccess || runCatching {
+            context.packageManager.getPackageInfo("moe.shizuku.manager", 0)
+        }.isSuccess
+        val savedProvider = context.getSharedPreferences(
+            "dextop_privilege_provider",
+            Context.MODE_PRIVATE
+        ).getString("selected", null)
+        val privilegeProvider = when {
+            stellarInstalled && originalShizukuInstalled && savedProvider == "shizuku" -> "shizuku"
+            stellarInstalled -> "stellar"
+            originalShizukuInstalled -> "shizuku"
+            else -> "stellar"
+        }
         val managerEnabled = context.getSystemService(AccessibilityManager::class.java)
             .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
             .any { it.resolveInfo.serviceInfo.packageName == context.packageName }
@@ -66,6 +84,10 @@ internal class DeviceDiagnostics(private val context: Context) {
         val configuration = context.resources.configuration
         return mapOf(
             "shizuku" to shizukuGranted,
+            "privilegeProvider" to privilegeProvider,
+            "privilegeProviderName" to if (privilegeProvider == "stellar") "Stellar" else "Shizuku",
+            "stellarInstalled" to stellarInstalled,
+            "originalShizukuInstalled" to originalShizukuInstalled,
             "secureSettings" to secureSettings,
             "accessibility" to accessibilityCapable,
             "overlayWritable" to overlayCapable,

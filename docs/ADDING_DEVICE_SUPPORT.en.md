@@ -160,7 +160,7 @@ cd android
 
 ## Physical-device checks
 
-- First launch, Shizuku permission, session start, and session stop
+- First launch, Stellar or Shizuku permission, session start, and session stop
 - Virtual-display creation, mirroring, and desktop HOME launch
 - Rotation, resolution, and density changes
 - Secure display on/off and screenshot behavior

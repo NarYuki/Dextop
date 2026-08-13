@@ -8,7 +8,7 @@
   <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-Dextop 是一款开源 Android 应用，可在手机上创建虚拟显示器，并仅使用智能手机提供类似桌面的工作空间。它通过 Shizuku 和 Android 系统服务控制应用启动、窗口位置、触摸输入、屏幕方向及相关桌面行为。
+Dextop 是一款开源 Android 应用，可在手机上创建虚拟显示器，并仅使用智能手机提供类似桌面的工作空间。它通过 Stellar 或 Shizuku 以及 Android 系统服务控制应用启动、窗口位置、触摸输入、屏幕方向及相关桌面行为。
 
 ## 截图与演示
 
@@ -83,11 +83,13 @@ Dextop 会在运行时探测设备能力，并依次尝试兼容的后端。但�
 ## 运行要求
 
 - Android 10 或更高版本
-- [Shizuku](https://shizuku.rikka.app/)
-- 通过无线调试或 ADB 启动 Shizuku
-- 授予 Dextop Shizuku 权限
+- [Stellar](https://github.com/roro2239/Stellar/releases)（默认选项，尤其推荐用于 Android 16 或更高版本）或 [Shizuku](https://github.com/RikkaApps/Shizuku/releases)
+- 通过无线调试、ADB 或 root 启动所选服务
+- 授予 Dextop Stellar 或 Shizuku 权限
 
-如果不清楚 Shizuku 的设置步骤，请参阅 [Shizuku 官方设置指南](https://shizuku.rikka.app/guide/setup/)中的 **Start via wireless debugging**。
+可通过 Dextop 的“从 GitHub 下载”按钮获取 Stellar。Android 16 或更高版本推荐 Stellar。若在 Android 16 或更高版本使用 Shizuku，请安装 [GitHub Releases 版本](https://github.com/RikkaApps/Shizuku/releases)，不要使用 Play Store 版本。Android 15 或更低版本也可使用 Play Store 版本。若两者均已安装，Dextop 会要求选择，并将选择保存至其中一个被卸载为止。
+
+若不清楚无线调试设置，请参阅 [Shizuku 官方设置指南](https://shizuku.rikka.app/guide/setup/)中的 **Start via wireless debugging**；无线启动 Stellar 时 Android 配对流程相同。
 
 ## 安装
 

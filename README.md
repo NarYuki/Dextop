@@ -8,7 +8,7 @@
   <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. It uses Shizuku and Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.
+Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. It uses Stellar or Shizuku and Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.
 
 ## Screenshots and demo
 
@@ -84,11 +84,13 @@ No model and firmware combination has been confirmed yet.
 ## System requirements
 
 - Android 10 or later
-- [Shizuku](https://shizuku.rikka.app/)
-- Shizuku started through wireless debugging or ADB
-- Shizuku permission granted to Dextop
+- [Stellar](https://github.com/roro2239/Stellar/releases) (default and recommended, especially on Android 16 or later) or [Shizuku](https://github.com/RikkaApps/Shizuku/releases)
+- The selected service started through wireless debugging, ADB, or root
+- Stellar or Shizuku permission granted to Dextop
 
-If any part of the Shizuku setup is unclear, follow **Start via wireless debugging** in the [official Shizuku setup guide](https://shizuku.rikka.app/guide/setup/).
+Download Stellar with the **Download from GitHub** button in Dextop. On Android 16 or later, Stellar is recommended. If you use Shizuku on Android 16 or later, install its [GitHub Releases build](https://github.com/RikkaApps/Shizuku/releases), not the Play Store build. On Android 15 or earlier, the Play Store build can also be used. If both managers are installed, Dextop asks which one to use and preserves that selection until either manager is uninstalled.
+
+If any part of wireless-debugging setup is unclear, follow **Start via wireless debugging** in the [official Shizuku setup guide](https://shizuku.rikka.app/guide/setup/); the same Android pairing flow also applies when starting Stellar wirelessly.
 
 ## Installation
 

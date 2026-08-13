@@ -143,6 +143,7 @@ class MainActivity : FlutterActivity() {
                 "status" -> result.success(status())
                 "requestShizuku" -> requestShizuku(result)
                 "openShizuku" -> openShizuku(result)
+                "selectPrivilegeProvider" -> selectPrivilegeProvider(call.argument<String>("provider"), result)
                 "showOverlayDemo" -> {
                     MirrorService.showOverlayDemo(this)
                     result.success(true)
@@ -230,11 +231,18 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun status(): Map<String, Any> {
-        val installed = runCatching {
+        val shizukuInstalled = runCatching {
             packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
         }.isSuccess || runCatching {
             packageManager.getPackageInfo("moe.shizuku.manager", 0)
         }.isSuccess
+        val stellarInstalled = runCatching {
+            packageManager.getPackageInfo("roro.stellar.manager", 0)
+        }.isSuccess
+        val savedProvider = getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
+            .getString("selected", null)
+        val provider = selectedPrivilegeProvider(stellarInstalled, shizukuInstalled)
+        val installed = if (provider == "stellar") stellarInstalled else shizukuInstalled
         // A binder from an earlier Shizuku session can remain visible briefly even
         // after the manager has been removed.  Installation is therefore a hard
         // prerequisite for both the service and permission states.
@@ -256,6 +264,13 @@ class MainActivity : FlutterActivity() {
             "active" to MirrorService.isActive(),
             "privileged" to hasSecureSettingsPermission(),
             "shizukuInstalled" to installed,
+            "stellarInstalled" to stellarInstalled,
+            "originalShizukuInstalled" to shizukuInstalled,
+            "bothPrivilegeProvidersInstalled" to (stellarInstalled && shizukuInstalled),
+            "privilegeProviderSelectionRequired" to
+                (stellarInstalled && shizukuInstalled && savedProvider !in setOf("stellar", "shizuku")),
+            "privilegeProvider" to provider,
+            "privilegeProviderName" to if (provider == "stellar") "Stellar" else "Shizuku",
             "wirelessDebuggingEnabled" to wirelessDebuggingEnabled,
             "shizukuBinderAlive" to binderAlive,
             "shizukuRunning" to running,
@@ -273,11 +288,8 @@ class MainActivity : FlutterActivity() {
 
     private fun requestShizuku(result: MethodChannel.Result) {
         Log.i(logTag, "requestShizuku")
-        val installed = runCatching {
-            packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
-        }.isSuccess || runCatching {
-            packageManager.getPackageInfo("moe.shizuku.manager", 0)
-        }.isSuccess
+        val current = status()
+        val installed = current["shizukuInstalled"] == true
         if (!installed) {
             result.error("shizuku_missing", NativeStrings.text("nativePleaseInstallShizuku"), null)
             return
@@ -306,20 +318,68 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun openShizuku(result: MethodChannel.Result) {
-        val launch = packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
-            ?: packageManager.getLaunchIntentForPackage("moe.shizuku.manager")
+        val current = status()
+        val provider = current["privilegeProvider"] as String
+        val launch = if (provider == "stellar") {
+            packageManager.getLaunchIntentForPackage("roro.stellar.manager")
+        } else {
+            packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
+                ?: packageManager.getLaunchIntentForPackage("moe.shizuku.manager")
+        }
         if (launch != null) {
             startActivity(launch)
             result.success(null)
             return
         }
         runCatching {
-            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("https://shizuku.rikka.app/download/")))
+            val url = if (provider == "stellar") {
+                "https://github.com/roro2239/Stellar/releases"
+            } else if (Build.VERSION.SDK_INT >= 36) {
+                "https://github.com/RikkaApps/Shizuku/releases"
+            } else {
+                "https://play.google.com/store/apps/details?id=moe.shizuku.privileged.api"
+            }
+            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
         }.onSuccess {
             result.success(null)
         }.onFailure {
             result.error("shizuku", it.message, null)
         }
+    }
+
+    private fun selectedPrivilegeProvider(stellarInstalled: Boolean, shizukuInstalled: Boolean): String {
+        val preferences = getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
+        val saved = preferences.getString("selected", null)
+        val selected = when {
+            stellarInstalled && shizukuInstalled && saved in setOf("stellar", "shizuku") -> saved!!
+            stellarInstalled -> "stellar"
+            shizukuInstalled -> "shizuku"
+            else -> "stellar"
+        }
+        // The explicit choice remains valid only while both managers stay
+        // installed. Once either is removed, discard it so a later coexistence
+        // requires a fresh conflict-avoidance choice.
+        if (!(stellarInstalled && shizukuInstalled) && saved != null) {
+            preferences.edit().remove("selected").apply()
+        }
+        return selected
+    }
+
+    private fun selectPrivilegeProvider(provider: String?, result: MethodChannel.Result) {
+        val stellarInstalled = runCatching { packageManager.getPackageInfo("roro.stellar.manager", 0) }.isSuccess
+        val shizukuInstalled = runCatching { packageManager.getPackageInfo("moe.shizuku.privileged.api", 0) }.isSuccess ||
+            runCatching { packageManager.getPackageInfo("moe.shizuku.manager", 0) }.isSuccess
+        if (provider !in setOf("stellar", "shizuku") ||
+            (provider == "stellar" && !stellarInstalled) ||
+            (provider == "shizuku" && !shizukuInstalled)) {
+            result.error("provider_unavailable", "The selected privilege provider is not installed", null)
+            return
+        }
+        getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
+            .edit().putString("selected", provider).commit()
+        OperationLog.i(this, "MainActivity", "privilege provider selected=$provider")
+        flutterChannel?.invokeMethod("shizukuStatusChanged", null)
+        result.success(status())
     }
 
     private fun startDisplay(arguments: Map<*, *>?, result: MethodChannel.Result) {

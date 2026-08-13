@@ -8,7 +8,7 @@
   <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a>
 </p>
 
-Dextopは、Android端末上に仮想ディスプレイを作成し、スマートフォンだけでデスクトップ風の作業環境を利用するためのオープンソースアプリです。ShizukuとAndroidのシステム機能を利用して、アプリの起動、ウィンドウ配置、タッチ操作、画面方向などを制御します。
+Dextopは、Android端末上に仮想ディスプレイを作成し、スマートフォンだけでデスクトップ風の作業環境を利用するためのオープンソースアプリです。StellarまたはShizukuとAndroidのシステム機能を利用して、アプリの起動、ウィンドウ配置、タッチ操作、画面方向などを制御します。
 
 ## スクリーンショットとデモ
 
@@ -84,11 +84,13 @@ Dextopは実行時に端末の能力を検査し、複数のバックエンド�
 ## 動作要件
 
 - Android 10以降
-- [Shizuku](https://shizuku.rikka.app/)
-- ワイヤレスデバッグまたはADBによるShizukuの起動
-- DextopへのShizuku権限
+- [Stellar](https://github.com/roro2239/Stellar/releases)（標準。特にAndroid 16以降で推奨）または[Shizuku](https://github.com/RikkaApps/Shizuku/releases)
+- ワイヤレスデバッグ、ADB、またはrootによる選択サービスの起動
+- DextopへのStellarまたはShizuku権限
 
-Shizukuのセットアップでわからない点がある場合は、[Shizuku公式セットアップガイド](https://shizuku.rikka.app/guide/setup/)の **Start via wireless debugging** を参照してください。
+Dextopの「GitHubからダウンロード」ボタンからStellarを入手できます。Android 16以降ではStellarを推奨します。Android 16以降でShizukuを使う場合はPlay Store版ではなく[GitHub Releases版](https://github.com/RikkaApps/Shizuku/releases)を使用してください。Android 15以下ではPlay Store版も使用できます。両方が入っている場合は使用するサービスを選択し、どちらかがアンインストールされるまで選択を保存します。
+
+ワイヤレスデバッグの設定でわからない点がある場合は、[Shizuku公式セットアップガイド](https://shizuku.rikka.app/guide/setup/)の **Start via wireless debugging** を参照してください。Stellarをワイヤレス起動する場合もAndroid側のペアリング手順は共通です。
 
 ## インストール
 

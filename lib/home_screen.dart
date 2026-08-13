@@ -37,6 +37,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var shizukuInstalled = false;
   var shizukuRunning = false;
   var shizukuGranted = false;
+  String privilegeProvider = 'stellar';
+  String privilegeProviderName = 'Stellar';
+  var providerChoiceShown = false;
   var secureSettingsGranted = false;
   String? error;
   String manufacturer = '';
@@ -249,6 +252,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         shizukuInstalled = value['shizukuInstalled'] == true;
         shizukuRunning = value['shizukuRunning'] == true;
         shizukuGranted = value['shizukuGranted'] == true;
+        privilegeProvider = '${value['privilegeProvider'] ?? 'stellar'}';
+        privilegeProviderName =
+            '${value['privilegeProviderName'] ?? 'Stellar'}';
         secureSettingsGranted = value['privileged'] == true;
         manufacturer = '${value['manufacturer'] ?? ''}';
         model = '${value['model'] ?? ''}';
@@ -259,6 +265,14 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         loading = false;
         error = null;
       });
+      if (value['privilegeProviderSelectionRequired'] == true &&
+          !providerChoiceShown &&
+          mounted) {
+        providerChoiceShown = true;
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _choosePrivilegeProvider(),
+        );
+      }
     } on PlatformException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -266,6 +280,34 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         error = e.message;
       });
     }
+  }
+
+  Future<void> _choosePrivilegeProvider() async {
+    if (!mounted) return;
+    final choice = await showDialog<String>(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        icon: const Icon(Icons.admin_panel_settings_rounded),
+        title: const Text('特権サービスを選択'),
+        content: const Text(
+          'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。選択は、どちらかをアンインストールするまで保存されます。',
+        ),
+        actions: [
+          OutlinedButton(
+            onPressed: () => Navigator.pop(context, 'shizuku'),
+            child: const Text('Shizuku'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(context, 'stellar'),
+            child: const Text('Stellar（推奨）'),
+          ),
+        ],
+      ),
+    );
+    if (choice == null) return;
+    await bridge.selectPrivilegeProvider(choice);
+    await refresh();
   }
 
   Future<void> loadHomeWorkspaces({bool loadIcons = true}) async {
