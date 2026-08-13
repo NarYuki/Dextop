@@ -1,6 +1,6 @@
 # 端末対応を追加する
 
-[English](ADDING_DEVICE_SUPPORT.en.md) | [日本語](ADDING_DEVICE_SUPPORT.md)
+[English](ADDING_DEVICE_SUPPORT.en.md) | [日本語](ADDING_DEVICE_SUPPORT.md) | [简体中文](ADDING_DEVICE_SUPPORT.zh-CN.md)
 
 この文書は、新しいAndroid端末やOEM実装への対応をPull Requestで追加するための実装ガイドです。Dextopでは、1台のための修正が他の端末へ影響しないことを最優先にします。
 

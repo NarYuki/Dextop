@@ -1,5 +1,7 @@
 # Contributing to Dextop
 
+[English](CONTRIBUTING.md) | [简体中文](CONTRIBUTING.zh-CN.md)
+
 Use English for pull-request titles, commit messages, and the primary technical description. Japanese may be added as a translation.
 
 ## Before opening an issue

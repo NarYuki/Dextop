@@ -1,6 +1,6 @@
 # Adding device support
 
-[English](ADDING_DEVICE_SUPPORT.en.md) | [日本語](ADDING_DEVICE_SUPPORT.md)
+[English](ADDING_DEVICE_SUPPORT.en.md) | [日本語](ADDING_DEVICE_SUPPORT.md) | [简体中文](ADDING_DEVICE_SUPPORT.zh-CN.md)
 
 This guide explains how to add support for a new Android device or OEM implementation through a pull request. The primary rule is that a fix for one device must not change behavior on unrelated devices.
 
