@@ -239,6 +239,11 @@ class NativeBridge {
     bool secure, {
     required bool decorations,
   }) {
+    AppAnalytics.event('desktop_start', {
+      'orientation': portrait ? 'portrait' : 'landscape',
+      'secure_display': secure,
+      'resolution': '${profile.width}x${profile.height}',
+    });
     debugPrint(
       'Dextop start: ${profile.width}x${profile.height}/${profile.density} portrait=$portrait secure=$secure',
     );

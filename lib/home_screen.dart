@@ -60,6 +60,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     _initializeHome();
     _loadSecureDisplay();
+    AppAnalytics.screen('home');
   }
 
   Future<void> _loadSecureDisplay() async {
@@ -416,7 +417,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: NavigationBar(
         selectedIndex: page,
-        onDestinationSelected: (value) => setState(() => page = value),
+        onDestinationSelected: (value) {
+          setState(() => page = value);
+          AppAnalytics.screen(value == 0 ? 'home' : 'settings');
+        },
         destinations: [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),

@@ -1,0 +1,31 @@
+import 'package:firebase_analytics/firebase_analytics.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart';
+
+abstract final class AppAnalytics {
+  static FirebaseAnalytics? _analytics;
+
+  static Future<void> initialize() async {
+    try {
+      await Firebase.initializeApp();
+      _analytics = FirebaseAnalytics.instance;
+      await _analytics?.setAnalyticsCollectionEnabled(true);
+    } catch (error) {
+      debugPrint('Firebase Analytics is not configured: $error');
+    }
+  }
+
+  static Future<void> screen(String name) async {
+    await _analytics?.logEvent(
+      name: 'screen_view',
+      parameters: {
+        'firebase_screen': name,
+        'firebase_screen_class': 'DextopScreen',
+      },
+    );
+  }
+
+  static Future<void> event(String name, [Map<String, Object>? parameters]) =>
+      _analytics?.logEvent(name: name, parameters: parameters) ??
+      Future.value();
+}

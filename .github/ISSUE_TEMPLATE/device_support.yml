@@ -1,0 +1,36 @@
+name: Device support request
+description: Request support for a device or firmware implementation.
+title: "[Device]: "
+labels: [device-support]
+body:
+  - type: markdown
+    attributes:
+      value: Read the device support guide before submitting.
+  - type: checkboxes
+    attributes:
+      label: Checklist
+      options:
+        - label: I read the device support guide.
+          required: true
+        - label: I removed unwanted identifiers from attached logs.
+          required: true
+  - type: input
+    attributes:
+      label: Manufacturer, model, and codename
+    validations: {required: true}
+  - type: input
+    attributes:
+      label: Android version, SDK, and build number
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Working features
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Broken or missing features
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Sanitized diagnostic report
+    validations: {required: true}

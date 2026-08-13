@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Device support guide
+    url: https://github.com/NarYuki/Dextop/blob/main/docs/ADDING_DEVICE_SUPPORT.en.md
+    about: Read this before requesting or implementing support for another device.

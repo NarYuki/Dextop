@@ -118,6 +118,7 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
   @override
   void initState() {
     super.initState();
+    AppAnalytics.screen('diagnostics');
     load();
   }
 

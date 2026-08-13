@@ -3,6 +3,7 @@ import 'dart:convert';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/app_strings.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -111,6 +112,11 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   @override
   void initState() {
     super.initState();
+    AppAnalytics.screen(
+      widget.launcherOnly
+          ? 'app_launcher'
+          : 'features_${widget.category ?? 'all'}',
+    );
     WidgetsBinding.instance.addPostFrameCallback((_) => load());
     if (widget.category == 'status') {
       metricsTimer = Timer.periodic(Duration(seconds: 1), (_) => loadMetrics());

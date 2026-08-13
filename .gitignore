@@ -12,6 +12,7 @@ key.properties
 service-account*.json
 play-credentials*.json
 google-services.json
+firebase_options.dart
 
 # Flutter and Dart
 .dart_tool/

@@ -58,6 +58,8 @@ Dextopは実行時に端末の能力を検査し、複数のバックエンド�
 - ワイヤレスデバッグまたはADBによるShizukuの起動
 - DextopへのShizuku権限
 
+Shizukuのセットアップでわからない点がある場合は、[Shizuku公式セットアップガイド](https://shizuku.rikka.app/guide/setup/)の **Start via wireless debugging** を参照してください。
+
 ## インストール
 
 Google Play版は現在審査中です。

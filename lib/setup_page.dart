@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -29,6 +30,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   @override
   void initState() {
     super.initState();
+    AppAnalytics.screen('initial_setup');
     WidgetsBinding.instance.addObserver(this);
     channel.setMethodCallHandler((call) async {
       if (call.method == 'shizukuStatusChanged') {

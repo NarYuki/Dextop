@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
+import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/app_strings.dart';
 import 'package:free_dextop/features_page.dart';
 import 'package:free_dextop/setup_page.dart';
@@ -17,7 +18,8 @@ part 'home_content.dart';
 part 'resolution_ui.dart';
 part 'settings_screen.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AppAnalytics.initialize();
   runApp(const DextopApp());
 }

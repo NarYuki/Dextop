@@ -4,6 +4,10 @@ plugins {
     id("dev.flutter.flutter-gradle-plugin")
 }
 
+if (file("google-services.json").exists()) {
+    apply(plugin = "com.google.gms.google-services")
+}
+
 val releaseEnvironment = mutableMapOf<String, String>()
 val environmentFile = rootProject.file("../.env")
 if (environmentFile.exists()) {

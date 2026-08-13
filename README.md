@@ -58,6 +58,8 @@ Dextop probes device capabilities at runtime and tries compatible backends in or
 - Shizuku started through wireless debugging or ADB
 - Shizuku permission granted to Dextop
 
+If any part of the Shizuku setup is unclear, follow **Start via wireless debugging** in the [official Shizuku setup guide](https://shizuku.rikka.app/guide/setup/).
+
 ## Installation
 
 The Google Play release is currently under review.

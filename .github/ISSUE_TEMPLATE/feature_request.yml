@@ -1,0 +1,23 @@
+name: Feature request
+description: Propose a general Dextop feature.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: checkboxes
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and found no duplicate.
+          required: true
+  - type: textarea
+    attributes:
+      label: Problem
+      description: Describe the concrete problem, not only the desired implementation.
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Proposed behavior
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Alternatives and device impact

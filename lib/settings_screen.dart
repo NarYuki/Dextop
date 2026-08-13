@@ -96,6 +96,7 @@ extension _SettingsContent on _HomeScreenState {
   }
 
   void _openDisplaySettings(AppLocalizations l) {
+    AppAnalytics.screen('display_settings');
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => StatefulBuilder(
@@ -149,6 +150,7 @@ extension _SettingsContent on _HomeScreenState {
   }
 
   void _openDeviceSettings(AppLocalizations l) {
+    AppAnalytics.screen('device_and_permissions');
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(

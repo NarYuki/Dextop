@@ -1,0 +1,54 @@
+name: Bug report
+description: Report a reproducible Dextop problem.
+title: "[Bug]: "
+labels: [bug]
+body:
+  - type: checkboxes
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and found no duplicate.
+          required: true
+        - label: I tested the latest release or current main build.
+          required: true
+        - label: I removed unwanted identifiers from the diagnostic report.
+          required: true
+  - type: input
+    attributes:
+      label: Dextop version
+      placeholder: 1.0.0 (1)
+    validations: {required: true}
+  - type: input
+    attributes:
+      label: Device
+      description: Manufacturer, exact model, and device codename.
+      placeholder: Samsung SM-S942Z / m1q
+    validations: {required: true}
+  - type: input
+    attributes:
+      label: Android build
+      placeholder: Android 16, SDK 36, firmware/build number
+    validations: {required: true}
+  - type: dropdown
+    attributes:
+      label: Desktop environment
+      options: [Samsung DeX, Google Pixel desktop/freeform, Other OEM desktop/freeform, Unknown]
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Steps to reproduce
+      placeholder: "1. Start Dextop...\n2. Open...\n3. Observe..."
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Expected behavior
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Actual behavior
+    validations: {required: true}
+  - type: textarea
+    attributes:
+      label: Diagnostic report and logs
+      description: Attach or paste the sanitized report from Settings → App information → Operation log and device diagnostics.
+    validations: {required: true}
