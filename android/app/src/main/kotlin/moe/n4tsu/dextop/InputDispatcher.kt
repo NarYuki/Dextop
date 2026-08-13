@@ -16,7 +16,12 @@ internal class InputDispatcher(private val privilegedAccess: PrivilegedAccess) {
 
     fun send(event: InputEvent, displayId: Int): Boolean = runCatching {
         setDisplayMethod.invoke(event, displayId)
-        injectMethod.invoke(service, event, 0)
-        true
+        // ASYNC keeps MOVE latency low. The binder result still reports whether
+        // the event was accepted; never turn a rejected gesture into success.
+        injectMethod.invoke(service, event, INJECT_WAIT_FOR_RESULT) as Boolean
     }.getOrDefault(false)
+
+    private companion object {
+        const val INJECT_WAIT_FOR_RESULT = 1
+    }
 }

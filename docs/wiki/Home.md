@@ -9,6 +9,7 @@ Dextop creates a controllable virtual desktop display on Android using Stellar o
 - [Features and settings](Features-and-Settings)
 - [Input and gestures](Input-and-Gestures)
 - [Diagnostics and recovery](Diagnostics-and-Recovery)
+- [Device reports](Device-Reports)
 - [Restore Android with ADB](ADB-System-Recovery)
 - [Compatibility](Compatibility)
 

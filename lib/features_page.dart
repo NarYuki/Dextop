@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/app_strings.dart';
+import 'package:free_dextop/setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DextopFeaturesPage extends StatefulWidget {
@@ -41,7 +42,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   var threeFingerGesture = 'menu';
   var twoFingerGesture = 'right_click';
   var longPressGesture = 'drag';
-  var experimentalMultiTouch = false;
+  var experimentalMultiTouch = true;
   var performanceHud = false;
   Timer? metricsTimer;
 
@@ -168,8 +169,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
       twoFingerGesture =
           preferences.getString('gesture_two_finger') ?? 'right_click';
       longPressGesture = preferences.getString('gesture_long_press') ?? 'drag';
-      experimentalMultiTouch =
-          preferences.getBool('experimental_multitouch') ?? false;
+      experimentalMultiTouch = true;
       performanceHud = preferences.getBool('performance_hud') ?? false;
       loading = false;
       appsLoading = false;
@@ -614,6 +614,20 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     setState(() => threeFingerGesture = value);
   }
 
+  Future<void> reviewThreeFingerGesture() async {
+    final japanese = Localizations.localeOf(context).languageCode == 'ja';
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => GestureDemoFlow(
+          title: japanese ? '3本指ジェスチャーを再確認' : 'Review three-finger gesture',
+          back: japanese ? '戻る' : 'Back',
+          done: japanese ? '完了' : 'Done',
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (loading) {
@@ -855,6 +869,16 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
               leading: Icon(Icons.swipe_right_rounded),
               title: Text(AppStrings.tr('uiSwipeRightWithThreeFingersFromThe')),
               subtitle: Text(AppStrings.tr('uiShowActionOverlay')),
+              trailing: FilledButton.tonalIcon(
+                onPressed: reviewThreeFingerGesture,
+                icon: const Icon(Icons.replay_rounded),
+                label: Text(
+                  Localizations.localeOf(context).languageCode == 'ja'
+                      ? '再確認'
+                      : 'Review',
+                ),
+              ),
+              onTap: reviewThreeFingerGesture,
             )
           else
             _gestureTile(

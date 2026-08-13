@@ -39,6 +39,57 @@ class AppLocalizationsZh extends AppLocalizations {
   String get secureDisplayDescription => '允许显示受保护的内容';
 
   @override
+  String get mirrorBackend => '显示镜像方式';
+
+  @override
+  String get mirrorBackendAuto => '自动（兼容性优先）';
+
+  @override
+  String get mirrorBackendAutoDescription => '使用此设备可用的最佳方式';
+
+  @override
+  String get mirrorBackendWindowManager => 'WindowManager';
+
+  @override
+  String get mirrorBackendSurfaceControl => 'SurfaceControl';
+
+  @override
+  String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
+
+  @override
+  String get updateAvailable => '有可用更新';
+
+  @override
+  String get updateAvailableTitle => 'GitHub 上已发布新版本！';
+
+  @override
+  String get checkForUpdates => '检查更新';
+
+  @override
+  String get checkingForUpdates => '正在获取更新信息';
+
+  @override
+  String get updateNotChecked => '尚未获取更新信息';
+
+  @override
+  String get upToDate => '已是最新版本';
+
+  @override
+  String get updateCheckFailed => '无法获取更新信息';
+
+  @override
+  String get currentVersion => '当前版本';
+
+  @override
+  String get latestVersion => '最新版本';
+
+  @override
+  String get openOnGitHub => '在 GitHub 中打开';
+
+  @override
+  String get close => '关闭';
+
+  @override
   String get deviceInfo => '设备信息';
 
   @override
@@ -183,7 +234,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      '已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。该选择会保存到其中一个应用被卸载为止。';
+      '已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。';
 
   @override
   String get setupUseStellar => 'Stellar（推荐）';
@@ -368,7 +419,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uiSecondaryIme => '辅助输入法';
 
   @override
-  String get uiSecureDisplayFoldable => '安全显示，可折叠';
+  String get uiSecureDisplayFoldable => '安全显示、镜像方式、可折叠设备';
 
   @override
   String get uiSecurity => '安全';
@@ -707,4 +758,103 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get clearDiagnosticLog => '清除日志';
+
+  @override
+  String get deviceReport => '设备运行报告';
+
+  @override
+  String get uiCpuTemperature => 'CPU 温度';
+
+  @override
+  String get deviceReportDescription => '通过电子邮件报告设备和功能兼容性';
+
+  @override
+  String get deviceReportIntro => '设备信息将自动收集。请选择各项功能的运行结果。';
+
+  @override
+  String get reportWorking => '可用';
+
+  @override
+  String get reportNotWorking => '不可用';
+
+  @override
+  String get reportUntested => '未测试';
+
+  @override
+  String get reportOverall => '总体状态';
+
+  @override
+  String get reportNotes => '其他备注';
+
+  @override
+  String get sendDeviceReport => '通过邮件发送报告';
+
+  @override
+  String get reportEmailUnavailable => '无法打开邮件应用';
+
+  @override
+  String get reportTemplateTitle => 'Dextop 设备运行报告';
+
+  @override
+  String get reportNoNotes => '无';
+
+  @override
+  String get reportFeatureStartup => '应用启动与设备检测';
+
+  @override
+  String get reportFeatureSession => 'Dextop 会话启动';
+
+  @override
+  String get reportFeatureVirtualDisplay => 'VirtualDisplay 镜像';
+
+  @override
+  String get reportFeatureWindowManager => 'WindowManager 镜像';
+
+  @override
+  String get reportFeatureSurfaceControl => 'SurfaceControl 镜像';
+
+  @override
+  String get reportFeatureLandscape => '横屏模式';
+
+  @override
+  String get reportFeaturePortrait => '竖屏模式';
+
+  @override
+  String get reportFeatureSecureDisplay => '安全显示';
+
+  @override
+  String get reportFeatureLauncher => '应用启动器与自由窗口';
+
+  @override
+  String get reportFeatureWorkspace => '工作区保存与恢复';
+
+  @override
+  String get reportFeatureCursor => '光标与触控板输入';
+
+  @override
+  String get reportFeatureDirectTouch => '直接触控输入';
+
+  @override
+  String get reportFeatureMultiTouch => '多点触控滚动与双指缩放';
+
+  @override
+  String get reportFeatureGesture => '三指浮层手势';
+
+  @override
+  String get reportFeatureMouse => '物理鼠标';
+
+  @override
+  String get reportFeatureKeyboard => '物理键盘';
+
+  @override
+  String get reportFeatureRouting => '物理鼠标与键盘显示路由';
+
+  @override
+  String get reportFeatureFoldable => '折叠设备自动分辨率';
+
+  @override
+  String get reportFeaturePerformance => '性能浮层';
+
+  @override
+  String get reportFeatureCleanup => '会话清理与 Android 状态恢复';
 }

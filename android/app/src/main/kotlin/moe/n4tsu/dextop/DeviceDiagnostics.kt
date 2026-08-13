@@ -81,6 +81,7 @@ internal class DeviceDiagnostics(private val context: Context) {
         val hasKeyboard = InputDevice.getDeviceIds().any { id ->
             InputDevice.getDevice(id)?.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC
         }
+        val externalDisplays = ExternalDisplayDetector(context).snapshot()
         val configuration = context.resources.configuration
         return mapOf(
             "shizuku" to shizukuGranted,
@@ -93,6 +94,9 @@ internal class DeviceDiagnostics(private val context: Context) {
             "overlayWritable" to overlayCapable,
             "mouse" to hasMouse,
             "keyboard" to hasKeyboard,
+            "externalDisplayConnected" to externalDisplays.connected,
+            "externalDisplayIds" to externalDisplays.displayIds.joinToString(),
+            "externalDisplayNames" to externalDisplays.names.joinToString(),
             "secondaryIme" to (Build.VERSION.SDK_INT >= 31),
             "desktopMode" to (Build.VERSION.SDK_INT >= 29),
             "sessionActive" to sessionCapable,

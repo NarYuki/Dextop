@@ -13,6 +13,11 @@ service-account*.json
 play-credentials*.json
 google-services.json
 firebase_options.dart
+firebase.json
+.firebaserc
+.firebase/
+firebase-debug.log
+firebase-debug.*.log
 
 # Flutter and Dart
 .dart_tool/

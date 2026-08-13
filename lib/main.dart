@@ -20,6 +20,7 @@ part 'home_screen.dart';
 part 'home_content.dart';
 part 'resolution_ui.dart';
 part 'settings_screen.dart';
+part 'device_report.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

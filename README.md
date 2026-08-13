@@ -32,14 +32,17 @@ Dextop is an open-source Android app that creates a virtual display and provides
 - [x] Workspace import and export as JSON
 - [x] Cursor and direct-touch input modes
 - [x] Tap, long-press, drag, right-click, two-finger, and three-finger gestures
+- [x] Multi-touch input, including scrolling and pinch-to-zoom
+- [x] Physical mouse support
+- [x] Physical keyboard support
+- [x] Mouse and keyboard input routing between Dextop and the external display on supported devices
 - [x] Automatic resolution switching for foldable open and closed states
 - [x] Performance overlay for FPS, refresh rate, memory, battery, and estimated power usage
 - [x] Quick Settings tile launch
 - [x] Interrupted-session recovery and restoration of temporary Android settings
 - [x] Detailed diagnostic reports containing app logs, capability probes, fallback results, and device specifications
+- [x] Localized device compatibility reports with per-feature results and automatic email composition
 - [x] Japanese, English, Chinese, Korean, and Russian interfaces
-- [ ] Complete physical-mouse support (currently limited to movement, basic clicks, scrolling, and related input)
-- [ ] Complete physical-keyboard support (shortcuts, IMEs, and external-display input routing remain device-dependent)
 
 ## Compatibility
 
@@ -114,6 +117,12 @@ To contribute support for another device, read [Adding support for a device](doc
 ## Diagnostics
 
 Open **Settings → App information → Operation log and device diagnostics** to view, copy, or share device specifications, capability probes, fallback results, and Dextop operation logs. Remove any personal information you do not want to publish before attaching a report to an issue.
+
+## Device reports
+
+Open **Settings → Device report** to report how Dextop works on a specific device and firmware. Choose **Working**, **Not working**, or **Not tested** for the overall result and every listed feature, add optional notes, then tap **Send report by email**. Dextop prepares a structured Markdown report and opens your email app with `dextop-device@n4t.su` as the recipient.
+
+The report includes the device model, codename, Android/API version, firmware identifiers, security patch, Dextop version, detected capabilities, and the results you selected. Review the generated email before sending it. See [Device reports](https://github.com/NarYuki/Dextop/wiki/Device-Reports) for the complete field list and procedure.
 
 This project is under active development. Available features and behavior may change with device firmware and Android updates.
 

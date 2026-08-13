@@ -49,7 +49,7 @@ internal data class DesktopEnvironment(
     val supportsLaunchBounds: Boolean = true,
     /** Ordered, device-local strategies. Never change the global order for one model. */
     val displayCreationStrategies: List<String> = listOf("overlay_settings"),
-    val mirrorStrategies: List<String> = listOf("window_manager", "surface_control"),
+    val mirrorStrategies: List<String> = listOf("virtual_display", "window_manager", "surface_control"),
     val windowingStrategies: List<String> = listOf("wm", "activity_task_manager")
 )
 

@@ -10,6 +10,7 @@ import android.content.res.Configuration
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.BroadcastReceiver
+import android.content.pm.PackageManager
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
@@ -32,6 +33,7 @@ import android.transition.TransitionManager
 import android.util.Log
 import android.view.Gravity
 import android.view.DragEvent
+import android.view.Display
 import android.view.InputDevice
 import android.view.KeyEvent
 import android.view.MotionEvent
@@ -73,6 +75,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     companion object {
         private const val PREFS = "freedextop_input"
         private const val KEY_DIRECT_TOUCH = "direct_touch"
+        private const val KEY_ROUTE_MOUSE = "route_physical_mouse"
+        private const val KEY_ROUTE_KEYBOARD = "route_physical_keyboard"
         private var instance: MirrorService? = null
         private var pending: Config? = null
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
@@ -209,6 +213,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private val resolutionRepository by lazy { ResolutionRepository(this, logTag) }
     private val inputDispatcher by lazy { InputDispatcher(privilegedAccess) }
+    private val physicalInputRouter by lazy { PhysicalInputRouter(this, privilegedAccess) }
+    private val externalDisplayDetector by lazy { ExternalDisplayDetector(this) }
     private val sessionJournal by lazy { SessionJournal(this) }
     private val displayBackend by lazy {
         DisplayMirrorBackend(
@@ -262,18 +268,34 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var dragHeld = false
     private var directTouch = false
     private var directTouchHeld = false
+    private var injectedDirectTouchActive = false
+    private var directInjectionDownTime = 0L
+    private var lastInjectedDirectTouch: MotionEvent? = null
     private var experimentalMultiTouch = false
     private var threeFingerEdgeSwipe = false
     private var edgeMenuTriggered = false
     private var edgeGestureOriginX = 0f
+    private var edgeGestureOriginY = 0f
     private var physicalMouseActive = false
+    private var routePhysicalMouseToDextop = true
+    private var routePhysicalKeyboardToDextop = true
+    private var mouseActuallyRouted = false
+    private var keyboardActuallyRouted = false
+    private var physicalExternalDisplayConnected = false
+    private val physicalInputRoutingSupported: Boolean
+        get() = !Build.MANUFACTURER.equals("samsung", ignoreCase = true)
     private var mouseReaderProcess: moe.shizuku.server.IRemoteProcess? = null
     @Volatile private var mouseReaderRunning = false
     private var inputManager: InputManager? = null
     private val inputDeviceListener = object : InputManager.InputDeviceListener {
-        override fun onInputDeviceAdded(deviceId: Int) = refreshPhysicalMouseState()
-        override fun onInputDeviceRemoved(deviceId: Int) = refreshPhysicalMouseState()
-        override fun onInputDeviceChanged(deviceId: Int) = refreshPhysicalMouseState()
+        override fun onInputDeviceAdded(deviceId: Int) = refreshPhysicalInputState()
+        override fun onInputDeviceRemoved(deviceId: Int) = refreshPhysicalInputState()
+        override fun onInputDeviceChanged(deviceId: Int) = refreshPhysicalInputState()
+    }
+    private val displayListener = object : DisplayManager.DisplayListener {
+        override fun onDisplayAdded(displayId: Int) = refreshExternalDisplayState()
+        override fun onDisplayRemoved(displayId: Int) = refreshExternalDisplayState()
+        override fun onDisplayChanged(displayId: Int) = refreshExternalDisplayState()
     }
     private val navigationToken = Binder()
     private var screenReceiverRegistered = false
@@ -296,13 +318,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         HiddenApiBypass.addHiddenApiExemptions("")
         directTouch = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(KEY_DIRECT_TOUCH, false)
-        experimentalMultiTouch = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getBoolean("flutter.experimental_multitouch", false)
+        routePhysicalMouseToDextop = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_ROUTE_MOUSE, true)
+        routePhysicalKeyboardToDextop = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(KEY_ROUTE_KEYBOARD, true)
+        experimentalMultiTouch = true
         instance = this
         windowManager = getSystemService(WindowManager::class.java)
         inputManager = getSystemService(InputManager::class.java).also {
             it.registerInputDeviceListener(inputDeviceListener, null)
         }
+        getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, null)
+        physicalExternalDisplayConnected = physicalInputRoutingSupported && externalDisplayDetector.snapshot().connected
+        if (!physicalInputRoutingSupported) runCatching { physicalInputRouter.restore() }
         physicalMouseActive = false
         if (!screenReceiverRegistered) {
             registerReceiver(
@@ -354,14 +382,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun onKeyEvent(event: KeyEvent): Boolean = forwardKeyEvent(event)
 
     override fun onMotionEvent(event: MotionEvent) {
-        if (!active || !event.isFromSource(InputDevice.SOURCE_MOUSE)) return
-        activatePhysicalMouse()
+        if (!active || !routePhysicalMouseToDextop || !event.isFromSource(InputDevice.SOURCE_MOUSE)) return
         val relativeX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X)
         val relativeY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
         when {
-            relativeX != 0f || relativeY != 0f -> moveCursor(relativeX, relativeY)
+            relativeX != 0f || relativeY != 0f -> {
+                activatePhysicalMouse()
+                moveCursor(relativeX, relativeY)
+            }
             event.actionMasked == MotionEvent.ACTION_HOVER_MOVE ||
                 event.actionMasked == MotionEvent.ACTION_MOVE -> {
+                activatePhysicalMouse()
                 val view = surfaceView ?: return
                 if (view.width > 0 && view.height > 0) {
                     cursorX = (event.x / view.width * targetWidth).coerceIn(0f, targetWidth - 1f)
@@ -377,6 +408,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (!pausedForAndroid) stop()
         if (screenReceiverRegistered) unregisterReceiver(screenReceiver)
         inputManager?.unregisterInputDeviceListener(inputDeviceListener)
+        getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
         inputManager = null
         screenReceiverRegistered = false
         instance = null
@@ -401,8 +433,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             .commit()
         suspendedForLockScreen = false
         suspendedConfig = null
-        experimentalMultiTouch = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getBoolean("flutter.experimental_multitouch", false)
+        experimentalMultiTouch = true
         sessionJournal.preparing(config.width, config.height, config.density, config.decorations)
         targetDisplayId = -1
         targetWidth = config.width
@@ -427,14 +458,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // Keep every pointer in one touch stream. Splitting the stream lets
             // the mirrored surface consume fingers before the edge recognizer.
             isMotionEventSplittingEnabled = false
+            // The desktop surface owns input whenever the operation overlay is
+            // closed. Opening the overlay explicitly disables this route.
+            routeTouchesToSurface = true
         }
         val surface = SurfaceView(this).apply {
             holder.addCallback(this@MirrorService)
             isFocusable = true
             isFocusableInTouchMode = true
             setOnTouchListener { _, event ->
+                Log.d(logTag, "surface touch action=${event.actionMasked} pointers=${event.pointerCount} direct=$directTouch multi=$experimentalMultiTouch route=${root?.routeTouchesToSurface}")
                 if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
-                    activatePhysicalMouse()
+                    if (event.actionMasked == MotionEvent.ACTION_MOVE ||
+                        event.actionMasked == MotionEvent.ACTION_HOVER_MOVE) activatePhysicalMouse()
                     forwardMouseEvent(event, this)
                 } else {
                     if (event.actionMasked == MotionEvent.ACTION_DOWN) activateTouchInput()
@@ -449,7 +485,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             requestFocus()
         }
         val cursor = CursorView(this)
-        cursor.visibility = if (directTouch || hasPhysicalMouse()) View.GONE else View.VISIBLE
+        // A connected mouse alone must not hide the touchpad cursor. Switch the
+        // visual cursor only after input from that mouse is actually observed.
+        cursor.visibility = if (directTouch) View.GONE else View.VISIBLE
         val controls = buildMenu()
         val scrim = View(this).apply {
             setBackgroundColor(Color.argb(105, 0, 0, 0))
@@ -502,8 +540,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         windowManager?.addView(frame, params)
         if (experimentalMultiTouch) {
             frame.post {
-                val exclusionWidth = dp(120).coerceAtMost(frame.width / 3)
-                val exclusion = listOf(Rect(0, 0, exclusionWidth, frame.height))
+                val exclusion = if (targetWidth >= targetHeight) {
+                    val width = dp(120).coerceAtMost(frame.width / 3)
+                    listOf(Rect(0, 0, width, frame.height))
+                } else {
+                    val height = dp(120).coerceAtMost(frame.height / 3)
+                    listOf(Rect(0, 0, frame.width, height))
+                }
                 frame.systemGestureExclusionRects = exclusion
                 surface.systemGestureExclusionRects = exclusion
             }
@@ -536,10 +579,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 leftMargin = dp(18)
             }
         } else {
-            FrameLayout.LayoutParams(-1, -2, Gravity.BOTTOM).apply {
+            FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
                 leftMargin = dp(12)
                 rightMargin = dp(12)
-                bottomMargin = dp(12)
+                topMargin = dp(12)
             }
         }
     }
@@ -578,8 +621,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         hideDemoWindow()
         pendingDemo = false
         demoMode = true
-        targetWidth = resources.displayMetrics.widthPixels
-        targetHeight = resources.displayMetrics.heightPixels
+        val bounds = windowManager?.currentWindowMetrics?.bounds
+        targetWidth = bounds?.width()?.takeIf { it > 0 } ?: resources.displayMetrics.widthPixels
+        targetHeight = bounds?.height()?.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
         density = resources.displayMetrics.densityDpi
         val frame = TouchRoutingFrame(this).apply { setBackgroundColor(Color.TRANSPARENT) }
         val scrim = View(this).apply {
@@ -610,9 +654,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
                 leftMargin = dp(12)
                 rightMargin = dp(12)
-                topMargin = dp(12)
+                topMargin = dp(24)
             }
         })
+        if (targetWidth < targetHeight) {
+            controls.addOnLayoutChangeListener { _, _, _, _, bottom, _, _, _, _ ->
+                val layout = info.layoutParams as FrameLayout.LayoutParams
+                val wantedTop = bottom + dp(12)
+                if (layout.topMargin != wantedTop) {
+                    layout.topMargin = wantedTop
+                    info.layoutParams = layout
+                }
+            }
+        }
         frame.setOnApplyWindowInsetsListener { _, insets ->
             val safe = insets.getInsetsIgnoringVisibility(
                 WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout()
@@ -624,7 +678,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             } else {
                 layout.leftMargin = dp(12) + safe.left
                 layout.rightMargin = dp(12) + safe.right
-                layout.topMargin = dp(12) + safe.top
             }
             info.layoutParams = layout
             insets
@@ -913,6 +966,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val bounds = JSONObject()
         val currentTasks = currentDisplayTasks()
         currentTasks.forEach { (packageName, rect) ->
+            if (!isWorkspaceApp(packageName)) return@forEach
             apps.put(packageName)
             bounds.put(packageName, JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom)))
         }
@@ -920,7 +974,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             windows.orEmpty().forEach { window ->
                 if (Build.VERSION.SDK_INT >= 30 && window.displayId != targetDisplayId) return@forEach
                 val packageName = window.root?.packageName?.toString() ?: return@forEach
-                if (packageName == packageName() || packageName == "com.android.systemui") return@forEach
+                if (!isWorkspaceApp(packageName)) return@forEach
                 val rect = Rect()
                 window.getBoundsInScreen(rect)
                 if (rect.width() < dp(80) || rect.height() < dp(80) || bounds.has(packageName)) return@forEach
@@ -930,6 +984,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (apps.length() == 0) {
             launchedAppBounds.forEach { (packageName, rect) ->
+                if (!isWorkspaceApp(packageName)) return@forEach
                 apps.put(packageName)
                 bounds.put(packageName, JSONArray(listOf(rect.left, rect.top, rect.right, rect.bottom)))
             }
@@ -973,10 +1028,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             if (!inDisplay) return@forEach
             packagePattern.find(line)?.groupValues?.getOrNull(1)?.let { candidate ->
-                if (candidate != applicationContext.packageName &&
-                    candidate != "com.android.systemui" &&
-                    !line.contains("type=home")
-                ) pendingPackage = candidate
+                pendingPackage = candidate.takeIf {
+                    !line.contains("type=home") && isWorkspaceApp(it)
+                }
             }
             val match = boundsPattern.find(line) ?: return@forEach
             val packageName = pendingPackage ?: return@forEach
@@ -988,6 +1042,27 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         Log.i(logTag, "current task query found ${found.size} apps on display=$targetDisplayId packages=${found.keys}")
         return found
+    }
+
+    /**
+     * A captured workspace must contain only packages Dextop can restore. Task
+     * dumps also include System UI surfaces, launchers, providers and transient
+     * activities; those have no meaningful launcher icon and previously became
+     * transparent entries in the workspace UI.
+     */
+    private fun isWorkspaceApp(candidate: String): Boolean {
+        if (candidate.isBlank() || candidate == packageName() || candidate == "com.android.systemui") return false
+        val launchIntent = packageManager.getLaunchIntentForPackage(candidate) ?: return false
+        val activity = launchIntent.resolveActivity(packageManager) ?: return false
+        val info = runCatching {
+            packageManager.getApplicationInfo(candidate, 0)
+        }.getOrNull() ?: return false
+        if (!info.enabled) return false
+
+        val home = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        val homePackages = packageManager.queryIntentActivities(home, PackageManager.MATCH_DEFAULT_ONLY)
+            .asSequence().map { it.activityInfo.packageName }.toSet()
+        return candidate !in homePackages && activity.packageName == candidate
     }
 
     private fun launchOverlayWorkspace(workspace: JSONObject) {
@@ -1125,24 +1200,42 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun overlayButtonOrder(): MutableList<String> {
         val saved = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getString("overlay_button_order", "modes,volume,brightness,resolution,android,stop,reconnect,orientation").orEmpty()
+            .getString("overlay_button_order", "modes,volume,brightness,resolution,android,stop,reconnect,orientation,mouse_route,keyboard_route").orEmpty()
             .replace("actions", "stop,reconnect,orientation")
-            .split(',').filter { it in controlIds }.toMutableList()
+            .split(',').filter { it in allControlIds }.toMutableList()
+        // Migrate the original routing-button default. Explicit user ordering
+        // remains untouched unless the two controls are still in that exact
+        // legacy position.
+        if (saved.indexOf("mouse_route") + 1 == saved.indexOf("keyboard_route") &&
+            saved.indexOf("keyboard_route") < saved.indexOf("stop")
+        ) {
+            saved.remove("mouse_route")
+            saved.remove("keyboard_route")
+            val insertion = (saved.indexOf("orientation") + 1).coerceAtLeast(0)
+            saved.add(insertion, "mouse_route")
+            saved.add(insertion + 1, "keyboard_route")
+        }
+        saved.removeAll { it !in controlIds }
         controlIds.forEach { if (it !in saved) saved.add(it) }
         return saved
     }
 
-    private val controlIds get() = listOf(
+    private val allControlIds get() = listOf(
         "modes", "volume", "brightness", "resolution", "android",
-        "stop", "reconnect", "orientation"
+        "stop", "reconnect", "orientation", "mouse_route", "keyboard_route"
     )
+    private val controlIds get() = allControlIds.filter {
+        demoMode || physicalInputRoutingSupported && physicalExternalDisplayConnected ||
+            it != "mouse_route" && it != "keyboard_route"
+    }
 
     private fun addCustomControls(panel: LinearLayout, order: List<String>) {
         val mutableOrder = order.toMutableList()
         val views = linkedMapOf<String, View>()
-        val squareIds = setOf("stop", "reconnect", "orientation")
+        val columns = if (demoMode || physicalExternalDisplayConnected) 5 else 3
+        val squareIds = setOf("mouse_route", "keyboard_route", "stop", "reconnect", "orientation")
         val grid = GridLayout(this).apply {
-            columnCount = 3
+            columnCount = columns
             alignmentMode = GridLayout.ALIGN_BOUNDS
             layoutTransition = LayoutTransition().apply {
                 setDuration(LayoutTransition.CHANGING, 180)
@@ -1156,9 +1249,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             var column = 0
             mutableOrder.forEach { id ->
                 val view = views[id] ?: return@forEach
-                val span = if (id in squareIds) 1 else 3
-                if (span == 3 && column != 0) { row++; column = 0 }
-                if (span == 1 && column + span > 3) { row++; column = 0 }
+                val span = if (id in squareIds) 1 else columns
+                if (span == columns && column != 0) { row++; column = 0 }
+                if (span == 1 && column + span > columns) { row++; column = 0 }
                 view.layoutParams = GridLayout.LayoutParams(
                     GridLayout.spec(row),
                     GridLayout.spec(column, span, 1f)
@@ -1168,9 +1261,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     bottomMargin = dp(8)
                     if (column > 0) leftMargin = dp(6)
                 }
-                if (span == 3) { row++; column = 0 } else {
+                if (span == columns) { row++; column = 0 } else {
                     column++
-                    if (column == 3) { row++; column = 0 }
+                    if (column == columns) { row++; column = 0 }
                 }
             }
             grid.requestLayout()
@@ -1235,6 +1328,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun squareControl(id: String): ImageButton = when (id) {
+        "mouse_route" -> routingAction(
+            R.drawable.ic_mouse,
+            NativeStrings.text("nativePhysicalMouse"),
+            mouseActuallyRouted
+        ) {
+            if (demoMode) demoExplanation(NativeStrings.text("nativePhysicalMouseDemo"))
+            else setPhysicalInputRouting(mouse = !mouseActuallyRouted)
+        }
+        "keyboard_route" -> routingAction(
+            R.drawable.ic_keyboard,
+            NativeStrings.text("nativePhysicalKeyboard"),
+            keyboardActuallyRouted
+        ) {
+            if (demoMode) demoExplanation(NativeStrings.text("nativePhysicalKeyboardDemo"))
+            else setPhysicalInputRouting(keyboard = !keyboardActuallyRouted)
+        }
         "stop" -> squareAction(R.drawable.ic_stop, NativeStrings.text("nativeEnd"), true) {
             if (demoMode) demoExplanation(NativeStrings.text("nativeTerminateYourDextopSession")) else stop()
         }
@@ -1262,6 +1371,78 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             setOnClickListener { action() }
         }
+
+    private fun routingAction(icon: Int, description: String, enabled: Boolean, action: () -> Unit) =
+        squareAction(icon, description, action = action).apply {
+            setColorFilter(if (enabled) Color.rgb(226, 196, 255) else Color.rgb(202, 196, 208))
+            background = GradientDrawable().apply {
+                setColor(if (enabled) Color.rgb(79, 55, 111) else Color.rgb(50, 47, 55))
+                cornerRadius = dp(16).toFloat()
+            }
+            isSelected = enabled
+        }
+
+    private fun setPhysicalInputRouting(mouse: Boolean? = null, keyboard: Boolean? = null) {
+        if (!physicalInputRoutingSupported) {
+            runCatching { physicalInputRouter.restore() }
+            return
+        }
+        routePhysicalMouseToDextop = mouse ?: routePhysicalMouseToDextop
+        routePhysicalKeyboardToDextop = keyboard ?: routePhysicalKeyboardToDextop
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putBoolean(KEY_ROUTE_MOUSE, routePhysicalMouseToDextop)
+            .putBoolean(KEY_ROUTE_KEYBOARD, routePhysicalKeyboardToDextop)
+            .apply()
+        val display = getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId)
+        if (display != null) runCatching {
+            physicalInputRouter.apply(display, routePhysicalMouseToDextop, routePhysicalKeyboardToDextop)
+        }.onFailure { OperationLog.w(this, "InputRouting", "overlay routing change failed", it) }
+        if (!routePhysicalMouseToDextop) activateTouchInput()
+        root?.postDelayed({
+            refreshActualRoutingState(display)
+            menuPrimary?.let(::showMainMenu)
+        }, 350)
+    }
+
+    private fun refreshExternalDisplayState() {
+        root?.post {
+            val connected = physicalInputRoutingSupported && externalDisplayDetector.snapshot().connected
+            if (connected == physicalExternalDisplayConnected) return@post
+            physicalExternalDisplayConnected = connected
+            val display = getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId)
+            if (connected && active && display != null) {
+                runCatching {
+                    physicalInputRouter.apply(display, routePhysicalMouseToDextop, routePhysicalKeyboardToDextop)
+                }.onFailure { OperationLog.w(this, "InputRouting", "external display routing failed", it) }
+                if (routePhysicalMouseToDextop) startRawMouseReader()
+            } else {
+                runCatching { physicalInputRouter.restore() }
+                    .onFailure { OperationLog.w(this, "InputRouting", "external display disconnect restoration failed", it) }
+                stopRawMouseReader()
+                activateTouchInput()
+                mouseActuallyRouted = false
+                keyboardActuallyRouted = false
+            }
+            refreshActualRoutingState(display)
+            menuPrimary?.let(::showMainMenu)
+            Log.i(logTag, "physical external display connected=$connected")
+        }
+    }
+
+    private fun refreshActualRoutingState(display: Display?) {
+        if (display == null || !physicalExternalDisplayConnected) {
+            mouseActuallyRouted = false
+            keyboardActuallyRouted = false
+            return
+        }
+        mouseActuallyRouted = physicalInputRouter.isMouseRouted(display)
+        keyboardActuallyRouted = physicalInputRouter.isKeyboardRouted(display)
+        OperationLog.i(
+            this,
+            "InputRouting",
+            "verified display=${display.displayId} mouse=$mouseActuallyRouted keyboard=$keyboardActuallyRouted"
+        )
+    }
 
     private fun showResolutionMenu(panel: LinearLayout) {
         animateMenuResize(panel)
@@ -1445,6 +1626,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun trackpad(event: MotionEvent): Boolean {
+        Log.d(logTag, "trackpad action=${event.actionMasked} pointers=${event.pointerCount} direct=$directTouch held=$directTouchHeld scrolling=$scrolling")
         maxPointers = maxOf(maxPointers, event.pointerCount)
         if (experimentalMultiTouch && handleExperimentalEdgeGesture(event)) return true
         if (directTouch && experimentalMultiTouch) {
@@ -1586,30 +1768,46 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.x
+                touchStartY = event.y
                 threeFingerEdgeSwipe = false
                 edgeMenuTriggered = false
                 edgeGestureOriginX = 0f
+                edgeGestureOriginY = 0f
             }
             MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount >= 3) {
                 var minimumX = Float.MAX_VALUE
+                var minimumY = Float.MAX_VALUE
                 var totalX = 0f
+                var totalY = 0f
                 for (index in 0 until event.pointerCount) {
                     val x = event.getX(index)
+                    val y = event.getY(index)
                     minimumX = minOf(minimumX, x)
+                    minimumY = minOf(minimumY, y)
                     totalX += x
+                    totalY += y
                 }
-                if (minimumX > dp(120) && touchStartX > dp(120)) return false
+                val portrait = targetHeight > targetWidth
+                if (portrait) {
+                    if (minimumY > dp(120) && touchStartY > dp(120)) return false
+                } else if (minimumX > dp(120) && touchStartX > dp(120)) return false
                 threeFingerEdgeSwipe = true
                 edgeGestureOriginX = totalX / event.pointerCount
-                if (directTouch) injectDirectTouch(event, MotionEvent.ACTION_CANCEL)
+                edgeGestureOriginY = totalY / event.pointerCount
+                if (directTouch) cancelInjectedDirectTouch()
                 return true
             }
             MotionEvent.ACTION_MOVE -> if (threeFingerEdgeSwipe) {
                 var totalX = 0f
-                for (index in 0 until event.pointerCount) totalX += event.getX(index)
-                if (!edgeMenuTriggered &&
-                    totalX / event.pointerCount - edgeGestureOriginX >= dp(48)
-                ) {
+                var totalY = 0f
+                for (index in 0 until event.pointerCount) {
+                    totalX += event.getX(index)
+                    totalY += event.getY(index)
+                }
+                val distance = if (targetHeight > targetWidth) {
+                    totalY / event.pointerCount - edgeGestureOriginY
+                } else totalX / event.pointerCount - edgeGestureOriginX
+                if (!edgeMenuTriggered && distance >= dp(48)) {
                     edgeMenuTriggered = true
                     toggleMenu()
                 }
@@ -1620,6 +1818,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 threeFingerEdgeSwipe = false
                 edgeMenuTriggered = false
                 edgeGestureOriginX = 0f
+                edgeGestureOriginY = 0f
                 return true
             }
         }
@@ -1671,14 +1870,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (overlayTextInputActive) return
         surfaceView?.releasePointerCapture()
         setOverlayFocusable(false)
-        if (!physicalMouseActive) return
         physicalMouseActive = false
+        // ACTION_DOWN on the phone display hands cursor ownership back to the
+        // touchpad immediately, even if the mouse remains connected.
         cursorView?.visibility = if (directTouch) View.GONE else View.VISIBLE
+        if (!directTouch) cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
     }
 
     private fun activatePhysicalMouse() {
         if (overlayTextInputActive) return
         physicalMouseActive = true
+        // Samsung keeps its global PointerController on the physical external
+        // display even after an input-device association changes. Dextop owns a
+        // cursor on the routed display so raw relative input remains visible.
         cursorView?.visibility = View.VISIBLE
         cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
         setOverlayFocusable(true)
@@ -1690,16 +1894,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun handlePhysicalMouseEvent(event: MotionEvent, view: View): Boolean {
         if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
-        activatePhysicalMouse()
+        if (event.actionMasked == MotionEvent.ACTION_MOVE ||
+            event.actionMasked == MotionEvent.ACTION_HOVER_MOVE) activatePhysicalMouse()
         return forwardMouseEvent(event, view)
     }
 
     private fun handleCapturedMouseEvent(event: MotionEvent): Boolean {
         if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
-        activatePhysicalMouse()
         val dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X)
         val dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
-        if (dx != 0f || dy != 0f) moveCursor(dx, dy)
+        if (dx != 0f || dy != 0f) {
+            activatePhysicalMouse()
+            moveCursor(dx, dy)
+        }
         return forwardCapturedMouseButtonsAndWheel(event)
     }
 
@@ -1764,12 +1971,30 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun refreshPhysicalMouseState() {
         root?.post {
             val connected = hasPhysicalMouse()
-            if (connected) {
-                activatePhysicalMouse()
-            } else if (physicalMouseActive) {
+            if (!connected && physicalMouseActive) {
                 physicalMouseActive = false
                 cursorView?.visibility = if (directTouch) View.GONE else View.VISIBLE
             }
+        }
+    }
+
+    private fun refreshPhysicalInputState() {
+        refreshPhysicalMouseState()
+        if (!physicalInputRoutingSupported || !physicalExternalDisplayConnected) return
+        val id = targetDisplayId
+        if (!active || id < 0) return
+        val display = getSystemService(DisplayManager::class.java).getDisplay(id) ?: return
+        root?.post {
+            val routed = runCatching {
+                physicalInputRouter.refresh(display, routePhysicalMouseToDextop, routePhysicalKeyboardToDextop)
+            }
+                .onFailure { OperationLog.w(this, "InputRouting", "input routing refresh failed", it) }
+                .getOrDefault(0)
+            Log.i(logTag, "physical input routing refreshed count=$routed display=$id")
+            root?.postDelayed({
+                refreshActualRoutingState(display)
+                menuPrimary?.let(::showMainMenu)
+            }, 350)
         }
     }
 
@@ -1836,6 +2061,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         panel.animate().cancel()
         menuScrim?.animate()?.cancel()
         if (panel.visibility != View.VISIBLE) {
+            cancelDesktopTouchStream()
             frame.routeTouchesToSurface = false
             menuScrim?.apply {
                 isClickable = true
@@ -1851,7 +2077,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (targetWidth >= targetHeight) {
                     panel.translationX = -panel.width.toFloat()
                 } else {
-                    panel.translationY = panel.height.toFloat()
+                    panel.translationY = -panel.height.toFloat()
                 }
                 panel.animate()
                     .translationX(0f)
@@ -1863,6 +2089,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     .start()
             }
         } else {
+            // Finish any gesture owned by the overlay before handing input back
+            // to the desktop. The next finger must begin with a clean DOWN.
+            cancelDesktopTouchStream()
             // The closing visuals may remain for 180 ms, but input must return
             // to Dextop immediately and must never hit the scrim's reopen click.
             frame.routeTouchesToSurface = true
@@ -1871,7 +2100,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val animation = if (targetWidth >= targetHeight) {
                 panel.animate().translationX(-panel.width.toFloat())
             } else {
-                panel.animate().translationY(panel.height.toFloat())
+                panel.animate().translationY(-panel.height.toFloat())
             }
             animation.alpha(0f).scaleX(.94f).scaleY(.94f).setDuration(180).withEndAction {
                 endOverlayTextInput()
@@ -1882,7 +2111,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 setOverlayFocusable(false)
                 panel.visibility = View.GONE
                 menuScrim?.visibility = View.GONE
-                frame.routeTouchesToSurface = false
+                // Keep direct routing enabled after the closing animation. The
+                // transparent overlay hierarchy must never regain input while
+                // it is hidden.
+                frame.routeTouchesToSurface = true
                 panel.translationX = 0f
                 panel.translationY = 0f
                 panel.alpha = 1f
@@ -1978,7 +2210,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     /** Forwards physical-keyboard input while preserving modifiers and repeat state. */
     private fun forwardKeyEvent(source: KeyEvent): Boolean {
-        if (targetDisplayId < 0) return false
+        if (targetDisplayId < 0 || !routePhysicalKeyboardToDextop) return false
         return runCatching {
             val event = KeyEvent(source)
             inputDispatcher.send(event, targetDisplayId)
@@ -1988,7 +2220,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     /** Forwards physical mouse movement, buttons and wheel input to the desktop display. */
     private fun forwardMouseEvent(source: MotionEvent, view: View): Boolean {
-        if (targetDisplayId < 0 || view.width <= 0 || view.height <= 0) return false
+        if (!routePhysicalMouseToDextop || targetDisplayId < 0 || view.width <= 0 || view.height <= 0) return false
         return runCatching {
             val event = MotionEvent.obtain(source)
             event.transform(Matrix().apply {
@@ -2045,9 +2277,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun injectDirectTouch(source: MotionEvent, actionOverride: Int? = null) {
         if (targetDisplayId < 0) return
         val view = surfaceView ?: return
-        val sourceWidth = view.width.coerceAtLeast(1).toFloat()
-        val sourceHeight = view.height.coerceAtLeast(1).toFloat()
+        if (view.width <= 0 || view.height <= 0) return
         runCatching {
+            val action = actionOverride ?: source.action
+            val actionMasked = action and MotionEvent.ACTION_MASK
+            if (actionMasked == MotionEvent.ACTION_DOWN) {
+                directInjectionDownTime = SystemClock.uptimeMillis()
+            }
+            if (directInjectionDownTime == 0L) {
+                // Never send MOVE/UP without a synthetic DOWN identity.
+                directInjectionDownTime = SystemClock.uptimeMillis()
+            }
+            val scaleX = targetWidth.toFloat() / view.width
+            val scaleY = targetHeight.toFloat() / view.height
             val properties = Array(source.pointerCount) { index ->
                 MotionEvent.PointerProperties().apply {
                     source.getPointerProperties(index, this)
@@ -2057,31 +2299,115 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val coordinates = Array(source.pointerCount) { index ->
                 MotionEvent.PointerCoords().apply {
                     source.getPointerCoords(index, this)
-                    x = source.getX(index) / sourceWidth * targetWidth
-                    y = source.getY(index) / sourceHeight * targetHeight
-                    pressure = if (source.actionMasked == MotionEvent.ACTION_UP) 0f else 1f
-                    size = 1f
+                    x *= scaleX
+                    y *= scaleY
                 }
             }
+            // deviceId=0 makes this a synthetic stream. Reusing the phone's
+            // physical touchscreen device ID on another display causes Samsung
+            // InputManager to reject subsequent one-finger events.
             val event = MotionEvent.obtain(
-                source.downTime,
-                source.eventTime,
-                actionOverride ?: source.action,
+                directInjectionDownTime,
+                SystemClock.uptimeMillis(),
+                action,
                 source.pointerCount,
                 properties,
                 coordinates,
                 source.metaState,
                 source.buttonState,
-                source.xPrecision,
-                source.yPrecision,
-                source.deviceId,
+                source.xPrecision * scaleX,
+                source.yPrecision * scaleY,
+                0,
                 source.edgeFlags,
                 InputDevice.SOURCE_TOUCHSCREEN,
                 source.flags
             )
-            check(inputDispatcher.send(event, targetDisplayId))
-            event.recycle()
-        }.onFailure { Log.e(logTag, "multi-touch injection failed", it) }
+            try {
+                check(inputDispatcher.send(event, targetDisplayId)) {
+                    "InputManager rejected multi-touch event action=${event.actionMasked}"
+                }
+                Log.d(logTag, "direct touch injected action=${event.actionMasked} pointers=${event.pointerCount} display=$targetDisplayId")
+                injectedDirectTouchActive = when (event.actionMasked) {
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> false
+                    else -> true
+                }
+                lastInjectedDirectTouch?.recycle()
+                lastInjectedDirectTouch = if (injectedDirectTouchActive) MotionEvent.obtain(event) else null
+                if (!injectedDirectTouchActive) directInjectionDownTime = 0L
+            } finally {
+                event.recycle()
+            }
+        }.onFailure { error ->
+            Log.e(logTag, "multi-touch injection failed", error)
+        }
+    }
+
+    /**
+     * Cancels the injected stream with exactly the pointer IDs and pointer count
+     * accepted by the target display. A gesture intercepted when its third finger
+     * arrives must not forward that new three-pointer shape as CANCEL: the target
+     * has only seen the preceding one/two-pointer stream and rejects the mismatch.
+     */
+    private fun cancelInjectedDirectTouch() {
+        val previous = lastInjectedDirectTouch ?: return
+        if (targetDisplayId < 0) return
+        val properties = Array(previous.pointerCount) { index ->
+            MotionEvent.PointerProperties().also { previous.getPointerProperties(index, it) }
+        }
+        val coordinates = Array(previous.pointerCount) { index ->
+            MotionEvent.PointerCoords().also { previous.getPointerCoords(index, it) }
+        }
+        val cancel = MotionEvent.obtain(
+            previous.downTime,
+            SystemClock.uptimeMillis(),
+            MotionEvent.ACTION_CANCEL,
+            previous.pointerCount,
+            properties,
+            coordinates,
+            previous.metaState,
+            previous.buttonState,
+            previous.xPrecision,
+            previous.yPrecision,
+            0,
+            previous.edgeFlags,
+            InputDevice.SOURCE_TOUCHSCREEN,
+            previous.flags
+        )
+        try {
+            if (!inputDispatcher.send(cancel, targetDisplayId)) {
+                Log.w(logTag, "InputManager rejected exact direct-touch cancel pointers=${cancel.pointerCount}")
+            }
+        } finally {
+            cancel.recycle()
+            previous.recycle()
+            lastInjectedDirectTouch = null
+            injectedDirectTouchActive = false
+            directInjectionDownTime = 0L
+        }
+    }
+
+    /** Terminates both local and injected gesture state at an overlay boundary. */
+    private fun cancelDesktopTouchStream() {
+        longPressRunnable?.let { root?.removeCallbacks(it) }
+        longPressRunnable = null
+
+        if (injectedDirectTouchActive) cancelInjectedDirectTouch()
+        if (targetDisplayId >= 0 && (directTouchHeld || scrolling || dragHeld)) {
+            injectTouch(MotionEvent.ACTION_CANCEL, cursorX, cursorY)
+        }
+        injectedDirectTouchActive = false
+        directTouchHeld = false
+        scrolling = false
+        dragHeld = false
+        moved = false
+        twoFinger = false
+        threeFinger = false
+        maxPointers = 0
+        longPressTriggered = false
+        threeFingerEdgeSwipe = false
+        edgeMenuTriggered = false
+        injectedDownTime = 0L
+        directInjectionDownTime = 0L
     }
 
     override fun surfaceCreated(holder: SurfaceHolder) {
@@ -2145,18 +2471,43 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             targetDisplayId = display.displayId
             configureDisplay()
+            val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
+            val strategyOverride = configuredBackend.takeUnless { it == "auto" }
             displayBackend.attach(
                 targetDisplayId,
                 surfaceView ?: error(NativeStrings.text("nativeMirrorSurfaceUnavailable")),
                 width,
                 height,
                 targetWidth,
-                targetHeight
+                targetHeight,
+                strategyOverride
             )
             mirrorDisplayId = targetDisplayId
             displayCreationInProgress = false
             sessionJournal.running(targetDisplayId)
-            startRawMouseReader()
+            val externalDisplays = externalDisplayDetector.snapshot()
+            physicalExternalDisplayConnected = physicalInputRoutingSupported && externalDisplays.connected
+            val routedInputCount = if (physicalExternalDisplayConnected) runCatching {
+                physicalInputRouter.routeConnectedDevices(
+                    display,
+                    routePhysicalMouseToDextop,
+                    routePhysicalKeyboardToDextop
+                )
+            }
+                .onFailure { OperationLog.w(this, "InputRouting", "input routing unavailable", it) }
+                .getOrDefault(0) else 0
+            OperationLog.i(
+                this,
+                "DisplayRouting",
+                "externalConnected=${externalDisplays.connected} externalIds=${externalDisplays.displayIds} routedInputs=$routedInputCount"
+            )
+            if (physicalExternalDisplayConnected && routePhysicalMouseToDextop) startRawMouseReader() else stopRawMouseReader()
+            root?.postDelayed({
+                refreshActualRoutingState(display)
+                menuPrimary?.let(::showMainMenu)
+            }, 350)
+            menuPrimary?.let(::showMainMenu)
             cursorX = targetWidth / 2f
             cursorY = targetHeight / 2f
             cursorView?.update(.5f, .5f)
@@ -2240,6 +2591,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun startRawMouseReader() {
+        if (!routePhysicalMouseToDextop) return
         stopRawMouseReader()
         val binder = rikka.shizuku.Shizuku.getBinder() ?: return
         runCatching {
@@ -2258,6 +2610,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 ))
                 var pendingX = 0f
                 var pendingY = 0f
+                var pendingWheel = 0f
                 reader.useLines { lines ->
                     lines.takeWhile { mouseReaderRunning }.forEach { line ->
                         val fields = line.trim().split(Regex("\\s+"))
@@ -2269,14 +2622,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         when {
                             type == "0002" && code == "0000" -> pendingX += signed
                             type == "0002" && code == "0001" -> pendingY += signed
-                            type == "0000" && code == "0000" && (pendingX != 0f || pendingY != 0f) -> {
-                                val dx = pendingX
-                                val dy = pendingY
-                                pendingX = 0f
-                                pendingY = 0f
+                            type == "0002" && code == "0008" -> pendingWheel += signed
+                            type == "0001" && code in setOf("0110", "0111", "0112") -> {
+                                val button = when (code) {
+                                    "0110" -> MotionEvent.BUTTON_PRIMARY
+                                    "0111" -> MotionEvent.BUTTON_SECONDARY
+                                    else -> MotionEvent.BUTTON_TERTIARY
+                                }
+                                val pressed = raw != 0L
                                 root?.post {
                                     activatePhysicalMouse()
-                                    moveCursor(dx, dy)
+                                    injectRoutedMouseButton(button, pressed)
+                                }
+                            }
+                            type == "0000" && code == "0000" &&
+                                (pendingX != 0f || pendingY != 0f || pendingWheel != 0f) -> {
+                                val dx = pendingX
+                                val dy = pendingY
+                                val wheel = pendingWheel
+                                pendingX = 0f
+                                pendingY = 0f
+                                pendingWheel = 0f
+                                root?.post {
+                                    activatePhysicalMouse()
+                                    if (dx != 0f || dy != 0f) moveCursor(dx, dy)
+                                    if (wheel != 0f) injectRoutedMouseScroll(wheel)
                                 }
                             }
                         }
@@ -2285,6 +2655,57 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }.apply { name = "DextopMouseReader"; isDaemon = true }.start()
             Log.i(logTag, "raw mouse reader started")
         }.onFailure { Log.e(logTag, "raw mouse reader failed", it) }
+    }
+
+    private fun injectRoutedMouseButton(button: Int, pressed: Boolean) {
+        if (targetDisplayId < 0) return
+        val now = SystemClock.uptimeMillis()
+        val action = if (pressed) MotionEvent.ACTION_BUTTON_PRESS else MotionEvent.ACTION_BUTTON_RELEASE
+        val state = if (pressed) button else 0
+        val properties = arrayOf(MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = MotionEvent.TOOL_TYPE_MOUSE
+        })
+        val coordinates = arrayOf(MotionEvent.PointerCoords().apply {
+            x = cursorX
+            y = cursorY
+        })
+        val event = MotionEvent.obtain(
+            now, now, action, 1, properties, coordinates,
+            0, state, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0
+        )
+        runCatching {
+            MotionEvent::class.java.getMethod("setActionButton", Int::class.javaPrimitiveType)
+                .invoke(event, button)
+        }
+        try {
+            check(inputDispatcher.send(event, targetDisplayId))
+        } finally {
+            event.recycle()
+        }
+    }
+
+    private fun injectRoutedMouseScroll(wheel: Float) {
+        if (targetDisplayId < 0) return
+        val now = SystemClock.uptimeMillis()
+        val properties = arrayOf(MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = MotionEvent.TOOL_TYPE_MOUSE
+        })
+        val coordinates = arrayOf(MotionEvent.PointerCoords().apply {
+            x = cursorX
+            y = cursorY
+            setAxisValue(MotionEvent.AXIS_VSCROLL, wheel)
+        })
+        val event = MotionEvent.obtain(
+            now, now, MotionEvent.ACTION_SCROLL, 1, properties, coordinates,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0
+        )
+        try {
+            check(inputDispatcher.send(event, targetDisplayId))
+        } finally {
+            event.recycle()
+        }
     }
 
     private fun stopRawMouseReader() {
@@ -2364,6 +2785,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         suspendedForLockScreen = false
         suspendedConfig = null
         if (dragHeld) toggleDrag()
+        runCatching { physicalInputRouter.restore() }
+            .onFailure { Log.e(logTag, "physical input restoration failed", it) }
         runCatching { displayBackend.clearRequest() }
         setPhoneNavigationDisabled(false)
         releasePhoneRotation()
@@ -2438,8 +2861,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun dispatchTouchEvent(event: MotionEvent): Boolean {
             if (routeTouchesToSurface) {
                 val surface = getChildAt(0)
-                if (surface != null) return surface.dispatchTouchEvent(event)
+                if (surface != null) {
+                    val handled = surface.dispatchTouchEvent(event)
+                    Log.d("DextopMirror", "route surface action=${event.actionMasked} pointers=${event.pointerCount} handled=$handled")
+                    return handled
+                }
             }
+            Log.d("DextopMirror", "route overlay action=${event.actionMasked} pointers=${event.pointerCount}")
             return super.dispatchTouchEvent(event)
         }
     }

@@ -1,9 +1,26 @@
 part of 'main.dart';
 
 class AppInfoPage extends StatelessWidget {
-  const AppInfoPage({required this.bridge, super.key});
+  const AppInfoPage({
+    required this.bridge,
+    required this.appVersion,
+    required this.updateAvailable,
+    required this.checking,
+    required this.checkSucceeded,
+    required this.checkError,
+    required this.onCheck,
+    required this.onShowUpdate,
+    super.key,
+  });
 
   final NativeBridge bridge;
+  final String appVersion;
+  final bool updateAvailable;
+  final bool checking;
+  final bool checkSucceeded;
+  final String? checkError;
+  final Future<void> Function() onCheck;
+  final Future<void> Function() onShowUpdate;
 
   @override
   Widget build(BuildContext context) {
@@ -32,12 +49,48 @@ class AppInfoPage extends StatelessWidget {
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                   SizedBox(height: 4),
-                  Text(
-                    l.version,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
+                  if (updateAvailable)
+                    TextButton.icon(
+                      onPressed: onShowUpdate,
+                      icon: Icon(Icons.system_update_alt_rounded),
+                      label: Text(l.updateAvailable),
+                    )
+                  else
+                    Text(
+                      appVersion.isEmpty ? '—' : appVersion,
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
                 ],
               ),
+            ),
+          ),
+          SizedBox(height: 12),
+          Card(
+            child: ListTile(
+              leading: checking
+                  ? SizedBox.square(
+                      dimension: 24,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      updateAvailable
+                          ? Icons.system_update_alt_rounded
+                          : Icons.update_rounded,
+                    ),
+              title: Text(l.checkForUpdates),
+              subtitle: Text(
+                checking
+                    ? l.checkingForUpdates
+                    : updateAvailable
+                    ? l.updateAvailable
+                    : checkError != null
+                    ? l.updateCheckFailed
+                    : checkSucceeded
+                    ? l.upToDate
+                    : l.updateNotChecked,
+              ),
+              trailing: Icon(Icons.refresh_rounded),
+              onTap: checking ? null : onCheck,
             ),
           ),
           SizedBox(height: 12),
@@ -60,7 +113,7 @@ class AppInfoPage extends StatelessWidget {
                   onTap: () => showLicensePage(
                     context: context,
                     applicationName: AppStrings.tr('appName'),
-                    applicationVersion: '1.0.0',
+                    applicationVersion: appVersion,
                     applicationIcon: ClipRRect(
                       borderRadius: BorderRadius.all(Radius.circular(16)),
                       child: Image(
@@ -85,18 +138,6 @@ class AppInfoPage extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(height: 20),
-          Padding(
-            padding: EdgeInsets.fromLTRB(12, 0, 12, 7),
-            child: Text(
-              AppStrings.tr('uiExperimentalFeatures'),
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ),
-          _ExperimentalFeaturesCard(),
         ],
       ),
     );
@@ -186,48 +227,6 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
               ],
             ),
           ),
-  );
-}
-
-class _ExperimentalFeaturesCard extends StatefulWidget {
-  const _ExperimentalFeaturesCard();
-
-  @override
-  State<_ExperimentalFeaturesCard> createState() =>
-      _ExperimentalFeaturesCardState();
-}
-
-class _ExperimentalFeaturesCardState extends State<_ExperimentalFeaturesCard> {
-  var multiTouch = false;
-
-  @override
-  void initState() {
-    super.initState();
-    SharedPreferences.getInstance().then((preferences) {
-      if (mounted) {
-        setState(() {
-          multiTouch = preferences.getBool('experimental_multitouch') ?? false;
-        });
-      }
-    });
-  }
-
-  Future<void> updateMultiTouch(bool value) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool('experimental_multitouch', value);
-    if (mounted) setState(() => multiTouch = value);
-  }
-
-  @override
-  Widget build(BuildContext context) => Card(
-    margin: EdgeInsets.zero,
-    child: SwitchListTile(
-      secondary: Icon(Icons.science_outlined),
-      value: multiTouch,
-      onChanged: updateMultiTouch,
-      title: Text(AppStrings.tr('uiExperimentalMultiTouch')),
-      subtitle: Text(AppStrings.tr('uiItSupportsMultiTouchAndTheThree')),
-    ),
   );
 }
 

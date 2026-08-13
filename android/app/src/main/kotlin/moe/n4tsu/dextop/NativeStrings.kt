@@ -5,7 +5,9 @@ import java.util.Locale
 internal object NativeStrings {
     fun text(key: String): String {
         val language = Locale.getDefault().language
-        return (values[language] ?: values.getValue("en"))[key] ?: values.getValue("en")[key] ?: key
+        return ((values[language] ?: values.getValue("en"))[key]
+            ?: values.getValue("en")[key]
+            ?: key).replace("\\n", "\n")
     }
 
     private val values = mapOf(
@@ -23,6 +25,10 @@ internal object NativeStrings {
             "nativeInputTouch" to "タップ",
             "nativeInputTrackpad" to "トラックパッド",
             "nativeInputIdle" to "待機中",
+            "nativePhysicalMouse" to "物理マウスの入力先を切り替え",
+            "nativePhysicalKeyboard" to "物理キーボードの入力先を切り替え",
+            "nativePhysicalMouseDemo" to "物理マウスの入力先をAndroidとDextopの間で切り替えます。対応端末で外部ディスプレイ接続中に表示されます",
+            "nativePhysicalKeyboardDemo" to "物理キーボードの入力先をAndroidとDextopの間で切り替えます。対応端末で外部ディスプレイ接続中に表示されます",
             "nativeTheThreeFingerGestureIsAnEssential" to "3本指ジェスチャーはDextop使用中に必須の操作方法です。\\n各ボタンをタップすると、ここに機能の説明が表示されます",
             "nativeAsusZenuiRogUiDesktop" to "ASUS ZenUI / ROG UI デスクトップ",
             "nativeAndroidDesktopFreeform" to "Android デスクトップ（Freeform）",
@@ -102,6 +108,10 @@ internal object NativeStrings {
             "nativeInputTouch" to "Touch",
             "nativeInputTrackpad" to "Trackpad",
             "nativeInputIdle" to "Idle",
+            "nativePhysicalMouse" to "Switch physical mouse destination",
+            "nativePhysicalKeyboard" to "Switch physical keyboard destination",
+            "nativePhysicalMouseDemo" to "Switch the physical mouse between Android and Dextop. Available on supported devices while an external display is connected.",
+            "nativePhysicalKeyboardDemo" to "Switch the physical keyboard between Android and Dextop. Available on supported devices while an external display is connected.",
             "nativeTheThreeFingerGestureIsAnEssential" to "The three-finger gesture is essential while using Dextop.\\nTap a button to see what it does.",
             "nativeAsusZenuiRogUiDesktop" to "ASUS ZenUI / ROG UI Desktop",
             "nativeAndroidDesktopFreeform" to "Android Desktop (Freeform)",
@@ -181,6 +191,10 @@ internal object NativeStrings {
             "nativeInputTouch" to "触摸",
             "nativeInputTrackpad" to "触控板",
             "nativeInputIdle" to "空闲",
+            "nativePhysicalMouse" to "切换物理鼠标输入目标",
+            "nativePhysicalKeyboard" to "切换物理键盘输入目标",
+            "nativePhysicalMouseDemo" to "在 Android 和 Dextop 之间切换物理鼠标。外接显示器连接到受支持的设备时可用。",
+            "nativePhysicalKeyboardDemo" to "在 Android 和 Dextop 之间切换物理键盘。外接显示器连接到受支持的设备时可用。",
             "nativeTheThreeFingerGestureIsAnEssential" to "三指手势是使用Dextop时必不可少的操作方式。 \\n点击每个按钮可在此处查看功能说明",
             "nativeAsusZenuiRogUiDesktop" to "华硕 ZenUI / ROG UI 桌面",
             "nativeAndroidDesktopFreeform" to "Android 桌面（自由格式）",
@@ -260,6 +274,10 @@ internal object NativeStrings {
             "nativeInputTouch" to "터치",
             "nativeInputTrackpad" to "트랙패드",
             "nativeInputIdle" to "대기 중",
+            "nativePhysicalMouse" to "물리 마우스 입력 대상 전환",
+            "nativePhysicalKeyboard" to "물리 키보드 입력 대상 전환",
+            "nativePhysicalMouseDemo" to "물리 마우스를 Android와 Dextop 사이에서 전환합니다. 지원 기기에 외부 디스플레이가 연결된 경우 사용할 수 있습니다.",
+            "nativePhysicalKeyboardDemo" to "물리 키보드를 Android와 Dextop 사이에서 전환합니다. 지원 기기에 외부 디스플레이가 연결된 경우 사용할 수 있습니다.",
             "nativeTheThreeFingerGestureIsAnEssential" to "세 손가락 제스처는 Dextop 사용 중에 필수적인 조작 방법입니다. \\n각 버튼을 탭하면 여기에 기능 설명이 표시됩니다.",
             "nativeAsusZenuiRogUiDesktop" to "ASUS ZenUI / ROG UI 데스크톱",
             "nativeAndroidDesktopFreeform" to "Android 데스크톱(Freeform)",
@@ -339,6 +357,10 @@ internal object NativeStrings {
             "nativeInputTouch" to "Касание",
             "nativeInputTrackpad" to "Трекпад",
             "nativeInputIdle" to "Ожидание",
+            "nativePhysicalMouse" to "Переключить назначение физической мыши",
+            "nativePhysicalKeyboard" to "Переключить назначение физической клавиатуры",
+            "nativePhysicalMouseDemo" to "Переключает физическую мышь между Android и Dextop. Доступно на поддерживаемых устройствах при подключённом внешнем дисплее.",
+            "nativePhysicalKeyboardDemo" to "Переключает физическую клавиатуру между Android и Dextop. Доступно на поддерживаемых устройствах при подключённом внешнем дисплее.",
             "nativeTheThreeFingerGestureIsAnEssential" to "Жест тремя пальцами необходим при работе с Dextop.\\nНажмите кнопку, чтобы увидеть описание её функции.",
             "nativeAsusZenuiRogUiDesktop" to "Рабочий стол ASUS ZenUI/ROG UI",
             "nativeAndroidDesktopFreeform" to "Рабочий стол Android (свободная форма)",

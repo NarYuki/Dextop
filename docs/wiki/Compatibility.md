@@ -37,6 +37,7 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 | Area | Result | Notes |
 | --- | --- | --- |
 | App startup and device detection | ✅ Confirmed | The connected device is detected as Samsung `SM-S942Z` / `m1q`. |
+| Physical mouse/keyboard display routing | ❌ Unsupported | Samsung's global pointer controller remains bound to the physical DeX display, so Dextop hides the routing controls and restores Android's normal routing. |
 | Dextop session startup | ✅ Confirmed | Dextop is confirmed to operate on the firmware listed above. |
 | Individual optional features | Not separately recorded | Add separate results when each feature is retested on this build. |
 
@@ -59,6 +60,6 @@ Support is experimental. A vendor profile does not guarantee that every model or
 
 ## Reporting another device
 
-Attach the report from **Settings → App information → Operation log and device diagnostics** to a [device support issue](https://github.com/NarYuki/Dextop/issues/new?template=device_support.yml). Include the model, codename, Android version, vendor UI version, firmware build, and a feature-by-feature result.
+Use **Settings → Device report** to prepare a structured compatibility report by email. See [Device reports](Device-Reports) for the complete procedure and collected fields. You may additionally attach **Settings → App information → Operation log and device diagnostics** to a [device support issue](https://github.com/NarYuki/Dextop/issues/new?template=device_support.yml) when detailed troubleshooting logs are needed.
 
 Model-specific changes must be isolated by manufacturer, model, codename, fingerprint prefix, and SDK range. See [Adding device support](https://github.com/NarYuki/Dextop/blob/main/docs/ADDING_DEVICE_SUPPORT.en.md) before opening a pull request.

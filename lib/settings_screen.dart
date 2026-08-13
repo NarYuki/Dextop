@@ -14,7 +14,7 @@ extension _SettingsContent on _HomeScreenState {
               sectionTitle(l.theme),
               SizedBox(height: 12),
               rootMyGalaxyThemeSwitch(l),
-              SizedBox(height: 20),
+              SizedBox(height: 32),
               settingsCard([
                 _categoryTile(
                   Icons.display_settings_outlined,
@@ -54,10 +54,33 @@ extension _SettingsContent on _HomeScreenState {
                 _categoryTile(
                   Icons.info_outline_rounded,
                   l.appInfo,
-                  'Dextop 1.0.0',
+                  appVersion.isEmpty ? 'Dextop' : 'Dextop $appVersion',
                   () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => AppInfoPage(bridge: bridge),
+                      builder: (_) => AppInfoPage(
+                        bridge: bridge,
+                        appVersion: appVersion,
+                        updateAvailable: updateAvailable,
+                        checking: releaseChecking,
+                        checkSucceeded: releaseCheckSucceeded,
+                        checkError: releaseCheckError,
+                        onCheck: () => _checkLatestGitHubRelease(manual: true),
+                        onShowUpdate: _showUpdateDialog,
+                      ),
+                    ),
+                  ),
+                  badge: updateAvailable ? l.updateAvailable : null,
+                ),
+              ]),
+              SizedBox(height: 20),
+              settingsCard([
+                _categoryTile(
+                  Icons.fact_check_outlined,
+                  AppStrings.tr('deviceReport'),
+                  AppStrings.tr('deviceReportDescription'),
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const DeviceReportPage(),
                     ),
                   ),
                 ),
@@ -73,12 +96,28 @@ extension _SettingsContent on _HomeScreenState {
     IconData icon,
     String title,
     String subtitle,
-    VoidCallback action,
-  ) => ListTile(
+    VoidCallback action, {
+    String? badge,
+  }) => ListTile(
     leading: Icon(icon),
     title: Text(title),
     subtitle: Text(subtitle),
-    trailing: Icon(Icons.chevron_right_rounded),
+    trailing: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (badge != null) ...[
+          Text(
+            badge,
+            style: TextStyle(
+              color: Theme.of(context).colorScheme.error,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          SizedBox(width: 8),
+        ],
+        Icon(Icons.chevron_right_rounded),
+      ],
+    ),
     onTap: action,
   );
 
@@ -134,6 +173,21 @@ extension _SettingsContent on _HomeScreenState {
                             }
                           },
                   ),
+                  Divider(height: 1),
+                  ListTile(
+                    enabled: !active,
+                    leading: Icon(Icons.account_tree_outlined),
+                    title: Text(l.mirrorBackend),
+                    subtitle: Text(_mirrorBackendLabel(l, mirrorBackend)),
+                    trailing: Icon(Icons.chevron_right_rounded),
+                    onTap: active
+                        ? null
+                        : () => _selectMirrorBackend(
+                            routeContext,
+                            l,
+                            updateRoute,
+                          ),
+                  ),
                 ]),
                 SizedBox(height: 12),
                 DextopFeaturesPage(
@@ -147,6 +201,54 @@ extension _SettingsContent on _HomeScreenState {
         ),
       ),
     );
+  }
+
+  String _mirrorBackendLabel(AppLocalizations l, String value) =>
+      switch (value) {
+        'window_manager' => l.mirrorBackendWindowManager,
+        'surface_control' => l.mirrorBackendSurfaceControl,
+        'virtual_display' => l.mirrorBackendVirtualDisplay,
+        _ => l.mirrorBackendAuto,
+      };
+
+  Future<void> _selectMirrorBackend(
+    BuildContext routeContext,
+    AppLocalizations l,
+    StateSetter updateRoute,
+  ) async {
+    final selected = await showDialog<String>(
+      context: routeContext,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(l.mirrorBackend),
+        children: [
+          RadioGroup<String>(
+            groupValue: mirrorBackend,
+            onChanged: (choice) => Navigator.pop(dialogContext, choice),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final value in const [
+                  'auto',
+                  'window_manager',
+                  'surface_control',
+                  'virtual_display',
+                ])
+                  RadioListTile<String>(
+                    value: value,
+                    title: Text(_mirrorBackendLabel(l, value)),
+                    subtitle: value == 'auto'
+                        ? Text(l.mirrorBackendAutoDescription)
+                        : null,
+                  ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (selected == null || selected == mirrorBackend) return;
+    updateRoute(() => mirrorBackend = selected);
+    await setMirrorBackend(selected);
   }
 
   void _openDeviceSettings(AppLocalizations l) {
@@ -248,6 +350,12 @@ extension _SettingsContent on _HomeScreenState {
                   color: Colors.transparent,
                   child: InkWell(
                     borderRadius: radius,
+                    splashFactory: NoSplash.splashFactory,
+                    overlayColor: WidgetStatePropertyAll(Colors.transparent),
+                    splashColor: Colors.transparent,
+                    highlightColor: Colors.transparent,
+                    hoverColor: Colors.transparent,
+                    focusColor: Colors.transparent,
                     onTap: onSelected == null
                         ? null
                         : () => onSelected(item.$1),

@@ -39,6 +39,57 @@ class AppLocalizationsJa extends AppLocalizations {
   String get secureDisplayDescription => '保護されたコンテンツの表示を許可します';
 
   @override
+  String get mirrorBackend => 'ディスプレイのミラーリング方式';
+
+  @override
+  String get mirrorBackendAuto => '自動（互換性優先）';
+
+  @override
+  String get mirrorBackendAutoDescription => 'この端末で利用可能な最適な方式を使用します';
+
+  @override
+  String get mirrorBackendWindowManager => 'WindowManager';
+
+  @override
+  String get mirrorBackendSurfaceControl => 'SurfaceControl';
+
+  @override
+  String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
+
+  @override
+  String get updateAvailable => 'アップデートがあります';
+
+  @override
+  String get updateAvailableTitle => 'GitHubに最新リリースが公開されています！';
+
+  @override
+  String get checkForUpdates => '更新を確認';
+
+  @override
+  String get checkingForUpdates => '更新情報を取得しています';
+
+  @override
+  String get updateNotChecked => '更新情報をまだ取得していません';
+
+  @override
+  String get upToDate => '最新バージョンです';
+
+  @override
+  String get updateCheckFailed => '更新情報を取得できませんでした';
+
+  @override
+  String get currentVersion => '現在のバージョン';
+
+  @override
+  String get latestVersion => '最新バージョン';
+
+  @override
+  String get openOnGitHub => 'GitHubを開く';
+
+  @override
+  String get close => '閉じる';
+
+  @override
   String get deviceInfo => '端末情報';
 
   @override
@@ -185,7 +236,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。選択は、どちらかをアンインストールするまで保存されます。';
+      'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。';
 
   @override
   String get setupUseStellar => 'Stellar（推奨）';
@@ -371,7 +422,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uiSecondaryIme => 'セカンダリIME';
 
   @override
-  String get uiSecureDisplayFoldable => 'セキュア表示、Foldable';
+  String get uiSecureDisplayFoldable => 'セキュア表示、ミラーリング方式、Foldable';
 
   @override
   String get uiSecurity => 'セキュリティ';
@@ -713,4 +764,103 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get clearDiagnosticLog => 'ログを消去';
+
+  @override
+  String get deviceReport => '動作報告';
+
+  @override
+  String get uiCpuTemperature => 'CPU温度';
+
+  @override
+  String get deviceReportDescription => '端末情報と機能の対応状況をメールで報告';
+
+  @override
+  String get deviceReportIntro => '端末情報は自動収集されます。各機能の動作状況を選択してください。';
+
+  @override
+  String get reportWorking => '動作した';
+
+  @override
+  String get reportNotWorking => '動作しない';
+
+  @override
+  String get reportUntested => '未確認';
+
+  @override
+  String get reportOverall => '総合的な動作状況';
+
+  @override
+  String get reportNotes => 'その他・特記事項';
+
+  @override
+  String get sendDeviceReport => 'メールで動作報告を送る';
+
+  @override
+  String get reportEmailUnavailable => 'メールアプリを開けませんでした';
+
+  @override
+  String get reportTemplateTitle => 'Dextop端末動作報告';
+
+  @override
+  String get reportNoNotes => 'なし';
+
+  @override
+  String get reportFeatureStartup => 'アプリ起動と端末検出';
+
+  @override
+  String get reportFeatureSession => 'Dextopセッションの起動';
+
+  @override
+  String get reportFeatureVirtualDisplay => 'VirtualDisplayミラーリング';
+
+  @override
+  String get reportFeatureWindowManager => 'WindowManagerミラーリング';
+
+  @override
+  String get reportFeatureSurfaceControl => 'SurfaceControlミラーリング';
+
+  @override
+  String get reportFeatureLandscape => '横向きモード';
+
+  @override
+  String get reportFeaturePortrait => '縦向きモード';
+
+  @override
+  String get reportFeatureSecureDisplay => 'セキュア表示';
+
+  @override
+  String get reportFeatureLauncher => 'アプリランチャーとフリーフォームウィンドウ';
+
+  @override
+  String get reportFeatureWorkspace => 'ワークスペースの保存と復元';
+
+  @override
+  String get reportFeatureCursor => 'カーソル・タッチパッド入力';
+
+  @override
+  String get reportFeatureDirectTouch => 'ダイレクトタッチ入力';
+
+  @override
+  String get reportFeatureMultiTouch => 'マルチタッチのスクロールとピンチズーム';
+
+  @override
+  String get reportFeatureGesture => '3本指オーバーレイジェスチャー';
+
+  @override
+  String get reportFeatureMouse => '物理マウス';
+
+  @override
+  String get reportFeatureKeyboard => '物理キーボード';
+
+  @override
+  String get reportFeatureRouting => '物理マウス・キーボードのディスプレイルーティング';
+
+  @override
+  String get reportFeatureFoldable => '折りたたみ端末の自動解像度';
+
+  @override
+  String get reportFeaturePerformance => 'パフォーマンスオーバーレイ';
+
+  @override
+  String get reportFeatureCleanup => 'セッション終了処理とAndroid状態の復元';
 }

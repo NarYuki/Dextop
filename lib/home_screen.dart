@@ -14,6 +14,335 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
+class _MultiTouchUpgradeFlow extends StatefulWidget {
+  const _MultiTouchUpgradeFlow();
+
+  @override
+  State<_MultiTouchUpgradeFlow> createState() => _MultiTouchUpgradeFlowState();
+}
+
+class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
+  static const channel = MethodChannel('app.freedextop/display');
+  var step = 0;
+  final gesturePointers = <int, Offset>{};
+  var gestureTriggered = false;
+
+  ({String title, String body, String landscape, String portrait, String close})
+  _copy(BuildContext context) {
+    switch (Localizations.localeOf(context).languageCode) {
+      case 'ja':
+        return (
+          title: 'アプリが更新され、ジェスチャーが変更されました。',
+          body: '',
+          landscape: '横向きの場合\n画面左から右に3本指でスワイプ',
+          portrait: '縦持ちの場合\n画面上から下に3本指でスワイプ',
+          close: '確認',
+        );
+      case 'zh':
+        return (
+          title: '应用已更新',
+          body: '现已支持多点触控，因此三指手势也已更新。',
+          landscape: '横屏时\n用三指从屏幕左侧向右滑动',
+          portrait: '竖屏时\n用三指从屏幕顶部向下滑动',
+          close: '确定',
+        );
+      case 'ko':
+        return (
+          title: '앱이 업데이트되었습니다',
+          body: '멀티터치를 지원하며 이에 따라 제스처가 업데이트되었습니다.',
+          landscape: '가로 모드\n화면 왼쪽에서 오른쪽으로 세 손가락 스와이프',
+          portrait: '세로 모드\n화면 위에서 아래로 세 손가락 스와이프',
+          close: '확인',
+        );
+      case 'ru':
+        return (
+          title: 'Приложение обновлено',
+          body: 'Добавлен мультитач, поэтому жесты также были обновлены.',
+          landscape:
+              'Альбомная ориентация\nСмахните тремя пальцами слева направо',
+          portrait:
+              'Портретная ориентация\nСмахните тремя пальцами сверху вниз',
+          close: 'Понятно',
+        );
+      default:
+        return (
+          title: 'The app has been updated',
+          body:
+              'Multi-touch is now supported, so the gestures have been updated.',
+          landscape:
+              'Landscape\nSwipe right with three fingers from the left edge',
+          portrait: 'Portrait\nSwipe down with three fingers from the top edge',
+          close: 'Got it',
+        );
+    }
+  }
+
+  Future<void> applyOrientation() => SystemChrome.setPreferredOrientations(
+    step == 0
+        ? const [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]
+        : const [DeviceOrientation.portraitUp],
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    applyOrientation();
+  }
+
+  void handlePointerDown(PointerDownEvent event) {
+    gesturePointers[event.pointer] = event.position;
+    if (gesturePointers.length == 3) gestureTriggered = false;
+  }
+
+  void handlePointerMove(PointerMoveEvent event) {
+    if (gestureTriggered || gesturePointers.length != 3) return;
+    final origin = gesturePointers[event.pointer];
+    if (origin == null) return;
+    final delta = event.position - origin;
+    final valid = step == 0
+        ? origin.dx <= 140 && delta.dx >= 90 && delta.dx.abs() > delta.dy.abs()
+        : origin.dy <= 140 && delta.dy >= 90 && delta.dy.abs() > delta.dx.abs();
+    if (!valid) return;
+    gestureTriggered = true;
+    channel.invokeMethod<void>('showOverlayDemo');
+  }
+
+  void handlePointerEnd(PointerEvent event) {
+    gesturePointers.remove(event.pointer);
+  }
+
+  Future<void> finish() async {
+    await channel.invokeMethod<void>('hideOverlayDemo');
+    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  void dispose() {
+    channel.invokeMethod<void>('hideOverlayDemo');
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final copy = _copy(context);
+    final horizontal = step == 0;
+    return PopScope(
+      canPop: false,
+      child: Scaffold(
+        body: Listener(
+          behavior: HitTestBehavior.opaque,
+          onPointerDown: handlePointerDown,
+          onPointerMove: handlePointerMove,
+          onPointerUp: handlePointerEnd,
+          onPointerCancel: handlePointerEnd,
+          child: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(
+                children: [
+                  Text(
+                    copy.title,
+                    textAlign: TextAlign.center,
+                    style: Theme.of(context).textTheme.titleLarge,
+                  ),
+                  if (copy.body.isNotEmpty) ...[
+                    const SizedBox(height: 6),
+                    Text(copy.body, textAlign: TextAlign.center),
+                  ],
+                  const SizedBox(height: 12),
+                  Expanded(
+                    child: _ThreeFingerGestureDemo(
+                      label: horizontal ? copy.landscape : copy.portrait,
+                      direction: horizontal ? Axis.horizontal : Axis.vertical,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (step > 0) ...[
+                        OutlinedButton.icon(
+                          onPressed: () async {
+                            await channel.invokeMethod<void>('hideOverlayDemo');
+                            gesturePointers.clear();
+                            gestureTriggered = false;
+                            setState(() => step = 0);
+                            await applyOrientation();
+                          },
+                          icon: const Icon(Icons.arrow_back_rounded),
+                          label: Text(
+                            Localizations.localeOf(context).languageCode == 'ja'
+                                ? '戻る'
+                                : 'Back',
+                          ),
+                        ),
+                        const SizedBox(width: 16),
+                      ],
+                      Text('${step + 1} / 2'),
+                      const SizedBox(width: 24),
+                      FilledButton.icon(
+                        onPressed: () async {
+                          if (step == 0) {
+                            await channel.invokeMethod<void>('hideOverlayDemo');
+                            gesturePointers.clear();
+                            gestureTriggered = false;
+                            setState(() => step = 1);
+                            await applyOrientation();
+                          } else {
+                            await finish();
+                          }
+                        },
+                        icon: Icon(
+                          horizontal
+                              ? Icons.arrow_forward_rounded
+                              : Icons.check_rounded,
+                        ),
+                        label: Text(
+                          horizontal
+                              ? (Localizations.localeOf(context).languageCode ==
+                                        'ja'
+                                    ? '次へ'
+                                    : 'Next')
+                              : copy.close,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ThreeFingerGestureDemo extends StatefulWidget {
+  const _ThreeFingerGestureDemo({required this.label, required this.direction});
+  final String label;
+  final Axis direction;
+
+  @override
+  State<_ThreeFingerGestureDemo> createState() =>
+      _ThreeFingerGestureDemoState();
+}
+
+class _ThreeFingerGestureDemoState extends State<_ThreeFingerGestureDemo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  )..repeat();
+  late final Animation<double> progress = CurvedAnimation(
+    parent: controller,
+    curve: const Interval(0.08, 0.68, curve: Curves.easeInOutCubic),
+  );
+  late final Animation<double> opacity = TweenSequence<double>([
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.0,
+        end: 0.72,
+      ).chain(CurveTween(curve: Curves.easeOut)),
+      weight: 8,
+    ),
+    TweenSequenceItem(tween: ConstantTween(0.72), weight: 62),
+    TweenSequenceItem(
+      tween: Tween(
+        begin: 0.72,
+        end: 0.0,
+      ).chain(CurveTween(curve: Curves.easeInOut)),
+      weight: 22,
+    ),
+    TweenSequenceItem(tween: ConstantTween(0.0), weight: 8),
+  ]).animate(controller);
+
+  @override
+  void dispose() {
+    controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            widget.label,
+            textAlign: TextAlign.center,
+            style: Theme.of(context).textTheme.titleLarge,
+          ),
+          const SizedBox(height: 18),
+          Expanded(
+            child: AnimatedBuilder(
+              animation: progress,
+              builder: (context, _) => LayoutBuilder(
+                builder: (context, constraints) {
+                  const fingerSize = 64.0;
+                  const fingerGap = 18.0;
+                  const groupSize = fingerSize * 3 + fingerGap * 2;
+                  const edgeInset = 20.0;
+                  final travel = widget.direction == Axis.horizontal
+                      ? (constraints.maxWidth - fingerSize - edgeInset * 2)
+                            .clamp(0.0, double.infinity)
+                      : (constraints.maxHeight - fingerSize - edgeInset * 2)
+                            .clamp(0.0, double.infinity);
+                  final offset = travel * progress.value;
+                  return Stack(
+                    children: List.generate(3, (index) {
+                      final left = widget.direction == Axis.horizontal
+                          ? edgeInset + offset
+                          : constraints.maxWidth / 2 -
+                                groupSize / 2 +
+                                index * (fingerSize + fingerGap);
+                      final top = widget.direction == Axis.vertical
+                          ? edgeInset + offset
+                          : constraints.maxHeight / 2 -
+                                groupSize / 2 +
+                                index * (fingerSize + fingerGap);
+                      return Positioned(
+                        left: left,
+                        top: top,
+                        child: Opacity(
+                          opacity: opacity.value,
+                          child: Container(
+                            width: fingerSize,
+                            height: fingerSize,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              border: Border.all(
+                                color: colors.primary,
+                                width: 3,
+                              ),
+                              color: colors.primaryContainer.withValues(
+                                alpha: .5,
+                              ),
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void mutate(VoidCallback change) => setState(change);
   final bridge = NativeBridge();
@@ -32,6 +361,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var deviceProfileInitialized = false;
   var portrait = false;
   var secure = false;
+  String mirrorBackend = 'virtual_display';
   var loading = true;
   var active = false;
   var shizukuInstalled = false;
@@ -40,11 +370,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String privilegeProvider = 'stellar';
   String privilegeProviderName = 'Stellar';
   var releaseCheckStarted = false;
+  var releaseChecking = false;
+  var releaseCheckSucceeded = false;
+  String? fetchedReleaseVersion;
+  String? latestReleaseVersion;
+  String? latestReleaseUrl;
+  String? releaseCheckError;
+  DateTime? releaseCheckedAt;
+  bool get updateAvailable => latestReleaseVersion != null;
   var secureSettingsGranted = false;
   String? error;
   String manufacturer = '';
   String model = '';
   String androidVersion = '';
+  String appVersion = '';
   String desktopMode = '';
   var recovery = <String, dynamic>{};
   var androidRepair = <String, dynamic>{};
@@ -72,6 +411,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         secure = preferences.getBool('secure_display') ?? false;
         portrait = preferences.getBool('home_portrait') ?? false;
+        mirrorBackend =
+            preferences.getString('mirror_backend') ?? 'virtual_display';
       });
     }
   }
@@ -88,6 +429,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await preferences.setBool('secure_display', value);
   }
 
+  Future<void> setMirrorBackend(String value) async {
+    mutate(() => mirrorBackend = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString('mirror_backend', value);
+  }
+
   bool get effectiveDecorations => manufacturer.toLowerCase() != 'samsung';
 
   Future<void> _initializeHome() async {
@@ -100,14 +447,51 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       WidgetsBinding.instance.addPostFrameCallback((_) => loadHomeAppIcons());
     }
     if (mounted) await _consumeTileAction();
+    if (mounted) await _showMultiTouchUpgradeNoticeIfNeeded();
   }
 
-  Future<void> _checkLatestGitHubRelease() async {
+  Future<void> _showMultiTouchUpgradeNoticeIfNeeded() async {
+    const installedVersionKey = 'last_launched_app_version';
+    final preferences = await SharedPreferences.getInstance();
+    final currentVersion = appVersion.trim();
+    if (currentVersion.isEmpty) return;
+    final previousVersion = preferences.getString(installedVersionKey);
+    // No stored version means this is the first launch after installation,
+    // not an update. Establish the baseline without showing an upgrade notice.
+    if (previousVersion == null || previousVersion.isEmpty) {
+      await preferences.setString(installedVersionKey, currentVersion);
+      return;
+    }
+    if (previousVersion == currentVersion) return;
+    if (!mounted) return;
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => const _MultiTouchUpgradeFlow(),
+      ),
+    );
+    await preferences.setString(installedVersionKey, currentVersion);
+  }
+
+  Future<void> _checkLatestGitHubRelease({bool manual = false}) async {
+    if (releaseChecking) {
+      debugPrint('[DextopUpdate] skipped: check already running');
+      return;
+    }
+    debugPrint('[DextopUpdate] check started manual=$manual');
+    if (mounted) {
+      mutate(() {
+        releaseChecking = true;
+        releaseCheckSucceeded = false;
+        releaseCheckError = null;
+      });
+    }
     HttpClient? client;
     try {
       final status = await bridge.status();
       final current = '${status['appVersion'] ?? ''}'.trim();
-      if (current.isEmpty) return;
+      debugPrint('[DextopUpdate] installed version=$current');
+      if (current.isEmpty) throw const FormatException('Missing app version');
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(
         Uri.parse(
@@ -121,42 +505,85 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       final response = await request.close().timeout(
         const Duration(seconds: 8),
       );
-      if (response.statusCode != HttpStatus.ok) return;
+      debugPrint(
+        '[DextopUpdate] GitHub response status=${response.statusCode}',
+      );
+      if (response.statusCode != HttpStatus.ok) {
+        throw HttpException('GitHub API returned ${response.statusCode}');
+      }
       final payload = jsonDecode(await response.transform(utf8.decoder).join());
-      if (payload is! Map) return;
+      if (payload is! Map) {
+        throw const FormatException('Invalid GitHub response');
+      }
       final latest = '${payload['tag_name'] ?? ''}'.replaceFirst(
         RegExp(r'^[vV]'),
         '',
       );
+      if (latest.isEmpty) {
+        throw const FormatException('Missing release version');
+      }
       final url = '${payload['html_url'] ?? ''}';
-      if (!_isNewerVersion(latest, current) || !mounted) return;
-      await showDialog<void>(
-        context: context,
-        builder: (context) => AlertDialog(
-          icon: const Icon(Icons.system_update_alt_rounded),
-          title: const Text('GitHubに最新リリースが公開されています！'),
-          content: Text('current: $current\nlatest: $latest'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('閉じる'),
-            ),
-            if (url.startsWith('https://github.com/'))
-              FilledButton(
-                onPressed: () {
-                  Navigator.pop(context);
-                  bridge.openUrl(url);
-                },
-                child: const Text('GitHubで開く'),
-              ),
-          ],
-        ),
+      final newer = _isNewerVersion(latest, current);
+      debugPrint(
+        '[DextopUpdate] latest=$latest current=$current newer=$newer url=$url',
       );
+      if (!mounted) return;
+      mutate(() {
+        fetchedReleaseVersion = latest;
+        latestReleaseVersion = newer ? latest : null;
+        latestReleaseUrl =
+            latestReleaseVersion != null &&
+                url.startsWith('https://github.com/')
+            ? url
+            : null;
+        releaseCheckedAt = DateTime.now();
+        releaseCheckSucceeded = true;
+      });
+      debugPrint('[DextopUpdate] check succeeded updateAvailable=$newer');
+      if (manual && updateAvailable) await _showUpdateDialog();
     } catch (error, stackTrace) {
-      debugPrint('Dextop release check failed: $error\n$stackTrace');
+      debugPrint('[DextopUpdate] check failed: $error\n$stackTrace');
+      if (mounted) {
+        mutate(() {
+          releaseCheckSucceeded = false;
+          releaseCheckError = '$error';
+          releaseCheckedAt = DateTime.now();
+        });
+      }
     } finally {
       client?.close(force: true);
+      if (mounted) mutate(() => releaseChecking = false);
+      debugPrint('[DextopUpdate] check finished');
     }
+  }
+
+  Future<void> _showUpdateDialog() async {
+    if (!updateAvailable) return;
+    final l = AppLocalizations.of(context);
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.system_update_alt_rounded),
+        title: Text(l.updateAvailableTitle),
+        content: Text(
+          '${l.currentVersion}: $appVersion\n${l.latestVersion}: $latestReleaseVersion',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(l.close),
+          ),
+          if (latestReleaseUrl != null)
+            FilledButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                bridge.openUrl(latestReleaseUrl!);
+              },
+              child: Text(l.openOnGitHub),
+            ),
+        ],
+      ),
+    );
   }
 
   bool _isNewerVersion(String candidate, String current) {
@@ -343,6 +770,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         manufacturer = '${value['manufacturer'] ?? ''}';
         model = '${value['model'] ?? ''}';
         androidVersion = '${value['androidVersion'] ?? ''}';
+        appVersion = '${value['appVersion'] ?? ''}';
         desktopMode = '${value['desktopMode'] ?? ''}';
         recovery = recoveryValue;
         androidRepair = repairValue;
@@ -525,12 +953,19 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: AppStrings.tr('home'),
           ),
           NavigationDestination(
-            icon: Icon(Icons.tune_outlined),
-            selectedIcon: Icon(Icons.tune_rounded),
+            icon: _settingsNavigationIcon(Icons.tune_outlined),
+            selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
             label: AppStrings.tr('settings'),
           ),
         ],
       ),
     );
   }
+
+  Widget _settingsNavigationIcon(IconData icon) => Badge(
+    isLabelVisible: updateAvailable,
+    smallSize: 8,
+    backgroundColor: Colors.red,
+    child: Icon(icon),
+  );
 }

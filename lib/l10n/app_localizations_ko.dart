@@ -39,6 +39,57 @@ class AppLocalizationsKo extends AppLocalizations {
   String get secureDisplayDescription => '보호된 콘텐츠 표시를 허용합니다';
 
   @override
+  String get mirrorBackend => '디스플레이 미러링 방식';
+
+  @override
+  String get mirrorBackendAuto => '자동(호환성 우선)';
+
+  @override
+  String get mirrorBackendAutoDescription => '이 기기에서 사용 가능한 최적의 방식을 사용합니다';
+
+  @override
+  String get mirrorBackendWindowManager => 'WindowManager';
+
+  @override
+  String get mirrorBackendSurfaceControl => 'SurfaceControl';
+
+  @override
+  String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
+
+  @override
+  String get updateAvailable => '업데이트가 있습니다';
+
+  @override
+  String get updateAvailableTitle => 'GitHub에 새 릴리스가 공개되었습니다!';
+
+  @override
+  String get checkForUpdates => '업데이트 확인';
+
+  @override
+  String get checkingForUpdates => '업데이트 정보를 가져오는 중입니다';
+
+  @override
+  String get updateNotChecked => '업데이트 정보를 아직 가져오지 않았습니다';
+
+  @override
+  String get upToDate => '최신 버전입니다';
+
+  @override
+  String get updateCheckFailed => '업데이트 정보를 가져올 수 없습니다';
+
+  @override
+  String get currentVersion => '현재 버전';
+
+  @override
+  String get latestVersion => '최신 버전';
+
+  @override
+  String get openOnGitHub => 'GitHub에서 열기';
+
+  @override
+  String get close => '닫기';
+
+  @override
   String get deviceInfo => '기기 정보';
 
   @override
@@ -185,7 +236,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요. 선택은 둘 중 하나를 제거할 때까지 저장됩니다.';
+      'Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요.';
 
   @override
   String get setupUseStellar => 'Stellar(권장)';
@@ -372,7 +423,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uiSecondaryIme => '보조 IME';
 
   @override
-  String get uiSecureDisplayFoldable => '보안 디스플레이, Foldable';
+  String get uiSecureDisplayFoldable => '보안 디스플레이, 미러링 방식, Foldable';
 
   @override
   String get uiSecurity => '보안';
@@ -716,4 +767,103 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get clearDiagnosticLog => '로그 지우기';
+
+  @override
+  String get deviceReport => '기기 작동 보고';
+
+  @override
+  String get uiCpuTemperature => 'CPU 온도';
+
+  @override
+  String get deviceReportDescription => '기기 및 기능 호환성을 이메일로 보고';
+
+  @override
+  String get deviceReportIntro => '기기 정보는 자동으로 수집됩니다. 각 기능의 결과를 선택하세요.';
+
+  @override
+  String get reportWorking => '작동함';
+
+  @override
+  String get reportNotWorking => '작동 안 함';
+
+  @override
+  String get reportUntested => '미확인';
+
+  @override
+  String get reportOverall => '전체 상태';
+
+  @override
+  String get reportNotes => '기타 특이사항';
+
+  @override
+  String get sendDeviceReport => '이메일로 보고서 보내기';
+
+  @override
+  String get reportEmailUnavailable => '이메일 앱을 열 수 없습니다';
+
+  @override
+  String get reportTemplateTitle => 'Dextop 기기 작동 보고';
+
+  @override
+  String get reportNoNotes => '없음';
+
+  @override
+  String get reportFeatureStartup => '앱 시작 및 기기 감지';
+
+  @override
+  String get reportFeatureSession => 'Dextop 세션 시작';
+
+  @override
+  String get reportFeatureVirtualDisplay => 'VirtualDisplay 미러링';
+
+  @override
+  String get reportFeatureWindowManager => 'WindowManager 미러링';
+
+  @override
+  String get reportFeatureSurfaceControl => 'SurfaceControl 미러링';
+
+  @override
+  String get reportFeatureLandscape => '가로 모드';
+
+  @override
+  String get reportFeaturePortrait => '세로 모드';
+
+  @override
+  String get reportFeatureSecureDisplay => '보안 디스플레이';
+
+  @override
+  String get reportFeatureLauncher => '앱 런처 및 자유 형식 창';
+
+  @override
+  String get reportFeatureWorkspace => '작업 공간 저장 및 복원';
+
+  @override
+  String get reportFeatureCursor => '커서 및 터치패드 입력';
+
+  @override
+  String get reportFeatureDirectTouch => '직접 터치 입력';
+
+  @override
+  String get reportFeatureMultiTouch => '멀티터치 스크롤 및 핀치 줌';
+
+  @override
+  String get reportFeatureGesture => '세 손가락 오버레이 제스처';
+
+  @override
+  String get reportFeatureMouse => '물리 마우스';
+
+  @override
+  String get reportFeatureKeyboard => '물리 키보드';
+
+  @override
+  String get reportFeatureRouting => '물리 마우스 및 키보드 디스플레이 라우팅';
+
+  @override
+  String get reportFeatureFoldable => '폴더블 자동 해상도';
+
+  @override
+  String get reportFeaturePerformance => '성능 오버레이';
+
+  @override
+  String get reportFeatureCleanup => '세션 정리 및 Android 상태 복원';
 }

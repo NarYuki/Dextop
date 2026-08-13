@@ -40,6 +40,58 @@ class AppLocalizationsRu extends AppLocalizations {
       'Разрешить показ защищённого содержимого';
 
   @override
+  String get mirrorBackend => 'Способ зеркалирования дисплея';
+
+  @override
+  String get mirrorBackendAuto => 'Автоматически (совместимость)';
+
+  @override
+  String get mirrorBackendAutoDescription =>
+      'Использовать лучший доступный способ для устройства';
+
+  @override
+  String get mirrorBackendWindowManager => 'WindowManager';
+
+  @override
+  String get mirrorBackendSurfaceControl => 'SurfaceControl';
+
+  @override
+  String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
+
+  @override
+  String get updateAvailable => 'Доступно обновление';
+
+  @override
+  String get updateAvailableTitle => 'На GitHub опубликована новая версия!';
+
+  @override
+  String get checkForUpdates => 'Проверить обновления';
+
+  @override
+  String get checkingForUpdates => 'Получение сведений об обновлении';
+
+  @override
+  String get updateNotChecked => 'Сведения об обновлении ещё не получены';
+
+  @override
+  String get upToDate => 'Установлена последняя версия';
+
+  @override
+  String get updateCheckFailed => 'Не удалось получить сведения об обновлении';
+
+  @override
+  String get currentVersion => 'Текущая версия';
+
+  @override
+  String get latestVersion => 'Последняя версия';
+
+  @override
+  String get openOnGitHub => 'Открыть на GitHub';
+
+  @override
+  String get close => 'Закрыть';
+
+  @override
   String get deviceInfo => 'Информация об устройстве';
 
   @override
@@ -187,7 +239,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop. Выбор сохраняется до удаления одного из приложений.';
+      'Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop.';
 
   @override
   String get setupUseStellar => 'Stellar (рекомендуется)';
@@ -383,7 +435,8 @@ class AppLocalizationsRu extends AppLocalizations {
   String get uiSecondaryIme => 'Вторичный IME';
 
   @override
-  String get uiSecureDisplayFoldable => 'Безопасный дисплей, складной';
+  String get uiSecureDisplayFoldable =>
+      'Защищённый экран, способ зеркалирования, складные устройства';
 
   @override
   String get uiSecurity => 'Безопасность';
@@ -738,4 +791,109 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get clearDiagnosticLog => 'Очистить журнал';
+
+  @override
+  String get deviceReport => 'Отчёт о работе устройства';
+
+  @override
+  String get uiCpuTemperature => 'Температура ЦП';
+
+  @override
+  String get deviceReportDescription =>
+      'Отправить совместимость устройства и функций по электронной почте';
+
+  @override
+  String get deviceReportIntro =>
+      'Данные устройства собираются автоматически. Выберите результат для каждой функции.';
+
+  @override
+  String get reportWorking => 'Работает';
+
+  @override
+  String get reportNotWorking => 'Не работает';
+
+  @override
+  String get reportUntested => 'Не проверено';
+
+  @override
+  String get reportOverall => 'Общий статус';
+
+  @override
+  String get reportNotes => 'Другие примечания';
+
+  @override
+  String get sendDeviceReport => 'Отправить отчёт по почте';
+
+  @override
+  String get reportEmailUnavailable => 'Не удалось открыть почтовое приложение';
+
+  @override
+  String get reportTemplateTitle => 'Отчёт о работе Dextop';
+
+  @override
+  String get reportNoNotes => 'Нет';
+
+  @override
+  String get reportFeatureStartup =>
+      'Запуск приложения и обнаружение устройства';
+
+  @override
+  String get reportFeatureSession => 'Запуск сеанса Dextop';
+
+  @override
+  String get reportFeatureVirtualDisplay => 'Зеркалирование VirtualDisplay';
+
+  @override
+  String get reportFeatureWindowManager => 'Зеркалирование WindowManager';
+
+  @override
+  String get reportFeatureSurfaceControl => 'Зеркалирование SurfaceControl';
+
+  @override
+  String get reportFeatureLandscape => 'Альбомный режим';
+
+  @override
+  String get reportFeaturePortrait => 'Портретный режим';
+
+  @override
+  String get reportFeatureSecureDisplay => 'Защищённый дисплей';
+
+  @override
+  String get reportFeatureLauncher => 'Панель приложений и свободные окна';
+
+  @override
+  String get reportFeatureWorkspace =>
+      'Сохранение и восстановление рабочих областей';
+
+  @override
+  String get reportFeatureCursor => 'Ввод курсором и сенсорной панелью';
+
+  @override
+  String get reportFeatureDirectTouch => 'Прямой сенсорный ввод';
+
+  @override
+  String get reportFeatureMultiTouch => 'Мультитач-прокрутка и масштабирование';
+
+  @override
+  String get reportFeatureGesture => 'Жест оверлея тремя пальцами';
+
+  @override
+  String get reportFeatureMouse => 'Физическая мышь';
+
+  @override
+  String get reportFeatureKeyboard => 'Физическая клавиатура';
+
+  @override
+  String get reportFeatureRouting =>
+      'Маршрутизация мыши и клавиатуры между дисплеями';
+
+  @override
+  String get reportFeatureFoldable => 'Авторазрешение для складных устройств';
+
+  @override
+  String get reportFeaturePerformance => 'Оверлей производительности';
+
+  @override
+  String get reportFeatureCleanup =>
+      'Завершение сеанса и восстановление Android';
 }

@@ -21,11 +21,12 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   var page = -1;
   var status = <String, dynamic>{};
   var loading = false;
-  final pointers = <int>{};
   Timer? statusTimer;
   var statusRequest = 0;
   var shizukuSetupConfirmed = false;
   var providerChoiceShown = false;
+  var gestureDemoOpening = false;
+  var gestureDemoCompleted = false;
   AppLocalizations get l => AppLocalizations.of(context);
 
   @override
@@ -131,6 +132,28 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       statusTimer?.cancel();
     }
     if (target == 2) refreshStatus(clearPrevious: true);
+  }
+
+  Future<void> startGestureDemo() async {
+    if (gestureDemoOpening) return;
+    setState(() => gestureDemoOpening = true);
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        fullscreenDialog: true,
+        builder: (_) => GestureDemoFlow(
+          title: Localizations.localeOf(context).languageCode == 'ja'
+              ? 'Dextopのジェスチャーを覚えてみましょう'
+              : l.setupGestureTitle,
+          done: l.done,
+          back: l.back,
+        ),
+      ),
+    );
+    if (!mounted) return;
+    setState(() {
+      gestureDemoOpening = false;
+      gestureDemoCompleted = true;
+    });
   }
 
   Future<void> requestShizuku() async {
@@ -338,8 +361,11 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     ),
   );
 
-  bool get canContinue =>
-      page != 1 || (shizukuSetupConfirmed && status['shizukuGranted'] == true);
+  bool get canContinue => switch (page) {
+    1 => shizukuSetupConfirmed && status['shizukuGranted'] == true,
+    3 => gestureDemoCompleted,
+    _ => true,
+  };
 
   List<Widget> phases() => [disclaimer(), shizuku(), deviceInfo(), demo()];
 
@@ -485,53 +511,38 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   Widget info(String label, String value) =>
       ListTile(title: Text(label), trailing: Text(value));
 
-  Future<void> showRealOverlayDemo() async {
-    await channel.invokeMethod<void>('showOverlayDemo');
-  }
-
-  Widget demo() => Listener(
-    behavior: HitTestBehavior.opaque,
-    onPointerDown: (event) {
-      pointers.add(event.pointer);
-      if (pointers.length == 3) {
-        showRealOverlayDemo();
-      }
-    },
-    onPointerUp: (event) => pointers.remove(event.pointer),
-    onPointerCancel: (event) => pointers.remove(event.pointer),
-    child: threeFingerPrompt(),
-  );
+  Widget demo() => threeFingerPrompt();
 
   Widget threeFingerPrompt() => Column(
     mainAxisAlignment: MainAxisAlignment.center,
     children: [
       Text(
-        l.setupGestureTitle,
+        Localizations.localeOf(context).languageCode == 'ja'
+            ? 'Dextopのジェスチャーを覚えてみましょう'
+            : l.setupGestureTitle,
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.headlineMedium,
       ),
       const SizedBox(height: 12),
-      Text(l.setupGestureDescription, textAlign: TextAlign.center),
-      const SizedBox(height: 42),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: List.generate(
-          3,
-          (_) => Container(
-            width: 64,
-            height: 64,
-            margin: const EdgeInsets.symmetric(horizontal: 9),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Theme.of(context).colorScheme.primary,
-                width: 3,
-              ),
-              color: Theme.of(
-                context,
-              ).colorScheme.primaryContainer.withValues(alpha: .5),
-            ),
-          ),
+      if (gestureDemoCompleted)
+        Text(
+          Localizations.localeOf(context).languageCode == 'ja'
+              ? '新しいジェスチャーの確認が完了しました。'
+              : 'The new gestures have been reviewed.',
+          textAlign: TextAlign.center,
+        ),
+      const SizedBox(height: 32),
+      FilledButton.icon(
+        onPressed: gestureDemoOpening ? null : startGestureDemo,
+        icon: Icon(
+          gestureDemoCompleted
+              ? Icons.replay_rounded
+              : Icons.play_arrow_rounded,
+        ),
+        label: Text(
+          Localizations.localeOf(context).languageCode == 'ja'
+              ? (gestureDemoCompleted ? 'デモを再確認' : 'デモを開始')
+              : (gestureDemoCompleted ? 'Review demo again' : 'Start demo'),
         ),
       ),
     ],
@@ -550,6 +561,208 @@ class _DextopSetupPageState extends State<DextopSetupPage>
           color: index == page
               ? Theme.of(context).colorScheme.primary
               : Theme.of(context).colorScheme.surfaceContainerHighest,
+        ),
+      ),
+    ),
+  );
+}
+
+class GestureDemoFlow extends StatefulWidget {
+  const GestureDemoFlow({
+    required this.title,
+    required this.done,
+    required this.back,
+    super.key,
+  });
+  final String title;
+  final String done;
+  final String back;
+
+  @override
+  State<GestureDemoFlow> createState() => _GestureDemoFlowState();
+}
+
+class _GestureDemoFlowState extends State<GestureDemoFlow>
+    with SingleTickerProviderStateMixin {
+  static const channel = MethodChannel('app.freedextop/display');
+  var step = 0;
+  final pointers = <int, Offset>{};
+  var triggered = false;
+  late final controller = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 1500),
+  )..repeat();
+
+  Future<void> orient() => SystemChrome.setPreferredOrientations(
+    step == 0
+        ? const [
+            DeviceOrientation.landscapeLeft,
+            DeviceOrientation.landscapeRight,
+          ]
+        : const [DeviceOrientation.portraitUp],
+  );
+
+  @override
+  void initState() {
+    super.initState();
+    SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    orient();
+  }
+
+  void down(PointerDownEvent event) {
+    pointers[event.pointer] = event.position;
+    if (pointers.length == 3) triggered = false;
+  }
+
+  void move(PointerMoveEvent event) {
+    if (triggered || pointers.length != 3) return;
+    final start = pointers[event.pointer];
+    if (start == null) return;
+    final delta = event.position - start;
+    final valid = step == 0
+        ? start.dx <= 140 && delta.dx >= 90 && delta.dx.abs() > delta.dy.abs()
+        : start.dy <= 140 && delta.dy >= 90 && delta.dy.abs() > delta.dx.abs();
+    if (valid) {
+      triggered = true;
+      channel.invokeMethod<void>('showOverlayDemo');
+    }
+  }
+
+  void end(PointerEvent event) => pointers.remove(event.pointer);
+
+  Future<void> change(int value) async {
+    await channel.invokeMethod<void>('hideOverlayDemo');
+    pointers.clear();
+    triggered = false;
+    setState(() => step = value);
+    await orient();
+  }
+
+  Future<void> finish() async {
+    await channel.invokeMethod<void>('hideOverlayDemo');
+    await SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    if (mounted) Navigator.pop(context);
+  }
+
+  @override
+  void dispose() {
+    controller.dispose();
+    channel.invokeMethod<void>('hideOverlayDemo');
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => PopScope(
+    canPop: false,
+    child: Scaffold(
+      body: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerDown: down,
+        onPointerMove: move,
+        onPointerUp: end,
+        onPointerCancel: end,
+        child: SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(28),
+            child: Column(
+              children: [
+                Text(
+                  widget.title,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  step == 0
+                      ? '横向きの場合\n画面左から右に3本指でスワイプ'
+                      : '縦持ちの場合\n画面上から下に3本指でスワイプ',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                Expanded(
+                  child: AnimatedBuilder(
+                    animation: controller,
+                    builder: (context, _) => LayoutBuilder(
+                      builder: (context, box) {
+                        final moveProgress = Curves.easeInOutCubic.transform(
+                          ((controller.value - .08) / .60).clamp(0.0, 1.0),
+                        );
+                        final alpha = controller.value < .08
+                            ? controller.value / .08 * .72
+                            : controller.value < .70
+                            ? .72
+                            : controller.value < .92
+                            ? (1 - (controller.value - .70) / .22) * .72
+                            : 0.0;
+                        const size = 64.0, gap = 18.0, inset = 20.0;
+                        final travel = step == 0
+                            ? box.maxWidth - size - inset * 2
+                            : box.maxHeight - size - inset * 2;
+                        return Stack(
+                          children: List.generate(
+                            3,
+                            (i) => Positioned(
+                              left: step == 0
+                                  ? inset + travel * moveProgress
+                                  : box.maxWidth / 2 - 114 + i * (size + gap),
+                              top: step == 1
+                                  ? inset + travel * moveProgress
+                                  : box.maxHeight / 2 - 114 + i * (size + gap),
+                              child: Opacity(
+                                opacity: alpha.clamp(0.0, 1.0),
+                                child: Container(
+                                  width: size,
+                                  height: size,
+                                  decoration: BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    border: Border.all(
+                                      color: Theme.of(
+                                        context,
+                                      ).colorScheme.primary,
+                                      width: 3,
+                                    ),
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primaryContainer
+                                        .withValues(alpha: .5),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    if (step == 1) ...[
+                      OutlinedButton.icon(
+                        onPressed: () => change(0),
+                        icon: const Icon(Icons.arrow_back_rounded),
+                        label: Text(widget.back),
+                      ),
+                      const SizedBox(width: 16),
+                    ],
+                    Text('${step + 1} / 2'),
+                    const SizedBox(width: 20),
+                    FilledButton.icon(
+                      onPressed: () => step == 0 ? change(1) : finish(),
+                      icon: Icon(
+                        step == 0
+                            ? Icons.arrow_forward_rounded
+                            : Icons.check_rounded,
+                      ),
+                      label: Text(step == 0 ? '次へ' : widget.done),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     ),

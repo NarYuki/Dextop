@@ -168,6 +168,44 @@ class MainActivity : FlutterActivity() {
                 }.start()
                 "launchApp" -> launchApp(call.arguments as? Map<*, *>, result)
                 "diagnostics" -> result.success(DeviceDiagnostics(this).report())
+                "deviceReportIdentity" -> result.success(mapOf(
+                    "manufacturer" to Build.MANUFACTURER,
+                    "brand" to Build.BRAND,
+                    "model" to Build.MODEL,
+                    "device" to Build.DEVICE,
+                    "product" to Build.PRODUCT,
+                    "android" to Build.VERSION.RELEASE,
+                    "sdk" to Build.VERSION.SDK_INT,
+                    "incremental" to Build.VERSION.INCREMENTAL,
+                    "buildId" to Build.ID,
+                    "fingerprint" to Build.FINGERPRINT,
+                    "securityPatch" to Build.VERSION.SECURITY_PATCH,
+                    "displayBuild" to Build.DISPLAY,
+                    "appVersion" to packageManager.getPackageInfo(packageName, 0).versionName,
+                    "buildNumber" to if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                        packageManager.getPackageInfo(packageName, 0).longVersionCode
+                    } else {
+                        @Suppress("DEPRECATION") packageManager.getPackageInfo(packageName, 0).versionCode
+                    }
+                ))
+                "sendDeviceReportEmail" -> {
+                    val subject = call.argument<String>("subject").orEmpty()
+                    val body = call.argument<String>("body").orEmpty()
+                    val uri = Uri.Builder()
+                        .scheme("mailto")
+                        .opaquePart("dextop-device@n4t.su")
+                        .appendQueryParameter("subject", subject)
+                        .appendQueryParameter("body", body)
+                        .build()
+                    val email = Intent(Intent.ACTION_SENDTO, uri).apply {
+                        putExtra(Intent.EXTRA_EMAIL, arrayOf("dextop-device@n4t.su"))
+                        putExtra(Intent.EXTRA_SUBJECT, subject)
+                        putExtra(Intent.EXTRA_TEXT, body)
+                    }
+                    runCatching { startActivity(email) }
+                        .onSuccess { result.success(null) }
+                        .onFailure { result.error("EMAIL_UNAVAILABLE", it.message, null) }
+                }
                 "repairState" -> result.success(repairState())
                 "repairAndroid" -> repairAndroid(result)
                 "restartApp" -> restartApp(result)

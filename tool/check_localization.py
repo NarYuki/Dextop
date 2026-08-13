@@ -61,9 +61,9 @@ native_path = (
     / "src"
     / "main"
     / "kotlin"
-    / "app"
-    / "freedextop"
-    / "free_dextop"
+    / "moe"
+    / "n4tsu"
+    / "dextop"
     / "NativeStrings.kt"
 )
 native_source = native_path.read_text()

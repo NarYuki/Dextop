@@ -40,6 +40,59 @@ class AppLocalizationsEn extends AppLocalizations {
       'Allow protected content to be displayed';
 
   @override
+  String get mirrorBackend => 'Display mirroring method';
+
+  @override
+  String get mirrorBackendAuto => 'Automatic (compatibility)';
+
+  @override
+  String get mirrorBackendAutoDescription =>
+      'Use the best available method for this device';
+
+  @override
+  String get mirrorBackendWindowManager => 'WindowManager';
+
+  @override
+  String get mirrorBackendSurfaceControl => 'SurfaceControl';
+
+  @override
+  String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
+
+  @override
+  String get updateAvailable => 'Update available';
+
+  @override
+  String get updateAvailableTitle => 'A new release is available on GitHub!';
+
+  @override
+  String get checkForUpdates => 'Check for updates';
+
+  @override
+  String get checkingForUpdates => 'Retrieving update information';
+
+  @override
+  String get updateNotChecked =>
+      'Update information has not been retrieved yet';
+
+  @override
+  String get upToDate => 'You are up to date';
+
+  @override
+  String get updateCheckFailed => 'Could not retrieve update information';
+
+  @override
+  String get currentVersion => 'Current';
+
+  @override
+  String get latestVersion => 'Latest';
+
+  @override
+  String get openOnGitHub => 'Open on GitHub';
+
+  @override
+  String get close => 'Close';
+
+  @override
   String get deviceInfo => 'Device information';
 
   @override
@@ -187,7 +240,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'Stellar and Shizuku are both installed. Choose which service Dextop should use. The selection is saved until either app is uninstalled.';
+      'Stellar and Shizuku are both installed. Choose which service Dextop should use.';
 
   @override
   String get setupUseStellar => 'Stellar (recommended)';
@@ -382,7 +435,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uiSecondaryIme => 'Secondary IME';
 
   @override
-  String get uiSecureDisplayFoldable => 'Secure display, Foldable';
+  String get uiSecureDisplayFoldable =>
+      'Secure display, mirroring method, Foldable';
 
   @override
   String get uiSecurity => 'Security';
@@ -733,4 +787,106 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get clearDiagnosticLog => 'Clear log';
+
+  @override
+  String get deviceReport => 'Device report';
+
+  @override
+  String get uiCpuTemperature => 'CPU temperature';
+
+  @override
+  String get deviceReportDescription =>
+      'Report device and feature compatibility by email';
+
+  @override
+  String get deviceReportIntro =>
+      'Device details are collected automatically. Select the result for each feature.';
+
+  @override
+  String get reportWorking => 'Working';
+
+  @override
+  String get reportNotWorking => 'Not working';
+
+  @override
+  String get reportUntested => 'Not tested';
+
+  @override
+  String get reportOverall => 'Overall status';
+
+  @override
+  String get reportNotes => 'Other notes';
+
+  @override
+  String get sendDeviceReport => 'Send report by email';
+
+  @override
+  String get reportEmailUnavailable => 'Could not open an email app';
+
+  @override
+  String get reportTemplateTitle => 'Dextop device report';
+
+  @override
+  String get reportNoNotes => 'None';
+
+  @override
+  String get reportFeatureStartup => 'App startup and device detection';
+
+  @override
+  String get reportFeatureSession => 'Dextop session startup';
+
+  @override
+  String get reportFeatureVirtualDisplay => 'VirtualDisplay mirroring';
+
+  @override
+  String get reportFeatureWindowManager => 'WindowManager mirroring';
+
+  @override
+  String get reportFeatureSurfaceControl => 'SurfaceControl mirroring';
+
+  @override
+  String get reportFeatureLandscape => 'Landscape mode';
+
+  @override
+  String get reportFeaturePortrait => 'Portrait mode';
+
+  @override
+  String get reportFeatureSecureDisplay => 'Secure display';
+
+  @override
+  String get reportFeatureLauncher => 'App launcher and freeform windows';
+
+  @override
+  String get reportFeatureWorkspace => 'Workspace save and restore';
+
+  @override
+  String get reportFeatureCursor => 'Cursor and touchpad input';
+
+  @override
+  String get reportFeatureDirectTouch => 'Direct-touch input';
+
+  @override
+  String get reportFeatureMultiTouch => 'Multi-touch scrolling and pinch zoom';
+
+  @override
+  String get reportFeatureGesture => 'Three-finger overlay gesture';
+
+  @override
+  String get reportFeatureMouse => 'Physical mouse';
+
+  @override
+  String get reportFeatureKeyboard => 'Physical keyboard';
+
+  @override
+  String get reportFeatureRouting =>
+      'Physical mouse and keyboard display routing';
+
+  @override
+  String get reportFeatureFoldable => 'Foldable automatic resolution';
+
+  @override
+  String get reportFeaturePerformance => 'Performance overlay';
+
+  @override
+  String get reportFeatureCleanup => 'Session cleanup and Android restoration';
 }

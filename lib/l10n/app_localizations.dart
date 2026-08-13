@@ -164,6 +164,108 @@ abstract class AppLocalizations {
   /// **'保護されたコンテンツの表示を許可します'**
   String get secureDisplayDescription;
 
+  /// No description provided for @mirrorBackend.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイのミラーリング方式'**
+  String get mirrorBackend;
+
+  /// No description provided for @mirrorBackendAuto.
+  ///
+  /// In ja, this message translates to:
+  /// **'自動（互換性優先）'**
+  String get mirrorBackendAuto;
+
+  /// No description provided for @mirrorBackendAutoDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'この端末で利用可能な最適な方式を使用します'**
+  String get mirrorBackendAutoDescription;
+
+  /// No description provided for @mirrorBackendWindowManager.
+  ///
+  /// In ja, this message translates to:
+  /// **'WindowManager'**
+  String get mirrorBackendWindowManager;
+
+  /// No description provided for @mirrorBackendSurfaceControl.
+  ///
+  /// In ja, this message translates to:
+  /// **'SurfaceControl'**
+  String get mirrorBackendSurfaceControl;
+
+  /// No description provided for @mirrorBackendVirtualDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'VirtualDisplay'**
+  String get mirrorBackendVirtualDisplay;
+
+  /// No description provided for @updateAvailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'アップデートがあります'**
+  String get updateAvailable;
+
+  /// No description provided for @updateAvailableTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'GitHubに最新リリースが公開されています！'**
+  String get updateAvailableTitle;
+
+  /// No description provided for @checkForUpdates.
+  ///
+  /// In ja, this message translates to:
+  /// **'更新を確認'**
+  String get checkForUpdates;
+
+  /// No description provided for @checkingForUpdates.
+  ///
+  /// In ja, this message translates to:
+  /// **'更新情報を取得しています'**
+  String get checkingForUpdates;
+
+  /// No description provided for @updateNotChecked.
+  ///
+  /// In ja, this message translates to:
+  /// **'更新情報をまだ取得していません'**
+  String get updateNotChecked;
+
+  /// No description provided for @upToDate.
+  ///
+  /// In ja, this message translates to:
+  /// **'最新バージョンです'**
+  String get upToDate;
+
+  /// No description provided for @updateCheckFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'更新情報を取得できませんでした'**
+  String get updateCheckFailed;
+
+  /// No description provided for @currentVersion.
+  ///
+  /// In ja, this message translates to:
+  /// **'現在のバージョン'**
+  String get currentVersion;
+
+  /// No description provided for @latestVersion.
+  ///
+  /// In ja, this message translates to:
+  /// **'最新バージョン'**
+  String get latestVersion;
+
+  /// No description provided for @openOnGitHub.
+  ///
+  /// In ja, this message translates to:
+  /// **'GitHubを開く'**
+  String get openOnGitHub;
+
+  /// No description provided for @close.
+  ///
+  /// In ja, this message translates to:
+  /// **'閉じる'**
+  String get close;
+
   /// No description provided for @deviceInfo.
   ///
   /// In ja, this message translates to:
@@ -449,7 +551,7 @@ abstract class AppLocalizations {
   /// No description provided for @setupProviderChoiceDescription.
   ///
   /// In ja, this message translates to:
-  /// **'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。選択は、どちらかをアンインストールするまで保存されます。'**
+  /// **'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。'**
   String get setupProviderChoiceDescription;
 
   /// No description provided for @setupUseStellar.
@@ -815,7 +917,7 @@ abstract class AppLocalizations {
   /// No description provided for @uiSecureDisplayFoldable.
   ///
   /// In ja, this message translates to:
-  /// **'セキュア表示、Foldable'**
+  /// **'セキュア表示、ミラーリング方式、Foldable'**
   String get uiSecureDisplayFoldable;
 
   /// No description provided for @uiSecurity.
@@ -1489,6 +1591,204 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'ログを消去'**
   String get clearDiagnosticLog;
+
+  /// No description provided for @deviceReport.
+  ///
+  /// In ja, this message translates to:
+  /// **'動作報告'**
+  String get deviceReport;
+
+  /// No description provided for @uiCpuTemperature.
+  ///
+  /// In ja, this message translates to:
+  /// **'CPU温度'**
+  String get uiCpuTemperature;
+
+  /// No description provided for @deviceReportDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末情報と機能の対応状況をメールで報告'**
+  String get deviceReportDescription;
+
+  /// No description provided for @deviceReportIntro.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末情報は自動収集されます。各機能の動作状況を選択してください。'**
+  String get deviceReportIntro;
+
+  /// No description provided for @reportWorking.
+  ///
+  /// In ja, this message translates to:
+  /// **'動作した'**
+  String get reportWorking;
+
+  /// No description provided for @reportNotWorking.
+  ///
+  /// In ja, this message translates to:
+  /// **'動作しない'**
+  String get reportNotWorking;
+
+  /// No description provided for @reportUntested.
+  ///
+  /// In ja, this message translates to:
+  /// **'未確認'**
+  String get reportUntested;
+
+  /// No description provided for @reportOverall.
+  ///
+  /// In ja, this message translates to:
+  /// **'総合的な動作状況'**
+  String get reportOverall;
+
+  /// No description provided for @reportNotes.
+  ///
+  /// In ja, this message translates to:
+  /// **'その他・特記事項'**
+  String get reportNotes;
+
+  /// No description provided for @sendDeviceReport.
+  ///
+  /// In ja, this message translates to:
+  /// **'メールで動作報告を送る'**
+  String get sendDeviceReport;
+
+  /// No description provided for @reportEmailUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'メールアプリを開けませんでした'**
+  String get reportEmailUnavailable;
+
+  /// No description provided for @reportTemplateTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop端末動作報告'**
+  String get reportTemplateTitle;
+
+  /// No description provided for @reportNoNotes.
+  ///
+  /// In ja, this message translates to:
+  /// **'なし'**
+  String get reportNoNotes;
+
+  /// No description provided for @reportFeatureStartup.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリ起動と端末検出'**
+  String get reportFeatureStartup;
+
+  /// No description provided for @reportFeatureSession.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopセッションの起動'**
+  String get reportFeatureSession;
+
+  /// No description provided for @reportFeatureVirtualDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'VirtualDisplayミラーリング'**
+  String get reportFeatureVirtualDisplay;
+
+  /// No description provided for @reportFeatureWindowManager.
+  ///
+  /// In ja, this message translates to:
+  /// **'WindowManagerミラーリング'**
+  String get reportFeatureWindowManager;
+
+  /// No description provided for @reportFeatureSurfaceControl.
+  ///
+  /// In ja, this message translates to:
+  /// **'SurfaceControlミラーリング'**
+  String get reportFeatureSurfaceControl;
+
+  /// No description provided for @reportFeatureLandscape.
+  ///
+  /// In ja, this message translates to:
+  /// **'横向きモード'**
+  String get reportFeatureLandscape;
+
+  /// No description provided for @reportFeaturePortrait.
+  ///
+  /// In ja, this message translates to:
+  /// **'縦向きモード'**
+  String get reportFeaturePortrait;
+
+  /// No description provided for @reportFeatureSecureDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'セキュア表示'**
+  String get reportFeatureSecureDisplay;
+
+  /// No description provided for @reportFeatureLauncher.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリランチャーとフリーフォームウィンドウ'**
+  String get reportFeatureLauncher;
+
+  /// No description provided for @reportFeatureWorkspace.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワークスペースの保存と復元'**
+  String get reportFeatureWorkspace;
+
+  /// No description provided for @reportFeatureCursor.
+  ///
+  /// In ja, this message translates to:
+  /// **'カーソル・タッチパッド入力'**
+  String get reportFeatureCursor;
+
+  /// No description provided for @reportFeatureDirectTouch.
+  ///
+  /// In ja, this message translates to:
+  /// **'ダイレクトタッチ入力'**
+  String get reportFeatureDirectTouch;
+
+  /// No description provided for @reportFeatureMultiTouch.
+  ///
+  /// In ja, this message translates to:
+  /// **'マルチタッチのスクロールとピンチズーム'**
+  String get reportFeatureMultiTouch;
+
+  /// No description provided for @reportFeatureGesture.
+  ///
+  /// In ja, this message translates to:
+  /// **'3本指オーバーレイジェスチャー'**
+  String get reportFeatureGesture;
+
+  /// No description provided for @reportFeatureMouse.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理マウス'**
+  String get reportFeatureMouse;
+
+  /// No description provided for @reportFeatureKeyboard.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理キーボード'**
+  String get reportFeatureKeyboard;
+
+  /// No description provided for @reportFeatureRouting.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理マウス・キーボードのディスプレイルーティング'**
+  String get reportFeatureRouting;
+
+  /// No description provided for @reportFeatureFoldable.
+  ///
+  /// In ja, this message translates to:
+  /// **'折りたたみ端末の自動解像度'**
+  String get reportFeatureFoldable;
+
+  /// No description provided for @reportFeaturePerformance.
+  ///
+  /// In ja, this message translates to:
+  /// **'パフォーマンスオーバーレイ'**
+  String get reportFeaturePerformance;
+
+  /// No description provided for @reportFeatureCleanup.
+  ///
+  /// In ja, this message translates to:
+  /// **'セッション終了処理とAndroid状態の復元'**
+  String get reportFeatureCleanup;
 }
 
 class _AppLocalizationsDelegate
