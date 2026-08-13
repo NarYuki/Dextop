@@ -122,7 +122,7 @@ These entries are generated from manually reviewed device reports. Compatibility
 <summary><strong>Samsung</strong> — 3 verified configurations</summary>
 
 <details>
-<summary><strong>Galaxy Z TriFold — SM-F968N</strong> / q7mq / F968NKSS6BZG3 — 🟡 Partial</summary>
+<summary><strong>Galaxy Z TriFold — SM-F968N</strong> / q7mq / F968NKSS6BZG3 — 🧪 Experimental</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -144,13 +144,13 @@ These entries are generated from manually reviewed device reports. Compatibility
 | Display build | `BP4A.251205.006.F968NKSS6BZG3` |
 | Dextop version | `1.1.1+6` |
 | Last verified | 2026-08-13 |
-| Overall status | 🟡 Partial |
+| Overall status | 🧪 Experimental |
 
 ## Feature verification
 
 | Feature | Result |
 | --- | --- |
-| Overall status | 🟡 Partial |
+| Overall status | 🧪 Experimental |
 | App startup and device detection | ✅ Working |
 | Dextop session startup | ✅ Working |
 | VirtualDisplay mirroring | ✅ Working |
