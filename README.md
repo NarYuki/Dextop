@@ -65,6 +65,8 @@ The status below applies only to firmware versions that were actually tested. Op
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
 | Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ Confirmed working |
+| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / `F968NKSS6BZG3` | 🟡 Partial |
+| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / `F971QOPU1AZGI` | 🟡 Partial |
 | Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / `F966QOPU1BZF1` | ✅ Confirmed working |
 
 _Community-submitted and reviewed device report_
@@ -88,6 +90,17 @@ _Community-submitted and reviewed device report_
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
 | HONOR Magic 8 Pro | BKQ-AN10 (`HNBKQ`) | Android 16 (API 36) / `10DLDLD170SP5C00E167` | 🧪 Experimental |
+
+_Community-submitted and reviewed device report_
+
+</details>
+
+<details>
+<summary><strong>sony</strong></summary>
+
+| Device | Model | Tested software | Status |
+| --- | --- | --- | --- |
+| Xperia 1 III | XQ-BC42 (`XQ-BC42`) | Android 13 (API 33) / `061002A0000472A1434898470` | ❌ Not working at this time |
 
 _Community-submitted and reviewed device report_
 
