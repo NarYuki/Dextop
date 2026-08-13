@@ -40,6 +40,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String privilegeProvider = 'stellar';
   String privilegeProviderName = 'Stellar';
   var providerChoiceShown = false;
+  var releaseCheckStarted = false;
   var secureSettingsGranted = false;
   String? error;
   String manufacturer = '';
@@ -92,10 +93,94 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _initializeHome() async {
     await Future.wait([refresh(), loadHomeWorkspaces(loadIcons: false)]);
+    if (mounted && !releaseCheckStarted) {
+      releaseCheckStarted = true;
+      unawaited(_checkLatestGitHubRelease());
+    }
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => loadHomeAppIcons());
     }
     if (mounted) await _consumeTileAction();
+  }
+
+  Future<void> _checkLatestGitHubRelease() async {
+    HttpClient? client;
+    try {
+      final status = await bridge.status();
+      final current = '${status['appVersion'] ?? ''}'.trim();
+      if (current.isEmpty) return;
+      client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      final request = await client.getUrl(
+        Uri.parse(
+          'https://api.github.com/repos/NarYuki/Dextop/releases/latest',
+        ),
+      );
+      request.headers
+        ..set(HttpHeaders.acceptHeader, 'application/vnd.github+json')
+        ..set(HttpHeaders.userAgentHeader, 'Dextop/$current')
+        ..set('X-GitHub-Api-Version', '2022-11-28');
+      final response = await request.close().timeout(
+        const Duration(seconds: 8),
+      );
+      if (response.statusCode != HttpStatus.ok) return;
+      final payload = jsonDecode(await response.transform(utf8.decoder).join());
+      if (payload is! Map) return;
+      final latest = '${payload['tag_name'] ?? ''}'.replaceFirst(
+        RegExp(r'^[vV]'),
+        '',
+      );
+      final url = '${payload['html_url'] ?? ''}';
+      if (!_isNewerVersion(latest, current) || !mounted) return;
+      await showDialog<void>(
+        context: context,
+        builder: (context) => AlertDialog(
+          icon: const Icon(Icons.system_update_alt_rounded),
+          title: const Text('GitHubに最新リリースが公開されています！'),
+          content: Text('current: $current\nlatest: $latest'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('閉じる'),
+            ),
+            if (url.startsWith('https://github.com/'))
+              FilledButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  bridge.openUrl(url);
+                },
+                child: const Text('GitHubで開く'),
+              ),
+          ],
+        ),
+      );
+    } catch (error, stackTrace) {
+      debugPrint('Dextop release check failed: $error\n$stackTrace');
+    } finally {
+      client?.close(force: true);
+    }
+  }
+
+  bool _isNewerVersion(String candidate, String current) {
+    List<int> parts(String value) {
+      final normalized = value.split('-').first.split('+').first;
+      return normalized
+          .split('.')
+          .map(
+            (part) =>
+                int.tryParse(RegExp(r'\d+').stringMatch(part) ?? '0') ?? 0,
+          )
+          .toList();
+    }
+
+    final latestParts = parts(candidate);
+    final currentParts = parts(current);
+    final length = max(latestParts.length, currentParts.length);
+    for (var index = 0; index < length; index++) {
+      final latestPart = index < latestParts.length ? latestParts[index] : 0;
+      final currentPart = index < currentParts.length ? currentParts[index] : 0;
+      if (latestPart != currentPart) return latestPart > currentPart;
+    }
+    return false;
   }
 
   Future<void> _consumeTileAction() async {

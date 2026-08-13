@@ -231,6 +231,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun status(): Map<String, Any> {
+        val packageInfo = packageManager.getPackageInfo(packageName, 0)
         val shizukuInstalled = runCatching {
             packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
         }.isSuccess || runCatching {
@@ -279,6 +280,7 @@ class MainActivity : FlutterActivity() {
             ,"model" to Build.MODEL
             ,"androidVersion" to Build.VERSION.RELEASE
             ,"sdk" to Build.VERSION.SDK_INT
+            ,"appVersion" to packageInfo.versionName.orEmpty()
             ,"desktopMode" to DesktopEnvironmentRegistry.current().displayName
         )
         Log.i(logTag, "status=$status")
