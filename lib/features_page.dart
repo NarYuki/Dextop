@@ -925,6 +925,10 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
             '${metrics['powerWatts'] ?? 0} W',
           ),
           _metric(
+            AppStrings.tr('uiCpuTemperature'),
+            '${metrics['cpuTemperature'] ?? '-- °C'}',
+          ),
+          _metric(
             AppStrings.tr('uiInputMode'),
             '${metrics['inputMode'] ?? AppStrings.tr('uiIdle')}',
           ),

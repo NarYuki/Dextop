@@ -22,7 +22,7 @@ extension _ResolutionUi on _HomeScreenState {
         (true, l.portrait, Icons.stay_current_portrait_rounded),
       ],
       selected: portrait,
-      onSelected: active ? null : (value) => mutate(() => portrait = value),
+      onSelected: active ? null : setPortrait,
     );
   }
 
@@ -67,9 +67,10 @@ extension _ResolutionUi on _HomeScreenState {
                         ),
                       ],
                     ),
-                    onTap: () {
+                    onTap: () async {
                       mutate(() => profile = item);
-                      _saveProfiles();
+                      await _saveProfiles();
+                      if (!sheetContext.mounted) return;
                       Navigator.pop(sheetContext);
                     },
                   ),

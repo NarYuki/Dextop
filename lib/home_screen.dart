@@ -59,17 +59,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       (_) => _initializeDeviceProfile(),
     );
     _initializeHome();
-    _loadSecureDisplay();
+    _loadHomeSelections();
     AppAnalytics.screen('home');
   }
 
-  Future<void> _loadSecureDisplay() async {
+  Future<void> _loadHomeSelections() async {
     final preferences = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
         secure = preferences.getBool('secure_display') ?? false;
+        portrait = preferences.getBool('home_portrait') ?? false;
       });
     }
+  }
+
+  Future<void> setPortrait(bool value) async {
+    mutate(() => portrait = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('home_portrait', value);
   }
 
   Future<void> setSecureDisplay(bool value) async {

@@ -76,7 +76,8 @@ internal class PerformanceHud(
                 usedMemory,
                 batteryPercent,
                 power,
-                localizedInputMode
+                localizedInputMode,
+                CpuTemperature.formatted()
             )
         }
         Choreographer.getInstance().postFrameCallback(this)

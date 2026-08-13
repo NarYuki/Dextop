@@ -2386,10 +2386,34 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (wasActive) {
             // Detach the input-filtering accessibility service so Android's
             // back gesture and Circle to Search regain their normal handlers.
-            root?.post { disableSelf() } ?: disableSelf()
+            disableDextopAccessibilityService()
+            disableSelf()
         }
         completeStart(Result.failure(IllegalStateException("Dextop was stopped before startup completed")))
         Log.i(logTag, "stopped")
+    }
+
+    private fun disableDextopAccessibilityService() {
+        runCatching {
+            val own = ComponentName(this, MirrorService::class.java)
+            val remaining = Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ).orEmpty().split(':').filter { raw ->
+                raw.isNotBlank() && ComponentName.unflattenFromString(raw)?.let { component ->
+                    component != own
+                } != false
+            }
+            check(Settings.Secure.putString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                remaining.joinToString(":")
+            )) { "Unable to detach the Dextop accessibility service" }
+            if (remaining.isEmpty()) {
+                Settings.Secure.putInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
+            }
+            Log.i(logTag, "Dextop accessibility service detached; remaining=${remaining.size}")
+        }.onFailure { Log.e(logTag, "accessibility service detachment failed", it) }
     }
 
     private fun removeWindow() {

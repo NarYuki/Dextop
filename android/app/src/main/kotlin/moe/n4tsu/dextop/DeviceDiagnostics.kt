@@ -105,6 +105,7 @@ internal class DeviceDiagnostics(private val context: Context) {
             "availableMemoryMb" to (memory.availMem / 1048576),
             "batteryPercent" to batteryPercent,
             "powerWatts" to String.format("%.2f", powerWatts),
+            "cpuTemperature" to CpuTemperature.formatted(),
             "inputMode" to inputMode,
             "refreshRate" to context.display?.refreshRate?.toDouble().orEmpty(),
             "fps" to fps
