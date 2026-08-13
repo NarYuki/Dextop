@@ -261,6 +261,7 @@
   "reportEmailUnavailable": "无法打开邮件应用",
   "reportTemplateTitle": "Dextop 设备运行报告",
   "reportNoNotes": "无",
+  "reportNoSessionLog": "尚未记录已完成的Dextop会话日志。",
   "reportFeatureStartup": "应用启动与设备检测",
   "reportFeatureSession": "Dextop 会话启动",
   "reportFeatureVirtualDisplay": "VirtualDisplay 镜像",

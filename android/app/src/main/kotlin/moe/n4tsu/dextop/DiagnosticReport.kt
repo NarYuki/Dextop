@@ -37,14 +37,14 @@ internal class DiagnosticReport(private val context: Context) {
             .sorted()
         val inputDevices = android.view.InputDevice.getDeviceIds().toList().mapNotNull { id ->
             android.view.InputDevice.getDevice(id)?.let {
-                "id=$id name=${it.name} descriptor=${it.descriptor} sources=0x${it.sources.toString(16)} keyboard=${it.keyboardType}"
+                "sources=0x${it.sources.toString(16)} keyboard=${it.keyboardType} " +
+                    "external=${it.isExternal} virtual=${it.isVirtual}"
             }
         }
         val sb = StringBuilder()
         sb.append("DEXTOP DIAGNOSTIC REPORT\n")
         sb.append(line("generated", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date())))
         sb.append(line("app", "${context.packageName} ${packageInfo.versionName} (${packageInfo.longVersionCode})"))
-        sb.append(line("processPid", android.os.Process.myPid()))
         sb.append("\n[DEVICE]\n")
         listOf(
             "manufacturer" to Build.MANUFACTURER, "brand" to Build.BRAND, "model" to Build.MODEL,
@@ -112,20 +112,9 @@ internal class DiagnosticReport(private val context: Context) {
             "force_desktop_mode_on_external_displays", "adb_wifi_enabled").forEach {
             sb.append(line(it, Settings.Global.getString(context.contentResolver, it)))
         }
-        sb.append("\n[DEXTOP OPERATION LOG]\n")
-        sb.append(OperationLog.read(context).ifBlank { "(empty)\n" })
-        sb.append("\n[ANDROID LOGCAT: Dextop / current process]\n")
-        sb.append(logcat())
+        sb.append("\n[LAST COMPLETED DEXTOP SESSION]\n")
+        sb.append(OperationLog.readLastSession(context).ifBlank { "(empty)\n" })
         return sb.toString()
-    }
-
-    private fun logcat(): String {
-        val pid = android.os.Process.myPid().toString()
-        val local = runCatching {
-            ProcessBuilder("logcat", "-d", "-v", "threadtime", "--pid=$pid", "-t", "2000")
-                .redirectErrorStream(true).start().inputStream.bufferedReader().use { it.readText() }
-        }.getOrElse { "logcat unavailable: ${it.message}\n" }
-        return local.takeLast(500_000)
     }
 
     private fun readFile(path: String, limit: Int): String? = runCatching {

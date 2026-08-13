@@ -830,6 +830,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get reportNoNotes => 'None';
 
   @override
+  String get reportNoSessionLog =>
+      'No completed Dextop session has been recorded yet.';
+
+  @override
   String get reportFeatureStartup => 'App startup and device detection';
 
   @override

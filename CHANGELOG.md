@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.1.1
+
+### Improved
+
+- Device reports now include a privacy-filtered log from only the most recent Dextop session.
+- Reduced noisy Android and Flutter debug logging while retaining device implementation, capability, backend, routing, failure, and restoration events.
+
+### Fixed
+
+- Fixed the device-report email recipient, subject, or body being omitted by some email applications.
+- Fixed the updated gesture guide not appearing after upgrading from a version earlier than 1.1.0.
+
 ## 1.1.0
 
 ### New

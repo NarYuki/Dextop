@@ -808,6 +808,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get reportNoNotes => '없음';
 
   @override
+  String get reportNoSessionLog => '완료된 Dextop 세션 로그가 아직 없습니다.';
+
+  @override
   String get reportFeatureStartup => '앱 시작 및 기기 감지';
 
   @override

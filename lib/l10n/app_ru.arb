@@ -261,6 +261,7 @@
   "reportEmailUnavailable": "Не удалось открыть почтовое приложение",
   "reportTemplateTitle": "Отчёт о работе Dextop",
   "reportNoNotes": "Нет",
+  "reportNoSessionLog": "Журнал завершённого сеанса Dextop пока отсутствует.",
   "reportFeatureStartup": "Запуск приложения и обнаружение устройства",
   "reportFeatureSession": "Запуск сеанса Dextop",
   "reportFeatureVirtualDisplay": "Зеркалирование VirtualDisplay",

@@ -493,10 +493,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _checkLatestGitHubRelease({bool manual = false}) async {
     if (releaseChecking) {
-      debugPrint('[DextopUpdate] skipped: check already running');
       return;
     }
-    debugPrint('[DextopUpdate] check started manual=$manual');
     if (mounted) {
       mutate(() {
         releaseChecking = true;
@@ -508,7 +506,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final status = await bridge.status();
       final current = '${status['appVersion'] ?? ''}'.trim();
-      debugPrint('[DextopUpdate] installed version=$current');
       if (current.isEmpty) throw const FormatException('Missing app version');
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(
@@ -522,9 +519,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ..set('X-GitHub-Api-Version', '2022-11-28');
       final response = await request.close().timeout(
         const Duration(seconds: 8),
-      );
-      debugPrint(
-        '[DextopUpdate] GitHub response status=${response.statusCode}',
       );
       if (response.statusCode != HttpStatus.ok) {
         throw HttpException('GitHub API returned ${response.statusCode}');
@@ -542,9 +536,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
       final url = '${payload['html_url'] ?? ''}';
       final newer = _isNewerVersion(latest, current);
-      debugPrint(
-        '[DextopUpdate] latest=$latest current=$current newer=$newer url=$url',
-      );
       if (!mounted) return;
       mutate(() {
         fetchedReleaseVersion = latest;
@@ -557,10 +548,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         releaseCheckedAt = DateTime.now();
         releaseCheckSucceeded = true;
       });
-      debugPrint('[DextopUpdate] check succeeded updateAvailable=$newer');
       if (manual && updateAvailable) await _showUpdateDialog();
-    } catch (error, stackTrace) {
-      debugPrint('[DextopUpdate] check failed: $error\n$stackTrace');
+    } catch (error) {
       if (mounted) {
         mutate(() {
           releaseCheckSucceeded = false;
@@ -571,7 +560,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     } finally {
       client?.close(force: true);
       if (mounted) mutate(() => releaseChecking = false);
-      debugPrint('[DextopUpdate] check finished');
     }
   }
 

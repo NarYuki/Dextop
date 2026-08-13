@@ -40,6 +40,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
   final _notes = TextEditingController();
   var _identity = <String, dynamic>{};
   var _diagnostics = <String, dynamic>{};
+  var _lastSessionLog = '';
   var _overall = _ReportResult.untested;
   var _loading = true;
   var _sending = false;
@@ -61,11 +62,13 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
     final values = await Future.wait([
       _channel.invokeMapMethod<String, dynamic>('deviceReportIdentity'),
       _channel.invokeMapMethod<String, dynamic>('diagnostics'),
+      _channel.invokeMethod<String>('lastSessionLog'),
     ]);
     if (!mounted) return;
     setState(() {
-      _identity = values[0] ?? {};
-      _diagnostics = values[1] ?? {};
+      _identity = (values[0] as Map?)?.cast<String, dynamic>() ?? {};
+      _diagnostics = (values[1] as Map?)?.cast<String, dynamic>() ?? {};
+      _lastSessionLog = values[2] as String? ?? '';
       _loading = false;
     });
   }
@@ -137,6 +140,16 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
       );
     }
     buffer
+      ..writeln()
+      ..writeln('### Last Dextop session log')
+      ..writeln()
+      ..writeln('```text')
+      ..writeln(
+        _lastSessionLog.trim().isEmpty
+            ? AppStrings.tr('reportNoSessionLog')
+            : _lastSessionLog.trim(),
+      )
+      ..writeln('```')
       ..writeln()
       ..writeln('### Automatically detected capabilities')
       ..writeln()

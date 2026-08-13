@@ -1,6 +1,5 @@
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:flutter/foundation.dart';
 
 abstract final class AppAnalytics {
   static FirebaseAnalytics? _analytics;
@@ -10,9 +9,7 @@ abstract final class AppAnalytics {
       await Firebase.initializeApp();
       _analytics = FirebaseAnalytics.instance;
       await _analytics?.setAnalyticsCollectionEnabled(true);
-    } catch (error) {
-      debugPrint('Firebase Analytics is not configured: $error');
-    }
+    } catch (_) {}
   }
 
   static Future<void> screen(String name) async {

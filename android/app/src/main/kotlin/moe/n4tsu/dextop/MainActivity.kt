@@ -168,6 +168,7 @@ class MainActivity : FlutterActivity() {
                 }.start()
                 "launchApp" -> launchApp(call.arguments as? Map<*, *>, result)
                 "diagnostics" -> result.success(DeviceDiagnostics(this).report())
+                "lastSessionLog" -> result.success(OperationLog.readLastSession(this))
                 "deviceReportIdentity" -> result.success(mapOf(
                     "manufacturer" to Build.MANUFACTURER,
                     "brand" to Build.BRAND,
@@ -189,16 +190,21 @@ class MainActivity : FlutterActivity() {
                     }
                 ))
                 "sendDeviceReportEmail" -> {
+                    val recipient = "dextop-device@n4t.su"
                     val subject = call.argument<String>("subject").orEmpty()
                     val body = call.argument<String>("body").orEmpty()
-                    val uri = Uri.Builder()
-                        .scheme("mailto")
-                        .opaquePart("dextop-device@n4t.su")
-                        .appendQueryParameter("subject", subject)
-                        .appendQueryParameter("body", body)
-                        .build()
+                    // Keep the recipient in the literal mailto path. Some mail
+                    // clients ignore an address stored only in EXTRA_EMAIL or
+                    // in an opaque Uri.Builder part.
+                    val uri = Uri.parse(
+                        "mailto:$recipient" +
+                            "?to=${Uri.encode(recipient)}" +
+                            "&subject=${Uri.encode(subject)}" +
+                            "&body=${Uri.encode(body)}"
+                    )
                     val email = Intent(Intent.ACTION_SENDTO, uri).apply {
-                        putExtra(Intent.EXTRA_EMAIL, arrayOf("dextop-device@n4t.su"))
+                        putExtra(Intent.EXTRA_EMAIL, arrayOf(recipient))
+                        putExtra("android.intent.extra.EMAIL", arrayOf(recipient))
                         putExtra(Intent.EXTRA_SUBJECT, subject)
                         putExtra(Intent.EXTRA_TEXT, body)
                     }
@@ -323,13 +329,10 @@ class MainActivity : FlutterActivity() {
             ,"appVersion" to packageInfo.versionName.orEmpty()
             ,"desktopMode" to DesktopEnvironmentRegistry.current().displayName
         )
-        Log.i(logTag, "status=$status")
-        OperationLog.i(this, "MainActivity", "status=$status")
         return status
     }
 
     private fun requestShizuku(result: MethodChannel.Result) {
-        Log.i(logTag, "requestShizuku")
         val current = status()
         val installed = current["shizukuInstalled"] == true
         if (!installed) {

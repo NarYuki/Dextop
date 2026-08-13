@@ -799,6 +799,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get reportNoNotes => '无';
 
   @override
+  String get reportNoSessionLog => '尚未记录已完成的Dextop会话日志。';
+
+  @override
   String get reportFeatureStartup => '应用启动与设备检测';
 
   @override

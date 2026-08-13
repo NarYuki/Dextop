@@ -261,6 +261,7 @@
   "reportEmailUnavailable": "이메일 앱을 열 수 없습니다",
   "reportTemplateTitle": "Dextop 기기 작동 보고",
   "reportNoNotes": "없음",
+  "reportNoSessionLog": "완료된 Dextop 세션 로그가 아직 없습니다.",
   "reportFeatureStartup": "앱 시작 및 기기 감지",
   "reportFeatureSession": "Dextop 세션 시작",
   "reportFeatureVirtualDisplay": "VirtualDisplay 미러링",

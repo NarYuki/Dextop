@@ -834,6 +834,10 @@ class AppLocalizationsRu extends AppLocalizations {
   String get reportNoNotes => 'Нет';
 
   @override
+  String get reportNoSessionLog =>
+      'Журнал завершённого сеанса Dextop пока отсутствует.';
+
+  @override
   String get reportFeatureStartup =>
       'Запуск приложения и обнаружение устройства';
 

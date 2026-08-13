@@ -1670,6 +1670,12 @@ abstract class AppLocalizations {
   /// **'なし'**
   String get reportNoNotes;
 
+  /// No description provided for @reportNoSessionLog.
+  ///
+  /// In ja, this message translates to:
+  /// **'完了したDextopセッションのログはまだありません。'**
+  String get reportNoSessionLog;
+
   /// No description provided for @reportFeatureStartup.
   ///
   /// In ja, this message translates to:

@@ -401,7 +401,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
             }
         }
-        Log.v(logTag, "mouse motion action=${event.actionMasked} rel=$relativeX,$relativeY pos=$cursorX,$cursorY")
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
@@ -416,7 +415,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun start(config: Config) {
-        OperationLog.i(this, "MirrorService", "start requested environment=${desktopEnvironment.id} config=$config")
+        OperationLog.beginSession(
+            this,
+            "environment=${desktopEnvironment.id} sdk=${Build.VERSION.SDK_INT} " +
+                "display=${config.width}x${config.height}/${config.density} " +
+                "secure=${config.secure} decorations=${config.decorations}"
+        )
         if (!privilegedAccess.isAvailable()) {
             pending = null
             active = false
@@ -467,7 +471,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             isFocusable = true
             isFocusableInTouchMode = true
             setOnTouchListener { _, event ->
-                Log.d(logTag, "surface touch action=${event.actionMasked} pointers=${event.pointerCount} direct=$directTouch multi=$experimentalMultiTouch route=${root?.routeTouchesToSurface}")
                 if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
                     if (event.actionMasked == MotionEvent.ACTION_MOVE ||
                         event.actionMasked == MotionEvent.ACTION_HOVER_MOVE) activatePhysicalMouse()
@@ -1040,7 +1043,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 pendingPackage = null
             }
         }
-        Log.i(logTag, "current task query found ${found.size} apps on display=$targetDisplayId packages=${found.keys}")
+        OperationLog.i(this, "Workspace", "task query count=${found.size} display=$targetDisplayId")
         return found
     }
 
@@ -1626,7 +1629,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun trackpad(event: MotionEvent): Boolean {
-        Log.d(logTag, "trackpad action=${event.actionMasked} pointers=${event.pointerCount} direct=$directTouch held=$directTouchHeld scrolling=$scrolling")
         maxPointers = maxOf(maxPointers, event.pointerCount)
         if (experimentalMultiTouch && handleExperimentalEdgeGesture(event)) return true
         if (directTouch && experimentalMultiTouch) {
@@ -1688,7 +1690,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         scrolling = true
                         scrollY = cursorY
                         injectTouch(MotionEvent.ACTION_DOWN, cursorX, scrollY)
-                        Log.i(logTag, "scroll start x=$cursorX y=$scrollY display=$targetDisplayId")
                     }
                     val y = event.getY(0)
                     scrollY = (scrollY + (y - lastScrollY) * 2f).coerceIn(0f, targetHeight - 1f)
@@ -1710,7 +1711,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             MotionEvent.ACTION_POINTER_UP -> {
                 if (!threeFinger && scrolling) {
                     injectTouch(MotionEvent.ACTION_UP, cursorX, scrollY)
-                    Log.i(logTag, "scroll end x=$cursorX y=$scrollY display=$targetDisplayId")
                     scrolling = false
                 }
             }
@@ -2137,7 +2137,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
         injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
         if (!directTouch) cursorView?.pulse()
-        Log.i(logTag, "click x=$cursorX y=$cursorY display=$targetDisplayId")
     }
 
     private fun rightClick() {
@@ -2173,7 +2172,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 event.recycle()
             }
             cursorView?.pulse()
-            Log.i(logTag, "right click x=$cursorX y=$cursorY display=$targetDisplayId")
         }.onFailure { Log.e(logTag, "right click failed", it) }
     }
 
@@ -2186,7 +2184,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun toggleDrag() {
         dragHeld = !dragHeld
         injectTouch(if (dragHeld) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_UP, cursorX, cursorY)
-        Log.i(logTag, "drag=$dragHeld x=$cursorX y=$cursorY display=$targetDisplayId")
     }
 
     private fun changeOrientation() {
@@ -2326,7 +2323,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 check(inputDispatcher.send(event, targetDisplayId)) {
                     "InputManager rejected multi-touch event action=${event.actionMasked}"
                 }
-                Log.d(logTag, "direct touch injected action=${event.actionMasked} pointers=${event.pointerCount} display=$targetDisplayId")
                 injectedDirectTouchActive = when (event.actionMasked) {
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> false
                     else -> true
@@ -2806,6 +2802,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 .putLong("verified_at", System.currentTimeMillis())
                 .commit()
         }
+        if (wasActive) OperationLog.finishSession(this, restored)
         if (wasActive) {
             // Detach the input-filtering accessibility service so Android's
             // back gesture and Circle to Search regain their normal handlers.
@@ -2863,11 +2860,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 val surface = getChildAt(0)
                 if (surface != null) {
                     val handled = surface.dispatchTouchEvent(event)
-                    Log.d("DextopMirror", "route surface action=${event.actionMasked} pointers=${event.pointerCount} handled=$handled")
                     return handled
                 }
             }
-            Log.d("DextopMirror", "route overlay action=${event.actionMasked} pointers=${event.pointerCount}")
             return super.dispatchTouchEvent(event)
         }
     }

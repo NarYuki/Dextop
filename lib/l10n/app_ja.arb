@@ -261,6 +261,7 @@
   "reportEmailUnavailable": "メールアプリを開けませんでした",
   "reportTemplateTitle": "Dextop端末動作報告",
   "reportNoNotes": "なし",
+  "reportNoSessionLog": "完了したDextopセッションのログはまだありません。",
   "reportFeatureStartup": "アプリ起動と端末検出",
   "reportFeatureSession": "Dextopセッションの起動",
   "reportFeatureVirtualDisplay": "VirtualDisplayミラーリング",

@@ -3,7 +3,6 @@ package moe.n4tsu.dextop
 import android.content.Context
 import android.graphics.Rect
 import android.hardware.display.DisplayManager
-import android.util.Log
 import android.view.WindowInsets
 import android.view.WindowManager
 
@@ -68,7 +67,6 @@ internal class WorkspaceLayoutEngine(
             (width - insets.right).coerceAtLeast(1),
             (height - insets.bottom).coerceAtLeast(1)
         )
-        Log.d(tag, "workspace area=$area environment=${environment.id} display=$displayId")
         return area
     }
 }

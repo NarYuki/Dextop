@@ -4,7 +4,9 @@ import 'dart:ui';
 abstract final class AppStrings {
   static String tr(String key) {
     final language = PlatformDispatcher.instance.locale.languageCode;
-    return (_values[language] ?? _values['en']!)[key] ?? _values['en']![key] ?? key;
+    return (_values[language] ?? _values['en']!)[key] ??
+        _values['en']![key] ??
+        key;
   }
 
   static const Map<String, Map<String, String>> _values = {
@@ -70,8 +72,10 @@ abstract final class AppStrings {
       "done": "完了",
       "incomplete": "未完了",
       "setupSystemTitle": "システム機能を利用します",
-      "setupSystemDescription": "DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIなどの挙動を制御します。",
-      "setupDisclaimer": "端末やOSの実装差、システム更新、他のアプリとの競合などにより生じた不具合、データ損失、端末機能への影響について、開発者は責任を負いません。内容を理解したうえで使用してください。",
+      "setupSystemDescription":
+          "DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIなどの挙動を制御します。",
+      "setupDisclaimer":
+          "端末やOSの実装差、システム更新、他のアプリとの競合などにより生じた不具合、データ損失、端末機能への影響について、開発者は責任を負いません。内容を理解したうえで使用してください。",
       "setupShizukuTitle": "Shizukuを準備",
       "setupShizukuDescription": "Dextopがシステム機能へ安全にアクセスするためにShizukuを使用します。",
       "setupInstallShizuku": "Shizukuをインストール",
@@ -83,19 +87,22 @@ abstract final class AppStrings {
       "setupInstallPlay": "Google Playからインストール",
       "setupAllowPermission": "権限を許可",
       "setupProviderChoiceTitle": "特権サービスを選択",
-      "setupProviderChoiceDescription": "StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。",
+      "setupProviderChoiceDescription":
+          "StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。",
       "setupUseStellar": "Stellar（推奨）",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "rootでサービスを実行中です",
       "setupRootVerified": "Shizukuがrootで実行中であることを確認しました。Dextopへの権限を付与してください。",
-      "setupRootNotRunning": "Shizukuがrootで実行中であることを確認できませんでした。rootで起動してから、もう一度確認してください。",
+      "setupRootNotRunning":
+          "Shizukuがrootで実行中であることを確認できませんでした。rootで起動してから、もう一度確認してください。",
       "setupQuestionOpen": "Shizukuを開きましたか？",
       "setupQuestionPair": "「ペアリング」に表示された手順をすべて完了しましたか？",
       "setupQuestionStart": "Shizukuで「開始」を押し、「Shizukuは実行中です」と表示されていますか？",
       "yes": "はい",
       "no": "いいえ",
       "setupVerified": "Shizukuの設定を確認しました",
-      "setupVerificationFailed": "Shizukuの設定または開始を確認できません。Shizuku内の手順を完了してから、もう一度確認してください。",
+      "setupVerificationFailed":
+          "Shizukuの設定または開始を確認できません。Shizuku内の手順を完了してから、もう一度確認してください。",
       "setupPermissionCheckFailed": "Shizukuの権限を確認できませんでした",
       "setupDeviceTitle": "この端末での構成",
       "model": "機種",
@@ -237,12 +244,14 @@ abstract final class AppStrings {
       "uiManageLaunchedAppsAndConfigurations": "起動するアプリと構成の管理",
       "uiCouldNotStart": "起動できませんでした",
       "uiLongPress": "長押し",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "開いた状態と閉じた状態の実測解像度を自動使用",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
+          "開いた状態と閉じた状態の実測解像度を自動使用",
       "uiStart": "開始",
       "uiAutomaticSwitchingAccordingToOpenClosedState": "開閉状態に合わせて自動切り替え",
       "uiOpeningQuote": "「",
       "uiDeleteWorkspaceQuestionSuffix": "」を削除しますか？",
-      "uiAbnormalSessionWarning": "不正な状態でセッションが終了されたため、\n一部のAndroid側の機能が無効化されている可能性があります。",
+      "uiAbnormalSessionWarning":
+          "不正な状態でセッションが終了されたため、\n一部のAndroid側の機能が無効化されている可能性があります。",
       "uiChecking": "確認中",
       "uiIdle": "待機中",
       "uiAvailable": "Available",
@@ -270,6 +279,7 @@ abstract final class AppStrings {
       "reportEmailUnavailable": "メールアプリを開けませんでした",
       "reportTemplateTitle": "Dextop端末動作報告",
       "reportNoNotes": "なし",
+      "reportNoSessionLog": "完了したDextopセッションのログはまだありません。",
       "reportFeatureStartup": "アプリ起動と端末検出",
       "reportFeatureSession": "Dextopセッションの起動",
       "reportFeatureVirtualDisplay": "VirtualDisplayミラーリング",
@@ -304,7 +314,8 @@ abstract final class AppStrings {
       "secureDisplayDescription": "Allow protected content to be displayed",
       "mirrorBackend": "Display mirroring method",
       "mirrorBackendAuto": "Automatic (compatibility)",
-      "mirrorBackendAutoDescription": "Use the best available method for this device",
+      "mirrorBackendAutoDescription":
+          "Use the best available method for this device",
       "mirrorBackendWindowManager": "WindowManager",
       "mirrorBackendSurfaceControl": "SurfaceControl",
       "mirrorBackendVirtualDisplay": "VirtualDisplay",
@@ -353,32 +364,42 @@ abstract final class AppStrings {
       "done": "Done",
       "incomplete": "Incomplete",
       "setupSystemTitle": "Uses system-level features",
-      "setupSystemDescription": "Dextop uses Shizuku and ADB to control behavior such as virtual displays, screen orientation, input, and system UI.",
-      "setupDisclaimer": "The developer is not responsible for any defects, data loss, or impact on device functionality caused by differences in device or OS implementation, system updates, conflicts with other apps, etc. Please understand the contents before use.",
+      "setupSystemDescription":
+          "Dextop uses Shizuku and ADB to control behavior such as virtual displays, screen orientation, input, and system UI.",
+      "setupDisclaimer":
+          "The developer is not responsible for any defects, data loss, or impact on device functionality caused by differences in device or OS implementation, system updates, conflicts with other apps, etc. Please understand the contents before use.",
       "setupShizukuTitle": "Prepare Shizuku",
-      "setupShizukuDescription": "Dextop uses Shizuku to securely access system functions.",
+      "setupShizukuDescription":
+          "Dextop uses Shizuku to securely access system functions.",
       "setupInstallShizuku": "Install Shizuku",
       "setupConfigureShizuku": "Set up Shizuku",
-      "setupShizukuHint": "Open Shizuku, follow the steps under \"Pairing\" in order, then start Shizuku.",
+      "setupShizukuHint":
+          "Open Shizuku, follow the steps under \"Pairing\" in order, then start Shizuku.",
       "setupOpenShizuku": "Open Shizuku",
       "setupValidate": "Finished setup? Verify now",
       "setupDextopPermission": "Dextop permission",
       "setupInstallPlay": "Install from Google Play",
       "setupAllowPermission": "Grant permission",
       "setupProviderChoiceTitle": "Choose a privilege service",
-      "setupProviderChoiceDescription": "Stellar and Shizuku are both installed. Choose which service Dextop should use.",
+      "setupProviderChoiceDescription":
+          "Stellar and Shizuku are both installed. Choose which service Dextop should use.",
       "setupUseStellar": "Stellar (recommended)",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "The service is running as root",
-      "setupRootVerified": "Shizuku was verified as running with root privileges. Grant Dextop permission next.",
-      "setupRootNotRunning": "Shizuku could not be verified as running with root privileges. Start it with root and try again.",
+      "setupRootVerified":
+          "Shizuku was verified as running with root privileges. Grant Dextop permission next.",
+      "setupRootNotRunning":
+          "Shizuku could not be verified as running with root privileges. Start it with root and try again.",
       "setupQuestionOpen": "Have you opened Shizuku?",
-      "setupQuestionPair": "Have you completed all the steps listed under \"Pairing\"?",
-      "setupQuestionStart": "Did you tap \"Start\" in Shizuku and confirm that it says \"Shizuku is running\"?",
+      "setupQuestionPair":
+          "Have you completed all the steps listed under \"Pairing\"?",
+      "setupQuestionStart":
+          "Did you tap \"Start\" in Shizuku and confirm that it says \"Shizuku is running\"?",
       "yes": "Yes",
       "no": "No",
       "setupVerified": "Shizuku setup verified",
-      "setupVerificationFailed": "Could not verify that Shizuku is configured and running. Complete the steps in Shizuku, then try again.",
+      "setupVerificationFailed":
+          "Could not verify that Shizuku is configured and running. Complete the steps in Shizuku, then try again.",
       "setupPermissionCheckFailed": "Could not check permissions for Shizuku",
       "setupDeviceTitle": "Configuration on this device",
       "model": "Model",
@@ -386,9 +407,11 @@ abstract final class AppStrings {
       "desktopUi": "Desktop UI",
       "detectedResolution": "Automatically detected resolution",
       "loadingLabel": "Loading…",
-      "setupDeviceDescription": "This information is used to set the initial resolution and device-specific desktop controls.",
+      "setupDeviceDescription":
+          "This information is used to set the initial resolution and device-specific desktop controls.",
       "setupGestureTitle": "Open the control panel with a gesture",
-      "setupGestureDescription": "Place three fingers on the three circles below at the same time.",
+      "setupGestureDescription":
+          "Place three fingers on the three circles below at the same time.",
       "uiTwoFingerTap": "Two-finger tap",
       "ui3FingerTap": "Three-finger tap",
       "ui4Divisions": "Four-way split",
@@ -399,8 +422,10 @@ abstract final class AppStrings {
       "uiCreateADextopSession": "Create a Dextop session",
       "uiDextopWorkspaceJson": "Dextop workspace JSON",
       "uiPerformanceDisplayOnDextop": "Show performance overlay in Dextop",
-      "uiDoNotSleepWhileRunningDextop": "Keep screen awake while Dextop is running",
-      "uiRealTimeDisplayOfFpsMemoryPower": "Show FPS, memory, power usage, and battery in real time",
+      "uiDoNotSleepWhileRunningDextop":
+          "Keep screen awake while Dextop is running",
+      "uiRealTimeDisplayOfFpsMemoryPower":
+          "Show FPS, memory, power usage, and battery in real time",
       "uiCouldNotLoadJson": "Could not load JSON",
       "uiSecureSettingsPermission": "Secure Settings permission",
       "uiAllowShizukuPermissions": "Allow Shizuku permissions",
@@ -413,7 +438,8 @@ abstract final class AppStrings {
       "uiAccessibilityServices": "Accessibility service",
       "uiAppNotFound": "App not found",
       "uiAppsAndWorkspace": "Apps and workspace",
-      "uiLaunchTheAppAndConfigureYourWorkspace": "Launch apps and configure workspaces",
+      "uiLaunchTheAppAndConfigureYourWorkspace":
+          "Launch apps and configure workspaces",
       "uiRestartTheApp": "Restart app",
       "uiSearchApp": "Search apps",
       "uiAppMemory": "App memory",
@@ -430,7 +456,8 @@ abstract final class AppStrings {
       "uiSecureDisplayFoldable": "Secure display, mirroring method, Foldable",
       "uiSecurity": "Security",
       "uiTap": "Tap",
-      "uiTapPressAndHoldMultiFingerOperation": "Tap, long press, and multi-finger controls",
+      "uiTapPressAndHoldMultiFingerOperation":
+          "Tap, long press, and multi-finger controls",
       "uiOpenAppOnDesktop": "Open app on desktop",
       "uiDesktopMode": "Desktop mode",
       "uiDesktopFeatures": "Desktop features",
@@ -439,7 +466,8 @@ abstract final class AppStrings {
       "uiBattery": "Battery",
       "uiPerformance": "Performance",
       "uiPerformanceCompatibility": "Performance and compatibility",
-      "uiItSupportsMultiTouchAndTheThree": "Enables multi-touch and changes the three-finger gesture to a swipe from the left edge.",
+      "uiItSupportsMultiTouchAndTheThree":
+          "Enables multi-touch and changes the three-finger gesture to a swipe from the left edge.",
       "uiMainLarge2Sub": "Large main + two secondary",
       "uiMainLeft": "Main (left)",
       "uiLayout": "Layout",
@@ -466,7 +494,8 @@ abstract final class AppStrings {
       "uiRestart": "Resume",
       "uiAvailableMemory": "Available memory",
       "uiDelete": "Delete",
-      "uiYouCanRestoreYourPreviousSession": "You can restore your previous session",
+      "uiYouCanRestoreYourPreviousSession":
+          "You can restore your previous session",
       "uiRight": "Right",
       "uiRight13": "Right 1/3",
       "uiRight23": "Right 2/3",
@@ -490,7 +519,8 @@ abstract final class AppStrings {
       "uiLowerLeft": "Bottom left",
       "uiLeftHalf": "Left half",
       "uiDividedIntoLeftAndRight": "Left/right split",
-      "uiSwipeRightWithThreeFingersFromThe": "Swipe right with three fingers from the left edge",
+      "uiSwipeRightWithThreeFingersFromThe":
+          "Swipe right with three fingers from the left edge",
       "uiRecoverySession": "Session recovery",
       "uiEstimatedPowerConsumption": "Estimated power consumption",
       "uiOperationOverlay": "Control overlay",
@@ -504,28 +534,35 @@ abstract final class AppStrings {
       "uiPhysicalKeyboard": "Physical keyboard",
       "uiPhysicalMouse": "Physical mouse",
       "uiConditionAndDiagnosis": "Status and diagnostics",
-      "uiPreventsTheScreenFromTurningOffAutomatically": "Prevents the screen from turning off automatically",
+      "uiPreventsTheScreenFromTurningOffAutomatically":
+          "Prevents the screen from turning off automatically",
       "uiDestruction": "Discard",
       "uiTerminalAndPermissions": "Device and permissions",
-      "uiDeviceInformationDesktopModeAccessibility": "Device information, desktop mode, accessibility",
+      "uiDeviceInformationDesktopModeAccessibility":
+          "Device information, desktop mode, accessibility",
       "uiTerminalResolution": "Device resolution",
       "uiEnd": "End",
-      "uiTerminationProcessingCompletedSuccessfully": "Session ended successfully.",
+      "uiTerminationProcessingCompletedSuccessfully":
+          "Session ended successfully.",
       "uiEdit": "Edit",
       "uiChangeToPortraitOrientation": "Switch to portrait",
       "uiVerticalHorizontalSwitching": "Portrait / landscape",
       "uiDisplayOptimization": "Display optimization",
       "uiDisplayRefreshRate": "Display refresh rate",
       "uiReproduction": "Duplicate",
-      "uiManageLaunchedAppsAndConfigurations": "Manage apps to launch and their layouts",
+      "uiManageLaunchedAppsAndConfigurations":
+          "Manage apps to launch and their layouts",
       "uiCouldNotStart": "Could not start",
       "uiLongPress": "Long press",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "Automatically uses measured resolution for open and closed states",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
+          "Automatically uses measured resolution for open and closed states",
       "uiStart": "Start",
-      "uiAutomaticSwitchingAccordingToOpenClosedState": "Automatic switching according to open/closed state",
+      "uiAutomaticSwitchingAccordingToOpenClosedState":
+          "Automatic switching according to open/closed state",
       "uiOpeningQuote": "“",
       "uiDeleteWorkspaceQuestionSuffix": "” — delete this workspace?",
-      "uiAbnormalSessionWarning": "The session ended in an invalid state.\nSome Android system functions may still be disabled.",
+      "uiAbnormalSessionWarning":
+          "The session ended in an invalid state.\nSome Android system functions may still be disabled.",
       "uiChecking": "Checking",
       "uiIdle": "Idle",
       "uiAvailable": "Available",
@@ -535,15 +572,18 @@ abstract final class AppStrings {
       "uiGitHub": "GitHub",
       "uiGitHubRepository": "NarYuki/Dextop",
       "diagnosticLog": "Operation log and device diagnostics",
-      "diagnosticLogDescription": "View app logs, capability detection, and detailed device specifications",
+      "diagnosticLogDescription":
+          "View app logs, capability detection, and detailed device specifications",
       "loadDiagnosticLog": "Load diagnostic report",
       "copyDiagnosticLog": "Copy",
       "shareDiagnosticLog": "Share",
       "clearDiagnosticLog": "Clear log",
       "deviceReport": "Device report",
       "uiCpuTemperature": "CPU temperature",
-      "deviceReportDescription": "Report device and feature compatibility by email",
-      "deviceReportIntro": "Device details are collected automatically. Select the result for each feature.",
+      "deviceReportDescription":
+          "Report device and feature compatibility by email",
+      "deviceReportIntro":
+          "Device details are collected automatically. Select the result for each feature.",
       "reportWorking": "Working",
       "reportNotWorking": "Not working",
       "reportUntested": "Not tested",
@@ -553,6 +593,8 @@ abstract final class AppStrings {
       "reportEmailUnavailable": "Could not open an email app",
       "reportTemplateTitle": "Dextop device report",
       "reportNoNotes": "None",
+      "reportNoSessionLog":
+          "No completed Dextop session has been recorded yet.",
       "reportFeatureStartup": "App startup and device detection",
       "reportFeatureSession": "Dextop session startup",
       "reportFeatureVirtualDisplay": "VirtualDisplay mirroring",
@@ -636,8 +678,10 @@ abstract final class AppStrings {
       "done": "完成",
       "incomplete": "未完成",
       "setupSystemTitle": "使用系统级功能",
-      "setupSystemDescription": "Dextop 使用 Shizuku 和 ADB 来控制虚拟显示、屏幕方向、输入和系统 UI 等行为。",
-      "setupDisclaimer": "对于因设备或操作系统实现差异、系统更新、与其他应用程序冲突等而导致的任何缺陷、数据丢失或对设备功能的影响，开发者不承担任何责任。请在使用前了解内容。",
+      "setupSystemDescription":
+          "Dextop 使用 Shizuku 和 ADB 来控制虚拟显示、屏幕方向、输入和系统 UI 等行为。",
+      "setupDisclaimer":
+          "对于因设备或操作系统实现差异、系统更新、与其他应用程序冲突等而导致的任何缺陷、数据丢失或对设备功能的影响，开发者不承担任何责任。请在使用前了解内容。",
       "setupShizukuTitle": "准备 Shizuku",
       "setupShizukuDescription": "Dextop 使用 Shizuku 安全地访问系统功能。",
       "setupInstallShizuku": "安装 Shizuku",
@@ -649,7 +693,8 @@ abstract final class AppStrings {
       "setupInstallPlay": "从 Google Play 安装",
       "setupAllowPermission": "授予权限",
       "setupProviderChoiceTitle": "选择特权服务",
-      "setupProviderChoiceDescription": "已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。",
+      "setupProviderChoiceDescription":
+          "已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。",
       "setupUseStellar": "Stellar（推荐）",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "服务正在以 root 运行",
@@ -836,6 +881,7 @@ abstract final class AppStrings {
       "reportEmailUnavailable": "无法打开邮件应用",
       "reportTemplateTitle": "Dextop 设备运行报告",
       "reportNoNotes": "无",
+      "reportNoSessionLog": "尚未记录已完成的Dextop会话日志。",
       "reportFeatureStartup": "应用启动与设备检测",
       "reportFeatureSession": "Dextop 会话启动",
       "reportFeatureVirtualDisplay": "VirtualDisplay 镜像",
@@ -919,32 +965,41 @@ abstract final class AppStrings {
       "done": "완료",
       "incomplete": "미완료",
       "setupSystemTitle": "시스템 기능을 이용",
-      "setupSystemDescription": "Dextop은 Shizuku와 ADB를 사용하여 가상 디스플레이, 화면 방향, 입력, 시스템 UI 등의 동작을 제어합니다.",
-      "setupDisclaimer": "단말기와 OS의 구현 차이, 시스템 업데이트, 다른 앱과의 충돌 등으로 인한 문제, 데이터 손실, 단말기 기능에 미치는 영향에 대해서는 개발자는 책임을 지지 않습니다. 내용을 이해한 후 사용하십시오.",
+      "setupSystemDescription":
+          "Dextop은 Shizuku와 ADB를 사용하여 가상 디스플레이, 화면 방향, 입력, 시스템 UI 등의 동작을 제어합니다.",
+      "setupDisclaimer":
+          "단말기와 OS의 구현 차이, 시스템 업데이트, 다른 앱과의 충돌 등으로 인한 문제, 데이터 손실, 단말기 기능에 미치는 영향에 대해서는 개발자는 책임을 지지 않습니다. 내용을 이해한 후 사용하십시오.",
       "setupShizukuTitle": "Shizuku 준비",
-      "setupShizukuDescription": "Dextop이 시스템 기능에 안전하게 액세스하기 위해 Shizuku를 사용합니다.",
+      "setupShizukuDescription":
+          "Dextop이 시스템 기능에 안전하게 액세스하기 위해 Shizuku를 사용합니다.",
       "setupInstallShizuku": "Shizuku 설치",
       "setupConfigureShizuku": "Shizuku 설정",
-      "setupShizukuHint": "Shizuku를 열고 \"페어링\"에 나타나는 순서에 따라 설정하고 Shizuku를 시작하십시오.",
+      "setupShizukuHint":
+          "Shizuku를 열고 \"페어링\"에 나타나는 순서에 따라 설정하고 Shizuku를 시작하십시오.",
       "setupOpenShizuku": "Shizuku 열기",
       "setupValidate": "설정이 완료되었습니까? 유효성 확인",
       "setupDextopPermission": "Dextop에 대한 권한",
       "setupInstallPlay": "Google Play에서 설치",
       "setupAllowPermission": "권한 부여",
       "setupProviderChoiceTitle": "권한 서비스 선택",
-      "setupProviderChoiceDescription": "Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요.",
+      "setupProviderChoiceDescription":
+          "Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요.",
       "setupUseStellar": "Stellar(권장)",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "서비스를 root로 실행 중입니다",
-      "setupRootVerified": "Shizuku가 root 권한으로 실행 중임을 확인했습니다. 다음으로 Dextop 권한을 부여하세요.",
-      "setupRootNotRunning": "Shizuku가 root 권한으로 실행 중인지 확인할 수 없습니다. root로 시작한 후 다시 시도하세요.",
+      "setupRootVerified":
+          "Shizuku가 root 권한으로 실행 중임을 확인했습니다. 다음으로 Dextop 권한을 부여하세요.",
+      "setupRootNotRunning":
+          "Shizuku가 root 권한으로 실행 중인지 확인할 수 없습니다. root로 시작한 후 다시 시도하세요.",
       "setupQuestionOpen": "Shizuku를 열었나요?",
       "setupQuestionPair": "'페어링'에 표시된 모든 단계를 완료했습니까?",
-      "setupQuestionStart": "Shizuku에서 \"시작\"을 누르고 \"Shizuku가 실행 중입니다.\"라고 표시됩니까?",
+      "setupQuestionStart":
+          "Shizuku에서 \"시작\"을 누르고 \"Shizuku가 실행 중입니다.\"라고 표시됩니까?",
       "yes": "예",
       "no": "아니오",
       "setupVerified": "Shizuku 설정을 확인했습니다",
-      "setupVerificationFailed": "Shizuku 설정 또는 시작을 확인할 수 없습니다. Shizuku의 절차를 완료한 후 다시 확인하십시오.",
+      "setupVerificationFailed":
+          "Shizuku 설정 또는 시작을 확인할 수 없습니다. Shizuku의 절차를 완료한 후 다시 확인하십시오.",
       "setupPermissionCheckFailed": "Shizuku의 권한을 확인할 수 없습니다.",
       "setupDeviceTitle": "이 단말기의 구성",
       "model": "기종",
@@ -1005,7 +1060,8 @@ abstract final class AppStrings {
       "uiBattery": "배터리",
       "uiPerformance": "공연",
       "uiPerformanceCompatibility": "성능 및 호환성",
-      "uiItSupportsMultiTouchAndTheThree": "멀티터치를 활성화하면 세 손가락 제스처가 화면 왼쪽 가장자리 스와이프로 변경됩니다.",
+      "uiItSupportsMultiTouchAndTheThree":
+          "멀티터치를 활성화하면 세 손가락 제스처가 화면 왼쪽 가장자리 스와이프로 변경됩니다.",
       "uiMainLarge2Sub": "큰 메인 창 + 보조 창 2개",
       "uiMainLeft": "메인(왼쪽)",
       "uiLayout": "레이아웃",
@@ -1086,12 +1142,14 @@ abstract final class AppStrings {
       "uiManageLaunchedAppsAndConfigurations": "시작할 앱 및 구성 관리",
       "uiCouldNotStart": "시작할 수 없습니다.",
       "uiLongPress": "길게 누르기",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "열린 상태와 닫힌 상태의 실측 해상도 자동 사용",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
+          "열린 상태와 닫힌 상태의 실측 해상도 자동 사용",
       "uiStart": "시작",
       "uiAutomaticSwitchingAccordingToOpenClosedState": "개폐 상태에 따라 자동 전환",
       "uiOpeningQuote": "“",
       "uiDeleteWorkspaceQuestionSuffix": "” 작업 공간을 삭제하시겠습니까?",
-      "uiAbnormalSessionWarning": "세션이 비정상 상태로 종료되었습니다.\n일부 Android 시스템 기능이 여전히 비활성화되어 있을 수 있습니다.",
+      "uiAbnormalSessionWarning":
+          "세션이 비정상 상태로 종료되었습니다.\n일부 Android 시스템 기능이 여전히 비활성화되어 있을 수 있습니다.",
       "uiChecking": "확인 중",
       "uiIdle": "대기 중",
       "uiAvailable": "Available",
@@ -1119,6 +1177,7 @@ abstract final class AppStrings {
       "reportEmailUnavailable": "이메일 앱을 열 수 없습니다",
       "reportTemplateTitle": "Dextop 기기 작동 보고",
       "reportNoNotes": "없음",
+      "reportNoSessionLog": "완료된 Dextop 세션 로그가 아직 없습니다.",
       "reportFeatureStartup": "앱 시작 및 기기 감지",
       "reportFeatureSession": "Dextop 세션 시작",
       "reportFeatureVirtualDisplay": "VirtualDisplay 미러링",
@@ -1153,7 +1212,8 @@ abstract final class AppStrings {
       "secureDisplayDescription": "Разрешить показ защищённого содержимого",
       "mirrorBackend": "Способ зеркалирования дисплея",
       "mirrorBackendAuto": "Автоматически (совместимость)",
-      "mirrorBackendAutoDescription": "Использовать лучший доступный способ для устройства",
+      "mirrorBackendAutoDescription":
+          "Использовать лучший доступный способ для устройства",
       "mirrorBackendWindowManager": "WindowManager",
       "mirrorBackendSurfaceControl": "SurfaceControl",
       "mirrorBackendVirtualDisplay": "VirtualDisplay",
@@ -1202,42 +1262,55 @@ abstract final class AppStrings {
       "done": "Готово",
       "incomplete": "Не завершено",
       "setupSystemTitle": "Использование системных функций",
-      "setupSystemDescription": "Dextop использует Shizuku и ADB для управления таким поведением, как виртуальные дисплеи, ориентация экрана, ввод и системный пользовательский интерфейс.",
-      "setupDisclaimer": "Разработчик не несет ответственности за любые дефекты, потерю данных или влияние на функциональность устройства, вызванное различиями в реализации устройства или ОС, обновлениями системы, конфликтами с другими приложениями и т. д. Перед использованием ознакомьтесь с содержанием.",
+      "setupSystemDescription":
+          "Dextop использует Shizuku и ADB для управления таким поведением, как виртуальные дисплеи, ориентация экрана, ввод и системный пользовательский интерфейс.",
+      "setupDisclaimer":
+          "Разработчик не несет ответственности за любые дефекты, потерю данных или влияние на функциональность устройства, вызванное различиями в реализации устройства или ОС, обновлениями системы, конфликтами с другими приложениями и т. д. Перед использованием ознакомьтесь с содержанием.",
       "setupShizukuTitle": "Подготовка Shizuku",
-      "setupShizukuDescription": "Dextop использует Shizuku для безопасного доступа к функциям системы.",
+      "setupShizukuDescription":
+          "Dextop использует Shizuku для безопасного доступа к функциям системы.",
       "setupInstallShizuku": "Установить Shizuku",
       "setupConfigureShizuku": "Настроить Shizuku",
-      "setupShizukuHint": "Откройте Shizuku, установите его в порядке, указанном в разделе «Сопряжение», и запустите Shizuku.",
+      "setupShizukuHint":
+          "Откройте Shizuku, установите его в порядке, указанном в разделе «Сопряжение», и запустите Shizuku.",
       "setupOpenShizuku": "Открыть Shizuku",
       "setupValidate": "Настройка завершена? Проверить",
       "setupDextopPermission": "Разрешения для Dextop",
       "setupInstallPlay": "Установить из Google Play",
       "setupAllowPermission": "Предоставить разрешение",
       "setupProviderChoiceTitle": "Выберите привилегированную службу",
-      "setupProviderChoiceDescription": "Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop.",
+      "setupProviderChoiceDescription":
+          "Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop.",
       "setupUseStellar": "Stellar (рекомендуется)",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "Служба запущена с правами root",
-      "setupRootVerified": "Подтверждено, что Shizuku работает с правами root. Теперь предоставьте разрешение Dextop.",
-      "setupRootNotRunning": "Не удалось подтвердить, что Shizuku работает с правами root. Запустите его с правами root и повторите попытку.",
+      "setupRootVerified":
+          "Подтверждено, что Shizuku работает с правами root. Теперь предоставьте разрешение Dextop.",
+      "setupRootNotRunning":
+          "Не удалось подтвердить, что Shizuku работает с правами root. Запустите его с правами root и повторите попытку.",
       "setupQuestionOpen": "Вы открыли Shizuku?",
-      "setupQuestionPair": "Вы выполнили все шаги, перечисленные в разделе «Сопряжение»?",
-      "setupQuestionStart": "Вы нажали «Запустить» в Shizuku и убедились, что отображается сообщение «Shizuku работает»?",
+      "setupQuestionPair":
+          "Вы выполнили все шаги, перечисленные в разделе «Сопряжение»?",
+      "setupQuestionStart":
+          "Вы нажали «Запустить» в Shizuku и убедились, что отображается сообщение «Shizuku работает»?",
       "yes": "Да",
       "no": "Нет",
       "setupVerified": "Настройка Shizuku проверена",
-      "setupVerificationFailed": "Невозможно подтвердить конфигурацию или запуск Shizuku. Пожалуйста, выполните действия в Shizuku, а затем проверьте еще раз.",
-      "setupPermissionCheckFailed": "Не удалось проверить разрешения для Shizuku.",
+      "setupVerificationFailed":
+          "Невозможно подтвердить конфигурацию или запуск Shizuku. Пожалуйста, выполните действия в Shizuku, а затем проверьте еще раз.",
+      "setupPermissionCheckFailed":
+          "Не удалось проверить разрешения для Shizuku.",
       "setupDeviceTitle": "Конфигурация на этом устройстве",
       "model": "Модель",
       "vendor": "Производитель",
       "desktopUi": "Интерфейс рабочего стола",
       "detectedResolution": "Автоматически определённое разрешение",
       "loadingLabel": "Загрузка…",
-      "setupDeviceDescription": "Эта информация используется для установки исходного разрешения и элементов управления рабочим столом для конкретного устройства.",
+      "setupDeviceDescription":
+          "Эта информация используется для установки исходного разрешения и элементов управления рабочим столом для конкретного устройства.",
       "setupGestureTitle": "Вызов панели управления жестами",
-      "setupGestureDescription": "Поместите три пальца одновременно на три круга внизу.",
+      "setupGestureDescription":
+          "Поместите три пальца одновременно на три круга внизу.",
       "uiTwoFingerTap": "Касание двумя пальцами",
       "ui3FingerTap": "Касание тремя пальцами",
       "ui4Divisions": "Разделение на четыре области",
@@ -1247,9 +1320,12 @@ abstract final class AppStrings {
       "uiOpenDextop": "Открыть Dextop",
       "uiCreateADextopSession": "Создать сеанс Dextop",
       "uiDextopWorkspaceJson": "Рабочая область Dextop в формате JSON",
-      "uiPerformanceDisplayOnDextop": "Показывать панель производительности в Dextop",
-      "uiDoNotSleepWhileRunningDextop": "Не выключать экран во время работы Dextop",
-      "uiRealTimeDisplayOfFpsMemoryPower": "Отображение в реальном времени FPS, памяти, энергопотребления и заряда батареи.",
+      "uiPerformanceDisplayOnDextop":
+          "Показывать панель производительности в Dextop",
+      "uiDoNotSleepWhileRunningDextop":
+          "Не выключать экран во время работы Dextop",
+      "uiRealTimeDisplayOfFpsMemoryPower":
+          "Отображение в реальном времени FPS, памяти, энергопотребления и заряда батареи.",
       "uiCouldNotLoadJson": "Не удалось загрузить JSON",
       "uiSecureSettingsPermission": "Разрешение на настройки безопасности",
       "uiAllowShizukuPermissions": "Предоставить разрешение Shizuku",
@@ -1262,7 +1338,8 @@ abstract final class AppStrings {
       "uiAccessibilityServices": "Служба специальных возможностей",
       "uiAppNotFound": "Приложение не найдено",
       "uiAppsAndWorkspace": "Приложения и рабочее пространство",
-      "uiLaunchTheAppAndConfigureYourWorkspace": "Запуск приложений и настройка рабочих областей",
+      "uiLaunchTheAppAndConfigureYourWorkspace":
+          "Запуск приложений и настройка рабочих областей",
       "uiRestartTheApp": "Перезапустить приложение",
       "uiSearchApp": "Поиск приложений",
       "uiAppMemory": "Память приложения",
@@ -1276,10 +1353,12 @@ abstract final class AppStrings {
       "uiQuickSettingsTile": "Плитка быстрых настроек",
       "uiGesture": "Жест",
       "uiSecondaryIme": "Вторичный IME",
-      "uiSecureDisplayFoldable": "Защищённый экран, способ зеркалирования, складные устройства",
+      "uiSecureDisplayFoldable":
+          "Защищённый экран, способ зеркалирования, складные устройства",
       "uiSecurity": "Безопасность",
       "uiTap": "Касание",
-      "uiTapPressAndHoldMultiFingerOperation": "Касание, долгое нажатие и управление несколькими пальцами",
+      "uiTapPressAndHoldMultiFingerOperation":
+          "Касание, долгое нажатие и управление несколькими пальцами",
       "uiOpenAppOnDesktop": "Открыть приложение на рабочем столе",
       "uiDesktopMode": "Режим рабочего стола",
       "uiDesktopFeatures": "Функции рабочего стола",
@@ -1288,12 +1367,14 @@ abstract final class AppStrings {
       "uiBattery": "Батарея",
       "uiPerformance": "Производительность",
       "uiPerformanceCompatibility": "Производительность и совместимость",
-      "uiItSupportsMultiTouchAndTheThree": "Включает мультитач и заменяет жест тремя пальцами на свайп от левого края экрана.",
+      "uiItSupportsMultiTouchAndTheThree":
+          "Включает мультитач и заменяет жест тремя пальцами на свайп от левого края экрана.",
       "uiMainLarge2Sub": "Большое основное окно + два дополнительных",
       "uiMainLeft": "Главный (слева)",
       "uiLayout": "Расположение",
       "uiWorkSpace": "Рабочая область",
-      "uiCopiedWorkspaceJsonToClipboard": "JSON рабочей области скопирован в буфер обмена.",
+      "uiCopiedWorkspaceJsonToClipboard":
+          "JSON рабочей области скопирован в буфер обмена.",
       "uiImportWorkspace": "Импорт рабочей области",
       "uiSaveWorkspace": "Сохранить рабочее пространство",
       "uiDeleteWorkspace": "Удалить рабочую область",
@@ -1306,7 +1387,8 @@ abstract final class AppStrings {
       "uiCenter": "По центру",
       "uiCompatibilityDiagnosis": "Диагностика совместимости",
       "uiVirtualDisplayCreation": "Создание виртуального дисплея",
-      "uiOpenASavedAppConfiguration": "Откройте сохраненную конфигурацию приложения",
+      "uiOpenASavedAppConfiguration":
+          "Откройте сохраненную конфигурацию приложения",
       "uiNoSavedWorkspaces": "Нет сохраненных рабочих пространств",
       "uiInputAndGestures": "Ввод и жесты",
       "uiInputMode": "Режим ввода",
@@ -1315,7 +1397,8 @@ abstract final class AppStrings {
       "uiRestart": "Возобновить",
       "uiAvailableMemory": "Доступная память",
       "uiDelete": "Удалить",
-      "uiYouCanRestoreYourPreviousSession": "Вы можете восстановить предыдущий сеанс",
+      "uiYouCanRestoreYourPreviousSession":
+          "Вы можете восстановить предыдущий сеанс",
       "uiRight": "Справа",
       "uiRight13": "Правая 1/3",
       "uiRight23": "Справа 2/3",
@@ -1335,11 +1418,13 @@ abstract final class AppStrings {
       "uiLeft23Right13": "Слева 2/3 + справа 1/3",
       "uiLeftCenterRight": "Слева / по центру / справа",
       "uiUpperLeft": "Слева сверху",
-      "uiUpperLeftUpperRightLowerHalf": "Верхний левый, верхний правый, нижняя половина",
+      "uiUpperLeftUpperRightLowerHalf":
+          "Верхний левый, верхний правый, нижняя половина",
       "uiLowerLeft": "Слева снизу",
       "uiLeftHalf": "Левая половина",
       "uiDividedIntoLeftAndRight": "Разделение слева и справа",
-      "uiSwipeRightWithThreeFingersFromThe": "Проведите тремя пальцами вправо от левого края",
+      "uiSwipeRightWithThreeFingersFromThe":
+          "Проведите тремя пальцами вправо от левого края",
       "uiRecoverySession": "Восстановление сеанса",
       "uiEstimatedPowerConsumption": "Расчетное энергопотребление",
       "uiOperationOverlay": "Панель управления",
@@ -1353,10 +1438,12 @@ abstract final class AppStrings {
       "uiPhysicalKeyboard": "Физическая клавиатура",
       "uiPhysicalMouse": "Физическая мышь",
       "uiConditionAndDiagnosis": "Состояние и диагностика",
-      "uiPreventsTheScreenFromTurningOffAutomatically": "Предотвращает автоматическое выключение экрана",
+      "uiPreventsTheScreenFromTurningOffAutomatically":
+          "Предотвращает автоматическое выключение экрана",
       "uiDestruction": "Удалить",
       "uiTerminalAndPermissions": "Устройство и разрешения",
-      "uiDeviceInformationDesktopModeAccessibility": "Информация об устройстве, режим рабочего стола, специальные возможности",
+      "uiDeviceInformationDesktopModeAccessibility":
+          "Информация об устройстве, режим рабочего стола, специальные возможности",
       "uiTerminalResolution": "Разрешение устройства",
       "uiEnd": "Завершить",
       "uiTerminationProcessingCompletedSuccessfully": "Сеанс успешно завершён.",
@@ -1366,15 +1453,20 @@ abstract final class AppStrings {
       "uiDisplayOptimization": "Оптимизация дисплея",
       "uiDisplayRefreshRate": "Частота обновления дисплея",
       "uiReproduction": "Создать копию",
-      "uiManageLaunchedAppsAndConfigurations": "Управление запускаемыми приложениями и их расположением",
+      "uiManageLaunchedAppsAndConfigurations":
+          "Управление запускаемыми приложениями и их расположением",
       "uiCouldNotStart": "Не удалось запустить",
       "uiLongPress": "Долгое нажатие",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "Автоматически использует измеренное разрешение для открытых и закрытых состояний.",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
+          "Автоматически использует измеренное разрешение для открытых и закрытых состояний.",
       "uiStart": "Начать",
-      "uiAutomaticSwitchingAccordingToOpenClosedState": "Автоматическое переключение в зависимости от открытого/закрытого состояния.",
+      "uiAutomaticSwitchingAccordingToOpenClosedState":
+          "Автоматическое переключение в зависимости от открытого/закрытого состояния.",
       "uiOpeningQuote": "«",
-      "uiDeleteWorkspaceQuestionSuffix": "» — удалить это рабочее пространство?",
-      "uiAbnormalSessionWarning": "Сеанс завершился в некорректном состоянии.\nНекоторые системные функции Android могут оставаться отключёнными.",
+      "uiDeleteWorkspaceQuestionSuffix":
+          "» — удалить это рабочее пространство?",
+      "uiAbnormalSessionWarning":
+          "Сеанс завершился в некорректном состоянии.\nНекоторые системные функции Android могут оставаться отключёнными.",
       "uiChecking": "Проверка",
       "uiIdle": "Ожидание",
       "uiAvailable": "Available",
@@ -1384,15 +1476,18 @@ abstract final class AppStrings {
       "uiGitHub": "GitHub",
       "uiGitHubRepository": "NarYuki/Dextop",
       "diagnosticLog": "Журнал работы и диагностика устройства",
-      "diagnosticLogDescription": "Журналы приложения, проверка возможностей и характеристики устройства",
+      "diagnosticLogDescription":
+          "Журналы приложения, проверка возможностей и характеристики устройства",
       "loadDiagnosticLog": "Загрузить отчёт диагностики",
       "copyDiagnosticLog": "Копировать",
       "shareDiagnosticLog": "Поделиться",
       "clearDiagnosticLog": "Очистить журнал",
       "deviceReport": "Отчёт о работе устройства",
       "uiCpuTemperature": "Температура ЦП",
-      "deviceReportDescription": "Отправить совместимость устройства и функций по электронной почте",
-      "deviceReportIntro": "Данные устройства собираются автоматически. Выберите результат для каждой функции.",
+      "deviceReportDescription":
+          "Отправить совместимость устройства и функций по электронной почте",
+      "deviceReportIntro":
+          "Данные устройства собираются автоматически. Выберите результат для каждой функции.",
       "reportWorking": "Работает",
       "reportNotWorking": "Не работает",
       "reportUntested": "Не проверено",
@@ -1402,6 +1497,8 @@ abstract final class AppStrings {
       "reportEmailUnavailable": "Не удалось открыть почтовое приложение",
       "reportTemplateTitle": "Отчёт о работе Dextop",
       "reportNoNotes": "Нет",
+      "reportNoSessionLog":
+          "Журнал завершённого сеанса Dextop пока отсутствует.",
       "reportFeatureStartup": "Запуск приложения и обнаружение устройства",
       "reportFeatureSession": "Запуск сеанса Dextop",
       "reportFeatureVirtualDisplay": "Зеркалирование VirtualDisplay",

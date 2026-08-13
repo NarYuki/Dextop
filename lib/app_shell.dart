@@ -191,17 +191,11 @@ class NativeBridge {
   static const channel = MethodChannel('app.freedextop/display');
 
   Future<Map<String, dynamic>> status() async {
-    final value =
-        await channel.invokeMapMethod<String, dynamic>('status') ?? {};
-    debugPrint('Dextop status: $value');
-    return value;
+    return await channel.invokeMapMethod<String, dynamic>('status') ?? {};
   }
 
   Future<bool> requestShizuku() async {
-    debugPrint('Dextop requestShizuku');
-    final granted = await channel.invokeMethod<bool>('requestShizuku') ?? false;
-    debugPrint('Dextop requestShizuku result: $granted');
-    return granted;
+    return await channel.invokeMethod<bool>('requestShizuku') ?? false;
   }
 
   Future<void> openShizuku() => channel.invokeMethod('openShizuku');
@@ -243,9 +237,7 @@ class NativeBridge {
   Future<void> restartApp() => channel.invokeMethod('restartApp');
   Future<void> clearRecovery() => channel.invokeMethod('clearRecovery');
   Future<void> stop() async {
-    debugPrint('Dextop stop');
     await channel.invokeMethod('stop');
-    debugPrint('Dextop stop complete');
   }
 
   Future<void> start(
@@ -259,9 +251,6 @@ class NativeBridge {
       'secure_display': secure,
       'resolution': '${profile.width}x${profile.height}',
     });
-    debugPrint(
-      'Dextop start: ${profile.width}x${profile.height}/${profile.density} portrait=$portrait secure=$secure',
-    );
     return channel.invokeMethod('start', {
       'width': portrait ? profile.height : profile.width,
       'height': portrait ? profile.width : profile.height,

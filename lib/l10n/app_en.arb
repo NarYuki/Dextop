@@ -261,6 +261,7 @@
   "reportEmailUnavailable": "Could not open an email app",
   "reportTemplateTitle": "Dextop device report",
   "reportNoNotes": "None",
+  "reportNoSessionLog": "No completed Dextop session has been recorded yet.",
   "reportFeatureStartup": "App startup and device detection",
   "reportFeatureSession": "Dextop session startup",
   "reportFeatureVirtualDisplay": "VirtualDisplay mirroring",

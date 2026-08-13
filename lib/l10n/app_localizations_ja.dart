@@ -805,6 +805,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get reportNoNotes => 'なし';
 
   @override
+  String get reportNoSessionLog => '完了したDextopセッションのログはまだありません。';
+
+  @override
   String get reportFeatureStartup => 'アプリ起動と端末検出';
 
   @override
