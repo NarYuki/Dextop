@@ -11,6 +11,7 @@ import android.os.ParcelFileDescriptor
 import android.os.Handler
 import android.os.Looper
 import android.os.Build
+import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import io.flutter.embedding.android.FlutterActivity
@@ -24,6 +25,10 @@ import rikka.shizuku.Shizuku
 
 class MainActivity : FlutterActivity() {
     companion object {
+        private const val STELLAR_PACKAGE = "roro.stellar.manager"
+        private const val STELLAR_REQUEST_BINDER_ACTION = "roro.stellar.intent.action.REQUEST_BINDER"
+        private const val STELLAR_BINDER_REQUEST_INTERVAL_MS = 1_000L
+
         private var instance: MainActivity? = null
         private var orientationBeforeSession = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         private var physicalOrientationBeforeSession = android.content.res.Configuration.ORIENTATION_UNDEFINED
@@ -68,6 +73,7 @@ class MainActivity : FlutterActivity() {
     private var pendingPermissionResult: MethodChannel.Result? = null
     private var pendingStartResult: MethodChannel.Result? = null
     private var shizukuBinderAvailable = false
+    private var lastStellarBinderRequestAt = 0L
     private val permissionHandler = Handler(Looper.getMainLooper())
     private val permissionTimeout = Runnable {
         pendingPermissionResult?.error("permission_timeout", NativeStrings.text("nativeShizukuPermissionCheckTimedOut"), null)
@@ -85,11 +91,15 @@ class MainActivity : FlutterActivity() {
     }
     private var flutterChannel: MethodChannel? = null
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        shizukuBinderAvailable = true
+        lastStellarBinderRequestAt = 0L
+        refreshBinderAvailability()
+        Log.i(logTag, "privilege binder received alive=$shizukuBinderAvailable")
         flutterChannel?.invokeMethod("shizukuStatusChanged", null)
     }
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        shizukuBinderAvailable = false
+        val provider = selectedPrivilegeProvider(isStellarInstalled(), isShizukuInstalled())
+        refreshBinderAvailability(provider, requestIfMissing = true)
+        Log.w(logTag, "privilege binder death reported alive=$shizukuBinderAvailable provider=$provider")
         flutterChannel?.invokeMethod("shizukuStatusChanged", null)
     }
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
@@ -276,14 +286,8 @@ class MainActivity : FlutterActivity() {
 
     private fun status(): Map<String, Any> {
         val packageInfo = packageManager.getPackageInfo(packageName, 0)
-        val shizukuInstalled = runCatching {
-            packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
-        }.isSuccess || runCatching {
-            packageManager.getPackageInfo("moe.shizuku.manager", 0)
-        }.isSuccess
-        val stellarInstalled = runCatching {
-            packageManager.getPackageInfo("roro.stellar.manager", 0)
-        }.isSuccess
+        val shizukuInstalled = isShizukuInstalled()
+        val stellarInstalled = isStellarInstalled()
         val savedProvider = getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
             .getString("selected", null)
         val provider = selectedPrivilegeProvider(stellarInstalled, shizukuInstalled)
@@ -295,10 +299,14 @@ class MainActivity : FlutterActivity() {
             runCatching {
                 Settings.Global.getInt(contentResolver, "adb_wifi_enabled", 0) == 1
             }.getOrDefault(false)
-        // Do not probe Shizuku here. This method is called frequently while the
-        // setup UI is visible; binder availability is driven by Shizuku's own
-        // received/dead callbacks instead.
-        val binderAlive = installed && shizukuBinderAvailable
+        // Listener callbacks can be stale when Shizuku and Stellar have both
+        // supplied a binder in the same app process. Always verify the binder
+        // itself, and ask Stellar to resend it when the selected provider is
+        // still installed but the shared Shizuku API state has lost the binder.
+        val binderAlive = installed && refreshBinderAvailability(
+            provider,
+            requestIfMissing = true
+        )
         // The guided setup uses wireless debugging. A live/stale binder alone is
         // not enough to mark that setup as completed.
         // The service may be started through wireless debugging, wired ADB, or
@@ -410,10 +418,47 @@ class MainActivity : FlutterActivity() {
         return selected
     }
 
+    private fun isStellarInstalled(): Boolean = runCatching {
+        packageManager.getPackageInfo(STELLAR_PACKAGE, 0)
+    }.isSuccess
+
+    private fun isShizukuInstalled(): Boolean = runCatching {
+        packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
+    }.isSuccess || runCatching {
+        packageManager.getPackageInfo("moe.shizuku.manager", 0)
+    }.isSuccess
+
+    private fun refreshBinderAvailability(
+        provider: String? = null,
+        requestIfMissing: Boolean = false
+    ): Boolean {
+        val alive = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        shizukuBinderAvailable = alive
+        if (!alive && requestIfMissing && provider == "stellar") {
+            requestStellarBinder()
+        }
+        return alive
+    }
+
+    private fun requestStellarBinder() {
+        if (!isStellarInstalled()) return
+        val now = SystemClock.elapsedRealtime()
+        if (lastStellarBinderRequestAt != 0L &&
+            now - lastStellarBinderRequestAt < STELLAR_BINDER_REQUEST_INTERVAL_MS
+        ) return
+        lastStellarBinderRequestAt = now
+        runCatching {
+            sendBroadcast(Intent(STELLAR_REQUEST_BINDER_ACTION).setPackage(STELLAR_PACKAGE))
+        }.onSuccess {
+            Log.i(logTag, "requested binder resend from Stellar")
+        }.onFailure { error ->
+            Log.w(logTag, "failed to request binder resend from Stellar", error)
+        }
+    }
+
     private fun selectPrivilegeProvider(provider: String?, result: MethodChannel.Result) {
-        val stellarInstalled = runCatching { packageManager.getPackageInfo("roro.stellar.manager", 0) }.isSuccess
-        val shizukuInstalled = runCatching { packageManager.getPackageInfo("moe.shizuku.privileged.api", 0) }.isSuccess ||
-            runCatching { packageManager.getPackageInfo("moe.shizuku.manager", 0) }.isSuccess
+        val stellarInstalled = isStellarInstalled()
+        val shizukuInstalled = isShizukuInstalled()
         if (provider !in setOf("stellar", "shizuku") ||
             (provider == "stellar" && !stellarInstalled) ||
             (provider == "shizuku" && !shizukuInstalled)) {
@@ -438,9 +483,8 @@ class MainActivity : FlutterActivity() {
             result.error("profile", NativeStrings.text("nativeDisplayProfileIsOutOfRange"), null)
             return
         }
-        val binderReady = shizukuBinderAvailable && runCatching {
-            Shizuku.getBinder()?.isBinderAlive == true
-        }.getOrDefault(false)
+        val provider = selectedPrivilegeProvider(isStellarInstalled(), isShizukuInstalled())
+        val binderReady = refreshBinderAvailability(provider, requestIfMissing = true)
         val permissionGranted = binderReady && runCatching {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         }.getOrDefault(false)
