@@ -51,6 +51,36 @@ Dextop is an open-source Android app that creates a virtual display and provides
 
 Dextop probes device capabilities at runtime and tries compatible backends in order. It still depends on Android hidden APIs and OEM behavior, so results can differ between models and OS versions from the same manufacturer.
 
+<details>
+<summary><strong>Supported devices</strong></summary>
+
+The status below applies only to the firmware versions that were actually tested. Open a vendor to see its devices. For build details and feature-by-feature results, see the [Device compatibility wiki](https://github.com/NarYuki/Dextop/wiki/Device-Compatibility).
+
+<details>
+<summary><strong>Samsung</strong></summary>
+
+| Device | Model | Tested software | Status |
+| --- | --- | --- | --- |
+| Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ Confirmed working |
+
+</details>
+
+<details>
+<summary><strong>Google</strong></summary>
+
+No model and firmware combination has been confirmed yet. Pixel support remains limited and incomplete.
+
+</details>
+
+<details>
+<summary><strong>Other vendors</strong></summary>
+
+No model and firmware combination has been confirmed yet.
+
+</details>
+
+</details>
+
 ## System requirements
 
 - Android 10 or later

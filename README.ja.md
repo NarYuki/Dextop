@@ -51,6 +51,36 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 
 Dextopは実行時に端末の能力を検査し、複数のバックエンドを順番に試します。ただし、Androidの非公開APIやOEM実装を利用するため、同じメーカーでも機種やOSバージョンによって結果が異なります。
 
+<details>
+<summary><strong>対応デバイス一覧</strong></summary>
+
+以下は実際に検証したファームウェアだけを対象とした対応状況です。ベンダー名をクリックすると端末一覧を展開できます。ビルド情報や機能別の検証結果は[デバイス対応状況Wiki](https://github.com/NarYuki/Dextop/wiki/Device-Compatibility)に記載しています。
+
+<details>
+<summary><strong>Samsung</strong></summary>
+
+| デバイス | モデル | 検証済みソフトウェア | 対応状況 |
+| --- | --- | --- | --- |
+| Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ 動作確認済み |
+
+</details>
+
+<details>
+<summary><strong>Google</strong></summary>
+
+現時点で動作確認済みのモデルとファームウェアの組み合わせはありません。Pixelへの対応は限定的かつ不完全です。
+
+</details>
+
+<details>
+<summary><strong>その他のベンダー</strong></summary>
+
+現時点で動作確認済みのモデルとファームウェアの組み合わせはありません。
+
+</details>
+
+</details>
+
 ## 動作要件
 
 - Android 10以降

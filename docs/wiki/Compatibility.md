@@ -1,17 +1,53 @@
-# Compatibility
+# Device Compatibility
 
-## Samsung DeX
+Compatibility is recorded per model **and firmware build**. A successful result on one device does not imply support for every model from the same vendor or for future OS updates.
 
-Mostly supported and currently the most complete environment. Dextop treats DeX as platform-managed and avoids applying generic freeform settings that could conflict with Samsung's desktop implementation.
+Status definitions:
 
-## Google Pixel
+| Status | Meaning |
+| --- | --- |
+| ✅ Confirmed working | Dextop was launched and used successfully on the listed build. |
+| 🟡 Partial | Dextop starts, but one or more important functions are unavailable or unstable. |
+| 🧪 Experimental | A device profile or generic backend exists, but the exact model/build has not been verified. |
+| ❌ Not working | The listed build has a known blocking issue. |
 
-Limited and incomplete. Behavior depends on the Android release, freeform/desktop implementation, and hidden API availability.
+## Samsung
 
-## Other devices
+Samsung DeX is mostly supported and is currently the most complete environment. Dextop avoids generic freeform changes that could conflict with Samsung's platform-managed desktop implementation.
 
-Experimental. Dextop has profiles for major OEM families, but a vendor profile does not guarantee that every model or firmware implements the required services.
+### Galaxy S26
 
-At runtime Dextop probes APIs and tries ordered mirror and windowing strategies. A model-specific workaround must be isolated by manufacturer, model, codename, fingerprint prefix, and SDK range.
+| Item | Tested value |
+| --- | --- |
+| Marketing name | Samsung Galaxy S26 |
+| Model | `SM-S942Z` |
+| Device codename | `m1q` |
+| Android | Android 16 (API 36) |
+| One UI | One UI 8.5 (`80500`) |
+| Firmware / incremental build | `S942ZSCS1AZF2` |
+| Build ID | `BP4A.251205.006.S942ZSCS1AZF2` |
+| Build fingerprint | `samsung/m1qsbmx/m1q:16/BP4A.251205.006/S942ZSCS1AZF2_QBM1AZF2:user/release-keys` |
+| Last verified | 2026-08-13 |
+| Overall status | ✅ Confirmed working |
 
-See [Adding device support](https://github.com/NarYuki/Dextop/blob/main/docs/ADDING_DEVICE_SUPPORT.en.md) for implementation and validation requirements.
+#### Verification results
+
+| Area | Result | Notes |
+| --- | --- | --- |
+| App startup and device detection | ✅ Confirmed | The connected device is detected as Samsung `SM-S942Z` / `m1q`. |
+| Dextop session startup | ✅ Confirmed | Dextop is confirmed to operate on the firmware listed above. |
+| Individual optional features | Not separately recorded | Add separate results when each feature is retested on this build. |
+
+## Google
+
+Pixel support is limited and incomplete. Behavior depends on the Android release, freeform/desktop implementation, and hidden API availability. No exact Pixel model and firmware combination has been confirmed yet.
+
+## Other vendors
+
+Support is experimental. A vendor profile does not guarantee that every model or firmware provides the required system services. No additional model and firmware combination has been confirmed yet.
+
+## Reporting another device
+
+Attach the report from **Settings → App information → Operation log and device diagnostics** to a [device support issue](https://github.com/NarYuki/Dextop/issues/new?template=device_support.yml). Include the model, codename, Android version, vendor UI version, firmware build, and a feature-by-feature result.
+
+Model-specific changes must be isolated by manufacturer, model, codename, fingerprint prefix, and SDK range. See [Adding device support](https://github.com/NarYuki/Dextop/blob/main/docs/ADDING_DEVICE_SUPPORT.en.md) before opening a pull request.
