@@ -8,12 +8,14 @@ These entries are generated from manually reviewed device reports. Compatibility
 <details>
 <summary><strong>Pixel 9a</strong> / tegu / 15641320 — 🟡 Partial</summary>
 
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
+
 ## Device and software
 
 | Item | Reported value |
 | --- | --- |
 | Manufacturer | Google |
-| Brand | google |
+| Brand | Google |
 | Marketing name | Not available |
 | Model | `Pixel 9a` |
 | Device codename | `tegu` |
@@ -54,8 +56,6 @@ These entries are generated from manually reviewed device reports. Compatibility
 | Performance overlay | ⬜ Not tested |
 | Session shutdown and Android state restoration | ✅ Working |
 
-[Open this report as a standalone page](Reported-Device-google-pixel-9a-15641320)
-
 </details>
 
 </details>
@@ -65,6 +65,8 @@ These entries are generated from manually reviewed device reports. Compatibility
 
 <details>
 <summary><strong>HONOR Magic 8 Pro — BKQ-AN10</strong> / HNBKQ / 10DLDLD170SP5C00E167 — 🧪 Experimental</summary>
+
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
 ## Device and software
 
@@ -112,24 +114,24 @@ These entries are generated from manually reviewed device reports. Compatibility
 | Performance overlay | ⬜ Not tested |
 | Session shutdown and Android state restoration | ✅ Working |
 
-[Open this report as a standalone page](Reported-Device-honor-bkq-an10-10dldld170sp5c00e167)
-
 </details>
 
 </details>
 
 <details>
-<summary><strong>samsung</strong> — 1 verified configuration</summary>
+<summary><strong>Samsung</strong> — 1 verified configuration</summary>
 
 <details>
 <summary><strong>Galaxy Z Fold7 — SM-F966Q</strong> / q7q / F966QOPU1BZF1 — ✅ Confirmed working</summary>
+
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
 ## Device and software
 
 | Item | Reported value |
 | --- | --- |
-| Manufacturer | samsung |
-| Brand | samsung |
+| Manufacturer | Samsung |
+| Brand | Samsung |
 | Marketing name | Galaxy Z Fold7 |
 | Model | `SM-F966Q` |
 | Device codename | `q7q` |
@@ -169,8 +171,6 @@ These entries are generated from manually reviewed device reports. Compatibility
 | Automatic foldable-device resolution | ✅ Working |
 | Performance overlay | ✅ Working |
 | Session shutdown and Android state restoration | ✅ Working |
-
-[Open this report as a standalone page](Reported-Device-samsung-sm-f966q-f966qopu1bzf1)
 
 </details>
 
