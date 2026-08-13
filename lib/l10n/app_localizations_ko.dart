@@ -181,6 +181,30 @@ class AppLocalizationsKo extends AppLocalizations {
   String get setupAllowPermission => '권한 부여';
 
   @override
+  String get setupProviderChoiceTitle => '권한 서비스 선택';
+
+  @override
+  String get setupProviderChoiceDescription =>
+      'Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요. 선택은 둘 중 하나를 제거할 때까지 저장됩니다.';
+
+  @override
+  String get setupUseStellar => 'Stellar(권장)';
+
+  @override
+  String get setupUseShizuku => 'Shizuku';
+
+  @override
+  String get setupRunningAsRoot => '서비스를 root로 실행 중입니다';
+
+  @override
+  String get setupRootVerified =>
+      'Shizuku가 root 권한으로 실행 중임을 확인했습니다. 다음으로 Dextop 권한을 부여하세요.';
+
+  @override
+  String get setupRootNotRunning =>
+      'Shizuku가 root 권한으로 실행 중인지 확인할 수 없습니다. root로 시작한 후 다시 시도하세요.';
+
+  @override
   String get setupQuestionOpen => 'Shizuku를 열었나요?';
 
   @override

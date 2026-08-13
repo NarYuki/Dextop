@@ -181,6 +181,30 @@ class AppLocalizationsJa extends AppLocalizations {
   String get setupAllowPermission => '権限を許可';
 
   @override
+  String get setupProviderChoiceTitle => '特権サービスを選択';
+
+  @override
+  String get setupProviderChoiceDescription =>
+      'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。選択は、どちらかをアンインストールするまで保存されます。';
+
+  @override
+  String get setupUseStellar => 'Stellar（推奨）';
+
+  @override
+  String get setupUseShizuku => 'Shizuku';
+
+  @override
+  String get setupRunningAsRoot => 'rootでサービスを実行中です';
+
+  @override
+  String get setupRootVerified =>
+      'Shizukuがrootで実行中であることを確認しました。Dextopへの権限を付与してください。';
+
+  @override
+  String get setupRootNotRunning =>
+      'Shizukuがrootで実行中であることを確認できませんでした。rootで起動してから、もう一度確認してください。';
+
+  @override
   String get setupQuestionOpen => 'Shizukuを開きましたか？';
 
   @override

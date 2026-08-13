@@ -183,6 +183,30 @@ class AppLocalizationsRu extends AppLocalizations {
   String get setupAllowPermission => 'Предоставить разрешение';
 
   @override
+  String get setupProviderChoiceTitle => 'Выберите привилегированную службу';
+
+  @override
+  String get setupProviderChoiceDescription =>
+      'Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop. Выбор сохраняется до удаления одного из приложений.';
+
+  @override
+  String get setupUseStellar => 'Stellar (рекомендуется)';
+
+  @override
+  String get setupUseShizuku => 'Shizuku';
+
+  @override
+  String get setupRunningAsRoot => 'Служба запущена с правами root';
+
+  @override
+  String get setupRootVerified =>
+      'Подтверждено, что Shizuku работает с правами root. Теперь предоставьте разрешение Dextop.';
+
+  @override
+  String get setupRootNotRunning =>
+      'Не удалось подтвердить, что Shizuku работает с правами root. Запустите его с правами root и повторите попытку.';
+
+  @override
   String get setupQuestionOpen => 'Вы открыли Shizuku?';
 
   @override

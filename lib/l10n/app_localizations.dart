@@ -440,6 +440,48 @@ abstract class AppLocalizations {
   /// **'権限を許可'**
   String get setupAllowPermission;
 
+  /// No description provided for @setupProviderChoiceTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'特権サービスを選択'**
+  String get setupProviderChoiceTitle;
+
+  /// No description provided for @setupProviderChoiceDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。選択は、どちらかをアンインストールするまで保存されます。'**
+  String get setupProviderChoiceDescription;
+
+  /// No description provided for @setupUseStellar.
+  ///
+  /// In ja, this message translates to:
+  /// **'Stellar（推奨）'**
+  String get setupUseStellar;
+
+  /// No description provided for @setupUseShizuku.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizuku'**
+  String get setupUseShizuku;
+
+  /// No description provided for @setupRunningAsRoot.
+  ///
+  /// In ja, this message translates to:
+  /// **'rootでサービスを実行中です'**
+  String get setupRunningAsRoot;
+
+  /// No description provided for @setupRootVerified.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuがrootで実行中であることを確認しました。Dextopへの権限を付与してください。'**
+  String get setupRootVerified;
+
+  /// No description provided for @setupRootNotRunning.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuがrootで実行中であることを確認できませんでした。rootで起動してから、もう一度確認してください。'**
+  String get setupRootNotRunning;
+
   /// No description provided for @setupQuestionOpen.
   ///
   /// In ja, this message translates to:

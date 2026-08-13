@@ -257,7 +257,9 @@ class MainActivity : FlutterActivity() {
         val binderAlive = installed && shizukuBinderAvailable
         // The guided setup uses wireless debugging. A live/stale binder alone is
         // not enough to mark that setup as completed.
-        val running = wirelessDebuggingEnabled && binderAlive
+        // The service may be started through wireless debugging, wired ADB, or
+        // root. Binder liveness is the authoritative running-state signal.
+        val running = binderAlive
         val granted = running && runCatching {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         }.getOrDefault(false)

@@ -73,7 +73,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         'shizukuGranted': installed && value['shizukuGranted'] == true,
       };
     });
-    if (value['privilegeProviderSelectionRequired'] == true &&
+    if (page == 1 &&
+        value['privilegeProviderSelectionRequired'] == true &&
         !providerChoiceShown &&
         mounted) {
       providerChoiceShown = true;
@@ -95,18 +96,23 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       barrierDismissible: false,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.admin_panel_settings_rounded),
-        title: const Text('Select privilege service / 特権サービスを選択'),
-        content: const Text(
-          'Stellar and Shizuku are both installed. Choose which one Dextop should use. The selection is saved until either app is uninstalled.',
-        ),
+        title: Text(l.setupProviderChoiceTitle),
+        content: Text(l.setupProviderChoiceDescription),
+        actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
         actions: [
-          OutlinedButton(
-            onPressed: () => Navigator.pop(context, 'shizuku'),
-            child: const Text('Shizuku'),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(context, 'stellar'),
-            child: const Text('Stellar (recommended)'),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              FilledButton(
+                onPressed: () => Navigator.pop(context, 'stellar'),
+                child: Text(l.setupUseStellar),
+              ),
+              const SizedBox(height: 10),
+              FilledButton(
+                onPressed: () => Navigator.pop(context, 'shizuku'),
+                child: Text(l.setupUseShizuku),
+              ),
+            ],
           ),
         ],
       ),
@@ -143,7 +149,11 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     } on PlatformException catch (error) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(error.message ?? l.setupPermissionCheckFailed)),
+        SnackBar(
+          content: Text(
+            providerText(error.message ?? l.setupPermissionCheckFailed),
+          ),
+        ),
       );
     } finally {
       if (!requestingPermission && mounted) setState(() => loading = false);
@@ -160,7 +170,25 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     setState(() => shizukuSetupConfirmed = valid);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(valid ? l.setupVerified : l.setupVerificationFailed),
+        content: Text(
+          providerText(valid ? l.setupVerified : l.setupVerificationFailed),
+        ),
+      ),
+    );
+  }
+
+  Future<void> verifyRootService() async {
+    await refreshStatus(clearPrevious: true);
+    if (!mounted) return;
+    final valid =
+        status['shizukuBinderAlive'] == true &&
+        status['shizukuRunning'] == true;
+    setState(() => shizukuSetupConfirmed = valid);
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          providerText(valid ? l.setupRootVerified : l.setupRootNotRunning),
+        ),
       ),
     );
   }
@@ -168,9 +196,9 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   Future<void> showShizukuVerification() async {
     var step = 0;
     final questions = [
-      l.setupQuestionOpen,
+      providerText(l.setupQuestionOpen),
       l.setupQuestionPair,
-      l.setupQuestionStart,
+      providerText(l.setupQuestionStart),
     ];
     final completed = await showDialog<bool>(
       context: context,
@@ -275,7 +303,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         Text(
           [
             l.setupPhaseTerms,
-            l.setupPhaseShizuku,
+            providerName,
             l.setupPhaseDevice,
             l.setupPhaseDemo,
           ][page],
@@ -385,6 +413,12 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                         onPressed: showShizukuVerification,
                         icon: const Icon(Icons.fact_check_rounded),
                         label: Text(l.setupValidate),
+                      ),
+                      const SizedBox(height: 8),
+                      FilledButton.tonalIcon(
+                        onPressed: verifyRootService,
+                        icon: const Icon(Icons.security_rounded),
+                        label: Text(l.setupRunningAsRoot),
                       ),
                     ],
                   ),

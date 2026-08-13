@@ -183,6 +183,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupAllowPermission => 'Grant permission';
 
   @override
+  String get setupProviderChoiceTitle => 'Choose a privilege service';
+
+  @override
+  String get setupProviderChoiceDescription =>
+      'Stellar and Shizuku are both installed. Choose which service Dextop should use. The selection is saved until either app is uninstalled.';
+
+  @override
+  String get setupUseStellar => 'Stellar (recommended)';
+
+  @override
+  String get setupUseShizuku => 'Shizuku';
+
+  @override
+  String get setupRunningAsRoot => 'The service is running as root';
+
+  @override
+  String get setupRootVerified =>
+      'Shizuku was verified as running with root privileges. Grant Dextop permission next.';
+
+  @override
+  String get setupRootNotRunning =>
+      'Shizuku could not be verified as running with root privileges. Start it with root and try again.';
+
+  @override
   String get setupQuestionOpen => 'Have you opened Shizuku?';
 
   @override

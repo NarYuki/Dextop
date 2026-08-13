@@ -179,6 +179,29 @@ class AppLocalizationsZh extends AppLocalizations {
   String get setupAllowPermission => '授予权限';
 
   @override
+  String get setupProviderChoiceTitle => '选择特权服务';
+
+  @override
+  String get setupProviderChoiceDescription =>
+      '已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。该选择会保存到其中一个应用被卸载为止。';
+
+  @override
+  String get setupUseStellar => 'Stellar（推荐）';
+
+  @override
+  String get setupUseShizuku => 'Shizuku';
+
+  @override
+  String get setupRunningAsRoot => '服务正在以 root 运行';
+
+  @override
+  String get setupRootVerified => '已确认 Shizuku 正在以 root 权限运行。接下来请授予 Dextop 权限。';
+
+  @override
+  String get setupRootNotRunning =>
+      '无法确认 Shizuku 正在以 root 权限运行。请使用 root 启动后重试。';
+
+  @override
   String get setupQuestionOpen => '您打开 Shizuku 了吗？';
 
   @override
