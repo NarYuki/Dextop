@@ -27,6 +27,8 @@ If Dextop or Android stops during an open transaction, the Home screen may show 
 
 Dextop records settings it owns before changing them. Stop and recovery paths restore those original values. It does not intentionally delete an overlay configured by another application.
 
+If Android remains in an abnormal state and in-app recovery is unavailable, follow [Restore Android with ADB](ADB-System-Recovery). The page includes a minimal emergency sequence and careful recovery of display, navigation, rotation, accessibility, and desktop-mode settings.
+
 ## Reporting a bug
 
 Use the repository bug form and include exact reproduction steps, device/build information, expected and actual behavior, and a sanitized diagnostic report.

@@ -11,11 +11,13 @@ Status definitions:
 | 🧪 Experimental | A device profile or generic backend exists, but the exact model/build has not been verified. |
 | ❌ Not working | The listed build has a known blocking issue. |
 
-## Samsung
+<details>
+<summary><strong>Samsung</strong></summary>
 
 Samsung DeX is mostly supported and is currently the most complete environment. Dextop avoids generic freeform changes that could conflict with Samsung's platform-managed desktop implementation.
 
-### Galaxy S26
+<details>
+<summary><strong>Galaxy S26 — SM-S942Z / Android 16 / One UI 8.5 — ✅ Confirmed working</strong></summary>
 
 | Item | Tested value |
 | --- | --- |
@@ -38,13 +40,22 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 | Dextop session startup | ✅ Confirmed | Dextop is confirmed to operate on the firmware listed above. |
 | Individual optional features | Not separately recorded | Add separate results when each feature is retested on this build. |
 
-## Google
+</details>
+</details>
+
+<details>
+<summary><strong>Google</strong></summary>
 
 Pixel support is limited and incomplete. Behavior depends on the Android release, freeform/desktop implementation, and hidden API availability. No exact Pixel model and firmware combination has been confirmed yet.
 
-## Other vendors
+</details>
+
+<details>
+<summary><strong>Other vendors</strong></summary>
 
 Support is experimental. A vendor profile does not guarantee that every model or firmware provides the required system services. No additional model and firmware combination has been confirmed yet.
+
+</details>
 
 ## Reporting another device
 
