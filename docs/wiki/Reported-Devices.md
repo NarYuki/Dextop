@@ -119,7 +119,120 @@ These entries are generated from manually reviewed device reports. Compatibility
 </details>
 
 <details>
-<summary><strong>Samsung</strong> — 3 verified configurations</summary>
+<summary><strong>oppo</strong> — 1 verified configuration</summary>
+
+<details>
+<summary><strong>Find X9 — OPG07</strong> / OP5E8BL1 / B.R4T3.1287153_118ce71_119cc78 — 🧪 Experimental</summary>
+
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
+
+## Device and software
+
+| Item | Reported value |
+| --- | --- |
+| Manufacturer | OPPO |
+| Brand | OPPO |
+| Marketing name | Find X9 |
+| Model | `OPG07` |
+| Device codename | `OP5E8BL1` |
+| Product | `OPG07_jp_kdi` |
+| Android | Android 16 (API 36) |
+| Firmware / incremental build | `B.R4T3.1287153_118ce71_119cc78` |
+| Build ID | `BP2A.250605.015` |
+| Build fingerprint | `OPPO/OPG07_jp_kdi/OP5E8BL1:16/BP2A.250605.015/B.R4T3.1287153_118ce71_119cc78:user/release-keys` |
+| Security patch | `2026-06-01` |
+| Display build | `OPG07_16.0.8.301(EX01)` |
+| Dextop version | `1.1.1+6` |
+| Last verified | 2026-08-14 |
+| Overall status | 🧪 Experimental |
+
+## Feature verification
+
+| Feature | Result |
+| --- | --- |
+| Overall status | 🧪 Experimental |
+| App startup and device detection | ✅ Working |
+| Dextop session startup | 🧪 Experimental |
+| VirtualDisplay mirroring | ✅ Working |
+| WindowManager mirroring | ❌ Not working at this time |
+| SurfaceControl mirroring | ❌ Not working at this time |
+| Landscape mode | ✅ Working |
+| Portrait mode | ✅ Working |
+| Secure display | ✅ Working |
+| App launcher and freeform windows | 🟡 Partial |
+| Workspace save and restore | ✅ Working |
+| Cursor and touchpad input | ✅ Working |
+| Direct touch input | ❌ Not working at this time |
+| Multi-touch scrolling and pinch-to-zoom | ✅ Working |
+| Three-finger overlay gesture | ❌ Not working at this time |
+| Physical mouse | ❌ Not working at this time |
+| Physical keyboard | ❌ Not working at this time |
+| Physical mouse and keyboard display routing | ❌ Not working at this time |
+| Automatic foldable-device resolution | ⬜ Not tested |
+| Performance overlay | ❌ Not working at this time |
+| Session shutdown and Android state restoration | ❌ Not working at this time |
+
+</details>
+
+</details>
+
+<details>
+<summary><strong>Samsung</strong> — 4 verified configurations</summary>
+
+<details>
+<summary><strong>Galaxy Z Fold3 5G — SCG11</strong> / SCG11 / SCG11KDS1EZB8 — ❌ Not working at this time</summary>
+
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
+
+> **Status notice:** This device does not work at this time. Compatibility may improve in future Dextop updates.
+
+## Device and software
+
+| Item | Reported value |
+| --- | --- |
+| Manufacturer | Samsung |
+| Brand | Samsung |
+| Marketing name | Galaxy Z Fold3 5G |
+| Model | `SCG11` |
+| Device codename | `SCG11` |
+| Product | `SCG11_jp_kdi` |
+| Android | Android 15 (API 35) |
+| Firmware / incremental build | `SCG11KDS1EZB8` |
+| Build ID | `AP3A.240905.015.A2` |
+| Build fingerprint | `samsung/SCG11_jp_kdi/SCG11:15/AP3A.240905.015.A2/SCG11KDS1EZB8:user/release-keys` |
+| Security patch | `2026-02-05` |
+| Display build | `AP3A.240905.015.A2.SCG11KDS1EZB8` |
+| Dextop version | `1.1.1+6` |
+| Last verified | 2026-08-14 |
+| Overall status | ❌ Not working at this time |
+
+## Feature verification
+
+| Feature | Result |
+| --- | --- |
+| Overall status | ❌ Not working at this time |
+| App startup and device detection | ✅ Working |
+| Dextop session startup | ❌ Not working at this time |
+| VirtualDisplay mirroring | ❌ Not working at this time |
+| WindowManager mirroring | ❌ Not working at this time |
+| SurfaceControl mirroring | ❌ Not working at this time |
+| Landscape mode | ❌ Not working at this time |
+| Portrait mode | ❌ Not working at this time |
+| Secure display | ⬜ Not tested |
+| App launcher and freeform windows | ⬜ Not tested |
+| Workspace save and restore | ⬜ Not tested |
+| Cursor and touchpad input | ⬜ Not tested |
+| Direct touch input | ⬜ Not tested |
+| Multi-touch scrolling and pinch-to-zoom | ⬜ Not tested |
+| Three-finger overlay gesture | ⬜ Not tested |
+| Physical mouse | ⬜ Not tested |
+| Physical keyboard | ⬜ Not tested |
+| Physical mouse and keyboard display routing | ⬜ Not tested |
+| Automatic foldable-device resolution | ⬜ Not tested |
+| Performance overlay | ⬜ Not tested |
+| Session shutdown and Android state restoration | ⬜ Not tested |
+
+</details>
 
 <details>
 <summary><strong>Galaxy Z TriFold — SM-F968N</strong> / q7mq / F968NKSS6BZG3 — 🧪 Experimental</summary>
@@ -318,6 +431,119 @@ These entries are generated from manually reviewed device reports. Compatibility
 | --- | --- |
 | Overall status | ❌ Not working at this time |
 | App startup and device detection | ✅ Working |
+| Dextop session startup | ❌ Not working at this time |
+| VirtualDisplay mirroring | ❌ Not working at this time |
+| WindowManager mirroring | ❌ Not working at this time |
+| SurfaceControl mirroring | ❌ Not working at this time |
+| Landscape mode | ❌ Not working at this time |
+| Portrait mode | ❌ Not working at this time |
+| Secure display | ❌ Not working at this time |
+| App launcher and freeform windows | ❌ Not working at this time |
+| Workspace save and restore | ❌ Not working at this time |
+| Cursor and touchpad input | ❌ Not working at this time |
+| Direct touch input | ❌ Not working at this time |
+| Multi-touch scrolling and pinch-to-zoom | ❌ Not working at this time |
+| Three-finger overlay gesture | ❌ Not working at this time |
+| Physical mouse | ❌ Not working at this time |
+| Physical keyboard | ❌ Not working at this time |
+| Physical mouse and keyboard display routing | ❌ Not working at this time |
+| Automatic foldable-device resolution | ❌ Not working at this time |
+| Performance overlay | ❌ Not working at this time |
+| Session shutdown and Android state restoration | ❌ Not working at this time |
+
+</details>
+
+</details>
+
+<details>
+<summary><strong>xiaomi</strong> — 2 verified configurations</summary>
+
+<details>
+<summary><strong>POCO X7 Pro 5G — 2412DPC0AG</strong> / rodin / OS3.0.301.0.WOJMIXM — 🟡 Partial</summary>
+
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
+
+## Device and software
+
+| Item | Reported value |
+| --- | --- |
+| Manufacturer | Xiaomi |
+| Brand | POCO |
+| Marketing name | POCO X7 Pro 5G |
+| Model | `2412DPC0AG` |
+| Device codename | `rodin` |
+| Product | `rodin_global` |
+| Android | Android 16 (API 36) |
+| Firmware / incremental build | `OS3.0.301.0.WOJMIXM` |
+| Build ID | `BP2A.250605.031.A3` |
+| Build fingerprint | `POCO/rodin_global/rodin:16/BP2A.250605.031.A3/OS3.0.301.0.WOJMIXM:user/release-keys` |
+| Security patch | `2026-06-01` |
+| Display build | `BP2A.250605.031.A3` |
+| Dextop version | `1.1.1+6` |
+| Last verified | 2026-08-14 |
+| Overall status | 🟡 Partial |
+
+## Feature verification
+
+| Feature | Result |
+| --- | --- |
+| Overall status | 🟡 Partial |
+| App startup and device detection | ✅ Working |
+| Dextop session startup | ✅ Working |
+| VirtualDisplay mirroring | ✅ Working |
+| WindowManager mirroring | ⬜ Not tested |
+| SurfaceControl mirroring | ⬜ Not tested |
+| Landscape mode | ✅ Working |
+| Portrait mode | ✅ Working |
+| Secure display | ⬜ Not tested |
+| App launcher and freeform windows | ❌ Not working at this time |
+| Workspace save and restore | ✅ Working |
+| Cursor and touchpad input | ✅ Working |
+| Direct touch input | ✅ Working |
+| Multi-touch scrolling and pinch-to-zoom | ❌ Not working at this time |
+| Three-finger overlay gesture | ✅ Working |
+| Physical mouse | ⬜ Not tested |
+| Physical keyboard | ⬜ Not tested |
+| Physical mouse and keyboard display routing | ⬜ Not tested |
+| Automatic foldable-device resolution | ⬜ Not tested |
+| Performance overlay | ✅ Working |
+| Session shutdown and Android state restoration | ✅ Working |
+
+</details>
+
+<details>
+<summary><strong>POCO X7 Pro — 2412DPC0AG</strong> / rodin / OS3.0.301.0.WOJMIXM — ❌ Not working at this time</summary>
+
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
+
+> **Status notice:** This device does not work at this time. Compatibility may improve in future Dextop updates.
+
+## Device and software
+
+| Item | Reported value |
+| --- | --- |
+| Manufacturer | Xiaomi |
+| Brand | POCO |
+| Marketing name | POCO X7 Pro |
+| Model | `2412DPC0AG` |
+| Device codename | `rodin` |
+| Product | `rodin_global` |
+| Android | Android 16 (API 36) |
+| Firmware / incremental build | `OS3.0.301.0.WOJMIXM` |
+| Build ID | `BP2A.250605.031.A3` |
+| Build fingerprint | `POCO/rodin_global/rodin:16/BP2A.250605.031.A3/OS3.0.301.0.WOJMIXM:user/release-keys` |
+| Security patch | `2026-06-01` |
+| Display build | `BP2A.250605.031.A3` |
+| Dextop version | `1.1.1+6` |
+| Last verified | 2026-08-14 |
+| Overall status | ❌ Not working at this time |
+
+## Feature verification
+
+| Feature | Result |
+| --- | --- |
+| Overall status | ❌ Not working at this time |
+| App startup and device detection | ❌ Not working at this time |
 | Dextop session startup | ❌ Not working at this time |
 | VirtualDisplay mirroring | ❌ Not working at this time |
 | WindowManager mirroring | ❌ Not working at this time |
