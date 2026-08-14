@@ -54,8 +54,10 @@ Dextop 是一款开源 Android 应用，可在手机上创建虚拟显示器，�
 
 | 环境 | 状态 | 备注 |
 | --- | --- | --- |
-| Samsung DeX | 基本支持 | 目前功能最完整的环境。由 DeX 管理的功能使用 Samsung 平台实现。 |
+| Samsung DeX（One UI 8 或更高版本） | 完全支持 | 目前功能最完整的环境。由 DeX 管理的功能使用 Samsung 平台实现。 |
+| Samsung DeX（低于 One UI 8） | 支持有限且很可能不兼容 | 较旧的 DeX 实现可能无法提供 Dextop 所需的显示和窗口管理行为。 |
 | Google Pixel | 有限且不完整 | 取决于 Android 的自由窗口／桌面实现和隐藏 API 可用性，部分功能可能无法工作。 |
+| OPPO ColorOS 桌面 | 有限且不完整 | 可以显示桌面，但任务栏等系统界面组件可能不会出现。 |
 | 运行 HyperOS 或更高版本的 Xiaomi 设备 | 已禁用 | MIUI 和 HyperOS 不受支持。 |
 | 其他 Android 设备 | 实验性 | 虚拟显示、镜像和自由窗口支持因厂商、型号和系统更新而异。 |
 
