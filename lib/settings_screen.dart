@@ -428,17 +428,46 @@ extension _SettingsContent on _HomeScreenState {
       ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          Padding(
-            padding: EdgeInsets.fromLTRB(12, 0, 12, 7),
-            child: Text(
-              AppStrings.tr('uiSecurity'),
-              style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                color: Theme.of(context).colorScheme.primary,
-                fontWeight: FontWeight.w600,
-              ),
+          _displaySettingsSection(AppStrings.tr('uiDisplayCategory'), [
+            DisplayEnvironmentSettingsCard(
+              bridge: bridge,
+              showDisplay: false,
+              showConvenience: false,
+              showTopology: true,
+              wrapInCard: false,
             ),
+            Divider(height: 1),
+            ListTile(
+              enabled: !active,
+              leading: Icon(Icons.account_tree_outlined),
+              title: Text(l.mirrorBackend),
+              subtitle: Text(_mirrorBackendLabel(l, mirrorBackend)),
+              trailing: Icon(Icons.chevron_right_rounded),
+              onTap: active
+                  ? null
+                  : () => _selectMirrorBackend(context, l, updateRoute),
+            ),
+            DisplayEnvironmentSettingsCard(
+              bridge: bridge,
+              showConvenience: false,
+              showTopology: false,
+              displayLeadingDivider: true,
+              wrapInCard: false,
+            ),
+          ]),
+          DextopFeaturesPage(
+            isRunning: active,
+            embedded: true,
+            category: 'display',
           ),
-          settingsCard([
+          _displaySettingsSection(AppStrings.tr('uiConvenience'), [
+            DisplayEnvironmentSettingsCard(
+              bridge: bridge,
+              showDisplay: false,
+              showTopology: false,
+              wrapInCard: false,
+            ),
+            Divider(height: 1),
             SwitchListTile(
               title: Text(l.secureDisplay),
               subtitle: Text(l.secureDisplayDescription),
@@ -457,25 +486,44 @@ extension _SettingsContent on _HomeScreenState {
                       }
                     },
             ),
-            Divider(height: 1),
-            ListTile(
-              enabled: !active,
-              leading: Icon(Icons.account_tree_outlined),
-              title: Text(l.mirrorBackend),
-              subtitle: Text(_mirrorBackendLabel(l, mirrorBackend)),
-              trailing: Icon(Icons.chevron_right_rounded),
-              onTap: active
-                  ? null
-                  : () => _selectMirrorBackend(context, l, updateRoute),
-            ),
           ]),
-          SizedBox(height: 12),
-          DextopFeaturesPage(
-            isRunning: active,
-            embedded: true,
-            category: 'display',
-          ),
         ],
+      );
+
+  Widget _displaySettingsSection(String title, List<Widget> children) =>
+      Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
+              child: Text(
+                title,
+                style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            Card(
+              margin: EdgeInsets.zero,
+              child: ListTileTheme(
+                data: const ListTileThemeData(
+                  dense: true,
+                  minTileHeight: 56,
+                  minVerticalPadding: 4,
+                  contentPadding: EdgeInsets.symmetric(horizontal: 16),
+                  visualDensity: VisualDensity(vertical: -2),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: Column(children: children),
+                ),
+              ),
+            ),
+          ],
+        ),
       );
 
   String _mirrorBackendLabel(AppLocalizations l, String value) =>

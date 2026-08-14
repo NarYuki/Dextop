@@ -944,6 +944,114 @@ abstract class AppLocalizations {
   /// **'セキュリティ'**
   String get uiSecurity;
 
+  /// No description provided for @topologyTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイ配置'**
+  String get topologyTitle;
+
+  /// No description provided for @topologyArrangeDisplays.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイの配置'**
+  String get topologyArrangeDisplays;
+
+  /// No description provided for @topologySummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'実際のモニター配置に最適化することができます'**
+  String get topologySummary;
+
+  /// No description provided for @topologyDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイをドラッグして再配置します。画面間のポインター移動が実際の設置位置と一致するように並べてください。'**
+  String get topologyDescription;
+
+  /// No description provided for @topologyApply.
+  ///
+  /// In ja, this message translates to:
+  /// **'適用'**
+  String get topologyApply;
+
+  /// No description provided for @topologyApplied.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイ配置を適用しました'**
+  String get topologyApplied;
+
+  /// No description provided for @topologyIdentify.
+  ///
+  /// In ja, this message translates to:
+  /// **'識別'**
+  String get topologyIdentify;
+
+  /// No description provided for @topologyRefresh.
+  ///
+  /// In ja, this message translates to:
+  /// **'再読み込み'**
+  String get topologyRefresh;
+
+  /// No description provided for @topologyReset.
+  ///
+  /// In ja, this message translates to:
+  /// **'リセット'**
+  String get topologyReset;
+
+  /// No description provided for @topologyBuiltInScreen.
+  ///
+  /// In ja, this message translates to:
+  /// **'内蔵スクリーン'**
+  String get topologyBuiltInScreen;
+
+  /// No description provided for @displayIncludePhoneSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'有効にすると、ディスプレイ間でアプリやマウスポインタを跨いで移動できるようになります'**
+  String get displayIncludePhoneSummary;
+
+  /// No description provided for @displayAutoHideTaskbarSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'未使用時にデスクトップのタスクバーを自動的に隠します'**
+  String get displayAutoHideTaskbarSummary;
+
+  /// No description provided for @displayForceInternal120Hz.
+  ///
+  /// In ja, this message translates to:
+  /// **'内蔵ディスプレイを120Hzで動作'**
+  String get displayForceInternal120Hz;
+
+  /// No description provided for @displayForceInternal120HzSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop実行中は対応する内蔵画面を120Hzに固定します'**
+  String get displayForceInternal120HzSummary;
+
+  /// No description provided for @uiConvenience.
+  ///
+  /// In ja, this message translates to:
+  /// **'便利機能'**
+  String get uiConvenience;
+
+  /// No description provided for @uiDisplayCategory.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイ'**
+  String get uiDisplayCategory;
+
+  /// No description provided for @topologyNoDisplays.
+  ///
+  /// In ja, this message translates to:
+  /// **'配置できるディスプレイがありません'**
+  String get topologyNoDisplays;
+
+  /// No description provided for @topologyUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'この端末ではディスプレイトポロジーを利用できません'**
+  String get topologyUnavailable;
+
   /// No description provided for @uiTap.
   ///
   /// In ja, this message translates to:

@@ -36,6 +36,42 @@ internal class SessionJournal(private val context: Context) {
             .commit()) { "Unable to persist the original value of $key" }
     }
 
+    fun rememberSystem(key: String, value: String?) {
+        if (preferences.contains("system_present_$key")) return
+        check(preferences.edit()
+            .putBoolean("system_present_$key", value != null)
+            .putString("system_value_$key", value.orEmpty())
+            .commit()) { "Unable to persist the original value of $key" }
+    }
+
+    fun restoreSystemKeys(keys: Collection<String>) {
+        val privilegedAccess = PrivilegedAccess("DextopSessionRecovery")
+        keys.forEach { key ->
+            if (!preferences.contains("system_present_$key")) return@forEach
+            check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
+            val present = preferences.getBoolean("system_present_$key", false)
+            val result = if (present) {
+                privilegedAccess.execute(
+                    "settings", "put", "system", key,
+                    preferences.getString("system_value_$key", "").orEmpty()
+                )
+            } else {
+                privilegedAccess.execute("settings", "delete", "system", key)
+            }
+            check(result.succeeded) {
+                "Unable to restore $key: ${result.error.ifBlank { result.output }}"
+            }
+        }
+    }
+
+    fun discardSystemKeys(keys: Collection<String>) {
+        val editor = preferences.edit()
+        keys.forEach { key ->
+            editor.remove("system_present_$key").remove("system_value_$key")
+        }
+        check(editor.commit()) { "Unable to discard persisted system-setting snapshots" }
+    }
+
     fun rememberPhoneRotation(frozen: Boolean, rotation: Int) {
         if (preferences.contains("phone_rotation_frozen")) return
         check(preferences.edit()
@@ -70,6 +106,7 @@ internal class SessionJournal(private val context: Context) {
                 }
             }
         }
+        restoreSystemKeys(listOf("min_refresh_rate", "peak_refresh_rate"))
         val overlay = if (preferences.getBoolean("overlay_was_null", false)) null
             else preferences.getString("overlay_before", "")
         check(Settings.Global.putString(

@@ -256,6 +256,29 @@ class NativeBridge {
         'restoreSamsungDesktopSettings',
       ) ??
       {};
+  Future<Map<String, dynamic>> displayTopology() async =>
+      await channel.invokeMapMethod<String, dynamic>('displayTopology') ?? {};
+  Future<Map<String, dynamic>> setDisplayTopology(
+    Map<String, Map<String, double>> positions,
+  ) async =>
+      await channel.invokeMapMethod<String, dynamic>('setDisplayTopology', {
+        'positions': positions,
+      }) ??
+      {};
+  Future<Map<String, dynamic>> displayEnvironmentSettings() async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'displayEnvironmentSettings',
+      ) ??
+      {};
+  Future<Map<String, dynamic>> setDisplayEnvironmentSetting(
+    String id,
+    bool enabled,
+  ) async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'setDisplayEnvironmentSetting',
+        {'id': id, 'enabled': enabled},
+      ) ??
+      {};
   Future<List<dynamic>> apps() async =>
       await channel.invokeListMethod<dynamic>('apps') ?? [];
   Future<bool> consumeTileAction() async =>

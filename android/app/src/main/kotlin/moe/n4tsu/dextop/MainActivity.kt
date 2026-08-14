@@ -203,6 +203,42 @@ open class MainActivity : FlutterActivity() {
                     Log.e(logTag, "Samsung desktop settings read failed", it)
                     result.error("SAMSUNG_SETTINGS_READ", it.message, null)
                 }
+                "displayTopology" -> Thread {
+                    val state = DisplayTopologyController(this).read()
+                    runOnUiThread { result.success(state) }
+                }.start()
+                "displayEnvironmentSettings" -> Thread {
+                    val state = DisplayEnvironmentSettings(this).read()
+                    runOnUiThread { result.success(state) }
+                }.start()
+                "setDisplayEnvironmentSetting" -> Thread {
+                    runCatching {
+                        val id = call.argument<String>("id") ?: error("A setting id is required")
+                        val enabled = call.argument<Boolean>("enabled")
+                            ?: error("A boolean value is required")
+                        DisplayEnvironmentSettings(this).write(id, enabled)
+                    }.onSuccess { state ->
+                        runOnUiThread { result.success(state) }
+                    }.onFailure { error ->
+                        runOnUiThread {
+                            result.error("DISPLAY_ENVIRONMENT_WRITE", error.message, null)
+                        }
+                    }
+                }.start()
+                "setDisplayTopology" -> Thread {
+                    runCatching {
+                        val positions = call.argument<Map<*, *>>("positions")
+                            ?: error("Display positions are required")
+                        DisplayTopologyController(this).rearrange(positions)
+                    }.onSuccess { state ->
+                        runOnUiThread { result.success(state) }
+                    }.onFailure { error ->
+                        Log.e(logTag, "Display topology update failed", error)
+                        runOnUiThread {
+                            result.error("DISPLAY_TOPOLOGY_WRITE", error.cause?.message ?: error.message, null)
+                        }
+                    }
+                }.start()
                 "setSamsungDesktopSetting" -> runCatching {
                     val id = call.argument<String>("id") ?: error("A setting id is required")
                     SamsungDesktopSettings(this).write(id, call.argument<Any>("value"))

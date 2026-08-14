@@ -505,20 +505,8 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
                 ),
               section(_samsung('samsungSectionDesktop')),
               toggle(
-                'autoHideTaskbar',
-                _samsung('samsungAutoHideTaskbar'),
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              toggle(
                 'dexCommandArrow',
                 _samsung('samsungDexCommandArrow'),
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              toggle(
-                'includePhoneDisplay',
-                _samsung('samsungIncludePhoneDisplay'),
                 enabled: sensitiveSettingsUnlocked,
                 lockedAction: requestUnlock,
               ),

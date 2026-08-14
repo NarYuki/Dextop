@@ -170,6 +170,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         } ?: "idle"
 
+        fun topologyOverlayDisplayId(): Int = instance?.mirrorDisplayId ?: -1
+
         fun setPerformanceHud(enabled: Boolean) {
             instance?.performanceHud?.visibility = if (enabled) View.VISIBLE else View.GONE
         }
@@ -227,6 +229,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val physicalInputRouter by lazy { PhysicalInputRouter(this, privilegedAccess) }
     private val externalDisplayDetector by lazy { ExternalDisplayDetector(this) }
     private val sessionJournal by lazy { SessionJournal(this) }
+    private val internalRefreshRateController by lazy {
+        InternalRefreshRateController(this, sessionJournal)
+    }
     private val displayBackend by lazy {
         DisplayMirrorBackend(
             this,
@@ -298,6 +303,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var mouseActuallyRouted = false
     private var keyboardActuallyRouted = false
     private var physicalExternalDisplayConnected = false
+    private var refreshRateReapplyGeneration = 0
+    private var topologyReapplyGeneration = 0
     private val physicalInputRoutingSupported: Boolean
         get() = !Build.MANUFACTURER.equals("samsung", ignoreCase = true)
     private var mouseReaderProcess: moe.shizuku.server.IRemoteProcess? = null
@@ -311,24 +318,52 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
             refreshExternalDisplayState()
+            scheduleInternal120HzReapply(requireExternalDisplay = true)
+            scheduleTopologyReapplyAfterReconnect()
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display added")
             }
         }
         override fun onDisplayRemoved(displayId: Int) {
             refreshExternalDisplayState()
+            scheduleInternal120HzReapply(requireExternalDisplay = false)
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display removed")
             }
         }
         override fun onDisplayChanged(displayId: Int) {
             refreshExternalDisplayState()
+            scheduleInternal120HzReapply(requireExternalDisplay = true)
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display changed")
             } else if (active && displayId == targetDisplayId && mirrorDisplayId >= 0) {
                 scheduleMirrorRefresh("source display changed")
             }
         }
+    }
+
+    private fun scheduleInternal120HzReapply(requireExternalDisplay: Boolean) {
+        if (!active) return
+        if (requireExternalDisplay && !externalDisplayDetector.snapshot().connected) return
+        val generation = ++refreshRateReapplyGeneration
+        android.os.Handler(mainLooper).postDelayed({
+            if (generation != refreshRateReapplyGeneration || !active) return@postDelayed
+            if (requireExternalDisplay && !externalDisplayDetector.snapshot().connected) {
+                return@postDelayed
+            }
+            runCatching { internalRefreshRateController.applyIfEnabled() }
+                .onFailure { Log.e(logTag, "120 Hz reapply after display change failed", it) }
+        }, 650)
+    }
+
+    private fun scheduleTopologyReapplyAfterReconnect() {
+        if (!active) return
+        val generation = ++topologyReapplyGeneration
+        android.os.Handler(mainLooper).postDelayed({
+            if (generation != topologyReapplyGeneration || !active) return@postDelayed
+            runCatching { DisplayEnvironmentSettings(this).refreshTopologyIfEnabled() }
+                .onFailure { Log.e(logTag, "display topology reapply after reconnect failed", it) }
+        }, 750)
     }
     private val navigationToken = Binder()
     private var navigationRestoreGeneration = 0
@@ -470,7 +505,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         when {
             relativeX != 0f || relativeY != 0f -> {
                 activatePhysicalMouse()
-                moveCursor(relativeX, relativeY)
+                movePhysicalPointer(relativeX, relativeY)
             }
             event.actionMasked == MotionEvent.ACTION_HOVER_MOVE ||
                 event.actionMasked == MotionEvent.ACTION_MOVE -> {
@@ -479,7 +514,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (view.width > 0 && view.height > 0) {
                     cursorX = (event.x / view.width * targetWidth).coerceIn(0f, targetWidth - 1f)
                     cursorY = (event.y / view.height * targetHeight).coerceIn(0f, targetHeight - 1f)
-                    cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
                 }
             }
         }
@@ -557,6 +591,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         suspendedConfig = null
         experimentalMultiTouch = true
         sessionJournal.preparing(config.width, config.height, config.density, config.decorations)
+        runCatching { DisplayEnvironmentSettings(this).refreshTopologyIfEnabled() }
+            .onFailure { Log.e(logTag, "display topology refresh failed", it) }
+        runCatching { internalRefreshRateController.applyIfEnabled() }
+            .onFailure { Log.e(logTag, "120 Hz override failed", it) }
         mirrorRefreshGeneration += 1
         hostReconfigurationGeneration += 1
         mirrorHostWidth = 0
@@ -1330,6 +1368,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             runCatching { displayBackend.clearRequest() }
             targetDisplayId = -1
             desktopModeConfigurator.restore()
+            runCatching { internalRefreshRateController.restore() }
+                .onFailure { Log.e(logTag, "refresh-rate restoration failed", it) }
             MainActivity.restoreOrientation()
             runCatching {
                 val home = Intent(this, MainActivity::class.java)
@@ -2033,11 +2073,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun activatePhysicalMouse() {
         if (overlayTextInputActive) return
         physicalMouseActive = true
-        // Samsung keeps its global PointerController on the physical external
-        // display even after an input-device association changes. Dextop owns a
-        // cursor on the routed display so raw relative input remains visible.
-        cursorView?.visibility = View.VISIBLE
-        cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        // Physical mice use Android's pointer only. Dextop's cursor is reserved
+        // exclusively for touch-panel trackpad mode.
+        cursorView?.visibility = View.GONE
         setOverlayFocusable(true)
         surfaceView?.post {
             surfaceView?.requestFocus()
@@ -2058,7 +2096,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
         if (dx != 0f || dy != 0f) {
             activatePhysicalMouse()
-            moveCursor(dx, dy)
+            movePhysicalPointer(dx, dy)
         }
         return forwardCapturedMouseButtonsAndWheel(event)
     }
@@ -2069,7 +2107,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val event = MotionEvent.obtain(source)
             event.offsetLocation(cursorX - event.x, cursorY - event.y)
             check(inputDispatcher.send(event, targetDisplayId))
-            if (source.actionMasked == MotionEvent.ACTION_BUTTON_PRESS) cursorView?.pulse()
             event.recycle()
             true
         }.onFailure { Log.e(logTag, "captured mouse forwarding failed", it) }
@@ -2296,6 +2333,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (dragHeld) injectTouch(MotionEvent.ACTION_MOVE, cursorX, cursorY)
     }
 
+    /** Tracks the injection position without involving Dextop's touch cursor. */
+    private fun movePhysicalPointer(dx: Float, dy: Float) {
+        cursorX = (cursorX + dx).coerceIn(0f, targetWidth - 1f)
+        cursorY = (cursorY + dy).coerceIn(0f, targetHeight - 1f)
+    }
+
     private fun leftClick() {
         if (dragHeld) return
         injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
@@ -2391,8 +2434,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
             cursorX = event.x.coerceIn(0f, targetWidth - 1f)
             cursorY = event.y.coerceIn(0f, targetHeight - 1f)
-            cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
-            if (source.actionMasked == MotionEvent.ACTION_BUTTON_PRESS) cursorView?.pulse()
             event.recycle()
             true
         }.onFailure { Log.e(logTag, "mouse forwarding failed", it) }
@@ -3049,7 +3090,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                                 pendingWheel = 0f
                                 root?.post {
                                     activatePhysicalMouse()
-                                    if (dx != 0f || dy != 0f) moveCursor(dx, dy)
+                                    if (dx != 0f || dy != 0f) movePhysicalPointer(dx, dy)
                                     if (wheel != 0f) injectRoutedMouseScroll(wheel)
                                 }
                             }
@@ -3244,6 +3285,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         targetDisplayId = -1
         active = false
         MainActivity.restoreOrientation()
+        val keepInternal120Hz = internalRefreshRateController.isEnabledAndSupported() &&
+            !externalDisplayDetector.snapshot().connected
+        if (keepInternal120Hz) {
+            runCatching { internalRefreshRateController.keepCurrentValue() }
+                .onFailure { Log.e(logTag, "unable to preserve 120 Hz after disconnect", it) }
+        }
         val restored = runCatching {
             desktopModeConfigurator.restore()
             sessionJournal.restoreSystemSettings()

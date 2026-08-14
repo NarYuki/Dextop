@@ -437,6 +437,63 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uiSecurity => 'セキュリティ';
 
   @override
+  String get topologyTitle => 'ディスプレイ配置';
+
+  @override
+  String get topologyArrangeDisplays => 'ディスプレイの配置';
+
+  @override
+  String get topologySummary => '実際のモニター配置に最適化することができます';
+
+  @override
+  String get topologyDescription =>
+      'ディスプレイをドラッグして再配置します。画面間のポインター移動が実際の設置位置と一致するように並べてください。';
+
+  @override
+  String get topologyApply => '適用';
+
+  @override
+  String get topologyApplied => 'ディスプレイ配置を適用しました';
+
+  @override
+  String get topologyIdentify => '識別';
+
+  @override
+  String get topologyRefresh => '再読み込み';
+
+  @override
+  String get topologyReset => 'リセット';
+
+  @override
+  String get topologyBuiltInScreen => '内蔵スクリーン';
+
+  @override
+  String get displayIncludePhoneSummary =>
+      '有効にすると、ディスプレイ間でアプリやマウスポインタを跨いで移動できるようになります';
+
+  @override
+  String get displayAutoHideTaskbarSummary => '未使用時にデスクトップのタスクバーを自動的に隠します';
+
+  @override
+  String get displayForceInternal120Hz => '内蔵ディスプレイを120Hzで動作';
+
+  @override
+  String get displayForceInternal120HzSummary =>
+      'Dextop実行中は対応する内蔵画面を120Hzに固定します';
+
+  @override
+  String get uiConvenience => '便利機能';
+
+  @override
+  String get uiDisplayCategory => 'ディスプレイ';
+
+  @override
+  String get topologyNoDisplays => '配置できるディスプレイがありません';
+
+  @override
+  String get topologyUnavailable => 'この端末ではディスプレイトポロジーを利用できません';
+
+  @override
   String get uiTap => 'タップ';
 
   @override

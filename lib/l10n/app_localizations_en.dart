@@ -453,6 +453,66 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uiSecurity => 'Security';
 
   @override
+  String get topologyTitle => 'Display arrangement';
+
+  @override
+  String get topologyArrangeDisplays => 'Display arrangement';
+
+  @override
+  String get topologySummary =>
+      'Optimize the layout for your physical monitor arrangement';
+
+  @override
+  String get topologyDescription =>
+      'Drag displays to rearrange them. Place each screen so pointer movement between displays matches their physical setup.';
+
+  @override
+  String get topologyApply => 'Apply';
+
+  @override
+  String get topologyApplied => 'Display arrangement applied';
+
+  @override
+  String get topologyIdentify => 'Identify';
+
+  @override
+  String get topologyRefresh => 'Refresh';
+
+  @override
+  String get topologyReset => 'Reset';
+
+  @override
+  String get topologyBuiltInScreen => 'Built-in screen';
+
+  @override
+  String get displayIncludePhoneSummary =>
+      'Enable moving apps and the mouse pointer across displays';
+
+  @override
+  String get displayAutoHideTaskbarSummary =>
+      'Automatically hide the desktop taskbar when it is not in use';
+
+  @override
+  String get displayForceInternal120Hz => 'Run built-in display at 120 Hz';
+
+  @override
+  String get displayForceInternal120HzSummary =>
+      'Pin a supported built-in screen to 120 Hz while Dextop is running';
+
+  @override
+  String get uiConvenience => 'Convenience';
+
+  @override
+  String get uiDisplayCategory => 'Display';
+
+  @override
+  String get topologyNoDisplays => 'No displays are available to arrange';
+
+  @override
+  String get topologyUnavailable =>
+      'Display topology is unavailable on this device';
+
+  @override
   String get uiTap => 'Tap';
 
   @override
