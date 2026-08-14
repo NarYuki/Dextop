@@ -47,6 +47,8 @@ internal data class DesktopEnvironment(
     val temporaryGlobalSettings: Map<String, String>,
     val configureFreeformWindowing: Boolean,
     val supportsLaunchBounds: Boolean = true,
+    /** Recreate a device-resolution session when a foldable host changes size. */
+    val autoResizeWithHostDisplay: Boolean = false,
     /** Ordered, device-local strategies. Never change the global order for one model. */
     val displayCreationStrategies: List<String> = listOf("overlay_settings"),
     val mirrorStrategies: List<String> = listOf("virtual_display", "window_manager", "surface_control"),
@@ -73,6 +75,11 @@ internal object DesktopEnvironmentRegistry {
 
     internal fun vendorFreeform(identity: DeviceIdentity, id: String, stringKey: String) =
         aospFreeform(identity).copy(id = id, displayName = NativeStrings.text(stringKey))
+
+    internal fun samsungDex(autoResizeWithHostDisplay: Boolean = false) = DesktopEnvironment(
+        "samsung_dex", "Samsung DeX", true, emptyMap(), false,
+        autoResizeWithHostDisplay = autoResizeWithHostDisplay
+    )
 
     internal fun aospFreeform(identity: DeviceIdentity): DesktopEnvironment {
         val settings = linkedMapOf(

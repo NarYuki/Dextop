@@ -910,4 +910,239 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get reportFeatureCleanup =>
       'Завершение сеанса и восстановление Android';
+
+  @override
+  String get samsungExperimentalTitle =>
+      'Экспериментальные настройки рабочего стола Samsung';
+
+  @override
+  String get samsungUnavailable => 'Доступно только на устройствах Samsung';
+
+  @override
+  String get samsungExperimentalDescription =>
+      'Изменение скрытых параметров DeX из Dextop';
+
+  @override
+  String get samsungSettingsTitle => 'Настройки рабочего стола Samsung';
+
+  @override
+  String get samsungSettingsSummary => 'Экран, ввод и панель задач';
+
+  @override
+  String get samsungRestoreSuccess => 'Настройки Samsung восстановлены';
+
+  @override
+  String get samsungConfirmTitle => 'Подтверждение изменения настроек';
+
+  @override
+  String get samsungPermanentWarning =>
+      'Эти параметры могут постоянно влиять на Dextop и обычную среду рабочего стола до их сброса.';
+
+  @override
+  String get samsungAcceptEnable => 'Принять и включить';
+
+  @override
+  String get samsungAboutSetting => 'Об этом параметре';
+
+  @override
+  String get samsungRestoreEnvironment => 'Восстановить среду';
+
+  @override
+  String get samsungSettingsIntro =>
+      'Напрямую изменяет значения DeX, скрытые настройками Samsung при отсутствии внешнего дисплея. Изменения влияют на Samsung DeX и соответствующие функции Dextop.';
+
+  @override
+  String get samsungResolution => 'Разрешение внешнего экрана';
+
+  @override
+  String get samsungScreenZoom => 'Масштаб экрана (DPI)';
+
+  @override
+  String get samsungFontScale => 'Размер шрифта';
+
+  @override
+  String get samsungScreenTimeout => 'Тайм-аут экрана';
+
+  @override
+  String get samsungAudioOutput => 'Вывод звука на внешний экран';
+
+  @override
+  String get samsungDisplayOrientation => 'Поворот внешнего экрана';
+
+  @override
+  String get samsungDisplayArrangement => 'Расположение экранов';
+
+  @override
+  String get samsungSectionInput => 'Ввод';
+
+  @override
+  String get samsungSectionDesktop => 'Рабочий стол';
+
+  @override
+  String get samsungInputLockedWhileRunning =>
+      'Конфликтующие параметры ввода Samsung нельзя менять во время работы Dextop.';
+
+  @override
+  String get samsungAutorunTouchpad =>
+      'Автоматически запускать сенсорную панель';
+
+  @override
+  String get samsungTouchpadScrollDirection => 'Обратное направление прокрутки';
+
+  @override
+  String get samsungTouchKeyboard =>
+      'Показывать экранную клавиатуру при подключении';
+
+  @override
+  String get samsungKeyboardDex =>
+      'Показывать клавиатуру при физической клавиатуре';
+
+  @override
+  String get samsungSpenInputMode => 'Использовать S Pen как мышь';
+
+  @override
+  String get samsungThreeFingerGesture => 'Жест тремя пальцами';
+
+  @override
+  String get samsungFourFingerGesture => 'Жест четырьмя пальцами';
+
+  @override
+  String get samsungAutoHideTaskbar => 'Автоматически скрывать панель задач';
+
+  @override
+  String get samsungDexCommandArrow => 'Показывать стрелку команд';
+
+  @override
+  String get samsungIncludePhoneDisplay =>
+      'Включить экран телефона в топологию';
+
+  @override
+  String get samsungMirrorPhoneDisplay => 'Дублировать встроенный экран';
+
+  @override
+  String get samsungReviewEnable =>
+      'Прочитать предупреждение и разрешить изменения';
+
+  @override
+  String get samsungSeconds15 => '15 секунд';
+
+  @override
+  String get samsungSeconds30 => '30 секунд';
+
+  @override
+  String get samsungMinute1 => '1 минута';
+
+  @override
+  String get samsungMinutes2 => '2 минуты';
+
+  @override
+  String get samsungMinutes5 => '5 минут';
+
+  @override
+  String get samsungMinutes10 => '10 минут';
+
+  @override
+  String get samsungMinutes20 => '20 минут';
+
+  @override
+  String get samsungMinutes30 => '30 минут';
+
+  @override
+  String get samsungHour1 => '1 час';
+
+  @override
+  String get samsungLeft => 'Слева';
+
+  @override
+  String get samsungRight => 'Справа';
+
+  @override
+  String get samsungAutomatic => 'Автоматически';
+
+  @override
+  String get samsungGestureNone => 'Нет';
+
+  @override
+  String get samsungGestureApps => 'Приложения';
+
+  @override
+  String get samsungGestureRecents => 'Недавние';
+
+  @override
+  String get samsungGestureNotifications => 'Уведомления';
+
+  @override
+  String get samsungGestureQuickSettings => 'Быстрые настройки';
+
+  @override
+  String get samsungHelp_resolution =>
+      'Разрешение внешнего экрана Samsung Desktop, хранящееся отдельно от разрешения Dextop.';
+
+  @override
+  String get samsungHelp_screenZoom =>
+      'Изменяет плотность отображения (DPI) рабочего стола Samsung.';
+
+  @override
+  String get samsungHelp_fontScale =>
+      'Изменяет масштаб текста рабочего стола Samsung.';
+
+  @override
+  String get samsungHelp_screenTimeout =>
+      'Время до отключения внешнего экрана.';
+
+  @override
+  String get samsungHelp_audioOutput =>
+      'Переключает вывод звука на внешний экран.';
+
+  @override
+  String get samsungHelp_displayOrientation =>
+      'Фиксирует ориентацию внешнего экрана.';
+
+  @override
+  String get samsungHelp_displayArrangement =>
+      'Задаёт взаимное расположение телефона и внешнего экрана.';
+
+  @override
+  String get samsungHelp_autorunTouchpad =>
+      'Автоматически запускает панель Samsung и конфликтует с вводом Dextop.';
+
+  @override
+  String get samsungHelp_touchpadScrollDirection =>
+      'Меняет направление прокрутки панели Samsung.';
+
+  @override
+  String get samsungHelp_touchKeyboard =>
+      'Показывает экранную клавиатуру и конфликтует с IME Dextop.';
+
+  @override
+  String get samsungHelp_keyboardDex =>
+      'Оставляет экранную клавиатуру при физической и конфликтует с IME Dextop.';
+
+  @override
+  String get samsungHelp_spenInputMode =>
+      'Использует S Pen как указывающее устройство.';
+
+  @override
+  String get samsungHelp_threeFingerGesture =>
+      'Жест Samsung тремя пальцами конфликтует с жестами Dextop.';
+
+  @override
+  String get samsungHelp_fourFingerGesture =>
+      'Жест Samsung четырьмя пальцами конфликтует с мультитачем Dextop.';
+
+  @override
+  String get samsungHelp_autoHideTaskbar =>
+      'Автоматически скрывает панель задач Samsung Desktop.';
+
+  @override
+  String get samsungHelp_dexCommandArrow =>
+      'Показывает стрелку команд Samsung Desktop.';
+
+  @override
+  String get samsungHelp_includePhoneDisplay =>
+      'Включает экран телефона в топологию рабочего стола.';
+
+  @override
+  String get samsungHelp_mirrorPhoneDisplay =>
+      'Дублирует встроенный экран в среду рабочего стола.';
 }

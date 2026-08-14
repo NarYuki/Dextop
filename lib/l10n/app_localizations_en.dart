@@ -904,4 +904,232 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get reportFeatureCleanup => 'Session cleanup and Android restoration';
+
+  @override
+  String get samsungExperimentalTitle =>
+      'Experimental Samsung desktop settings';
+
+  @override
+  String get samsungUnavailable => 'Available on Samsung devices only';
+
+  @override
+  String get samsungExperimentalDescription =>
+      'Change settings hidden by the native DeX settings screen';
+
+  @override
+  String get samsungSettingsTitle => 'Samsung desktop settings';
+
+  @override
+  String get samsungSettingsSummary => 'Display, input and taskbar settings';
+
+  @override
+  String get samsungRestoreSuccess => 'Samsung settings restored';
+
+  @override
+  String get samsungConfirmTitle => 'Confirm settings access';
+
+  @override
+  String get samsungPermanentWarning =>
+      'These settings may permanently affect Dextop and the desktop environment used normally until they are reset.';
+
+  @override
+  String get samsungAcceptEnable => 'Accept and enable';
+
+  @override
+  String get samsungAboutSetting => 'About this setting';
+
+  @override
+  String get samsungRestoreEnvironment => 'Restore environment';
+
+  @override
+  String get samsungSettingsIntro =>
+      'Directly changes DeX values hidden when Samsung Settings reports no external display. Changes affect Samsung DeX and corresponding Dextop features.';
+
+  @override
+  String get samsungResolution => 'External resolution';
+
+  @override
+  String get samsungScreenZoom => 'Screen zoom (DPI)';
+
+  @override
+  String get samsungFontScale => 'Font size';
+
+  @override
+  String get samsungScreenTimeout => 'Screen timeout';
+
+  @override
+  String get samsungAudioOutput => 'Play audio on external display';
+
+  @override
+  String get samsungDisplayOrientation => 'External display rotation';
+
+  @override
+  String get samsungDisplayArrangement => 'Display arrangement';
+
+  @override
+  String get samsungSectionInput => 'Input';
+
+  @override
+  String get samsungSectionDesktop => 'Desktop';
+
+  @override
+  String get samsungInputLockedWhileRunning =>
+      'Conflicting Samsung input settings cannot be changed while Dextop is running.';
+
+  @override
+  String get samsungAutorunTouchpad => 'Start touchpad automatically';
+
+  @override
+  String get samsungTouchpadScrollDirection => 'Reverse scrolling direction';
+
+  @override
+  String get samsungTouchKeyboard => 'Show on-screen keyboard when connected';
+
+  @override
+  String get samsungKeyboardDex => 'Show keyboard with physical keyboard';
+
+  @override
+  String get samsungSpenInputMode => 'Use S Pen as a mouse';
+
+  @override
+  String get samsungThreeFingerGesture => 'Three-finger gesture';
+
+  @override
+  String get samsungFourFingerGesture => 'Four-finger gesture';
+
+  @override
+  String get samsungAutoHideTaskbar => 'Automatically hide taskbar';
+
+  @override
+  String get samsungDexCommandArrow => 'Show command arrow';
+
+  @override
+  String get samsungIncludePhoneDisplay => 'Include phone display in topology';
+
+  @override
+  String get samsungMirrorPhoneDisplay => 'Mirror built-in display';
+
+  @override
+  String get samsungReviewEnable => 'Review warning and enable changes';
+
+  @override
+  String get samsungSeconds15 => '15 seconds';
+
+  @override
+  String get samsungSeconds30 => '30 seconds';
+
+  @override
+  String get samsungMinute1 => '1 minute';
+
+  @override
+  String get samsungMinutes2 => '2 minutes';
+
+  @override
+  String get samsungMinutes5 => '5 minutes';
+
+  @override
+  String get samsungMinutes10 => '10 minutes';
+
+  @override
+  String get samsungMinutes20 => '20 minutes';
+
+  @override
+  String get samsungMinutes30 => '30 minutes';
+
+  @override
+  String get samsungHour1 => '1 hour';
+
+  @override
+  String get samsungLeft => 'Left';
+
+  @override
+  String get samsungRight => 'Right';
+
+  @override
+  String get samsungAutomatic => 'Automatic';
+
+  @override
+  String get samsungGestureNone => 'None';
+
+  @override
+  String get samsungGestureApps => 'Apps';
+
+  @override
+  String get samsungGestureRecents => 'Recents';
+
+  @override
+  String get samsungGestureNotifications => 'Notifications';
+
+  @override
+  String get samsungGestureQuickSettings => 'Quick settings';
+
+  @override
+  String get samsungHelp_resolution =>
+      'Resolution used by the Samsung desktop environment. It is stored separately from Dextop resolution.';
+
+  @override
+  String get samsungHelp_screenZoom =>
+      'Changes display density (DPI) in the Samsung desktop environment.';
+
+  @override
+  String get samsungHelp_fontScale =>
+      'Changes text scale in the Samsung desktop environment.';
+
+  @override
+  String get samsungHelp_screenTimeout =>
+      'Time before the external desktop display turns off.';
+
+  @override
+  String get samsungHelp_audioOutput => 'Routes audio to the external display.';
+
+  @override
+  String get samsungHelp_displayOrientation =>
+      'Locks external desktop display rotation.';
+
+  @override
+  String get samsungHelp_displayArrangement =>
+      'Controls the relative arrangement of the phone and external display.';
+
+  @override
+  String get samsungHelp_autorunTouchpad =>
+      'Starts Samsung touchpad on connection and conflicts with Dextop input.';
+
+  @override
+  String get samsungHelp_touchpadScrollDirection =>
+      'Reverses Samsung touchpad scrolling.';
+
+  @override
+  String get samsungHelp_touchKeyboard =>
+      'Shows the on-screen keyboard and conflicts with Dextop IME handling.';
+
+  @override
+  String get samsungHelp_keyboardDex =>
+      'Keeps the on-screen keyboard visible with a physical keyboard and conflicts with Dextop IME handling.';
+
+  @override
+  String get samsungHelp_spenInputMode => 'Uses S Pen as a pointing device.';
+
+  @override
+  String get samsungHelp_threeFingerGesture =>
+      'Samsung three-finger action; conflicts with Dextop gestures.';
+
+  @override
+  String get samsungHelp_fourFingerGesture =>
+      'Samsung four-finger action; conflicts with Dextop multi-touch.';
+
+  @override
+  String get samsungHelp_autoHideTaskbar =>
+      'Automatically hides the Samsung desktop taskbar.';
+
+  @override
+  String get samsungHelp_dexCommandArrow =>
+      'Shows the Samsung desktop command arrow.';
+
+  @override
+  String get samsungHelp_includePhoneDisplay =>
+      'Includes the phone display in desktop topology.';
+
+  @override
+  String get samsungHelp_mirrorPhoneDisplay =>
+      'Mirrors the built-in display into the desktop environment.';
 }

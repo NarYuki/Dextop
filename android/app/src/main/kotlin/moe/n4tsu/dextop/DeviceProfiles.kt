@@ -6,8 +6,14 @@ package moe.n4tsu.dextop
  */
 internal object DeviceProfiles {
     val rules: List<DesktopEnvironmentRule> = listOf(
+        DesktopEnvironmentRule(
+            "samsung_trifold",
+            DeviceMatch(manufacturers = setOf("samsung"), devices = setOf("q7mq"), minSdk = 36)
+        ) {
+            DesktopEnvironmentRegistry.samsungDex(autoResizeWithHostDisplay = true)
+        },
         DesktopEnvironmentRule("samsung_dex", DeviceMatch(manufacturers = setOf("samsung"))) {
-            DesktopEnvironment("samsung_dex", "Samsung DeX", true, emptyMap(), false)
+            DesktopEnvironmentRegistry.samsungDex()
         },
         vendor("hyperos_miui", setOf("xiaomi", "redmi", "poco"), "nativeHyperosMiuiDesktop"),
         vendor("coloros_family", setOf("oppo", "realme", "oneplus"), "nativeColorosDesktop"),

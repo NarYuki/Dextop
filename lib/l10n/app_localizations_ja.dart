@@ -875,4 +875,221 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get reportFeatureCleanup => 'セッション終了処理とAndroid状態の復元';
+
+  @override
+  String get samsungExperimentalTitle => '実験的なSamsungデスクトップ設定';
+
+  @override
+  String get samsungUnavailable => 'Samsung端末でのみ利用できます';
+
+  @override
+  String get samsungExperimentalDescription => '純正DeX設定で非表示になる項目をDextopから変更します';
+
+  @override
+  String get samsungSettingsTitle => 'Samsungデスクトップ設定';
+
+  @override
+  String get samsungSettingsSummary => '表示・入力・タスクバー設定';
+
+  @override
+  String get samsungRestoreSuccess => 'Samsung設定を元の環境へ復元しました';
+
+  @override
+  String get samsungConfirmTitle => '設定変更の確認';
+
+  @override
+  String get samsungPermanentWarning =>
+      'この項目はDextopの体験と通常使用時のデスクトップ環境に恒久的（初期化されるまで）な影響を及ぼす可能性があります。';
+
+  @override
+  String get samsungAcceptEnable => '同意して有効化';
+
+  @override
+  String get samsungAboutSetting => 'この設定について';
+
+  @override
+  String get samsungRestoreEnvironment => '環境を復元';
+
+  @override
+  String get samsungSettingsIntro =>
+      'Samsung純正設定が外部ディスプレイ未接続として隠すDeX設定値を直接変更します。変更はSamsung DeXと対応するDextop機能に反映されます。';
+
+  @override
+  String get samsungResolution => '外部画面の解像度';
+
+  @override
+  String get samsungScreenZoom => '画面ズーム（DPI）';
+
+  @override
+  String get samsungFontScale => 'フォントサイズ';
+
+  @override
+  String get samsungScreenTimeout => '画面タイムアウト';
+
+  @override
+  String get samsungAudioOutput => '外部画面から音声を出力';
+
+  @override
+  String get samsungDisplayOrientation => '外部画面の回転';
+
+  @override
+  String get samsungDisplayArrangement => '画面配置';
+
+  @override
+  String get samsungSectionInput => '入力';
+
+  @override
+  String get samsungSectionDesktop => 'デスクトップ';
+
+  @override
+  String get samsungInputLockedWhileRunning =>
+      'Dextop使用中は、競合するSamsung入力設定を変更できません。';
+
+  @override
+  String get samsungAutorunTouchpad => 'タッチパッドを自動起動';
+
+  @override
+  String get samsungTouchpadScrollDirection => 'スクロール方向を反転';
+
+  @override
+  String get samsungTouchKeyboard => '接続時に画面キーボードを表示';
+
+  @override
+  String get samsungKeyboardDex => '物理キーボード使用中も表示';
+
+  @override
+  String get samsungSpenInputMode => 'S Penをマウスとして使用';
+
+  @override
+  String get samsungThreeFingerGesture => '3本指ジェスチャー';
+
+  @override
+  String get samsungFourFingerGesture => '4本指ジェスチャー';
+
+  @override
+  String get samsungAutoHideTaskbar => 'タスクバーを自動的に隠す';
+
+  @override
+  String get samsungDexCommandArrow => 'コマンド矢印を表示';
+
+  @override
+  String get samsungIncludePhoneDisplay => '端末画面をディスプレイトポロジーに含める';
+
+  @override
+  String get samsungMirrorPhoneDisplay => '端末画面をミラーリング';
+
+  @override
+  String get samsungReviewEnable => '注意事項を確認して設定変更を有効化';
+
+  @override
+  String get samsungSeconds15 => '15秒';
+
+  @override
+  String get samsungSeconds30 => '30秒';
+
+  @override
+  String get samsungMinute1 => '1分';
+
+  @override
+  String get samsungMinutes2 => '2分';
+
+  @override
+  String get samsungMinutes5 => '5分';
+
+  @override
+  String get samsungMinutes10 => '10分';
+
+  @override
+  String get samsungMinutes20 => '20分';
+
+  @override
+  String get samsungMinutes30 => '30分';
+
+  @override
+  String get samsungHour1 => '1時間';
+
+  @override
+  String get samsungLeft => '左';
+
+  @override
+  String get samsungRight => '右';
+
+  @override
+  String get samsungAutomatic => '自動';
+
+  @override
+  String get samsungGestureNone => 'なし';
+
+  @override
+  String get samsungGestureApps => 'アプリ一覧';
+
+  @override
+  String get samsungGestureRecents => '履歴';
+
+  @override
+  String get samsungGestureNotifications => '通知';
+
+  @override
+  String get samsungGestureQuickSettings => 'クイック設定';
+
+  @override
+  String get samsungHelp_resolution =>
+      'Samsungデスクトップ環境が使用する外部画面解像度です。Dextopの解像度設定とは別に保存されます。';
+
+  @override
+  String get samsungHelp_screenZoom => 'Samsungデスクトップ環境の表示密度（DPI）を変更します。';
+
+  @override
+  String get samsungHelp_fontScale => 'Samsungデスクトップ環境内の文字倍率を変更します。';
+
+  @override
+  String get samsungHelp_screenTimeout => '外部デスクトップ画面が消灯するまでの時間です。';
+
+  @override
+  String get samsungHelp_audioOutput => '音声出力先を外部画面側へ切り替えます。';
+
+  @override
+  String get samsungHelp_displayOrientation => '外部デスクトップ画面の回転方向を固定します。';
+
+  @override
+  String get samsungHelp_displayArrangement => '端末画面と外部画面の相対位置を指定します。';
+
+  @override
+  String get samsungHelp_autorunTouchpad =>
+      '接続時にSamsungタッチパッドを自動表示します。Dextopの入力処理と競合します。';
+
+  @override
+  String get samsungHelp_touchpadScrollDirection =>
+      'Samsungタッチパッドのスクロール方向を反転します。';
+
+  @override
+  String get samsungHelp_touchKeyboard =>
+      'デスクトップ接続時に画面キーボードを表示します。DextopのIME制御と競合します。';
+
+  @override
+  String get samsungHelp_keyboardDex =>
+      '物理キーボード接続中も画面キーボードを表示します。DextopのIME制御と競合します。';
+
+  @override
+  String get samsungHelp_spenInputMode => 'S Penをポインティングデバイスとして扱います。';
+
+  @override
+  String get samsungHelp_threeFingerGesture =>
+      'Samsung側の3本指操作です。Dextopの3本指ジェスチャーと競合します。';
+
+  @override
+  String get samsungHelp_fourFingerGesture =>
+      'Samsung側の4本指操作です。Dextopのマルチタッチ処理と競合します。';
+
+  @override
+  String get samsungHelp_autoHideTaskbar => 'Samsungデスクトップのタスクバーを自動的に隠します。';
+
+  @override
+  String get samsungHelp_dexCommandArrow => 'Samsungデスクトップのコマンド矢印を表示します。';
+
+  @override
+  String get samsungHelp_includePhoneDisplay => '端末画面をデスクトップの画面配置へ含めます。';
+
+  @override
+  String get samsungHelp_mirrorPhoneDisplay => '端末内蔵画面の内容をデスクトップ側へミラーリングします。';
 }

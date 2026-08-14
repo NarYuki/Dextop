@@ -36,6 +36,22 @@ internal class SessionJournal(private val context: Context) {
             .commit()) { "Unable to persist the original value of $key" }
     }
 
+    fun rememberPhoneRotation(frozen: Boolean, rotation: Int) {
+        if (preferences.contains("phone_rotation_frozen")) return
+        check(preferences.edit()
+            .putBoolean("phone_rotation_frozen", frozen)
+            .putInt("phone_rotation_value", rotation)
+            .commit()) { "Unable to persist the original phone rotation state" }
+    }
+
+    fun phoneRotationState(): PhoneRotationState? {
+        if (!preferences.contains("phone_rotation_frozen")) return null
+        return PhoneRotationState(
+            preferences.getBoolean("phone_rotation_frozen", false),
+            preferences.getInt("phone_rotation_value", 0)
+        )
+    }
+
     fun restoreSystemSettings(): Boolean {
         if (!preferences.getBoolean("transaction_open", false)) return true
         val resolver = context.contentResolver

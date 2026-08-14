@@ -10,12 +10,21 @@ class DextopApp extends StatefulWidget {
 class _DextopAppState extends State<DextopApp> {
   var themeMode = ThemeMode.system;
   bool? setupCompleted;
+  bool? desktopWindow;
 
   @override
   void initState() {
     super.initState();
     loadThemeMode();
     loadSetupState();
+    loadLaunchContext();
+  }
+
+  Future<void> loadLaunchContext() async {
+    final context = await NativeBridge().launchContext();
+    if (mounted) {
+      setState(() => desktopWindow = context['desktopWindow'] == true);
+    }
   }
 
   Future<void> loadSetupState() async {
@@ -68,13 +77,17 @@ class _DextopAppState extends State<DextopApp> {
         GlobalCupertinoLocalizations.delegate,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
-      home: setupCompleted == null
+      home: setupCompleted == null || desktopWindow == null
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
           : setupCompleted == false
           ? DextopSetupPage(
               onCompleted: () => setState(() => setupCompleted = true),
             )
-          : HomeScreen(themeMode: themeMode, onThemeModeChanged: setThemeMode),
+          : HomeScreen(
+              themeMode: themeMode,
+              onThemeModeChanged: setThemeMode,
+              desktopWindow: desktopWindow!,
+            ),
     );
   }
 
@@ -194,6 +207,9 @@ class NativeBridge {
     return await channel.invokeMapMethod<String, dynamic>('status') ?? {};
   }
 
+  Future<Map<String, dynamic>> launchContext() async =>
+      await channel.invokeMapMethod<String, dynamic>('launchContext') ?? {};
+
   Future<bool> requestShizuku() async {
     return await channel.invokeMethod<bool>('requestShizuku') ?? false;
   }
@@ -216,6 +232,30 @@ class NativeBridge {
       channel.invokeMethod('clearDiagnosticLog');
   Future<void> shareDiagnosticReport() =>
       channel.invokeMethod('shareDiagnosticReport');
+  Future<Map<String, dynamic>> samsungDesktopSettings() async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'samsungDesktopSettings',
+      ) ??
+      {};
+  Future<Map<String, dynamic>> setSamsungDesktopSetting(
+    String id,
+    Object value,
+  ) async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'setSamsungDesktopSetting',
+        {'id': id, 'value': value},
+      ) ??
+      {};
+  Future<Map<String, dynamic>> backupSamsungDesktopSettings() async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'backupSamsungDesktopSettings',
+      ) ??
+      {};
+  Future<Map<String, dynamic>> restoreSamsungDesktopSettings() async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'restoreSamsungDesktopSettings',
+      ) ??
+      {};
   Future<List<dynamic>> apps() async =>
       await channel.invokeListMethod<dynamic>('apps') ?? [];
   Future<bool> consumeTileAction() async =>

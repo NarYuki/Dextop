@@ -869,4 +869,215 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get reportFeatureCleanup => '会话清理与 Android 状态恢复';
+
+  @override
+  String get samsungExperimentalTitle => '实验性 Samsung 桌面设置';
+
+  @override
+  String get samsungUnavailable => '仅可在 Samsung 设备上使用';
+
+  @override
+  String get samsungExperimentalDescription => '从 Dextop 更改原生 DeX 设置中隐藏的项目';
+
+  @override
+  String get samsungSettingsTitle => 'Samsung 桌面设置';
+
+  @override
+  String get samsungSettingsSummary => '显示、输入和任务栏设置';
+
+  @override
+  String get samsungRestoreSuccess => '已恢复 Samsung 设置';
+
+  @override
+  String get samsungConfirmTitle => '确认更改设置';
+
+  @override
+  String get samsungPermanentWarning => '这些项目可能会永久影响 Dextop 和日常使用的桌面环境，直到重置为止。';
+
+  @override
+  String get samsungAcceptEnable => '同意并启用';
+
+  @override
+  String get samsungAboutSetting => '关于此设置';
+
+  @override
+  String get samsungRestoreEnvironment => '恢复环境';
+
+  @override
+  String get samsungSettingsIntro =>
+      '直接更改 Samsung 设置因未检测到外接显示器而隐藏的 DeX 值。更改会影响 Samsung DeX 及对应的 Dextop 功能。';
+
+  @override
+  String get samsungResolution => '外接屏幕分辨率';
+
+  @override
+  String get samsungScreenZoom => '屏幕缩放 (DPI)';
+
+  @override
+  String get samsungFontScale => '字体大小';
+
+  @override
+  String get samsungScreenTimeout => '屏幕超时';
+
+  @override
+  String get samsungAudioOutput => '从外接屏幕输出音频';
+
+  @override
+  String get samsungDisplayOrientation => '外接屏幕旋转';
+
+  @override
+  String get samsungDisplayArrangement => '屏幕排列';
+
+  @override
+  String get samsungSectionInput => '输入';
+
+  @override
+  String get samsungSectionDesktop => '桌面';
+
+  @override
+  String get samsungInputLockedWhileRunning =>
+      'Dextop 运行时无法更改有冲突的 Samsung 输入设置。';
+
+  @override
+  String get samsungAutorunTouchpad => '自动启动触控板';
+
+  @override
+  String get samsungTouchpadScrollDirection => '反转滚动方向';
+
+  @override
+  String get samsungTouchKeyboard => '连接时显示屏幕键盘';
+
+  @override
+  String get samsungKeyboardDex => '使用物理键盘时仍显示键盘';
+
+  @override
+  String get samsungSpenInputMode => '将 S Pen 用作鼠标';
+
+  @override
+  String get samsungThreeFingerGesture => '三指手势';
+
+  @override
+  String get samsungFourFingerGesture => '四指手势';
+
+  @override
+  String get samsungAutoHideTaskbar => '自动隐藏任务栏';
+
+  @override
+  String get samsungDexCommandArrow => '显示命令箭头';
+
+  @override
+  String get samsungIncludePhoneDisplay => '将手机屏幕加入显示拓扑';
+
+  @override
+  String get samsungMirrorPhoneDisplay => '镜像内置屏幕';
+
+  @override
+  String get samsungReviewEnable => '查看警告并启用更改';
+
+  @override
+  String get samsungSeconds15 => '15 秒';
+
+  @override
+  String get samsungSeconds30 => '30 秒';
+
+  @override
+  String get samsungMinute1 => '1 分钟';
+
+  @override
+  String get samsungMinutes2 => '2 分钟';
+
+  @override
+  String get samsungMinutes5 => '5 分钟';
+
+  @override
+  String get samsungMinutes10 => '10 分钟';
+
+  @override
+  String get samsungMinutes20 => '20 分钟';
+
+  @override
+  String get samsungMinutes30 => '30 分钟';
+
+  @override
+  String get samsungHour1 => '1 小时';
+
+  @override
+  String get samsungLeft => '左';
+
+  @override
+  String get samsungRight => '右';
+
+  @override
+  String get samsungAutomatic => '自动';
+
+  @override
+  String get samsungGestureNone => '无';
+
+  @override
+  String get samsungGestureApps => '应用列表';
+
+  @override
+  String get samsungGestureRecents => '最近任务';
+
+  @override
+  String get samsungGestureNotifications => '通知';
+
+  @override
+  String get samsungGestureQuickSettings => '快捷设置';
+
+  @override
+  String get samsungHelp_resolution =>
+      'Samsung 桌面环境使用的外接屏幕分辨率，与 Dextop 分辨率分开保存。';
+
+  @override
+  String get samsungHelp_screenZoom => '更改 Samsung 桌面环境的显示密度 (DPI)。';
+
+  @override
+  String get samsungHelp_fontScale => '更改 Samsung 桌面环境的文字缩放。';
+
+  @override
+  String get samsungHelp_screenTimeout => '外接桌面屏幕关闭前的等待时间。';
+
+  @override
+  String get samsungHelp_audioOutput => '将音频输出切换到外接屏幕。';
+
+  @override
+  String get samsungHelp_displayOrientation => '锁定外接桌面屏幕的旋转方向。';
+
+  @override
+  String get samsungHelp_displayArrangement => '指定手机屏幕与外接屏幕的相对位置。';
+
+  @override
+  String get samsungHelp_autorunTouchpad =>
+      '连接时自动显示 Samsung 触控板，会与 Dextop 输入冲突。';
+
+  @override
+  String get samsungHelp_touchpadScrollDirection => '反转 Samsung 触控板的滚动方向。';
+
+  @override
+  String get samsungHelp_touchKeyboard => '显示屏幕键盘，会与 Dextop IME 控制冲突。';
+
+  @override
+  String get samsungHelp_keyboardDex => '连接物理键盘时仍显示屏幕键盘，会与 Dextop IME 控制冲突。';
+
+  @override
+  String get samsungHelp_spenInputMode => '将 S Pen 用作指针设备。';
+
+  @override
+  String get samsungHelp_threeFingerGesture => 'Samsung 三指操作，会与 Dextop 手势冲突。';
+
+  @override
+  String get samsungHelp_fourFingerGesture => 'Samsung 四指操作，会与 Dextop 多点触控冲突。';
+
+  @override
+  String get samsungHelp_autoHideTaskbar => '自动隐藏 Samsung 桌面任务栏。';
+
+  @override
+  String get samsungHelp_dexCommandArrow => '显示 Samsung 桌面命令箭头。';
+
+  @override
+  String get samsungHelp_includePhoneDisplay => '将手机屏幕加入桌面显示拓扑。';
+
+  @override
+  String get samsungHelp_mirrorPhoneDisplay => '将内置屏幕镜像到桌面环境。';
 }
