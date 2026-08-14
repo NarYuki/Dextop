@@ -64,7 +64,7 @@ extension _SettingsContent on _HomeScreenState {
                         checking: releaseChecking,
                         checkSucceeded: releaseCheckSucceeded,
                         checkError: releaseCheckError,
-                        onCheck: () => _checkLatestGitHubRelease(manual: true),
+                        onCheck: () => _checkForUpdates(manual: true),
                         onShowUpdate: _showUpdateDialog,
                       ),
                     ),

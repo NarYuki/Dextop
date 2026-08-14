@@ -1,5 +1,11 @@
 # Changelog
 
+## 1.1.2
+
+### Improved
+
+- Improved the three-finger edge swipe sensitivity by triggering from the leading finger instead of the centroid and lowering the required swipe distance, especially in portrait when swiping down from the top edge.
+
 ## 1.1.1
 
 ### Improved

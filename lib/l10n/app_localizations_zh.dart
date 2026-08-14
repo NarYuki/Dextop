@@ -63,6 +63,15 @@ class AppLocalizationsZh extends AppLocalizations {
   String get updateAvailableTitle => 'GitHub 上已发布新版本！';
 
   @override
+  String get playUpdateAvailableTitle => 'Google Play 上有可用更新';
+
+  @override
+  String get playUpdateAvailableDescription => '您可以通过 Google Play 更新到最新版本。';
+
+  @override
+  String get updateNow => '立即更新';
+
+  @override
   String get checkForUpdates => '检查更新';
 
   @override

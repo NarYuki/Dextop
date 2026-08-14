@@ -11,6 +11,7 @@ import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/app_strings.dart';
 import 'package:free_dextop/features_page.dart';
 import 'package:free_dextop/setup_page.dart';
+import 'package:in_app_update/in_app_update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 part 'app_info.dart';

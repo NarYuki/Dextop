@@ -63,6 +63,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get updateAvailableTitle => 'GitHub에 새 릴리스가 공개되었습니다!';
 
   @override
+  String get playUpdateAvailableTitle => 'Google Play에 업데이트가 있습니다';
+
+  @override
+  String get playUpdateAvailableDescription =>
+      'Google Play에서 최신 버전으로 업데이트할 수 있습니다.';
+
+  @override
+  String get updateNow => '지금 업데이트';
+
+  @override
   String get checkForUpdates => '업데이트 확인';
 
   @override
