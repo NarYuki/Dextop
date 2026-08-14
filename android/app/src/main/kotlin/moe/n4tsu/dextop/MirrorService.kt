@@ -1794,6 +1794,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 return true
             }
             MotionEvent.ACTION_MOVE -> if (threeFingerEdgeSwipe) {
+                // Keep consuming the intercepted stream, but never complete a
+                // three-finger gesture after one of the fingers has lifted.
+                if (event.pointerCount < 3) return true
                 var minimumX = Float.MAX_VALUE
                 var minimumY = Float.MAX_VALUE
                 for (index in 0 until event.pointerCount) {

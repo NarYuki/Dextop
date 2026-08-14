@@ -1,10 +1,15 @@
 # Changelog
 
-## 1.1.1
+## 1.1.2
 
 ### Improved
 
 - Improved the three-finger edge swipe sensitivity by triggering from the leading finger instead of the centroid and lowering the required swipe distance, especially in portrait when swiping down from the top edge.
+
+## 1.1.1
+
+### Improved
+
 - Device reports now include a privacy-filtered log from only the most recent Dextop session.
 - Reduced noisy Android and Flutter debug logging while retaining device implementation, capability, backend, routing, failure, and restoration events.
 
