@@ -65,6 +65,16 @@ class AppLocalizationsRu extends AppLocalizations {
   String get updateAvailableTitle => 'На GitHub опубликована новая версия!';
 
   @override
+  String get playUpdateAvailableTitle => 'В Google Play доступно обновление';
+
+  @override
+  String get playUpdateAvailableDescription =>
+      'Вы можете обновить приложение до последней версии через Google Play.';
+
+  @override
+  String get updateNow => 'Обновить сейчас';
+
+  @override
   String get checkForUpdates => 'Проверить обновления';
 
   @override

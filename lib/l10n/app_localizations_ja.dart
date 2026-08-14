@@ -63,6 +63,15 @@ class AppLocalizationsJa extends AppLocalizations {
   String get updateAvailableTitle => 'GitHubに最新リリースが公開されています！';
 
   @override
+  String get playUpdateAvailableTitle => 'Google Playにアップデートがあります';
+
+  @override
+  String get playUpdateAvailableDescription => 'Google Playから最新バージョンに更新できます。';
+
+  @override
+  String get updateNow => '今すぐ更新';
+
+  @override
   String get checkForUpdates => '更新を確認';
 
   @override

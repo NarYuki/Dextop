@@ -10,6 +10,12 @@
 
 Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. It uses Stellar or Shizuku and Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.
 
+## Community and feedback
+
+Join the official Discord server: [Join here](https://discord.com/invite/444YG3srK)
+
+You can report bugs, submit device reports, and request features there.
+
 ## Screenshots and demo
 
 <table>

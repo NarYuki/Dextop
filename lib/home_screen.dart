@@ -377,6 +377,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? latestReleaseUrl;
   String? releaseCheckError;
   DateTime? releaseCheckedAt;
+  AppUpdateInfo? playUpdateInfo;
+  static const distributionChannel = String.fromEnvironment(
+    'DISTRIBUTION_CHANNEL',
+    defaultValue: 'github',
+  );
+  bool get isPlayDistribution => distributionChannel == 'play';
   bool get updateAvailable => latestReleaseVersion != null;
   var secureSettingsGranted = false;
   String? error;
@@ -441,7 +447,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await Future.wait([refresh(), loadHomeWorkspaces(loadIcons: false)]);
     if (mounted && !releaseCheckStarted) {
       releaseCheckStarted = true;
-      unawaited(_checkLatestGitHubRelease());
+      unawaited(_checkForUpdates());
     }
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => loadHomeAppIcons());
@@ -563,6 +569,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _checkForUpdates({bool manual = false}) => isPlayDistribution
+      ? _checkPlayStoreUpdate(manual: manual)
+      : _checkLatestGitHubRelease(manual: manual);
+
+  Future<void> _checkPlayStoreUpdate({bool manual = false}) async {
+    if (releaseChecking) return;
+    mutate(() {
+      releaseChecking = true;
+      releaseCheckSucceeded = false;
+      releaseCheckError = null;
+    });
+    try {
+      final info = await InAppUpdate.checkForUpdate();
+      final available =
+          info.updateAvailability == UpdateAvailability.updateAvailable;
+      if (!mounted) return;
+      mutate(() {
+        playUpdateInfo = available ? info : null;
+        latestReleaseVersion = available
+            ? info.availableVersionCode.toString()
+            : null;
+        latestReleaseUrl = null;
+        fetchedReleaseVersion = latestReleaseVersion;
+        releaseCheckedAt = DateTime.now();
+        releaseCheckSucceeded = true;
+      });
+      if (manual && updateAvailable) await _showUpdateDialog();
+    } catch (error) {
+      if (!mounted) return;
+      mutate(() {
+        playUpdateInfo = null;
+        latestReleaseVersion = null;
+        releaseCheckSucceeded = false;
+        releaseCheckError = '$error';
+        releaseCheckedAt = DateTime.now();
+      });
+    } finally {
+      if (mounted) mutate(() => releaseChecking = false);
+    }
+  }
+
   Future<void> _showUpdateDialog() async {
     if (!updateAvailable) return;
     final l = AppLocalizations.of(context);
@@ -570,9 +617,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       context: context,
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.system_update_alt_rounded),
-        title: Text(l.updateAvailableTitle),
+        title: Text(
+          isPlayDistribution
+              ? AppStrings.tr('playUpdateAvailableTitle')
+              : l.updateAvailableTitle,
+        ),
         content: Text(
-          '${l.currentVersion}: $appVersion\n${l.latestVersion}: $latestReleaseVersion',
+          isPlayDistribution
+              ? AppStrings.tr('playUpdateAvailableDescription')
+              : '${l.currentVersion}: $appVersion\n${l.latestVersion}: $latestReleaseVersion',
         ),
         actions: [
           TextButton(
@@ -587,9 +640,33 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
               },
               child: Text(l.openOnGitHub),
             ),
+          if (isPlayDistribution && playUpdateInfo != null)
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(dialogContext);
+                await _startPlayStoreUpdate();
+              },
+              child: Text(AppStrings.tr('updateNow')),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _startPlayStoreUpdate() async {
+    final info = playUpdateInfo;
+    if (info == null) return;
+    try {
+      if (info.immediateUpdateAllowed) {
+        await InAppUpdate.performImmediateUpdate();
+      } else if (info.flexibleUpdateAllowed) {
+        await InAppUpdate.startFlexibleUpdate();
+        await InAppUpdate.completeFlexibleUpdate();
+      }
+    } catch (error) {
+      if (!mounted) return;
+      mutate(() => releaseCheckError = '$error');
+    }
   }
 
   bool _isNewerVersion(String candidate, String current) {

@@ -65,6 +65,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get updateAvailableTitle => 'A new release is available on GitHub!';
 
   @override
+  String get playUpdateAvailableTitle =>
+      'An update is available on Google Play';
+
+  @override
+  String get playUpdateAvailableDescription =>
+      'You can update to the latest version through Google Play.';
+
+  @override
+  String get updateNow => 'Update now';
+
+  @override
   String get checkForUpdates => 'Check for updates';
 
   @override

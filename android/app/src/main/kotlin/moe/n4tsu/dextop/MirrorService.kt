@@ -274,8 +274,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var experimentalMultiTouch = false
     private var threeFingerEdgeSwipe = false
     private var edgeMenuTriggered = false
-    private var edgeGestureOriginX = 0f
-    private var edgeGestureOriginY = 0f
+    private var edgeGestureLeadX = 0f
+    private var edgeGestureLeadY = 0f
     private var physicalMouseActive = false
     private var routePhysicalMouseToDextop = true
     private var routePhysicalKeyboardToDextop = true
@@ -1771,43 +1771,39 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 touchStartY = event.y
                 threeFingerEdgeSwipe = false
                 edgeMenuTriggered = false
-                edgeGestureOriginX = 0f
-                edgeGestureOriginY = 0f
+                edgeGestureLeadX = 0f
+                edgeGestureLeadY = 0f
             }
             MotionEvent.ACTION_POINTER_DOWN -> if (event.pointerCount >= 3) {
                 var minimumX = Float.MAX_VALUE
                 var minimumY = Float.MAX_VALUE
-                var totalX = 0f
-                var totalY = 0f
                 for (index in 0 until event.pointerCount) {
                     val x = event.getX(index)
                     val y = event.getY(index)
                     minimumX = minOf(minimumX, x)
                     minimumY = minOf(minimumY, y)
-                    totalX += x
-                    totalY += y
                 }
                 val portrait = targetHeight > targetWidth
                 if (portrait) {
                     if (minimumY > dp(120) && touchStartY > dp(120)) return false
                 } else if (minimumX > dp(120) && touchStartX > dp(120)) return false
                 threeFingerEdgeSwipe = true
-                edgeGestureOriginX = totalX / event.pointerCount
-                edgeGestureOriginY = totalY / event.pointerCount
+                edgeGestureLeadX = minimumX
+                edgeGestureLeadY = minimumY
                 if (directTouch) cancelInjectedDirectTouch()
                 return true
             }
             MotionEvent.ACTION_MOVE -> if (threeFingerEdgeSwipe) {
-                var totalX = 0f
-                var totalY = 0f
+                var minimumX = Float.MAX_VALUE
+                var minimumY = Float.MAX_VALUE
                 for (index in 0 until event.pointerCount) {
-                    totalX += event.getX(index)
-                    totalY += event.getY(index)
+                    minimumX = minOf(minimumX, event.getX(index))
+                    minimumY = minOf(minimumY, event.getY(index))
                 }
                 val distance = if (targetHeight > targetWidth) {
-                    totalY / event.pointerCount - edgeGestureOriginY
-                } else totalX / event.pointerCount - edgeGestureOriginX
-                if (!edgeMenuTriggered && distance >= dp(48)) {
+                    minimumY - edgeGestureLeadY
+                } else minimumX - edgeGestureLeadX
+                if (!edgeMenuTriggered && distance >= dp(28)) {
                     edgeMenuTriggered = true
                     toggleMenu()
                 }
@@ -1817,8 +1813,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (threeFingerEdgeSwipe) {
                 threeFingerEdgeSwipe = false
                 edgeMenuTriggered = false
-                edgeGestureOriginX = 0f
-                edgeGestureOriginY = 0f
+                edgeGestureLeadX = 0f
+                edgeGestureLeadY = 0f
                 return true
             }
         }
@@ -2402,6 +2398,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         longPressTriggered = false
         threeFingerEdgeSwipe = false
         edgeMenuTriggered = false
+        edgeGestureLeadX = 0f
+        edgeGestureLeadY = 0f
         injectedDownTime = 0L
         directInjectionDownTime = 0L
     }

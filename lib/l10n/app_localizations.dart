@@ -212,6 +212,24 @@ abstract class AppLocalizations {
   /// **'GitHubに最新リリースが公開されています！'**
   String get updateAvailableTitle;
 
+  /// No description provided for @playUpdateAvailableTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Google Playにアップデートがあります'**
+  String get playUpdateAvailableTitle;
+
+  /// No description provided for @playUpdateAvailableDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Google Playから最新バージョンに更新できます。'**
+  String get playUpdateAvailableDescription;
+
+  /// No description provided for @updateNow.
+  ///
+  /// In ja, this message translates to:
+  /// **'今すぐ更新'**
+  String get updateNow;
+
   /// No description provided for @checkForUpdates.
   ///
   /// In ja, this message translates to:
