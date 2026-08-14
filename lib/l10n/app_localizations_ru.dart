@@ -452,6 +452,66 @@ class AppLocalizationsRu extends AppLocalizations {
   String get uiSecurity => 'Безопасность';
 
   @override
+  String get topologyTitle => 'Расположение дисплеев';
+
+  @override
+  String get topologyArrangeDisplays => 'Расположение дисплеев';
+
+  @override
+  String get topologySummary =>
+      'Можно оптимизировать схему под физическое расположение мониторов';
+
+  @override
+  String get topologyDescription =>
+      'Перетаскивайте дисплеи, чтобы изменить их расположение. Разместите их так, чтобы движение указателя соответствовало физической установке.';
+
+  @override
+  String get topologyApply => 'Применить';
+
+  @override
+  String get topologyApplied => 'Расположение дисплеев применено';
+
+  @override
+  String get topologyIdentify => 'Определить';
+
+  @override
+  String get topologyRefresh => 'Обновить';
+
+  @override
+  String get topologyReset => 'Сбросить';
+
+  @override
+  String get topologyBuiltInScreen => 'Встроенный экран';
+
+  @override
+  String get displayIncludePhoneSummary =>
+      'Позволяет перемещать приложения и указатель мыши между дисплеями';
+
+  @override
+  String get displayAutoHideTaskbarSummary =>
+      'Автоматически скрывает панель задач рабочего стола, когда она не используется';
+
+  @override
+  String get displayForceInternal120Hz => 'Частота встроенного экрана 120 Гц';
+
+  @override
+  String get displayForceInternal120HzSummary =>
+      'Фиксирует частоту поддерживаемого встроенного экрана на 120 Гц во время работы Dextop';
+
+  @override
+  String get uiConvenience => 'Удобные функции';
+
+  @override
+  String get uiDisplayCategory => 'Дисплей';
+
+  @override
+  String get topologyNoDisplays => 'Нет дисплеев для размещения';
+
+  @override
+  String get topologyUnavailable =>
+      'Топология дисплеев недоступна на этом устройстве';
+
+  @override
   String get uiTap => 'Касание';
 
   @override

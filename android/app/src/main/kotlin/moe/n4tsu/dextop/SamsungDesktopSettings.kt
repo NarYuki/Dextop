@@ -27,9 +27,7 @@ class SamsungDesktopSettings(private val context: Context) {
         "keyboardDex" to Entry(Namespace.GLOBAL, ValueType.INT, "0"),
         "threeFingerGesture" to Entry(Namespace.GLOBAL, ValueType.INT, "4"),
         "fourFingerGesture" to Entry(Namespace.GLOBAL, ValueType.INT, "1"),
-        "autoHideTaskbar" to Entry(Namespace.GLOBAL, ValueType.INT, "0"),
         "dexCommandArrow" to Entry(Namespace.SYSTEM, ValueType.INT, "0"),
-        "includePhoneDisplay" to Entry(Namespace.SECURE, ValueType.INT, "0"),
         "mirrorPhoneDisplay" to Entry(Namespace.SECURE, ValueType.INT, "0")
     )
 
@@ -48,9 +46,7 @@ class SamsungDesktopSettings(private val context: Context) {
         "keyboardDex" to "keyboard_dex",
         "threeFingerGesture" to "three_finger_gesture",
         "fourFingerGesture" to "four_finger_gesture",
-        "autoHideTaskbar" to "desktop_windowing_force_hide_taskbar",
         "dexCommandArrow" to "dex_cmd_arrow",
-        "includePhoneDisplay" to "include_default_display_in_topology",
         "mirrorPhoneDisplay" to "mirror_built_in_display"
     )
 

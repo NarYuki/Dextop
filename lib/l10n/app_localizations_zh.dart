@@ -434,6 +434,60 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uiSecurity => '安全';
 
   @override
+  String get topologyTitle => '显示器排列';
+
+  @override
+  String get topologyArrangeDisplays => '显示器排列';
+
+  @override
+  String get topologySummary => '可根据实际显示器摆放优化布局';
+
+  @override
+  String get topologyDescription => '拖动显示器进行重新排列，使指针在屏幕之间的移动方向与实际摆放位置一致。';
+
+  @override
+  String get topologyApply => '应用';
+
+  @override
+  String get topologyApplied => '已应用显示器排列';
+
+  @override
+  String get topologyIdentify => '识别';
+
+  @override
+  String get topologyRefresh => '刷新';
+
+  @override
+  String get topologyReset => '重置';
+
+  @override
+  String get topologyBuiltInScreen => '内置屏幕';
+
+  @override
+  String get displayIncludePhoneSummary => '启用后，可在显示器之间移动应用和鼠标指针';
+
+  @override
+  String get displayAutoHideTaskbarSummary => '不使用时自动隐藏桌面任务栏';
+
+  @override
+  String get displayForceInternal120Hz => '内置屏幕以 120 Hz 运行';
+
+  @override
+  String get displayForceInternal120HzSummary => 'Dextop 运行时将支持的内置屏幕固定为 120 Hz';
+
+  @override
+  String get uiConvenience => '便捷功能';
+
+  @override
+  String get uiDisplayCategory => '显示器';
+
+  @override
+  String get topologyNoDisplays => '没有可排列的显示器';
+
+  @override
+  String get topologyUnavailable => '此设备不支持显示器拓扑';
+
+  @override
   String get uiTap => '点击';
 
   @override

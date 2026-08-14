@@ -439,6 +439,64 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uiSecurity => '보안';
 
   @override
+  String get topologyTitle => '디스플레이 배치';
+
+  @override
+  String get topologyArrangeDisplays => '디스플레이 배치';
+
+  @override
+  String get topologySummary => '실제 모니터 배치에 맞게 최적화할 수 있습니다';
+
+  @override
+  String get topologyDescription =>
+      '디스플레이를 드래그하여 재배치하세요. 화면 사이의 포인터 이동이 실제 설치 위치와 일치하도록 놓으세요.';
+
+  @override
+  String get topologyApply => '적용';
+
+  @override
+  String get topologyApplied => '디스플레이 배치를 적용했습니다';
+
+  @override
+  String get topologyIdentify => '식별';
+
+  @override
+  String get topologyRefresh => '새로 고침';
+
+  @override
+  String get topologyReset => '초기화';
+
+  @override
+  String get topologyBuiltInScreen => '내장 화면';
+
+  @override
+  String get displayIncludePhoneSummary =>
+      '활성화하면 디스플레이 간에 앱과 마우스 포인터를 이동할 수 있습니다';
+
+  @override
+  String get displayAutoHideTaskbarSummary =>
+      '사용하지 않을 때 데스크톱 작업 표시줄을 자동으로 숨깁니다';
+
+  @override
+  String get displayForceInternal120Hz => '내장 디스플레이를 120Hz로 실행';
+
+  @override
+  String get displayForceInternal120HzSummary =>
+      'Dextop 실행 중 지원되는 내장 화면을 120Hz로 고정합니다';
+
+  @override
+  String get uiConvenience => '편의 기능';
+
+  @override
+  String get uiDisplayCategory => '디스플레이';
+
+  @override
+  String get topologyNoDisplays => '배치할 수 있는 디스플레이가 없습니다';
+
+  @override
+  String get topologyUnavailable => '이 기기에서는 디스플레이 토폴로지를 사용할 수 없습니다';
+
+  @override
   String get uiTap => '탭';
 
   @override

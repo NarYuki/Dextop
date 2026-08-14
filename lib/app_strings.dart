@@ -4,9 +4,7 @@ import 'dart:ui';
 abstract final class AppStrings {
   static String tr(String key) {
     final language = PlatformDispatcher.instance.locale.languageCode;
-    return (_values[language] ?? _values['en']!)[key] ??
-        _values['en']![key] ??
-        key;
+    return (_values[language] ?? _values['en']!)[key] ?? _values['en']![key] ?? key;
   }
 
   static const Map<String, Map<String, String>> _values = {
@@ -75,10 +73,8 @@ abstract final class AppStrings {
       "done": "完了",
       "incomplete": "未完了",
       "setupSystemTitle": "システム機能を利用します",
-      "setupSystemDescription":
-          "DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIなどの挙動を制御します。",
-      "setupDisclaimer":
-          "端末やOSの実装差、システム更新、他のアプリとの競合などにより生じた不具合、データ損失、端末機能への影響について、開発者は責任を負いません。内容を理解したうえで使用してください。",
+      "setupSystemDescription": "DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIなどの挙動を制御します。",
+      "setupDisclaimer": "端末やOSの実装差、システム更新、他のアプリとの競合などにより生じた不具合、データ損失、端末機能への影響について、開発者は責任を負いません。内容を理解したうえで使用してください。",
       "setupShizukuTitle": "Shizukuを準備",
       "setupShizukuDescription": "Dextopがシステム機能へ安全にアクセスするためにShizukuを使用します。",
       "setupInstallShizuku": "Shizukuをインストール",
@@ -90,22 +86,19 @@ abstract final class AppStrings {
       "setupInstallPlay": "Google Playからインストール",
       "setupAllowPermission": "権限を許可",
       "setupProviderChoiceTitle": "特権サービスを選択",
-      "setupProviderChoiceDescription":
-          "StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。",
+      "setupProviderChoiceDescription": "StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。",
       "setupUseStellar": "Stellar（推奨）",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "rootでサービスを実行中です",
       "setupRootVerified": "Shizukuがrootで実行中であることを確認しました。Dextopへの権限を付与してください。",
-      "setupRootNotRunning":
-          "Shizukuがrootで実行中であることを確認できませんでした。rootで起動してから、もう一度確認してください。",
+      "setupRootNotRunning": "Shizukuがrootで実行中であることを確認できませんでした。rootで起動してから、もう一度確認してください。",
       "setupQuestionOpen": "Shizukuを開きましたか？",
       "setupQuestionPair": "「ペアリング」に表示された手順をすべて完了しましたか？",
       "setupQuestionStart": "Shizukuで「開始」を押し、「Shizukuは実行中です」と表示されていますか？",
       "yes": "はい",
       "no": "いいえ",
       "setupVerified": "Shizukuの設定を確認しました",
-      "setupVerificationFailed":
-          "Shizukuの設定または開始を確認できません。Shizuku内の手順を完了してから、もう一度確認してください。",
+      "setupVerificationFailed": "Shizukuの設定または開始を確認できません。Shizuku内の手順を完了してから、もう一度確認してください。",
       "setupPermissionCheckFailed": "Shizukuの権限を確認できませんでした",
       "setupDeviceTitle": "この端末での構成",
       "model": "機種",
@@ -156,6 +149,24 @@ abstract final class AppStrings {
       "uiSecondaryIme": "セカンダリIME",
       "uiSecureDisplayFoldable": "セキュア表示、ミラーリング方式、Foldable",
       "uiSecurity": "セキュリティ",
+      "topologyTitle": "ディスプレイ配置",
+      "topologyArrangeDisplays": "ディスプレイの配置",
+      "topologySummary": "実際のモニター配置に最適化することができます",
+      "topologyDescription": "ディスプレイをドラッグして再配置します。画面間のポインター移動が実際の設置位置と一致するように並べてください。",
+      "topologyApply": "適用",
+      "topologyApplied": "ディスプレイ配置を適用しました",
+      "topologyIdentify": "識別",
+      "topologyRefresh": "再読み込み",
+      "topologyReset": "リセット",
+      "topologyBuiltInScreen": "内蔵スクリーン",
+      "displayIncludePhoneSummary": "有効にすると、ディスプレイ間でアプリやマウスポインタを跨いで移動できるようになります",
+      "displayAutoHideTaskbarSummary": "未使用時にデスクトップのタスクバーを自動的に隠します",
+      "displayForceInternal120Hz": "内蔵ディスプレイを120Hzで動作",
+      "displayForceInternal120HzSummary": "Dextop実行中は対応する内蔵画面を120Hzに固定します",
+      "uiConvenience": "便利機能",
+      "uiDisplayCategory": "ディスプレイ",
+      "topologyNoDisplays": "配置できるディスプレイがありません",
+      "topologyUnavailable": "この端末ではディスプレイトポロジーを利用できません",
       "uiTap": "タップ",
       "uiTapPressAndHoldMultiFingerOperation": "タップ、長押し、複数指操作",
       "uiOpenAppOnDesktop": "デスクトップでアプリを開く",
@@ -247,14 +258,12 @@ abstract final class AppStrings {
       "uiManageLaunchedAppsAndConfigurations": "起動するアプリと構成の管理",
       "uiCouldNotStart": "起動できませんでした",
       "uiLongPress": "長押し",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
-          "開いた状態と閉じた状態の実測解像度を自動使用",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "開いた状態と閉じた状態の実測解像度を自動使用",
       "uiStart": "開始",
       "uiAutomaticSwitchingAccordingToOpenClosedState": "開閉状態に合わせて自動切り替え",
       "uiOpeningQuote": "「",
       "uiDeleteWorkspaceQuestionSuffix": "」を削除しますか？",
-      "uiAbnormalSessionWarning":
-          "不正な状態でセッションが終了されたため、\n一部のAndroid側の機能が無効化されている可能性があります。",
+      "uiAbnormalSessionWarning": "不正な状態でセッションが終了されたため、\n一部のAndroid側の機能が無効化されている可能性があります。",
       "uiChecking": "確認中",
       "uiIdle": "待機中",
       "uiAvailable": "Available",
@@ -310,13 +319,11 @@ abstract final class AppStrings {
       "samsungSettingsSummary": "表示・入力・タスクバー設定",
       "samsungRestoreSuccess": "Samsung設定を元の環境へ復元しました",
       "samsungConfirmTitle": "設定変更の確認",
-      "samsungPermanentWarning":
-          "この項目はDextopの体験と通常使用時のデスクトップ環境に恒久的（初期化されるまで）な影響を及ぼす可能性があります。",
+      "samsungPermanentWarning": "この項目はDextopの体験と通常使用時のデスクトップ環境に恒久的（初期化されるまで）な影響を及ぼす可能性があります。",
       "samsungAcceptEnable": "同意して有効化",
       "samsungAboutSetting": "この設定について",
       "samsungRestoreEnvironment": "環境を復元",
-      "samsungSettingsIntro":
-          "Samsung純正設定が外部ディスプレイ未接続として隠すDeX設定値を直接変更します。変更はSamsung DeXと対応するDextop機能に反映されます。",
+      "samsungSettingsIntro": "Samsung純正設定が外部ディスプレイ未接続として隠すDeX設定値を直接変更します。変更はSamsung DeXと対応するDextop機能に反映されます。",
       "samsungResolution": "外部画面の解像度",
       "samsungScreenZoom": "画面ズーム（DPI）",
       "samsungFontScale": "フォントサイズ",
@@ -356,42 +363,24 @@ abstract final class AppStrings {
       "samsungGestureRecents": "履歴",
       "samsungGestureNotifications": "通知",
       "samsungGestureQuickSettings": "クイック設定",
-      "samsungHelp_resolution":
-          "Samsungデスクトップがアプリやウィンドウを描画する作業領域を決めます。高い解像度ほど一度に多くの情報を表示できますが、文字やボタンは小さくなり、描画負荷も増えます。低い解像度は見やすさと動作の軽さを優先できます。Dextop本体の解像度とは別に保存されます。",
-      "samsungHelp_screenZoom":
-          "Samsungデスクトップ上の文字・アイコン・ボタンをまとめて拡大または縮小します。DPIを高くすると各要素が大きく見やすくなり、低くすると同じ画面により多くの内容を表示できます。解像度そのものは変わりません。",
-      "samsungHelp_fontScale":
-          "Samsungデスクトップ内の文字だけを拡大・縮小します。アイコンやウィンドウの大きさを大きく変えずに読みやすさを調整したい場合に使います。大きくしすぎると一部の画面で文章が折り返されたり、ボタンからはみ出す場合があります。",
-      "samsungHelp_screenTimeout":
-          "操作がないときにSamsungデスクトップ画面が消灯するまでの時間を決めます。長くすると資料や動画を表示したままにしやすくなりますが、消費電力と発熱が増える可能性があります。",
-      "samsungHelp_audioOutput":
-          "有効にすると、音楽・動画・通知などの音声をHDMIモニターやドックなど外部画面側へ出力します。無効にすると通常は端末側のスピーカーや現在選択中の音声機器が使われます。外部画面にスピーカーがない場合は音が聞こえなくなることがあります。",
-      "samsungHelp_displayOrientation":
-          "Samsungデスクトップを指定した角度で表示します。縦置きモニターや回転可能な外部画面に向きを合わせるための設定です。実際の画面の向きと合わない値にすると、表示とマウス操作の方向がずれる場合があります。",
-      "samsungHelp_displayArrangement":
-          "端末画面が外部画面の左側・右側のどちらにあるかをSamsungへ伝えます。マウスポインターを画面間で移動するときのつながる辺が変わります。実際の設置位置と合わせると、自然に別画面へ移動できます。",
-      "samsungHelp_autorunTouchpad":
-          "有効にするとデスクトップ接続時に端末画面へSamsungのタッチパッドが自動表示され、端末をノートPCのタッチパッドのように使えます。Dextop独自のタッチ入力と二重に反応するため、Dextop実行中は非表示にしています。",
-      "samsungHelp_touchpadScrollDirection":
-          "Samsungタッチパッドで2本指を動かした方向と、画面がスクロールする方向の関係を反転します。マウスホイール式とスマートフォンの直接操作式のうち、慣れている方向へ合わせるための設定です。",
-      "samsungHelp_touchKeyboard":
-          "有効にするとデスクトップ接続時でも文字入力欄を選んだ際に画面キーボードを表示できます。物理キーボードがない環境では便利ですが、Dextopのキーボード表示制御と重複するため、Dextop実行中は非表示にしています。",
-      "samsungHelp_keyboardDex":
-          "有効にすると物理キーボードを接続していても画面キーボードを表示できます。絵文字・手書き・音声入力を併用したい場合に便利ですが、作業領域が狭くなりDextopのIME制御とも競合するため、Dextop実行中は非表示にしています。",
-      "samsungHelp_spenInputMode":
-          "有効にするとS Penを画面へ触れる前のホバー位置も含めてマウスポインターとして利用できます。細かな位置指定やペンでのデスクトップ操作がしやすくなります。描画アプリで筆圧を使いたい場合は、アプリ側の挙動が変わらないか確認してください。",
-      "samsungHelp_threeFingerGesture":
-          "Samsungデスクトップで3本指操作を行ったときに、アプリ一覧・ホーム・履歴・戻るなど指定した操作を実行します。Dextopも3本指を操作メニューに使用するため、同時に有効だと誤動作しやすく、Dextop実行中は非表示にしています。",
-      "samsungHelp_fourFingerGesture":
-          "Samsungデスクトップで4本指操作を行ったときに、選択したシステム操作を実行します。対応タッチパッドでは素早く画面を切り替えられますが、Dextopのマルチタッチ判定と競合するため、Dextop実行中は非表示にしています。",
-      "samsungHelp_autoHideTaskbar":
-          "有効にすると操作していない間はSamsungデスクトップのタスクバーを隠し、アプリが使える縦方向の領域を広げます。画面下端へポインターを移動すると再表示されます。常にアプリ切り替えを見せたい場合は無効にしてください。",
-      "samsungHelp_dexCommandArrow":
-          "有効にするとSamsungデスクトップの操作コマンドを呼び出す矢印を表示します。Samsung側の補助操作へ素早くアクセスできますが、Dextopのオーバーレイや画面端操作と重なる場合があります。",
-      "samsungHelp_includePhoneDisplay":
-          "有効にすると端末内蔵画面を外部画面と同じデスクトップの画面構成に含めます。アプリやポインターを端末画面と外部画面の間で移動できる構成になります。端末画面を独立したAndroid操作用として残したい場合は無効にしてください。",
-      "samsungHelp_mirrorPhoneDisplay":
-          "有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。",
+      "samsungHelp_resolution": "Samsungデスクトップがアプリやウィンドウを描画する作業領域を決めます。高い解像度ほど一度に多くの情報を表示できますが、文字やボタンは小さくなり、描画負荷も増えます。低い解像度は見やすさと動作の軽さを優先できます。Dextop本体の解像度とは別に保存されます。",
+      "samsungHelp_screenZoom": "Samsungデスクトップ上の文字・アイコン・ボタンをまとめて拡大または縮小します。DPIを高くすると各要素が大きく見やすくなり、低くすると同じ画面により多くの内容を表示できます。解像度そのものは変わりません。",
+      "samsungHelp_fontScale": "Samsungデスクトップ内の文字だけを拡大・縮小します。アイコンやウィンドウの大きさを大きく変えずに読みやすさを調整したい場合に使います。大きくしすぎると一部の画面で文章が折り返されたり、ボタンからはみ出す場合があります。",
+      "samsungHelp_screenTimeout": "操作がないときにSamsungデスクトップ画面が消灯するまでの時間を決めます。長くすると資料や動画を表示したままにしやすくなりますが、消費電力と発熱が増える可能性があります。",
+      "samsungHelp_audioOutput": "有効にすると、音楽・動画・通知などの音声をHDMIモニターやドックなど外部画面側へ出力します。無効にすると通常は端末側のスピーカーや現在選択中の音声機器が使われます。外部画面にスピーカーがない場合は音が聞こえなくなることがあります。",
+      "samsungHelp_displayOrientation": "Samsungデスクトップを指定した角度で表示します。縦置きモニターや回転可能な外部画面に向きを合わせるための設定です。実際の画面の向きと合わない値にすると、表示とマウス操作の方向がずれる場合があります。",
+      "samsungHelp_displayArrangement": "端末画面が外部画面の左側・右側のどちらにあるかをSamsungへ伝えます。マウスポインターを画面間で移動するときのつながる辺が変わります。実際の設置位置と合わせると、自然に別画面へ移動できます。",
+      "samsungHelp_autorunTouchpad": "有効にするとデスクトップ接続時に端末画面へSamsungのタッチパッドが自動表示され、端末をノートPCのタッチパッドのように使えます。Dextop独自のタッチ入力と二重に反応するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_touchpadScrollDirection": "Samsungタッチパッドで2本指を動かした方向と、画面がスクロールする方向の関係を反転します。マウスホイール式とスマートフォンの直接操作式のうち、慣れている方向へ合わせるための設定です。",
+      "samsungHelp_touchKeyboard": "有効にするとデスクトップ接続時でも文字入力欄を選んだ際に画面キーボードを表示できます。物理キーボードがない環境では便利ですが、Dextopのキーボード表示制御と重複するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_keyboardDex": "有効にすると物理キーボードを接続していても画面キーボードを表示できます。絵文字・手書き・音声入力を併用したい場合に便利ですが、作業領域が狭くなりDextopのIME制御とも競合するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_spenInputMode": "有効にするとS Penを画面へ触れる前のホバー位置も含めてマウスポインターとして利用できます。細かな位置指定やペンでのデスクトップ操作がしやすくなります。描画アプリで筆圧を使いたい場合は、アプリ側の挙動が変わらないか確認してください。",
+      "samsungHelp_threeFingerGesture": "Samsungデスクトップで3本指操作を行ったときに、アプリ一覧・ホーム・履歴・戻るなど指定した操作を実行します。Dextopも3本指を操作メニューに使用するため、同時に有効だと誤動作しやすく、Dextop実行中は非表示にしています。",
+      "samsungHelp_fourFingerGesture": "Samsungデスクトップで4本指操作を行ったときに、選択したシステム操作を実行します。対応タッチパッドでは素早く画面を切り替えられますが、Dextopのマルチタッチ判定と競合するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_autoHideTaskbar": "有効にすると操作していない間はSamsungデスクトップのタスクバーを隠し、アプリが使える縦方向の領域を広げます。画面下端へポインターを移動すると再表示されます。常にアプリ切り替えを見せたい場合は無効にしてください。",
+      "samsungHelp_dexCommandArrow": "有効にするとSamsungデスクトップの操作コマンドを呼び出す矢印を表示します。Samsung側の補助操作へ素早くアクセスできますが、Dextopのオーバーレイや画面端操作と重なる場合があります。",
+      "samsungHelp_includePhoneDisplay": "有効にすると端末内蔵画面を外部画面と同じデスクトップの画面構成に含めます。アプリやポインターを端末画面と外部画面の間で移動できる構成になります。端末画面を独立したAndroid操作用として残したい場合は無効にしてください。",
+      "samsungHelp_mirrorPhoneDisplay": "有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。",
     },
     "en": {
       "home": "Home",
@@ -406,16 +395,14 @@ abstract final class AppStrings {
       "secureDisplayDescription": "Allow protected content to be displayed",
       "mirrorBackend": "Display mirroring method",
       "mirrorBackendAuto": "Automatic (compatibility)",
-      "mirrorBackendAutoDescription":
-          "Use the best available method for this device",
+      "mirrorBackendAutoDescription": "Use the best available method for this device",
       "mirrorBackendWindowManager": "WindowManager",
       "mirrorBackendSurfaceControl": "SurfaceControl",
       "mirrorBackendVirtualDisplay": "VirtualDisplay",
       "updateAvailable": "Update available",
       "updateAvailableTitle": "A new release is available on GitHub!",
       "playUpdateAvailableTitle": "An update is available on Google Play",
-      "playUpdateAvailableDescription":
-          "You can update to the latest version through Google Play.",
+      "playUpdateAvailableDescription": "You can update to the latest version through Google Play.",
       "updateNow": "Update now",
       "checkForUpdates": "Check for updates",
       "checkingForUpdates": "Retrieving update information",
@@ -460,42 +447,32 @@ abstract final class AppStrings {
       "done": "Done",
       "incomplete": "Incomplete",
       "setupSystemTitle": "Uses system-level features",
-      "setupSystemDescription":
-          "Dextop uses Shizuku and ADB to control behavior such as virtual displays, screen orientation, input, and system UI.",
-      "setupDisclaimer":
-          "The developer is not responsible for any defects, data loss, or impact on device functionality caused by differences in device or OS implementation, system updates, conflicts with other apps, etc. Please understand the contents before use.",
+      "setupSystemDescription": "Dextop uses Shizuku and ADB to control behavior such as virtual displays, screen orientation, input, and system UI.",
+      "setupDisclaimer": "The developer is not responsible for any defects, data loss, or impact on device functionality caused by differences in device or OS implementation, system updates, conflicts with other apps, etc. Please understand the contents before use.",
       "setupShizukuTitle": "Prepare Shizuku",
-      "setupShizukuDescription":
-          "Dextop uses Shizuku to securely access system functions.",
+      "setupShizukuDescription": "Dextop uses Shizuku to securely access system functions.",
       "setupInstallShizuku": "Install Shizuku",
       "setupConfigureShizuku": "Set up Shizuku",
-      "setupShizukuHint":
-          "Open Shizuku, follow the steps under \"Pairing\" in order, then start Shizuku.",
+      "setupShizukuHint": "Open Shizuku, follow the steps under \"Pairing\" in order, then start Shizuku.",
       "setupOpenShizuku": "Open Shizuku",
       "setupValidate": "Finished setup? Verify now",
       "setupDextopPermission": "Dextop permission",
       "setupInstallPlay": "Install from Google Play",
       "setupAllowPermission": "Grant permission",
       "setupProviderChoiceTitle": "Choose a privilege service",
-      "setupProviderChoiceDescription":
-          "Stellar and Shizuku are both installed. Choose which service Dextop should use.",
+      "setupProviderChoiceDescription": "Stellar and Shizuku are both installed. Choose which service Dextop should use.",
       "setupUseStellar": "Stellar (recommended)",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "The service is running as root",
-      "setupRootVerified":
-          "Shizuku was verified as running with root privileges. Grant Dextop permission next.",
-      "setupRootNotRunning":
-          "Shizuku could not be verified as running with root privileges. Start it with root and try again.",
+      "setupRootVerified": "Shizuku was verified as running with root privileges. Grant Dextop permission next.",
+      "setupRootNotRunning": "Shizuku could not be verified as running with root privileges. Start it with root and try again.",
       "setupQuestionOpen": "Have you opened Shizuku?",
-      "setupQuestionPair":
-          "Have you completed all the steps listed under \"Pairing\"?",
-      "setupQuestionStart":
-          "Did you tap \"Start\" in Shizuku and confirm that it says \"Shizuku is running\"?",
+      "setupQuestionPair": "Have you completed all the steps listed under \"Pairing\"?",
+      "setupQuestionStart": "Did you tap \"Start\" in Shizuku and confirm that it says \"Shizuku is running\"?",
       "yes": "Yes",
       "no": "No",
       "setupVerified": "Shizuku setup verified",
-      "setupVerificationFailed":
-          "Could not verify that Shizuku is configured and running. Complete the steps in Shizuku, then try again.",
+      "setupVerificationFailed": "Could not verify that Shizuku is configured and running. Complete the steps in Shizuku, then try again.",
       "setupPermissionCheckFailed": "Could not check permissions for Shizuku",
       "setupDeviceTitle": "Configuration on this device",
       "model": "Model",
@@ -503,11 +480,9 @@ abstract final class AppStrings {
       "desktopUi": "Desktop UI",
       "detectedResolution": "Automatically detected resolution",
       "loadingLabel": "Loading…",
-      "setupDeviceDescription":
-          "This information is used to set the initial resolution and device-specific desktop controls.",
+      "setupDeviceDescription": "This information is used to set the initial resolution and device-specific desktop controls.",
       "setupGestureTitle": "Open the control panel with a gesture",
-      "setupGestureDescription":
-          "Place three fingers on the three circles below at the same time.",
+      "setupGestureDescription": "Place three fingers on the three circles below at the same time.",
       "uiTwoFingerTap": "Two-finger tap",
       "ui3FingerTap": "Three-finger tap",
       "ui4Divisions": "Four-way split",
@@ -518,10 +493,8 @@ abstract final class AppStrings {
       "uiCreateADextopSession": "Create a Dextop session",
       "uiDextopWorkspaceJson": "Dextop workspace JSON",
       "uiPerformanceDisplayOnDextop": "Show performance overlay in Dextop",
-      "uiDoNotSleepWhileRunningDextop":
-          "Keep screen awake while Dextop is running",
-      "uiRealTimeDisplayOfFpsMemoryPower":
-          "Show FPS, memory, power usage, and battery in real time",
+      "uiDoNotSleepWhileRunningDextop": "Keep screen awake while Dextop is running",
+      "uiRealTimeDisplayOfFpsMemoryPower": "Show FPS, memory, power usage, and battery in real time",
       "uiCouldNotLoadJson": "Could not load JSON",
       "uiSecureSettingsPermission": "Secure Settings permission",
       "uiAllowShizukuPermissions": "Allow Shizuku permissions",
@@ -534,8 +507,7 @@ abstract final class AppStrings {
       "uiAccessibilityServices": "Accessibility service",
       "uiAppNotFound": "App not found",
       "uiAppsAndWorkspace": "Apps and workspace",
-      "uiLaunchTheAppAndConfigureYourWorkspace":
-          "Launch apps and configure workspaces",
+      "uiLaunchTheAppAndConfigureYourWorkspace": "Launch apps and configure workspaces",
       "uiRestartTheApp": "Restart app",
       "uiSearchApp": "Search apps",
       "uiAppMemory": "App memory",
@@ -551,9 +523,26 @@ abstract final class AppStrings {
       "uiSecondaryIme": "Secondary IME",
       "uiSecureDisplayFoldable": "Secure display, mirroring method, Foldable",
       "uiSecurity": "Security",
+      "topologyTitle": "Display arrangement",
+      "topologyArrangeDisplays": "Display arrangement",
+      "topologySummary": "Optimize the layout for your physical monitor arrangement",
+      "topologyDescription": "Drag displays to rearrange them. Place each screen so pointer movement between displays matches their physical setup.",
+      "topologyApply": "Apply",
+      "topologyApplied": "Display arrangement applied",
+      "topologyIdentify": "Identify",
+      "topologyRefresh": "Refresh",
+      "topologyReset": "Reset",
+      "topologyBuiltInScreen": "Built-in screen",
+      "displayIncludePhoneSummary": "Enable moving apps and the mouse pointer across displays",
+      "displayAutoHideTaskbarSummary": "Automatically hide the desktop taskbar when it is not in use",
+      "displayForceInternal120Hz": "Run built-in display at 120 Hz",
+      "displayForceInternal120HzSummary": "Pin a supported built-in screen to 120 Hz while Dextop is running",
+      "uiConvenience": "Convenience",
+      "uiDisplayCategory": "Display",
+      "topologyNoDisplays": "No displays are available to arrange",
+      "topologyUnavailable": "Display topology is unavailable on this device",
       "uiTap": "Tap",
-      "uiTapPressAndHoldMultiFingerOperation":
-          "Tap, long press, and multi-finger controls",
+      "uiTapPressAndHoldMultiFingerOperation": "Tap, long press, and multi-finger controls",
       "uiOpenAppOnDesktop": "Open app on desktop",
       "uiDesktopMode": "Desktop mode",
       "uiDesktopFeatures": "Desktop features",
@@ -562,8 +551,7 @@ abstract final class AppStrings {
       "uiBattery": "Battery",
       "uiPerformance": "Performance",
       "uiPerformanceCompatibility": "Performance and compatibility",
-      "uiItSupportsMultiTouchAndTheThree":
-          "Enables multi-touch and changes the three-finger gesture to a swipe from the left edge.",
+      "uiItSupportsMultiTouchAndTheThree": "Enables multi-touch and changes the three-finger gesture to a swipe from the left edge.",
       "uiMainLarge2Sub": "Large main + two secondary",
       "uiMainLeft": "Main (left)",
       "uiLayout": "Layout",
@@ -590,8 +578,7 @@ abstract final class AppStrings {
       "uiRestart": "Resume",
       "uiAvailableMemory": "Available memory",
       "uiDelete": "Delete",
-      "uiYouCanRestoreYourPreviousSession":
-          "You can restore your previous session",
+      "uiYouCanRestoreYourPreviousSession": "You can restore your previous session",
       "uiRight": "Right",
       "uiRight13": "Right 1/3",
       "uiRight23": "Right 2/3",
@@ -615,8 +602,7 @@ abstract final class AppStrings {
       "uiLowerLeft": "Bottom left",
       "uiLeftHalf": "Left half",
       "uiDividedIntoLeftAndRight": "Left/right split",
-      "uiSwipeRightWithThreeFingersFromThe":
-          "Swipe right with three fingers from the left edge",
+      "uiSwipeRightWithThreeFingersFromThe": "Swipe right with three fingers from the left edge",
       "uiRecoverySession": "Session recovery",
       "uiEstimatedPowerConsumption": "Estimated power consumption",
       "uiOperationOverlay": "Control overlay",
@@ -630,35 +616,28 @@ abstract final class AppStrings {
       "uiPhysicalKeyboard": "Physical keyboard",
       "uiPhysicalMouse": "Physical mouse",
       "uiConditionAndDiagnosis": "Status and diagnostics",
-      "uiPreventsTheScreenFromTurningOffAutomatically":
-          "Prevents the screen from turning off automatically",
+      "uiPreventsTheScreenFromTurningOffAutomatically": "Prevents the screen from turning off automatically",
       "uiDestruction": "Discard",
       "uiTerminalAndPermissions": "Device and permissions",
-      "uiDeviceInformationDesktopModeAccessibility":
-          "Device information, desktop mode, accessibility",
+      "uiDeviceInformationDesktopModeAccessibility": "Device information, desktop mode, accessibility",
       "uiTerminalResolution": "Device resolution",
       "uiEnd": "End",
-      "uiTerminationProcessingCompletedSuccessfully":
-          "Session ended successfully.",
+      "uiTerminationProcessingCompletedSuccessfully": "Session ended successfully.",
       "uiEdit": "Edit",
       "uiChangeToPortraitOrientation": "Switch to portrait",
       "uiVerticalHorizontalSwitching": "Portrait / landscape",
       "uiDisplayOptimization": "Display optimization",
       "uiDisplayRefreshRate": "Display refresh rate",
       "uiReproduction": "Duplicate",
-      "uiManageLaunchedAppsAndConfigurations":
-          "Manage apps to launch and their layouts",
+      "uiManageLaunchedAppsAndConfigurations": "Manage apps to launch and their layouts",
       "uiCouldNotStart": "Could not start",
       "uiLongPress": "Long press",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
-          "Automatically uses measured resolution for open and closed states",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "Automatically uses measured resolution for open and closed states",
       "uiStart": "Start",
-      "uiAutomaticSwitchingAccordingToOpenClosedState":
-          "Automatic switching according to open/closed state",
+      "uiAutomaticSwitchingAccordingToOpenClosedState": "Automatic switching according to open/closed state",
       "uiOpeningQuote": "“",
       "uiDeleteWorkspaceQuestionSuffix": "” — delete this workspace?",
-      "uiAbnormalSessionWarning":
-          "The session ended in an invalid state.\nSome Android system functions may still be disabled.",
+      "uiAbnormalSessionWarning": "The session ended in an invalid state.\nSome Android system functions may still be disabled.",
       "uiChecking": "Checking",
       "uiIdle": "Idle",
       "uiAvailable": "Available",
@@ -668,18 +647,15 @@ abstract final class AppStrings {
       "uiGitHub": "GitHub",
       "uiGitHubRepository": "NarYuki/Dextop",
       "diagnosticLog": "Operation log and device diagnostics",
-      "diagnosticLogDescription":
-          "View app logs, capability detection, and detailed device specifications",
+      "diagnosticLogDescription": "View app logs, capability detection, and detailed device specifications",
       "loadDiagnosticLog": "Load diagnostic report",
       "copyDiagnosticLog": "Copy",
       "shareDiagnosticLog": "Share",
       "clearDiagnosticLog": "Clear log",
       "deviceReport": "Device report",
       "uiCpuTemperature": "CPU temperature",
-      "deviceReportDescription":
-          "Report device and feature compatibility by email",
-      "deviceReportIntro":
-          "Device details are collected automatically. Select the result for each feature.",
+      "deviceReportDescription": "Report device and feature compatibility by email",
+      "deviceReportIntro": "Device details are collected automatically. Select the result for each feature.",
       "reportWorking": "Working",
       "reportNotWorking": "Not working",
       "reportUntested": "Not tested",
@@ -689,8 +665,7 @@ abstract final class AppStrings {
       "reportEmailUnavailable": "Could not open an email app",
       "reportTemplateTitle": "Dextop device report",
       "reportNoNotes": "None",
-      "reportNoSessionLog":
-          "No completed Dextop session has been recorded yet.",
+      "reportNoSessionLog": "No completed Dextop session has been recorded yet.",
       "reportFeatureStartup": "App startup and device detection",
       "reportFeatureSession": "Dextop session startup",
       "reportFeatureVirtualDisplay": "VirtualDisplay mirroring",
@@ -713,19 +688,16 @@ abstract final class AppStrings {
       "reportFeatureCleanup": "Session cleanup and Android restoration",
       "samsungExperimentalTitle": "Experimental Samsung desktop settings",
       "samsungUnavailable": "Available on Samsung devices only",
-      "samsungExperimentalDescription":
-          "Change settings hidden by the native DeX settings screen",
+      "samsungExperimentalDescription": "Change settings hidden by the native DeX settings screen",
       "samsungSettingsTitle": "Samsung desktop settings",
       "samsungSettingsSummary": "Display, input and taskbar settings",
       "samsungRestoreSuccess": "Samsung settings restored",
       "samsungConfirmTitle": "Confirm settings access",
-      "samsungPermanentWarning":
-          "These settings may permanently affect Dextop and the desktop environment used normally until they are reset.",
+      "samsungPermanentWarning": "These settings may permanently affect Dextop and the desktop environment used normally until they are reset.",
       "samsungAcceptEnable": "Accept and enable",
       "samsungAboutSetting": "About this setting",
       "samsungRestoreEnvironment": "Restore environment",
-      "samsungSettingsIntro":
-          "Directly changes DeX values hidden when Samsung Settings reports no external display. Changes affect Samsung DeX and corresponding Dextop features.",
+      "samsungSettingsIntro": "Directly changes DeX values hidden when Samsung Settings reports no external display. Changes affect Samsung DeX and corresponding Dextop features.",
       "samsungResolution": "External resolution",
       "samsungScreenZoom": "Screen zoom (DPI)",
       "samsungFontScale": "Font size",
@@ -735,8 +707,7 @@ abstract final class AppStrings {
       "samsungDisplayArrangement": "Display arrangement",
       "samsungSectionInput": "Input",
       "samsungSectionDesktop": "Desktop",
-      "samsungInputLockedWhileRunning":
-          "Conflicting Samsung input settings cannot be changed while Dextop is running.",
+      "samsungInputLockedWhileRunning": "Conflicting Samsung input settings cannot be changed while Dextop is running.",
       "samsungAutorunTouchpad": "Start touchpad automatically",
       "samsungTouchpadScrollDirection": "Reverse scrolling direction",
       "samsungTouchKeyboard": "Show on-screen keyboard when connected",
@@ -766,42 +737,24 @@ abstract final class AppStrings {
       "samsungGestureRecents": "Recents",
       "samsungGestureNotifications": "Notifications",
       "samsungGestureQuickSettings": "Quick settings",
-      "samsungHelp_resolution":
-          "Sets the workspace Samsung Desktop uses to draw apps and windows. Higher resolutions fit more content but make controls smaller and increase rendering load. Lower resolutions favor readability and performance. This is stored separately from Dextop's resolution.",
-      "samsungHelp_screenZoom":
-          "Scales text, icons, and controls across Samsung Desktop. A higher DPI makes everything larger and easier to read; a lower DPI fits more content on screen. It does not change the actual resolution.",
-      "samsungHelp_fontScale":
-          "Changes text size without substantially resizing icons or windows. Use it to improve readability while preserving the workspace. Very large values can cause text to wrap or overflow in some apps.",
-      "samsungHelp_screenTimeout":
-          "Controls how long Samsung Desktop stays lit without input. A longer timeout is useful for documents or video, but may increase power use and heat.",
-      "samsungHelp_audioOutput":
-          "When enabled, media and notification audio is routed to the HDMI display or dock. When disabled, the phone or currently selected audio device is normally used. Enabling this with a display that has no speakers may result in no audible sound.",
-      "samsungHelp_displayOrientation":
-          "Rotates Samsung Desktop to the selected angle. Use this for a portrait-mounted or rotatable monitor. A value that does not match the physical screen can make the picture and pointer direction feel misaligned.",
-      "samsungHelp_displayArrangement":
-          "Tells Samsung whether the phone is positioned to the left or right of the external display. This changes which screen edge the pointer crosses, making movement between screens match the physical setup.",
-      "samsungHelp_autorunTouchpad":
-          "When enabled, Samsung's touchpad opens automatically on the phone after connecting, allowing the phone to work like a laptop touchpad. It duplicates Dextop input handling, so this option is hidden while Dextop is running.",
-      "samsungHelp_touchpadScrollDirection":
-          "Reverses the relationship between two-finger movement and page movement on Samsung's touchpad. Use it to choose between mouse-wheel-style and direct-touch-style scrolling.",
-      "samsungHelp_touchKeyboard":
-          "When enabled, the on-screen keyboard can appear after selecting a text field in desktop mode. It is useful without a physical keyboard, but overlaps Dextop keyboard handling, so it is hidden while Dextop is running.",
-      "samsungHelp_keyboardDex":
-          "When enabled, the on-screen keyboard remains available even with a physical keyboard connected. This helps with emoji, handwriting, and voice input, but reduces workspace and conflicts with Dextop IME handling.",
-      "samsungHelp_spenInputMode":
-          "When enabled, S Pen acts as a pointer, including hover before touching the screen. This improves precise desktop selection. Check drawing apps if you rely on their normal pressure-sensitive pen behavior.",
-      "samsungHelp_threeFingerGesture":
-          "Runs the selected action—such as Apps, Home, Recents, or Back—when Samsung detects a three-finger gesture. Dextop also uses three fingers for its controls, so this option is hidden while Dextop is running.",
-      "samsungHelp_fourFingerGesture":
-          "Runs the selected system action from a supported four-finger touchpad gesture. It can speed up navigation, but conflicts with Dextop multi-touch detection and is therefore hidden during a Dextop session.",
-      "samsungHelp_autoHideTaskbar":
-          "When enabled, Samsung Desktop hides the taskbar while it is not in use, giving apps more vertical space. Move the pointer to the bottom edge to reveal it. Disable this if you prefer app switching to remain visible.",
-      "samsungHelp_dexCommandArrow":
-          "When enabled, Samsung Desktop shows an arrow for opening Samsung command controls. It provides faster access to Samsung actions, but may overlap Dextop overlays or edge gestures.",
-      "samsungHelp_includePhoneDisplay":
-          "When enabled, the built-in phone screen becomes part of the same desktop topology as the external display, allowing apps and the pointer to move between them. Leave it disabled to keep the phone as an independent Android control screen.",
-      "samsungHelp_mirrorPhoneDisplay":
-          "When enabled, the external desktop shows the same content as the built-in phone screen. This is useful for demonstrations, but it duplicates rather than expands the workspace, so the two screens cannot show independent apps.",
+      "samsungHelp_resolution": "Sets the workspace Samsung Desktop uses to draw apps and windows. Higher resolutions fit more content but make controls smaller and increase rendering load. Lower resolutions favor readability and performance. This is stored separately from Dextop's resolution.",
+      "samsungHelp_screenZoom": "Scales text, icons, and controls across Samsung Desktop. A higher DPI makes everything larger and easier to read; a lower DPI fits more content on screen. It does not change the actual resolution.",
+      "samsungHelp_fontScale": "Changes text size without substantially resizing icons or windows. Use it to improve readability while preserving the workspace. Very large values can cause text to wrap or overflow in some apps.",
+      "samsungHelp_screenTimeout": "Controls how long Samsung Desktop stays lit without input. A longer timeout is useful for documents or video, but may increase power use and heat.",
+      "samsungHelp_audioOutput": "When enabled, media and notification audio is routed to the HDMI display or dock. When disabled, the phone or currently selected audio device is normally used. Enabling this with a display that has no speakers may result in no audible sound.",
+      "samsungHelp_displayOrientation": "Rotates Samsung Desktop to the selected angle. Use this for a portrait-mounted or rotatable monitor. A value that does not match the physical screen can make the picture and pointer direction feel misaligned.",
+      "samsungHelp_displayArrangement": "Tells Samsung whether the phone is positioned to the left or right of the external display. This changes which screen edge the pointer crosses, making movement between screens match the physical setup.",
+      "samsungHelp_autorunTouchpad": "When enabled, Samsung's touchpad opens automatically on the phone after connecting, allowing the phone to work like a laptop touchpad. It duplicates Dextop input handling, so this option is hidden while Dextop is running.",
+      "samsungHelp_touchpadScrollDirection": "Reverses the relationship between two-finger movement and page movement on Samsung's touchpad. Use it to choose between mouse-wheel-style and direct-touch-style scrolling.",
+      "samsungHelp_touchKeyboard": "When enabled, the on-screen keyboard can appear after selecting a text field in desktop mode. It is useful without a physical keyboard, but overlaps Dextop keyboard handling, so it is hidden while Dextop is running.",
+      "samsungHelp_keyboardDex": "When enabled, the on-screen keyboard remains available even with a physical keyboard connected. This helps with emoji, handwriting, and voice input, but reduces workspace and conflicts with Dextop IME handling.",
+      "samsungHelp_spenInputMode": "When enabled, S Pen acts as a pointer, including hover before touching the screen. This improves precise desktop selection. Check drawing apps if you rely on their normal pressure-sensitive pen behavior.",
+      "samsungHelp_threeFingerGesture": "Runs the selected action—such as Apps, Home, Recents, or Back—when Samsung detects a three-finger gesture. Dextop also uses three fingers for its controls, so this option is hidden while Dextop is running.",
+      "samsungHelp_fourFingerGesture": "Runs the selected system action from a supported four-finger touchpad gesture. It can speed up navigation, but conflicts with Dextop multi-touch detection and is therefore hidden during a Dextop session.",
+      "samsungHelp_autoHideTaskbar": "When enabled, Samsung Desktop hides the taskbar while it is not in use, giving apps more vertical space. Move the pointer to the bottom edge to reveal it. Disable this if you prefer app switching to remain visible.",
+      "samsungHelp_dexCommandArrow": "When enabled, Samsung Desktop shows an arrow for opening Samsung command controls. It provides faster access to Samsung actions, but may overlap Dextop overlays or edge gestures.",
+      "samsungHelp_includePhoneDisplay": "When enabled, the built-in phone screen becomes part of the same desktop topology as the external display, allowing apps and the pointer to move between them. Leave it disabled to keep the phone as an independent Android control screen.",
+      "samsungHelp_mirrorPhoneDisplay": "When enabled, the external desktop shows the same content as the built-in phone screen. This is useful for demonstrations, but it duplicates rather than expands the workspace, so the two screens cannot show independent apps.",
     },
     "zh": {
       "home": "主页",
@@ -868,10 +821,8 @@ abstract final class AppStrings {
       "done": "完成",
       "incomplete": "未完成",
       "setupSystemTitle": "使用系统级功能",
-      "setupSystemDescription":
-          "Dextop 使用 Shizuku 和 ADB 来控制虚拟显示、屏幕方向、输入和系统 UI 等行为。",
-      "setupDisclaimer":
-          "对于因设备或操作系统实现差异、系统更新、与其他应用程序冲突等而导致的任何缺陷、数据丢失或对设备功能的影响，开发者不承担任何责任。请在使用前了解内容。",
+      "setupSystemDescription": "Dextop 使用 Shizuku 和 ADB 来控制虚拟显示、屏幕方向、输入和系统 UI 等行为。",
+      "setupDisclaimer": "对于因设备或操作系统实现差异、系统更新、与其他应用程序冲突等而导致的任何缺陷、数据丢失或对设备功能的影响，开发者不承担任何责任。请在使用前了解内容。",
       "setupShizukuTitle": "准备 Shizuku",
       "setupShizukuDescription": "Dextop 使用 Shizuku 安全地访问系统功能。",
       "setupInstallShizuku": "安装 Shizuku",
@@ -883,8 +834,7 @@ abstract final class AppStrings {
       "setupInstallPlay": "从 Google Play 安装",
       "setupAllowPermission": "授予权限",
       "setupProviderChoiceTitle": "选择特权服务",
-      "setupProviderChoiceDescription":
-          "已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。",
+      "setupProviderChoiceDescription": "已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。",
       "setupUseStellar": "Stellar（推荐）",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "服务正在以 root 运行",
@@ -947,6 +897,24 @@ abstract final class AppStrings {
       "uiSecondaryIme": "辅助输入法",
       "uiSecureDisplayFoldable": "安全显示、镜像方式、可折叠设备",
       "uiSecurity": "安全",
+      "topologyTitle": "显示器排列",
+      "topologyArrangeDisplays": "显示器排列",
+      "topologySummary": "可根据实际显示器摆放优化布局",
+      "topologyDescription": "拖动显示器进行重新排列，使指针在屏幕之间的移动方向与实际摆放位置一致。",
+      "topologyApply": "应用",
+      "topologyApplied": "已应用显示器排列",
+      "topologyIdentify": "识别",
+      "topologyRefresh": "刷新",
+      "topologyReset": "重置",
+      "topologyBuiltInScreen": "内置屏幕",
+      "displayIncludePhoneSummary": "启用后，可在显示器之间移动应用和鼠标指针",
+      "displayAutoHideTaskbarSummary": "不使用时自动隐藏桌面任务栏",
+      "displayForceInternal120Hz": "内置屏幕以 120 Hz 运行",
+      "displayForceInternal120HzSummary": "Dextop 运行时将支持的内置屏幕固定为 120 Hz",
+      "uiConvenience": "便捷功能",
+      "uiDisplayCategory": "显示器",
+      "topologyNoDisplays": "没有可排列的显示器",
+      "topologyUnavailable": "此设备不支持显示器拓扑",
       "uiTap": "点击",
       "uiTapPressAndHoldMultiFingerOperation": "点击、长按和多指操作",
       "uiOpenAppOnDesktop": "在桌面上打开应用程序",
@@ -1103,8 +1071,7 @@ abstract final class AppStrings {
       "samsungAcceptEnable": "同意并启用",
       "samsungAboutSetting": "关于此设置",
       "samsungRestoreEnvironment": "恢复环境",
-      "samsungSettingsIntro":
-          "直接更改 Samsung 设置因未检测到外接显示器而隐藏的 DeX 值。更改会影响 Samsung DeX 及对应的 Dextop 功能。",
+      "samsungSettingsIntro": "直接更改 Samsung 设置因未检测到外接显示器而隐藏的 DeX 值。更改会影响 Samsung DeX 及对应的 Dextop 功能。",
       "samsungResolution": "外接屏幕分辨率",
       "samsungScreenZoom": "屏幕缩放 (DPI)",
       "samsungFontScale": "字体大小",
@@ -1144,42 +1111,24 @@ abstract final class AppStrings {
       "samsungGestureRecents": "最近任务",
       "samsungGestureNotifications": "通知",
       "samsungGestureQuickSettings": "快捷设置",
-      "samsungHelp_resolution":
-          "决定 Samsung 桌面绘制应用和窗口的工作区大小。较高分辨率可同时显示更多内容，但文字和按钮会更小，也会增加渲染负载；较低分辨率更易阅读且运行更轻。此设置与 Dextop 分辨率分开保存。",
-      "samsungHelp_screenZoom":
-          "统一缩放 Samsung 桌面的文字、图标和按钮。提高 DPI 会让界面更大、更易阅读；降低 DPI 可在同一屏幕显示更多内容，但不会改变实际分辨率。",
-      "samsungHelp_fontScale":
-          "只调整文字大小，不明显改变图标和窗口尺寸。适合在保留工作区的同时提高可读性；过大的值可能导致部分应用文字换行或溢出。",
-      "samsungHelp_screenTimeout":
-          "设置无操作后 Samsung 桌面保持亮屏的时间。较长时间适合查看文档或视频，但可能增加耗电和发热。",
-      "samsungHelp_audioOutput":
-          "启用后，媒体和通知声音会输出到 HDMI 显示器或扩展坞；关闭后通常使用手机或当前音频设备。如果外接屏幕没有扬声器，启用后可能听不到声音。",
-      "samsungHelp_displayOrientation":
-          "将 Samsung 桌面旋转到所选角度，适用于竖放或可旋转显示器。若与屏幕实际方向不符，画面和指针移动方向可能错位。",
-      "samsungHelp_displayArrangement":
-          "指定手机位于外接屏幕左侧还是右侧，从而决定指针通过哪一侧边缘跨屏。与实际摆放位置一致时，跨屏移动会更自然。",
-      "samsungHelp_autorunTouchpad":
-          "启用后，连接桌面时会在手机上自动打开 Samsung 触控板，可像笔记本触控板一样操作。它会与 Dextop 输入重复，因此 Dextop 运行时隐藏此项。",
-      "samsungHelp_touchpadScrollDirection":
-          "反转 Samsung 触控板双指移动与页面滚动的对应方向，可在鼠标滚轮式和手机直接触控式滚动之间选择。",
-      "samsungHelp_touchKeyboard":
-          "启用后，在桌面模式选择输入框时可显示屏幕键盘，没有物理键盘时很方便。它与 Dextop 键盘控制重叠，因此 Dextop 运行时隐藏此项。",
-      "samsungHelp_keyboardDex":
-          "启用后，即使连接物理键盘也可使用屏幕键盘，便于输入表情、手写或语音；但会占用工作区并与 Dextop IME 控制冲突。",
-      "samsungHelp_spenInputMode":
-          "启用后，S Pen 可作为指针使用，包括笔尖未接触屏幕时的悬停位置，便于精确选择。使用压感绘图应用时请确认其笔输入行为。",
-      "samsungHelp_threeFingerGesture":
-          "Samsung 检测到三指手势时执行所选的应用列表、主页、最近任务或返回等操作。Dextop 也使用三指控制，因此运行时隐藏此项以避免误操作。",
-      "samsungHelp_fourFingerGesture":
-          "在支持的触控板上用四指执行所选系统操作，可加快导航，但会与 Dextop 多点触控识别冲突，因此 Dextop 运行时隐藏此项。",
-      "samsungHelp_autoHideTaskbar":
-          "启用后，Samsung 桌面会在不使用时隐藏任务栏，为应用提供更多纵向空间；将指针移到屏幕底边可再次显示。需要始终看到应用切换时请关闭。",
-      "samsungHelp_dexCommandArrow":
-          "启用后显示用于打开 Samsung 命令控制的箭头，可快速访问 Samsung 操作，但可能与 Dextop 浮层或边缘手势重叠。",
-      "samsungHelp_includePhoneDisplay":
-          "启用后，手机内置屏幕会加入外接屏幕的同一桌面拓扑，可在两屏之间移动应用和指针。若要将手机保留为独立 Android 控制屏，请关闭。",
-      "samsungHelp_mirrorPhoneDisplay":
-          "启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。",
+      "samsungHelp_resolution": "决定 Samsung 桌面绘制应用和窗口的工作区大小。较高分辨率可同时显示更多内容，但文字和按钮会更小，也会增加渲染负载；较低分辨率更易阅读且运行更轻。此设置与 Dextop 分辨率分开保存。",
+      "samsungHelp_screenZoom": "统一缩放 Samsung 桌面的文字、图标和按钮。提高 DPI 会让界面更大、更易阅读；降低 DPI 可在同一屏幕显示更多内容，但不会改变实际分辨率。",
+      "samsungHelp_fontScale": "只调整文字大小，不明显改变图标和窗口尺寸。适合在保留工作区的同时提高可读性；过大的值可能导致部分应用文字换行或溢出。",
+      "samsungHelp_screenTimeout": "设置无操作后 Samsung 桌面保持亮屏的时间。较长时间适合查看文档或视频，但可能增加耗电和发热。",
+      "samsungHelp_audioOutput": "启用后，媒体和通知声音会输出到 HDMI 显示器或扩展坞；关闭后通常使用手机或当前音频设备。如果外接屏幕没有扬声器，启用后可能听不到声音。",
+      "samsungHelp_displayOrientation": "将 Samsung 桌面旋转到所选角度，适用于竖放或可旋转显示器。若与屏幕实际方向不符，画面和指针移动方向可能错位。",
+      "samsungHelp_displayArrangement": "指定手机位于外接屏幕左侧还是右侧，从而决定指针通过哪一侧边缘跨屏。与实际摆放位置一致时，跨屏移动会更自然。",
+      "samsungHelp_autorunTouchpad": "启用后，连接桌面时会在手机上自动打开 Samsung 触控板，可像笔记本触控板一样操作。它会与 Dextop 输入重复，因此 Dextop 运行时隐藏此项。",
+      "samsungHelp_touchpadScrollDirection": "反转 Samsung 触控板双指移动与页面滚动的对应方向，可在鼠标滚轮式和手机直接触控式滚动之间选择。",
+      "samsungHelp_touchKeyboard": "启用后，在桌面模式选择输入框时可显示屏幕键盘，没有物理键盘时很方便。它与 Dextop 键盘控制重叠，因此 Dextop 运行时隐藏此项。",
+      "samsungHelp_keyboardDex": "启用后，即使连接物理键盘也可使用屏幕键盘，便于输入表情、手写或语音；但会占用工作区并与 Dextop IME 控制冲突。",
+      "samsungHelp_spenInputMode": "启用后，S Pen 可作为指针使用，包括笔尖未接触屏幕时的悬停位置，便于精确选择。使用压感绘图应用时请确认其笔输入行为。",
+      "samsungHelp_threeFingerGesture": "Samsung 检测到三指手势时执行所选的应用列表、主页、最近任务或返回等操作。Dextop 也使用三指控制，因此运行时隐藏此项以避免误操作。",
+      "samsungHelp_fourFingerGesture": "在支持的触控板上用四指执行所选系统操作，可加快导航，但会与 Dextop 多点触控识别冲突，因此 Dextop 运行时隐藏此项。",
+      "samsungHelp_autoHideTaskbar": "启用后，Samsung 桌面会在不使用时隐藏任务栏，为应用提供更多纵向空间；将指针移到屏幕底边可再次显示。需要始终看到应用切换时请关闭。",
+      "samsungHelp_dexCommandArrow": "启用后显示用于打开 Samsung 命令控制的箭头，可快速访问 Samsung 操作，但可能与 Dextop 浮层或边缘手势重叠。",
+      "samsungHelp_includePhoneDisplay": "启用后，手机内置屏幕会加入外接屏幕的同一桌面拓扑，可在两屏之间移动应用和指针。若要将手机保留为独立 Android 控制屏，请关闭。",
+      "samsungHelp_mirrorPhoneDisplay": "启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。",
     },
     "ko": {
       "home": "홈",
@@ -1246,41 +1195,32 @@ abstract final class AppStrings {
       "done": "완료",
       "incomplete": "미완료",
       "setupSystemTitle": "시스템 기능을 이용",
-      "setupSystemDescription":
-          "Dextop은 Shizuku와 ADB를 사용하여 가상 디스플레이, 화면 방향, 입력, 시스템 UI 등의 동작을 제어합니다.",
-      "setupDisclaimer":
-          "단말기와 OS의 구현 차이, 시스템 업데이트, 다른 앱과의 충돌 등으로 인한 문제, 데이터 손실, 단말기 기능에 미치는 영향에 대해서는 개발자는 책임을 지지 않습니다. 내용을 이해한 후 사용하십시오.",
+      "setupSystemDescription": "Dextop은 Shizuku와 ADB를 사용하여 가상 디스플레이, 화면 방향, 입력, 시스템 UI 등의 동작을 제어합니다.",
+      "setupDisclaimer": "단말기와 OS의 구현 차이, 시스템 업데이트, 다른 앱과의 충돌 등으로 인한 문제, 데이터 손실, 단말기 기능에 미치는 영향에 대해서는 개발자는 책임을 지지 않습니다. 내용을 이해한 후 사용하십시오.",
       "setupShizukuTitle": "Shizuku 준비",
-      "setupShizukuDescription":
-          "Dextop이 시스템 기능에 안전하게 액세스하기 위해 Shizuku를 사용합니다.",
+      "setupShizukuDescription": "Dextop이 시스템 기능에 안전하게 액세스하기 위해 Shizuku를 사용합니다.",
       "setupInstallShizuku": "Shizuku 설치",
       "setupConfigureShizuku": "Shizuku 설정",
-      "setupShizukuHint":
-          "Shizuku를 열고 \"페어링\"에 나타나는 순서에 따라 설정하고 Shizuku를 시작하십시오.",
+      "setupShizukuHint": "Shizuku를 열고 \"페어링\"에 나타나는 순서에 따라 설정하고 Shizuku를 시작하십시오.",
       "setupOpenShizuku": "Shizuku 열기",
       "setupValidate": "설정이 완료되었습니까? 유효성 확인",
       "setupDextopPermission": "Dextop에 대한 권한",
       "setupInstallPlay": "Google Play에서 설치",
       "setupAllowPermission": "권한 부여",
       "setupProviderChoiceTitle": "권한 서비스 선택",
-      "setupProviderChoiceDescription":
-          "Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요.",
+      "setupProviderChoiceDescription": "Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요.",
       "setupUseStellar": "Stellar(권장)",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "서비스를 root로 실행 중입니다",
-      "setupRootVerified":
-          "Shizuku가 root 권한으로 실행 중임을 확인했습니다. 다음으로 Dextop 권한을 부여하세요.",
-      "setupRootNotRunning":
-          "Shizuku가 root 권한으로 실행 중인지 확인할 수 없습니다. root로 시작한 후 다시 시도하세요.",
+      "setupRootVerified": "Shizuku가 root 권한으로 실행 중임을 확인했습니다. 다음으로 Dextop 권한을 부여하세요.",
+      "setupRootNotRunning": "Shizuku가 root 권한으로 실행 중인지 확인할 수 없습니다. root로 시작한 후 다시 시도하세요.",
       "setupQuestionOpen": "Shizuku를 열었나요?",
       "setupQuestionPair": "'페어링'에 표시된 모든 단계를 완료했습니까?",
-      "setupQuestionStart":
-          "Shizuku에서 \"시작\"을 누르고 \"Shizuku가 실행 중입니다.\"라고 표시됩니까?",
+      "setupQuestionStart": "Shizuku에서 \"시작\"을 누르고 \"Shizuku가 실행 중입니다.\"라고 표시됩니까?",
       "yes": "예",
       "no": "아니오",
       "setupVerified": "Shizuku 설정을 확인했습니다",
-      "setupVerificationFailed":
-          "Shizuku 설정 또는 시작을 확인할 수 없습니다. Shizuku의 절차를 완료한 후 다시 확인하십시오.",
+      "setupVerificationFailed": "Shizuku 설정 또는 시작을 확인할 수 없습니다. Shizuku의 절차를 완료한 후 다시 확인하십시오.",
       "setupPermissionCheckFailed": "Shizuku의 권한을 확인할 수 없습니다.",
       "setupDeviceTitle": "이 단말기의 구성",
       "model": "기종",
@@ -1331,6 +1271,24 @@ abstract final class AppStrings {
       "uiSecondaryIme": "보조 IME",
       "uiSecureDisplayFoldable": "보안 디스플레이, 미러링 방식, Foldable",
       "uiSecurity": "보안",
+      "topologyTitle": "디스플레이 배치",
+      "topologyArrangeDisplays": "디스플레이 배치",
+      "topologySummary": "실제 모니터 배치에 맞게 최적화할 수 있습니다",
+      "topologyDescription": "디스플레이를 드래그하여 재배치하세요. 화면 사이의 포인터 이동이 실제 설치 위치와 일치하도록 놓으세요.",
+      "topologyApply": "적용",
+      "topologyApplied": "디스플레이 배치를 적용했습니다",
+      "topologyIdentify": "식별",
+      "topologyRefresh": "새로 고침",
+      "topologyReset": "초기화",
+      "topologyBuiltInScreen": "내장 화면",
+      "displayIncludePhoneSummary": "활성화하면 디스플레이 간에 앱과 마우스 포인터를 이동할 수 있습니다",
+      "displayAutoHideTaskbarSummary": "사용하지 않을 때 데스크톱 작업 표시줄을 자동으로 숨깁니다",
+      "displayForceInternal120Hz": "내장 디스플레이를 120Hz로 실행",
+      "displayForceInternal120HzSummary": "Dextop 실행 중 지원되는 내장 화면을 120Hz로 고정합니다",
+      "uiConvenience": "편의 기능",
+      "uiDisplayCategory": "디스플레이",
+      "topologyNoDisplays": "배치할 수 있는 디스플레이가 없습니다",
+      "topologyUnavailable": "이 기기에서는 디스플레이 토폴로지를 사용할 수 없습니다",
       "uiTap": "탭",
       "uiTapPressAndHoldMultiFingerOperation": "탭, 길게 누르기, 여러 손가락 조작",
       "uiOpenAppOnDesktop": "데스크톱에서 앱 열기",
@@ -1341,8 +1299,7 @@ abstract final class AppStrings {
       "uiBattery": "배터리",
       "uiPerformance": "공연",
       "uiPerformanceCompatibility": "성능 및 호환성",
-      "uiItSupportsMultiTouchAndTheThree":
-          "멀티터치를 활성화하면 세 손가락 제스처가 화면 왼쪽 가장자리 스와이프로 변경됩니다.",
+      "uiItSupportsMultiTouchAndTheThree": "멀티터치를 활성화하면 세 손가락 제스처가 화면 왼쪽 가장자리 스와이프로 변경됩니다.",
       "uiMainLarge2Sub": "큰 메인 창 + 보조 창 2개",
       "uiMainLeft": "메인(왼쪽)",
       "uiLayout": "레이아웃",
@@ -1423,14 +1380,12 @@ abstract final class AppStrings {
       "uiManageLaunchedAppsAndConfigurations": "시작할 앱 및 구성 관리",
       "uiCouldNotStart": "시작할 수 없습니다.",
       "uiLongPress": "길게 누르기",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
-          "열린 상태와 닫힌 상태의 실측 해상도 자동 사용",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "열린 상태와 닫힌 상태의 실측 해상도 자동 사용",
       "uiStart": "시작",
       "uiAutomaticSwitchingAccordingToOpenClosedState": "개폐 상태에 따라 자동 전환",
       "uiOpeningQuote": "“",
       "uiDeleteWorkspaceQuestionSuffix": "” 작업 공간을 삭제하시겠습니까?",
-      "uiAbnormalSessionWarning":
-          "세션이 비정상 상태로 종료되었습니다.\n일부 Android 시스템 기능이 여전히 비활성화되어 있을 수 있습니다.",
+      "uiAbnormalSessionWarning": "세션이 비정상 상태로 종료되었습니다.\n일부 Android 시스템 기능이 여전히 비활성화되어 있을 수 있습니다.",
       "uiChecking": "확인 중",
       "uiIdle": "대기 중",
       "uiAvailable": "Available",
@@ -1486,13 +1441,11 @@ abstract final class AppStrings {
       "samsungSettingsSummary": "화면, 입력 및 작업 표시줄 설정",
       "samsungRestoreSuccess": "Samsung 설정을 복원했습니다",
       "samsungConfirmTitle": "설정 변경 확인",
-      "samsungPermanentWarning":
-          "이 항목은 초기화할 때까지 Dextop 및 평소 사용하는 데스크톱 환경에 영구적인 영향을 줄 수 있습니다.",
+      "samsungPermanentWarning": "이 항목은 초기화할 때까지 Dextop 및 평소 사용하는 데스크톱 환경에 영구적인 영향을 줄 수 있습니다.",
       "samsungAcceptEnable": "동의하고 활성화",
       "samsungAboutSetting": "이 설정 정보",
       "samsungRestoreEnvironment": "환경 복원",
-      "samsungSettingsIntro":
-          "Samsung 설정이 외부 디스플레이 미연결 상태에서 숨기는 DeX 값을 직접 변경합니다. 변경 사항은 Samsung DeX 및 해당 Dextop 기능에 적용됩니다.",
+      "samsungSettingsIntro": "Samsung 설정이 외부 디스플레이 미연결 상태에서 숨기는 DeX 값을 직접 변경합니다. 변경 사항은 Samsung DeX 및 해당 Dextop 기능에 적용됩니다.",
       "samsungResolution": "외부 화면 해상도",
       "samsungScreenZoom": "화면 확대/축소(DPI)",
       "samsungFontScale": "글자 크기",
@@ -1502,8 +1455,7 @@ abstract final class AppStrings {
       "samsungDisplayArrangement": "화면 배치",
       "samsungSectionInput": "입력",
       "samsungSectionDesktop": "데스크톱",
-      "samsungInputLockedWhileRunning":
-          "Dextop 실행 중에는 충돌하는 Samsung 입력 설정을 변경할 수 없습니다.",
+      "samsungInputLockedWhileRunning": "Dextop 실행 중에는 충돌하는 Samsung 입력 설정을 변경할 수 없습니다.",
       "samsungAutorunTouchpad": "터치패드 자동 실행",
       "samsungTouchpadScrollDirection": "스크롤 방향 반전",
       "samsungTouchKeyboard": "연결 시 화면 키보드 표시",
@@ -1533,42 +1485,24 @@ abstract final class AppStrings {
       "samsungGestureRecents": "최근 앱",
       "samsungGestureNotifications": "알림",
       "samsungGestureQuickSettings": "빠른 설정",
-      "samsungHelp_resolution":
-          "Samsung 데스크톱에서 앱과 창을 표시할 작업 영역을 결정합니다. 해상도가 높으면 더 많은 내용을 볼 수 있지만 글자와 버튼이 작아지고 렌더링 부하가 늘어납니다. 낮은 해상도는 가독성과 성능에 유리하며 Dextop 해상도와 별도로 저장됩니다.",
-      "samsungHelp_screenZoom":
-          "Samsung 데스크톱의 글자, 아이콘, 버튼을 함께 확대하거나 축소합니다. DPI가 높으면 크게 보여 읽기 쉽고, 낮으면 한 화면에 더 많은 내용을 표시합니다. 실제 해상도는 바뀌지 않습니다.",
-      "samsungHelp_fontScale":
-          "아이콘과 창 크기는 유지하면서 글자만 조절합니다. 작업 공간을 유지하며 읽기 쉽게 만들 때 유용합니다. 너무 크게 설정하면 일부 앱에서 줄 바꿈이나 넘침이 생길 수 있습니다.",
-      "samsungHelp_screenTimeout":
-          "입력이 없을 때 Samsung 데스크톱 화면이 켜져 있는 시간을 정합니다. 긴 시간은 문서나 영상에 편리하지만 배터리 사용과 발열이 늘 수 있습니다.",
-      "samsungHelp_audioOutput":
-          "활성화하면 미디어와 알림 소리가 HDMI 모니터나 도크로 출력됩니다. 비활성화하면 보통 휴대전화나 현재 오디오 기기를 사용합니다. 외부 화면에 스피커가 없으면 소리가 들리지 않을 수 있습니다.",
-      "samsungHelp_displayOrientation":
-          "Samsung 데스크톱을 선택한 각도로 회전합니다. 세로로 설치한 모니터에 유용합니다. 실제 방향과 다르면 화면과 포인터 이동 방향이 어긋날 수 있습니다.",
-      "samsungHelp_displayArrangement":
-          "휴대전화가 외부 화면의 왼쪽 또는 오른쪽에 있는지 지정해 포인터가 넘어가는 화면 가장자리를 결정합니다. 실제 배치와 맞추면 화면 간 이동이 자연스럽습니다.",
-      "samsungHelp_autorunTouchpad":
-          "활성화하면 연결 시 휴대전화에 Samsung 터치패드가 자동으로 열려 노트북 터치패드처럼 사용할 수 있습니다. Dextop 입력과 중복되므로 Dextop 실행 중에는 이 항목을 숨깁니다.",
-      "samsungHelp_touchpadScrollDirection":
-          "Samsung 터치패드의 두 손가락 이동과 페이지 스크롤 방향 관계를 반전합니다. 마우스 휠 방식과 스마트폰 직접 조작 방식 중 익숙한 방향을 선택할 수 있습니다.",
-      "samsungHelp_touchKeyboard":
-          "활성화하면 데스크톱에서 입력 칸을 선택할 때 화면 키보드를 사용할 수 있어 물리 키보드가 없을 때 편리합니다. Dextop 키보드 제어와 겹치므로 실행 중에는 숨깁니다.",
-      "samsungHelp_keyboardDex":
-          "활성화하면 물리 키보드 연결 중에도 화면 키보드를 사용할 수 있어 이모지, 필기, 음성 입력에 편리합니다. 작업 공간을 줄이고 Dextop IME와 충돌할 수 있습니다.",
-      "samsungHelp_spenInputMode":
-          "활성화하면 S Pen의 화면 접촉 전 호버 위치까지 포인터로 사용해 정밀하게 선택할 수 있습니다. 필압 드로잉 앱을 쓸 때는 앱의 펜 동작이 달라지지 않는지 확인하세요.",
-      "samsungHelp_threeFingerGesture":
-          "Samsung이 세 손가락 제스처를 감지하면 앱, 홈, 최근 앱, 뒤로 등 선택한 작업을 실행합니다. Dextop도 세 손가락을 사용하므로 오작동 방지를 위해 실행 중에는 숨깁니다.",
-      "samsungHelp_fourFingerGesture":
-          "지원 터치패드에서 네 손가락으로 선택한 시스템 작업을 빠르게 실행합니다. Dextop 멀티터치 감지와 충돌하므로 Dextop 실행 중에는 숨깁니다.",
-      "samsungHelp_autoHideTaskbar":
-          "활성화하면 사용하지 않을 때 Samsung 데스크톱 작업 표시줄을 숨겨 앱의 세로 공간을 넓힙니다. 포인터를 화면 아래쪽으로 옮기면 다시 나타납니다.",
-      "samsungHelp_dexCommandArrow":
-          "활성화하면 Samsung 명령 제어를 여는 화살표가 표시되어 보조 작업에 빠르게 접근할 수 있습니다. Dextop 오버레이나 가장자리 제스처와 겹칠 수 있습니다.",
-      "samsungHelp_includePhoneDisplay":
-          "활성화하면 휴대전화 내장 화면이 외부 화면과 같은 데스크톱 구성에 포함되어 앱과 포인터를 화면 사이로 이동할 수 있습니다. 휴대전화를 독립 Android 제어 화면으로 쓰려면 끄세요.",
-      "samsungHelp_mirrorPhoneDisplay":
-          "활성화하면 외부 화면에 휴대전화와 같은 내용이 표시되어 시연에 유용합니다. 작업 공간 확장이 아닌 복제이므로 두 화면에 서로 다른 앱을 표시할 수 없습니다.",
+      "samsungHelp_resolution": "Samsung 데스크톱에서 앱과 창을 표시할 작업 영역을 결정합니다. 해상도가 높으면 더 많은 내용을 볼 수 있지만 글자와 버튼이 작아지고 렌더링 부하가 늘어납니다. 낮은 해상도는 가독성과 성능에 유리하며 Dextop 해상도와 별도로 저장됩니다.",
+      "samsungHelp_screenZoom": "Samsung 데스크톱의 글자, 아이콘, 버튼을 함께 확대하거나 축소합니다. DPI가 높으면 크게 보여 읽기 쉽고, 낮으면 한 화면에 더 많은 내용을 표시합니다. 실제 해상도는 바뀌지 않습니다.",
+      "samsungHelp_fontScale": "아이콘과 창 크기는 유지하면서 글자만 조절합니다. 작업 공간을 유지하며 읽기 쉽게 만들 때 유용합니다. 너무 크게 설정하면 일부 앱에서 줄 바꿈이나 넘침이 생길 수 있습니다.",
+      "samsungHelp_screenTimeout": "입력이 없을 때 Samsung 데스크톱 화면이 켜져 있는 시간을 정합니다. 긴 시간은 문서나 영상에 편리하지만 배터리 사용과 발열이 늘 수 있습니다.",
+      "samsungHelp_audioOutput": "활성화하면 미디어와 알림 소리가 HDMI 모니터나 도크로 출력됩니다. 비활성화하면 보통 휴대전화나 현재 오디오 기기를 사용합니다. 외부 화면에 스피커가 없으면 소리가 들리지 않을 수 있습니다.",
+      "samsungHelp_displayOrientation": "Samsung 데스크톱을 선택한 각도로 회전합니다. 세로로 설치한 모니터에 유용합니다. 실제 방향과 다르면 화면과 포인터 이동 방향이 어긋날 수 있습니다.",
+      "samsungHelp_displayArrangement": "휴대전화가 외부 화면의 왼쪽 또는 오른쪽에 있는지 지정해 포인터가 넘어가는 화면 가장자리를 결정합니다. 실제 배치와 맞추면 화면 간 이동이 자연스럽습니다.",
+      "samsungHelp_autorunTouchpad": "활성화하면 연결 시 휴대전화에 Samsung 터치패드가 자동으로 열려 노트북 터치패드처럼 사용할 수 있습니다. Dextop 입력과 중복되므로 Dextop 실행 중에는 이 항목을 숨깁니다.",
+      "samsungHelp_touchpadScrollDirection": "Samsung 터치패드의 두 손가락 이동과 페이지 스크롤 방향 관계를 반전합니다. 마우스 휠 방식과 스마트폰 직접 조작 방식 중 익숙한 방향을 선택할 수 있습니다.",
+      "samsungHelp_touchKeyboard": "활성화하면 데스크톱에서 입력 칸을 선택할 때 화면 키보드를 사용할 수 있어 물리 키보드가 없을 때 편리합니다. Dextop 키보드 제어와 겹치므로 실행 중에는 숨깁니다.",
+      "samsungHelp_keyboardDex": "활성화하면 물리 키보드 연결 중에도 화면 키보드를 사용할 수 있어 이모지, 필기, 음성 입력에 편리합니다. 작업 공간을 줄이고 Dextop IME와 충돌할 수 있습니다.",
+      "samsungHelp_spenInputMode": "활성화하면 S Pen의 화면 접촉 전 호버 위치까지 포인터로 사용해 정밀하게 선택할 수 있습니다. 필압 드로잉 앱을 쓸 때는 앱의 펜 동작이 달라지지 않는지 확인하세요.",
+      "samsungHelp_threeFingerGesture": "Samsung이 세 손가락 제스처를 감지하면 앱, 홈, 최근 앱, 뒤로 등 선택한 작업을 실행합니다. Dextop도 세 손가락을 사용하므로 오작동 방지를 위해 실행 중에는 숨깁니다.",
+      "samsungHelp_fourFingerGesture": "지원 터치패드에서 네 손가락으로 선택한 시스템 작업을 빠르게 실행합니다. Dextop 멀티터치 감지와 충돌하므로 Dextop 실행 중에는 숨깁니다.",
+      "samsungHelp_autoHideTaskbar": "활성화하면 사용하지 않을 때 Samsung 데스크톱 작업 표시줄을 숨겨 앱의 세로 공간을 넓힙니다. 포인터를 화면 아래쪽으로 옮기면 다시 나타납니다.",
+      "samsungHelp_dexCommandArrow": "활성화하면 Samsung 명령 제어를 여는 화살표가 표시되어 보조 작업에 빠르게 접근할 수 있습니다. Dextop 오버레이나 가장자리 제스처와 겹칠 수 있습니다.",
+      "samsungHelp_includePhoneDisplay": "활성화하면 휴대전화 내장 화면이 외부 화면과 같은 데스크톱 구성에 포함되어 앱과 포인터를 화면 사이로 이동할 수 있습니다. 휴대전화를 독립 Android 제어 화면으로 쓰려면 끄세요.",
+      "samsungHelp_mirrorPhoneDisplay": "활성화하면 외부 화면에 휴대전화와 같은 내용이 표시되어 시연에 유용합니다. 작업 공간 확장이 아닌 복제이므로 두 화면에 서로 다른 앱을 표시할 수 없습니다.",
     },
     "ru": {
       "home": "Главная",
@@ -1583,16 +1517,14 @@ abstract final class AppStrings {
       "secureDisplayDescription": "Разрешить показ защищённого содержимого",
       "mirrorBackend": "Способ зеркалирования дисплея",
       "mirrorBackendAuto": "Автоматически (совместимость)",
-      "mirrorBackendAutoDescription":
-          "Использовать лучший доступный способ для устройства",
+      "mirrorBackendAutoDescription": "Использовать лучший доступный способ для устройства",
       "mirrorBackendWindowManager": "WindowManager",
       "mirrorBackendSurfaceControl": "SurfaceControl",
       "mirrorBackendVirtualDisplay": "VirtualDisplay",
       "updateAvailable": "Доступно обновление",
       "updateAvailableTitle": "На GitHub опубликована новая версия!",
       "playUpdateAvailableTitle": "В Google Play доступно обновление",
-      "playUpdateAvailableDescription":
-          "Вы можете обновить приложение до последней версии через Google Play.",
+      "playUpdateAvailableDescription": "Вы можете обновить приложение до последней версии через Google Play.",
       "updateNow": "Обновить сейчас",
       "checkForUpdates": "Проверить обновления",
       "checkingForUpdates": "Получение сведений об обновлении",
@@ -1637,55 +1569,42 @@ abstract final class AppStrings {
       "done": "Готово",
       "incomplete": "Не завершено",
       "setupSystemTitle": "Использование системных функций",
-      "setupSystemDescription":
-          "Dextop использует Shizuku и ADB для управления таким поведением, как виртуальные дисплеи, ориентация экрана, ввод и системный пользовательский интерфейс.",
-      "setupDisclaimer":
-          "Разработчик не несет ответственности за любые дефекты, потерю данных или влияние на функциональность устройства, вызванное различиями в реализации устройства или ОС, обновлениями системы, конфликтами с другими приложениями и т. д. Перед использованием ознакомьтесь с содержанием.",
+      "setupSystemDescription": "Dextop использует Shizuku и ADB для управления таким поведением, как виртуальные дисплеи, ориентация экрана, ввод и системный пользовательский интерфейс.",
+      "setupDisclaimer": "Разработчик не несет ответственности за любые дефекты, потерю данных или влияние на функциональность устройства, вызванное различиями в реализации устройства или ОС, обновлениями системы, конфликтами с другими приложениями и т. д. Перед использованием ознакомьтесь с содержанием.",
       "setupShizukuTitle": "Подготовка Shizuku",
-      "setupShizukuDescription":
-          "Dextop использует Shizuku для безопасного доступа к функциям системы.",
+      "setupShizukuDescription": "Dextop использует Shizuku для безопасного доступа к функциям системы.",
       "setupInstallShizuku": "Установить Shizuku",
       "setupConfigureShizuku": "Настроить Shizuku",
-      "setupShizukuHint":
-          "Откройте Shizuku, установите его в порядке, указанном в разделе «Сопряжение», и запустите Shizuku.",
+      "setupShizukuHint": "Откройте Shizuku, установите его в порядке, указанном в разделе «Сопряжение», и запустите Shizuku.",
       "setupOpenShizuku": "Открыть Shizuku",
       "setupValidate": "Настройка завершена? Проверить",
       "setupDextopPermission": "Разрешения для Dextop",
       "setupInstallPlay": "Установить из Google Play",
       "setupAllowPermission": "Предоставить разрешение",
       "setupProviderChoiceTitle": "Выберите привилегированную службу",
-      "setupProviderChoiceDescription":
-          "Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop.",
+      "setupProviderChoiceDescription": "Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop.",
       "setupUseStellar": "Stellar (рекомендуется)",
       "setupUseShizuku": "Shizuku",
       "setupRunningAsRoot": "Служба запущена с правами root",
-      "setupRootVerified":
-          "Подтверждено, что Shizuku работает с правами root. Теперь предоставьте разрешение Dextop.",
-      "setupRootNotRunning":
-          "Не удалось подтвердить, что Shizuku работает с правами root. Запустите его с правами root и повторите попытку.",
+      "setupRootVerified": "Подтверждено, что Shizuku работает с правами root. Теперь предоставьте разрешение Dextop.",
+      "setupRootNotRunning": "Не удалось подтвердить, что Shizuku работает с правами root. Запустите его с правами root и повторите попытку.",
       "setupQuestionOpen": "Вы открыли Shizuku?",
-      "setupQuestionPair":
-          "Вы выполнили все шаги, перечисленные в разделе «Сопряжение»?",
-      "setupQuestionStart":
-          "Вы нажали «Запустить» в Shizuku и убедились, что отображается сообщение «Shizuku работает»?",
+      "setupQuestionPair": "Вы выполнили все шаги, перечисленные в разделе «Сопряжение»?",
+      "setupQuestionStart": "Вы нажали «Запустить» в Shizuku и убедились, что отображается сообщение «Shizuku работает»?",
       "yes": "Да",
       "no": "Нет",
       "setupVerified": "Настройка Shizuku проверена",
-      "setupVerificationFailed":
-          "Невозможно подтвердить конфигурацию или запуск Shizuku. Пожалуйста, выполните действия в Shizuku, а затем проверьте еще раз.",
-      "setupPermissionCheckFailed":
-          "Не удалось проверить разрешения для Shizuku.",
+      "setupVerificationFailed": "Невозможно подтвердить конфигурацию или запуск Shizuku. Пожалуйста, выполните действия в Shizuku, а затем проверьте еще раз.",
+      "setupPermissionCheckFailed": "Не удалось проверить разрешения для Shizuku.",
       "setupDeviceTitle": "Конфигурация на этом устройстве",
       "model": "Модель",
       "vendor": "Производитель",
       "desktopUi": "Интерфейс рабочего стола",
       "detectedResolution": "Автоматически определённое разрешение",
       "loadingLabel": "Загрузка…",
-      "setupDeviceDescription":
-          "Эта информация используется для установки исходного разрешения и элементов управления рабочим столом для конкретного устройства.",
+      "setupDeviceDescription": "Эта информация используется для установки исходного разрешения и элементов управления рабочим столом для конкретного устройства.",
       "setupGestureTitle": "Вызов панели управления жестами",
-      "setupGestureDescription":
-          "Поместите три пальца одновременно на три круга внизу.",
+      "setupGestureDescription": "Поместите три пальца одновременно на три круга внизу.",
       "uiTwoFingerTap": "Касание двумя пальцами",
       "ui3FingerTap": "Касание тремя пальцами",
       "ui4Divisions": "Разделение на четыре области",
@@ -1695,12 +1614,9 @@ abstract final class AppStrings {
       "uiOpenDextop": "Открыть Dextop",
       "uiCreateADextopSession": "Создать сеанс Dextop",
       "uiDextopWorkspaceJson": "Рабочая область Dextop в формате JSON",
-      "uiPerformanceDisplayOnDextop":
-          "Показывать панель производительности в Dextop",
-      "uiDoNotSleepWhileRunningDextop":
-          "Не выключать экран во время работы Dextop",
-      "uiRealTimeDisplayOfFpsMemoryPower":
-          "Отображение в реальном времени FPS, памяти, энергопотребления и заряда батареи.",
+      "uiPerformanceDisplayOnDextop": "Показывать панель производительности в Dextop",
+      "uiDoNotSleepWhileRunningDextop": "Не выключать экран во время работы Dextop",
+      "uiRealTimeDisplayOfFpsMemoryPower": "Отображение в реальном времени FPS, памяти, энергопотребления и заряда батареи.",
       "uiCouldNotLoadJson": "Не удалось загрузить JSON",
       "uiSecureSettingsPermission": "Разрешение на настройки безопасности",
       "uiAllowShizukuPermissions": "Предоставить разрешение Shizuku",
@@ -1713,8 +1629,7 @@ abstract final class AppStrings {
       "uiAccessibilityServices": "Служба специальных возможностей",
       "uiAppNotFound": "Приложение не найдено",
       "uiAppsAndWorkspace": "Приложения и рабочее пространство",
-      "uiLaunchTheAppAndConfigureYourWorkspace":
-          "Запуск приложений и настройка рабочих областей",
+      "uiLaunchTheAppAndConfigureYourWorkspace": "Запуск приложений и настройка рабочих областей",
       "uiRestartTheApp": "Перезапустить приложение",
       "uiSearchApp": "Поиск приложений",
       "uiAppMemory": "Память приложения",
@@ -1728,12 +1643,28 @@ abstract final class AppStrings {
       "uiQuickSettingsTile": "Плитка быстрых настроек",
       "uiGesture": "Жест",
       "uiSecondaryIme": "Вторичный IME",
-      "uiSecureDisplayFoldable":
-          "Защищённый экран, способ зеркалирования, складные устройства",
+      "uiSecureDisplayFoldable": "Защищённый экран, способ зеркалирования, складные устройства",
       "uiSecurity": "Безопасность",
+      "topologyTitle": "Расположение дисплеев",
+      "topologyArrangeDisplays": "Расположение дисплеев",
+      "topologySummary": "Можно оптимизировать схему под физическое расположение мониторов",
+      "topologyDescription": "Перетаскивайте дисплеи, чтобы изменить их расположение. Разместите их так, чтобы движение указателя соответствовало физической установке.",
+      "topologyApply": "Применить",
+      "topologyApplied": "Расположение дисплеев применено",
+      "topologyIdentify": "Определить",
+      "topologyRefresh": "Обновить",
+      "topologyReset": "Сбросить",
+      "topologyBuiltInScreen": "Встроенный экран",
+      "displayIncludePhoneSummary": "Позволяет перемещать приложения и указатель мыши между дисплеями",
+      "displayAutoHideTaskbarSummary": "Автоматически скрывает панель задач рабочего стола, когда она не используется",
+      "displayForceInternal120Hz": "Частота встроенного экрана 120 Гц",
+      "displayForceInternal120HzSummary": "Фиксирует частоту поддерживаемого встроенного экрана на 120 Гц во время работы Dextop",
+      "uiConvenience": "Удобные функции",
+      "uiDisplayCategory": "Дисплей",
+      "topologyNoDisplays": "Нет дисплеев для размещения",
+      "topologyUnavailable": "Топология дисплеев недоступна на этом устройстве",
       "uiTap": "Касание",
-      "uiTapPressAndHoldMultiFingerOperation":
-          "Касание, долгое нажатие и управление несколькими пальцами",
+      "uiTapPressAndHoldMultiFingerOperation": "Касание, долгое нажатие и управление несколькими пальцами",
       "uiOpenAppOnDesktop": "Открыть приложение на рабочем столе",
       "uiDesktopMode": "Режим рабочего стола",
       "uiDesktopFeatures": "Функции рабочего стола",
@@ -1742,14 +1673,12 @@ abstract final class AppStrings {
       "uiBattery": "Батарея",
       "uiPerformance": "Производительность",
       "uiPerformanceCompatibility": "Производительность и совместимость",
-      "uiItSupportsMultiTouchAndTheThree":
-          "Включает мультитач и заменяет жест тремя пальцами на свайп от левого края экрана.",
+      "uiItSupportsMultiTouchAndTheThree": "Включает мультитач и заменяет жест тремя пальцами на свайп от левого края экрана.",
       "uiMainLarge2Sub": "Большое основное окно + два дополнительных",
       "uiMainLeft": "Главный (слева)",
       "uiLayout": "Расположение",
       "uiWorkSpace": "Рабочая область",
-      "uiCopiedWorkspaceJsonToClipboard":
-          "JSON рабочей области скопирован в буфер обмена.",
+      "uiCopiedWorkspaceJsonToClipboard": "JSON рабочей области скопирован в буфер обмена.",
       "uiImportWorkspace": "Импорт рабочей области",
       "uiSaveWorkspace": "Сохранить рабочее пространство",
       "uiDeleteWorkspace": "Удалить рабочую область",
@@ -1762,8 +1691,7 @@ abstract final class AppStrings {
       "uiCenter": "По центру",
       "uiCompatibilityDiagnosis": "Диагностика совместимости",
       "uiVirtualDisplayCreation": "Создание виртуального дисплея",
-      "uiOpenASavedAppConfiguration":
-          "Откройте сохраненную конфигурацию приложения",
+      "uiOpenASavedAppConfiguration": "Откройте сохраненную конфигурацию приложения",
       "uiNoSavedWorkspaces": "Нет сохраненных рабочих пространств",
       "uiInputAndGestures": "Ввод и жесты",
       "uiInputMode": "Режим ввода",
@@ -1772,8 +1700,7 @@ abstract final class AppStrings {
       "uiRestart": "Возобновить",
       "uiAvailableMemory": "Доступная память",
       "uiDelete": "Удалить",
-      "uiYouCanRestoreYourPreviousSession":
-          "Вы можете восстановить предыдущий сеанс",
+      "uiYouCanRestoreYourPreviousSession": "Вы можете восстановить предыдущий сеанс",
       "uiRight": "Справа",
       "uiRight13": "Правая 1/3",
       "uiRight23": "Справа 2/3",
@@ -1793,13 +1720,11 @@ abstract final class AppStrings {
       "uiLeft23Right13": "Слева 2/3 + справа 1/3",
       "uiLeftCenterRight": "Слева / по центру / справа",
       "uiUpperLeft": "Слева сверху",
-      "uiUpperLeftUpperRightLowerHalf":
-          "Верхний левый, верхний правый, нижняя половина",
+      "uiUpperLeftUpperRightLowerHalf": "Верхний левый, верхний правый, нижняя половина",
       "uiLowerLeft": "Слева снизу",
       "uiLeftHalf": "Левая половина",
       "uiDividedIntoLeftAndRight": "Разделение слева и справа",
-      "uiSwipeRightWithThreeFingersFromThe":
-          "Проведите тремя пальцами вправо от левого края",
+      "uiSwipeRightWithThreeFingersFromThe": "Проведите тремя пальцами вправо от левого края",
       "uiRecoverySession": "Восстановление сеанса",
       "uiEstimatedPowerConsumption": "Расчетное энергопотребление",
       "uiOperationOverlay": "Панель управления",
@@ -1813,12 +1738,10 @@ abstract final class AppStrings {
       "uiPhysicalKeyboard": "Физическая клавиатура",
       "uiPhysicalMouse": "Физическая мышь",
       "uiConditionAndDiagnosis": "Состояние и диагностика",
-      "uiPreventsTheScreenFromTurningOffAutomatically":
-          "Предотвращает автоматическое выключение экрана",
+      "uiPreventsTheScreenFromTurningOffAutomatically": "Предотвращает автоматическое выключение экрана",
       "uiDestruction": "Удалить",
       "uiTerminalAndPermissions": "Устройство и разрешения",
-      "uiDeviceInformationDesktopModeAccessibility":
-          "Информация об устройстве, режим рабочего стола, специальные возможности",
+      "uiDeviceInformationDesktopModeAccessibility": "Информация об устройстве, режим рабочего стола, специальные возможности",
       "uiTerminalResolution": "Разрешение устройства",
       "uiEnd": "Завершить",
       "uiTerminationProcessingCompletedSuccessfully": "Сеанс успешно завершён.",
@@ -1828,20 +1751,15 @@ abstract final class AppStrings {
       "uiDisplayOptimization": "Оптимизация дисплея",
       "uiDisplayRefreshRate": "Частота обновления дисплея",
       "uiReproduction": "Создать копию",
-      "uiManageLaunchedAppsAndConfigurations":
-          "Управление запускаемыми приложениями и их расположением",
+      "uiManageLaunchedAppsAndConfigurations": "Управление запускаемыми приложениями и их расположением",
       "uiCouldNotStart": "Не удалось запустить",
       "uiLongPress": "Долгое нажатие",
-      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd":
-          "Автоматически использует измеренное разрешение для открытых и закрытых состояний.",
+      "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "Автоматически использует измеренное разрешение для открытых и закрытых состояний.",
       "uiStart": "Начать",
-      "uiAutomaticSwitchingAccordingToOpenClosedState":
-          "Автоматическое переключение в зависимости от открытого/закрытого состояния.",
+      "uiAutomaticSwitchingAccordingToOpenClosedState": "Автоматическое переключение в зависимости от открытого/закрытого состояния.",
       "uiOpeningQuote": "«",
-      "uiDeleteWorkspaceQuestionSuffix":
-          "» — удалить это рабочее пространство?",
-      "uiAbnormalSessionWarning":
-          "Сеанс завершился в некорректном состоянии.\nНекоторые системные функции Android могут оставаться отключёнными.",
+      "uiDeleteWorkspaceQuestionSuffix": "» — удалить это рабочее пространство?",
+      "uiAbnormalSessionWarning": "Сеанс завершился в некорректном состоянии.\nНекоторые системные функции Android могут оставаться отключёнными.",
       "uiChecking": "Проверка",
       "uiIdle": "Ожидание",
       "uiAvailable": "Available",
@@ -1851,18 +1769,15 @@ abstract final class AppStrings {
       "uiGitHub": "GitHub",
       "uiGitHubRepository": "NarYuki/Dextop",
       "diagnosticLog": "Журнал работы и диагностика устройства",
-      "diagnosticLogDescription":
-          "Журналы приложения, проверка возможностей и характеристики устройства",
+      "diagnosticLogDescription": "Журналы приложения, проверка возможностей и характеристики устройства",
       "loadDiagnosticLog": "Загрузить отчёт диагностики",
       "copyDiagnosticLog": "Копировать",
       "shareDiagnosticLog": "Поделиться",
       "clearDiagnosticLog": "Очистить журнал",
       "deviceReport": "Отчёт о работе устройства",
       "uiCpuTemperature": "Температура ЦП",
-      "deviceReportDescription":
-          "Отправить совместимость устройства и функций по электронной почте",
-      "deviceReportIntro":
-          "Данные устройства собираются автоматически. Выберите результат для каждой функции.",
+      "deviceReportDescription": "Отправить совместимость устройства и функций по электронной почте",
+      "deviceReportIntro": "Данные устройства собираются автоматически. Выберите результат для каждой функции.",
       "reportWorking": "Работает",
       "reportNotWorking": "Не работает",
       "reportUntested": "Не проверено",
@@ -1872,8 +1787,7 @@ abstract final class AppStrings {
       "reportEmailUnavailable": "Не удалось открыть почтовое приложение",
       "reportTemplateTitle": "Отчёт о работе Dextop",
       "reportNoNotes": "Нет",
-      "reportNoSessionLog":
-          "Журнал завершённого сеанса Dextop пока отсутствует.",
+      "reportNoSessionLog": "Журнал завершённого сеанса Dextop пока отсутствует.",
       "reportFeatureStartup": "Запуск приложения и обнаружение устройства",
       "reportFeatureSession": "Запуск сеанса Dextop",
       "reportFeatureVirtualDisplay": "Зеркалирование VirtualDisplay",
@@ -1894,22 +1808,18 @@ abstract final class AppStrings {
       "reportFeatureFoldable": "Авторазрешение для складных устройств",
       "reportFeaturePerformance": "Оверлей производительности",
       "reportFeatureCleanup": "Завершение сеанса и восстановление Android",
-      "samsungExperimentalTitle":
-          "Экспериментальные настройки рабочего стола Samsung",
+      "samsungExperimentalTitle": "Экспериментальные настройки рабочего стола Samsung",
       "samsungUnavailable": "Доступно только на устройствах Samsung",
-      "samsungExperimentalDescription":
-          "Изменение скрытых параметров DeX из Dextop",
+      "samsungExperimentalDescription": "Изменение скрытых параметров DeX из Dextop",
       "samsungSettingsTitle": "Настройки рабочего стола Samsung",
       "samsungSettingsSummary": "Экран, ввод и панель задач",
       "samsungRestoreSuccess": "Настройки Samsung восстановлены",
       "samsungConfirmTitle": "Подтверждение изменения настроек",
-      "samsungPermanentWarning":
-          "Эти параметры могут постоянно влиять на Dextop и обычную среду рабочего стола до их сброса.",
+      "samsungPermanentWarning": "Эти параметры могут постоянно влиять на Dextop и обычную среду рабочего стола до их сброса.",
       "samsungAcceptEnable": "Принять и включить",
       "samsungAboutSetting": "Об этом параметре",
       "samsungRestoreEnvironment": "Восстановить среду",
-      "samsungSettingsIntro":
-          "Напрямую изменяет значения DeX, скрытые настройками Samsung при отсутствии внешнего дисплея. Изменения влияют на Samsung DeX и соответствующие функции Dextop.",
+      "samsungSettingsIntro": "Напрямую изменяет значения DeX, скрытые настройками Samsung при отсутствии внешнего дисплея. Изменения влияют на Samsung DeX и соответствующие функции Dextop.",
       "samsungResolution": "Разрешение внешнего экрана",
       "samsungScreenZoom": "Масштаб экрана (DPI)",
       "samsungFontScale": "Размер шрифта",
@@ -1919,8 +1829,7 @@ abstract final class AppStrings {
       "samsungDisplayArrangement": "Расположение экранов",
       "samsungSectionInput": "Ввод",
       "samsungSectionDesktop": "Рабочий стол",
-      "samsungInputLockedWhileRunning":
-          "Конфликтующие параметры ввода Samsung нельзя менять во время работы Dextop.",
+      "samsungInputLockedWhileRunning": "Конфликтующие параметры ввода Samsung нельзя менять во время работы Dextop.",
       "samsungAutorunTouchpad": "Автоматически запускать сенсорную панель",
       "samsungTouchpadScrollDirection": "Обратное направление прокрутки",
       "samsungTouchKeyboard": "Показывать экранную клавиатуру при подключении",
@@ -1950,42 +1859,24 @@ abstract final class AppStrings {
       "samsungGestureRecents": "Недавние",
       "samsungGestureNotifications": "Уведомления",
       "samsungGestureQuickSettings": "Быстрые настройки",
-      "samsungHelp_resolution":
-          "Определяет рабочую область, в которой Samsung Desktop размещает приложения и окна. Высокое разрешение вмещает больше содержимого, но уменьшает элементы и повышает нагрузку. Низкое улучшает читаемость и производительность. Настройка хранится отдельно от разрешения Dextop.",
-      "samsungHelp_screenZoom":
-          "Масштабирует текст, значки и элементы управления Samsung Desktop. Более высокий DPI делает их крупнее и удобнее для чтения, а низкий позволяет видеть больше содержимого. Фактическое разрешение не меняется.",
-      "samsungHelp_fontScale":
-          "Изменяет только размер текста, почти не затрагивая значки и окна. Полезно для читаемости без потери рабочей области. Слишком большой масштаб может вызвать перенос или обрезку текста.",
-      "samsungHelp_screenTimeout":
-          "Задаёт время работы экрана Samsung Desktop без ввода. Долгий интервал удобен для документов и видео, но может увеличить расход энергии и нагрев.",
-      "samsungHelp_audioOutput":
-          "При включении звук мультимедиа и уведомлений направляется на HDMI-монитор или док-станцию. При выключении обычно используется телефон или текущее аудиоустройство. Если у монитора нет динамиков, звук может исчезнуть.",
-      "samsungHelp_displayOrientation":
-          "Поворачивает Samsung Desktop на выбранный угол. Используйте для вертикально установленного монитора. Несоответствие физической ориентации может привести к расхождению изображения и направления указателя.",
-      "samsungHelp_displayArrangement":
-          "Указывает, расположен ли телефон слева или справа от внешнего экрана, и меняет край перехода указателя между экранами. Совпадение с реальным расположением делает переход естественным.",
-      "samsungHelp_autorunTouchpad":
-          "При включении панель Samsung автоматически открывается на телефоне после подключения и работает как тачпад ноутбука. Она дублирует ввод Dextop, поэтому параметр скрыт во время сеанса Dextop.",
-      "samsungHelp_touchpadScrollDirection":
-          "Меняет соответствие движения двумя пальцами и прокрутки страницы на панели Samsung. Позволяет выбрать направление в стиле колеса мыши или прямого сенсорного управления.",
-      "samsungHelp_touchKeyboard":
-          "При включении экранная клавиатура появляется при выборе поля ввода в режиме рабочего стола. Это удобно без физической клавиатуры, но пересекается с управлением Dextop и скрывается во время сеанса.",
-      "samsungHelp_keyboardDex":
-          "При включении экранная клавиатура доступна даже при подключённой физической клавиатуре — для эмодзи, рукописного и голосового ввода. Она занимает рабочую область и может конфликтовать с IME Dextop.",
-      "samsungHelp_spenInputMode":
-          "При включении S Pen работает как указатель, включая наведение до касания экрана. Это помогает точно выбирать элементы. Проверьте поведение приложений для рисования, если используете чувствительность к нажатию.",
-      "samsungHelp_threeFingerGesture":
-          "Выполняет выбранное действие Samsung — приложения, Домой, недавние или Назад — по жесту тремя пальцами. Dextop тоже использует три пальца, поэтому параметр скрыт во время его работы.",
-      "samsungHelp_fourFingerGesture":
-          "Выполняет выбранное системное действие жестом четырьмя пальцами на поддерживаемой панели. Ускоряет навигацию, но конфликтует с мультитачем Dextop и скрывается во время сеанса.",
-      "samsungHelp_autoHideTaskbar":
-          "При включении панель задач Samsung Desktop скрывается, когда не используется, освобождая вертикальное место. Для показа переместите указатель к нижнему краю. Отключите, если переключатель приложений должен быть виден постоянно.",
-      "samsungHelp_dexCommandArrow":
-          "При включении отображается стрелка для вызова команд Samsung. Она ускоряет доступ к вспомогательным действиям, но может перекрывать оверлей или краевые жесты Dextop.",
-      "samsungHelp_includePhoneDisplay":
-          "При включении встроенный экран телефона становится частью общей топологии рабочего стола, позволяя перемещать приложения и указатель между экранами. Отключите, чтобы оставить телефон независимым экраном управления Android.",
-      "samsungHelp_mirrorPhoneDisplay":
-          "При включении внешний экран показывает то же содержимое, что и телефон. Это удобно для демонстраций, но дублирует, а не расширяет рабочую область, поэтому разные приложения на двух экранах недоступны.",
+      "samsungHelp_resolution": "Определяет рабочую область, в которой Samsung Desktop размещает приложения и окна. Высокое разрешение вмещает больше содержимого, но уменьшает элементы и повышает нагрузку. Низкое улучшает читаемость и производительность. Настройка хранится отдельно от разрешения Dextop.",
+      "samsungHelp_screenZoom": "Масштабирует текст, значки и элементы управления Samsung Desktop. Более высокий DPI делает их крупнее и удобнее для чтения, а низкий позволяет видеть больше содержимого. Фактическое разрешение не меняется.",
+      "samsungHelp_fontScale": "Изменяет только размер текста, почти не затрагивая значки и окна. Полезно для читаемости без потери рабочей области. Слишком большой масштаб может вызвать перенос или обрезку текста.",
+      "samsungHelp_screenTimeout": "Задаёт время работы экрана Samsung Desktop без ввода. Долгий интервал удобен для документов и видео, но может увеличить расход энергии и нагрев.",
+      "samsungHelp_audioOutput": "При включении звук мультимедиа и уведомлений направляется на HDMI-монитор или док-станцию. При выключении обычно используется телефон или текущее аудиоустройство. Если у монитора нет динамиков, звук может исчезнуть.",
+      "samsungHelp_displayOrientation": "Поворачивает Samsung Desktop на выбранный угол. Используйте для вертикально установленного монитора. Несоответствие физической ориентации может привести к расхождению изображения и направления указателя.",
+      "samsungHelp_displayArrangement": "Указывает, расположен ли телефон слева или справа от внешнего экрана, и меняет край перехода указателя между экранами. Совпадение с реальным расположением делает переход естественным.",
+      "samsungHelp_autorunTouchpad": "При включении панель Samsung автоматически открывается на телефоне после подключения и работает как тачпад ноутбука. Она дублирует ввод Dextop, поэтому параметр скрыт во время сеанса Dextop.",
+      "samsungHelp_touchpadScrollDirection": "Меняет соответствие движения двумя пальцами и прокрутки страницы на панели Samsung. Позволяет выбрать направление в стиле колеса мыши или прямого сенсорного управления.",
+      "samsungHelp_touchKeyboard": "При включении экранная клавиатура появляется при выборе поля ввода в режиме рабочего стола. Это удобно без физической клавиатуры, но пересекается с управлением Dextop и скрывается во время сеанса.",
+      "samsungHelp_keyboardDex": "При включении экранная клавиатура доступна даже при подключённой физической клавиатуре — для эмодзи, рукописного и голосового ввода. Она занимает рабочую область и может конфликтовать с IME Dextop.",
+      "samsungHelp_spenInputMode": "При включении S Pen работает как указатель, включая наведение до касания экрана. Это помогает точно выбирать элементы. Проверьте поведение приложений для рисования, если используете чувствительность к нажатию.",
+      "samsungHelp_threeFingerGesture": "Выполняет выбранное действие Samsung — приложения, Домой, недавние или Назад — по жесту тремя пальцами. Dextop тоже использует три пальца, поэтому параметр скрыт во время его работы.",
+      "samsungHelp_fourFingerGesture": "Выполняет выбранное системное действие жестом четырьмя пальцами на поддерживаемой панели. Ускоряет навигацию, но конфликтует с мультитачем Dextop и скрывается во время сеанса.",
+      "samsungHelp_autoHideTaskbar": "При включении панель задач Samsung Desktop скрывается, когда не используется, освобождая вертикальное место. Для показа переместите указатель к нижнему краю. Отключите, если переключатель приложений должен быть виден постоянно.",
+      "samsungHelp_dexCommandArrow": "При включении отображается стрелка для вызова команд Samsung. Она ускоряет доступ к вспомогательным действиям, но может перекрывать оверлей или краевые жесты Dextop.",
+      "samsungHelp_includePhoneDisplay": "При включении встроенный экран телефона становится частью общей топологии рабочего стола, позволяя перемещать приложения и указатель между экранами. Отключите, чтобы оставить телефон независимым экраном управления Android.",
+      "samsungHelp_mirrorPhoneDisplay": "При включении внешний экран показывает то же содержимое, что и телефон. Это удобно для демонстраций, но дублирует, а не расширяет рабочую область, поэтому разные приложения на двух экранах недоступны.",
     },
   };
 }

@@ -1,5 +1,34 @@
 # Changelog
 
+## 1.3.0
+
+### Multi-display support has arrived
+
+- Added an intuitive display topology editor for arranging Dextop and external displays to match their physical layout.
+- Added multi-display pointer routing and automatic topology activation when Dextop starts or resumes.
+- Added live display hot-plug and topology monitoring. The editor reloads when displays are reconfigured and closes automatically when arrangement is no longer available.
+- Added localized display identification, reset, cancel, and apply controls with a responsive desktop and mobile layout.
+
+### New
+
+- Added an option to keep supported built-in displays at 120 Hz while Dextop is running with an external monitor.
+- Added automatic 120 Hz reapplication after an external display is connected, reconfigured, or disconnected.
+- Added stable display settings for topology participation and automatic desktop taskbar hiding.
+
+### Improved
+
+- Reorganized display settings into Display and Convenience sections using the existing settings design.
+- Made display topology available by default and automatically refresh it in the background at every Dextop start and resume.
+- Improved the topology canvas so it scales with the available dialog size on phones, foldables, and large desktop windows.
+- Removed Dextop's custom cursor and cursor rendering logic for physical mice while preserving touch-panel cursor mode and monitor routing.
+- Improved localization for display topology, Samsung desktop settings, warnings, and feature descriptions.
+
+### Fixed
+
+- Fixed stale display topology state after external displays are connected, removed, folded, unfolded, or reconfigured.
+- Fixed the display arrangement action remaining available when fewer than two configurable displays exist.
+- Fixed built-in display refresh-rate settings being restored when 120 Hz should remain active after external-display disconnection.
+
 ## 1.1.2
 
 ### Improved
