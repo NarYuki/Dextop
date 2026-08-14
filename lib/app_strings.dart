@@ -357,28 +357,41 @@ abstract final class AppStrings {
       "samsungGestureNotifications": "通知",
       "samsungGestureQuickSettings": "クイック設定",
       "samsungHelp_resolution":
-          "Samsungデスクトップ環境が使用する外部画面解像度です。Dextopの解像度設定とは別に保存されます。",
-      "samsungHelp_screenZoom": "Samsungデスクトップ環境の表示密度（DPI）を変更します。",
-      "samsungHelp_fontScale": "Samsungデスクトップ環境内の文字倍率を変更します。",
-      "samsungHelp_screenTimeout": "外部デスクトップ画面が消灯するまでの時間です。",
-      "samsungHelp_audioOutput": "音声出力先を外部画面側へ切り替えます。",
-      "samsungHelp_displayOrientation": "外部デスクトップ画面の回転方向を固定します。",
-      "samsungHelp_displayArrangement": "端末画面と外部画面の相対位置を指定します。",
+          "Samsungデスクトップがアプリやウィンドウを描画する作業領域を決めます。高い解像度ほど一度に多くの情報を表示できますが、文字やボタンは小さくなり、描画負荷も増えます。低い解像度は見やすさと動作の軽さを優先できます。Dextop本体の解像度とは別に保存されます。",
+      "samsungHelp_screenZoom":
+          "Samsungデスクトップ上の文字・アイコン・ボタンをまとめて拡大または縮小します。DPIを高くすると各要素が大きく見やすくなり、低くすると同じ画面により多くの内容を表示できます。解像度そのものは変わりません。",
+      "samsungHelp_fontScale":
+          "Samsungデスクトップ内の文字だけを拡大・縮小します。アイコンやウィンドウの大きさを大きく変えずに読みやすさを調整したい場合に使います。大きくしすぎると一部の画面で文章が折り返されたり、ボタンからはみ出す場合があります。",
+      "samsungHelp_screenTimeout":
+          "操作がないときにSamsungデスクトップ画面が消灯するまでの時間を決めます。長くすると資料や動画を表示したままにしやすくなりますが、消費電力と発熱が増える可能性があります。",
+      "samsungHelp_audioOutput":
+          "有効にすると、音楽・動画・通知などの音声をHDMIモニターやドックなど外部画面側へ出力します。無効にすると通常は端末側のスピーカーや現在選択中の音声機器が使われます。外部画面にスピーカーがない場合は音が聞こえなくなることがあります。",
+      "samsungHelp_displayOrientation":
+          "Samsungデスクトップを指定した角度で表示します。縦置きモニターや回転可能な外部画面に向きを合わせるための設定です。実際の画面の向きと合わない値にすると、表示とマウス操作の方向がずれる場合があります。",
+      "samsungHelp_displayArrangement":
+          "端末画面が外部画面の左側・右側のどちらにあるかをSamsungへ伝えます。マウスポインターを画面間で移動するときのつながる辺が変わります。実際の設置位置と合わせると、自然に別画面へ移動できます。",
       "samsungHelp_autorunTouchpad":
-          "接続時にSamsungタッチパッドを自動表示します。Dextopの入力処理と競合します。",
-      "samsungHelp_touchpadScrollDirection": "Samsungタッチパッドのスクロール方向を反転します。",
+          "有効にするとデスクトップ接続時に端末画面へSamsungのタッチパッドが自動表示され、端末をノートPCのタッチパッドのように使えます。Dextop独自のタッチ入力と二重に反応するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_touchpadScrollDirection":
+          "Samsungタッチパッドで2本指を動かした方向と、画面がスクロールする方向の関係を反転します。マウスホイール式とスマートフォンの直接操作式のうち、慣れている方向へ合わせるための設定です。",
       "samsungHelp_touchKeyboard":
-          "デスクトップ接続時に画面キーボードを表示します。DextopのIME制御と競合します。",
-      "samsungHelp_keyboardDex": "物理キーボード接続中も画面キーボードを表示します。DextopのIME制御と競合します。",
-      "samsungHelp_spenInputMode": "S Penをポインティングデバイスとして扱います。",
+          "有効にするとデスクトップ接続時でも文字入力欄を選んだ際に画面キーボードを表示できます。物理キーボードがない環境では便利ですが、Dextopのキーボード表示制御と重複するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_keyboardDex":
+          "有効にすると物理キーボードを接続していても画面キーボードを表示できます。絵文字・手書き・音声入力を併用したい場合に便利ですが、作業領域が狭くなりDextopのIME制御とも競合するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_spenInputMode":
+          "有効にするとS Penを画面へ触れる前のホバー位置も含めてマウスポインターとして利用できます。細かな位置指定やペンでのデスクトップ操作がしやすくなります。描画アプリで筆圧を使いたい場合は、アプリ側の挙動が変わらないか確認してください。",
       "samsungHelp_threeFingerGesture":
-          "Samsung側の3本指操作です。Dextopの3本指ジェスチャーと競合します。",
+          "Samsungデスクトップで3本指操作を行ったときに、アプリ一覧・ホーム・履歴・戻るなど指定した操作を実行します。Dextopも3本指を操作メニューに使用するため、同時に有効だと誤動作しやすく、Dextop実行中は非表示にしています。",
       "samsungHelp_fourFingerGesture":
-          "Samsung側の4本指操作です。Dextopのマルチタッチ処理と競合します。",
-      "samsungHelp_autoHideTaskbar": "Samsungデスクトップのタスクバーを自動的に隠します。",
-      "samsungHelp_dexCommandArrow": "Samsungデスクトップのコマンド矢印を表示します。",
-      "samsungHelp_includePhoneDisplay": "端末画面をデスクトップの画面配置へ含めます。",
-      "samsungHelp_mirrorPhoneDisplay": "端末内蔵画面の内容をデスクトップ側へミラーリングします。",
+          "Samsungデスクトップで4本指操作を行ったときに、選択したシステム操作を実行します。対応タッチパッドでは素早く画面を切り替えられますが、Dextopのマルチタッチ判定と競合するため、Dextop実行中は非表示にしています。",
+      "samsungHelp_autoHideTaskbar":
+          "有効にすると操作していない間はSamsungデスクトップのタスクバーを隠し、アプリが使える縦方向の領域を広げます。画面下端へポインターを移動すると再表示されます。常にアプリ切り替えを見せたい場合は無効にしてください。",
+      "samsungHelp_dexCommandArrow":
+          "有効にするとSamsungデスクトップの操作コマンドを呼び出す矢印を表示します。Samsung側の補助操作へ素早くアクセスできますが、Dextopのオーバーレイや画面端操作と重なる場合があります。",
+      "samsungHelp_includePhoneDisplay":
+          "有効にすると端末内蔵画面を外部画面と同じデスクトップの画面構成に含めます。アプリやポインターを端末画面と外部画面の間で移動できる構成になります。端末画面を独立したAndroid操作用として残したい場合は無効にしてください。",
+      "samsungHelp_mirrorPhoneDisplay":
+          "有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。",
     },
     "en": {
       "home": "Home",
@@ -754,38 +767,41 @@ abstract final class AppStrings {
       "samsungGestureNotifications": "Notifications",
       "samsungGestureQuickSettings": "Quick settings",
       "samsungHelp_resolution":
-          "Resolution used by the Samsung desktop environment. It is stored separately from Dextop resolution.",
+          "Sets the workspace Samsung Desktop uses to draw apps and windows. Higher resolutions fit more content but make controls smaller and increase rendering load. Lower resolutions favor readability and performance. This is stored separately from Dextop's resolution.",
       "samsungHelp_screenZoom":
-          "Changes display density (DPI) in the Samsung desktop environment.",
+          "Scales text, icons, and controls across Samsung Desktop. A higher DPI makes everything larger and easier to read; a lower DPI fits more content on screen. It does not change the actual resolution.",
       "samsungHelp_fontScale":
-          "Changes text scale in the Samsung desktop environment.",
+          "Changes text size without substantially resizing icons or windows. Use it to improve readability while preserving the workspace. Very large values can cause text to wrap or overflow in some apps.",
       "samsungHelp_screenTimeout":
-          "Time before the external desktop display turns off.",
-      "samsungHelp_audioOutput": "Routes audio to the external display.",
+          "Controls how long Samsung Desktop stays lit without input. A longer timeout is useful for documents or video, but may increase power use and heat.",
+      "samsungHelp_audioOutput":
+          "When enabled, media and notification audio is routed to the HDMI display or dock. When disabled, the phone or currently selected audio device is normally used. Enabling this with a display that has no speakers may result in no audible sound.",
       "samsungHelp_displayOrientation":
-          "Locks external desktop display rotation.",
+          "Rotates Samsung Desktop to the selected angle. Use this for a portrait-mounted or rotatable monitor. A value that does not match the physical screen can make the picture and pointer direction feel misaligned.",
       "samsungHelp_displayArrangement":
-          "Controls the relative arrangement of the phone and external display.",
+          "Tells Samsung whether the phone is positioned to the left or right of the external display. This changes which screen edge the pointer crosses, making movement between screens match the physical setup.",
       "samsungHelp_autorunTouchpad":
-          "Starts Samsung touchpad on connection and conflicts with Dextop input.",
+          "When enabled, Samsung's touchpad opens automatically on the phone after connecting, allowing the phone to work like a laptop touchpad. It duplicates Dextop input handling, so this option is hidden while Dextop is running.",
       "samsungHelp_touchpadScrollDirection":
-          "Reverses Samsung touchpad scrolling.",
+          "Reverses the relationship between two-finger movement and page movement on Samsung's touchpad. Use it to choose between mouse-wheel-style and direct-touch-style scrolling.",
       "samsungHelp_touchKeyboard":
-          "Shows the on-screen keyboard and conflicts with Dextop IME handling.",
+          "When enabled, the on-screen keyboard can appear after selecting a text field in desktop mode. It is useful without a physical keyboard, but overlaps Dextop keyboard handling, so it is hidden while Dextop is running.",
       "samsungHelp_keyboardDex":
-          "Keeps the on-screen keyboard visible with a physical keyboard and conflicts with Dextop IME handling.",
-      "samsungHelp_spenInputMode": "Uses S Pen as a pointing device.",
+          "When enabled, the on-screen keyboard remains available even with a physical keyboard connected. This helps with emoji, handwriting, and voice input, but reduces workspace and conflicts with Dextop IME handling.",
+      "samsungHelp_spenInputMode":
+          "When enabled, S Pen acts as a pointer, including hover before touching the screen. This improves precise desktop selection. Check drawing apps if you rely on their normal pressure-sensitive pen behavior.",
       "samsungHelp_threeFingerGesture":
-          "Samsung three-finger action; conflicts with Dextop gestures.",
+          "Runs the selected action—such as Apps, Home, Recents, or Back—when Samsung detects a three-finger gesture. Dextop also uses three fingers for its controls, so this option is hidden while Dextop is running.",
       "samsungHelp_fourFingerGesture":
-          "Samsung four-finger action; conflicts with Dextop multi-touch.",
+          "Runs the selected system action from a supported four-finger touchpad gesture. It can speed up navigation, but conflicts with Dextop multi-touch detection and is therefore hidden during a Dextop session.",
       "samsungHelp_autoHideTaskbar":
-          "Automatically hides the Samsung desktop taskbar.",
-      "samsungHelp_dexCommandArrow": "Shows the Samsung desktop command arrow.",
+          "When enabled, Samsung Desktop hides the taskbar while it is not in use, giving apps more vertical space. Move the pointer to the bottom edge to reveal it. Disable this if you prefer app switching to remain visible.",
+      "samsungHelp_dexCommandArrow":
+          "When enabled, Samsung Desktop shows an arrow for opening Samsung command controls. It provides faster access to Samsung actions, but may overlap Dextop overlays or edge gestures.",
       "samsungHelp_includePhoneDisplay":
-          "Includes the phone display in desktop topology.",
+          "When enabled, the built-in phone screen becomes part of the same desktop topology as the external display, allowing apps and the pointer to move between them. Leave it disabled to keep the phone as an independent Android control screen.",
       "samsungHelp_mirrorPhoneDisplay":
-          "Mirrors the built-in display into the desktop environment.",
+          "When enabled, the external desktop shows the same content as the built-in phone screen. This is useful for demonstrations, but it duplicates rather than expands the workspace, so the two screens cannot show independent apps.",
     },
     "zh": {
       "home": "主页",
@@ -1128,24 +1144,42 @@ abstract final class AppStrings {
       "samsungGestureRecents": "最近任务",
       "samsungGestureNotifications": "通知",
       "samsungGestureQuickSettings": "快捷设置",
-      "samsungHelp_resolution": "Samsung 桌面环境使用的外接屏幕分辨率，与 Dextop 分辨率分开保存。",
-      "samsungHelp_screenZoom": "更改 Samsung 桌面环境的显示密度 (DPI)。",
-      "samsungHelp_fontScale": "更改 Samsung 桌面环境的文字缩放。",
-      "samsungHelp_screenTimeout": "外接桌面屏幕关闭前的等待时间。",
-      "samsungHelp_audioOutput": "将音频输出切换到外接屏幕。",
-      "samsungHelp_displayOrientation": "锁定外接桌面屏幕的旋转方向。",
-      "samsungHelp_displayArrangement": "指定手机屏幕与外接屏幕的相对位置。",
-      "samsungHelp_autorunTouchpad": "连接时自动显示 Samsung 触控板，会与 Dextop 输入冲突。",
-      "samsungHelp_touchpadScrollDirection": "反转 Samsung 触控板的滚动方向。",
-      "samsungHelp_touchKeyboard": "显示屏幕键盘，会与 Dextop IME 控制冲突。",
-      "samsungHelp_keyboardDex": "连接物理键盘时仍显示屏幕键盘，会与 Dextop IME 控制冲突。",
-      "samsungHelp_spenInputMode": "将 S Pen 用作指针设备。",
-      "samsungHelp_threeFingerGesture": "Samsung 三指操作，会与 Dextop 手势冲突。",
-      "samsungHelp_fourFingerGesture": "Samsung 四指操作，会与 Dextop 多点触控冲突。",
-      "samsungHelp_autoHideTaskbar": "自动隐藏 Samsung 桌面任务栏。",
-      "samsungHelp_dexCommandArrow": "显示 Samsung 桌面命令箭头。",
-      "samsungHelp_includePhoneDisplay": "将手机屏幕加入桌面显示拓扑。",
-      "samsungHelp_mirrorPhoneDisplay": "将内置屏幕镜像到桌面环境。",
+      "samsungHelp_resolution":
+          "决定 Samsung 桌面绘制应用和窗口的工作区大小。较高分辨率可同时显示更多内容，但文字和按钮会更小，也会增加渲染负载；较低分辨率更易阅读且运行更轻。此设置与 Dextop 分辨率分开保存。",
+      "samsungHelp_screenZoom":
+          "统一缩放 Samsung 桌面的文字、图标和按钮。提高 DPI 会让界面更大、更易阅读；降低 DPI 可在同一屏幕显示更多内容，但不会改变实际分辨率。",
+      "samsungHelp_fontScale":
+          "只调整文字大小，不明显改变图标和窗口尺寸。适合在保留工作区的同时提高可读性；过大的值可能导致部分应用文字换行或溢出。",
+      "samsungHelp_screenTimeout":
+          "设置无操作后 Samsung 桌面保持亮屏的时间。较长时间适合查看文档或视频，但可能增加耗电和发热。",
+      "samsungHelp_audioOutput":
+          "启用后，媒体和通知声音会输出到 HDMI 显示器或扩展坞；关闭后通常使用手机或当前音频设备。如果外接屏幕没有扬声器，启用后可能听不到声音。",
+      "samsungHelp_displayOrientation":
+          "将 Samsung 桌面旋转到所选角度，适用于竖放或可旋转显示器。若与屏幕实际方向不符，画面和指针移动方向可能错位。",
+      "samsungHelp_displayArrangement":
+          "指定手机位于外接屏幕左侧还是右侧，从而决定指针通过哪一侧边缘跨屏。与实际摆放位置一致时，跨屏移动会更自然。",
+      "samsungHelp_autorunTouchpad":
+          "启用后，连接桌面时会在手机上自动打开 Samsung 触控板，可像笔记本触控板一样操作。它会与 Dextop 输入重复，因此 Dextop 运行时隐藏此项。",
+      "samsungHelp_touchpadScrollDirection":
+          "反转 Samsung 触控板双指移动与页面滚动的对应方向，可在鼠标滚轮式和手机直接触控式滚动之间选择。",
+      "samsungHelp_touchKeyboard":
+          "启用后，在桌面模式选择输入框时可显示屏幕键盘，没有物理键盘时很方便。它与 Dextop 键盘控制重叠，因此 Dextop 运行时隐藏此项。",
+      "samsungHelp_keyboardDex":
+          "启用后，即使连接物理键盘也可使用屏幕键盘，便于输入表情、手写或语音；但会占用工作区并与 Dextop IME 控制冲突。",
+      "samsungHelp_spenInputMode":
+          "启用后，S Pen 可作为指针使用，包括笔尖未接触屏幕时的悬停位置，便于精确选择。使用压感绘图应用时请确认其笔输入行为。",
+      "samsungHelp_threeFingerGesture":
+          "Samsung 检测到三指手势时执行所选的应用列表、主页、最近任务或返回等操作。Dextop 也使用三指控制，因此运行时隐藏此项以避免误操作。",
+      "samsungHelp_fourFingerGesture":
+          "在支持的触控板上用四指执行所选系统操作，可加快导航，但会与 Dextop 多点触控识别冲突，因此 Dextop 运行时隐藏此项。",
+      "samsungHelp_autoHideTaskbar":
+          "启用后，Samsung 桌面会在不使用时隐藏任务栏，为应用提供更多纵向空间；将指针移到屏幕底边可再次显示。需要始终看到应用切换时请关闭。",
+      "samsungHelp_dexCommandArrow":
+          "启用后显示用于打开 Samsung 命令控制的箭头，可快速访问 Samsung 操作，但可能与 Dextop 浮层或边缘手势重叠。",
+      "samsungHelp_includePhoneDisplay":
+          "启用后，手机内置屏幕会加入外接屏幕的同一桌面拓扑，可在两屏之间移动应用和指针。若要将手机保留为独立 Android 控制屏，请关闭。",
+      "samsungHelp_mirrorPhoneDisplay":
+          "启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。",
     },
     "ko": {
       "home": "홈",
@@ -1500,26 +1534,41 @@ abstract final class AppStrings {
       "samsungGestureNotifications": "알림",
       "samsungGestureQuickSettings": "빠른 설정",
       "samsungHelp_resolution":
-          "Samsung 데스크톱 환경에서 사용하는 외부 화면 해상도이며 Dextop 해상도와 별도로 저장됩니다.",
-      "samsungHelp_screenZoom": "Samsung 데스크톱 환경의 표시 밀도(DPI)를 변경합니다.",
-      "samsungHelp_fontScale": "Samsung 데스크톱 환경의 글자 배율을 변경합니다.",
-      "samsungHelp_screenTimeout": "외부 데스크톱 화면이 꺼질 때까지의 시간입니다.",
-      "samsungHelp_audioOutput": "오디오 출력을 외부 화면으로 전환합니다.",
-      "samsungHelp_displayOrientation": "외부 데스크톱 화면의 회전 방향을 고정합니다.",
-      "samsungHelp_displayArrangement": "휴대전화와 외부 화면의 상대 위치를 지정합니다.",
+          "Samsung 데스크톱에서 앱과 창을 표시할 작업 영역을 결정합니다. 해상도가 높으면 더 많은 내용을 볼 수 있지만 글자와 버튼이 작아지고 렌더링 부하가 늘어납니다. 낮은 해상도는 가독성과 성능에 유리하며 Dextop 해상도와 별도로 저장됩니다.",
+      "samsungHelp_screenZoom":
+          "Samsung 데스크톱의 글자, 아이콘, 버튼을 함께 확대하거나 축소합니다. DPI가 높으면 크게 보여 읽기 쉽고, 낮으면 한 화면에 더 많은 내용을 표시합니다. 실제 해상도는 바뀌지 않습니다.",
+      "samsungHelp_fontScale":
+          "아이콘과 창 크기는 유지하면서 글자만 조절합니다. 작업 공간을 유지하며 읽기 쉽게 만들 때 유용합니다. 너무 크게 설정하면 일부 앱에서 줄 바꿈이나 넘침이 생길 수 있습니다.",
+      "samsungHelp_screenTimeout":
+          "입력이 없을 때 Samsung 데스크톱 화면이 켜져 있는 시간을 정합니다. 긴 시간은 문서나 영상에 편리하지만 배터리 사용과 발열이 늘 수 있습니다.",
+      "samsungHelp_audioOutput":
+          "활성화하면 미디어와 알림 소리가 HDMI 모니터나 도크로 출력됩니다. 비활성화하면 보통 휴대전화나 현재 오디오 기기를 사용합니다. 외부 화면에 스피커가 없으면 소리가 들리지 않을 수 있습니다.",
+      "samsungHelp_displayOrientation":
+          "Samsung 데스크톱을 선택한 각도로 회전합니다. 세로로 설치한 모니터에 유용합니다. 실제 방향과 다르면 화면과 포인터 이동 방향이 어긋날 수 있습니다.",
+      "samsungHelp_displayArrangement":
+          "휴대전화가 외부 화면의 왼쪽 또는 오른쪽에 있는지 지정해 포인터가 넘어가는 화면 가장자리를 결정합니다. 실제 배치와 맞추면 화면 간 이동이 자연스럽습니다.",
       "samsungHelp_autorunTouchpad":
-          "연결 시 Samsung 터치패드를 자동 표시하며 Dextop 입력과 충돌합니다.",
-      "samsungHelp_touchpadScrollDirection": "Samsung 터치패드의 스크롤 방향을 반전합니다.",
-      "samsungHelp_touchKeyboard": "화면 키보드를 표시하며 Dextop IME 제어와 충돌합니다.",
+          "활성화하면 연결 시 휴대전화에 Samsung 터치패드가 자동으로 열려 노트북 터치패드처럼 사용할 수 있습니다. Dextop 입력과 중복되므로 Dextop 실행 중에는 이 항목을 숨깁니다.",
+      "samsungHelp_touchpadScrollDirection":
+          "Samsung 터치패드의 두 손가락 이동과 페이지 스크롤 방향 관계를 반전합니다. 마우스 휠 방식과 스마트폰 직접 조작 방식 중 익숙한 방향을 선택할 수 있습니다.",
+      "samsungHelp_touchKeyboard":
+          "활성화하면 데스크톱에서 입력 칸을 선택할 때 화면 키보드를 사용할 수 있어 물리 키보드가 없을 때 편리합니다. Dextop 키보드 제어와 겹치므로 실행 중에는 숨깁니다.",
       "samsungHelp_keyboardDex":
-          "물리 키보드 연결 중에도 화면 키보드를 표시하며 Dextop IME 제어와 충돌합니다.",
-      "samsungHelp_spenInputMode": "S Pen을 포인팅 장치로 사용합니다.",
-      "samsungHelp_threeFingerGesture": "Samsung 세 손가락 동작이며 Dextop 제스처와 충돌합니다.",
-      "samsungHelp_fourFingerGesture": "Samsung 네 손가락 동작이며 Dextop 멀티터치와 충돌합니다.",
-      "samsungHelp_autoHideTaskbar": "Samsung 데스크톱 작업 표시줄을 자동으로 숨깁니다.",
-      "samsungHelp_dexCommandArrow": "Samsung 데스크톱 명령 화살표를 표시합니다.",
-      "samsungHelp_includePhoneDisplay": "휴대전화 화면을 데스크톱 디스플레이 토폴로지에 포함합니다.",
-      "samsungHelp_mirrorPhoneDisplay": "내장 화면을 데스크톱 환경에 미러링합니다.",
+          "활성화하면 물리 키보드 연결 중에도 화면 키보드를 사용할 수 있어 이모지, 필기, 음성 입력에 편리합니다. 작업 공간을 줄이고 Dextop IME와 충돌할 수 있습니다.",
+      "samsungHelp_spenInputMode":
+          "활성화하면 S Pen의 화면 접촉 전 호버 위치까지 포인터로 사용해 정밀하게 선택할 수 있습니다. 필압 드로잉 앱을 쓸 때는 앱의 펜 동작이 달라지지 않는지 확인하세요.",
+      "samsungHelp_threeFingerGesture":
+          "Samsung이 세 손가락 제스처를 감지하면 앱, 홈, 최근 앱, 뒤로 등 선택한 작업을 실행합니다. Dextop도 세 손가락을 사용하므로 오작동 방지를 위해 실행 중에는 숨깁니다.",
+      "samsungHelp_fourFingerGesture":
+          "지원 터치패드에서 네 손가락으로 선택한 시스템 작업을 빠르게 실행합니다. Dextop 멀티터치 감지와 충돌하므로 Dextop 실행 중에는 숨깁니다.",
+      "samsungHelp_autoHideTaskbar":
+          "활성화하면 사용하지 않을 때 Samsung 데스크톱 작업 표시줄을 숨겨 앱의 세로 공간을 넓힙니다. 포인터를 화면 아래쪽으로 옮기면 다시 나타납니다.",
+      "samsungHelp_dexCommandArrow":
+          "활성화하면 Samsung 명령 제어를 여는 화살표가 표시되어 보조 작업에 빠르게 접근할 수 있습니다. Dextop 오버레이나 가장자리 제스처와 겹칠 수 있습니다.",
+      "samsungHelp_includePhoneDisplay":
+          "활성화하면 휴대전화 내장 화면이 외부 화면과 같은 데스크톱 구성에 포함되어 앱과 포인터를 화면 사이로 이동할 수 있습니다. 휴대전화를 독립 Android 제어 화면으로 쓰려면 끄세요.",
+      "samsungHelp_mirrorPhoneDisplay":
+          "활성화하면 외부 화면에 휴대전화와 같은 내용이 표시되어 시연에 유용합니다. 작업 공간 확장이 아닌 복제이므로 두 화면에 서로 다른 앱을 표시할 수 없습니다.",
     },
     "ru": {
       "home": "Главная",
@@ -1902,38 +1951,41 @@ abstract final class AppStrings {
       "samsungGestureNotifications": "Уведомления",
       "samsungGestureQuickSettings": "Быстрые настройки",
       "samsungHelp_resolution":
-          "Разрешение внешнего экрана Samsung Desktop, хранящееся отдельно от разрешения Dextop.",
+          "Определяет рабочую область, в которой Samsung Desktop размещает приложения и окна. Высокое разрешение вмещает больше содержимого, но уменьшает элементы и повышает нагрузку. Низкое улучшает читаемость и производительность. Настройка хранится отдельно от разрешения Dextop.",
       "samsungHelp_screenZoom":
-          "Изменяет плотность отображения (DPI) рабочего стола Samsung.",
+          "Масштабирует текст, значки и элементы управления Samsung Desktop. Более высокий DPI делает их крупнее и удобнее для чтения, а низкий позволяет видеть больше содержимого. Фактическое разрешение не меняется.",
       "samsungHelp_fontScale":
-          "Изменяет масштаб текста рабочего стола Samsung.",
-      "samsungHelp_screenTimeout": "Время до отключения внешнего экрана.",
-      "samsungHelp_audioOutput": "Переключает вывод звука на внешний экран.",
-      "samsungHelp_displayOrientation": "Фиксирует ориентацию внешнего экрана.",
+          "Изменяет только размер текста, почти не затрагивая значки и окна. Полезно для читаемости без потери рабочей области. Слишком большой масштаб может вызвать перенос или обрезку текста.",
+      "samsungHelp_screenTimeout":
+          "Задаёт время работы экрана Samsung Desktop без ввода. Долгий интервал удобен для документов и видео, но может увеличить расход энергии и нагрев.",
+      "samsungHelp_audioOutput":
+          "При включении звук мультимедиа и уведомлений направляется на HDMI-монитор или док-станцию. При выключении обычно используется телефон или текущее аудиоустройство. Если у монитора нет динамиков, звук может исчезнуть.",
+      "samsungHelp_displayOrientation":
+          "Поворачивает Samsung Desktop на выбранный угол. Используйте для вертикально установленного монитора. Несоответствие физической ориентации может привести к расхождению изображения и направления указателя.",
       "samsungHelp_displayArrangement":
-          "Задаёт взаимное расположение телефона и внешнего экрана.",
+          "Указывает, расположен ли телефон слева или справа от внешнего экрана, и меняет край перехода указателя между экранами. Совпадение с реальным расположением делает переход естественным.",
       "samsungHelp_autorunTouchpad":
-          "Автоматически запускает панель Samsung и конфликтует с вводом Dextop.",
+          "При включении панель Samsung автоматически открывается на телефоне после подключения и работает как тачпад ноутбука. Она дублирует ввод Dextop, поэтому параметр скрыт во время сеанса Dextop.",
       "samsungHelp_touchpadScrollDirection":
-          "Меняет направление прокрутки панели Samsung.",
+          "Меняет соответствие движения двумя пальцами и прокрутки страницы на панели Samsung. Позволяет выбрать направление в стиле колеса мыши или прямого сенсорного управления.",
       "samsungHelp_touchKeyboard":
-          "Показывает экранную клавиатуру и конфликтует с IME Dextop.",
+          "При включении экранная клавиатура появляется при выборе поля ввода в режиме рабочего стола. Это удобно без физической клавиатуры, но пересекается с управлением Dextop и скрывается во время сеанса.",
       "samsungHelp_keyboardDex":
-          "Оставляет экранную клавиатуру при физической и конфликтует с IME Dextop.",
+          "При включении экранная клавиатура доступна даже при подключённой физической клавиатуре — для эмодзи, рукописного и голосового ввода. Она занимает рабочую область и может конфликтовать с IME Dextop.",
       "samsungHelp_spenInputMode":
-          "Использует S Pen как указывающее устройство.",
+          "При включении S Pen работает как указатель, включая наведение до касания экрана. Это помогает точно выбирать элементы. Проверьте поведение приложений для рисования, если используете чувствительность к нажатию.",
       "samsungHelp_threeFingerGesture":
-          "Жест Samsung тремя пальцами конфликтует с жестами Dextop.",
+          "Выполняет выбранное действие Samsung — приложения, Домой, недавние или Назад — по жесту тремя пальцами. Dextop тоже использует три пальца, поэтому параметр скрыт во время его работы.",
       "samsungHelp_fourFingerGesture":
-          "Жест Samsung четырьмя пальцами конфликтует с мультитачем Dextop.",
+          "Выполняет выбранное системное действие жестом четырьмя пальцами на поддерживаемой панели. Ускоряет навигацию, но конфликтует с мультитачем Dextop и скрывается во время сеанса.",
       "samsungHelp_autoHideTaskbar":
-          "Автоматически скрывает панель задач Samsung Desktop.",
+          "При включении панель задач Samsung Desktop скрывается, когда не используется, освобождая вертикальное место. Для показа переместите указатель к нижнему краю. Отключите, если переключатель приложений должен быть виден постоянно.",
       "samsungHelp_dexCommandArrow":
-          "Показывает стрелку команд Samsung Desktop.",
+          "При включении отображается стрелка для вызова команд Samsung. Она ускоряет доступ к вспомогательным действиям, но может перекрывать оверлей или краевые жесты Dextop.",
       "samsungHelp_includePhoneDisplay":
-          "Включает экран телефона в топологию рабочего стола.",
+          "При включении встроенный экран телефона становится частью общей топологии рабочего стола, позволяя перемещать приложения и указатель между экранами. Отключите, чтобы оставить телефон независимым экраном управления Android.",
       "samsungHelp_mirrorPhoneDisplay":
-          "Дублирует встроенный экран в среду рабочего стола.",
+          "При включении внешний экран показывает то же содержимое, что и телефон. Это удобно для демонстраций, но дублирует, а не расширяет рабочую область, поэтому разные приложения на двух экранах недоступны.",
     },
   };
 }

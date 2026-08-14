@@ -290,5 +290,22 @@
   "samsungResolution": "外接屏幕分辨率", "samsungScreenZoom": "屏幕缩放 (DPI)", "samsungFontScale": "字体大小", "samsungScreenTimeout": "屏幕超时", "samsungAudioOutput": "从外接屏幕输出音频", "samsungDisplayOrientation": "外接屏幕旋转", "samsungDisplayArrangement": "屏幕排列", "samsungSectionInput": "输入", "samsungSectionDesktop": "桌面", "samsungInputLockedWhileRunning": "Dextop 运行时无法更改有冲突的 Samsung 输入设置。",
   "samsungAutorunTouchpad": "自动启动触控板", "samsungTouchpadScrollDirection": "反转滚动方向", "samsungTouchKeyboard": "连接时显示屏幕键盘", "samsungKeyboardDex": "使用物理键盘时仍显示键盘", "samsungSpenInputMode": "将 S Pen 用作鼠标", "samsungThreeFingerGesture": "三指手势", "samsungFourFingerGesture": "四指手势", "samsungAutoHideTaskbar": "自动隐藏任务栏", "samsungDexCommandArrow": "显示命令箭头", "samsungIncludePhoneDisplay": "将手机屏幕加入显示拓扑", "samsungMirrorPhoneDisplay": "镜像内置屏幕", "samsungReviewEnable": "查看警告并启用更改",
   "samsungSeconds15": "15 秒", "samsungSeconds30": "30 秒", "samsungMinute1": "1 分钟", "samsungMinutes2": "2 分钟", "samsungMinutes5": "5 分钟", "samsungMinutes10": "10 分钟", "samsungMinutes20": "20 分钟", "samsungMinutes30": "30 分钟", "samsungHour1": "1 小时", "samsungLeft": "左", "samsungRight": "右", "samsungAutomatic": "自动", "samsungGestureNone": "无", "samsungGestureApps": "应用列表", "samsungGestureRecents": "最近任务", "samsungGestureNotifications": "通知", "samsungGestureQuickSettings": "快捷设置",
-  "samsungHelp_resolution": "Samsung 桌面环境使用的外接屏幕分辨率，与 Dextop 分辨率分开保存。", "samsungHelp_screenZoom": "更改 Samsung 桌面环境的显示密度 (DPI)。", "samsungHelp_fontScale": "更改 Samsung 桌面环境的文字缩放。", "samsungHelp_screenTimeout": "外接桌面屏幕关闭前的等待时间。", "samsungHelp_audioOutput": "将音频输出切换到外接屏幕。", "samsungHelp_displayOrientation": "锁定外接桌面屏幕的旋转方向。", "samsungHelp_displayArrangement": "指定手机屏幕与外接屏幕的相对位置。", "samsungHelp_autorunTouchpad": "连接时自动显示 Samsung 触控板，会与 Dextop 输入冲突。", "samsungHelp_touchpadScrollDirection": "反转 Samsung 触控板的滚动方向。", "samsungHelp_touchKeyboard": "显示屏幕键盘，会与 Dextop IME 控制冲突。", "samsungHelp_keyboardDex": "连接物理键盘时仍显示屏幕键盘，会与 Dextop IME 控制冲突。", "samsungHelp_spenInputMode": "将 S Pen 用作指针设备。", "samsungHelp_threeFingerGesture": "Samsung 三指操作，会与 Dextop 手势冲突。", "samsungHelp_fourFingerGesture": "Samsung 四指操作，会与 Dextop 多点触控冲突。", "samsungHelp_autoHideTaskbar": "自动隐藏 Samsung 桌面任务栏。", "samsungHelp_dexCommandArrow": "显示 Samsung 桌面命令箭头。", "samsungHelp_includePhoneDisplay": "将手机屏幕加入桌面显示拓扑。", "samsungHelp_mirrorPhoneDisplay": "将内置屏幕镜像到桌面环境。"
+  "samsungHelp_resolution": "决定 Samsung 桌面绘制应用和窗口的工作区大小。较高分辨率可同时显示更多内容，但文字和按钮会更小，也会增加渲染负载；较低分辨率更易阅读且运行更轻。此设置与 Dextop 分辨率分开保存。",
+  "samsungHelp_screenZoom": "统一缩放 Samsung 桌面的文字、图标和按钮。提高 DPI 会让界面更大、更易阅读；降低 DPI 可在同一屏幕显示更多内容，但不会改变实际分辨率。",
+  "samsungHelp_fontScale": "只调整文字大小，不明显改变图标和窗口尺寸。适合在保留工作区的同时提高可读性；过大的值可能导致部分应用文字换行或溢出。",
+  "samsungHelp_screenTimeout": "设置无操作后 Samsung 桌面保持亮屏的时间。较长时间适合查看文档或视频，但可能增加耗电和发热。",
+  "samsungHelp_audioOutput": "启用后，媒体和通知声音会输出到 HDMI 显示器或扩展坞；关闭后通常使用手机或当前音频设备。如果外接屏幕没有扬声器，启用后可能听不到声音。",
+  "samsungHelp_displayOrientation": "将 Samsung 桌面旋转到所选角度，适用于竖放或可旋转显示器。若与屏幕实际方向不符，画面和指针移动方向可能错位。",
+  "samsungHelp_displayArrangement": "指定手机位于外接屏幕左侧还是右侧，从而决定指针通过哪一侧边缘跨屏。与实际摆放位置一致时，跨屏移动会更自然。",
+  "samsungHelp_autorunTouchpad": "启用后，连接桌面时会在手机上自动打开 Samsung 触控板，可像笔记本触控板一样操作。它会与 Dextop 输入重复，因此 Dextop 运行时隐藏此项。",
+  "samsungHelp_touchpadScrollDirection": "反转 Samsung 触控板双指移动与页面滚动的对应方向，可在鼠标滚轮式和手机直接触控式滚动之间选择。",
+  "samsungHelp_touchKeyboard": "启用后，在桌面模式选择输入框时可显示屏幕键盘，没有物理键盘时很方便。它与 Dextop 键盘控制重叠，因此 Dextop 运行时隐藏此项。",
+  "samsungHelp_keyboardDex": "启用后，即使连接物理键盘也可使用屏幕键盘，便于输入表情、手写或语音；但会占用工作区并与 Dextop IME 控制冲突。",
+  "samsungHelp_spenInputMode": "启用后，S Pen 可作为指针使用，包括笔尖未接触屏幕时的悬停位置，便于精确选择。使用压感绘图应用时请确认其笔输入行为。",
+  "samsungHelp_threeFingerGesture": "Samsung 检测到三指手势时执行所选的应用列表、主页、最近任务或返回等操作。Dextop 也使用三指控制，因此运行时隐藏此项以避免误操作。",
+  "samsungHelp_fourFingerGesture": "在支持的触控板上用四指执行所选系统操作，可加快导航，但会与 Dextop 多点触控识别冲突，因此 Dextop 运行时隐藏此项。",
+  "samsungHelp_autoHideTaskbar": "启用后，Samsung 桌面会在不使用时隐藏任务栏，为应用提供更多纵向空间；将指针移到屏幕底边可再次显示。需要始终看到应用切换时请关闭。",
+  "samsungHelp_dexCommandArrow": "启用后显示用于打开 Samsung 命令控制的箭头，可快速访问 Samsung 操作，但可能与 Dextop 浮层或边缘手势重叠。",
+  "samsungHelp_includePhoneDisplay": "启用后，手机内置屏幕会加入外接屏幕的同一桌面拓扑，可在两屏之间移动应用和指针。若要将手机保留为独立 Android 控制屏，请关闭。",
+  "samsungHelp_mirrorPhoneDisplay": "启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。"
 }
