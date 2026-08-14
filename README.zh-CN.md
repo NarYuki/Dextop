@@ -56,6 +56,7 @@ Dextop 是一款开源 Android 应用，可在手机上创建虚拟显示器，�
 | --- | --- | --- |
 | Samsung DeX | 基本支持 | 目前功能最完整的环境。由 DeX 管理的功能使用 Samsung 平台实现。 |
 | Google Pixel | 有限且不完整 | 取决于 Android 的自由窗口／桌面实现和隐藏 API 可用性，部分功能可能无法工作。 |
+| 运行 HyperOS 或更高版本的 Xiaomi 设备 | 已禁用 | MIUI 和 HyperOS 不受支持。 |
 | 其他 Android 设备 | 实验性 | 虚拟显示、镜像和自由窗口支持因厂商、型号和系统更新而异。 |
 
 Dextop 会在运行时探测设备能力，并依次尝试兼容的后端。但由于仍依赖 Android 隐藏 API 和 OEM 行为，即使是同一厂商的不同型号或系统版本，结果也可能不同。
@@ -91,7 +92,7 @@ Dextop 会在运行时探测设备能力，并依次尝试兼容的后端。但�
 
 ## 运行要求
 
-- Android 10 或更高版本
+- Android 10 或更高版本。大多数设备需要 Android 14 或更高版本才能提供可用的桌面环境。
 - [Stellar](https://github.com/roro2239/Stellar/releases)（默认选项，尤其推荐用于 Android 16 或更高版本）或 [Shizuku](https://github.com/RikkaApps/Shizuku/releases)
 - 通过无线调试、ADB 或 root 启动所选服务
 - 授予 Dextop Stellar 或 Shizuku 权限

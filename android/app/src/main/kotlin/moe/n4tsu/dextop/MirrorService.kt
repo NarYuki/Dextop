@@ -77,6 +77,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val KEY_DIRECT_TOUCH = "direct_touch"
         private const val KEY_ROUTE_MOUSE = "route_physical_mouse"
         private const val KEY_ROUTE_KEYBOARD = "route_physical_keyboard"
+        private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
+        private const val NOTIFICATION_LAUNCH_WINDOW_MS = 3_000L
+        private const val NOTIFICATION_ROUTE_RETRY_DELAY_MS = 140L
+        private const val NOTIFICATION_ROUTE_RETRIES = 5
         private var instance: MirrorService? = null
         private var pending: Config? = null
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
@@ -279,6 +283,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var physicalMouseActive = false
     private var routePhysicalMouseToDextop = true
     private var routePhysicalKeyboardToDextop = true
+    private var notificationLaunchArmedUntil = 0L
+    private var notificationRouteGeneration = 0
     private var mouseActuallyRouted = false
     private var keyboardActuallyRouted = false
     private var physicalExternalDisplayConnected = false
@@ -358,7 +364,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) = Unit
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (!active || targetDisplayId < 0 || event == null) return
+        val eventPackage = event.packageName?.toString().orEmpty()
+        when (event.eventType) {
+            AccessibilityEvent.TYPE_VIEW_CLICKED -> {
+                if (eventPackage != SYSTEM_UI_PACKAGE || event.displayId != targetDisplayId) return
+                notificationLaunchArmedUntil = SystemClock.uptimeMillis() + NOTIFICATION_LAUNCH_WINDOW_MS
+                notificationRouteGeneration += 1
+                Log.d(logTag, "SystemUI click observed on desktop display; waiting for notification launch")
+            }
+            AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED -> {
+                if (SystemClock.uptimeMillis() > notificationLaunchArmedUntil) return
+                if (eventPackage.isBlank() || eventPackage == SYSTEM_UI_PACKAGE || eventPackage == packageName) return
+                if (event.displayId == targetDisplayId) {
+                    notificationLaunchArmedUntil = 0L
+                    return
+                }
+                notificationLaunchArmedUntil = 0L
+                val generation = notificationRouteGeneration
+                routeNotificationTask(eventPackage, generation, 0)
+            }
+        }
+    }
 
     override fun onInterrupt() = Unit
 
@@ -2713,6 +2741,35 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun systemService(name: String, interfaceName: String): Any {
         return privilegedAccess.service(name, interfaceName)
+    }
+
+    private fun routeNotificationTask(packageName: String, generation: Int, attempt: Int) {
+        root?.postDelayed({
+            if (!active || targetDisplayId < 0 || generation != notificationRouteGeneration) return@postDelayed
+            val query = privilegedAccess.execute("sh", "-c", "dumpsys activity activities")
+            val taskId = if (query.succeeded) {
+                NotificationTaskLocator.findSystemUiLaunchedTask(query.output, packageName, targetDisplayId)
+            } else null
+            if (taskId == null) {
+                if (attempt < NOTIFICATION_ROUTE_RETRIES) {
+                    routeNotificationTask(packageName, generation, attempt + 1)
+                } else {
+                    Log.w(logTag, "notification task not found package=$packageName")
+                }
+                return@postDelayed
+            }
+            val moved = privilegedAccess.execute(
+                "am", "display", "move-stack", taskId.toString(), targetDisplayId.toString()
+            )
+            if (moved.succeeded) {
+                OperationLog.i(this, "NotificationRouting", "moved package=$packageName task=$taskId display=$targetDisplayId")
+                Log.i(logTag, "notification task moved package=$packageName task=$taskId display=$targetDisplayId")
+            } else if (attempt < NOTIFICATION_ROUTE_RETRIES) {
+                routeNotificationTask(packageName, generation, attempt + 1)
+            } else {
+                Log.e(logTag, "notification task move failed package=$packageName task=$taskId error=${moved.error}")
+            }
+        }, NOTIFICATION_ROUTE_RETRY_DELAY_MS)
     }
 
     private fun setPhoneNavigationDisabled(disabled: Boolean) {

@@ -12,8 +12,6 @@ Compatibility is recorded per model **and firmware build**. A successful result 
 <details>
 <summary><strong>Samsung</strong></summary>
 
-Samsung DeX is mostly supported and is currently the most complete environment. Dextop avoids generic freeform changes that could conflict with Samsung's platform-managed desktop implementation.
-
 <details>
 <summary><strong>Galaxy S26 — SM-S942Z / Android 16 / One UI 8.5 — ✅ Confirmed working</strong></summary>
 
@@ -40,65 +38,8 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 
 </details>
 
-<!-- DEXTOP-REPORT-CONSOLE:SAMSUNG:BEGIN -->
 <details>
-<summary><strong>Galaxy Z Fold3 5G — SCG11</strong> / SCG11 / SCG11KDS1EZB8 — ❌ Not working at this time</summary>
-
-> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
-
-> **Status notice:** This device does not work at this time. Compatibility may improve in future Dextop updates.
-
-## Device and software
-
-| Item | Reported value |
-| --- | --- |
-| Manufacturer | Samsung |
-| Brand | Samsung |
-| Marketing name | Galaxy Z Fold3 5G |
-| Model | `SCG11` |
-| Device codename | `SCG11` |
-| Product | `SCG11_jp_kdi` |
-| Android | Android 15 (API 35) |
-| Firmware / incremental build | `SCG11KDS1EZB8` |
-| Build ID | `AP3A.240905.015.A2` |
-| Build fingerprint | `samsung/SCG11_jp_kdi/SCG11:15/AP3A.240905.015.A2/SCG11KDS1EZB8:user/release-keys` |
-| Security patch | `2026-02-05` |
-| Display build | `AP3A.240905.015.A2.SCG11KDS1EZB8` |
-| Dextop version | `1.1.1+6` |
-| Last verified | 2026-08-14 |
-| Overall status | ❌ Not working at this time |
-
-## Feature verification
-
-| Feature | Result |
-| --- | --- |
-| Overall status | ❌ Not working at this time |
-| App startup and device detection | ✅ Working |
-| Dextop session startup | ❌ Not working at this time |
-| VirtualDisplay mirroring | ❌ Not working at this time |
-| WindowManager mirroring | ❌ Not working at this time |
-| SurfaceControl mirroring | ❌ Not working at this time |
-| Landscape mode | ❌ Not working at this time |
-| Portrait mode | ❌ Not working at this time |
-| Secure display | ⬜ Not tested |
-| App launcher and freeform windows | ⬜ Not tested |
-| Workspace save and restore | ⬜ Not tested |
-| Cursor and touchpad input | ⬜ Not tested |
-| Direct touch input | ⬜ Not tested |
-| Multi-touch scrolling and pinch-to-zoom | ⬜ Not tested |
-| Three-finger overlay gesture | ⬜ Not tested |
-| Physical mouse | ⬜ Not tested |
-| Physical keyboard | ⬜ Not tested |
-| Physical mouse and keyboard display routing | ⬜ Not tested |
-| Automatic foldable-device resolution | ⬜ Not tested |
-| Performance overlay | ⬜ Not tested |
-| Session shutdown and Android state restoration | ⬜ Not tested |
-
-
-</details>
-
-<details>
-<summary><strong>Galaxy Z TriFold — SM-F968N</strong> / q7mq / F968NKSS6BZG3 — 🧪 Experimental</summary>
+<summary><strong>Galaxy Z TriFold — SM-F968N</strong> / q7mq / One UI 8.0 / F968NKSS6BZG3 — 🧪 Experimental</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -113,6 +54,7 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 | Device codename | `q7mq` |
 | Product | `q7mqksx` |
 | Android | Android 16 (API 36) |
+| Vendor UI / version | One UI 8.0 |
 | Firmware / incremental build | `F968NKSS6BZG3` |
 | Build ID | `BP4A.251205.006` |
 | Build fingerprint | `samsung/q7mqksx/q7mq:16/BP4A.251205.006/F968NKSS6BZG3_OKR6BZG3:user/release-keys` |
@@ -152,7 +94,7 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 </details>
 
 <details>
-<summary><strong>Galaxy Z Fold8 — SM-F971Q</strong> / h8q / F971QOPU1AZGI — 🟡 Partial</summary>
+<summary><strong>Galaxy Z Fold8 — SM-F971Q</strong> / h8q / One UI 9.0 / F971QOPU1AZGI — 🟡 Partial</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -167,6 +109,7 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 | Device codename | `h8q` |
 | Product | `h8qjpnw` |
 | Android | Android 17 (API 37) |
+| Vendor UI / version | One UI 9.0 |
 | Firmware / incremental build | `F971QOPU1AZGI` |
 | Build ID | `CP2A.260605.016` |
 | Build fingerprint | `samsung/h8qjpnw/h8q:17/CP2A.260605.016/F971QOPU1AZGI_SJP1AZGI:user/release-keys` |
@@ -206,7 +149,7 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 </details>
 
 <details>
-<summary><strong>Galaxy Z Fold7 — SM-F966Q</strong> / q7q / F966QOPU1BZF1 — ✅ Confirmed working</summary>
+<summary><strong>Galaxy Z Fold7 — SM-F966Q</strong> / q7q / One UI 8.0 / F966QOPU1BZF1 — ✅ Confirmed working</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -221,6 +164,7 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 | Device codename | `q7q` |
 | Product | `q7qjpnw` |
 | Android | Android 16 (API 36) |
+| Vendor UI / version | One UI 8.0 |
 | Firmware / incremental build | `F966QOPU1BZF1` |
 | Build ID | `BP4A.251205.006` |
 | Build fingerprint | `samsung/q7qjpnw/q7q:16/BP4A.251205.006/F966QOPU1BZF1_SJP1BZF1:user/release-keys` |
@@ -258,7 +202,63 @@ Samsung DeX is mostly supported and is currently the most complete environment. 
 
 
 </details>
-<!-- DEXTOP-REPORT-CONSOLE:SAMSUNG:END -->
+
+<details>
+<summary><strong>Galaxy Z Fold3 5G — SCG11</strong> / SCG11 / One UI 7.0 / SCG11KDS1EZB8 — ❌ Not working at this time</summary>
+
+> **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
+
+> **Status notice:** This device does not work at this time. Compatibility may improve in future Dextop updates.
+
+## Device and software
+
+| Item | Reported value |
+| --- | --- |
+| Manufacturer | Samsung |
+| Brand | Samsung |
+| Marketing name | Galaxy Z Fold3 5G |
+| Model | `SCG11` |
+| Device codename | `SCG11` |
+| Product | `SCG11_jp_kdi` |
+| Android | Android 15 (API 35) |
+| Vendor UI / version | One UI 7.0 |
+| Firmware / incremental build | `SCG11KDS1EZB8` |
+| Build ID | `AP3A.240905.015.A2` |
+| Build fingerprint | `samsung/SCG11_jp_kdi/SCG11:15/AP3A.240905.015.A2/SCG11KDS1EZB8:user/release-keys` |
+| Security patch | `2026-02-05` |
+| Display build | `AP3A.240905.015.A2.SCG11KDS1EZB8` |
+| Dextop version | `1.1.1+6` |
+| Last verified | 2026-08-14 |
+| Overall status | ❌ Not working at this time |
+
+## Feature verification
+
+| Feature | Result |
+| --- | --- |
+| Overall status | ❌ Not working at this time |
+| App startup and device detection | ✅ Working |
+| Dextop session startup | ❌ Not working at this time |
+| VirtualDisplay mirroring | ❌ Not working at this time |
+| WindowManager mirroring | ❌ Not working at this time |
+| SurfaceControl mirroring | ❌ Not working at this time |
+| Landscape mode | ❌ Not working at this time |
+| Portrait mode | ❌ Not working at this time |
+| Secure display | ⬜ Not tested |
+| App launcher and freeform windows | ⬜ Not tested |
+| Workspace save and restore | ⬜ Not tested |
+| Cursor and touchpad input | ⬜ Not tested |
+| Direct touch input | ⬜ Not tested |
+| Multi-touch scrolling and pinch-to-zoom | ⬜ Not tested |
+| Three-finger overlay gesture | ⬜ Not tested |
+| Physical mouse | ⬜ Not tested |
+| Physical keyboard | ⬜ Not tested |
+| Physical mouse and keyboard display routing | ⬜ Not tested |
+| Automatic foldable-device resolution | ⬜ Not tested |
+| Performance overlay | ⬜ Not tested |
+| Session shutdown and Android state restoration | ⬜ Not tested |
+
+
+</details>
 
 </details>
 
@@ -327,14 +327,18 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 
 <!-- DEXTOP-REPORT-CONSOLE:OTHER:BEGIN -->
 <details>
-<summary><strong>xiaomi</strong></summary>
+<summary><strong>Xiaomi</strong></summary>
+
+> The desktop environment is disabled on Xiaomi devices running HyperOS or later. MIUI and HyperOS are not supported.
 
 <br>
 
 <details>
-<summary><strong>POCO X7 Pro 5G — 2412DPC0AG</strong> / rodin / OS3.0.301.0.WOJMIXM — 🟡 Partial</summary>
+<summary><strong>POCO X7 Pro 5G — 2412DPC0AG</strong> / rodin / HyperOS 3.0 / OS3.0.301.0.WOJMIXM — ❌ Not working at this time</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
+
+> **Status notice:** This device does not work at this time. Compatibility may improve in future Dextop updates.
 
 ## Device and software
 
@@ -347,6 +351,7 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 | Device codename | `rodin` |
 | Product | `rodin_global` |
 | Android | Android 16 (API 36) |
+| Vendor UI / version | HyperOS 3.0 |
 | Firmware / incremental build | `OS3.0.301.0.WOJMIXM` |
 | Build ID | `BP2A.250605.031.A3` |
 | Build fingerprint | `POCO/rodin_global/rodin:16/BP2A.250605.031.A3/OS3.0.301.0.WOJMIXM:user/release-keys` |
@@ -354,7 +359,7 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 | Display build | `BP2A.250605.031.A3` |
 | Dextop version | `1.1.1+6` |
 | Last verified | 2026-08-14 |
-| Overall status | 🟡 Partial |
+| Overall status | ❌ Not working at this time |
 
 ## Feature verification
 
@@ -386,7 +391,7 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 </details>
 
 <details>
-<summary><strong>POCO X7 Pro — 2412DPC0AG</strong> / rodin / OS3.0.301.0.WOJMIXM — ❌ Not working at this time</summary>
+<summary><strong>POCO X7 Pro — 2412DPC0AG</strong> / rodin / HyperOS 3.0 / OS3.0.301.0.WOJMIXM — ❌ Not working at this time</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -403,6 +408,7 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 | Device codename | `rodin` |
 | Product | `rodin_global` |
 | Android | Android 16 (API 36) |
+| Vendor UI / version | HyperOS 3.0 |
 | Firmware / incremental build | `OS3.0.301.0.WOJMIXM` |
 | Build ID | `BP2A.250605.031.A3` |
 | Build fingerprint | `POCO/rodin_global/rodin:16/BP2A.250605.031.A3/OS3.0.301.0.WOJMIXM:user/release-keys` |
@@ -444,12 +450,12 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 </details>
 
 <details>
-<summary><strong>oppo</strong></summary>
+<summary><strong>OPPO</strong></summary>
 
 <br>
 
 <details>
-<summary><strong>Find X9 — OPG07</strong> / OP5E8BL1 / B.R4T3.1287153_118ce71_119cc78 — 🧪 Experimental</summary>
+<summary><strong>Find X9 — OPG07</strong> / OP5E8BL1 / ColorOS 16 / B.R4T3.1287153_118ce71_119cc78 — 🧪 Experimental</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -464,6 +470,7 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 | Device codename | `OP5E8BL1` |
 | Product | `OPG07_jp_kdi` |
 | Android | Android 16 (API 36) |
+| Vendor UI / version | ColorOS 16 |
 | Firmware / incremental build | `B.R4T3.1287153_118ce71_119cc78` |
 | Build ID | `BP2A.250605.015` |
 | Build fingerprint | `OPPO/OPG07_jp_kdi/OP5E8BL1:16/BP2A.250605.015/B.R4T3.1287153_118ce71_119cc78:user/release-keys` |
@@ -505,7 +512,7 @@ Pixel support is limited and incomplete. No exact Pixel model and firmware combi
 </details>
 
 <details>
-<summary><strong>sony</strong></summary>
+<summary><strong>Sony</strong></summary>
 
 <br>
 
@@ -641,4 +648,3 @@ Support is experimental. No additional model and firmware combination has been c
 Attach the report from **Settings → App information → Operation log and device diagnostics** to a [device support issue](https://github.com/NarYuki/Dextop/issues/new?template=device_support.yml). Include the model, codename, Android version, vendor UI version, firmware build, and feature-by-feature results.
 
 Model-specific changes must be isolated by manufacturer, model, codename, fingerprint prefix, and SDK range. See [Adding device support](https://github.com/NarYuki/Dextop/blob/main/docs/ADDING_DEVICE_SUPPORT.en.md) before opening a pull request.
-
