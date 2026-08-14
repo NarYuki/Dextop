@@ -27,7 +27,6 @@ class MainActivity : FlutterActivity() {
     companion object {
         private const val STELLAR_PACKAGE = "roro.stellar.manager"
         private const val STELLAR_REQUEST_BINDER_ACTION = "roro.stellar.intent.action.REQUEST_BINDER"
-        private const val STELLAR_BINDER_REQUEST_INTERVAL_MS = 1_000L
 
         private var instance: MainActivity? = null
         private var orientationBeforeSession = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
@@ -73,7 +72,7 @@ class MainActivity : FlutterActivity() {
     private var pendingPermissionResult: MethodChannel.Result? = null
     private var pendingStartResult: MethodChannel.Result? = null
     private var shizukuBinderAvailable = false
-    private var lastStellarBinderRequestAt = 0L
+    private val stellarBinderRetryGate = StellarBinderRetryGate()
     private val permissionHandler = Handler(Looper.getMainLooper())
     private val permissionTimeout = Runnable {
         pendingPermissionResult?.error("permission_timeout", NativeStrings.text("nativeShizukuPermissionCheckTimedOut"), null)
@@ -91,7 +90,7 @@ class MainActivity : FlutterActivity() {
     }
     private var flutterChannel: MethodChannel? = null
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
-        lastStellarBinderRequestAt = 0L
+        stellarBinderRetryGate.reset()
         refreshBinderAvailability()
         Log.i(logTag, "privilege binder received alive=$shizukuBinderAvailable")
         flutterChannel?.invokeMethod("shizukuStatusChanged", null)
@@ -443,16 +442,13 @@ class MainActivity : FlutterActivity() {
     private fun requestStellarBinder() {
         if (!isStellarInstalled()) return
         val now = SystemClock.elapsedRealtime()
-        if (lastStellarBinderRequestAt != 0L &&
-            now - lastStellarBinderRequestAt < STELLAR_BINDER_REQUEST_INTERVAL_MS
-        ) return
-        lastStellarBinderRequestAt = now
+        val retryAfterMs = stellarBinderRetryGate.acquire(now) ?: return
         runCatching {
             sendBroadcast(Intent(STELLAR_REQUEST_BINDER_ACTION).setPackage(STELLAR_PACKAGE))
         }.onSuccess {
-            Log.i(logTag, "requested binder resend from Stellar")
+            Log.i(logTag, "requested Stellar recovery retryAfterMs=$retryAfterMs")
         }.onFailure { error ->
-            Log.w(logTag, "failed to request binder resend from Stellar", error)
+            Log.w(logTag, "failed to request Stellar recovery retryAfterMs=$retryAfterMs", error)
         }
     }
 
