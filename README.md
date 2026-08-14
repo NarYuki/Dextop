@@ -56,6 +56,7 @@ You can report bugs, submit device reports, and request features there.
 | --- | --- | --- |
 | Samsung DeX | Mostly supported | Currently the most complete environment. Features managed by DeX use Samsung's platform implementation. |
 | Google Pixel | Limited and incomplete | Depends on Android's freeform/desktop implementation and hidden API availability. Some features may not work. |
+| Xiaomi devices running HyperOS or later | Disabled | MIUI and HyperOS are not supported. |
 | Other Android devices | Experimental | Virtual-display, mirroring, and freeform support varies by manufacturer, model, and OS update. |
 
 Dextop probes device capabilities at runtime and tries compatible backends in order. It still depends on Android hidden APIs and OEM behavior, so results can differ between models and OS versions from the same manufacturer.
@@ -71,10 +72,10 @@ The status below applies only to firmware versions that were actually tested. Op
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
 | Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ Confirmed working |
-| Galaxy Z Fold3 5G | SCG11 (`SCG11`) | Android 15 (API 35) / `SCG11KDS1EZB8` | ❌ Not working at this time |
-| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / `F968NKSS6BZG3` | 🧪 Experimental |
-| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / `F971QOPU1AZGI` | 🟡 Partial |
-| Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / `F966QOPU1BZF1` | ✅ Confirmed working |
+| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / One UI 8.0 / `F968NKSS6BZG3` | 🧪 Experimental |
+| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / One UI 9.0 / `F971QOPU1AZGI` | 🟡 Partial |
+| Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / One UI 8.0 / `F966QOPU1BZF1` | ✅ Confirmed working |
+| Galaxy Z Fold3 5G | SCG11 (`SCG11`) | Android 15 (API 35) / One UI 7.0 / `SCG11KDS1EZB8` | ❌ Not working at this time |
 
 _Community-submitted and reviewed device report_
 
@@ -103,18 +104,18 @@ _Community-submitted and reviewed device report_
 </details>
 
 <details>
-<summary><strong>oppo</strong></summary>
+<summary><strong>OPPO</strong></summary>
 
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
-| Find X9 | OPG07 (`OP5E8BL1`) | Android 16 (API 36) / `B.R4T3.1287153_118ce71_119cc78` | 🧪 Experimental |
+| Find X9 | OPG07 (`OP5E8BL1`) | Android 16 (API 36) / ColorOS 16 / `B.R4T3.1287153_118ce71_119cc78` | 🧪 Experimental |
 
 _Community-submitted and reviewed device report_
 
 </details>
 
 <details>
-<summary><strong>sony</strong></summary>
+<summary><strong>Sony</strong></summary>
 
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
@@ -125,12 +126,14 @@ _Community-submitted and reviewed device report_
 </details>
 
 <details>
-<summary><strong>xiaomi</strong></summary>
+<summary><strong>Xiaomi</strong></summary>
+
+> The desktop environment is disabled on Xiaomi devices running HyperOS or later. MIUI and HyperOS are not supported.
 
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
-| POCO X7 Pro 5G | 2412DPC0AG (`rodin`) | Android 16 (API 36) / `OS3.0.301.0.WOJMIXM` | 🟡 Partial |
-| POCO X7 Pro | 2412DPC0AG (`rodin`) | Android 16 (API 36) / `OS3.0.301.0.WOJMIXM` | ❌ Not working at this time |
+| POCO X7 Pro 5G | 2412DPC0AG (`rodin`) | Android 16 (API 36) / HyperOS 3.0 / `OS3.0.301.0.WOJMIXM` | ❌ Not working at this time |
+| POCO X7 Pro | 2412DPC0AG (`rodin`) | Android 16 (API 36) / HyperOS 3.0 / `OS3.0.301.0.WOJMIXM` | ❌ Not working at this time |
 
 _Community-submitted and reviewed device report_
 
@@ -140,7 +143,7 @@ _Community-submitted and reviewed device report_
 
 ## System requirements
 
-- Android 10 or later
+- Android 10 or later. Most devices require Android 14 or later for a usable desktop environment.
 - [Stellar](https://github.com/roro2239/Stellar/releases) (default and recommended, especially on Android 16 or later) or [Shizuku](https://github.com/RikkaApps/Shizuku/releases)
 - The selected service started through wireless debugging, ADB, or root
 - Stellar or Shizuku permission granted to Dextop

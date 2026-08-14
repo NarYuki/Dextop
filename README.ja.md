@@ -56,6 +56,7 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 | --- | --- | --- |
 | Samsung DeX | ほぼ対応 | 現在もっとも完全な動作環境です。DeX側で管理される機能はSamsungの実装を利用します。 |
 | Google Pixel | 限定的・不完全 | Androidのfreeform／desktop実装と非公開APIの状態に依存し、一部機能が動作しない場合があります。 |
+| HyperOS以降を実行しているXiaomi端末 | 無効 | MIUIおよびHyperOSはサポート対象外です。 |
 | その他のAndroid端末 | 実験的 | メーカー、機種、OS更新によって仮想ディスプレイ、ミラーリング、freeformの対応状況が異なります。 |
 
 Dextopは実行時に端末の能力を検査し、複数のバックエンドを順番に試します。ただし、Androidの非公開APIやOEM実装を利用するため、同じメーカーでも機種やOSバージョンによって結果が異なります。
@@ -71,10 +72,10 @@ Dextopは実行時に端末の能力を検査し、複数のバックエンド�
 | デバイス | モデル | 検証済みソフトウェア | 対応状況 |
 | --- | --- | --- | --- |
 | Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ Confirmed working |
-| Galaxy Z Fold3 5G | SCG11 (`SCG11`) | Android 15 (API 35) / `SCG11KDS1EZB8` | ❌ Not working at this time |
-| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / `F968NKSS6BZG3` | 🧪 Experimental |
-| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / `F971QOPU1AZGI` | 🟡 Partial |
-| Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / `F966QOPU1BZF1` | ✅ Confirmed working |
+| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / One UI 8.0 / `F968NKSS6BZG3` | 🧪 Experimental |
+| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / One UI 9.0 / `F971QOPU1AZGI` | 🟡 Partial |
+| Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / One UI 8.0 / `F966QOPU1BZF1` | ✅ Confirmed working |
+| Galaxy Z Fold3 5G | SCG11 (`SCG11`) | Android 15 (API 35) / One UI 7.0 / `SCG11KDS1EZB8` | ❌ Not working at this time |
 
 _コミュニティから提出され、レビューされた動作報告_
 
@@ -103,18 +104,18 @@ _コミュニティから提出され、レビューされた動作報告_
 </details>
 
 <details>
-<summary><strong>oppo</strong></summary>
+<summary><strong>OPPO</strong></summary>
 
 | デバイス | モデル | 検証済みソフトウェア | 対応状況 |
 | --- | --- | --- | --- |
-| Find X9 | OPG07 (`OP5E8BL1`) | Android 16 (API 36) / `B.R4T3.1287153_118ce71_119cc78` | 🧪 Experimental |
+| Find X9 | OPG07 (`OP5E8BL1`) | Android 16 (API 36) / ColorOS 16 / `B.R4T3.1287153_118ce71_119cc78` | 🧪 Experimental |
 
 _コミュニティから提出され、レビューされた動作報告_
 
 </details>
 
 <details>
-<summary><strong>sony</strong></summary>
+<summary><strong>Sony</strong></summary>
 
 | デバイス | モデル | 検証済みソフトウェア | 対応状況 |
 | --- | --- | --- | --- |
@@ -125,12 +126,14 @@ _コミュニティから提出され、レビューされた動作報告_
 </details>
 
 <details>
-<summary><strong>xiaomi</strong></summary>
+<summary><strong>Xiaomi</strong></summary>
+
+> HyperOS以降を実行しているXiaomi端末ではデスクトップ環境は無効です。MIUIおよびHyperOSはサポート対象外です。
 
 | デバイス | モデル | 検証済みソフトウェア | 対応状況 |
 | --- | --- | --- | --- |
-| POCO X7 Pro 5G | 2412DPC0AG (`rodin`) | Android 16 (API 36) / `OS3.0.301.0.WOJMIXM` | 🟡 Partial |
-| POCO X7 Pro | 2412DPC0AG (`rodin`) | Android 16 (API 36) / `OS3.0.301.0.WOJMIXM` | ❌ Not working at this time |
+| POCO X7 Pro 5G | 2412DPC0AG (`rodin`) | Android 16 (API 36) / HyperOS 3.0 / `OS3.0.301.0.WOJMIXM` | ❌ Not working at this time |
+| POCO X7 Pro | 2412DPC0AG (`rodin`) | Android 16 (API 36) / HyperOS 3.0 / `OS3.0.301.0.WOJMIXM` | ❌ Not working at this time |
 
 _コミュニティから提出され、レビューされた動作報告_
 
@@ -140,7 +143,7 @@ _コミュニティから提出され、レビューされた動作報告_
 
 ## 動作要件
 
-- Android 10以降
+- Android 10以降。大半の端末では実用的なデスクトップ環境にAndroid 14以降が必要です。
 - [Stellar](https://github.com/roro2239/Stellar/releases)（標準。特にAndroid 16以降で推奨）または[Shizuku](https://github.com/RikkaApps/Shizuku/releases)
 - ワイヤレスデバッグ、ADB、またはrootによる選択サービスの起動
 - DextopへのStellarまたはShizuku権限
