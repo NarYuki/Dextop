@@ -23,12 +23,13 @@ import moe.shizuku.server.IRemoteProcess
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 
-class MainActivity : FlutterActivity() {
+open class MainActivity : FlutterActivity() {
     companion object {
         private const val STELLAR_PACKAGE = "roro.stellar.manager"
         private const val STELLAR_REQUEST_BINDER_ACTION = "roro.stellar.intent.action.REQUEST_BINDER"
 
         private var instance: MainActivity? = null
+        private var phoneTaskId = -1
         private var orientationBeforeSession = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
         private var physicalOrientationBeforeSession = android.content.res.Configuration.ORIENTATION_UNDEFINED
 
@@ -64,6 +65,8 @@ class MainActivity : FlutterActivity() {
                 }
             }
         }
+
+        fun phoneTaskId(): Int = phoneTaskId
     }
 
     private val channelName = "app.freedextop/display"
@@ -89,6 +92,7 @@ class MainActivity : FlutterActivity() {
         )
     }
     private var flutterChannel: MethodChannel? = null
+
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         stellarBinderRetryGate.reset()
         refreshBinderAvailability()
@@ -128,7 +132,10 @@ class MainActivity : FlutterActivity() {
 
     override fun onStart() {
         super.onStart()
-        instance = this
+        if (display?.displayId == android.view.Display.DEFAULT_DISPLAY) {
+            instance = this
+            phoneTaskId = taskId
+        }
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -137,7 +144,10 @@ class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
-        if (instance === this) instance = null
+        if (instance === this) {
+            instance = null
+            phoneTaskId = -1
+        }
         super.onDestroy()
     }
 
@@ -150,6 +160,16 @@ class MainActivity : FlutterActivity() {
         flutterChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "status" -> result.success(status())
+                "launchContext" -> {
+                    val launchDisplayId = display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
+                    result.success(mapOf(
+                        "displayId" to launchDisplayId,
+                        "desktopWindow" to (
+                            MirrorService.isActive() &&
+                                launchDisplayId != android.view.Display.DEFAULT_DISPLAY
+                            )
+                    ))
+                }
                 "requestShizuku" -> requestShizuku(result)
                 "openShizuku" -> openShizuku(result)
                 "selectPrivilegeProvider" -> selectPrivilegeProvider(call.argument<String>("provider"), result)
@@ -177,6 +197,30 @@ class MainActivity : FlutterActivity() {
                 }.start()
                 "launchApp" -> launchApp(call.arguments as? Map<*, *>, result)
                 "diagnostics" -> result.success(DeviceDiagnostics(this).report())
+                "samsungDesktopSettings" -> runCatching {
+                    SamsungDesktopSettings(this).read()
+                }.onSuccess(result::success).onFailure {
+                    Log.e(logTag, "Samsung desktop settings read failed", it)
+                    result.error("SAMSUNG_SETTINGS_READ", it.message, null)
+                }
+                "setSamsungDesktopSetting" -> runCatching {
+                    val id = call.argument<String>("id") ?: error("A setting id is required")
+                    SamsungDesktopSettings(this).write(id, call.argument<Any>("value"))
+                    SamsungDesktopSettings(this).read()
+                }.onSuccess(result::success).onFailure {
+                    Log.e(logTag, "Samsung desktop setting write failed", it)
+                    result.error("SAMSUNG_SETTINGS_WRITE", it.message, null)
+                }
+                "backupSamsungDesktopSettings" -> runCatching {
+                    SamsungDesktopSettings(this).backupIfNeeded()
+                }.onSuccess(result::success).onFailure {
+                    result.error("SAMSUNG_SETTINGS_BACKUP", it.message, null)
+                }
+                "restoreSamsungDesktopSettings" -> runCatching {
+                    SamsungDesktopSettings(this).restoreBackup()
+                }.onSuccess(result::success).onFailure {
+                    result.error("SAMSUNG_SETTINGS_RESTORE", it.message, null)
+                }
                 "lastSessionLog" -> result.success(OperationLog.readLastSession(this))
                 "deviceReportIdentity" -> result.success(mapOf(
                     "manufacturer" to Build.MANUFACTURER,
@@ -532,6 +576,9 @@ class MainActivity : FlutterActivity() {
         MirrorService.stopActive()
         runCatching {
             val journal = SessionJournal(this)
+            runCatching {
+                PhoneRotationController.restoreRecorded(this, PrivilegedAccess(logTag), journal)
+            }.onFailure { Log.e(logTag, "discard recovery rotation restoration failed", it) }
             journal.restoreSystemSettings()
             val own = ComponentName(this, MirrorService::class.java)
             val remaining = Settings.Secure.getString(
@@ -562,6 +609,7 @@ class MainActivity : FlutterActivity() {
             getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
                 .putBoolean("cleanup_pending", false)
                 .putBoolean("paused_by_user", false)
+                .remove("paused_workspace")
                 .putLong("verified_at", System.currentTimeMillis())
                 .commit()
         }.onSuccess {
@@ -607,6 +655,9 @@ class MainActivity : FlutterActivity() {
         runCatching {
             MirrorService.stopActive()
             val journal = SessionJournal(this)
+            runCatching {
+                PhoneRotationController.restoreRecorded(this, PrivilegedAccess(logTag), journal)
+            }.onFailure { Log.e(logTag, "repair rotation restoration failed", it) }
             journal.restoreSystemSettings()
             val own = ComponentName(this, MirrorService::class.java)
             val remaining = Settings.Secure.getString(

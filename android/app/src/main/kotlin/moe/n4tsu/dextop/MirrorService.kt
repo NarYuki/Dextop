@@ -81,6 +81,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val NOTIFICATION_LAUNCH_WINDOW_MS = 3_000L
         private const val NOTIFICATION_ROUTE_RETRY_DELAY_MS = 140L
         private const val NOTIFICATION_ROUTE_RETRIES = 5
+        private const val HOST_DISPLAY_MONITOR_INTERVAL_MS = 1_000L
+        private const val STATUS_BAR_INTERFACE = "com.android.internal.statusbar.IStatusBarService"
+        private const val PHONE_NAVIGATION_DISABLE_FLAGS =
+            0x00200000 or 0x00400000 or 0x01000000
         private var instance: MirrorService? = null
         private var pending: Config? = null
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
@@ -212,6 +216,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val desktopModeConfigurator by lazy {
         DesktopModeConfigurator(this, contentResolver, privilegedAccess, desktopEnvironment, sessionJournal)
     }
+    private val phoneRotationController by lazy {
+        PhoneRotationController(this, privilegedAccess, sessionJournal)
+    }
     private val workspaceLayoutEngine by lazy {
         WorkspaceLayoutEngine(this, desktopEnvironment, logTag)
     }
@@ -237,10 +244,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var menu: LinearLayout? = null
     private var menuPrimary: LinearLayout? = null
     private var workspaceExpanded = false
+    private var pendingPausedWorkspace: JSONObject? = null
     private var overlayLayoutEditing = false
     private val launchedAppBounds = linkedMapOf<String, Rect>()
     private var workspaceSaveError: String? = null
     private var pausedForAndroid = false
+    private var stopping = false
     private var menuScrim: View? = null
     private var demoMode = false
     private var demoInfoView: TextView? = null
@@ -299,11 +308,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onInputDeviceChanged(deviceId: Int) = refreshPhysicalInputState()
     }
     private val displayListener = object : DisplayManager.DisplayListener {
-        override fun onDisplayAdded(displayId: Int) = refreshExternalDisplayState()
-        override fun onDisplayRemoved(displayId: Int) = refreshExternalDisplayState()
-        override fun onDisplayChanged(displayId: Int) = refreshExternalDisplayState()
+        override fun onDisplayAdded(displayId: Int) {
+            refreshExternalDisplayState()
+            if (active && displayId == Display.DEFAULT_DISPLAY) {
+                scheduleHostDisplayReconfiguration("default display added")
+            }
+        }
+        override fun onDisplayRemoved(displayId: Int) {
+            refreshExternalDisplayState()
+            if (active && displayId == Display.DEFAULT_DISPLAY) {
+                scheduleHostDisplayReconfiguration("default display removed")
+            }
+        }
+        override fun onDisplayChanged(displayId: Int) {
+            refreshExternalDisplayState()
+            if (active && displayId == Display.DEFAULT_DISPLAY) {
+                scheduleHostDisplayReconfiguration("default display changed")
+            } else if (active && displayId == targetDisplayId && mirrorDisplayId >= 0) {
+                scheduleMirrorRefresh("source display changed")
+            }
+        }
     }
     private val navigationToken = Binder()
+    private var navigationRestoreGeneration = 0
     private var screenReceiverRegistered = false
     private var suspendedForLockScreen = false
     private var suspendedConfig: Config? = null
@@ -319,6 +346,40 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private var longPressTriggered = false
     private var longPressRunnable: Runnable? = null
+    private var mirrorHostWidth = 0
+    private var mirrorHostHeight = 0
+    private var mirrorRefreshGeneration = 0
+    private var hostReconfigurationGeneration = 0
+    private val hostDisplayMonitorHandler by lazy { android.os.Handler(mainLooper) }
+    private var observedHostWidth = 0
+    private var observedHostHeight = 0
+    private var observedHostDensity = 0
+    private val hostDisplayMonitor = object : Runnable {
+        override fun run() {
+            if (!active || suspendedForLockScreen) return
+            val bounds = windowManager?.currentWindowMetrics?.bounds
+            val host = surfaceView
+            val width = host?.width?.takeIf { it > 0 } ?: bounds?.width() ?: 0
+            val height = host?.height?.takeIf { it > 0 } ?: bounds?.height() ?: 0
+            val hostDensity = resources.configuration.densityDpi
+            if (width >= 480 && height >= 480) {
+                val changed = observedHostWidth > 0 &&
+                    (width != observedHostWidth || height != observedHostHeight ||
+                        hostDensity != observedHostDensity)
+                observedHostWidth = width
+                observedHostHeight = height
+                observedHostDensity = hostDensity
+                if (shouldFollowHostDisplay() && hostSizeDiffersFromTarget(width, height)) {
+                    scheduleHostDisplayReconfiguration(
+                        "periodic host geometry check", width, height, hostDensity
+                    )
+                } else if (changed && mirrorDisplayId >= 0) {
+                    scheduleMirrorRefresh("periodic host geometry check", width, height)
+                }
+            }
+            hostDisplayMonitorHandler.postDelayed(this, HOST_DISPLAY_MONITOR_INTERVAL_MS)
+        }
+    }
 
     override fun onServiceConnected() {
         HiddenApiBypass.addHiddenApiExemptions("")
@@ -393,18 +454,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (!active || suspendedForLockScreen) return
-        val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-        if (!preferences.getBoolean("flutter.foldable_auto", false)) return
-        val bounds = windowManager?.currentWindowMetrics?.bounds ?: return
-        val measuredWidth = maxOf(bounds.width(), bounds.height())
-        val measuredHeight = minOf(bounds.width(), bounds.height())
-        if (measuredWidth < 480 || measuredHeight < 480) return
-        val scale = newConfig.densityDpi / 160f
-        val measuredDensity = (160 + scale * 24).toInt().coerceIn(160, 320)
-        val next = Config(measuredWidth, measuredHeight, measuredDensity, secureDisplay, showSystemDecorations)
-        if (next.width != targetWidth || next.height != targetHeight || next.density != density) {
-            root?.postDelayed({ start(next) }, 250)
-        }
+        scheduleHostDisplayReconfiguration(
+            "configuration changed",
+            densityDpi = newConfig.densityDpi
+        )
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean = forwardKeyEvent(event)
@@ -442,6 +495,37 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         return super.onUnbind(intent)
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        val phoneTaskStillPresent = runCatching {
+            val phoneTaskId = MainActivity.phoneTaskId()
+            phoneTaskId >= 0 &&
+            getSystemService(android.app.ActivityManager::class.java).appTasks.any { task ->
+                task.taskInfo.taskId == phoneTaskId
+            }
+        }.getOrDefault(false)
+        if (active && phoneTaskStillPresent) {
+            OperationLog.i(this, "Lifecycle", "ignored removal of secondary Dextop task")
+            Log.i(logTag, "ignored removal of secondary Dextop task; phone task remains")
+            super.onTaskRemoved(rootIntent)
+            return
+        }
+        OperationLog.i(
+            this,
+            "Lifecycle",
+            "launcher task removed active=$active pausedForAndroid=$pausedForAndroid"
+        )
+        Log.i(logTag, "launcher task removed; closing Dextop session safely")
+
+        // Removing Dextop from Android Recents is an explicit session exit. Do
+        // the restoration synchronously while the process and Shizuku binder
+        // are still alive; waiting for onUnbind/onDestroy is too late on vendor
+        // launchers which kill the task process immediately after this callback.
+        if (active || pausedForAndroid || sessionJournal.snapshot()["transactionOpen"] == true) {
+            stop()
+        }
+        super.onTaskRemoved(rootIntent)
+    }
+
     private fun start(config: Config) {
         OperationLog.beginSession(
             this,
@@ -457,8 +541,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Log.e(logTag, "start rejected: Shizuku binder is unavailable", error)
             return
         }
+        val cleanupPreferences = getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE)
+        pendingPausedWorkspace = cleanupPreferences
+            .takeIf { it.getBoolean("paused_by_user", false) }
+            ?.getString("paused_workspace", null)
+            ?.let { serialized -> runCatching { JSONObject(serialized) }.getOrNull() }
         pausedForAndroid = false
-        getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
+        cleanupPreferences.edit()
             .putBoolean("cleanup_pending", true)
             .putBoolean("paused_by_user", false)
             .putLong("started_at", System.currentTimeMillis())
@@ -467,6 +556,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         suspendedConfig = null
         experimentalMultiTouch = true
         sessionJournal.preparing(config.width, config.height, config.density, config.decorations)
+        mirrorRefreshGeneration += 1
+        hostReconfigurationGeneration += 1
+        mirrorHostWidth = 0
+        mirrorHostHeight = 0
         targetDisplayId = -1
         targetWidth = config.width
         targetHeight = config.height
@@ -480,6 +573,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         addWindow()
         pending = null
         active = true
+        startHostDisplayMonitor()
         setPhoneNavigationDisabled(true)
         Log.i(logTag, "start direct ${targetWidth}x$targetHeight/$density")
     }
@@ -993,6 +1087,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }.also { it.layoutParams = LinearLayout.LayoutParams(-1, dp(50)).apply { bottomMargin = dp(8) } }
 
     private fun saveCurrentWorkspace(): String? {
+        val captured = captureCurrentWorkspace()
+            ?: return NativeStrings.text("nativeFailedToSaveUnableToRetrieveRunning")
+        val all = workspaceJson()
+        all.put(captured.apply {
+            put("id", System.currentTimeMillis().toString())
+            put("name", "${NativeStrings.text("nativeWorkSpace")} ${all.length() + 1}")
+        })
+        val saved = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+            .putString("flutter.workspaces", all.toString()).commit()
+        return if (saved) null else NativeStrings.text("nativeFailedToSaveFailedToWriteTo")
+    }
+
+    private fun captureCurrentWorkspace(): JSONObject? {
         val apps = JSONArray()
         val bounds = JSONObject()
         val currentTasks = currentDisplayTasks()
@@ -1022,20 +1129,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (apps.length() == 0) {
             Log.w(logTag, "no app windows available to save")
-            return NativeStrings.text("nativeFailedToSaveUnableToRetrieveRunning")
+            return null
         }
-        val all = workspaceJson()
-        all.put(JSONObject().apply {
-            put("id", System.currentTimeMillis().toString())
-            put("name", "${NativeStrings.text("nativeWorkSpace")} ${all.length() + 1}")
+        return JSONObject().apply {
             put("apps", apps)
             put("positions", JSONObject())
             put("bounds", bounds)
             put("layout", "captured")
-        })
-        val saved = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
-            .putString("flutter.workspaces", all.toString()).commit()
-        return if (saved) null else NativeStrings.text("nativeFailedToSaveFailedToWriteTo")
+        }
     }
 
     private fun currentDisplayTasks(): Map<String, Rect> {
@@ -1096,7 +1197,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         return candidate !in homePackages && activity.packageName == candidate
     }
 
-    private fun launchOverlayWorkspace(workspace: JSONObject) {
+    private fun launchOverlayWorkspace(workspace: JSONObject, closeMenu: Boolean = true) {
         val apps = workspace.optJSONArray("apps") ?: return
         val positions = workspace.optJSONObject("positions") ?: JSONObject()
         val bounds = workspace.optJSONObject("bounds") ?: JSONObject()
@@ -1115,7 +1216,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
             }, index * 350L)
         }
-        toggleMenu()
+        if (closeMenu) toggleMenu()
     }
 
     private fun workspaceJson(): JSONArray = runCatching {
@@ -1198,34 +1299,50 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun temporarilyReturnToAndroid() {
+        val pausedWorkspace = captureCurrentWorkspace()
         pausedForAndroid = true
+        active = false
+        stopHostDisplayMonitor()
         sessionJournal.paused()
         getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
             .putBoolean("cleanup_pending", true)
             .putBoolean("paused_by_user", true)
             .putLong("paused_at", System.currentTimeMillis())
+            .apply {
+                if (pausedWorkspace == null) remove("paused_workspace")
+                else putString("paused_workspace", pausedWorkspace.toString())
+            }
             .commit()
         overlayLayoutEditing = false
         suspendedForLockScreen = false
         suspendedConfig = null
         setPhoneNavigationDisabled(false)
-        releasePhoneRotation()
-        removeWindow()
-        targetDisplayId = -1
-        active = false
-        desktopModeConfigurator.restore()
-        MainActivity.restoreOrientation()
-        runCatching {
-            val home = Intent(this, MainActivity::class.java)
-                .addFlags(
-                    Intent.FLAG_ACTIVITY_NEW_TASK or
-                        Intent.FLAG_ACTIVITY_CLEAR_TASK
-                )
-            val options = ActivityOptions.makeBasic().setLaunchDisplayId(0)
-            startActivity(home, options.toBundle())
-        }.onFailure { Log.e(logTag, "unable to return to Dextop home", it) }
-        // Keep SessionJournal intact: the app shows its explicit recovery card.
-        android.os.Handler(mainLooper).postDelayed({ disableSelf() }, 180)
+        releasePhoneRotation(clearSnapshot = true)
+        // Detach the accessibility host first. Surface destruction normally
+        // releases the VirtualDisplay immediately, which makes One UI try to
+        // unregister gesture-exclusion listeners from an already removed
+        // display. That WindowManager exception leaves Back and Circle to
+        // Search broken until SystemUI is restarted.
+        detachHostWindow()
+        android.os.Handler(mainLooper).postDelayed({
+            releaseMirror()
+            runCatching { displayBackend.clearRequest() }
+            targetDisplayId = -1
+            desktopModeConfigurator.restore()
+            MainActivity.restoreOrientation()
+            runCatching {
+                val home = Intent(this, MainActivity::class.java)
+                    .addFlags(
+                        Intent.FLAG_ACTIVITY_NEW_TASK or
+                            Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                            Intent.FLAG_ACTIVITY_SINGLE_TOP
+                    )
+                val options = ActivityOptions.makeBasic().setLaunchDisplayId(0)
+                startActivity(home, options.toBundle())
+            }.onFailure { Log.e(logTag, "unable to return to Dextop home", it) }
+            // Keep SessionJournal intact: the app shows its explicit recovery card.
+            android.os.Handler(mainLooper).postDelayed({ disableSelf() }, 180)
+        }, 320)
         Log.i(logTag, "session paused; returned to Dextop home for explicit recovery")
     }
 
@@ -1813,7 +1930,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
                 val portrait = targetHeight > targetWidth
                 if (portrait) {
-                    if (minimumY > dp(120) && touchStartY > dp(120)) return false
+                    // A 120dp strip forces all three fingers against the top
+                    // bezel on tall phones. Extend the pickup region downward
+                    // while keeping it proportional on foldables and tablets.
+                    val startLimit = minOf(
+                        (surfaceView?.height?.times(0.28f) ?: dp(240).toFloat()),
+                        dp(240).toFloat()
+                    )
+                    if (minimumY > startLimit && touchStartY > startLimit) return false
                 } else if (minimumX > dp(120) && touchStartX > dp(120)) return false
                 threeFingerEdgeSwipe = true
                 edgeGestureLeadX = minimumX
@@ -1834,7 +1958,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 val distance = if (targetHeight > targetWidth) {
                     minimumY - edgeGestureLeadY
                 } else minimumX - edgeGestureLeadX
-                if (!edgeMenuTriggered && distance >= dp(28)) {
+                val triggerDistance = if (targetHeight > targetWidth) dp(20) else dp(28)
+                if (!edgeMenuTriggered && distance >= triggerDistance) {
                     edgeMenuTriggered = true
                     toggleMenu()
                 }
@@ -2045,6 +2170,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (suspendedForLockScreen) return
         suspendedConfig = Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations)
         suspendedForLockScreen = true
+        stopHostDisplayMonitor()
         setPhoneNavigationDisabled(false)
         releasePhoneRotation()
         runCatching { desktopModeConfigurator.restore() }
@@ -2056,7 +2182,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun resumeAfterUnlock() {
         if (!suspendedForLockScreen) return
-        val config = suspendedConfig ?: return
+        val previous = suspendedConfig ?: return
+        val bounds = windowManager?.currentWindowMetrics?.bounds
+        val config = if (shouldFollowHostDisplay() && bounds != null &&
+            bounds.width() >= 480 && bounds.height() >= 480) {
+            configForHostGeometry(
+                previous,
+                bounds.width(),
+                bounds.height(),
+                resources.configuration.densityDpi
+            )
+        } else previous
         // USER_PRESENT is emitted only after credential/biometric unlock, so
         // Dextop is never recreated over the lock screen or biometric UI.
         root?.postDelayed({ start(config) }, 250) ?: android.os.Handler(mainLooper)
@@ -2441,7 +2577,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
-        if (mirrorDisplayId < 0 && width > 0 && height > 0) createDisplay(holder.surface, width, height)
+        if (width <= 0 || height <= 0) return
+        if (mirrorDisplayId < 0) {
+            createDisplay(holder.surface, width, height)
+        } else if (shouldFollowHostDisplay() && hostSizeDiffersFromTarget(width, height)) {
+            scheduleHostDisplayReconfiguration("host surface resized", width, height)
+        } else if (width != mirrorHostWidth || height != mirrorHostHeight) {
+            scheduleMirrorRefresh("host surface changed", width, height)
+        }
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
@@ -2499,15 +2642,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
                 .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
             val strategyOverride = configuredBackend.takeUnless { it == "auto" }
-            displayBackend.attach(
-                targetDisplayId,
-                surfaceView ?: error(NativeStrings.text("nativeMirrorSurfaceUnavailable")),
-                width,
-                height,
-                targetWidth,
-                targetHeight,
-                strategyOverride
-            )
+            attachMirror(width, height, strategyOverride)
             mirrorDisplayId = targetDisplayId
             displayCreationInProgress = false
             sessionJournal.running(targetDisplayId)
@@ -2537,6 +2672,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             cursorY = targetHeight / 2f
             cursorView?.update(.5f, .5f)
             check(launchHome()) { "The desktop HOME activity could not be launched" }
+            pendingPausedWorkspace?.let { workspace ->
+                pendingPausedWorkspace = null
+                root?.postDelayed({
+                    if (!active || targetDisplayId < 0) return@postDelayed
+                    launchOverlayWorkspace(workspace, closeMenu = false)
+                    getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
+                        .remove("paused_workspace")
+                        .apply()
+                    OperationLog.i(
+                        this,
+                        "Workspace",
+                        "restored paused workspace apps=${workspace.optJSONArray("apps")?.length() ?: 0}"
+                    )
+                }, 900)
+            }
+            // One UI may migrate the foreground phone task to a newly created
+            // desktop display. Move the phone control activity back explicitly
+            // before a separate DesktopActivity can be launched there.
+            root?.postDelayed({ ensurePhoneControlOnDefaultDisplay() }, 500)
             completeStart(Result.success(mapOf(
                 "displayId" to targetDisplayId,
                 "width" to targetWidth,
@@ -2608,11 +2762,190 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Log.i(logTag, "home launched display=$targetDisplayId")
         }.onFailure { Log.e(logTag, "home launch failed", it) }.isSuccess
 
+    private fun ensurePhoneControlOnDefaultDisplay() {
+        runCatching {
+            val intent = Intent(this, MainActivity::class.java).addFlags(
+                Intent.FLAG_ACTIVITY_NEW_TASK or
+                    Intent.FLAG_ACTIVITY_CLEAR_TOP or
+                    Intent.FLAG_ACTIVITY_SINGLE_TOP
+            )
+            val options = ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY)
+            startActivity(intent, options.toBundle())
+            Log.i(logTag, "phone control activity pinned to default display")
+        }.onFailure { Log.e(logTag, "unable to pin phone control activity", it) }
+    }
+
     private fun releaseMirror() {
+        mirrorRefreshGeneration += 1
         stopRawMouseReader()
         displayBackend.releaseLayer()
         mirrorDisplayId = -1
+        mirrorHostWidth = 0
+        mirrorHostHeight = 0
         displayCreationInProgress = false
+    }
+
+    private fun attachMirror(hostWidth: Int, hostHeight: Int, strategyOverride: String? = null) {
+        val host = surfaceView ?: error(NativeStrings.text("nativeMirrorSurfaceUnavailable"))
+        displayBackend.attach(
+            targetDisplayId,
+            host,
+            hostWidth,
+            hostHeight,
+            targetWidth,
+            targetHeight,
+            density,
+            strategyOverride
+        )
+        mirrorHostWidth = hostWidth
+        mirrorHostHeight = hostHeight
+    }
+
+    /**
+     * One UI can replace transition/SystemUI layers when recents, fold state, or
+     * the host surface changes. Recreating only the mirror attachment keeps the
+     * desktop tasks and physical-input routing alive while acquiring that new
+     * layer tree.
+     */
+    private fun scheduleMirrorRefresh(reason: String, width: Int? = null, height: Int? = null) {
+        // A content-recording VirtualDisplay follows changes on its mirrored
+        // display without being recreated. Releasing/recreating it in response
+        // to DisplayListener or configuration callbacks races Samsung
+        // WindowManager/SystemUI: the old display is removed while windows are
+        // already being attached to the replacement. In particular this is
+        // triggered when MainActivity is opened on the desktop display.
+        // A destroyed Surface is handled separately by surfaceDestroyed /
+        // surfaceCreated, and an actual profile change goes through start().
+        if (displayBackend.activeStrategy == "virtual_display") {
+            OperationLog.i(
+                this,
+                "DisplayBackend",
+                "mirror refresh skipped strategy=virtual_display reason=$reason"
+            )
+            return
+        }
+        val generation = ++mirrorRefreshGeneration
+        root?.postDelayed({
+            if (!active || targetDisplayId < 0 || generation != mirrorRefreshGeneration) {
+                return@postDelayed
+            }
+            val host = surfaceView ?: return@postDelayed
+            val nextWidth: Int = width?.takeIf { it > 0 } ?: host.width
+            val nextHeight: Int = height?.takeIf { it > 0 } ?: host.height
+            if (nextWidth <= 0 || nextHeight <= 0 || !host.holder.surface.isValid) {
+                return@postDelayed
+            }
+            val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
+            val strategyOverride = configuredBackend.takeUnless { it == "auto" }
+            runCatching {
+                attachMirror(nextWidth, nextHeight, strategyOverride)
+                mirrorDisplayId = targetDisplayId
+            }.onSuccess {
+                OperationLog.i(
+                    this,
+                    "DisplayBackend",
+                    "mirror refreshed reason=$reason host=${nextWidth}x$nextHeight " +
+                        "content=${targetWidth}x$targetHeight/$density"
+                )
+            }.onFailure { error ->
+                OperationLog.e(this, "DisplayBackend", "mirror refresh failed reason=$reason", error)
+                Log.e(logTag, "mirror refresh failed reason=$reason", error)
+            }
+        }, 180)
+    }
+
+    private fun shouldFollowHostDisplay(): Boolean {
+        val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        val selectedDeviceResolution =
+            preferences.getString("flutter.selected_resolution_id", "device") == "device"
+        return selectedDeviceResolution &&
+            (preferences.getBoolean("flutter.foldable_auto", false) ||
+                desktopEnvironment.autoResizeWithHostDisplay)
+    }
+
+    private fun hostSizeDiffersFromTarget(width: Int, height: Int): Boolean {
+        val hostLong = maxOf(width, height)
+        val hostShort = minOf(width, height)
+        val targetLong = maxOf(targetWidth, targetHeight)
+        val targetShort = minOf(targetWidth, targetHeight)
+        return hostLong != targetLong || hostShort != targetShort
+    }
+
+    /**
+     * Fold state callbacks vary by vendor: some send Configuration, some only
+     * resize the accessibility Surface, and others only change display metrics.
+     * All three paths converge here and are debounced until the panel geometry
+     * has settled. Custom profiles never enter this path.
+     */
+    private fun scheduleHostDisplayReconfiguration(
+        reason: String,
+        width: Int? = null,
+        height: Int? = null,
+        densityDpi: Int? = null
+    ) {
+        if (!shouldFollowHostDisplay()) return
+        val generation = ++hostReconfigurationGeneration
+        root?.postDelayed({
+            if (!active || suspendedForLockScreen || generation != hostReconfigurationGeneration ||
+                !shouldFollowHostDisplay()) return@postDelayed
+            val bounds = windowManager?.currentWindowMetrics?.bounds
+            val measuredWidth = width?.takeIf { it > 0 } ?: bounds?.width() ?: return@postDelayed
+            val measuredHeight = height?.takeIf { it > 0 } ?: bounds?.height() ?: return@postDelayed
+            if (measuredWidth < 480 || measuredHeight < 480) return@postDelayed
+
+            val systemDensity = densityDpi ?: resources.configuration.densityDpi
+            val next = configForHostGeometry(
+                Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations),
+                measuredWidth,
+                measuredHeight,
+                systemDensity
+            )
+            if (next.width == targetWidth && next.height == targetHeight && next.density == density) {
+                if (mirrorDisplayId >= 0) scheduleMirrorRefresh("$reason; geometry unchanged")
+                return@postDelayed
+            }
+            OperationLog.i(
+                this,
+                "DisplayBackend",
+                "host reconfiguration reason=$reason " +
+                    "${targetWidth}x$targetHeight/$density -> ${next.width}x${next.height}/${next.density}"
+            )
+            start(next)
+        }, 320)
+    }
+
+    private fun configForHostGeometry(
+        base: Config,
+        hostWidth: Int,
+        hostHeight: Int,
+        systemDensity: Int
+    ): Config {
+        val longSide = maxOf(hostWidth, hostHeight)
+        val shortSide = minOf(hostWidth, hostHeight)
+        val keepPortrait = base.height > base.width
+        val automaticDensity = (160 + systemDensity / 160f * 24)
+            .toInt().coerceIn(160, 320)
+        val savedDensity = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getLong("flutter.device_resolution_dpi", automaticDensity.toLong())
+            .toInt().coerceIn(80, 640)
+        return base.copy(
+            width = if (keepPortrait) shortSide else longSide,
+            height = if (keepPortrait) longSide else shortSide,
+            density = savedDensity
+        )
+    }
+
+    private fun startHostDisplayMonitor() {
+        stopHostDisplayMonitor()
+        observedHostWidth = 0
+        observedHostHeight = 0
+        observedHostDensity = 0
+        hostDisplayMonitorHandler.post(hostDisplayMonitor)
+    }
+
+    private fun stopHostDisplayMonitor() {
+        hostDisplayMonitorHandler.removeCallbacks(hostDisplayMonitor)
     }
 
     private fun startRawMouseReader() {
@@ -2773,69 +3106,86 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun setPhoneNavigationDisabled(disabled: Boolean) {
+        val generation = ++navigationRestoreGeneration
+        applyPhoneNavigationDisabled(disabled)
+        if (disabled) return
+
+        // SystemUI can recreate its navigation bar after our overlay is
+        // removed. Re-submit the zero flags after those asynchronous passes.
+        listOf(120L, 450L, 1_200L).forEach { delay ->
+            hostDisplayMonitorHandler.postDelayed({
+                if (generation != navigationRestoreGeneration || active && !suspendedForLockScreen) {
+                    return@postDelayed
+                }
+                applyPhoneNavigationDisabled(false)
+            }, delay)
+        }
+    }
+
+    private fun applyPhoneNavigationDisabled(disabled: Boolean) {
         runCatching {
-            val service = systemService("statusbar", "com.android.internal.statusbar.IStatusBarService")
-            val type = Class.forName("com.android.internal.statusbar.IStatusBarService")
-            val flags = if (disabled) 0x00200000 or 0x00400000 or 0x01000000 else 0
+            val service = systemService("statusbar", STATUS_BAR_INTERFACE)
+            val type = Class.forName(STATUS_BAR_INTERFACE)
+            val flags = if (disabled) PHONE_NAVIGATION_DISABLE_FLAGS else 0
             val method = type.methods.firstOrNull {
                 it.name == "disable" && it.parameterTypes.size == 4
+            } ?: type.methods.firstOrNull {
+                it.name == "disable" && it.parameterTypes.size == 3
+            } ?: type.methods.firstOrNull {
+                it.name == "disableForUser" && it.parameterTypes.size == 5
+            } ?: error("No compatible StatusBar disable operation")
+            val integerCount = method.parameterTypes.count { it == Int::class.javaPrimitiveType }
+            var integerIndex = 0
+            val args: Array<Any?> = method.parameterTypes.map { parameter ->
+                when {
+                    parameter == Int::class.javaPrimitiveType -> {
+                        val value = when {
+                            method.name == "disableForUser" && integerIndex == integerCount - 1 ->
+                                android.os.Process.myUid() / 100_000
+                            integerCount >= 2 && integerIndex == 0 -> Display.DEFAULT_DISPLAY
+                            else -> flags
+                        }
+                        integerIndex += 1
+                        value
+                    }
+                    android.os.IBinder::class.java.isAssignableFrom(parameter) -> navigationToken
+                    parameter == String::class.java -> packageName
+                    else -> null
+                }
+            }.toTypedArray()
+            method.invoke(service, *args)
+            if (!disabled) {
+                // This also clears stale shell-owned flags left by an interrupted
+                // recovery on vendor SystemUI implementations.
+                runCatching {
+                    privilegedAccess.execute("cmd", "statusbar", "send-disable-flag", "none")
+                }
             }
-            if (method != null) {
-                method.invoke(service, 0, flags, navigationToken, packageName)
-            } else {
-                type.getMethod(
-                    "disable",
-                    Int::class.javaPrimitiveType,
-                    android.os.IBinder::class.java,
-                    String::class.java
-                ).invoke(service, flags, navigationToken, packageName)
-            }
+            OperationLog.i(this, "PhoneNavigation", "disabled=$disabled method=${method.name}/${method.parameterTypes.size}")
             Log.i(logTag, "phone navigation disabled=$disabled")
-        }.onFailure { Log.e(logTag, "phone navigation state failed", it) }
+        }.onFailure { error ->
+            OperationLog.e(this, "PhoneNavigation", "state update failed disabled=$disabled", error)
+            Log.e(logTag, "phone navigation state failed disabled=$disabled", error)
+        }
     }
 
     private fun forcePhoneRotation(portrait: Boolean) {
         runCatching {
-            val service = systemService("window", "android.view.IWindowManager")
-            val type = Class.forName("android.view.IWindowManager")
-            val method = type.methods.first {
-                it.name == "freezeDisplayRotation" && it.parameterTypes.size >= 2
-            }
-            val args = method.parameterTypes.mapIndexed { index, parameter ->
-                when {
-                    index == 0 -> 0
-                    index == 1 -> if (portrait) 0 else 1
-                    parameter == String::class.java -> packageName
-                    parameter == Boolean::class.javaPrimitiveType -> true
-                    else -> null
-                }
-            }.toTypedArray()
-            method.invoke(service, *args)
+            phoneRotationController.force(portrait)
         }.onFailure { Log.e(logTag, "phone rotation lock failed", it) }
     }
 
-    private fun releasePhoneRotation() {
+    private fun releasePhoneRotation(clearSnapshot: Boolean = false) {
         runCatching {
-            val service = systemService("window", "android.view.IWindowManager")
-            val type = Class.forName("android.view.IWindowManager")
-            val method = type.methods.firstOrNull {
-                it.name == "thawDisplayRotation" && it.parameterTypes.isNotEmpty()
-            } ?: type.methods.firstOrNull {
-                it.name == "thawRotation"
-            } ?: error(NativeStrings.text("nativeRotationReleaseUnsupported"))
-            val args = method.parameterTypes.mapIndexed { index, parameter ->
-                when {
-                    index == 0 -> 0
-                    parameter == String::class.java -> packageName
-                    else -> null
-                }
-            }.toTypedArray()
-            method.invoke(service, *args)
+            phoneRotationController.restore(clearSnapshot)
         }.onFailure { Log.e(logTag, "phone rotation unlock failed", it) }
     }
 
     private fun stop() {
+        if (stopping) return
+        stopping = true
         val wasActive = active
+        stopHostDisplayMonitor()
         suspendedForLockScreen = false
         suspendedConfig = null
         if (dragHeld) toggleDrag()
@@ -2843,7 +3193,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             .onFailure { Log.e(logTag, "physical input restoration failed", it) }
         runCatching { displayBackend.clearRequest() }
         setPhoneNavigationDisabled(false)
-        releasePhoneRotation()
+        releasePhoneRotation(clearSnapshot = true)
         removeWindow()
         targetDisplayId = -1
         active = false
@@ -2857,6 +3207,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
                 .putBoolean("cleanup_pending", false)
                 .putBoolean("paused_by_user", false)
+                .remove("paused_workspace")
                 .putLong("verified_at", System.currentTimeMillis())
                 .commit()
         }
@@ -2896,6 +3247,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun removeWindow() {
         releaseMirror()
+        detachHostWindow()
+    }
+
+    private fun detachHostWindow() {
+        // Prevent surfaceDestroyed() from releasing the mirrored display before
+        // WindowManager has removed this host and its gesture registrations.
+        surfaceView?.holder?.removeCallback(this)
         cursorView?.let { runCatching { windowManager?.removeView(it) } }
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null

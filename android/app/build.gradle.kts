@@ -102,13 +102,4 @@ tasks.configureEach {
             }
         }
     }
-    if (name == "assembleRelease") {
-        doLast {
-            val source = rootProject.file("../build/app/outputs/flutter-apk/app-release.apk")
-            val destination = rootProject.file(
-                "../build/app/outputs/flutter-apk/Dextop-v${flutter.versionName}.apk"
-            )
-            if (source.exists()) source.copyTo(destination, overwrite = true)
-        }
-    }
 }

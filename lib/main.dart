@@ -15,6 +15,7 @@ import 'package:in_app_update/in_app_update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 part 'app_info.dart';
+part 'samsung_desktop_settings.dart';
 part 'overlay_entry.dart';
 part 'app_shell.dart';
 part 'home_screen.dart';

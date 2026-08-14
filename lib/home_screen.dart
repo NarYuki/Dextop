@@ -4,11 +4,13 @@ class HomeScreen extends StatefulWidget {
   const HomeScreen({
     required this.themeMode,
     required this.onThemeModeChanged,
+    this.desktopWindow = false,
     super.key,
   });
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
+  final bool desktopWindow;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -398,6 +400,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var homeWorkspaces = <Map<String, dynamic>>[];
   var homeApps = <String, Map<String, dynamic>>{};
   var homeAppsLoading = false;
+  String desktopSettingsSection = 'display';
 
   @override
   void initState() {
@@ -819,6 +822,17 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  @override
+  void didChangeMetrics() {
+    // Foldables and tri-folds can replace the app view with a different
+    // physical size without restarting Flutter. Rebuild the device profile so
+    // Home reflects the current panel's resolution and calculated DPI.
+    deviceProfileInitialized = false;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _initializeDeviceProfile();
+    });
+  }
+
   Future<void> refresh() async {
     try {
       var value = await bridge.status();
@@ -1016,19 +1030,55 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final desktopLandscape =
+        widget.desktopWindow &&
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    if (desktopLandscape) {
+      return Scaffold(
+        body: Row(
+          children: [
+            LayoutBuilder(
+              builder: (context, constraints) => NavigationRail(
+                extended: MediaQuery.sizeOf(context).width >= 1000,
+                selectedIndex: page,
+                onDestinationSelected: selectPage,
+                leading: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 20),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(9),
+                    child: Image.asset(
+                      'assets/dextop_icon.png',
+                      width: 36,
+                      height: 36,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ),
+                destinations: [
+                  NavigationRailDestination(
+                    icon: const Icon(Icons.space_dashboard_outlined),
+                    selectedIcon: const Icon(Icons.space_dashboard_rounded),
+                    label: Text(AppStrings.tr('home')),
+                  ),
+                  NavigationRailDestination(
+                    icon: _settingsNavigationIcon(Icons.tune_outlined),
+                    selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
+                    label: Text(AppStrings.tr('settings')),
+                  ),
+                ],
+              ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(child: pageContent()),
+          ],
+        ),
+      );
+    }
     return Scaffold(
-      body: AnimatedSwitcher(
-        duration: Duration(milliseconds: 450),
-        switchInCurve: Curves.easeOutBack,
-        switchOutCurve: Curves.easeInCubic,
-        child: page == 0 ? overview() : settings(),
-      ),
+      body: pageContent(),
       bottomNavigationBar: NavigationBar(
         selectedIndex: page,
-        onDestinationSelected: (value) {
-          setState(() => page = value);
-          AppAnalytics.screen(value == 0 ? 'home' : 'settings');
-        },
+        onDestinationSelected: selectPage,
         destinations: [
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
@@ -1043,6 +1093,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         ],
       ),
     );
+  }
+
+  Widget pageContent() => AnimatedSwitcher(
+    duration: const Duration(milliseconds: 350),
+    switchInCurve: Curves.easeOutCubic,
+    switchOutCurve: Curves.easeInCubic,
+    child: page == 0 ? overview() : settings(),
+  );
+
+  void selectPage(int value) {
+    setState(() => page = value);
+    AppAnalytics.screen(value == 0 ? 'home' : 'settings');
   }
 
   Widget _settingsNavigationIcon(IconData icon) => Badge(

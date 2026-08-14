@@ -1813,6 +1813,420 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'セッション終了処理とAndroid状態の復元'**
   String get reportFeatureCleanup;
+
+  /// No description provided for @samsungExperimentalTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'実験的なSamsungデスクトップ設定'**
+  String get samsungExperimentalTitle;
+
+  /// No description provided for @samsungUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsung端末でのみ利用できます'**
+  String get samsungUnavailable;
+
+  /// No description provided for @samsungExperimentalDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'純正DeX設定で非表示になる項目をDextopから変更します'**
+  String get samsungExperimentalDescription;
+
+  /// No description provided for @samsungSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsungデスクトップ設定'**
+  String get samsungSettingsTitle;
+
+  /// No description provided for @samsungSettingsSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'表示・入力・タスクバー設定'**
+  String get samsungSettingsSummary;
+
+  /// No description provided for @samsungRestoreSuccess.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsung設定を元の環境へ復元しました'**
+  String get samsungRestoreSuccess;
+
+  /// No description provided for @samsungConfirmTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'設定変更の確認'**
+  String get samsungConfirmTitle;
+
+  /// No description provided for @samsungPermanentWarning.
+  ///
+  /// In ja, this message translates to:
+  /// **'この項目はDextopの体験と通常使用時のデスクトップ環境に恒久的（初期化されるまで）な影響を及ぼす可能性があります。'**
+  String get samsungPermanentWarning;
+
+  /// No description provided for @samsungAcceptEnable.
+  ///
+  /// In ja, this message translates to:
+  /// **'同意して有効化'**
+  String get samsungAcceptEnable;
+
+  /// No description provided for @samsungAboutSetting.
+  ///
+  /// In ja, this message translates to:
+  /// **'この設定について'**
+  String get samsungAboutSetting;
+
+  /// No description provided for @samsungRestoreEnvironment.
+  ///
+  /// In ja, this message translates to:
+  /// **'環境を復元'**
+  String get samsungRestoreEnvironment;
+
+  /// No description provided for @samsungSettingsIntro.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsung純正設定が外部ディスプレイ未接続として隠すDeX設定値を直接変更します。変更はSamsung DeXと対応するDextop機能に反映されます。'**
+  String get samsungSettingsIntro;
+
+  /// No description provided for @samsungResolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'外部画面の解像度'**
+  String get samsungResolution;
+
+  /// No description provided for @samsungScreenZoom.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面ズーム（DPI）'**
+  String get samsungScreenZoom;
+
+  /// No description provided for @samsungFontScale.
+  ///
+  /// In ja, this message translates to:
+  /// **'フォントサイズ'**
+  String get samsungFontScale;
+
+  /// No description provided for @samsungScreenTimeout.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面タイムアウト'**
+  String get samsungScreenTimeout;
+
+  /// No description provided for @samsungAudioOutput.
+  ///
+  /// In ja, this message translates to:
+  /// **'外部画面から音声を出力'**
+  String get samsungAudioOutput;
+
+  /// No description provided for @samsungDisplayOrientation.
+  ///
+  /// In ja, this message translates to:
+  /// **'外部画面の回転'**
+  String get samsungDisplayOrientation;
+
+  /// No description provided for @samsungDisplayArrangement.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面配置'**
+  String get samsungDisplayArrangement;
+
+  /// No description provided for @samsungSectionInput.
+  ///
+  /// In ja, this message translates to:
+  /// **'入力'**
+  String get samsungSectionInput;
+
+  /// No description provided for @samsungSectionDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ'**
+  String get samsungSectionDesktop;
+
+  /// No description provided for @samsungInputLockedWhileRunning.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop使用中は、競合するSamsung入力設定を変更できません。'**
+  String get samsungInputLockedWhileRunning;
+
+  /// No description provided for @samsungAutorunTouchpad.
+  ///
+  /// In ja, this message translates to:
+  /// **'タッチパッドを自動起動'**
+  String get samsungAutorunTouchpad;
+
+  /// No description provided for @samsungTouchpadScrollDirection.
+  ///
+  /// In ja, this message translates to:
+  /// **'スクロール方向を反転'**
+  String get samsungTouchpadScrollDirection;
+
+  /// No description provided for @samsungTouchKeyboard.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続時に画面キーボードを表示'**
+  String get samsungTouchKeyboard;
+
+  /// No description provided for @samsungKeyboardDex.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理キーボード使用中も表示'**
+  String get samsungKeyboardDex;
+
+  /// No description provided for @samsungSpenInputMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'S Penをマウスとして使用'**
+  String get samsungSpenInputMode;
+
+  /// No description provided for @samsungThreeFingerGesture.
+  ///
+  /// In ja, this message translates to:
+  /// **'3本指ジェスチャー'**
+  String get samsungThreeFingerGesture;
+
+  /// No description provided for @samsungFourFingerGesture.
+  ///
+  /// In ja, this message translates to:
+  /// **'4本指ジェスチャー'**
+  String get samsungFourFingerGesture;
+
+  /// No description provided for @samsungAutoHideTaskbar.
+  ///
+  /// In ja, this message translates to:
+  /// **'タスクバーを自動的に隠す'**
+  String get samsungAutoHideTaskbar;
+
+  /// No description provided for @samsungDexCommandArrow.
+  ///
+  /// In ja, this message translates to:
+  /// **'コマンド矢印を表示'**
+  String get samsungDexCommandArrow;
+
+  /// No description provided for @samsungIncludePhoneDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末画面をディスプレイトポロジーに含める'**
+  String get samsungIncludePhoneDisplay;
+
+  /// No description provided for @samsungMirrorPhoneDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末画面をミラーリング'**
+  String get samsungMirrorPhoneDisplay;
+
+  /// No description provided for @samsungReviewEnable.
+  ///
+  /// In ja, this message translates to:
+  /// **'注意事項を確認して設定変更を有効化'**
+  String get samsungReviewEnable;
+
+  /// No description provided for @samsungSeconds15.
+  ///
+  /// In ja, this message translates to:
+  /// **'15秒'**
+  String get samsungSeconds15;
+
+  /// No description provided for @samsungSeconds30.
+  ///
+  /// In ja, this message translates to:
+  /// **'30秒'**
+  String get samsungSeconds30;
+
+  /// No description provided for @samsungMinute1.
+  ///
+  /// In ja, this message translates to:
+  /// **'1分'**
+  String get samsungMinute1;
+
+  /// No description provided for @samsungMinutes2.
+  ///
+  /// In ja, this message translates to:
+  /// **'2分'**
+  String get samsungMinutes2;
+
+  /// No description provided for @samsungMinutes5.
+  ///
+  /// In ja, this message translates to:
+  /// **'5分'**
+  String get samsungMinutes5;
+
+  /// No description provided for @samsungMinutes10.
+  ///
+  /// In ja, this message translates to:
+  /// **'10分'**
+  String get samsungMinutes10;
+
+  /// No description provided for @samsungMinutes20.
+  ///
+  /// In ja, this message translates to:
+  /// **'20分'**
+  String get samsungMinutes20;
+
+  /// No description provided for @samsungMinutes30.
+  ///
+  /// In ja, this message translates to:
+  /// **'30分'**
+  String get samsungMinutes30;
+
+  /// No description provided for @samsungHour1.
+  ///
+  /// In ja, this message translates to:
+  /// **'1時間'**
+  String get samsungHour1;
+
+  /// No description provided for @samsungLeft.
+  ///
+  /// In ja, this message translates to:
+  /// **'左'**
+  String get samsungLeft;
+
+  /// No description provided for @samsungRight.
+  ///
+  /// In ja, this message translates to:
+  /// **'右'**
+  String get samsungRight;
+
+  /// No description provided for @samsungAutomatic.
+  ///
+  /// In ja, this message translates to:
+  /// **'自動'**
+  String get samsungAutomatic;
+
+  /// No description provided for @samsungGestureNone.
+  ///
+  /// In ja, this message translates to:
+  /// **'なし'**
+  String get samsungGestureNone;
+
+  /// No description provided for @samsungGestureApps.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリ一覧'**
+  String get samsungGestureApps;
+
+  /// No description provided for @samsungGestureRecents.
+  ///
+  /// In ja, this message translates to:
+  /// **'履歴'**
+  String get samsungGestureRecents;
+
+  /// No description provided for @samsungGestureNotifications.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知'**
+  String get samsungGestureNotifications;
+
+  /// No description provided for @samsungGestureQuickSettings.
+  ///
+  /// In ja, this message translates to:
+  /// **'クイック設定'**
+  String get samsungGestureQuickSettings;
+
+  /// No description provided for @samsungHelp_resolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsungデスクトップ環境が使用する外部画面解像度です。Dextopの解像度設定とは別に保存されます。'**
+  String get samsungHelp_resolution;
+
+  /// No description provided for @samsungHelp_screenZoom.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsungデスクトップ環境の表示密度（DPI）を変更します。'**
+  String get samsungHelp_screenZoom;
+
+  /// No description provided for @samsungHelp_fontScale.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsungデスクトップ環境内の文字倍率を変更します。'**
+  String get samsungHelp_fontScale;
+
+  /// No description provided for @samsungHelp_screenTimeout.
+  ///
+  /// In ja, this message translates to:
+  /// **'外部デスクトップ画面が消灯するまでの時間です。'**
+  String get samsungHelp_screenTimeout;
+
+  /// No description provided for @samsungHelp_audioOutput.
+  ///
+  /// In ja, this message translates to:
+  /// **'音声出力先を外部画面側へ切り替えます。'**
+  String get samsungHelp_audioOutput;
+
+  /// No description provided for @samsungHelp_displayOrientation.
+  ///
+  /// In ja, this message translates to:
+  /// **'外部デスクトップ画面の回転方向を固定します。'**
+  String get samsungHelp_displayOrientation;
+
+  /// No description provided for @samsungHelp_displayArrangement.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末画面と外部画面の相対位置を指定します。'**
+  String get samsungHelp_displayArrangement;
+
+  /// No description provided for @samsungHelp_autorunTouchpad.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続時にSamsungタッチパッドを自動表示します。Dextopの入力処理と競合します。'**
+  String get samsungHelp_autorunTouchpad;
+
+  /// No description provided for @samsungHelp_touchpadScrollDirection.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsungタッチパッドのスクロール方向を反転します。'**
+  String get samsungHelp_touchpadScrollDirection;
+
+  /// No description provided for @samsungHelp_touchKeyboard.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ接続時に画面キーボードを表示します。DextopのIME制御と競合します。'**
+  String get samsungHelp_touchKeyboard;
+
+  /// No description provided for @samsungHelp_keyboardDex.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理キーボード接続中も画面キーボードを表示します。DextopのIME制御と競合します。'**
+  String get samsungHelp_keyboardDex;
+
+  /// No description provided for @samsungHelp_spenInputMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'S Penをポインティングデバイスとして扱います。'**
+  String get samsungHelp_spenInputMode;
+
+  /// No description provided for @samsungHelp_threeFingerGesture.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsung側の3本指操作です。Dextopの3本指ジェスチャーと競合します。'**
+  String get samsungHelp_threeFingerGesture;
+
+  /// No description provided for @samsungHelp_fourFingerGesture.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsung側の4本指操作です。Dextopのマルチタッチ処理と競合します。'**
+  String get samsungHelp_fourFingerGesture;
+
+  /// No description provided for @samsungHelp_autoHideTaskbar.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsungデスクトップのタスクバーを自動的に隠します。'**
+  String get samsungHelp_autoHideTaskbar;
+
+  /// No description provided for @samsungHelp_dexCommandArrow.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsungデスクトップのコマンド矢印を表示します。'**
+  String get samsungHelp_dexCommandArrow;
+
+  /// No description provided for @samsungHelp_includePhoneDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末画面をデスクトップの画面配置へ含めます。'**
+  String get samsungHelp_includePhoneDisplay;
+
+  /// No description provided for @samsungHelp_mirrorPhoneDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末内蔵画面の内容をデスクトップ側へミラーリングします。'**
+  String get samsungHelp_mirrorPhoneDisplay;
 }
 
 class _AppLocalizationsDelegate

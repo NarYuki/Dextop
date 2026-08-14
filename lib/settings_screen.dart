@@ -3,6 +3,10 @@ part of 'main.dart';
 extension _SettingsContent on _HomeScreenState {
   Widget settings() {
     final l = AppLocalizations.of(context);
+    if (widget.desktopWindow &&
+        MediaQuery.orientationOf(context) == Orientation.landscape) {
+      return _desktopSettings(l);
+    }
     return CustomScrollView(
       key: ValueKey('settings'),
       slivers: [
@@ -66,6 +70,7 @@ extension _SettingsContent on _HomeScreenState {
                         checkError: releaseCheckError,
                         onCheck: () => _checkForUpdates(manual: true),
                         onShowUpdate: _showUpdateDialog,
+                        isRunning: active,
                       ),
                     ),
                   ),
@@ -91,6 +96,277 @@ extension _SettingsContent on _HomeScreenState {
       ],
     );
   }
+
+  Widget _desktopSettings(AppLocalizations l) {
+    final sections = <(String, IconData, String, String)>[
+      (
+        'display',
+        Icons.display_settings_outlined,
+        l.display,
+        AppStrings.tr('uiSecureDisplayFoldable'),
+      ),
+      (
+        'apps',
+        Icons.apps_outlined,
+        AppStrings.tr('uiAppLauncherSettings'),
+        AppStrings.tr('uiManageLaunchedAppsAndConfigurations'),
+      ),
+      (
+        'interaction',
+        Icons.gesture_rounded,
+        AppStrings.tr('uiInputAndGestures'),
+        AppStrings.tr('uiTapPressAndHoldMultiFingerOperation'),
+      ),
+      (
+        'status',
+        Icons.monitor_heart_outlined,
+        AppStrings.tr('uiConditionAndDiagnosis'),
+        AppStrings.tr('uiPerformanceCompatibility'),
+      ),
+      (
+        'device',
+        Icons.devices_outlined,
+        AppStrings.tr('uiTerminalAndPermissions'),
+        AppStrings.tr('uiDeviceInformationDesktopModeAccessibility'),
+      ),
+      (
+        'about',
+        Icons.info_outline_rounded,
+        l.appInfo,
+        appVersion.isEmpty ? 'Dextop' : 'Dextop $appVersion',
+      ),
+    ];
+    return LayoutBuilder(
+      key: const ValueKey('desktop-settings'),
+      builder: (context, constraints) {
+        final selected = switch (desktopSettingsSection) {
+          'samsung' => (
+            'samsung',
+            Icons.desktop_windows_outlined,
+            AppStrings.tr('samsungSettingsTitle'),
+            '',
+          ),
+          'diagnostics' => (
+            'diagnostics',
+            Icons.article_outlined,
+            AppStrings.tr('diagnosticLog'),
+            '',
+          ),
+          _ => sections.firstWhere((item) => item.$1 == desktopSettingsSection),
+        };
+        return Row(
+          children: [
+            SizedBox(
+              width: constraints.maxWidth >= 1200
+                  ? 340
+                  : constraints.maxWidth >= 820
+                  ? 300
+                  : 240,
+              child: Material(
+                color: Theme.of(context).colorScheme.surfaceContainerLow,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 14),
+                      child: Text(
+                        l.settings,
+                        style: Theme.of(context).textTheme.headlineMedium,
+                      ),
+                    ),
+                    Expanded(
+                      child: ListView.builder(
+                        padding: const EdgeInsets.symmetric(horizontal: 12),
+                        itemCount: sections.length,
+                        itemBuilder: (context, index) {
+                          final item = sections[index];
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 4),
+                            child: ListTile(
+                              dense: true,
+                              minTileHeight: item.$1 == 'about' ? 58 : 52,
+                              selected:
+                                  item.$1 == desktopSettingsSection ||
+                                  (item.$1 == 'about' &&
+                                      (desktopSettingsSection == 'samsung' ||
+                                          desktopSettingsSection ==
+                                              'diagnostics')),
+                              selectedTileColor: Theme.of(
+                                context,
+                              ).colorScheme.secondaryContainer,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              leading: Icon(item.$2),
+                              title: Text(
+                                item.$3,
+                                style: const TextStyle(fontSize: 15),
+                              ),
+                              subtitle: item.$1 == 'about'
+                                  ? Text(
+                                      item.$4,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12),
+                                    )
+                                  : null,
+                              trailing: const Icon(Icons.chevron_right_rounded),
+                              onTap: () => mutate(
+                                () => desktopSettingsSection = item.$1,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: rootMyGalaxyThemeSwitch(l),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const VerticalDivider(width: 1),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      desktopSettingsSection == 'samsung' ||
+                              desktopSettingsSection == 'diagnostics'
+                          ? 16
+                          : 28,
+                      22,
+                      28,
+                      14,
+                    ),
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween(
+                            begin: const Offset(.04, 0),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: Row(
+                        key: ValueKey('header-$desktopSettingsSection'),
+                        children: [
+                          if (desktopSettingsSection == 'samsung' ||
+                              desktopSettingsSection == 'diagnostics') ...[
+                            IconButton(
+                              tooltip: l.back,
+                              onPressed: () => mutate(
+                                () => desktopSettingsSection = 'about',
+                              ),
+                              icon: const Icon(Icons.arrow_back_rounded),
+                            ),
+                            const SizedBox(width: 4),
+                          ],
+                          Icon(selected.$2),
+                          const SizedBox(width: 12),
+                          Text(
+                            selected.$3,
+                            style: Theme.of(context).textTheme.headlineSmall,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  const Divider(height: 1),
+                  Expanded(
+                    child: AnimatedSwitcher(
+                      duration: const Duration(milliseconds: 240),
+                      transitionBuilder: (child, animation) => FadeTransition(
+                        opacity: animation,
+                        child: SlideTransition(
+                          position: Tween(
+                            begin: const Offset(.025, 0),
+                            end: Offset.zero,
+                          ).animate(animation),
+                          child: child,
+                        ),
+                      ),
+                      child: KeyedSubtree(
+                        key: ValueKey(desktopSettingsSection),
+                        child: _desktopSettingsDetail(l),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _desktopSettingsDetail(AppLocalizations l) =>
+      switch (desktopSettingsSection) {
+        'apps' => ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            DextopFeaturesPage(
+              isRunning: active,
+              embedded: true,
+              launcherOnly: true,
+              ensureDesktopRunning: ensureDesktopRunning,
+            ),
+          ],
+        ),
+        'interaction' => ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            DextopFeaturesPage(
+              isRunning: active,
+              embedded: true,
+              category: 'interaction',
+            ),
+          ],
+        ),
+        'status' => ListView(
+          padding: const EdgeInsets.all(20),
+          children: [
+            DextopFeaturesPage(
+              isRunning: active,
+              embedded: true,
+              category: 'status',
+            ),
+          ],
+        ),
+        'device' => _deviceSettingsContent(l),
+        'about' => AppInfoPage(
+          bridge: bridge,
+          appVersion: appVersion,
+          updateAvailable: updateAvailable,
+          checking: releaseChecking,
+          checkSucceeded: releaseCheckSucceeded,
+          checkError: releaseCheckError,
+          onCheck: () => _checkForUpdates(manual: true),
+          onShowUpdate: _showUpdateDialog,
+          embedded: true,
+          isRunning: active,
+          onOpenSamsungSettings: () =>
+              mutate(() => desktopSettingsSection = 'samsung'),
+          onOpenDiagnosticLog: () =>
+              mutate(() => desktopSettingsSection = 'diagnostics'),
+        ),
+        'samsung' => SamsungDesktopSettingsPage(
+          bridge: bridge,
+          isRunning: active,
+          embedded: true,
+        ),
+        'diagnostics' => _DiagnosticLogPage(bridge: bridge, embedded: true),
+        _ => StatefulBuilder(
+          builder: (context, update) => _displaySettingsContent(l, update),
+        ),
+      };
 
   Widget _categoryTile(
     IconData icon,
@@ -141,67 +417,66 @@ extension _SettingsContent on _HomeScreenState {
         builder: (_) => StatefulBuilder(
           builder: (routeContext, updateRoute) => Scaffold(
             appBar: AppBar(title: Text(l.display)),
-            body: ListView(
-              padding: EdgeInsets.fromLTRB(16, 8, 16, 32),
-              children: [
-                Padding(
-                  padding: EdgeInsets.fromLTRB(12, 0, 12, 7),
-                  child: Text(
-                    AppStrings.tr('uiSecurity'),
-                    style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-                settingsCard([
-                  SwitchListTile(
-                    title: Text(l.secureDisplay),
-                    subtitle: Text(l.secureDisplayDescription),
-                    secondary: Icon(Icons.lock_rounded),
-                    value: secure,
-                    onChanged: active
-                        ? null
-                        : (value) async {
-                            final previous = secure;
-                            updateRoute(() => secure = value);
-                            try {
-                              await setSecureDisplay(value);
-                            } catch (_) {
-                              updateRoute(() => secure = previous);
-                              rethrow;
-                            }
-                          },
-                  ),
-                  Divider(height: 1),
-                  ListTile(
-                    enabled: !active,
-                    leading: Icon(Icons.account_tree_outlined),
-                    title: Text(l.mirrorBackend),
-                    subtitle: Text(_mirrorBackendLabel(l, mirrorBackend)),
-                    trailing: Icon(Icons.chevron_right_rounded),
-                    onTap: active
-                        ? null
-                        : () => _selectMirrorBackend(
-                            routeContext,
-                            l,
-                            updateRoute,
-                          ),
-                  ),
-                ]),
-                SizedBox(height: 12),
-                DextopFeaturesPage(
-                  isRunning: active,
-                  embedded: true,
-                  category: 'display',
-                ),
-              ],
-            ),
+            body: _displaySettingsContent(l, updateRoute),
           ),
         ),
       ),
     );
   }
+
+  Widget _displaySettingsContent(AppLocalizations l, StateSetter updateRoute) =>
+      ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        children: [
+          Padding(
+            padding: EdgeInsets.fromLTRB(12, 0, 12, 7),
+            child: Text(
+              AppStrings.tr('uiSecurity'),
+              style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                color: Theme.of(context).colorScheme.primary,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+          settingsCard([
+            SwitchListTile(
+              title: Text(l.secureDisplay),
+              subtitle: Text(l.secureDisplayDescription),
+              secondary: Icon(Icons.lock_rounded),
+              value: secure,
+              onChanged: active
+                  ? null
+                  : (value) async {
+                      final previous = secure;
+                      updateRoute(() => secure = value);
+                      try {
+                        await setSecureDisplay(value);
+                      } catch (_) {
+                        updateRoute(() => secure = previous);
+                        rethrow;
+                      }
+                    },
+            ),
+            Divider(height: 1),
+            ListTile(
+              enabled: !active,
+              leading: Icon(Icons.account_tree_outlined),
+              title: Text(l.mirrorBackend),
+              subtitle: Text(_mirrorBackendLabel(l, mirrorBackend)),
+              trailing: Icon(Icons.chevron_right_rounded),
+              onTap: active
+                  ? null
+                  : () => _selectMirrorBackend(context, l, updateRoute),
+            ),
+          ]),
+          SizedBox(height: 12),
+          DextopFeaturesPage(
+            isRunning: active,
+            embedded: true,
+            category: 'display',
+          ),
+        ],
+      );
 
   String _mirrorBackendLabel(AppLocalizations l, String value) =>
       switch (value) {
@@ -259,41 +534,41 @@ extension _SettingsContent on _HomeScreenState {
           appBar: AppBar(
             title: Text(AppStrings.tr('uiTerminalAndPermissions')),
           ),
-          body: ListView(
-            padding: EdgeInsets.fromLTRB(16, 8, 16, 32),
-            children: [
-              settingsCard([
-                ListTile(
-                  leading: Icon(Icons.smartphone_rounded),
-                  title: Text(
-                    [manufacturer, model].where((e) => e.isNotEmpty).join(' '),
-                  ),
-                  subtitle: Text(
-                    '${AppStrings.tr('uiAndroid')} $androidVersion',
-                  ),
-                ),
-                Divider(height: 1),
-                ListTile(
-                  leading: Icon(Icons.desktop_windows_rounded),
-                  title: Text(l.desktopMode),
-                  subtitle: Text(desktopMode),
-                ),
-                Divider(height: 1),
-                _KeepAwakeTile(),
-                Divider(height: 1),
-                actionTile(
-                  Icons.accessibility_new_rounded,
-                  l.accessibilitySettings,
-                  l.accessibilityDescription,
-                  bridge.openAccessibility,
-                ),
-              ]),
-            ],
-          ),
+          body: _deviceSettingsContent(l),
         ),
       ),
     );
   }
+
+  Widget _deviceSettingsContent(AppLocalizations l) => ListView(
+    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+    children: [
+      settingsCard([
+        ListTile(
+          leading: Icon(Icons.smartphone_rounded),
+          title: Text(
+            [manufacturer, model].where((e) => e.isNotEmpty).join(' '),
+          ),
+          subtitle: Text('${AppStrings.tr('uiAndroid')} $androidVersion'),
+        ),
+        Divider(height: 1),
+        ListTile(
+          leading: Icon(Icons.desktop_windows_rounded),
+          title: Text(l.desktopMode),
+          subtitle: Text(desktopMode),
+        ),
+        Divider(height: 1),
+        _KeepAwakeTile(),
+        Divider(height: 1),
+        actionTile(
+          Icons.accessibility_new_rounded,
+          l.accessibilitySettings,
+          l.accessibilityDescription,
+          bridge.openAccessibility,
+        ),
+      ]),
+    ],
+  );
 
   Widget rootMyGalaxyThemeSwitch(AppLocalizations l) {
     return independentSegmentSwitch<ThemeMode>(

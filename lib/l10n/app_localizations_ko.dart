@@ -879,4 +879,222 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get reportFeatureCleanup => '세션 정리 및 Android 상태 복원';
+
+  @override
+  String get samsungExperimentalTitle => '실험적 Samsung 데스크톱 설정';
+
+  @override
+  String get samsungUnavailable => 'Samsung 기기에서만 사용할 수 있습니다';
+
+  @override
+  String get samsungExperimentalDescription =>
+      '기본 DeX 설정 화면에서 숨겨진 항목을 Dextop에서 변경합니다';
+
+  @override
+  String get samsungSettingsTitle => 'Samsung 데스크톱 설정';
+
+  @override
+  String get samsungSettingsSummary => '화면, 입력 및 작업 표시줄 설정';
+
+  @override
+  String get samsungRestoreSuccess => 'Samsung 설정을 복원했습니다';
+
+  @override
+  String get samsungConfirmTitle => '설정 변경 확인';
+
+  @override
+  String get samsungPermanentWarning =>
+      '이 항목은 초기화할 때까지 Dextop 및 평소 사용하는 데스크톱 환경에 영구적인 영향을 줄 수 있습니다.';
+
+  @override
+  String get samsungAcceptEnable => '동의하고 활성화';
+
+  @override
+  String get samsungAboutSetting => '이 설정 정보';
+
+  @override
+  String get samsungRestoreEnvironment => '환경 복원';
+
+  @override
+  String get samsungSettingsIntro =>
+      'Samsung 설정이 외부 디스플레이 미연결 상태에서 숨기는 DeX 값을 직접 변경합니다. 변경 사항은 Samsung DeX 및 해당 Dextop 기능에 적용됩니다.';
+
+  @override
+  String get samsungResolution => '외부 화면 해상도';
+
+  @override
+  String get samsungScreenZoom => '화면 확대/축소(DPI)';
+
+  @override
+  String get samsungFontScale => '글자 크기';
+
+  @override
+  String get samsungScreenTimeout => '화면 시간 제한';
+
+  @override
+  String get samsungAudioOutput => '외부 화면으로 오디오 출력';
+
+  @override
+  String get samsungDisplayOrientation => '외부 화면 회전';
+
+  @override
+  String get samsungDisplayArrangement => '화면 배치';
+
+  @override
+  String get samsungSectionInput => '입력';
+
+  @override
+  String get samsungSectionDesktop => '데스크톱';
+
+  @override
+  String get samsungInputLockedWhileRunning =>
+      'Dextop 실행 중에는 충돌하는 Samsung 입력 설정을 변경할 수 없습니다.';
+
+  @override
+  String get samsungAutorunTouchpad => '터치패드 자동 실행';
+
+  @override
+  String get samsungTouchpadScrollDirection => '스크롤 방향 반전';
+
+  @override
+  String get samsungTouchKeyboard => '연결 시 화면 키보드 표시';
+
+  @override
+  String get samsungKeyboardDex => '물리 키보드 사용 중에도 키보드 표시';
+
+  @override
+  String get samsungSpenInputMode => 'S Pen을 마우스로 사용';
+
+  @override
+  String get samsungThreeFingerGesture => '세 손가락 제스처';
+
+  @override
+  String get samsungFourFingerGesture => '네 손가락 제스처';
+
+  @override
+  String get samsungAutoHideTaskbar => '작업 표시줄 자동 숨기기';
+
+  @override
+  String get samsungDexCommandArrow => '명령 화살표 표시';
+
+  @override
+  String get samsungIncludePhoneDisplay => '휴대전화 화면을 디스플레이 토폴로지에 포함';
+
+  @override
+  String get samsungMirrorPhoneDisplay => '내장 화면 미러링';
+
+  @override
+  String get samsungReviewEnable => '경고를 확인하고 설정 변경 활성화';
+
+  @override
+  String get samsungSeconds15 => '15초';
+
+  @override
+  String get samsungSeconds30 => '30초';
+
+  @override
+  String get samsungMinute1 => '1분';
+
+  @override
+  String get samsungMinutes2 => '2분';
+
+  @override
+  String get samsungMinutes5 => '5분';
+
+  @override
+  String get samsungMinutes10 => '10분';
+
+  @override
+  String get samsungMinutes20 => '20분';
+
+  @override
+  String get samsungMinutes30 => '30분';
+
+  @override
+  String get samsungHour1 => '1시간';
+
+  @override
+  String get samsungLeft => '왼쪽';
+
+  @override
+  String get samsungRight => '오른쪽';
+
+  @override
+  String get samsungAutomatic => '자동';
+
+  @override
+  String get samsungGestureNone => '없음';
+
+  @override
+  String get samsungGestureApps => '앱 목록';
+
+  @override
+  String get samsungGestureRecents => '최근 앱';
+
+  @override
+  String get samsungGestureNotifications => '알림';
+
+  @override
+  String get samsungGestureQuickSettings => '빠른 설정';
+
+  @override
+  String get samsungHelp_resolution =>
+      'Samsung 데스크톱 환경에서 사용하는 외부 화면 해상도이며 Dextop 해상도와 별도로 저장됩니다.';
+
+  @override
+  String get samsungHelp_screenZoom => 'Samsung 데스크톱 환경의 표시 밀도(DPI)를 변경합니다.';
+
+  @override
+  String get samsungHelp_fontScale => 'Samsung 데스크톱 환경의 글자 배율을 변경합니다.';
+
+  @override
+  String get samsungHelp_screenTimeout => '외부 데스크톱 화면이 꺼질 때까지의 시간입니다.';
+
+  @override
+  String get samsungHelp_audioOutput => '오디오 출력을 외부 화면으로 전환합니다.';
+
+  @override
+  String get samsungHelp_displayOrientation => '외부 데스크톱 화면의 회전 방향을 고정합니다.';
+
+  @override
+  String get samsungHelp_displayArrangement => '휴대전화와 외부 화면의 상대 위치를 지정합니다.';
+
+  @override
+  String get samsungHelp_autorunTouchpad =>
+      '연결 시 Samsung 터치패드를 자동 표시하며 Dextop 입력과 충돌합니다.';
+
+  @override
+  String get samsungHelp_touchpadScrollDirection =>
+      'Samsung 터치패드의 스크롤 방향을 반전합니다.';
+
+  @override
+  String get samsungHelp_touchKeyboard => '화면 키보드를 표시하며 Dextop IME 제어와 충돌합니다.';
+
+  @override
+  String get samsungHelp_keyboardDex =>
+      '물리 키보드 연결 중에도 화면 키보드를 표시하며 Dextop IME 제어와 충돌합니다.';
+
+  @override
+  String get samsungHelp_spenInputMode => 'S Pen을 포인팅 장치로 사용합니다.';
+
+  @override
+  String get samsungHelp_threeFingerGesture =>
+      'Samsung 세 손가락 동작이며 Dextop 제스처와 충돌합니다.';
+
+  @override
+  String get samsungHelp_fourFingerGesture =>
+      'Samsung 네 손가락 동작이며 Dextop 멀티터치와 충돌합니다.';
+
+  @override
+  String get samsungHelp_autoHideTaskbar => 'Samsung 데스크톱 작업 표시줄을 자동으로 숨깁니다.';
+
+  @override
+  String get samsungHelp_dexCommandArrow => 'Samsung 데스크톱 명령 화살표를 표시합니다.';
+
+  @override
+  String get samsungHelp_includePhoneDisplay =>
+      '휴대전화 화면을 데스크톱 디스플레이 토폴로지에 포함합니다.';
+
+  @override
+  String get samsungHelp_mirrorPhoneDisplay => '내장 화면을 데스크톱 환경에 미러링합니다.';
 }

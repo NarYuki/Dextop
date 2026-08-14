@@ -33,7 +33,8 @@ internal data class MirrorAttachRequest(
     val hostWidth: Int,
     val hostHeight: Int,
     val contentWidth: Int,
-    val contentHeight: Int
+    val contentHeight: Int,
+    val contentDensity: Int
 )
 
 internal interface MirrorAttachment {
@@ -48,6 +49,8 @@ internal class DisplayMirrorBackend(
     private val environment: DesktopEnvironment
 ) : VirtualDisplayBackend {
     private var attachment: MirrorAttachment? = null
+    var activeStrategy: String? = null
+        private set
     private val attachBackends: Map<String, MirrorAttachBackend> by lazy {
         listOf(
             WindowManagerMirrorBackend(privilegedAccess),
@@ -86,11 +89,15 @@ internal class DisplayMirrorBackend(
         hostHeight: Int,
         contentWidth: Int,
         contentHeight: Int,
+        contentDensity: Int,
         strategyOverride: String? = null
     ): List<StrategyAttempt> {
         releaseLayer()
         val attempts = mutableListOf<StrategyAttempt>()
-        val request = MirrorAttachRequest(displayId, host, hostWidth, hostHeight, contentWidth, contentHeight)
+        val request = MirrorAttachRequest(
+            displayId, host, hostWidth, hostHeight,
+            contentWidth, contentHeight, contentDensity
+        )
         val strategies = strategyOverride?.let(::listOf) ?: environment.mirrorStrategies
         for (id in strategies) {
             val backend = attachBackends[id] ?: continue
@@ -101,6 +108,7 @@ internal class DisplayMirrorBackend(
             val result = runCatching { backend.attach(request) }
             if (result.isSuccess) {
                 attachment = result.getOrThrow()
+                activeStrategy = id
                 attempts += StrategyAttempt(id, true, "attached")
                 OperationLog.i(context, "DisplayBackend", "mirror strategy=$id success=true")
                 return attempts
@@ -115,6 +123,7 @@ internal class DisplayMirrorBackend(
     fun releaseLayer() {
         runCatching { attachment?.release() }
         attachment = null
+        activeStrategy = null
     }
 
     companion object { const val DISPLAY_SPECIFICATION = "overlay_display_devices" }
@@ -229,7 +238,10 @@ private class VirtualDisplayPlatform private constructor(
             )
         } ?: error("No compatible display configuration constructor")
         val builder = constructor.newInstance(
-            "DextopSurface-${request.displayId}", request.hostWidth, request.hostHeight, 160
+            "DextopSurface-${request.displayId}",
+            request.contentWidth,
+            request.contentHeight,
+            request.contentDensity
         )
         val properties = listOf(
             BuilderProperty("setSurface", Surface::class.java, surface),

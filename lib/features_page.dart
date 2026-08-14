@@ -639,6 +639,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     }
     final content = <Widget>[
       if (widget.embedded &&
+          !widget.launcherOnly &&
           (widget.category == null || widget.category == 'apps'))
         _section(AppStrings.tr('uiAppLauncher'), Icons.apps_rounded, [
           ListTile(

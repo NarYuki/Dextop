@@ -1,6 +1,7 @@
 package moe.n4tsu.dextop
 
 import kotlin.test.Test
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -26,5 +27,18 @@ class DeviceMatchTest {
         val match = DeviceMatch(manufacturers = setOf("google"), minSdk = 35, maxSdk = 35)
         assertFalse(match.matches(pixel.copy(sdk = 34)))
         assertFalse(match.matches(pixel.copy(sdk = 36)))
+    }
+
+    @Test fun galaxyTriFoldUsesNarrowAutoResizeProfile() {
+        val triFold = DeviceIdentity(
+            "samsung", "samsung", "SM-F968N", "q7mq", "q7mqksx",
+            "samsung/q7mqksx/q7mq:16/build", 36
+        )
+        val environment = DesktopEnvironmentRegistry.resolve(triFold)
+        assertEquals("samsung_dex", environment.id)
+        assertTrue(environment.autoResizeWithHostDisplay)
+
+        val fold7 = triFold.copy(model = "SM-F966Q", device = "q7q", product = "q7qjpnw")
+        assertFalse(DesktopEnvironmentRegistry.resolve(fold7).autoResizeWithHostDisplay)
     }
 }
