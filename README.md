@@ -54,8 +54,10 @@ You can report bugs, submit device reports, and request features there.
 
 | Environment | Status | Notes |
 | --- | --- | --- |
-| Samsung DeX | Mostly supported | Currently the most complete environment. Features managed by DeX use Samsung's platform implementation. |
+| Samsung DeX (One UI 8 or later) | Fully supported | Currently the most complete environment. Features managed by DeX use Samsung's platform implementation. |
+| Samsung DeX (earlier than One UI 8) | Limited and likely incompatible | Older DeX implementations may not provide the display and window-management behavior required by Dextop. |
 | Google Pixel | Limited and incomplete | Depends on Android's freeform/desktop implementation and hidden API availability. Some features may not work. |
+| OPPO ColorOS desktop | Limited and incomplete | The desktop can be displayed, but platform components such as the taskbar may not appear. |
 | Xiaomi devices running HyperOS or later | Disabled | MIUI and HyperOS are not supported. |
 | Other Android devices | Experimental | Virtual-display, mirroring, and freeform support varies by manufacturer, model, and OS update. |
 
@@ -105,6 +107,8 @@ _Community-submitted and reviewed device report_
 
 <details>
 <summary><strong>OPPO</strong></summary>
+
+> ColorOS can display the desktop, but support is incomplete and the taskbar may not appear.
 
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |

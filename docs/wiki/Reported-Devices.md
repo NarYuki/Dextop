@@ -1,5 +1,7 @@
 # Reported Device Compatibility
 
+Samsung DeX is fully supported only on devices running One UI 8 or later. Devices on earlier One UI releases are likely to be incompatible. OPPO ColorOS can display the desktop, but support remains incomplete and the taskbar may not appear.
+
 These entries are generated from manually reviewed device reports. Compatibility is recorded per exact model and firmware build; a result does not automatically apply to another build.
 
 <details>
@@ -120,6 +122,8 @@ These entries are generated from manually reviewed device reports. Compatibility
 
 <details>
 <summary><strong>OPPO</strong> — 1 verified configuration</summary>
+
+> ColorOS can display the desktop, but support is incomplete and the taskbar may not appear.
 
 <details>
 <summary><strong>Find X9 — OPG07</strong> / OP5E8BL1 / ColorOS 16 / B.R4T3.1287153_118ce71_119cc78 — 🧪 Experimental</summary>
