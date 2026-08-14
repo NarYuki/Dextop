@@ -104,18 +104,48 @@ class SamsungDesktopSettingsPage extends StatefulWidget {
       _SamsungDesktopSettingsPageState();
 }
 
-class _SamsungDesktopSettingsPageState
-    extends State<SamsungDesktopSettingsPage> {
+class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
+    with WidgetsBindingObserver {
   Map<String, dynamic> values = {};
   bool loading = true;
   bool backupAvailable = false;
   bool sensitiveSettingsUnlocked = false;
+  bool sessionRunning = false;
   String? error;
+
+  bool get inputSettingsHidden => widget.isRunning || sessionRunning;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     load();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didUpdateWidget(covariant SamsungDesktopSettingsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.isRunning != widget.isRunning) refreshRunningState();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) refreshRunningState();
+  }
+
+  Future<void> refreshRunningState() async {
+    final status = await widget.bridge.status().catchError(
+      (_) => <String, dynamic>{},
+    );
+    if (mounted) {
+      setState(() => sessionRunning = status['active'] == true);
+    }
   }
 
   Future<void> load() async {
@@ -127,13 +157,16 @@ class _SamsungDesktopSettingsPageState
       final results = await Future.wait<dynamic>([
         widget.bridge.samsungDesktopSettings(),
         SharedPreferences.getInstance(),
+        widget.bridge.status().catchError((_) => <String, dynamic>{}),
       ]);
       final state = results[0] as Map<String, dynamic>;
       final prefs = results[1] as SharedPreferences;
+      final status = results[2] as Map<String, dynamic>;
       if (!mounted) return;
       setState(() {
         values = Map<String, dynamic>.from(state['values'] as Map? ?? const {});
         backupAvailable = state['backupAvailable'] == true;
+        sessionRunning = status['active'] == true;
         sensitiveSettingsUnlocked =
             prefs.getBool('samsung_sensitive_settings_unlocked') ??
             (prefs.getBool('samsung_display_settings_unlocked') == true ||
@@ -300,6 +333,7 @@ class _SamsungDesktopSettingsPageState
         onPressed: () => showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
+            scrollable: true,
             title: Text(title),
             content: Text(settingHelp(id)),
             actions: [
@@ -440,29 +474,29 @@ class _SamsungDesktopSettingsPageState
                 lockedAction: requestUnlock,
               ),
               section(_samsung('samsungSectionInput')),
-              if (!widget.isRunning)
+              if (!inputSettingsHidden)
                 toggle('autorunTouchpad', _samsung('samsungAutorunTouchpad')),
               toggle(
                 'touchpadScrollDirection',
                 _samsung('samsungTouchpadScrollDirection'),
               ),
-              if (!widget.isRunning)
+              if (!inputSettingsHidden)
                 toggle('touchKeyboard', _samsung('samsungTouchKeyboard')),
-              if (!widget.isRunning)
+              if (!inputSettingsHidden)
                 toggle('keyboardDex', _samsung('samsungKeyboardDex')),
               toggle(
                 'spenInputMode',
                 _samsung('samsungSpenInputMode'),
                 fallback: true,
               ),
-              if (!widget.isRunning)
+              if (!inputSettingsHidden)
                 choice<int>(
                   'threeFingerGesture',
                   _samsung('samsungThreeFingerGesture'),
                   integer('threeFingerGesture', 4),
                   gestureOptions,
                 ),
-              if (!widget.isRunning)
+              if (!inputSettingsHidden)
                 choice<int>(
                   'fourFingerGesture',
                   _samsung('samsungFourFingerGesture'),

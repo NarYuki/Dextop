@@ -1065,71 +1065,73 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get samsungHelp_resolution =>
-      'Resolution used by the Samsung desktop environment. It is stored separately from Dextop resolution.';
+      'Sets the workspace Samsung Desktop uses to draw apps and windows. Higher resolutions fit more content but make controls smaller and increase rendering load. Lower resolutions favor readability and performance. This is stored separately from Dextop\'s resolution.';
 
   @override
   String get samsungHelp_screenZoom =>
-      'Changes display density (DPI) in the Samsung desktop environment.';
+      'Scales text, icons, and controls across Samsung Desktop. A higher DPI makes everything larger and easier to read; a lower DPI fits more content on screen. It does not change the actual resolution.';
 
   @override
   String get samsungHelp_fontScale =>
-      'Changes text scale in the Samsung desktop environment.';
+      'Changes text size without substantially resizing icons or windows. Use it to improve readability while preserving the workspace. Very large values can cause text to wrap or overflow in some apps.';
 
   @override
   String get samsungHelp_screenTimeout =>
-      'Time before the external desktop display turns off.';
+      'Controls how long Samsung Desktop stays lit without input. A longer timeout is useful for documents or video, but may increase power use and heat.';
 
   @override
-  String get samsungHelp_audioOutput => 'Routes audio to the external display.';
+  String get samsungHelp_audioOutput =>
+      'When enabled, media and notification audio is routed to the HDMI display or dock. When disabled, the phone or currently selected audio device is normally used. Enabling this with a display that has no speakers may result in no audible sound.';
 
   @override
   String get samsungHelp_displayOrientation =>
-      'Locks external desktop display rotation.';
+      'Rotates Samsung Desktop to the selected angle. Use this for a portrait-mounted or rotatable monitor. A value that does not match the physical screen can make the picture and pointer direction feel misaligned.';
 
   @override
   String get samsungHelp_displayArrangement =>
-      'Controls the relative arrangement of the phone and external display.';
+      'Tells Samsung whether the phone is positioned to the left or right of the external display. This changes which screen edge the pointer crosses, making movement between screens match the physical setup.';
 
   @override
   String get samsungHelp_autorunTouchpad =>
-      'Starts Samsung touchpad on connection and conflicts with Dextop input.';
+      'When enabled, Samsung\'s touchpad opens automatically on the phone after connecting, allowing the phone to work like a laptop touchpad. It duplicates Dextop input handling, so this option is hidden while Dextop is running.';
 
   @override
   String get samsungHelp_touchpadScrollDirection =>
-      'Reverses Samsung touchpad scrolling.';
+      'Reverses the relationship between two-finger movement and page movement on Samsung\'s touchpad. Use it to choose between mouse-wheel-style and direct-touch-style scrolling.';
 
   @override
   String get samsungHelp_touchKeyboard =>
-      'Shows the on-screen keyboard and conflicts with Dextop IME handling.';
+      'When enabled, the on-screen keyboard can appear after selecting a text field in desktop mode. It is useful without a physical keyboard, but overlaps Dextop keyboard handling, so it is hidden while Dextop is running.';
 
   @override
   String get samsungHelp_keyboardDex =>
-      'Keeps the on-screen keyboard visible with a physical keyboard and conflicts with Dextop IME handling.';
+      'When enabled, the on-screen keyboard remains available even with a physical keyboard connected. This helps with emoji, handwriting, and voice input, but reduces workspace and conflicts with Dextop IME handling.';
 
   @override
-  String get samsungHelp_spenInputMode => 'Uses S Pen as a pointing device.';
+  String get samsungHelp_spenInputMode =>
+      'When enabled, S Pen acts as a pointer, including hover before touching the screen. This improves precise desktop selection. Check drawing apps if you rely on their normal pressure-sensitive pen behavior.';
 
   @override
   String get samsungHelp_threeFingerGesture =>
-      'Samsung three-finger action; conflicts with Dextop gestures.';
+      'Runs the selected action—such as Apps, Home, Recents, or Back—when Samsung detects a three-finger gesture. Dextop also uses three fingers for its controls, so this option is hidden while Dextop is running.';
 
   @override
   String get samsungHelp_fourFingerGesture =>
-      'Samsung four-finger action; conflicts with Dextop multi-touch.';
+      'Runs the selected system action from a supported four-finger touchpad gesture. It can speed up navigation, but conflicts with Dextop multi-touch detection and is therefore hidden during a Dextop session.';
 
   @override
   String get samsungHelp_autoHideTaskbar =>
-      'Automatically hides the Samsung desktop taskbar.';
+      'When enabled, Samsung Desktop hides the taskbar while it is not in use, giving apps more vertical space. Move the pointer to the bottom edge to reveal it. Disable this if you prefer app switching to remain visible.';
 
   @override
   String get samsungHelp_dexCommandArrow =>
-      'Shows the Samsung desktop command arrow.';
+      'When enabled, Samsung Desktop shows an arrow for opening Samsung command controls. It provides faster access to Samsung actions, but may overlap Dextop overlays or edge gestures.';
 
   @override
   String get samsungHelp_includePhoneDisplay =>
-      'Includes the phone display in desktop topology.';
+      'When enabled, the built-in phone screen becomes part of the same desktop topology as the external display, allowing apps and the pointer to move between them. Leave it disabled to keep the phone as an independent Android control screen.';
 
   @override
   String get samsungHelp_mirrorPhoneDisplay =>
-      'Mirrors the built-in display into the desktop environment.';
+      'When enabled, the external desktop shows the same content as the built-in phone screen. This is useful for demonstrations, but it duplicates rather than expands the workspace, so the two screens cannot show independent apps.';
 }

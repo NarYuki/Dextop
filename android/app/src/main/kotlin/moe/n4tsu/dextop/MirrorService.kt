@@ -283,6 +283,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var directTouchHeld = false
     private var injectedDirectTouchActive = false
     private var directInjectionDownTime = 0L
+    private var directSourceDownTime = 0L
     private var lastInjectedDirectTouch: MotionEvent? = null
     private var experimentalMultiTouch = false
     private var threeFingerEdgeSwipe = false
@@ -2443,10 +2444,23 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val actionMasked = action and MotionEvent.ACTION_MASK
             if (actionMasked == MotionEvent.ACTION_DOWN) {
                 directInjectionDownTime = SystemClock.uptimeMillis()
+                directSourceDownTime = source.downTime
             }
             if (directInjectionDownTime == 0L) {
                 // Never send MOVE/UP without a synthetic DOWN identity.
                 directInjectionDownTime = SystemClock.uptimeMillis()
+                directSourceDownTime = source.downTime
+            }
+            // Keep the synthetic stream identity required by Samsung
+            // InputManager, but preserve the source gesture's relative timing.
+            // Replacing every eventTime with "now" collapses batched MOVE
+            // events onto the same timestamp, so VelocityTracker sees almost
+            // no release velocity and scrolling stops abruptly.
+            val now = SystemClock.uptimeMillis()
+            fun syntheticTime(sourceEventTime: Long): Long {
+                val relative =
+                    (sourceEventTime - directSourceDownTime).coerceAtLeast(0L)
+                return (directInjectionDownTime + relative).coerceAtMost(now)
             }
             val scaleX = targetWidth.toFloat() / view.width
             val scaleY = targetHeight.toFloat() / view.height
@@ -2456,23 +2470,37 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     toolType = MotionEvent.TOOL_TYPE_FINGER
                 }
             }
-            val coordinates = Array(source.pointerCount) { index ->
-                MotionEvent.PointerCoords().apply {
-                    source.getPointerCoords(index, this)
-                    x *= scaleX
-                    y *= scaleY
+            fun scaledCoordinates(historyIndex: Int? = null) =
+                Array(source.pointerCount) { index ->
+                    MotionEvent.PointerCoords().apply {
+                        if (historyIndex == null) {
+                            source.getPointerCoords(index, this)
+                        } else {
+                            source.getHistoricalPointerCoords(index, historyIndex, this)
+                        }
+                        x *= scaleX
+                        y *= scaleY
+                    }
                 }
+            val hasMoveHistory =
+                actionMasked == MotionEvent.ACTION_MOVE && source.historySize > 0
+            val firstEventTime = if (hasMoveHistory) {
+                syntheticTime(source.getHistoricalEventTime(0))
+            } else {
+                syntheticTime(source.eventTime)
             }
+            val firstCoordinates =
+                if (hasMoveHistory) scaledCoordinates(0) else scaledCoordinates()
             // deviceId=0 makes this a synthetic stream. Reusing the phone's
             // physical touchscreen device ID on another display causes Samsung
             // InputManager to reject subsequent one-finger events.
             val event = MotionEvent.obtain(
                 directInjectionDownTime,
-                SystemClock.uptimeMillis(),
+                firstEventTime,
                 action,
                 source.pointerCount,
                 properties,
-                coordinates,
+                firstCoordinates,
                 source.metaState,
                 source.buttonState,
                 source.xPrecision * scaleX,
@@ -2482,6 +2510,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 InputDevice.SOURCE_TOUCHSCREEN,
                 source.flags
             )
+            if (hasMoveHistory) {
+                for (historyIndex in 1 until source.historySize) {
+                    event.addBatch(
+                        syntheticTime(source.getHistoricalEventTime(historyIndex)),
+                        scaledCoordinates(historyIndex),
+                        source.metaState
+                    )
+                }
+                event.addBatch(
+                    syntheticTime(source.eventTime),
+                    scaledCoordinates(),
+                    source.metaState
+                )
+            }
             try {
                 check(inputDispatcher.send(event, targetDisplayId)) {
                     "InputManager rejected multi-touch event action=${event.actionMasked}"
@@ -2492,7 +2534,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
                 lastInjectedDirectTouch?.recycle()
                 lastInjectedDirectTouch = if (injectedDirectTouchActive) MotionEvent.obtain(event) else null
-                if (!injectedDirectTouchActive) directInjectionDownTime = 0L
+                if (!injectedDirectTouchActive) {
+                    directInjectionDownTime = 0L
+                    directSourceDownTime = 0L
+                }
             } finally {
                 event.recycle()
             }
@@ -2542,6 +2587,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             lastInjectedDirectTouch = null
             injectedDirectTouchActive = false
             directInjectionDownTime = 0L
+            directSourceDownTime = 0L
         }
     }
 

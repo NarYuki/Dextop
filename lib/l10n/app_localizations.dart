@@ -2123,109 +2123,109 @@ abstract class AppLocalizations {
   /// No description provided for @samsungHelp_resolution.
   ///
   /// In ja, this message translates to:
-  /// **'Samsungデスクトップ環境が使用する外部画面解像度です。Dextopの解像度設定とは別に保存されます。'**
+  /// **'Samsungデスクトップがアプリやウィンドウを描画する作業領域を決めます。高い解像度ほど一度に多くの情報を表示できますが、文字やボタンは小さくなり、描画負荷も増えます。低い解像度は見やすさと動作の軽さを優先できます。Dextop本体の解像度とは別に保存されます。'**
   String get samsungHelp_resolution;
 
   /// No description provided for @samsungHelp_screenZoom.
   ///
   /// In ja, this message translates to:
-  /// **'Samsungデスクトップ環境の表示密度（DPI）を変更します。'**
+  /// **'Samsungデスクトップ上の文字・アイコン・ボタンをまとめて拡大または縮小します。DPIを高くすると各要素が大きく見やすくなり、低くすると同じ画面により多くの内容を表示できます。解像度そのものは変わりません。'**
   String get samsungHelp_screenZoom;
 
   /// No description provided for @samsungHelp_fontScale.
   ///
   /// In ja, this message translates to:
-  /// **'Samsungデスクトップ環境内の文字倍率を変更します。'**
+  /// **'Samsungデスクトップ内の文字だけを拡大・縮小します。アイコンやウィンドウの大きさを大きく変えずに読みやすさを調整したい場合に使います。大きくしすぎると一部の画面で文章が折り返されたり、ボタンからはみ出す場合があります。'**
   String get samsungHelp_fontScale;
 
   /// No description provided for @samsungHelp_screenTimeout.
   ///
   /// In ja, this message translates to:
-  /// **'外部デスクトップ画面が消灯するまでの時間です。'**
+  /// **'操作がないときにSamsungデスクトップ画面が消灯するまでの時間を決めます。長くすると資料や動画を表示したままにしやすくなりますが、消費電力と発熱が増える可能性があります。'**
   String get samsungHelp_screenTimeout;
 
   /// No description provided for @samsungHelp_audioOutput.
   ///
   /// In ja, this message translates to:
-  /// **'音声出力先を外部画面側へ切り替えます。'**
+  /// **'有効にすると、音楽・動画・通知などの音声をHDMIモニターやドックなど外部画面側へ出力します。無効にすると通常は端末側のスピーカーや現在選択中の音声機器が使われます。外部画面にスピーカーがない場合は音が聞こえなくなることがあります。'**
   String get samsungHelp_audioOutput;
 
   /// No description provided for @samsungHelp_displayOrientation.
   ///
   /// In ja, this message translates to:
-  /// **'外部デスクトップ画面の回転方向を固定します。'**
+  /// **'Samsungデスクトップを指定した角度で表示します。縦置きモニターや回転可能な外部画面に向きを合わせるための設定です。実際の画面の向きと合わない値にすると、表示とマウス操作の方向がずれる場合があります。'**
   String get samsungHelp_displayOrientation;
 
   /// No description provided for @samsungHelp_displayArrangement.
   ///
   /// In ja, this message translates to:
-  /// **'端末画面と外部画面の相対位置を指定します。'**
+  /// **'端末画面が外部画面の左側・右側のどちらにあるかをSamsungへ伝えます。マウスポインターを画面間で移動するときのつながる辺が変わります。実際の設置位置と合わせると、自然に別画面へ移動できます。'**
   String get samsungHelp_displayArrangement;
 
   /// No description provided for @samsungHelp_autorunTouchpad.
   ///
   /// In ja, this message translates to:
-  /// **'接続時にSamsungタッチパッドを自動表示します。Dextopの入力処理と競合します。'**
+  /// **'有効にするとデスクトップ接続時に端末画面へSamsungのタッチパッドが自動表示され、端末をノートPCのタッチパッドのように使えます。Dextop独自のタッチ入力と二重に反応するため、Dextop実行中は非表示にしています。'**
   String get samsungHelp_autorunTouchpad;
 
   /// No description provided for @samsungHelp_touchpadScrollDirection.
   ///
   /// In ja, this message translates to:
-  /// **'Samsungタッチパッドのスクロール方向を反転します。'**
+  /// **'Samsungタッチパッドで2本指を動かした方向と、画面がスクロールする方向の関係を反転します。マウスホイール式とスマートフォンの直接操作式のうち、慣れている方向へ合わせるための設定です。'**
   String get samsungHelp_touchpadScrollDirection;
 
   /// No description provided for @samsungHelp_touchKeyboard.
   ///
   /// In ja, this message translates to:
-  /// **'デスクトップ接続時に画面キーボードを表示します。DextopのIME制御と競合します。'**
+  /// **'有効にするとデスクトップ接続時でも文字入力欄を選んだ際に画面キーボードを表示できます。物理キーボードがない環境では便利ですが、Dextopのキーボード表示制御と重複するため、Dextop実行中は非表示にしています。'**
   String get samsungHelp_touchKeyboard;
 
   /// No description provided for @samsungHelp_keyboardDex.
   ///
   /// In ja, this message translates to:
-  /// **'物理キーボード接続中も画面キーボードを表示します。DextopのIME制御と競合します。'**
+  /// **'有効にすると物理キーボードを接続していても画面キーボードを表示できます。絵文字・手書き・音声入力を併用したい場合に便利ですが、作業領域が狭くなりDextopのIME制御とも競合するため、Dextop実行中は非表示にしています。'**
   String get samsungHelp_keyboardDex;
 
   /// No description provided for @samsungHelp_spenInputMode.
   ///
   /// In ja, this message translates to:
-  /// **'S Penをポインティングデバイスとして扱います。'**
+  /// **'有効にするとS Penを画面へ触れる前のホバー位置も含めてマウスポインターとして利用できます。細かな位置指定やペンでのデスクトップ操作がしやすくなります。描画アプリで筆圧を使いたい場合は、アプリ側の挙動が変わらないか確認してください。'**
   String get samsungHelp_spenInputMode;
 
   /// No description provided for @samsungHelp_threeFingerGesture.
   ///
   /// In ja, this message translates to:
-  /// **'Samsung側の3本指操作です。Dextopの3本指ジェスチャーと競合します。'**
+  /// **'Samsungデスクトップで3本指操作を行ったときに、アプリ一覧・ホーム・履歴・戻るなど指定した操作を実行します。Dextopも3本指を操作メニューに使用するため、同時に有効だと誤動作しやすく、Dextop実行中は非表示にしています。'**
   String get samsungHelp_threeFingerGesture;
 
   /// No description provided for @samsungHelp_fourFingerGesture.
   ///
   /// In ja, this message translates to:
-  /// **'Samsung側の4本指操作です。Dextopのマルチタッチ処理と競合します。'**
+  /// **'Samsungデスクトップで4本指操作を行ったときに、選択したシステム操作を実行します。対応タッチパッドでは素早く画面を切り替えられますが、Dextopのマルチタッチ判定と競合するため、Dextop実行中は非表示にしています。'**
   String get samsungHelp_fourFingerGesture;
 
   /// No description provided for @samsungHelp_autoHideTaskbar.
   ///
   /// In ja, this message translates to:
-  /// **'Samsungデスクトップのタスクバーを自動的に隠します。'**
+  /// **'有効にすると操作していない間はSamsungデスクトップのタスクバーを隠し、アプリが使える縦方向の領域を広げます。画面下端へポインターを移動すると再表示されます。常にアプリ切り替えを見せたい場合は無効にしてください。'**
   String get samsungHelp_autoHideTaskbar;
 
   /// No description provided for @samsungHelp_dexCommandArrow.
   ///
   /// In ja, this message translates to:
-  /// **'Samsungデスクトップのコマンド矢印を表示します。'**
+  /// **'有効にするとSamsungデスクトップの操作コマンドを呼び出す矢印を表示します。Samsung側の補助操作へ素早くアクセスできますが、Dextopのオーバーレイや画面端操作と重なる場合があります。'**
   String get samsungHelp_dexCommandArrow;
 
   /// No description provided for @samsungHelp_includePhoneDisplay.
   ///
   /// In ja, this message translates to:
-  /// **'端末画面をデスクトップの画面配置へ含めます。'**
+  /// **'有効にすると端末内蔵画面を外部画面と同じデスクトップの画面構成に含めます。アプリやポインターを端末画面と外部画面の間で移動できる構成になります。端末画面を独立したAndroid操作用として残したい場合は無効にしてください。'**
   String get samsungHelp_includePhoneDisplay;
 
   /// No description provided for @samsungHelp_mirrorPhoneDisplay.
   ///
   /// In ja, this message translates to:
-  /// **'端末内蔵画面の内容をデスクトップ側へミラーリングします。'**
+  /// **'有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。'**
   String get samsungHelp_mirrorPhoneDisplay;
 }
 
