@@ -197,6 +197,10 @@ open class MainActivity : FlutterActivity() {
                         result.success(true)
                     }
                 }
+                "hideLaptopDemo" -> {
+                    MirrorService.hideLaptopDemo()
+                    result.success(null)
+                }
                 "isFoldableDevice" -> result.success(MirrorService.isFoldableDevice())
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
                 "currentDeviceDisplayProfile" -> {

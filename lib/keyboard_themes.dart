@@ -14,6 +14,16 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   String _selected = 'cloud';
   bool _busy = false;
 
+  @override
+  void dispose() {
+    // A demo overlay is transient and must not remain behind the theme page
+    // after leaving it.
+    const MethodChannel(
+      'app.freedextop/display',
+    ).invokeMethod('hideLaptopDemo');
+    super.dispose();
+  }
+
   static const _builtIns = <Map<String, dynamic>>[
     {
       'id': 'standard',
