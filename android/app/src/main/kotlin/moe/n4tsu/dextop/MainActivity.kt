@@ -68,6 +68,8 @@ open class MainActivity : FlutterActivity() {
         }
 
         fun phoneTaskId(): Int = phoneTaskId
+
+        fun currentActivity(): MainActivity? = instance
     }
 
     private val channelName = "app.freedextop/display"

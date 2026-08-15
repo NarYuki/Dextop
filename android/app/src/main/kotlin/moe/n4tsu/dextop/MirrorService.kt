@@ -72,6 +72,8 @@ import android.widget.TextView
 import android.animation.ValueAnimator
 import android.animation.LayoutTransition
 import android.widget.GridLayout
+import androidx.window.layout.FoldingFeature
+import androidx.window.layout.WindowInfoTracker
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -461,6 +463,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var lastTouchDiagnosticAt = 0L
     private var inputDiagnosticSequence = 0L
     private var orientationRebuildInProgress = false
+    private var lastForcedPhonePortrait: Boolean? = null
     private var refreshRateReapplyGeneration = 0
     private var topologyReapplyGeneration = 0
     private val physicalInputRoutingSupported: Boolean
@@ -475,6 +478,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var pendingLaptopModeSince = 0L
     private var laptopModeEvaluationGeneration = 0L
     private var laptopHostMismatchSince = 0L
+    private var foldingApiFoldable: Boolean? = null
+    private var foldingApiLaptopPosture: Boolean? = null
+    private var foldingApiLastProbeAt = 0L
     private val laptopModeDebounceMs = 420L
     private val laptopHostMismatchDebounceMs = 1_200L
 
@@ -576,6 +582,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onSensorChanged(event: SensorEvent?) {
             val angle = event?.values?.firstOrNull() ?: return
             hingeAngle = angle
+            refreshFoldingApiState("hinge_sensor")
             Log.d(logTag, "hinge angle=$angle laptop=$laptopModeActive")
             updateLaptopModeForHinge(angle)
         }
@@ -587,6 +594,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
+            refreshFoldingApiState("display_added", force = true)
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_added_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
@@ -596,6 +604,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         override fun onDisplayRemoved(displayId: Int) {
+            refreshFoldingApiState("display_removed", force = true)
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_removed_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = false)
@@ -604,6 +613,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         override fun onDisplayChanged(displayId: Int) {
+            refreshFoldingApiState("display_changed", force = true)
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_changed_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
@@ -787,6 +797,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (!active || suspendedForLockScreen) return
+        refreshFoldingApiState("configuration_changed", force = true)
         OperationLog.i(
             this,
             "Orientation",
@@ -1045,8 +1056,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         performanceHud = hud
         windowManager?.addView(frame, params)
         frame.post {
+            refreshFoldingApiState("window_added", force = true)
             val autoStart = isLaptopAutoDetectionEnabled() &&
-                hingeAngle?.let(::isLaptopHingeAngle) == true
+                (foldingApiLaptopPosture ?: hingeAngle?.let(::isLaptopHingeAngle)) == true
             val startInLaptopMode = isDebugLaptopModeForced() || laptopManualOverride || autoStart
             laptopAutoActivated = autoStart && !laptopManualOverride
             if (startInLaptopMode) setLaptopMode(true)
@@ -1427,14 +1439,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         } ?: angle
         filteredHingeAngle = filtered
         hingeAngle = filtered
+        refreshFoldingApiState("hinge_candidate")
+        val apiLaptopPosture = foldingApiLaptopPosture
+        val laptopPosture = apiLaptopPosture ?: isLaptopHingeAngle(filtered)
         // A half-open hinge is itself authoritative: inactive inner panels are
         // omitted from DisplayManager on several foldables and the emulator.
-        val mainDisplay = isLaptopHingeAngle(filtered) || isFoldableMainDisplay()
+        val mainDisplay = laptopPosture || isFoldableMainDisplay()
         if (!mainDisplay) {
             laptopManualOverride = false
             laptopAutoActivated = false
         }
-        val shouldShow = mainDisplay && (laptopManualOverride || isLaptopHingeAngle(filtered))
+        val shouldShow = mainDisplay && (laptopManualOverride || laptopPosture)
         if (shouldShow == laptopModeActive) {
             pendingLaptopMode = null
             pendingLaptopModeSince = 0L
@@ -1449,7 +1464,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (generation != laptopModeEvaluationGeneration || !active ||
                     suspendedForLockScreen || pendingLaptopMode != shouldShow) return@postDelayed
                 val stableAngle = filteredHingeAngle ?: return@postDelayed
-                if (isLaptopHingeAngle(stableAngle) != shouldShow && !laptopManualOverride) {
+                val stablePosture = foldingApiLaptopPosture ?: isLaptopHingeAngle(stableAngle)
+                if (stablePosture != shouldShow && !laptopManualOverride) {
                     pendingLaptopMode = null
                     pendingLaptopModeSince = 0L
                     return@postDelayed
@@ -1554,6 +1570,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 paneConfig.density != density) {
                 resizeActiveDisplay(paneConfig, "laptop pane final synchronization")
             }
+            // The pane-layout pass already schedules a mirror update. Avoid a
+            // second attach of WindowManager/SurfaceControl mirrors when the
+            // measured host has not changed; recreating that layer is visible
+            // as a one-frame flash behind the keyboard deck.
+            if (mirrorDisplayId == targetDisplayId &&
+                mirrorHostWidth == surface.width && mirrorHostHeight == surface.height) {
+                return@postDelayed
+            }
             runCatching { attachMirror(surface.width, surface.height, "virtual_display") }
                 .onSuccess {
                     mirrorDisplayId = targetDisplayId
@@ -1600,10 +1624,54 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         return area(current) >= internalDisplays.maxOf(::area)
     }
 
-    private fun isFoldableDevice(): Boolean =
-        internalDisplays(getSystemService(DisplayManager::class.java)).size >= 2 ||
+    /**
+     * WindowManager's folding API is authoritative when the OEM extension is
+     * present. Older devices may not expose it, so the legacy display/sensor
+     * probe remains a fallback rather than being treated as a second signal.
+     */
+    private fun refreshFoldingApiState(reason: String, force: Boolean = false) {
+        val now = SystemClock.uptimeMillis()
+        if (!force && now - foldingApiLastProbeAt < 180L) return
+        foldingApiLastProbeAt = now
+        runCatching {
+            // The WindowManager extension is window-scoped. Query it with the
+            // live control Activity when available; an AccessibilityService
+            // context has no window token and an empty result there must not
+            // be mistaken for a confirmed non-foldable device.
+            val activity = MainActivity.currentActivity()
+                ?: throw IllegalStateException("no activity window for folding API")
+            val info = WindowInfoTracker.getOrCreate(activity)
+                .getCurrentWindowLayoutInfo(activity)
+            val features = info.displayFeatures.filterIsInstance<FoldingFeature>()
+            features to features.any { it.state == FoldingFeature.State.HALF_OPENED }
+        }.onSuccess { (features, halfOpened) ->
+            val foldable = features.isNotEmpty()
+            if (foldingApiFoldable != foldable || foldingApiLaptopPosture != halfOpened) {
+                OperationLog.i(
+                    this,
+                    "FoldState",
+                    "WindowManager folding API available=true foldable=$foldable " +
+                        "halfOpened=$halfOpened reason=$reason"
+                )
+            }
+            foldingApiFoldable = foldable
+            foldingApiLaptopPosture = halfOpened
+        }.onFailure {
+            // Extension versions before current-window-layout support throw
+            // here. Null means "API unavailable", not "definitely flat".
+            foldingApiFoldable = null
+            foldingApiLaptopPosture = null
+            if (force) Log.d(logTag, "WindowManager folding API unavailable reason=$reason", it)
+        }
+    }
+
+    private fun isFoldableDevice(): Boolean {
+        refreshFoldingApiState("capability", force = true)
+        foldingApiFoldable?.let { return it }
+        return internalDisplays(getSystemService(DisplayManager::class.java)).size >= 2 ||
             getSystemService(SensorManager::class.java)
                 .getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) != null
+    }
 
     /**
      * Laptop mode needs enough surface for two usable panes. Foldables are
@@ -4975,6 +5043,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun forcePhoneRotation(portrait: Boolean) {
+        if (lastForcedPhonePortrait == portrait) return
+        lastForcedPhonePortrait = portrait
         runCatching {
             phoneRotationController.force(portrait)
         }.onSuccess {
@@ -4990,6 +5060,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun releasePhoneRotation(clearSnapshot: Boolean = false) {
+        lastForcedPhonePortrait = null
         runCatching {
             phoneRotationController.restore(clearSnapshot)
         }.onFailure { Log.e(logTag, "phone rotation unlock failed", it) }
