@@ -19,6 +19,8 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.BitmapFactory
+import android.graphics.RenderEffect
+import android.graphics.Shader
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ClipDrawable
@@ -903,6 +905,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     }
                 }.getOrNull()
             } ?: GradientDrawable().apply { setColor(palette.background) }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && palette.blur > 0f) {
+                setRenderEffect(RenderEffect.createBlurEffect(
+                    palette.blur, palette.blur, Shader.TileMode.CLAMP
+                ))
+            }
         }
         val trackpad = TextView(this).apply {
             text = "TRACKPAD"
@@ -1521,6 +1528,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val selected: Int,
         val radius: Float,
         val opacity: Float = 1f,
+        val blur: Float = 0f,
         val imageBase64: String? = null,
     )
 
@@ -1561,6 +1569,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 radius = json.optDouble("radius", fallback.radius.toDouble()).toFloat()
                     .coerceIn(0f, 40f),
                 opacity = json.optDouble("opacity", 1.0).toFloat().coerceIn(.1f, 1f),
+                blur = json.optDouble("blur", 0.0).toFloat().coerceIn(0f, 30f),
                 imageBase64 = json.optString("imageBase64").takeIf { it.isNotBlank() }
             )
         }.getOrDefault(fallback)
