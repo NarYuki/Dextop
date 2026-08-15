@@ -1447,14 +1447,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         setOnClickListener { handleLaptopKey(key.code) }
         setOnTouchListener { view, event ->
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> view.animate()
+                MotionEvent.ACTION_DOWN -> {
+                    // Modifiers are latched on press, not release, so a
+                    // second finger can press C/V/etc. while Ctrl is still
+                    // held. This also makes real multi-touch chords work.
+                    if (key.code < 0) handleLaptopKey(key.code)
+                    view.animate()
                     .scaleX(.92f).scaleY(.92f).alpha(.72f)
                     .setDuration(55).start()
+                }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate()
                     .scaleX(1f).scaleY(1f).alpha(1f)
                     .setDuration(110).start()
             }
-            false
+            key.code < 0
         }
     }
 
@@ -1642,10 +1648,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopSettingsVisible = false
         val nextDeck = buildLaptopDeck().apply {
             alpha = 0f
-            translationX = dp(24).toFloat()
+            translationY = dp(28).toFloat()
+            scaleY = .94f
         }
         content.addView(nextDeck, LinearLayout.LayoutParams(-1, 0, 1f))
-        nextDeck.animate().alpha(1f).translationX(0f).setDuration(220).start()
+        nextDeck.post {
+            nextDeck.pivotY = nextDeck.height.toFloat()
+            nextDeck.animate()
+                .alpha(1f)
+                .translationY(0f)
+                .scaleY(1f)
+                .setInterpolator(PathInterpolator(.22f, 1f, .36f, 1f))
+                .setDuration(320L)
+                .start()
+        }
         content.requestLayout()
         if (showSettings) content.post { showLaptopKeyboardSettings() }
     }
