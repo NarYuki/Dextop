@@ -355,5 +355,6 @@
   "keyboardThemesBorder": "Border",
   "keyboardThemesText": "Text",
   "keyboardThemesTrackpad": "Trackpad",
+  "keyboardThemesDescription": "Laptop keyboard themes and custom appearance",
   "@keyboardThemesDeleteBody": {"placeholders": {"name": {"type": "String"}}}
 }

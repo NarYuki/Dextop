@@ -1286,4 +1286,8 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => 'Trackpad';
+
+  @override
+  String get keyboardThemesDescription =>
+      'Laptop keyboard themes and custom appearance';
 }

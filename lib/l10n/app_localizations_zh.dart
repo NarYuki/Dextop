@@ -1239,4 +1239,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => '触控板';
+
+  @override
+  String get keyboardThemesDescription => '笔记本键盘主题和自定义外观';
 }

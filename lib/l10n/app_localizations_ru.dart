@@ -1296,4 +1296,8 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => 'Трекпад';
+
+  @override
+  String get keyboardThemesDescription =>
+      'Темы и настройка внешнего вида клавиатуры ноутбука';
 }

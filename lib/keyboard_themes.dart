@@ -398,142 +398,23 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   }
 
   Future<void> _showEditDialog(Map<String, dynamic> theme) async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, update) => AlertDialog(
-          alignment: Alignment.center,
-          insetPadding: const EdgeInsets.symmetric(
-            horizontal: 24,
-            vertical: 24,
-          ),
-          title: Text('${_l10n.keyboardThemesEdit} ${theme['name']}'),
-          content: SizedBox(
-            width: 560,
-            height: 700,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      for (final key in [
-                        'background',
-                        'key',
-                        'border',
-                        'text',
-                        'trackpad',
-                      ])
-                        ActionChip(
-                          label: Text(_colorLabel(key)),
-                          avatar: CircleAvatar(
-                            backgroundColor: _color(theme, key),
-                          ),
-                          onPressed: () {
-                            _cycleColor(theme, key);
-                            update(() {});
-                          },
-                        ),
-                    ],
-                  ),
-                  _labeledSlider(
-                    _l10n.keyboardThemesOpacity,
-                    (theme['opacity'] as num).toDouble(),
-                    .2,
-                    1,
-                    (v) {
-                      update(() => theme['opacity'] = v);
-                      _save();
-                    },
-                  ),
-                  _labeledSlider(
-                    _l10n.keyboardThemesBlur,
-                    (theme['blur'] as num).toDouble(),
-                    0,
-                    30,
-                    (v) {
-                      update(() => theme['blur'] = v);
-                      _save();
-                    },
-                  ),
-                  _labeledSlider(
-                    _l10n.keyboardThemesRadius,
-                    (theme['radius'] as num).toDouble(),
-                    0,
-                    28,
-                    (v) {
-                      update(() => theme['radius'] = v);
-                      _save();
-                    },
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () async {
-                      await _pickImage(theme);
-                      update(() {});
-                    },
-                    icon: const Icon(Icons.image_outlined),
-                    label: Text(_l10n.keyboardThemesImage),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                      _showRealLaptopPreview(theme['id'] as String);
-                    },
-                    icon: const Icon(Icons.preview_outlined),
-                    label: Text(_l10n.keyboardThemesPreview),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _busy ? null : () => _exportTheme(theme),
-                    icon: const Icon(Icons.archive_outlined),
-                    label: Text(_l10n.keyboardThemesExport),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    height: 220,
-                    width: double.infinity,
-                    child: _preview(
-                      theme,
-                      compact: true,
-                      includeTrackpad: false,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(_l10n.keyboardThemesDone),
-            ),
-          ],
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => KeyboardThemeEditorPage(
+          theme: theme,
+          color: _color,
+          colorLabel: _colorLabel,
+          cycleColor: _cycleColor,
+          pickImage: _pickImage,
+          exportTheme: _exportTheme,
+          save: _save,
+          preview: (theme) =>
+              _preview(theme, compact: true, includeTrackpad: false),
+          showDemo: (id) => _showRealLaptopPreview(id),
         ),
       ),
     );
   }
-
-  Widget _labeledSlider(
-    String label,
-    double value,
-    double min,
-    double max,
-    ValueChanged<double> onChanged,
-  ) => Row(
-    children: [
-      SizedBox(width: 110, child: Text(label)),
-      Expanded(
-        child: Slider(
-          value: value.clamp(min, max),
-          min: min,
-          max: max,
-          label: label,
-          onChanged: onChanged,
-        ),
-      ),
-    ],
-  );
 
   void _cycleColor(Map<String, dynamic> theme, String key) {
     const colors = [
@@ -644,6 +525,128 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
             ),
         ],
       ),
+    );
+  }
+}
+
+class KeyboardThemeEditorPage extends StatefulWidget {
+  const KeyboardThemeEditorPage({
+    required this.theme,
+    required this.color,
+    required this.colorLabel,
+    required this.cycleColor,
+    required this.pickImage,
+    required this.exportTheme,
+    required this.save,
+    required this.preview,
+    required this.showDemo,
+    super.key,
+  });
+
+  final Map<String, dynamic> theme;
+  final Color Function(Map<String, dynamic>, String) color;
+  final String Function(String) colorLabel;
+  final void Function(Map<String, dynamic>, String) cycleColor;
+  final Future<void> Function(Map<String, dynamic>) pickImage;
+  final Future<void> Function(Map<String, dynamic>) exportTheme;
+  final Future<void> Function() save;
+  final Widget Function(Map<String, dynamic>) preview;
+  final Future<void> Function(String) showDemo;
+
+  @override
+  State<KeyboardThemeEditorPage> createState() =>
+      _KeyboardThemeEditorPageState();
+}
+
+class _KeyboardThemeEditorPageState extends State<KeyboardThemeEditorPage> {
+  AppLocalizations get l => AppLocalizations.of(context);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = widget.theme;
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('${l.keyboardThemesEdit} ${theme['name']}'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(l.keyboardThemesDone),
+          ),
+        ],
+      ),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        children: [
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              for (final key in [
+                'background',
+                'key',
+                'border',
+                'text',
+                'trackpad',
+              ])
+                ActionChip(
+                  label: Text(widget.colorLabel(key)),
+                  avatar: CircleAvatar(
+                    backgroundColor: widget.color(theme, key),
+                  ),
+                  onPressed: () {
+                    setState(() => widget.cycleColor(theme, key));
+                    widget.save();
+                  },
+                ),
+            ],
+          ),
+          _editorSlider(l.keyboardThemesOpacity, 'opacity', .2, 1),
+          _editorSlider(l.keyboardThemesBlur, 'blur', 0, 30),
+          _editorSlider(l.keyboardThemesRadius, 'radius', 0, 28),
+          OutlinedButton.icon(
+            onPressed: () async {
+              await widget.pickImage(theme);
+              if (mounted) setState(() {});
+            },
+            icon: const Icon(Icons.image_outlined),
+            label: Text(l.keyboardThemesImage),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => widget.showDemo(theme['id'] as String),
+            icon: const Icon(Icons.preview_outlined),
+            label: Text(l.keyboardThemesPreview),
+          ),
+          OutlinedButton.icon(
+            onPressed: () => widget.exportTheme(theme),
+            icon: const Icon(Icons.archive_outlined),
+            label: Text(l.keyboardThemesExport),
+          ),
+          const SizedBox(height: 24),
+          SizedBox(height: 220, child: widget.preview(theme)),
+        ],
+      ),
+    );
+  }
+
+  Widget _editorSlider(String label, String key, double min, double max) {
+    final theme = widget.theme;
+    final value = (theme[key] as num).toDouble().clamp(min, max);
+    return Row(
+      children: [
+        SizedBox(width: 120, child: Text(label)),
+        Expanded(
+          child: Slider(
+            value: value,
+            min: min,
+            max: max,
+            label: label,
+            onChanged: (next) {
+              setState(() => theme[key] = next);
+              widget.save();
+            },
+          ),
+        ),
+      ],
     );
   }
 }

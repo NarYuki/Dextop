@@ -1256,4 +1256,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => '트랙패드';
+
+  @override
+  String get keyboardThemesDescription => '노트북 키보드 테마 및 사용자 지정 외관';
 }
