@@ -401,7 +401,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var homeApps = <String, Map<String, dynamic>>{};
   var homeAppsLoading = false;
   String desktopSettingsSection = 'display';
-  var foldableDevice = false;
 
   @override
   void initState() {
@@ -412,15 +411,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     _initializeHome();
     _loadHomeSelections();
-    _loadFoldableDevice();
     AppAnalytics.screen('home');
-  }
-
-  Future<void> _loadFoldableDevice() async {
-    final value = await const MethodChannel(
-      'app.freedextop/display',
-    ).invokeMethod<bool>('isFoldableDevice');
-    if (mounted) setState(() => foldableDevice = value == true);
   }
 
   Future<void> _loadHomeSelections() async {
