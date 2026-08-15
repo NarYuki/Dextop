@@ -65,6 +65,7 @@ import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
+import android.widget.HorizontalScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.animation.ValueAnimator
@@ -1635,12 +1636,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             setPadding(dp(28), dp(8), dp(28), dp(24))
         }
         laptopThemeChoices().forEachIndexed { index, (id, label) ->
-            choices.addView(laptopThemeChoice(id, label), LinearLayout.LayoutParams(0, -1, 1f).apply {
+            choices.addView(laptopThemeChoice(id, label), LinearLayout.LayoutParams(dp(220), -1).apply {
                 if (index > 0) leftMargin = dp(6)
                 if (index < laptopThemeChoices().lastIndex) rightMargin = dp(6)
             })
         }
-        deck.addView(choices, LinearLayout.LayoutParams(-1, 0, 1f))
+        deck.addView(HorizontalScrollView(this).apply {
+            isFillViewport = false
+            isHorizontalScrollBarEnabled = true
+            addView(choices, LinearLayout.LayoutParams(-2, -1))
+        }, LinearLayout.LayoutParams(-1, 0, 1f))
     }
 
     private fun laptopThemeChoices(): List<Pair<String, String>> {
