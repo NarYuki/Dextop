@@ -174,6 +174,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             instance?.root?.post { instance?.applyFlutterLaptopModeSetting(enabled) }
         }
 
+        /** Shows the real laptop deck on the active virtual-display session. */
+        fun showLaptopPreview(): Boolean {
+            val service = instance ?: return false
+            if (!active || service.root == null) return false
+            service.root?.post {
+                service.laptopManualOverride = true
+                service.setLaptopMode(true)
+            }
+            return true
+        }
+
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
 
         fun launchPackage(packageName: String, bounds: android.graphics.Rect? = null): Boolean = instance?.let { service ->

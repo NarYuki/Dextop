@@ -161,6 +161,16 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     await _save();
   }
 
+  Future<void> _showRealLaptopPreview() async {
+    final shown = await const MethodChannel('app.freedextop/display')
+        .invokeMethod<bool>('previewLaptopOverlay') ?? false;
+    if (!shown && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Start Dextop first to show the real laptop overlay.')),
+      );
+    }
+  }
+
   Future<void> _pickImage(Map<String, dynamic> theme) async {
     final result = await FilePicker.platform.pickFiles(type: FileType.image,
         withData: true);
@@ -251,11 +261,12 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                             child: Padding(
                               padding: const EdgeInsets.all(12),
                               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Expanded(child: _preview(theme, compact: true)),
+                                Expanded(child: _preview(theme, compact: true, includeTrackpad: false)),
                                 const SizedBox(height: 8),
                                 Text(theme['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
                                 Row(children: [
-                                  Expanded(child: const SizedBox()),
+                                  const Expanded(child: Text('Ready')),
+                                  IconButton(icon: const Icon(Icons.preview_outlined), tooltip: 'Show real overlay', onPressed: _showRealLaptopPreview),
                                   IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => _select(theme['id'] as String)),
                                   Radio<String>(value: theme['id'] as String, groupValue: _selected,
                                       onChanged: (_) => _select(theme['id'] as String)),
@@ -328,7 +339,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     ));
   }
 
-  Widget _preview(Map<String, dynamic> theme, {bool compact = false}) {
+  Widget _preview(Map<String, dynamic> theme, {bool compact = false, bool includeTrackpad = true}) {
     final background = _color(theme, 'background');
     final key = _color(theme, 'key');
     final border = _color(theme, 'border');
@@ -355,8 +366,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
             )),
           ])),
         ])),
-        const SizedBox(height: 6),
-        Expanded(flex: 34, child: DecoratedBox(
+        if (includeTrackpad) const SizedBox(height: 6),
+        if (includeTrackpad) Expanded(flex: 34, child: DecoratedBox(
           decoration: BoxDecoration(color: _color(theme, 'trackpad'), border: Border.all(color: border), borderRadius: BorderRadius.circular(radius)),
           child: Center(child: Text('TRACKPAD', style: TextStyle(color: _color(theme, 'trackpadText'), letterSpacing: 2, fontSize: compact ? 8 : 11))),
         )),
