@@ -13,7 +13,14 @@ class DisplayEnvironmentSettings(private val context: Context) {
         migrateLegacyTopologyFlag()
         return linkedMapOf(
             "includePhoneDisplay" to if (topologyEnabled()) 1 else 0,
-            "autoHideTaskbar" to readInt("global", "desktop_windowing_force_hide_taskbar", 0),
+            // This card controls Android's desktop-mode taskbar only. Samsung
+            // DeX has its own launcher-owned DexTaskbarWindow setting exposed
+            // through SamsungDesktopSettings.
+            "autoHideTaskbar" to readInt(
+                "global",
+                ANDROID_TASKBAR_FORCE_HIDE_KEY,
+                0
+            ),
             "supportsInternal120Hz" to supportsInternal120Hz(),
             "forceInternal120Hz" to preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false)
         )
@@ -39,7 +46,7 @@ class DisplayEnvironmentSettings(private val context: Context) {
             return read()
         }
         val target = when (id) {
-            "autoHideTaskbar" -> "global" to "desktop_windowing_force_hide_taskbar"
+            "autoHideTaskbar" -> "global" to ANDROID_TASKBAR_FORCE_HIDE_KEY
             else -> error("Unknown display environment setting: $id")
         }
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
@@ -49,7 +56,11 @@ class DisplayEnvironmentSettings(private val context: Context) {
         check(command.succeeded) {
             "Android rejected ${target.second}: ${command.error.ifBlank { command.output }}"
         }
-        OperationLog.i(context, "DisplayEnvironmentSettings", "${target.second}=${if (enabled) 1 else 0}")
+        OperationLog.i(
+            context,
+            "DisplayEnvironmentSettings",
+            "autoHideTaskbar backend=android_desktop_mode key=${target.second} value=${if (enabled) 1 else 0}"
+        )
         return read()
     }
 
@@ -105,6 +116,8 @@ class DisplayEnvironmentSettings(private val context: Context) {
 
     companion object {
         private const val PREFERENCES = "dextop_display_environment"
+        private const val ANDROID_TASKBAR_FORCE_HIDE_KEY =
+            "desktop_windowing_force_hide_taskbar"
         private const val KEY_FORCE_INTERNAL_120_HZ = "force_internal_120_hz"
         private const val KEY_DEXTOP_TOPOLOGY = "include_dextop_topology"
         private const val KEY_LEGACY_TOPOLOGY_MIGRATED = "legacy_topology_migrated"
