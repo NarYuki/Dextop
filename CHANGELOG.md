@@ -1,5 +1,22 @@
 # Changelog
 
+## 1.3.4
+
+### Improved
+
+- Added a complete laptop keyboard theme system with Standard, Crimson, Cloud Pop, and user-created themes.
+- Added full-screen localized theme management with scrollable previews, real keyboard-and-trackpad overlay previews, add/edit/delete actions, and per-theme ZIP import and export.
+- Added customizable keyboard backgrounds, key, border, text, and trackpad colors, image opacity, background blur, and corner styling.
+- Stabilized laptop-mode transitions and theme-preview lifecycle so preview surfaces are separated from the setup overlay and are cleaned up when leaving the editor.
+- Extended the privacy-filtered Dextop session report with runtime display geometry, including the target display ID, surface and window dimensions, logical target size, density, rotation, and configuration orientation.
+- Added input diagnostics for touch routing, coordinate conversion, active input mode, pointer count, and the result of each sampled `injectInputEvent` call.
+- Added orientation lifecycle diagnostics covering requested rotation, applied display rotation locks, surface recreation, mirror reattachment, and rebuild completion or failure.
+- Added display lifecycle snapshots when displays are added, removed, changed, resized, or disconnected so foldable and DeX transitions can be compared from one report.
+
+### Fixed
+
+- Fixed diagnostic reports omitting the runtime evidence needed to distinguish display-geometry mismatches from rejected input injection on vendor Android builds.
+
 ## 1.3.3
 
 ### Improved
