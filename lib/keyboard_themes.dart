@@ -153,7 +153,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Cancel'),
+            child: Text(AppStrings.tr('uiCancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, controller.text),
@@ -185,11 +185,11 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Cancel'),
+            child: Text(AppStrings.tr('uiCancel')),
           ),
           FilledButton.tonal(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: const Text('Delete'),
+            child: Text(AppStrings.tr('uiDelete')),
           ),
         ],
       ),
@@ -299,7 +299,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
           IconButton(
             onPressed: _busy ? null : _import,
             icon: const Icon(Icons.file_open_outlined),
-            tooltip: 'Import ZIP',
+            tooltip: AppStrings.tr('uiImport'),
           ),
         ],
       ),
@@ -480,7 +480,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                   OutlinedButton.icon(
                     onPressed: _busy ? null : () => _exportTheme(theme),
                     icon: const Icon(Icons.archive_outlined),
-                    label: const Text('Export this theme'),
+                    label: Text(AppStrings.tr('uiExport')),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
