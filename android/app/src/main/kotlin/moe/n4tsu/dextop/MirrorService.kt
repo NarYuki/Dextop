@@ -1941,6 +1941,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             elevation = dp(14).toFloat()
         }
+        // The laptop keyboard demo already occupies the interaction surface;
+        // do not place the generic three-finger gesture hint over it.
+        info.visibility = if (laptopDemo) View.GONE else View.VISIBLE
         frame.addView(scrim, FrameLayout.LayoutParams(-1, -1))
         if (laptopDemo) {
             val deck = buildLaptopDeck().apply {
