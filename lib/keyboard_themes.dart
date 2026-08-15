@@ -184,7 +184,13 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     await _save();
   }
 
-  Future<void> _showRealLaptopPreview() async {
+  Future<void> _showRealLaptopPreview(String themeId) async {
+    if (_selected != themeId) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Select this theme first to preview it.')),
+      );
+      return;
+    }
     final shown =
         await const MethodChannel(
           'app.freedextop/display',
@@ -331,7 +337,11 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                     IconButton(
                                       icon: const Icon(Icons.preview_outlined),
                                       tooltip: 'Show real overlay',
-                                      onPressed: _showRealLaptopPreview,
+                                      onPressed: _selected == theme['id']
+                                          ? () => _showRealLaptopPreview(
+                                              theme['id'] as String,
+                                            )
+                                          : null,
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.edit_outlined),
@@ -373,7 +383,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
           title: Text('Edit ${theme['name']}'),
           content: SizedBox(
             width: 560,
-            height: 500,
+            height: 700,
             child: SingleChildScrollView(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -440,10 +450,12 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                     label: const Text('Choose background image'),
                   ),
                   OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(dialogContext);
-                      _showPreview(theme);
-                    },
+                    onPressed: _selected == theme['id']
+                        ? () {
+                            Navigator.pop(dialogContext);
+                            _showPreview(theme);
+                          }
+                        : null,
                     icon: const Icon(Icons.preview_outlined),
                     label: const Text('Preview keyboard overlay'),
                   ),
@@ -451,6 +463,12 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                     onPressed: _busy ? null : () => _exportTheme(theme),
                     icon: const Icon(Icons.archive_outlined),
                     label: const Text('Export this theme'),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    height: 220,
+                    width: double.infinity,
+                    child: _preview(theme, includeTrackpad: false),
                   ),
                 ],
               ),

@@ -333,6 +333,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var performanceHud: PerformanceHud? = null
     private var laptopContent: LinearLayout? = null
     private var laptopDeck: View? = null
+    private var laptopDeckContent: LinearLayout? = null
     private var laptopSettingsVisible = false
     private var laptopFunctionRowVisible = false
     private var laptopKeyboardView: LinearLayout? = null
@@ -920,23 +921,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopAlt = false
         laptopCapsLock = false
         val palette = laptopPalette()
-        val deck = LinearLayout(this).apply {
+        val deck = FrameLayout(this).apply {
+            setBackgroundColor(palette.background)
+        }
+        val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            background = palette.imageBase64?.let { encoded ->
-                runCatching {
-                    val bytes = Base64.decode(encoded, Base64.DEFAULT)
-                    BitmapDrawable(resources, BitmapFactory.decodeByteArray(bytes, 0, bytes.size)).apply {
-                        alpha = (palette.opacity * 255f).toInt()
+        }
+        palette.imageBase64?.let { encoded ->
+            runCatching {
+                val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.CENTER_CROP
+                    alpha = palette.opacity
+                    setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && palette.blur > 0f) {
+                        setRenderEffect(RenderEffect.createBlurEffect(
+                            palette.blur, palette.blur, Shader.TileMode.CLAMP
+                        ))
                     }
-                }.getOrNull()
-            } ?: GradientDrawable().apply { setColor(palette.background) }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && palette.blur > 0f) {
-                setRenderEffect(RenderEffect.createBlurEffect(
-                    palette.blur, palette.blur, Shader.TileMode.CLAMP
-                ))
+                }
+            }.getOrNull()?.let { image ->
+                deck.addView(image, FrameLayout.LayoutParams(-1, -1))
             }
         }
+        deck.addView(content, FrameLayout.LayoutParams(-1, -1))
         val trackpad = TextView(this).apply {
             text = "TRACKPAD"
             typeface = laptopTypeface
@@ -963,7 +972,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (laptopFunctionRowVisible && index == 0) row.tag = "laptop_function_row"
             keyboard.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
         }
-        deck.addView(keyboard, LinearLayout.LayoutParams(-1, 0, .66f).apply {
+        content.addView(keyboard, LinearLayout.LayoutParams(-1, 0, .66f).apply {
             bottomMargin = dp(7)
         })
         val trackpadArea = FrameLayout(this).apply {
@@ -990,14 +999,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(235, 231, 239))
                 background = laptopKeyBackground(false, LAPTOP_ALT)
-                setOnClickListener { toggleMenu() }
+                setOnClickListener { if (!demoMode) toggleMenu() }
             }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.END).apply {
                 rightMargin = dp(10)
                 bottomMargin = dp(10)
             })
         }
-        deck.addView(trackpadArea, LinearLayout.LayoutParams(-1, 0, .34f))
+        content.addView(trackpadArea, LinearLayout.LayoutParams(-1, 0, .34f))
         laptopDeck = deck
+        laptopDeckContent = content
         return deck
     }
 
@@ -1477,7 +1487,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (key.code == KeyEvent.KEYCODE_META_LEFT) {
             setOnLongClickListener {
-                showLaptopKeyboardSettings()
+                if (!demoMode) showLaptopKeyboardSettings()
                 true
             }
         }
@@ -1608,7 +1618,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun showLaptopKeyboardSettings() {
-        val deck = laptopDeck as? LinearLayout ?: return
+        val deck = laptopDeckContent ?: return
         laptopSettingsVisible = true
         TransitionManager.beginDelayedTransition(deck, AutoTransition().apply { duration = 240 })
         deck.removeAllViews()
@@ -4719,6 +4729,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         menuScrim = null
         performanceHud = null
         laptopDeck = null
+        laptopDeckContent = null
         demoInfoView = null
     }
 
