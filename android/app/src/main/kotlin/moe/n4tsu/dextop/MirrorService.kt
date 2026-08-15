@@ -2336,7 +2336,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     )
     private val controlIds get() = allControlIds.filter {
         when (it) {
-            "laptop" -> isDebugLaptopModeForced() || isFoldableMainDisplay()
+            // Demo mode documents every available control even on a
+            // non-foldable phone; the action only performs work on a
+            // supported foldable when the demo is not active.
+            "laptop" -> demoMode || isDebugLaptopModeForced() || isFoldableMainDisplay()
             "mouse_route", "keyboard_route" ->
                 demoMode || physicalInputRoutingSupported && physicalExternalDisplayConnected
             else -> true
