@@ -38,6 +38,7 @@ internal data class MirrorAttachRequest(
 )
 
 internal interface MirrorAttachment {
+    fun update(request: MirrorAttachRequest): Boolean = false
     fun release()
 }
 
@@ -92,13 +93,21 @@ internal class DisplayMirrorBackend(
         contentDensity: Int,
         strategyOverride: String? = null
     ): List<StrategyAttempt> {
-        releaseLayer()
-        val attempts = mutableListOf<StrategyAttempt>()
         val request = MirrorAttachRequest(
             displayId, host, hostWidth, hostHeight,
             contentWidth, contentHeight, contentDensity
         )
         val strategies = strategyOverride?.let(::listOf) ?: environment.mirrorStrategies
+        // Resizing/rebinding an existing recording VirtualDisplay keeps its
+        // display id stable. Releasing it on every fold or laptop-pane change
+        // leaves stale AOSP desktop desks behind until Shell refuses launches.
+        if (activeStrategy == "virtual_display" && "virtual_display" in strategies &&
+            attachment?.update(request) == true) {
+            OperationLog.i(context, "DisplayBackend", "mirror strategy=virtual_display updated in place")
+            return listOf(StrategyAttempt("virtual_display", true, "updated in place"))
+        }
+        releaseLayer()
+        val attempts = mutableListOf<StrategyAttempt>()
         for (id in strategies) {
             val backend = attachBackends[id] ?: continue
             if (!backend.isSupported()) {
@@ -212,7 +221,9 @@ private class VirtualDisplayPlatform private constructor(
     private val builderType: Class<*>,
     private val callbackType: Class<*>,
     private val createOperation: Method,
-    private val releaseOperation: Method
+    private val releaseOperation: Method,
+    private val resizeOperation: Method?,
+    private val surfaceOperation: Method?
 ) {
     fun open(service: Any, request: MirrorAttachRequest, surface: Surface): MirrorAttachment {
         val descriptor = createDescriptor(request, surface)
@@ -227,7 +238,9 @@ private class VirtualDisplayPlatform private constructor(
         }.toTypedArray()
         val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
         check(displayId >= 0) { "The virtual display request was declined" }
-        return ManagedVirtualDisplay(service, releaseOperation, callback)
+        return ManagedVirtualDisplay(
+            service, releaseOperation, resizeOperation, surfaceOperation, callback
+        )
     }
 
     private fun createDescriptor(request: MirrorAttachRequest, surface: Surface): Any {
@@ -296,7 +309,17 @@ private class VirtualDisplayPlatform private constructor(
                     method.parameterTypes.size == 1 &&
                     method.parameterTypes[0].isAssignableFrom(callback)
             } ?: error("No compatible display release operation")
-            return VirtualDisplayPlatform(configuration, builder, callback, creation, release)
+            val resize = manager.methods.firstOrNull { method ->
+                method.name == "resizeVirtualDisplay" &&
+                    method.parameterTypes.firstOrNull()?.isAssignableFrom(callback) == true
+            }
+            val setSurface = manager.methods.firstOrNull { method ->
+                method.name == "setVirtualDisplaySurface" &&
+                    method.parameterTypes.firstOrNull()?.isAssignableFrom(callback) == true
+            }
+            return VirtualDisplayPlatform(
+                configuration, builder, callback, creation, release, resize, setSurface
+            )
         }
     }
 }
@@ -317,9 +340,36 @@ private class DisplayLifecycleCallback(private val binder: Binder) : InvocationH
 private class ManagedVirtualDisplay(
     private val service: Any,
     private val releaseOperation: Method,
+    private val resizeOperation: Method?,
+    private val surfaceOperation: Method?,
     private val callback: Any
 ) : MirrorAttachment {
     private var released = false
+
+    override fun update(request: MirrorAttachRequest): Boolean = runCatching {
+        val resize = resizeOperation ?: return false
+        val resizeArgs = resize.parameterTypes.mapIndexed { index, type ->
+            when {
+                index == 0 -> callback
+                type == Int::class.javaPrimitiveType && index == 1 -> request.contentWidth
+                type == Int::class.javaPrimitiveType && index == 2 -> request.contentHeight
+                type == Int::class.javaPrimitiveType -> request.contentDensity
+                else -> null
+            }
+        }.toTypedArray()
+        resize.invoke(service, *resizeArgs)
+        surfaceOperation?.let { operation ->
+            val args = operation.parameterTypes.mapIndexed { index, type ->
+                when {
+                    index == 0 -> callback
+                    Surface::class.java.isAssignableFrom(type) -> request.host.holder.surface
+                    else -> null
+                }
+            }.toTypedArray()
+            operation.invoke(service, *args)
+        }
+        true
+    }.getOrDefault(false)
 
     override fun release() {
         if (released) return

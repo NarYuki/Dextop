@@ -10,11 +10,9 @@ class DisplayEnvironmentSettings(private val context: Context) {
     private val preferences = context.getSharedPreferences(PREFERENCES, Context.MODE_PRIVATE)
 
     fun read(): Map<String, Any> {
-        val includePhoneDisplay = readString("secure", "include_default_display_in_topology")
-            ?.toIntOrNull()
-            ?: enableTopologyByDefault()
+        migrateLegacyTopologyFlag()
         return linkedMapOf(
-            "includePhoneDisplay" to includePhoneDisplay,
+            "includePhoneDisplay" to if (topologyEnabled()) 1 else 0,
             "autoHideTaskbar" to readInt("global", "desktop_windowing_force_hide_taskbar", 0),
             "supportsInternal120Hz" to supportsInternal120Hz(),
             "forceInternal120Hz" to preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false)
@@ -22,13 +20,25 @@ class DisplayEnvironmentSettings(private val context: Context) {
     }
 
     fun write(id: String, enabled: Boolean): Map<String, Any> {
+        if (id == "includePhoneDisplay") {
+            preferences.edit().putBoolean(KEY_DEXTOP_TOPOLOGY, enabled).apply()
+            if (MirrorService.isActive()) {
+                val overlayDisplayId = MirrorService.topologyOverlayDisplayId()
+                if (enabled && overlayDisplayId >= 0) {
+                    activateTopologyIfEnabled(overlayDisplayId)
+                } else if (!enabled) {
+                    restoreTopology()
+                }
+            }
+            OperationLog.i(context, "DisplayEnvironmentSettings", "$KEY_DEXTOP_TOPOLOGY=$enabled")
+            return read()
+        }
         if (id == "forceInternal120Hz") {
             preferences.edit().putBoolean(KEY_FORCE_INTERNAL_120_HZ, enabled).apply()
             OperationLog.i(context, "DisplayEnvironmentSettings", "$KEY_FORCE_INTERNAL_120_HZ=$enabled")
             return read()
         }
         val target = when (id) {
-            "includePhoneDisplay" -> "secure" to "include_default_display_in_topology"
             "autoHideTaskbar" -> "global" to "desktop_windowing_force_hide_taskbar"
             else -> error("Unknown display environment setting: $id")
         }
@@ -56,16 +66,6 @@ class DisplayEnvironmentSettings(private val context: Context) {
             ?.takeUnless { it.isBlank() || it == "null" }
     }
 
-    private fun enableTopologyByDefault(): Int {
-        if (!privilegedAccess.isAvailable()) return 1
-        val result = privilegedAccess.execute(
-            "settings", "put", "secure", "include_default_display_in_topology", "1"
-        )
-        if (!result.succeeded) return 1
-        OperationLog.i(context, "DisplayEnvironmentSettings", "include_default_display_in_topology=1 (default)")
-        return 1
-    }
-
     fun supportsInternal120Hz(): Boolean {
         val display = context.getSystemService(DisplayManager::class.java)
             .getDisplay(Display.DEFAULT_DISPLAY) ?: return false
@@ -75,23 +75,38 @@ class DisplayEnvironmentSettings(private val context: Context) {
     fun forceInternal120HzEnabled(): Boolean =
         preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false)
 
-    fun refreshTopologyIfEnabled() {
-        if (readInt("secure", "include_default_display_in_topology", 1) != 1) return
-        check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
-        listOf("0", "1").forEachIndexed { index, value ->
-            val result = privilegedAccess.execute(
-                "settings", "put", "secure", "include_default_display_in_topology", value
+    fun activateTopologyIfEnabled(overlayDisplayId: Int) {
+        if (!topologyEnabled() || overlayDisplayId < 0) return
+        DisplayTopologyController(context).activateDextopTopology(overlayDisplayId)
+    }
+
+    fun restoreTopology() {
+        DisplayTopologyController(context).restoreDextopTopology()
+    }
+
+    fun prepareInactiveState() {
+        migrateLegacyTopologyFlag()
+        restoreTopology()
+    }
+
+    private fun topologyEnabled(): Boolean =
+        preferences.getBoolean(KEY_DEXTOP_TOPOLOGY, true)
+
+    private fun migrateLegacyTopologyFlag() {
+        if (preferences.getBoolean(KEY_LEGACY_TOPOLOGY_MIGRATED, false)) return
+        if (!privilegedAccess.isAvailable()) return
+        val result = privilegedAccess.execute(
+                "settings", "delete", "secure", "include_default_display_in_topology"
             )
-            check(result.succeeded) {
-                "Unable to refresh display topology: ${result.error.ifBlank { result.output }}"
-            }
-            if (index == 0) android.os.SystemClock.sleep(120)
+        if (result.succeeded) {
+            preferences.edit().putBoolean(KEY_LEGACY_TOPOLOGY_MIGRATED, true).apply()
         }
-        OperationLog.i(context, "DisplayEnvironmentSettings", "display topology refreshed 0 -> 1")
     }
 
     companion object {
         private const val PREFERENCES = "dextop_display_environment"
         private const val KEY_FORCE_INTERNAL_120_HZ = "force_internal_120_hz"
+        private const val KEY_DEXTOP_TOPOLOGY = "include_dextop_topology"
+        private const val KEY_LEGACY_TOPOLOGY_MIGRATED = "legacy_topology_migrated"
     }
 }

@@ -28,6 +28,16 @@ internal class PhoneRotationController(
         if (clear) state = null
     }
 
+    /** Follow the host display while retaining the pre-session state for final restoration. */
+    fun followSystem() {
+        if (state == null) {
+            state = readState().also {
+                sessionJournal.rememberPhoneRotation(it.frozen, it.rotation)
+            }
+        }
+        thaw()
+    }
+
     private fun readState(): PhoneRotationState {
         val type = Class.forName(WINDOW_MANAGER_INTERFACE)
         val service = privilegedAccess.service("window", WINDOW_MANAGER_INTERFACE)

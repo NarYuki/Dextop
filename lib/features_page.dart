@@ -39,6 +39,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   var loading = false;
   var appsLoading = false;
   var foldableAuto = false;
+  var foldableLaptopMode = false;
   var threeFingerGesture = 'menu';
   var twoFingerGesture = 'right_click';
   var longPressGesture = 'drag';
@@ -164,6 +165,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
       foldableAuto = preferences.getBool('foldable_auto') ?? false;
+      foldableLaptopMode = preferences.getBool('foldable_laptop_mode') ?? false;
       threeFingerGesture =
           preferences.getString('gesture_three_finger') ?? 'menu';
       twoFingerGesture =
@@ -592,6 +594,15 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     setState(() => foldableAuto = value);
   }
 
+  Future<void> updateFoldableLaptopMode(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('foldable_laptop_mode', value);
+    await channel.invokeMethod<void>('foldableLaptopMode', <String, dynamic>{
+      'enabled': value,
+    });
+    setState(() => foldableLaptopMode = value);
+  }
+
   Future<void> updateSecondaryGesture(String key, String value) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(key, value);
@@ -859,6 +870,13 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
             subtitle: Text(
               AppStrings.tr('uiAutomaticallyUsesMeasuredResolutionForOpenAnd'),
             ),
+          ),
+          SwitchListTile(
+            value: foldableLaptopMode,
+            onChanged: updateFoldableLaptopMode,
+            secondary: Icon(Icons.laptop_chromebook_rounded),
+            title: Text(AppStrings.tr('foldableLaptopMode')),
+            subtitle: Text(AppStrings.tr('foldableLaptopModeDescription')),
           ),
         ]),
       ],

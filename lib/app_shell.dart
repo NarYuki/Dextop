@@ -308,16 +308,49 @@ class NativeBridge {
     bool portrait,
     bool secure, {
     required bool decorations,
-  }) {
+  }) async {
+    var effectiveProfile = profile;
+    if (profile.isDevice) {
+      final current =
+          await channel.invokeMapMethod<String, dynamic>(
+            'currentDeviceDisplayProfile',
+          ) ??
+          const <String, dynamic>{};
+      final width = (current['width'] as num?)?.toInt();
+      final height = (current['height'] as num?)?.toInt();
+      final density = (current['density'] as num?)?.toInt();
+      if (width != null && height != null && density != null) {
+        effectiveProfile = DisplayProfile(
+          profile.name,
+          '$density dpi',
+          width,
+          height,
+          density,
+          profile.icon,
+          id: profile.id,
+          isDevice: true,
+        );
+      }
+    }
     AppAnalytics.event('desktop_start', {
       'orientation': portrait ? 'portrait' : 'landscape',
       'secure_display': secure,
-      'resolution': '${profile.width}x${profile.height}',
+      'resolution': '${effectiveProfile.width}x${effectiveProfile.height}',
+      'dynamic_resolution': profile.isDevice,
     });
-    return channel.invokeMethod('start', {
-      'width': portrait ? profile.height : profile.width,
-      'height': portrait ? profile.width : profile.height,
-      'density': profile.density,
+    final longSide = effectiveProfile.width > effectiveProfile.height
+        ? effectiveProfile.width
+        : effectiveProfile.height;
+    final shortSide = effectiveProfile.width > effectiveProfile.height
+        ? effectiveProfile.height
+        : effectiveProfile.width;
+    await channel.invokeMethod('start', {
+      // currentDeviceDisplayProfile returns the host's current orientation.
+      // Normalize it before applying the Dextop selection so choosing
+      // landscape while Android is portrait cannot retain portrait dimensions.
+      'width': portrait ? shortSide : longSide,
+      'height': portrait ? longSide : shortSide,
+      'density': effectiveProfile.density,
       'secure': secure,
       'decorations': decorations,
     });

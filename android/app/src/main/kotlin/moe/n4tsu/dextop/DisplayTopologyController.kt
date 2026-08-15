@@ -6,6 +6,8 @@ import android.graphics.RectF
 import android.hardware.display.DisplayManager
 import android.os.IBinder
 import android.os.Parcel
+import android.util.Base64
+import org.json.JSONObject
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
 import kotlin.math.hypot
@@ -13,6 +15,91 @@ import kotlin.math.hypot
 /** Privileged bridge for Android's hidden multi-display topology API. */
 class DisplayTopologyController(private val context: Context) {
     private val privilegedAccess = PrivilegedAccess("DextopTopology")
+    private val session = context.getSharedPreferences("dextop_topology_session", Context.MODE_PRIVATE)
+    private val layout = context.getSharedPreferences("dextop_topology_layout", Context.MODE_PRIVATE)
+
+    fun activateDextopTopology(overlayDisplayId: Int) {
+        check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
+        rememberOriginalTopology()
+        val manager = context.getSystemService(DisplayManager::class.java)
+        val externalIds = ExternalDisplayDetector(context).snapshot().displayIds.toSet()
+        val eligible = manager.displays.filter { display ->
+            display.displayId == overlayDisplayId || display.displayId in externalIds
+        }
+        val overlay = eligible.firstOrNull { it.displayId == overlayDisplayId }
+            ?: error("The Dextop overlay display is not available")
+        fun node(display: android.view.Display): Node {
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(metrics)
+            return Node(
+                display.displayId,
+                metrics.widthPixels,
+                metrics.heightPixels,
+                metrics.densityDpi.coerceAtLeast(1),
+                POSITION_RIGHT,
+                0f,
+                mutableListOf()
+            )
+        }
+        val root = node(overlay)
+        var parent = root
+        eligible.filter { it.displayId != overlayDisplayId }
+            .sortedBy { it.displayId }
+            .forEach { display ->
+                val child = node(display)
+                parent.children += child
+                parent = child
+            }
+        writeTopology(Topology(root, overlayDisplayId))
+        restoreSavedArrangement(overlayDisplayId, eligible)
+        OperationLog.i(
+            context,
+            "DisplayTopology",
+            "activated overlay=$overlayDisplayId external=${eligible.map { it.displayId }.filter { it != overlayDisplayId }}"
+        )
+    }
+
+    fun restoreDextopTopology() {
+        if (!session.getBoolean("snapshot_saved", false)) return
+        val wasNull = session.getBoolean("snapshot_was_null", true)
+        val topology = if (wasNull) null else {
+            val encoded = session.getString("snapshot", null) ?: return
+            val parcel = Parcel.obtain()
+            try {
+                val bytes = Base64.decode(encoded, Base64.NO_WRAP)
+                parcel.unmarshall(bytes, 0, bytes.size)
+                parcel.setDataPosition(0)
+                Topology.read(parcel)
+            } finally {
+                parcel.recycle()
+            }
+        }
+        writeTopology(topology)
+        session.edit().clear().apply()
+        OperationLog.i(context, "DisplayTopology", "restored pre-Dextop topology")
+    }
+
+    private fun rememberOriginalTopology() {
+        if (session.getBoolean("snapshot_saved", false)) return
+        val original = readTopology()
+        val editor = session.edit()
+            .putBoolean("snapshot_saved", true)
+            .putBoolean("snapshot_was_null", original == null)
+        if (original != null) {
+            val parcel = Parcel.obtain()
+            try {
+                original.write(parcel)
+                editor.putString(
+                    "snapshot",
+                    Base64.encodeToString(parcel.marshall(), Base64.NO_WRAP)
+                )
+            } finally {
+                parcel.recycle()
+            }
+        }
+        check(editor.commit()) { "Unable to save the original display topology" }
+    }
 
     fun read(): Map<String, Any> = runCatching {
         val topology = readTopology()
@@ -103,8 +190,68 @@ class DisplayTopologyController(private val context: Context) {
             pending.remove(child.displayId)
         }
         writeTopology(Topology(root, rootId))
+        saveArrangement(positions, nodes, rootId)
         OperationLog.i(context, "DisplayTopology", "rearranged ${positions.keys.sorted()}")
         return read()
+    }
+
+    private fun saveArrangement(
+        positions: Map<Int, PointF>,
+        nodes: Map<Int, Node>,
+        primaryDisplayId: Int
+    ) {
+        val manager = context.getSystemService(DisplayManager::class.java)
+        val overlayId = MirrorService.topologyOverlayDisplayId()
+            .takeIf(positions::containsKey) ?: primaryDisplayId
+        val origin = positions.getValue(overlayId)
+        val entries = JSONObject()
+        positions.forEach { (id, point) ->
+            val display = manager.getDisplay(id) ?: return@forEach
+            entries.put(stableDisplayKey(display, id == overlayId), JSONObject().apply {
+                put("x", (point.x - origin.x).toDouble())
+                put("y", (point.y - origin.y).toDouble())
+            })
+        }
+        layout.edit().putString(KEY_SAVED_ARRANGEMENT, entries.toString()).apply()
+        OperationLog.i(context, "DisplayTopology", "saved arrangement displays=${entries.length()}")
+    }
+
+    private fun restoreSavedArrangement(
+        overlayDisplayId: Int,
+        displays: List<android.view.Display>
+    ) {
+        val encoded = layout.getString(KEY_SAVED_ARRANGEMENT, null) ?: return
+        val saved = runCatching { JSONObject(encoded) }.getOrNull() ?: return
+        val current = readTopology() ?: return
+        val bounds = linkedMapOf<Int, RectF>()
+        current.root?.collectBounds(0f, 0f, bounds)
+        val restored = linkedMapOf<Int, Map<String, Double>>()
+        displays.forEach { display ->
+            val fallback = bounds[display.displayId] ?: return@forEach
+            val value = saved.optJSONObject(
+                stableDisplayKey(display, display.displayId == overlayDisplayId)
+            )
+            restored[display.displayId] = mapOf(
+                "x" to (value?.optDouble("x") ?: fallback.left.toDouble()),
+                "y" to (value?.optDouble("y") ?: fallback.top.toDouble())
+            )
+        }
+        if (restored.keys == bounds.keys) {
+            rearrange(restored)
+            OperationLog.i(context, "DisplayTopology", "restored saved arrangement")
+        }
+    }
+
+    private fun stableDisplayKey(display: android.view.Display, overlay: Boolean): String {
+        if (overlay) return "dextop_overlay"
+        val uniqueId = runCatching {
+            android.view.Display::class.java.getMethod("getUniqueId").invoke(display) as String
+        }.getOrNull()
+        if (!uniqueId.isNullOrBlank()) return "external:$uniqueId"
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        display.getRealMetrics(metrics)
+        return "external:${display.name}:${metrics.widthPixels}x${metrics.heightPixels}"
     }
 
     private fun edgeDistance(
@@ -127,10 +274,12 @@ class DisplayTopologyController(private val context: Context) {
         if (reply.readInt() == 0) null else Topology.read(reply)
     }
 
-    private fun writeTopology(topology: Topology) {
+    private fun writeTopology(topology: Topology?) {
         transact(TRANSACTION_SET, write = { data ->
-            data.writeInt(1)
-            topology.write(data)
+            if (topology == null) data.writeInt(0) else {
+                data.writeInt(1)
+                topology.write(data)
+            }
         }) { _, reply ->
             reply.readException()
         }
@@ -235,6 +384,7 @@ class DisplayTopologyController(private val context: Context) {
     }
 
     companion object {
+        private const val KEY_SAVED_ARRANGEMENT = "saved_arrangement_v1"
         private const val DISPLAY_INTERFACE = "android.hardware.display.IDisplayManager"
         private const val TRANSACTION_GET = 106
         private const val TRANSACTION_SET = 107

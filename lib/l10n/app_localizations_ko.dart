@@ -307,6 +307,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get detectedResolution => '자동 감지 해상도';
 
   @override
+  String get automaticResolution => '자동';
+
+  @override
   String get loadingLabel => '불러오는 중…';
 
   @override
@@ -489,6 +492,13 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get uiDisplayCategory => '디스플레이';
+
+  @override
+  String get foldableLaptopMode => '노트북 모드 자동 감지';
+
+  @override
+  String get foldableLaptopModeDescription =>
+      '지원되는 접힘 각도를 감지하면 노트북 모드를 자동으로 켭니다';
 
   @override
   String get topologyNoDisplays => '배치할 수 있는 디스플레이가 없습니다';
@@ -1036,7 +1046,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get samsungDexCommandArrow => '명령 화살표 표시';
 
   @override
-  String get samsungIncludePhoneDisplay => '휴대전화 화면을 디스플레이 토폴로지에 포함';
+  String get samsungIncludePhoneDisplay => 'Dextop을 디스플레이 토폴로지에 포함';
 
   @override
   String get samsungMirrorPhoneDisplay => '내장 화면 미러링';

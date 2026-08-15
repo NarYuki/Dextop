@@ -735,7 +735,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .round()
         .clamp(160, 320);
     final deviceProfile = DisplayProfile(
-      '${AppStrings.tr('uiTerminalResolution')} ($landscapeWidth × $landscapeHeight)',
+      '${AppStrings.tr('automaticResolution')} ($landscapeWidth × $landscapeHeight)',
       '$deviceDensity dpi',
       landscapeWidth,
       landscapeHeight,
@@ -755,8 +755,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     int defaultDeviceDensity,
   ) async {
     final prefs = await SharedPreferences.getInstance();
-    final deviceDpi =
-        prefs.getInt('device_resolution_dpi') ?? defaultDeviceDensity;
+    final deviceDpi = defaultDeviceDensity;
     final device = DisplayProfile(
       deviceProfile.name,
       '$deviceDpi dpi',
@@ -792,7 +791,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _saveProfiles() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setInt('device_resolution_dpi', profiles.first.density);
+    await prefs.remove('device_resolution_dpi');
     await prefs.setString(
       'custom_resolution_profiles',
       jsonEncode(

@@ -1,5 +1,25 @@
 # Changelog
 
+## 1.3.1
+
+### New
+
+- Added persistent display arrangements so monitor positions are restored when the same external-display configuration reconnects.
+- Added laptop mode for foldable devices, with a US keyboard and trackpad in the lower screen area.
+- Added laptop keyboard themes, function keys, shortcut labels, and direct access to the Dextop overlay from the trackpad.
+- Added optional hinge-angle detection for automatically entering and leaving laptop mode.
+
+### Improved
+
+- Kept manual laptop mode available from the overlay on supported foldable devices even when automatic detection is disabled.
+- Updated the README and wiki with multi-display, high-refresh-rate, taskbar, and foldable laptop-mode features.
+- Marked foldable main/cover-display switching as incomplete while device-specific panel transitions continue to be improved.
+
+### Fixed
+
+- Fixed hinge-angle detection silently enabling the laptop mode preference.
+- Fixed manual laptop mode toggles overwriting the automatic detection preference.
+
 ## 1.3.0
 
 ### Multi-display support has arrived

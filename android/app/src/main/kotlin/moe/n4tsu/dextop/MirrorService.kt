@@ -16,6 +16,9 @@ import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Path
 import android.graphics.Rect
+import android.graphics.RectF
+import android.graphics.Typeface
+import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.LayerDrawable
@@ -24,11 +27,16 @@ import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.input.InputManager
+import android.hardware.Sensor
+import android.hardware.SensorEvent
+import android.hardware.SensorEventListener
+import android.hardware.SensorManager
 import android.os.Binder
 import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.transition.ChangeBounds
+import android.transition.AutoTransition
 import android.transition.TransitionManager
 import android.util.Log
 import android.view.Gravity
@@ -82,6 +90,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val NOTIFICATION_ROUTE_RETRY_DELAY_MS = 140L
         private const val NOTIFICATION_ROUTE_RETRIES = 5
         private const val HOST_DISPLAY_MONITOR_INTERVAL_MS = 1_000L
+        private const val LAPTOP_SHIFT = -1
+        private const val LAPTOP_CONTROL = -2
+        private const val LAPTOP_ALT = -3
+        private const val LAPTOP_CAPS = -4
+        private const val DEBUG_FORCE_LAPTOP_MODE = false
         private const val STATUS_BAR_INTERFACE = "com.android.internal.statusbar.IStatusBarService"
         private const val PHONE_NAVIGATION_DISABLE_FLAGS =
             0x00200000 or 0x00400000 or 0x01000000
@@ -100,6 +113,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             decorations: Boolean,
             completion: (Result<Map<String, Any>>) -> Unit
         ) {
+            val running = instance
+            if (active && running != null && running.targetDisplayId >= 0 &&
+                secure == running.secureDisplay && decorations == running.showSystemDecorations) {
+                val requested = Config(width, height, density, secure, decorations)
+                running.root?.post {
+                    runCatching {
+                        val next = running.effectiveConfig(requested)
+                        running.resizeActiveDisplay(next, "resolution changed from Android UI")
+                        mapOf(
+                            "displayId" to running.targetDisplayId,
+                            "width" to running.targetWidth,
+                            "height" to running.targetHeight,
+                            "density" to running.density,
+                            "decorations" to running.showSystemDecorations
+                        )
+                    }.onSuccess { completion(Result.success(it)) }
+                        .onFailure { completion(Result.failure(it)) }
+                } ?: completion(Result.failure(IllegalStateException("Dextop overlay is unavailable")))
+                return
+            }
             pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
             pendingStartResult = completion
             pending = Config(width, height, density, secure, decorations)
@@ -126,6 +159,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
         fun isActive(): Boolean = active
+
+        fun updateLaptopModeEnabled(enabled: Boolean) {
+            instance?.root?.post { instance?.applyFlutterLaptopModeSetting(enabled) }
+        }
 
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
 
@@ -259,6 +296,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var demoMode = false
     private var demoInfoView: TextView? = null
     private var performanceHud: PerformanceHud? = null
+    private var laptopContent: LinearLayout? = null
+    private var laptopDeck: View? = null
+    private var laptopSettingsVisible = false
+    private var laptopFunctionRowVisible = false
+    private var laptopKeyboardView: LinearLayout? = null
+    private var laptopFnButton: TextView? = null
+    private var laptopModeActive = false
+    private var laptopManualOverride = false
+    private var laptopAutoActivated = false
+    private var laptopHostUniqueId: String? = null
+    private var laptopShift = false
+    private var laptopControl = false
+    private var laptopAlt = false
+    private var laptopCapsLock = false
+    private val laptopTypeface: Typeface by lazy {
+        Typeface.createFromAsset(assets, "fonts/HarmonyOS_Sans_Medium.ttf")
+    }
+    private val materialIconTypeface: Typeface by lazy {
+        Typeface.createFromAsset(assets, "flutter_assets/fonts/MaterialIcons-Regular.otf")
+    }
+    private val laptopModifierButtons = mutableMapOf<Int, TextView>()
+    private val laptopShortcutButtons = mutableMapOf<Int, TextView>()
     private var targetDisplayId = -1
     private var targetWidth = 1920
     private var targetHeight = 1080
@@ -310,6 +369,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var mouseReaderProcess: moe.shizuku.server.IRemoteProcess? = null
     @Volatile private var mouseReaderRunning = false
     private var inputManager: InputManager? = null
+    private var sensorManager: SensorManager? = null
+    private var hingeAngle: Float? = null
+    private val hingeListener = object : SensorEventListener {
+        override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
+
+        override fun onSensorChanged(event: SensorEvent?) {
+            val angle = event?.values?.firstOrNull() ?: return
+            hingeAngle = angle
+            Log.d(logTag, "hinge angle=$angle laptop=$laptopModeActive")
+            updateLaptopModeForHinge(angle)
+        }
+    }
     private val inputDeviceListener = object : InputManager.InputDeviceListener {
         override fun onInputDeviceAdded(deviceId: Int) = refreshPhysicalInputState()
         override fun onInputDeviceRemoved(deviceId: Int) = refreshPhysicalInputState()
@@ -335,6 +406,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             if (active && displayId == Display.DEFAULT_DISPLAY) {
+                leaveLaptopModeOnCoverDisplay()
                 scheduleHostDisplayReconfiguration("default display changed")
             } else if (active && displayId == targetDisplayId && mirrorDisplayId >= 0) {
                 scheduleMirrorRefresh("source display changed")
@@ -361,7 +433,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val generation = ++topologyReapplyGeneration
         android.os.Handler(mainLooper).postDelayed({
             if (generation != topologyReapplyGeneration || !active) return@postDelayed
-            runCatching { DisplayEnvironmentSettings(this).refreshTopologyIfEnabled() }
+            runCatching {
+                DisplayEnvironmentSettings(this).activateTopologyIfEnabled(mirrorDisplayId)
+            }
                 .onFailure { Log.e(logTag, "display topology reapply after reconnect failed", it) }
         }, 750)
     }
@@ -393,6 +467,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val hostDisplayMonitor = object : Runnable {
         override fun run() {
             if (!active || suspendedForLockScreen) return
+            if (laptopModeActive &&
+                !isDebugLaptopModeForced() &&
+                laptopHostUniqueId != null &&
+                laptopHostUniqueId != defaultDisplayUniqueId()) {
+                // A different internal panel became the default display. This
+                // is the reliable cover-display signal; failure to enumerate
+                // the inactive inner panel must never dismiss laptop mode.
+                laptopManualOverride = false
+                setLaptopMode(false)
+                hostDisplayMonitorHandler.postDelayed(this, HOST_DISPLAY_MONITOR_INTERVAL_MS)
+                return
+            }
             val bounds = windowManager?.currentWindowMetrics?.bounds
             val host = surfaceView
             val width = host?.width?.takeIf { it > 0 } ?: bounds?.width() ?: 0
@@ -431,6 +517,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         inputManager = getSystemService(InputManager::class.java).also {
             it.registerInputDeviceListener(inputDeviceListener, null)
         }
+        sensorManager = getSystemService(SensorManager::class.java).also { manager ->
+            manager.getDefaultSensor(Sensor.TYPE_HINGE_ANGLE)?.let { sensor ->
+                manager.registerListener(hingeListener, sensor, SensorManager.SENSOR_DELAY_NORMAL)
+                Log.i(logTag, "hinge-angle sensor registered: ${sensor.name}")
+            } ?: Log.i(logTag, "hinge-angle sensor unavailable")
+        }
         getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, null)
         physicalExternalDisplayConnected = physicalInputRoutingSupported && externalDisplayDetector.snapshot().connected
         if (!physicalInputRoutingSupported) runCatching { physicalInputRouter.restore() }
@@ -454,6 +546,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // Restore only settings owned by an interrupted Dextop transaction.
             // Never delete an arbitrary overlay configured by the user or another app.
             if (sessionJournal.snapshot()["transactionOpen"] == true) {
+                runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
+                    .onFailure { Log.e(logTag, "interrupted topology restoration failed", it) }
                 runCatching { sessionJournal.restoreSystemSettings() }
                     .onSuccess { Log.i(logTag, "restored settings from interrupted Dextop session") }
                     .onFailure { Log.e(logTag, "interrupted session restoration failed", it) }
@@ -490,6 +584,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (!active || suspendedForLockScreen) return
+        leaveLaptopModeOnCoverDisplay()
         scheduleHostDisplayReconfiguration(
             "configuration changed",
             densityDpi = newConfig.densityDpi
@@ -523,8 +618,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (!pausedForAndroid) stop()
         if (screenReceiverRegistered) unregisterReceiver(screenReceiver)
         inputManager?.unregisterInputDeviceListener(inputDeviceListener)
+        sensorManager?.unregisterListener(hingeListener)
         getSystemService(DisplayManager::class.java).unregisterDisplayListener(displayListener)
         inputManager = null
+        sensorManager = null
         screenReceiverRegistered = false
         instance = null
         return super.onUnbind(intent)
@@ -562,11 +659,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun start(config: Config) {
+        laptopModeActive = false
+        laptopHostUniqueId = null
+        val effectiveConfig = effectiveConfig(config)
         OperationLog.beginSession(
             this,
             "environment=${desktopEnvironment.id} sdk=${Build.VERSION.SDK_INT} " +
-                "display=${config.width}x${config.height}/${config.density} " +
-                "secure=${config.secure} decorations=${config.decorations}"
+                "display=${effectiveConfig.width}x${effectiveConfig.height}/${effectiveConfig.density} " +
+                "secure=${effectiveConfig.secure} decorations=${effectiveConfig.decorations}"
         )
         if (!privilegedAccess.isAvailable()) {
             pending = null
@@ -590,9 +690,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         suspendedForLockScreen = false
         suspendedConfig = null
         experimentalMultiTouch = true
-        sessionJournal.preparing(config.width, config.height, config.density, config.decorations)
-        runCatching { DisplayEnvironmentSettings(this).refreshTopologyIfEnabled() }
-            .onFailure { Log.e(logTag, "display topology refresh failed", it) }
+        sessionJournal.preparing(
+            effectiveConfig.width,
+            effectiveConfig.height,
+            effectiveConfig.density,
+            effectiveConfig.decorations
+        )
         runCatching { internalRefreshRateController.applyIfEnabled() }
             .onFailure { Log.e(logTag, "120 Hz override failed", it) }
         mirrorRefreshGeneration += 1
@@ -600,11 +703,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         mirrorHostWidth = 0
         mirrorHostHeight = 0
         targetDisplayId = -1
-        targetWidth = config.width
-        targetHeight = config.height
-        density = config.density
-        secureDisplay = config.secure
-        showSystemDecorations = config.decorations
+        targetWidth = effectiveConfig.width
+        targetHeight = effectiveConfig.height
+        density = effectiveConfig.density
+        secureDisplay = effectiveConfig.secure
+        showSystemDecorations = effectiveConfig.decorations
+        // Dextop orientation is controlled exclusively by its overlay action.
+        // Never thaw this to the phone's accelerometer while a session is live.
         forcePhoneRotation(targetHeight > targetWidth)
         cursorX = targetWidth / 2f
         cursorY = targetHeight / 2f
@@ -615,6 +720,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         startHostDisplayMonitor()
         setPhoneNavigationDisabled(true)
         Log.i(logTag, "start direct ${targetWidth}x$targetHeight/$density")
+    }
+
+    private fun effectiveConfig(config: Config): Config {
+        // Laptop mode is applied only after its two panes have completed layout.
+        // Pre-halving a recovered configuration attaches half-height content to
+        // a still-full-height Surface and produces a narrow centred strip.
+        return config
     }
 
     private fun addWindow() {
@@ -658,7 +770,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             visibility = View.GONE
             setOnClickListener { toggleMenu() }
         }
-        frame.addView(surface, FrameLayout.LayoutParams(-1, -1))
+        val content = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(surface, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+        frame.addView(content, FrameLayout.LayoutParams(-1, -1, Gravity.TOP))
         frame.addView(scrim, FrameLayout.LayoutParams(-1, -1))
         frame.addView(controls, menuLayoutParams())
         val hud = PerformanceHud(this) { inputMode() }.apply {
@@ -697,11 +813,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         root = frame
         rootWindowParams = params
         surfaceView = surface
+        laptopContent = content
         cursorView = cursor
+        cursor.contentHeightFraction = 1f
         menu = controls
         menuScrim = scrim
         performanceHud = hud
         windowManager?.addView(frame, params)
+        frame.post {
+            val autoStart = isLaptopAutoDetectionEnabled() &&
+                hingeAngle?.let(::isLaptopHingeAngle) == true
+            val startInLaptopMode = isDebugLaptopModeForced() || laptopManualOverride || autoStart
+            laptopAutoActivated = autoStart && !laptopManualOverride
+            if (startInLaptopMode) setLaptopMode(true)
+        }
         if (experimentalMultiTouch) {
             frame.post {
                 val exclusion = if (targetWidth >= targetHeight) {
@@ -733,6 +858,693 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         windowManager?.addView(cursor, cursorParams)
         cursor.update(cursorX / targetWidth, cursorY / targetHeight)
         Log.i(logTag, "fullscreen accessibility overlay added")
+    }
+
+    private data class LaptopKey(val label: String, val code: Int, val weight: Float = 1f)
+
+    private fun buildLaptopDeck(): View {
+        laptopModifierButtons.clear()
+        laptopShortcutButtons.clear()
+        laptopShift = false
+        laptopControl = false
+        laptopAlt = false
+        laptopCapsLock = false
+        val crimson = laptopKeyboardTheme() == "crimson"
+        val deck = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(8), dp(8), dp(8), dp(8))
+            background = GradientDrawable().apply {
+                setColor(if (crimson) Color.rgb(89, 14, 14) else Color.rgb(18, 18, 22))
+            }
+        }
+        val trackpad = TextView(this).apply {
+            text = "TRACKPAD"
+            typeface = laptopTypeface
+            textSize = 11f
+            letterSpacing = .12f
+            gravity = Gravity.CENTER
+            setTextColor(if (crimson) Color.rgb(222, 137, 102) else Color.rgb(145, 141, 151))
+            background = GradientDrawable().apply {
+                setColor(if (crimson) Color.rgb(90, 15, 16) else Color.rgb(35, 34, 40))
+                setStroke(dp(1), if (crimson) Color.rgb(104, 26, 23) else Color.rgb(74, 71, 82))
+                cornerRadius = dp(18).toFloat()
+            }
+            setOnTouchListener { _, event ->
+                if (event.actionMasked == MotionEvent.ACTION_DOWN) activateLaptopTrackpad()
+                trackpad(event, forceCursorMode = true)
+            }
+        }
+        val keyboard = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+        }
+        laptopKeyboardView = keyboard
+        laptopKeyboardRows(laptopFunctionRowVisible).forEachIndexed { index, keys ->
+            val row = buildLaptopKeyboardRow(keys)
+            if (laptopFunctionRowVisible && index == 0) row.tag = "laptop_function_row"
+            keyboard.addView(row, LinearLayout.LayoutParams(-1, 0, 1f))
+        }
+        deck.addView(keyboard, LinearLayout.LayoutParams(-1, 0, .66f).apply {
+            bottomMargin = dp(7)
+        })
+        val trackpadArea = FrameLayout(this).apply {
+            addView(trackpad, FrameLayout.LayoutParams(-1, -1))
+            addView(TextView(this@MirrorService).apply {
+                text = "FN"
+                typeface = laptopTypeface
+                textSize = 10f
+                gravity = Gravity.CENTER
+                setTextColor(Color.rgb(235, 231, 239))
+                background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_ALT)
+                setOnClickListener {
+                    setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
+                }
+                laptopFnButton = this
+            }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = dp(10)
+                bottomMargin = dp(10)
+            })
+            addView(TextView(this@MirrorService).apply {
+                text = "MENU"
+                typeface = laptopTypeface
+                textSize = 10f
+                gravity = Gravity.CENTER
+                setTextColor(Color.rgb(235, 231, 239))
+                background = laptopKeyBackground(false, LAPTOP_ALT)
+                setOnClickListener { toggleMenu() }
+            }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(10)
+                bottomMargin = dp(10)
+            })
+        }
+        deck.addView(trackpadArea, LinearLayout.LayoutParams(-1, 0, .34f))
+        laptopDeck = deck
+        return deck
+    }
+
+    private fun setLaptopFunctionRowVisible(visible: Boolean) {
+        if (visible == laptopFunctionRowVisible) return
+        val keyboard = laptopKeyboardView ?: return
+        laptopFunctionRowVisible = visible
+        laptopFnButton?.background = laptopKeyBackground(visible, LAPTOP_ALT)
+        if (visible) {
+            TransitionManager.beginDelayedTransition(
+                keyboard,
+                ChangeBounds().apply { duration = 200 }
+            )
+            val row = buildLaptopKeyboardRow(laptopKeyboardRows(true).first()).apply {
+                tag = "laptop_function_row"
+                alpha = 0f
+                translationY = -dp(24).toFloat()
+            }
+            keyboard.addView(row, 0, LinearLayout.LayoutParams(-1, 0, 1f))
+            row.animate().alpha(1f).translationY(0f).setDuration(200).start()
+        } else {
+            val row = keyboard.findViewWithTag<View>("laptop_function_row") ?: return
+            row.animate().alpha(0f).translationY(-dp(24).toFloat()).setDuration(170)
+                .withEndAction {
+                    TransitionManager.beginDelayedTransition(
+                        keyboard,
+                        ChangeBounds().apply { duration = 190 }
+                    )
+                    keyboard.removeView(row)
+                }.start()
+        }
+    }
+
+    private fun buildLaptopKeyboardRow(keys: List<LaptopKey>): LinearLayout =
+        LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            keys.forEach { key ->
+                addView(
+                    laptopKeyButton(key),
+                    LinearLayout.LayoutParams(0, -1, key.weight).apply {
+                        setMargins(dp(2), dp(2), dp(2), dp(2))
+                    }
+                )
+            }
+        }
+
+    private fun setLaptopMode(enabled: Boolean) {
+        if (enabled == laptopModeActive) return
+        if (enabled && !isDebugLaptopModeForced() && !laptopManualOverride &&
+            hingeAngle?.let(::isLaptopHingeAngle) != true && !isFoldableMainDisplay()) return
+        val frame = root ?: return
+        val content = laptopContent ?: return
+        val surface = surfaceView ?: return
+        laptopModeActive = enabled
+        if (!enabled) laptopAutoActivated = false
+        laptopHostUniqueId = if (enabled) defaultDisplayUniqueId() else null
+        if (enabled) {
+            val deck = buildLaptopDeck()
+            content.addView(deck, LinearLayout.LayoutParams(-1, 0, 1f))
+            cursorView?.contentHeightFraction = .5f
+            menuScrim?.bringToFront()
+            menu?.bringToFront()
+            performanceHud?.bringToFront()
+        } else {
+            laptopDeck?.let { content.removeView(it) }
+            laptopDeck = null
+            cursorView?.contentHeightFraction = 1f
+        }
+        surface.requestLayout()
+        frame.requestLayout()
+        applyLaptopGeometryWhenLaidOut(enabled)
+    }
+
+    private fun leaveLaptopModeOnCoverDisplay(): Boolean {
+        if (!laptopModeActive || isDebugLaptopModeForced()) return false
+        val originalHost = laptopHostUniqueId ?: return false
+        if (originalHost == defaultDisplayUniqueId()) return false
+        laptopManualOverride = false
+        laptopAutoActivated = false
+        OperationLog.i(
+            this,
+            "LaptopMode",
+            "cover display detected; removing keyboard and restoring full display geometry"
+        )
+        setLaptopMode(false)
+        return true
+    }
+
+    private fun isLaptopHingeAngle(angle: Float): Boolean = if (laptopModeActive) {
+        angle in 45f..155f
+    } else {
+        angle in 55f..145f
+    }
+
+    private fun updateLaptopModeForHinge(angle: Float) {
+        if (!active || root == null || suspendedForLockScreen) return
+        if (!isLaptopAutoDetectionEnabled()) return
+        // A half-open hinge is itself authoritative: inactive inner panels are
+        // omitted from DisplayManager on several foldables and the emulator.
+        val mainDisplay = isLaptopHingeAngle(angle) || isFoldableMainDisplay()
+        if (!mainDisplay) {
+            laptopManualOverride = false
+            laptopAutoActivated = false
+        }
+        val shouldShow = mainDisplay && (laptopManualOverride || isLaptopHingeAngle(angle))
+        if (shouldShow != laptopModeActive) {
+            laptopAutoActivated = shouldShow && !laptopManualOverride
+            OperationLog.i(
+                this,
+                "LaptopMode",
+                "hinge angle=$angle manual=$laptopManualOverride main=$mainDisplay show=$shouldShow"
+            )
+            setLaptopMode(shouldShow)
+        }
+    }
+
+    private fun applyFlutterLaptopModeSetting(enabled: Boolean) {
+        if (!enabled) {
+            if (laptopAutoActivated) setLaptopMode(false)
+            return
+        }
+        hingeAngle?.let(::updateLaptopModeForHinge)
+    }
+
+    private fun applyLaptopGeometryWhenLaidOut(enabled: Boolean, attempt: Int = 0) {
+        val content = laptopContent ?: return
+        val surface = surfaceView ?: return
+        content.postDelayed({
+            if (laptopModeActive != enabled) return@postDelayed
+            if (!active) {
+                if (attempt < 20) applyLaptopGeometryWhenLaidOut(enabled, attempt + 1)
+                return@postDelayed
+            }
+            val expectedHeight = if (enabled) content.height / 2 else content.height
+            if ((surface.width <= 0 || kotlin.math.abs(surface.height - expectedHeight) > 2) &&
+                attempt < 20) {
+                applyLaptopGeometryWhenLaidOut(enabled, attempt + 1)
+                return@postDelayed
+            }
+            val reason = if (enabled) "laptop mode enabled" else "laptop mode disabled"
+            // While the laptop deck is visible the desktop must always match
+            // the measured upper pane. A custom/recovered profile would
+            // otherwise be letterboxed inside that pane.
+            val next = configForHostGeometry(
+                Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations),
+                surface.width,
+                surface.height,
+                resources.configuration.densityDpi
+            )
+            resizeActiveDisplay(next, "$reason after measured layout")
+            scheduleMirrorRefresh(
+                "$reason; resize VirtualDisplay output to pane",
+                surface.width,
+                surface.height,
+                forceVirtualDisplay = true
+            )
+            if (enabled) refreshLaptopVirtualDisplayAfterLayout()
+            OperationLog.i(
+                this,
+                "LaptopMode",
+                "$reason host=${surface.width}x${surface.height} forcedToPane=true"
+            )
+            menuPrimary?.let(::showMainMenu)
+        }, if (attempt == 0) 0 else 32)
+    }
+
+    private fun refreshLaptopVirtualDisplayAfterLayout(attempt: Int = 0) {
+        val expectedMode = laptopModeActive
+        root?.postDelayed({
+            if (!active || !expectedMode || !laptopModeActive || targetDisplayId < 0) {
+                if (attempt < 4 && laptopModeActive) {
+                    refreshLaptopVirtualDisplayAfterLayout(attempt + 1)
+                }
+                return@postDelayed
+            }
+            val surface = surfaceView ?: return@postDelayed
+            if (surface.width <= 0 || surface.height <= 0 || !surface.holder.surface.isValid) {
+                if (attempt < 4) refreshLaptopVirtualDisplayAfterLayout(attempt + 1)
+                return@postDelayed
+            }
+            val paneConfig = configForHostGeometry(
+                Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations),
+                surface.width,
+                surface.height,
+                resources.configuration.densityDpi
+            )
+            if (paneConfig.width != targetWidth || paneConfig.height != targetHeight ||
+                paneConfig.density != density) {
+                resizeActiveDisplay(paneConfig, "laptop pane final synchronization")
+            }
+            runCatching { attachMirror(surface.width, surface.height, "virtual_display") }
+                .onSuccess {
+                    mirrorDisplayId = targetDisplayId
+                    Log.i(
+                        logTag,
+                        "laptop VirtualDisplay refreshed attempt=$attempt " +
+                            "host=${surface.width}x${surface.height} content=${targetWidth}x$targetHeight"
+                    )
+                    OperationLog.i(
+                        this,
+                        "LaptopMode",
+                        "VirtualDisplay recreated for pane=${surface.width}x${surface.height} " +
+                            "content=${targetWidth}x$targetHeight"
+                    )
+                }
+                .onFailure {
+                    Log.e(logTag, "laptop VirtualDisplay refresh failed attempt=$attempt", it)
+                    OperationLog.e(this, "LaptopMode", "VirtualDisplay pane refresh failed", it)
+                    if (attempt < 4) refreshLaptopVirtualDisplayAfterLayout(attempt + 1)
+                }
+        }, 700L + attempt * 350L)
+    }
+
+    private fun defaultDisplayUniqueId(): String? = runCatching {
+        Display::class.java.getMethod("getUniqueId")
+            .invoke(getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)) as String
+    }.getOrNull()
+
+    private fun isDebugLaptopModeForced(): Boolean =
+        DEBUG_FORCE_LAPTOP_MODE &&
+            applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
+
+    private fun isFoldableMainDisplay(): Boolean {
+        val manager = getSystemService(DisplayManager::class.java)
+        val internalDisplays = internalDisplays(manager)
+        if (internalDisplays.size < 2) return false
+        fun area(display: Display): Long {
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(metrics)
+            return metrics.widthPixels.toLong() * metrics.heightPixels
+        }
+        val current = manager.getDisplay(Display.DEFAULT_DISPLAY) ?: return false
+        return area(current) >= internalDisplays.maxOf(::area)
+    }
+
+    private fun isFoldableDevice(): Boolean =
+        internalDisplays(getSystemService(DisplayManager::class.java)).size >= 2 ||
+            getSystemService(SensorManager::class.java)
+                .getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) != null
+
+    private fun internalDisplays(manager: DisplayManager): List<Display> =
+        manager.displays.filter { display ->
+            runCatching { Display::class.java.getMethod("getType").invoke(display) as Int == 1 }
+                .getOrDefault(display.displayId == Display.DEFAULT_DISPLAY)
+        }
+
+    private fun laptopKeyboardRows(showFunctionRow: Boolean): List<List<LaptopKey>> {
+        val rows = mutableListOf<List<LaptopKey>>()
+        if (showFunctionRow) rows +=
+        listOf(
+            LaptopKey("ESC", KeyEvent.KEYCODE_ESCAPE, 1.15f),
+            LaptopKey("F1", KeyEvent.KEYCODE_F1), LaptopKey("F2", KeyEvent.KEYCODE_F2),
+            LaptopKey("F3", KeyEvent.KEYCODE_F3), LaptopKey("F4", KeyEvent.KEYCODE_F4),
+            LaptopKey("F5", KeyEvent.KEYCODE_F5), LaptopKey("F6", KeyEvent.KEYCODE_F6),
+            LaptopKey("F7", KeyEvent.KEYCODE_F7), LaptopKey("F8", KeyEvent.KEYCODE_F8),
+            LaptopKey("F9", KeyEvent.KEYCODE_F9), LaptopKey("F10", KeyEvent.KEYCODE_F10),
+            LaptopKey("F11", KeyEvent.KEYCODE_F11), LaptopKey("F12", KeyEvent.KEYCODE_F12),
+            LaptopKey("DEL", KeyEvent.KEYCODE_FORWARD_DEL, 1.15f)
+        )
+        rows += listOf(
+        listOf(
+            LaptopKey("`", KeyEvent.KEYCODE_GRAVE),
+            LaptopKey("1", KeyEvent.KEYCODE_1), LaptopKey("2", KeyEvent.KEYCODE_2),
+            LaptopKey("3", KeyEvent.KEYCODE_3), LaptopKey("4", KeyEvent.KEYCODE_4),
+            LaptopKey("5", KeyEvent.KEYCODE_5), LaptopKey("6", KeyEvent.KEYCODE_6),
+            LaptopKey("7", KeyEvent.KEYCODE_7), LaptopKey("8", KeyEvent.KEYCODE_8),
+            LaptopKey("9", KeyEvent.KEYCODE_9), LaptopKey("0", KeyEvent.KEYCODE_0),
+            LaptopKey("-", KeyEvent.KEYCODE_MINUS), LaptopKey("=", KeyEvent.KEYCODE_EQUALS),
+            LaptopKey("⌫", KeyEvent.KEYCODE_DEL, 1.55f)
+        ),
+        listOf(
+            LaptopKey("TAB", KeyEvent.KEYCODE_TAB, 1.35f),
+            LaptopKey("Q", KeyEvent.KEYCODE_Q), LaptopKey("W", KeyEvent.KEYCODE_W),
+            LaptopKey("E", KeyEvent.KEYCODE_E), LaptopKey("R", KeyEvent.KEYCODE_R),
+            LaptopKey("T", KeyEvent.KEYCODE_T), LaptopKey("Y", KeyEvent.KEYCODE_Y),
+            LaptopKey("U", KeyEvent.KEYCODE_U), LaptopKey("I", KeyEvent.KEYCODE_I),
+            LaptopKey("O", KeyEvent.KEYCODE_O), LaptopKey("P", KeyEvent.KEYCODE_P),
+            LaptopKey("[", KeyEvent.KEYCODE_LEFT_BRACKET),
+            LaptopKey("]", KeyEvent.KEYCODE_RIGHT_BRACKET),
+            LaptopKey("\\", KeyEvent.KEYCODE_BACKSLASH, 1.35f)
+        ),
+        listOf(
+            LaptopKey("CAPS", LAPTOP_CAPS, 1.65f),
+            LaptopKey("A", KeyEvent.KEYCODE_A), LaptopKey("S", KeyEvent.KEYCODE_S),
+            LaptopKey("D", KeyEvent.KEYCODE_D), LaptopKey("F", KeyEvent.KEYCODE_F),
+            LaptopKey("G", KeyEvent.KEYCODE_G), LaptopKey("H", KeyEvent.KEYCODE_H),
+            LaptopKey("J", KeyEvent.KEYCODE_J), LaptopKey("K", KeyEvent.KEYCODE_K),
+            LaptopKey("L", KeyEvent.KEYCODE_L), LaptopKey(";", KeyEvent.KEYCODE_SEMICOLON),
+            LaptopKey("'", KeyEvent.KEYCODE_APOSTROPHE),
+            LaptopKey("ENTER", KeyEvent.KEYCODE_ENTER, 1.75f)
+        ),
+        listOf(
+            LaptopKey("SHIFT", LAPTOP_SHIFT, 2.15f),
+            LaptopKey("Z", KeyEvent.KEYCODE_Z), LaptopKey("X", KeyEvent.KEYCODE_X),
+            LaptopKey("C", KeyEvent.KEYCODE_C), LaptopKey("V", KeyEvent.KEYCODE_V),
+            LaptopKey("B", KeyEvent.KEYCODE_B), LaptopKey("N", KeyEvent.KEYCODE_N),
+            LaptopKey("M", KeyEvent.KEYCODE_M), LaptopKey(",", KeyEvent.KEYCODE_COMMA),
+            LaptopKey(".", KeyEvent.KEYCODE_PERIOD), LaptopKey("/", KeyEvent.KEYCODE_SLASH),
+            LaptopKey("SHIFT", LAPTOP_SHIFT, 2.15f)
+        ),
+        listOf(
+            LaptopKey("CTRL", LAPTOP_CONTROL, 1.25f),
+            LaptopKey("", KeyEvent.KEYCODE_META_LEFT),
+            LaptopKey("ALT", LAPTOP_ALT, 1.15f),
+            LaptopKey("SPACE", KeyEvent.KEYCODE_SPACE, 5f),
+            LaptopKey("ALT", LAPTOP_ALT, 1.15f),
+            LaptopKey("←", KeyEvent.KEYCODE_DPAD_LEFT),
+            LaptopKey("↑", KeyEvent.KEYCODE_DPAD_UP),
+            LaptopKey("↓", KeyEvent.KEYCODE_DPAD_DOWN),
+            LaptopKey("→", KeyEvent.KEYCODE_DPAD_RIGHT)
+        ))
+        return rows
+    }
+
+    private val laptopShortcutLabels = mapOf(
+        KeyEvent.KEYCODE_C to "Copy",
+        KeyEvent.KEYCODE_V to "Paste",
+        KeyEvent.KEYCODE_X to "Cut",
+        KeyEvent.KEYCODE_A to "Sel all",
+        KeyEvent.KEYCODE_Z to "Undo",
+        KeyEvent.KEYCODE_S to "Save",
+        KeyEvent.KEYCODE_N to "New",
+        KeyEvent.KEYCODE_P to "Print",
+        KeyEvent.KEYCODE_F to "Find",
+        KeyEvent.KEYCODE_W to "Close"
+    )
+
+    private fun laptopKeyButton(key: LaptopKey): TextView = LaptopKeyTextView(
+        this,
+        key.code == KeyEvent.KEYCODE_F || key.code == KeyEvent.KEYCODE_J,
+        if (laptopKeyboardTheme() == "crimson") Color.rgb(255, 190, 151)
+        else Color.rgb(235, 231, 239)
+    ).apply {
+        text = key.label
+        typeface = laptopTypeface
+        textSize = if (key.label.length > 2) 9f else 12f
+        gravity = Gravity.CENTER
+        setTextColor(if (laptopKeyboardTheme() == "crimson") Color.rgb(255, 190, 151)
+            else Color.rgb(235, 231, 239))
+        background = laptopKeyBackground(false, key.code)
+        if (key.code == KeyEvent.KEYCODE_META_LEFT) {
+            text = "\uE859"
+            typeface = materialIconTypeface
+            textSize = 22f
+        }
+        if (key.code == KeyEvent.KEYCODE_META_LEFT) {
+            setOnLongClickListener {
+                showLaptopKeyboardSettings()
+                true
+            }
+        }
+        if (key.code < 0) laptopModifierButtons.putIfAbsent(key.code, this)
+        if (key.code in laptopShortcutLabels.keys) laptopShortcutButtons[key.code] = this
+        setOnClickListener { handleLaptopKey(key.code) }
+        setOnTouchListener { view, event ->
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> view.animate()
+                    .scaleX(.92f).scaleY(.92f).alpha(.72f)
+                    .setDuration(55).start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate()
+                    .scaleX(1f).scaleY(1f).alpha(1f)
+                    .setDuration(110).start()
+            }
+            false
+        }
+    }
+
+    private fun laptopKeyBackground(selected: Boolean, keyCode: Int? = null) = GradientDrawable().apply {
+        val crimson = laptopKeyboardTheme() == "crimson"
+        val functionKey = keyCode != null &&
+            (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 ||
+                keyCode == KeyEvent.KEYCODE_FORWARD_DEL)
+        val modifierKey = keyCode != null &&
+            (keyCode < 0 || keyCode == KeyEvent.KEYCODE_META_LEFT ||
+                keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT)
+        val specialKey = keyCode in setOf(
+            KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_ENTER,
+            KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP,
+            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT
+        )
+        setColor(
+            if (selected) {
+                if (crimson) Color.rgb(81, 10, 11) else Color.rgb(208, 188, 237)
+            } else {
+                if (crimson) when {
+                    functionKey -> Color.rgb(79, 10, 11)
+                    modifierKey -> Color.rgb(81, 10, 11)
+                    specialKey -> Color.rgb(81, 10, 11)
+                    else -> Color.rgb(110, 27, 27)
+                } else Color.rgb(48, 46, 54)
+            }
+        )
+        setStroke(
+            dp(1),
+            if (selected) {
+                if (crimson) Color.rgb(240, 149, 102) else Color.rgb(232, 222, 248)
+            } else {
+                if (crimson) when {
+                    functionKey -> Color.rgb(92, 20, 18)
+                    modifierKey -> Color.rgb(92, 20, 18)
+                    else -> Color.rgb(126, 32, 27)
+                } else Color.rgb(76, 72, 84)
+            }
+        )
+        cornerRadius = dp(7).toFloat()
+    }
+
+    private fun laptopKeyboardTheme(): String =
+        getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getString("laptop_keyboard_theme", "standard") ?: "standard"
+
+    private fun showLaptopKeyboardSettings() {
+        val deck = laptopDeck as? LinearLayout ?: return
+        laptopSettingsVisible = true
+        TransitionManager.beginDelayedTransition(deck, AutoTransition().apply { duration = 240 })
+        deck.removeAllViews()
+        val crimson = laptopKeyboardTheme() == "crimson"
+        deck.background = if (crimson) GradientDrawable(
+            GradientDrawable.Orientation.TOP_BOTTOM,
+            intArrayOf(Color.rgb(25, 2, 4), Color.rgb(57, 7, 8), Color.rgb(34, 3, 5))
+        ) else GradientDrawable().apply { setColor(Color.rgb(18, 18, 22)) }
+        val header = LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            orientation = LinearLayout.HORIZONTAL
+            setPadding(dp(12), dp(10), dp(20), dp(8))
+        }
+        header.addView(ImageButton(this).apply {
+            contentDescription = "Back"
+            setImageDrawable(KeyboardGlyphDrawable(KeyboardGlyphDrawable.BACK, Color.WHITE))
+            setBackgroundColor(Color.TRANSPARENT)
+            setPadding(dp(14), dp(14), dp(14), dp(14))
+            setOnClickListener { rebuildLaptopDeck() }
+        }, LinearLayout.LayoutParams(dp(52), dp(52)).apply { rightMargin = dp(8) })
+        header.addView(LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(TextView(this@MirrorService).apply {
+                text = "Keyboard settings"
+                typeface = laptopTypeface
+                textSize = 19f
+                setTextColor(Color.WHITE)
+            })
+            addView(TextView(this@MirrorService).apply {
+                text = "Customize the appearance of the laptop keyboard"
+                typeface = laptopTypeface
+                textSize = 11f
+                setTextColor(if (crimson) Color.rgb(207, 132, 101) else Color.rgb(170, 165, 177))
+            })
+        }, LinearLayout.LayoutParams(0, -2, 1f))
+        deck.addView(header, LinearLayout.LayoutParams(-1, -2))
+        deck.addView(LinearLayout(this).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(28), dp(4), dp(28), dp(4))
+            addView(ImageView(this@MirrorService).apply {
+                setImageDrawable(KeyboardGlyphDrawable(
+                    KeyboardGlyphDrawable.PALETTE,
+                    if (crimson) Color.rgb(236, 145, 101) else Color.rgb(208, 188, 237)
+                ))
+            }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { rightMargin = dp(12) })
+            addView(TextView(this@MirrorService).apply {
+                text = "Theme"
+                typeface = laptopTypeface
+                textSize = 15f
+                setTextColor(Color.WHITE)
+            })
+        }, LinearLayout.LayoutParams(-1, dp(42)))
+        val choices = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER
+            setPadding(dp(28), dp(8), dp(28), dp(24))
+        }
+        choices.addView(laptopThemeChoice("standard", "Standard"), LinearLayout.LayoutParams(0, -1, 1f).apply {
+            rightMargin = dp(12)
+        })
+        choices.addView(laptopThemeChoice("crimson", "Crimson"), LinearLayout.LayoutParams(0, -1, 1f).apply {
+            leftMargin = dp(12)
+        })
+        deck.addView(choices, LinearLayout.LayoutParams(-1, 0, 1f))
+    }
+
+    private fun laptopThemeChoice(id: String, label: String): View {
+        val selected = laptopKeyboardTheme() == id
+        val crimson = id == "crimson"
+        return LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(18), dp(14), dp(18), dp(14))
+            background = GradientDrawable().apply {
+                setColor(if (crimson) Color.rgb(45, 6, 7) else Color.rgb(38, 36, 43))
+                setStroke(dp(if (selected) 2 else 1), if (selected)
+                    if (crimson) Color.rgb(240, 146, 100) else Color.rgb(208, 188, 237)
+                    else if (crimson) Color.rgb(89, 22, 18) else Color.rgb(70, 67, 78))
+                cornerRadius = dp(18).toFloat()
+            }
+            addView(LinearLayout(this@MirrorService).apply {
+                gravity = Gravity.CENTER_VERTICAL
+                addView(TextView(this@MirrorService).apply {
+                    text = label
+                    typeface = laptopTypeface
+                    textSize = 16f
+                    setTextColor(Color.WHITE)
+                }, LinearLayout.LayoutParams(0, -2, 1f))
+                if (selected) addView(ImageView(this@MirrorService).apply {
+                    setImageDrawable(KeyboardGlyphDrawable(
+                        KeyboardGlyphDrawable.CHECK,
+                        if (crimson) Color.rgb(240, 146, 100) else Color.rgb(208, 188, 237)
+                    ))
+                }, LinearLayout.LayoutParams(dp(24), dp(24)))
+            }, LinearLayout.LayoutParams(-1, -2))
+            addView(LinearLayout(this@MirrorService).apply {
+                gravity = Gravity.CENTER
+                repeat(7) { index ->
+                    addView(View(this@MirrorService).apply {
+                        background = GradientDrawable().apply {
+                            setColor(if (crimson)
+                                if (index == 0 || index == 6) Color.rgb(79, 10, 11)
+                                else Color.rgb(110, 27, 27)
+                                else if (index == 0 || index == 6) Color.rgb(58, 55, 65)
+                                else Color.rgb(82, 78, 91))
+                            cornerRadius = dp(3).toFloat()
+                        }
+                    }, LinearLayout.LayoutParams(0, dp(35), 1f).apply {
+                        setMargins(dp(2), 0, dp(2), 0)
+                    })
+                }
+            }, LinearLayout.LayoutParams(-1, 0, 1f).apply {
+                topMargin = dp(14)
+                bottomMargin = dp(8)
+            })
+            addView(TextView(this@MirrorService).apply {
+                text = if (crimson) "Warm crimson inspired by foldable PCs" else "Neutral dark keyboard"
+                typeface = laptopTypeface
+                textSize = 11f
+                setTextColor(if (crimson) Color.rgb(207, 132, 101) else Color.rgb(170, 165, 177))
+            })
+            setOnClickListener {
+                getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+                    .putString("laptop_keyboard_theme", id).apply()
+                // Keep the deck attached while changing its contents. Removing
+                // it exposes the Android display behind the accessibility layer.
+                showLaptopKeyboardSettings()
+            }
+        }
+    }
+
+    private fun rebuildLaptopDeck(showSettings: Boolean = false) {
+        val content = laptopContent ?: return
+        // Do not fade the whole lower pane: it briefly exposes Android behind
+        // the overlay. The replacement is immediate, then the new deck slides in.
+        laptopDeck?.let { content.removeView(it) }
+        laptopSettingsVisible = false
+        val nextDeck = buildLaptopDeck().apply {
+            alpha = 0f
+            translationX = dp(24).toFloat()
+        }
+        content.addView(nextDeck, LinearLayout.LayoutParams(-1, 0, 1f))
+        nextDeck.animate().alpha(1f).translationX(0f).setDuration(220).start()
+        content.requestLayout()
+        if (showSettings) content.post { showLaptopKeyboardSettings() }
+    }
+
+    private fun handleLaptopKey(keyCode: Int) {
+        when (keyCode) {
+            LAPTOP_SHIFT -> laptopShift = !laptopShift
+            LAPTOP_CONTROL -> laptopControl = !laptopControl
+            LAPTOP_ALT -> laptopAlt = !laptopAlt
+            LAPTOP_CAPS -> laptopCapsLock = !laptopCapsLock
+            else -> {
+                val isLetter = keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z
+                val shifted = if (isLetter) laptopShift.xor(laptopCapsLock) else laptopShift
+                var metaState = 0
+                if (shifted) metaState = metaState or KeyEvent.META_SHIFT_ON
+                if (laptopControl) metaState = metaState or KeyEvent.META_CTRL_ON
+                if (laptopAlt) metaState = metaState or KeyEvent.META_ALT_ON
+                injectKey(keyCode, metaState)
+                laptopShift = false
+                laptopControl = false
+                laptopAlt = false
+            }
+        }
+        refreshLaptopModifierKeys()
+    }
+
+    private fun refreshLaptopModifierKeys() {
+        laptopModifierButtons[LAPTOP_SHIFT]?.background =
+            laptopKeyBackground(laptopShift, LAPTOP_SHIFT)
+        laptopModifierButtons[LAPTOP_CONTROL]?.background =
+            laptopKeyBackground(laptopControl, LAPTOP_CONTROL)
+        laptopModifierButtons[LAPTOP_ALT]?.background =
+            laptopKeyBackground(laptopAlt, LAPTOP_ALT)
+        laptopModifierButtons[LAPTOP_CAPS]?.background =
+            laptopKeyBackground(laptopCapsLock, LAPTOP_CAPS)
+        refreshLaptopShortcutLabels()
+    }
+
+    private fun refreshLaptopShortcutLabels() {
+        val secondaryColor = if (laptopKeyboardTheme() == "crimson") {
+            Color.rgb(230, 143, 105)
+        } else Color.rgb(170, 165, 177)
+        laptopShortcutButtons.forEach { (keyCode, button) ->
+            val primary = KeyEvent.keyCodeToString(keyCode).removePrefix("KEYCODE_")
+            button.text = primary
+            (button as? LaptopKeyTextView)?.setSecondaryLabel(
+                laptopShortcutLabels[keyCode].takeIf { laptopControl },
+                secondaryColor
+            )
+        }
     }
 
     private fun menuLayoutParams(): FrameLayout.LayoutParams {
@@ -1364,6 +2176,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Search broken until SystemUI is restarted.
         detachHostWindow()
         android.os.Handler(mainLooper).postDelayed({
+            runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
+                .onFailure { Log.e(logTag, "topology restoration failed", it) }
             releaseMirror()
             runCatching { displayBackend.clearRequest() }
             targetDisplayId = -1
@@ -1406,16 +2220,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         saved.removeAll { it !in controlIds }
         controlIds.forEach { if (it !in saved) saved.add(it) }
+        saved.remove("laptop")
+        if ("laptop" in controlIds) {
+            saved.add((saved.indexOf("android") + 1).coerceAtLeast(0), "laptop")
+        }
         return saved
     }
 
     private val allControlIds get() = listOf(
-        "modes", "volume", "brightness", "resolution", "android",
+        "modes", "volume", "brightness", "resolution", "android", "laptop",
         "stop", "reconnect", "orientation", "mouse_route", "keyboard_route"
     )
     private val controlIds get() = allControlIds.filter {
-        demoMode || physicalInputRoutingSupported && physicalExternalDisplayConnected ||
-            it != "mouse_route" && it != "keyboard_route"
+        when (it) {
+            "laptop" -> isDebugLaptopModeForced() || isFoldableMainDisplay()
+            "mouse_route", "keyboard_route" ->
+                demoMode || physicalInputRoutingSupported && physicalExternalDisplayConnected
+            else -> true
+        }
     }
 
     private fun addCustomControls(panel: LinearLayout, order: List<String>) {
@@ -1475,6 +2297,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             "android" -> actionButton(R.drawable.ic_smartphone, NativeStrings.text("nativeTemporarilyReturnToAndroid")) {
                 if (demoMode) demoExplanation(NativeStrings.text("nativePauseDextopAndReturnYourAndroidTo"))
                 else temporarilyReturnToAndroid()
+            }
+            "laptop" -> actionButton(
+                R.drawable.ic_keyboard,
+                NativeStrings.text("nativeLaptopMode")
+            ) {
+                if (demoMode) demoExplanation(NativeStrings.text("nativeLaptopModeDescription"))
+                else {
+                    val enableManually = !laptopModeActive
+                    laptopManualOverride = enableManually
+                    laptopAutoActivated = false
+                    setLaptopMode(enableManually)
+                }
             }
             else -> squareControl(id)
         }
@@ -1650,7 +2484,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (demoMode) demoExplanation("${size.first} × ${size.second} / ${item.density} ${NativeStrings.text("nativeSwitchToResolutionSuffix")}")
                 else {
                     saveSelectedResolution(item.id)
-                    start(Config(size.first, size.second, item.density, secureDisplay, showSystemDecorations))
+                    resizeActiveDisplay(
+                        effectiveConfig(Config(size.first, size.second, item.density, secureDisplay, showSystemDecorations)),
+                        "resolution selected from overlay"
+                    )
                 }
             }, LinearLayout.LayoutParams(0, dp(50), 1f))
             row.addView(editButton { showResolutionEditor(panel, item) }, LinearLayout.LayoutParams(dp(50), dp(50)).apply { leftMargin = dp(6) })
@@ -1682,7 +2519,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 saveResolutionProfile(updated)
                 saveSelectedResolution(updated.id)
                 val portrait = targetWidth < targetHeight
-                start(Config(if (portrait) h else w, if (portrait) w else h, d, secureDisplay, showSystemDecorations))
+                resizeActiveDisplay(
+                    effectiveConfig(Config(
+                        if (portrait) h else w,
+                        if (portrait) w else h,
+                        d,
+                        secureDisplay,
+                        showSystemDecorations
+                    )),
+                    "custom resolution applied from overlay"
+                )
             }
         })
         if (existing != null && !existing.device) panel.addView(actionButton(R.drawable.ic_stop, NativeStrings.text("nativeRemoveThisResolution"), true) {
@@ -1814,10 +2660,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
-    private fun trackpad(event: MotionEvent): Boolean {
+    private fun trackpad(event: MotionEvent, forceCursorMode: Boolean = false): Boolean {
+        val useDirectTouch = directTouch && !forceCursorMode
         maxPointers = maxOf(maxPointers, event.pointerCount)
         if (experimentalMultiTouch && handleExperimentalEdgeGesture(event)) return true
-        if (directTouch && experimentalMultiTouch) {
+        if (useDirectTouch && experimentalMultiTouch) {
             injectDirectTouch(event)
             return true
         }
@@ -1833,7 +2680,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 threeFinger = false
                 scrolling = false
                 longPressTriggered = false
-                if (directTouch) {
+                if (useDirectTouch) {
                     moveCursorToTouch(event.x, event.y)
                     injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
                     directTouchHeld = true
@@ -1918,7 +2765,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 } else if (twoFinger && !moved && !scrolling) {
                     performTwoFingerGesture()
                 } else if (!twoFinger && !moved && !dragHeld && SystemClock.uptimeMillis() - downTime < 250) {
-                    if (directTouch) moveCursorToTouch(event.x, event.y)
+                    if (useDirectTouch) moveCursorToTouch(event.x, event.y)
                     leftClick()
                 }
                 maxPointers = 0
@@ -2068,6 +2915,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // touchpad immediately, even if the mouse remains connected.
         cursorView?.visibility = if (directTouch) View.GONE else View.VISIBLE
         if (!directTouch) cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+    }
+
+    private fun activateLaptopTrackpad() {
+        if (overlayTextInputActive) return
+        surfaceView?.releasePointerCapture()
+        setOverlayFocusable(false)
+        physicalMouseActive = false
+        cursorView?.visibility = View.VISIBLE
+        cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
     }
 
     private fun activatePhysicalMouse() {
@@ -2401,12 +3257,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         root?.postDelayed({ start(config) }, 350)
     }
 
-    private fun injectKey(keyCode: Int) {
+    private fun injectKey(keyCode: Int, metaState: Int = 0) {
         if (targetDisplayId < 0) return
         runCatching {
             val now = SystemClock.uptimeMillis()
             listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP).forEach { action ->
-                val event = KeyEvent(now, SystemClock.uptimeMillis(), action, keyCode, 0)
+                val event = KeyEvent(
+                    now,
+                    SystemClock.uptimeMillis(),
+                    action,
+                    keyCode,
+                    0,
+                    metaState
+                )
                 check(inputDispatcher.send(event, targetDisplayId))
             }
         }.onFailure { Log.e(logTag, "key injection failed", it) }
@@ -2660,13 +3523,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     override fun surfaceCreated(holder: SurfaceHolder) {
         val view = surfaceView ?: return
-        if (view.width > 0 && view.height > 0) createDisplay(holder.surface, view.width, view.height)
+        if (view.width <= 0 || view.height <= 0) return
+        if (targetDisplayId >= 0 &&
+            getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId) != null) {
+            reattachExistingDisplay(view.width, view.height)
+        } else {
+            createDisplay(holder.surface, view.width, view.height)
+        }
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
         if (mirrorDisplayId < 0) {
-            createDisplay(holder.surface, width, height)
+            if (targetDisplayId >= 0 &&
+                getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId) != null) {
+                reattachExistingDisplay(width, height)
+            } else {
+                createDisplay(holder.surface, width, height)
+            }
         } else if (shouldFollowHostDisplay() && hostSizeDiffersFromTarget(width, height)) {
             scheduleHostDisplayReconfiguration("host surface resized", width, height)
         } else if (width != mirrorHostWidth || height != mirrorHostHeight) {
@@ -2676,6 +3550,32 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
         releaseMirror()
+    }
+
+    /** Reconnects a recreated host Surface without removing the desktop display or its tasks. */
+    private fun reattachExistingDisplay(width: Int, height: Int) {
+        if (displayCreationInProgress || mirrorDisplayId >= 0 || targetDisplayId < 0) return
+        displayCreationInProgress = true
+        val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
+        val strategyOverride = configuredBackend.takeUnless { it == "auto" }
+        runCatching {
+            attachMirror(width, height, strategyOverride)
+            mirrorDisplayId = targetDisplayId
+        }.onSuccess {
+            displayCreationInProgress = false
+            scheduleHostDisplayReconfiguration("host Surface recreated", width, height)
+            scheduleTopologyReapplyAfterReconnect()
+            OperationLog.i(
+                this,
+                "DisplayBackend",
+                "reattached host Surface to display=$targetDisplayId host=${width}x$height; tasks retained"
+            )
+        }.onFailure { error ->
+            displayCreationInProgress = false
+            OperationLog.e(this, "DisplayBackend", "existing display reattach failed", error)
+            Log.e(logTag, "existing display reattach failed", error)
+        }
     }
 
     private fun createDisplay(surface: Surface, width: Int, height: Int) {
@@ -2725,12 +3625,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 NativeStrings.text("nativeShizukuUnavailable")
             }
             targetDisplayId = display.displayId
+            clearInheritedDisplayOverrides(targetDisplayId)
             configureDisplay()
             val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
                 .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
             val strategyOverride = configuredBackend.takeUnless { it == "auto" }
             attachMirror(width, height, strategyOverride)
             mirrorDisplayId = targetDisplayId
+            DisplayEnvironmentSettings(this).activateTopologyIfEnabled(mirrorDisplayId)
             displayCreationInProgress = false
             sessionJournal.running(targetDisplayId)
             val externalDisplays = externalDisplayDetector.snapshot()
@@ -2795,9 +3697,37 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * Samsung persists forced metrics by the overlay unique id (overlay:1),
+     * not by its newly allocated display id. Without clearing them, a newly
+     * created 2340x1080 overlay can inherit the previous 1080x2340 override.
+     * This is used only for a new overlay; live fold resizing keeps its override.
+     */
+    private fun clearInheritedDisplayOverrides(displayId: Int) {
+        val service = systemService("window", "android.view.IWindowManager")
+        val type = Class.forName("android.view.IWindowManager")
+        val userId = android.os.UserHandle::class.java
+            .getMethod("myUserId").invoke(null) as Int
+        runCatching {
+            type.getMethod("clearForcedDisplaySize", Int::class.javaPrimitiveType)
+                .invoke(service, displayId)
+        }.onFailure { Log.w(logTag, "inherited display size clear failed display=$displayId", it) }
+        runCatching {
+            type.getMethod(
+                "clearForcedDisplayDensityForUser",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType
+            ).invoke(service, displayId, userId)
+        }.onFailure { Log.w(logTag, "inherited display density clear failed display=$displayId", it) }
+        OperationLog.i(this, "DisplayBackend", "cleared inherited metrics display=$displayId")
+    }
+
     private fun configureDisplay() {
         val service = systemService("window", "android.view.IWindowManager")
         val type = Class.forName("android.view.IWindowManager")
+        // Forced display width/height already define the requested orientation.
+        // Rotating the target as well applies the change twice and restores the
+        // old orientation, so the overlay display itself always stays at zero.
         val rotation = 0
         desktopModeConfigurator.configureDisplay(targetDisplayId)
         runCatching {
@@ -2894,7 +3824,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * desktop tasks and physical-input routing alive while acquiring that new
      * layer tree.
      */
-    private fun scheduleMirrorRefresh(reason: String, width: Int? = null, height: Int? = null) {
+    private fun scheduleMirrorRefresh(
+        reason: String,
+        width: Int? = null,
+        height: Int? = null,
+        forceVirtualDisplay: Boolean = false
+    ) {
         // A content-recording VirtualDisplay follows changes on its mirrored
         // display without being recreated. Releasing/recreating it in response
         // to DisplayListener or configuration callbacks races Samsung
@@ -2903,7 +3838,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // triggered when MainActivity is opened on the desktop display.
         // A destroyed Surface is handled separately by surfaceDestroyed /
         // surfaceCreated, and an actual profile change goes through start().
-        if (displayBackend.activeStrategy == "virtual_display") {
+        if (displayBackend.activeStrategy == "virtual_display" && !forceVirtualDisplay) {
             OperationLog.i(
                 this,
                 "DisplayBackend",
@@ -2946,9 +3881,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
         val selectedDeviceResolution =
             preferences.getString("flutter.selected_resolution_id", "device") == "device"
-        return selectedDeviceResolution &&
-            (preferences.getBoolean("flutter.foldable_auto", false) ||
+        return laptopModeActive || selectedDeviceResolution &&
+            (isFoldableDevice() || preferences.getBoolean("flutter.foldable_auto", false) ||
                 desktopEnvironment.autoResizeWithHostDisplay)
+    }
+
+    private fun isLaptopAutoDetectionEnabled(): Boolean {
+        return getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getBoolean("flutter.foldable_laptop_mode", false)
     }
 
     private fun hostSizeDiffersFromTarget(width: Int, height: Int): Boolean {
@@ -2989,7 +3929,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 systemDensity
             )
             if (next.width == targetWidth && next.height == targetHeight && next.density == density) {
-                if (mirrorDisplayId >= 0) scheduleMirrorRefresh("$reason; geometry unchanged")
                 return@postDelayed
             }
             OperationLog.i(
@@ -2998,8 +3937,66 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "host reconfiguration reason=$reason " +
                     "${targetWidth}x$targetHeight/$density -> ${next.width}x${next.height}/${next.density}"
             )
-            start(next)
+            resizeActiveDisplay(next, reason)
         }, 320)
+    }
+
+    /** Changes the logical size without destroying the virtual display or its tasks. */
+    private fun resizeActiveDisplay(next: Config, reason: String) {
+        if (targetDisplayId < 0) return
+        cancelDesktopTouchStream()
+        val oldWidth = targetWidth.coerceAtLeast(1)
+        val oldHeight = targetHeight.coerceAtLeast(1)
+        val normalizedCursorX = cursorX / oldWidth
+        val normalizedCursorY = cursorY / oldHeight
+        val service = systemService("window", "android.view.IWindowManager")
+        val type = Class.forName("android.view.IWindowManager")
+        try {
+            val userId = android.os.UserHandle::class.java
+                .getMethod("myUserId").invoke(null) as Int
+            type.getMethod(
+                "setForcedDisplaySize",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType
+            ).invoke(service, targetDisplayId, next.width, next.height)
+            type.getMethod(
+                "setForcedDisplayDensityForUser",
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType,
+                Int::class.javaPrimitiveType
+            ).invoke(service, targetDisplayId, next.density, userId)
+        } catch (error: Throwable) {
+            OperationLog.e(this, "DisplayBackend", "live resize failed reason=$reason", error)
+            Log.e(logTag, "live display resize failed reason=$reason", error)
+            throw error
+        }
+        targetWidth = next.width
+        targetHeight = next.height
+        density = next.density
+        // A live size change can cross the natural-orientation boundary. WMS
+        // also drops projected-display freeform policy on some Pixel builds,
+        // so synchronize rotation and desktop policy after every resize.
+        // Preserve the orientation selected from the Dextop gesture menu across
+        // fold, cover-display and physical-display geometry changes.
+        forcePhoneRotation(targetHeight > targetWidth)
+        configureDisplay()
+        cursorX = (normalizedCursorX * targetWidth).coerceIn(0f, targetWidth - 1f)
+        cursorY = (normalizedCursorY * targetHeight).coerceIn(0f, targetHeight - 1f)
+        cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        surfaceView?.let { surface ->
+            if (surface.width > 0 && surface.height > 0) {
+                // Rotation-driven Surface replacement reattaches the mirror in
+                // surfaceCreated(). Do not create extra recording displays here.
+                scheduleMirrorRefresh("$reason; live logical resize", surface.width, surface.height)
+            }
+        }
+        scheduleTopologyReapplyAfterReconnect()
+        OperationLog.i(
+            this,
+            "DisplayBackend",
+            "live resized display=$targetDisplayId to ${next.width}x${next.height}/${next.density}; tasks retained"
+        )
     }
 
     private fun configForHostGeometry(
@@ -3008,18 +4005,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         hostHeight: Int,
         systemDensity: Int
     ): Config {
-        val longSide = maxOf(hostWidth, hostHeight)
-        val shortSide = minOf(hostWidth, hostHeight)
-        val keepPortrait = base.height > base.width
         val automaticDensity = (160 + systemDensity / 160f * 24)
             .toInt().coerceIn(160, 320)
-        val savedDensity = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getLong("flutter.device_resolution_dpi", automaticDensity.toLong())
-            .toInt().coerceIn(80, 640)
+        val portrait = base.height > base.width
+        val hostLong = maxOf(hostWidth, hostHeight)
+        val hostShort = minOf(hostWidth, hostHeight)
         return base.copy(
-            width = if (keepPortrait) shortSide else longSide,
-            height = if (keepPortrait) longSide else shortSide,
-            density = savedDensity
+            // The panel size is dynamic, but its orientation is not. Only the
+            // explicit portrait/landscape action may change this state.
+            width = if (portrait) hostShort else hostLong,
+            height = if (portrait) hostLong else hostShort,
+            density = automaticDensity
         )
     }
 
@@ -3278,9 +4274,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (dragHeld) toggleDrag()
         runCatching { physicalInputRouter.restore() }
             .onFailure { Log.e(logTag, "physical input restoration failed", it) }
-        runCatching { displayBackend.clearRequest() }
         setPhoneNavigationDisabled(false)
         releasePhoneRotation(clearSnapshot = true)
+        runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
+            .onFailure { Log.e(logTag, "topology restoration failed", it) }
+        runCatching { displayBackend.clearRequest() }
         removeWindow()
         targetDisplayId = -1
         active = false
@@ -3352,14 +4350,139 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         root = null
         rootWindowParams = null
         surfaceView = null
+        laptopContent = null
         cursorView = null
         menu = null
         menuScrim = null
         performanceHud = null
+        laptopDeck = null
         demoInfoView = null
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
+
+    private class LaptopKeyTextView(
+        context: Context,
+        private val showHomePosition: Boolean,
+        markColor: Int
+    ) : TextView(context) {
+        private var secondaryLabel: String? = null
+        private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = markColor
+            strokeWidth = context.resources.displayMetrics.density * 1.6f
+            strokeCap = Paint.Cap.ROUND
+        }
+        private val secondaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            textAlign = Paint.Align.CENTER
+            textSize = context.resources.displayMetrics.scaledDensity * 6.5f
+        }
+
+        fun setSecondaryLabel(label: String?, color: Int) {
+            secondaryLabel = label
+            secondaryPaint.color = color
+            invalidate()
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            super.onDraw(canvas)
+            val density = resources.displayMetrics.density
+            val currentLayout = layout
+            if (currentLayout != null && currentLayout.lineCount > 0) {
+                val layoutTop = (height - currentLayout.height) / 2f
+                val primaryBaseline = layoutTop + currentLayout.getLineBaseline(0)
+                if (showHomePosition) {
+                    // Keep the tactile home-position mark below the key legend.
+                    // When Ctrl shortcut hints are visible, place it below the
+                    // secondary label as well so the two never overlap.
+                    val y = primaryBaseline + if (secondaryLabel == null) {
+                        6f * density
+                    } else {
+                        13f * density
+                    }
+                    val halfWidth = 6f * density
+                    canvas.drawLine(width / 2f - halfWidth, y, width / 2f + halfWidth, y, markPaint)
+                }
+                secondaryLabel?.let { label ->
+                    secondaryPaint.typeface = typeface
+                    canvas.drawText(label, width / 2f, primaryBaseline + 8f * density, secondaryPaint)
+                }
+            }
+        }
+    }
+
+    private class KeyboardGlyphDrawable(
+        private val kind: Int,
+        private val glyphColor: Int
+    ) : Drawable() {
+        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            this.color = glyphColor
+            style = Paint.Style.FILL
+            strokeCap = Paint.Cap.ROUND
+        }
+
+        override fun draw(canvas: Canvas) {
+            paint.color = glyphColor
+            val b = bounds
+            val scale = minOf(b.width() / 24f, b.height() / 20f)
+            val offsetX = (b.width() - 24f * scale) / 2f
+            val offsetY = (b.height() - 20f * scale) / 2f
+            canvas.save()
+            canvas.translate(b.left + offsetX, b.top + offsetY)
+            canvas.scale(scale, scale)
+            paint.strokeWidth = 1.5f
+            when (kind) {
+                ANDROID -> {
+                    canvas.drawLine(6.5f, 4f, 4.5f, 1.2f, paint)
+                    canvas.drawLine(17.5f, 4f, 19.5f, 1.2f, paint)
+                    canvas.drawRoundRect(RectF(4f, 4f, 20f, 10f), 5f, 5f, paint)
+                    canvas.drawRoundRect(RectF(4f, 8f, 20f, 17f), 1.5f, 1.5f, paint)
+                    canvas.drawRoundRect(RectF(1.5f, 8f, 3.5f, 16f), 1f, 1f, paint)
+                    canvas.drawRoundRect(RectF(20.5f, 8f, 22.5f, 16f), 1f, 1f, paint)
+                    canvas.drawRoundRect(RectF(7f, 15f, 10f, 20f), 1f, 1f, paint)
+                    canvas.drawRoundRect(RectF(14f, 15f, 17f, 20f), 1f, 1f, paint)
+                }
+                BACK -> {
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.2f
+                    canvas.drawLine(18f, 10f, 6f, 10f, paint)
+                    canvas.drawLine(6f, 10f, 11f, 5f, paint)
+                    canvas.drawLine(6f, 10f, 11f, 15f, paint)
+                    paint.style = Paint.Style.FILL
+                }
+                PALETTE -> {
+                    canvas.drawOval(RectF(2f, 2f, 22f, 18f), paint)
+                    paint.color = Color.rgb(35, 33, 39)
+                    canvas.drawCircle(17.5f, 14f, 3.5f, paint)
+                    canvas.drawCircle(7f, 7f, 1.5f, paint)
+                    canvas.drawCircle(12f, 5f, 1.5f, paint)
+                    canvas.drawCircle(17f, 7.5f, 1.5f, paint)
+                }
+                CHECK -> {
+                    paint.style = Paint.Style.STROKE
+                    paint.strokeWidth = 2.4f
+                    canvas.drawCircle(12f, 10f, 8f, paint)
+                    canvas.drawLine(7.5f, 10f, 10.5f, 13f, paint)
+                    canvas.drawLine(10.5f, 13f, 16.5f, 7f, paint)
+                    paint.style = Paint.Style.FILL
+                }
+            }
+            canvas.restore()
+        }
+
+        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
+        override fun setColorFilter(filter: android.graphics.ColorFilter?) {
+            paint.colorFilter = filter
+        }
+        @Suppress("DEPRECATION")
+        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+
+        companion object {
+            const val ANDROID = 1
+            const val BACK = 2
+            const val PALETTE = 3
+            const val CHECK = 4
+        }
+    }
 
     private class TouchRoutingFrame(context: Context) : FrameLayout(context) {
         var routeTouchesToSurface = false
@@ -3475,6 +4598,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private var normalizedX = .5f
         private var normalizedY = .5f
         private var radius = 13f
+        var contentHeightFraction = 1f
         fun update(x: Float, y: Float) {
             normalizedX = x
             normalizedY = y
@@ -3489,7 +4613,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         override fun onDraw(canvas: Canvas) {
             val x = normalizedX * width
-            val y = normalizedY * height
+            val y = normalizedY * height * contentHeightFraction
             canvas.drawCircle(x, y, radius, fill)
             canvas.drawCircle(x, y, radius, stroke)
         }

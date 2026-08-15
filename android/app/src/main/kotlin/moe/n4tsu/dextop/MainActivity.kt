@@ -14,6 +14,7 @@ import android.os.Build
 import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
+import android.util.DisplayMetrics
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -135,6 +136,10 @@ open class MainActivity : FlutterActivity() {
         if (display?.displayId == android.view.Display.DEFAULT_DISPLAY) {
             instance = this
             phoneTaskId = taskId
+            if (!MirrorService.isActive()) {
+                runCatching { DisplayEnvironmentSettings(this).prepareInactiveState() }
+                    .onFailure { Log.w(logTag, "inactive topology cleanup deferred", it) }
+            }
         }
     }
 
@@ -181,7 +186,30 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.hideOverlayDemo()
                     result.success(null)
                 }
+                "foldableLaptopMode" -> {
+                    MirrorService.updateLaptopModeEnabled(call.argument<Boolean>("enabled") == true)
+                    result.success(null)
+                }
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
+                "currentDeviceDisplayProfile" -> {
+                    val builtIn = getSystemService(DisplayManager::class.java)
+                        .getDisplay(android.view.Display.DEFAULT_DISPLAY)
+                    val metrics = DisplayMetrics()
+                    @Suppress("DEPRECATION")
+                    builtIn?.getRealMetrics(metrics)
+                    val width = metrics.widthPixels.takeIf { it > 0 }
+                        ?: resources.displayMetrics.widthPixels
+                    val height = metrics.heightPixels.takeIf { it > 0 }
+                        ?: resources.displayMetrics.heightPixels
+                    val densityScale = metrics.density.takeIf { it > 0f }
+                        ?: resources.displayMetrics.density
+                    val automaticDensity = (160 + densityScale * 24).toInt().coerceIn(160, 320)
+                    result.success(mapOf(
+                        "width" to maxOf(width, height),
+                        "height" to minOf(width, height),
+                        "density" to automaticDensity
+                    ))
+                }
                 "stop" -> stopDisplay(result)
                 "apps" -> Thread {
                     val apps = AppCatalog(this).launchableApps()
@@ -612,6 +640,8 @@ open class MainActivity : FlutterActivity() {
         MirrorService.stopActive()
         runCatching {
             val journal = SessionJournal(this)
+            runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
+                .onFailure { Log.e(logTag, "discard recovery topology restoration failed", it) }
             runCatching {
                 PhoneRotationController.restoreRecorded(this, PrivilegedAccess(logTag), journal)
             }.onFailure { Log.e(logTag, "discard recovery rotation restoration failed", it) }
@@ -691,6 +721,8 @@ open class MainActivity : FlutterActivity() {
         runCatching {
             MirrorService.stopActive()
             val journal = SessionJournal(this)
+            runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
+                .onFailure { Log.e(logTag, "repair topology restoration failed", it) }
             runCatching {
                 PhoneRotationController.restoreRecorded(this, PrivilegedAccess(logTag), journal)
             }.onFailure { Log.e(logTag, "repair rotation restoration failed", it) }

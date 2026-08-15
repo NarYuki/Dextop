@@ -20,7 +20,13 @@
 ### Display
 
 - **Secure display:** marks the virtual display as secure and allows protected content. When enabled, Android may block screenshots or screen recording of that display.
-- **Foldable automatic switching:** measures the current display bounds and recreates the session when the fold state changes.
+- **Display arrangement:** positions Dextop and external displays, saves the arrangement, and enables cross-display pointer routing.
+- **Mirroring method:** selects Automatic, VirtualDisplay, WindowManager, or SurfaceControl according to device compatibility.
+- **Automatic taskbar hiding:** hides the desktop taskbar when supported by the active desktop environment.
+- **Built-in display 120 Hz:** reapplies 120 Hz when an external monitor would otherwise limit a supported phone display to 60 Hz.
+- **Automatically detect laptop mode:** uses hinge-angle events to enable laptop mode automatically. This setting does not disable manual laptop mode.
+- **Foldable laptop mode:** can be opened manually from the Dextop overlay on a supported foldable and provides a US keyboard and trackpad on the lower display area.
+- **Foldable main/cover-display switching:** partial support. Dynamic resolution and panel transitions remain incomplete on some devices and firmware versions.
 
 ### Apps and workspace
 
