@@ -255,7 +255,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                 const SizedBox(height: 8),
                                 Text(theme['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
                                 Row(children: [
-                                  Expanded(child: Text('Ready', style: Theme.of(context).textTheme.bodySmall)),
+                                  Expanded(child: const SizedBox()),
                                   IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => _select(theme['id'] as String)),
                                   Radio<String>(value: theme['id'] as String, groupValue: _selected,
                                       onChanged: (_) => _select(theme['id'] as String)),
@@ -278,24 +278,33 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   }
 
   Widget _editor(Map<String, dynamic> theme) => Card(
-        child: Padding(
-          padding: const EdgeInsets.all(16),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('Customize ${theme['name']}', style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: [
-              for (final key in ['background', 'key', 'border', 'text', 'trackpad'])
-                ActionChip(label: Text(key), avatar: CircleAvatar(backgroundColor: _color(theme, key)), onPressed: () => _cycleColor(theme, key)),
-            ]),
-            _labeledSlider('Opacity', (theme['opacity'] as num).toDouble(), .2, 1, (v) { setState(() => theme['opacity'] = v); _save(); }),
-            _labeledSlider('Blur', (theme['blur'] as num).toDouble(), 0, 30, (v) { setState(() => theme['blur'] = v); _save(); }),
-            _labeledSlider('Corner radius', (theme['radius'] as num).toDouble(), 0, 28, (v) { setState(() => theme['radius'] = v); _save(); }),
-            OutlinedButton.icon(onPressed: () => _pickImage(theme), icon: const Icon(Icons.image_outlined), label: const Text('Choose background image')),
-            const SizedBox(height: 8),
-            OutlinedButton.icon(onPressed: () => _showPreview(theme), icon: const Icon(Icons.preview_outlined), label: const Text('Preview keyboard overlay')),
-          ]),
+        child: ListTile(
+          title: Text(theme['name'] as String),
+          subtitle: const Text('Open the editor to customize colors, image, opacity, blur, and corners.'),
+          trailing: FilledButton.icon(onPressed: () => _showEditDialog(theme), icon: const Icon(Icons.edit_outlined), label: const Text('Edit')),
         ),
       );
+
+  Future<void> _showEditDialog(Map<String, dynamic> theme) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(builder: (context, update) => AlertDialog(
+        title: Text('Edit ${theme['name']}'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Wrap(spacing: 8, runSpacing: 8, children: [
+            for (final key in ['background', 'key', 'border', 'text', 'trackpad'])
+              ActionChip(label: Text(key), avatar: CircleAvatar(backgroundColor: _color(theme, key)), onPressed: () { _cycleColor(theme, key); update(() {}); }),
+          ]),
+          _labeledSlider('Opacity', (theme['opacity'] as num).toDouble(), .2, 1, (v) { update(() => theme['opacity'] = v); _save(); }),
+          _labeledSlider('Blur', (theme['blur'] as num).toDouble(), 0, 30, (v) { update(() => theme['blur'] = v); _save(); }),
+          _labeledSlider('Corner radius', (theme['radius'] as num).toDouble(), 0, 28, (v) { update(() => theme['radius'] = v); _save(); }),
+          OutlinedButton.icon(onPressed: () async { await _pickImage(theme); update(() {}); }, icon: const Icon(Icons.image_outlined), label: const Text('Choose background image')),
+          OutlinedButton.icon(onPressed: () { Navigator.pop(dialogContext); _showPreview(theme); }, icon: const Icon(Icons.preview_outlined), label: const Text('Preview keyboard overlay')),
+        ])),
+        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done'))],
+      )),
+    );
+  }
 
   Widget _labeledSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) =>
       Row(children: [
