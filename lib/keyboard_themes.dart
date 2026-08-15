@@ -124,7 +124,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     await _save();
   }
 
-  Future<void> _createTheme({String name = 'Custom theme'}) async {
+  Future<Map<String, dynamic>> _createTheme({
+    String name = 'Custom theme',
+  }) async {
     final id = 'custom_${DateTime.now().millisecondsSinceEpoch}';
     final theme = Map<String, dynamic>.from(_builtIns[2])
       ..['id'] = id
@@ -134,6 +136,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       _selected = id;
     });
     await _save();
+    return theme;
   }
 
   Future<void> _showCreateDialog() async {
@@ -159,7 +162,10 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         ],
       ),
     );
-    if (name != null) await _createTheme(name: name);
+    if (name != null) {
+      final theme = await _createTheme(name: name);
+      if (mounted) await _showEditDialog(theme);
+    }
   }
 
   Future<void> _showDeleteDialog(Map<String, dynamic> theme) async {
@@ -465,7 +471,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                     onPressed: _selected == theme['id']
                         ? () {
                             Navigator.pop(dialogContext);
-                            _showPreview(theme);
+                            _showRealLaptopPreview(theme['id'] as String);
                           }
                         : null,
                     icon: const Icon(Icons.preview_outlined),
@@ -480,7 +486,11 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                   SizedBox(
                     height: 220,
                     width: double.infinity,
-                    child: _preview(theme, includeTrackpad: false),
+                    child: _preview(
+                      theme,
+                      compact: true,
+                      includeTrackpad: false,
+                    ),
                   ),
                 ],
               ),
@@ -533,18 +543,6 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     final next = colors[(colors.indexOf(current) + 1) % colors.length];
     setState(() => theme[key] = next);
     _save();
-  }
-
-  void _showPreview(Map<String, dynamic> theme) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => Dialog(
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: SizedBox(width: 560, height: 300, child: _preview(theme)),
-        ),
-      ),
-    );
   }
 
   Widget _preview(
