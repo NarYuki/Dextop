@@ -213,16 +213,10 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   }
 
   Future<void> _showRealLaptopPreview(String themeId) async {
-    if (_selected != themeId) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesSelectFirst)));
-      return;
-    }
     final shown =
         await const MethodChannel(
           'app.freedextop/display',
-        ).invokeMethod<bool>('previewLaptopOverlay') ??
+        ).invokeMethod<bool>('previewLaptopOverlay', {'themeId': themeId}) ??
         false;
     if (!shown && mounted) {
       ScaffoldMessenger.of(
@@ -363,11 +357,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                     IconButton(
                                       icon: const Icon(Icons.preview_outlined),
                                       tooltip: _l10n.keyboardThemesPreview,
-                                      onPressed: _selected == theme['id']
-                                          ? () => _showRealLaptopPreview(
-                                              theme['id'] as String,
-                                            )
-                                          : null,
+                                      onPressed: () => _showRealLaptopPreview(
+                                        theme['id'] as String,
+                                      ),
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.edit_outlined),
@@ -476,12 +468,10 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                     label: Text(_l10n.keyboardThemesImage),
                   ),
                   OutlinedButton.icon(
-                    onPressed: _selected == theme['id']
-                        ? () {
-                            Navigator.pop(dialogContext);
-                            _showRealLaptopPreview(theme['id'] as String);
-                          }
-                        : null,
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      _showRealLaptopPreview(theme['id'] as String);
+                    },
                     icon: const Icon(Icons.preview_outlined),
                     label: Text(_l10n.keyboardThemesPreview),
                   ),
