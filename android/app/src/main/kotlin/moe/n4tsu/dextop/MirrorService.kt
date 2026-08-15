@@ -111,6 +111,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
         private var pendingDemo = false
         private var pendingLaptopDemo = false
+        private var pendingLaptopPreviewThemeId: String? = null
         private var active = false
 
         fun launch(
@@ -176,9 +177,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
         /** Shows the real laptop deck on the active virtual-display session. */
-        fun showLaptopPreview(): Boolean {
+        fun showLaptopPreview(themeId: String? = null): Boolean {
             val service = instance ?: return false
             if (!active || service.root == null) return false
+            service.laptopPreviewThemeId = themeId
             service.root?.post {
                 service.laptopManualOverride = true
                 service.setLaptopMode(true)
@@ -199,10 +201,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             instance?.showDemoWindow()
         }
 
+        fun setPendingLaptopPreviewTheme(themeId: String?) {
+            pendingLaptopPreviewThemeId = themeId
+            instance?.laptopPreviewThemeId = themeId
+        }
+
         fun hideLaptopDemo() {
             instance?.hideDemoWindow()
+            instance?.laptopPreviewThemeId = null
             pendingDemo = false
             pendingLaptopDemo = false
+            pendingLaptopPreviewThemeId = null
         }
 
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
@@ -340,6 +349,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopContent: LinearLayout? = null
     private var laptopDeck: View? = null
     private var laptopDeckContent: LinearLayout? = null
+    private var laptopPreviewThemeId: String? = null
     private var laptopSettingsVisible = false
     private var laptopFunctionRowVisible = false
     private var laptopKeyboardView: LinearLayout? = null
@@ -1554,7 +1564,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun laptopKeyboardTheme(): String =
-        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        laptopPreviewThemeId ?: getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.laptop_keyboard_theme", null)
             ?: getSharedPreferences(PREFS, MODE_PRIVATE)
                 .getString("laptop_keyboard_theme", "standard") ?: "standard"
@@ -1944,6 +1954,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         val controls = buildMenu().apply { visibility = View.VISIBLE }
         val laptopDemo = pendingLaptopDemo
+        laptopPreviewThemeId = pendingLaptopPreviewThemeId
+        pendingLaptopPreviewThemeId = null
         pendingLaptopDemo = false
         val info = TextView(this).apply {
             text = NativeStrings.text("nativeTheThreeFingerGestureIsAnEssential")

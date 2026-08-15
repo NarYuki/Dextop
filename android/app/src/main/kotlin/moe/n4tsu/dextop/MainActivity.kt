@@ -191,7 +191,9 @@ open class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "previewLaptopOverlay" -> {
-                    if (MirrorService.showLaptopPreview()) result.success(true)
+                    val themeId = call.argument<String>("themeId")
+                    MirrorService.setPendingLaptopPreviewTheme(themeId)
+                    if (MirrorService.showLaptopPreview(themeId)) result.success(true)
                     else {
                         MirrorService.showLaptopDemo(this)
                         result.success(true)
