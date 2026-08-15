@@ -199,6 +199,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             instance?.showDemoWindow()
         }
 
+        fun hideLaptopDemo() {
+            instance?.hideDemoWindow()
+            pendingDemo = false
+            pendingLaptopDemo = false
+        }
+
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
 
         fun launchPackage(packageName: String, bounds: android.graphics.Rect? = null): Boolean = instance?.let { service ->
