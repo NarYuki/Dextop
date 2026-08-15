@@ -377,7 +377,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                     ),
                                     Radio<String>(
                                       value: theme['id'] as String,
+                                      // ignore: deprecated_member_use
                                       groupValue: _selected,
+                                      // ignore: deprecated_member_use
                                       onChanged: (_) =>
                                           _select(theme['id'] as String),
                                     ),
