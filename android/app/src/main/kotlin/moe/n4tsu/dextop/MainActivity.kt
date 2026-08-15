@@ -207,6 +207,14 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.exitLaptopPreview()
                     result.success(null)
                 }
+                "hideOverlayForSettings" -> {
+                    MirrorService.setOverlayHiddenForSettings(true)
+                    result.success(null)
+                }
+                "restoreOverlayAfterSettings" -> {
+                    MirrorService.setOverlayHiddenForSettings(false)
+                    result.success(null)
+                }
                 "isFoldableDevice" -> result.success(MirrorService.isFoldableDevice())
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
                 "currentDeviceDisplayProfile" -> {

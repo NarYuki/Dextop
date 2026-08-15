@@ -31,6 +31,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     const MethodChannel(
       'app.freedextop/display',
     ).invokeMethod('hideLaptopDemo');
+    const MethodChannel(
+      'app.freedextop/display',
+    ).invokeMethod('restoreOverlayAfterSettings');
     super.dispose();
   }
 
@@ -85,7 +88,12 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   @override
   void initState() {
     super.initState();
-    const MethodChannel('app.freedextop/display').invokeMethod('exitLaptopPreview');
+    const MethodChannel(
+      'app.freedextop/display',
+    ).invokeMethod('exitLaptopPreview');
+    const MethodChannel(
+      'app.freedextop/display',
+    ).invokeMethod('hideOverlayForSettings');
     _load();
   }
 
