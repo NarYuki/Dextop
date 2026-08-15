@@ -265,7 +265,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                 const SizedBox(height: 8),
                                 Text(theme['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
                                 Row(children: [
-                                  const Expanded(child: Text('Ready')),
+                                  const Expanded(child: SizedBox()),
                                   IconButton(icon: const Icon(Icons.preview_outlined), tooltip: 'Show real overlay', onPressed: _showRealLaptopPreview),
                                   IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => _select(theme['id'] as String)),
                                   Radio<String>(value: theme['id'] as String, groupValue: _selected,
@@ -282,7 +282,6 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                 Align(alignment: Alignment.centerLeft, child: Text('Tap to select · long-press to delete', style: Theme.of(context).textTheme.bodySmall)),
                 const SizedBox(height: 8),
                 const SizedBox(height: 20),
-                _editor(selected),
               ],
             ),
     );

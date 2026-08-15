@@ -190,7 +190,13 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.updateLaptopModeEnabled(call.argument<Boolean>("enabled") == true)
                     result.success(null)
                 }
-                "previewLaptopOverlay" -> result.success(MirrorService.showLaptopPreview())
+                "previewLaptopOverlay" -> {
+                    if (MirrorService.showLaptopPreview()) result.success(true)
+                    else {
+                        MirrorService.showLaptopDemo(this)
+                        result.success(true)
+                    }
+                }
                 "isFoldableDevice" -> result.success(MirrorService.isFoldableDevice())
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
                 "currentDeviceDisplayProfile" -> {

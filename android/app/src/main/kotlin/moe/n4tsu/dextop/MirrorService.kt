@@ -110,6 +110,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private var pending: Config? = null
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
         private var pendingDemo = false
+        private var pendingLaptopDemo = false
         private var active = false
 
         fun launch(
@@ -183,6 +184,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 service.setLaptopMode(true)
             }
             return true
+        }
+
+        fun showLaptopDemo(context: Context) {
+            pendingDemo = true
+            pendingLaptopDemo = true
+            val component = ComponentName(context, MirrorService::class.java).flattenToString()
+            val current = Settings.Secure.getString(context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES).orEmpty()
+            Settings.Secure.putString(context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                (current.split(':').filter { it.isNotBlank() } + component).distinct().joinToString(":"))
+            Settings.Secure.putInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+            instance?.showDemoWindow()
         }
 
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
@@ -1907,6 +1921,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             setOnClickListener { hideDemoWindow() }
         }
         val controls = buildMenu().apply { visibility = View.VISIBLE }
+        val laptopDemo = pendingLaptopDemo
+        pendingLaptopDemo = false
         val info = TextView(this).apply {
             text = NativeStrings.text("nativeTheThreeFingerGestureIsAnEssential")
             textSize = 14f
@@ -1920,6 +1936,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             elevation = dp(14).toFloat()
         }
         frame.addView(scrim, FrameLayout.LayoutParams(-1, -1))
+        if (laptopDemo) {
+            val deck = buildLaptopDeck().apply {
+                alpha = 0f
+                translationY = dp(28).toFloat()
+            }
+            laptopModeActive = true
+            frame.addView(deck, FrameLayout.LayoutParams(
+                -1, (resources.displayMetrics.heightPixels * .5f).toInt(), Gravity.BOTTOM
+            ))
+            deck.animate().alpha(1f).translationY(0f).setDuration(320L).start()
+        }
         frame.addView(controls, menuLayoutParams())
         frame.addView(info, if (targetWidth >= targetHeight) {
             FrameLayout.LayoutParams(dp(340), -2, Gravity.BOTTOM or Gravity.END).apply {
@@ -1989,6 +2016,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun hideDemoWindow() {
         if (!demoMode) return
         removeWindow()
+        laptopModeActive = false
         demoMode = false
     }
 
