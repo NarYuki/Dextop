@@ -1170,4 +1170,84 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get samsungHelp_mirrorPhoneDisplay =>
       '有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。';
+
+  @override
+  String get keyboardThemesTitle => 'キーボードテーマ';
+
+  @override
+  String get keyboardThemesChoose => 'テーマを選択';
+
+  @override
+  String get keyboardThemesNew => '新しいキーボードテーマ';
+
+  @override
+  String get keyboardThemesName => 'テーマ名';
+
+  @override
+  String get keyboardThemesCreate => '作成';
+
+  @override
+  String get keyboardThemesEdit => '編集';
+
+  @override
+  String get keyboardThemesDone => '完了';
+
+  @override
+  String get keyboardThemesDeleteTitle => 'テーマを削除しますか？';
+
+  @override
+  String keyboardThemesDeleteBody(String name) {
+    return '「$name」を削除しますか？この操作は元に戻せません。';
+  }
+
+  @override
+  String get keyboardThemesBuiltIn => '組み込みテーマは削除できません';
+
+  @override
+  String get keyboardThemesSelectFirst => '先にこのテーマを選択してください。';
+
+  @override
+  String get keyboardThemesStartFirst => '実際のキーボードデモを表示するには、先にDextopを開始してください。';
+
+  @override
+  String get keyboardThemesAdd => 'カスタムテーマを追加';
+
+  @override
+  String get keyboardThemesPreview => 'キーボードデモを表示';
+
+  @override
+  String get keyboardThemesEditTip => '編集';
+
+  @override
+  String get keyboardThemesImage => '背景画像を選択';
+
+  @override
+  String get keyboardThemesExport => 'テーマをエクスポート';
+
+  @override
+  String get keyboardThemesExportDialog => 'キーボードテーマをエクスポート';
+
+  @override
+  String get keyboardThemesOpacity => '不透明度';
+
+  @override
+  String get keyboardThemesBlur => 'ぼかし';
+
+  @override
+  String get keyboardThemesRadius => '角の丸み';
+
+  @override
+  String get keyboardThemesBackground => '背景';
+
+  @override
+  String get keyboardThemesKey => 'キー';
+
+  @override
+  String get keyboardThemesBorder => '枠線';
+
+  @override
+  String get keyboardThemesText => '文字';
+
+  @override
+  String get keyboardThemesTrackpad => 'トラックパッド';
 }

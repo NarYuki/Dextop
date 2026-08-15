@@ -1215,4 +1215,85 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get samsungHelp_mirrorPhoneDisplay =>
       'При включении внешний экран показывает то же содержимое, что и телефон. Это удобно для демонстраций, но дублирует, а не расширяет рабочую область, поэтому разные приложения на двух экранах недоступны.';
+
+  @override
+  String get keyboardThemesTitle => 'Темы клавиатуры';
+
+  @override
+  String get keyboardThemesChoose => 'Выберите тему';
+
+  @override
+  String get keyboardThemesNew => 'Новая тема клавиатуры';
+
+  @override
+  String get keyboardThemesName => 'Название темы';
+
+  @override
+  String get keyboardThemesCreate => 'Создать';
+
+  @override
+  String get keyboardThemesEdit => 'Изменить';
+
+  @override
+  String get keyboardThemesDone => 'Готово';
+
+  @override
+  String get keyboardThemesDeleteTitle => 'Удалить тему?';
+
+  @override
+  String keyboardThemesDeleteBody(String name) {
+    return 'Удалить «$name»? Это действие нельзя отменить.';
+  }
+
+  @override
+  String get keyboardThemesBuiltIn => 'Встроенные темы нельзя удалить';
+
+  @override
+  String get keyboardThemesSelectFirst => 'Сначала выберите эту тему.';
+
+  @override
+  String get keyboardThemesStartFirst =>
+      'Сначала запустите Dextop для показа демонстрации.';
+
+  @override
+  String get keyboardThemesAdd => 'Добавить свою тему';
+
+  @override
+  String get keyboardThemesPreview => 'Предпросмотр клавиатуры';
+
+  @override
+  String get keyboardThemesEditTip => 'Изменить';
+
+  @override
+  String get keyboardThemesImage => 'Выбрать фоновое изображение';
+
+  @override
+  String get keyboardThemesExport => 'Экспорт темы';
+
+  @override
+  String get keyboardThemesExportDialog => 'Экспорт темы клавиатуры';
+
+  @override
+  String get keyboardThemesOpacity => 'Непрозрачность';
+
+  @override
+  String get keyboardThemesBlur => 'Размытие';
+
+  @override
+  String get keyboardThemesRadius => 'Радиус углов';
+
+  @override
+  String get keyboardThemesBackground => 'Фон';
+
+  @override
+  String get keyboardThemesKey => 'Клавиша';
+
+  @override
+  String get keyboardThemesBorder => 'Граница';
+
+  @override
+  String get keyboardThemesText => 'Текст';
+
+  @override
+  String get keyboardThemesTrackpad => 'Трекпад';
 }

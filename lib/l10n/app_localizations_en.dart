@@ -1204,4 +1204,86 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get samsungHelp_mirrorPhoneDisplay =>
       'When enabled, the external desktop shows the same content as the built-in phone screen. This is useful for demonstrations, but it duplicates rather than expands the workspace, so the two screens cannot show independent apps.';
+
+  @override
+  String get keyboardThemesTitle => 'Keyboard themes';
+
+  @override
+  String get keyboardThemesChoose => 'Choose a theme';
+
+  @override
+  String get keyboardThemesNew => 'New keyboard theme';
+
+  @override
+  String get keyboardThemesName => 'Theme name';
+
+  @override
+  String get keyboardThemesCreate => 'Create';
+
+  @override
+  String get keyboardThemesEdit => 'Edit';
+
+  @override
+  String get keyboardThemesDone => 'Done';
+
+  @override
+  String get keyboardThemesDeleteTitle => 'Delete theme?';
+
+  @override
+  String keyboardThemesDeleteBody(String name) {
+    return 'Delete “$name”? This cannot be undone.';
+  }
+
+  @override
+  String get keyboardThemesBuiltIn => 'Built-in themes cannot be deleted';
+
+  @override
+  String get keyboardThemesSelectFirst =>
+      'Select this theme first to preview it.';
+
+  @override
+  String get keyboardThemesStartFirst =>
+      'Start Dextop first to show the real laptop overlay.';
+
+  @override
+  String get keyboardThemesAdd => 'Add custom theme';
+
+  @override
+  String get keyboardThemesPreview => 'Preview keyboard demo';
+
+  @override
+  String get keyboardThemesEditTip => 'Edit';
+
+  @override
+  String get keyboardThemesImage => 'Choose background image';
+
+  @override
+  String get keyboardThemesExport => 'Export theme';
+
+  @override
+  String get keyboardThemesExportDialog => 'Export keyboard theme';
+
+  @override
+  String get keyboardThemesOpacity => 'Opacity';
+
+  @override
+  String get keyboardThemesBlur => 'Blur';
+
+  @override
+  String get keyboardThemesRadius => 'Corner radius';
+
+  @override
+  String get keyboardThemesBackground => 'Background';
+
+  @override
+  String get keyboardThemesKey => 'Key';
+
+  @override
+  String get keyboardThemesBorder => 'Border';
+
+  @override
+  String get keyboardThemesText => 'Text';
+
+  @override
+  String get keyboardThemesTrackpad => 'Trackpad';
 }

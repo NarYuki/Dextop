@@ -328,5 +328,7 @@
   "samsungHelp_autoHideTaskbar": "활성화하면 사용하지 않을 때 Samsung 데스크톱 작업 표시줄을 숨겨 앱의 세로 공간을 넓힙니다. 포인터를 화면 아래쪽으로 옮기면 다시 나타납니다.",
   "samsungHelp_dexCommandArrow": "활성화하면 Samsung 명령 제어를 여는 화살표가 표시되어 보조 작업에 빠르게 접근할 수 있습니다. Dextop 오버레이나 가장자리 제스처와 겹칠 수 있습니다.",
   "samsungHelp_includePhoneDisplay": "활성화하면 휴대전화 내장 화면이 외부 화면과 같은 데스크톱 구성에 포함되어 앱과 포인터를 화면 사이로 이동할 수 있습니다. 휴대전화를 독립 Android 제어 화면으로 쓰려면 끄세요.",
-  "samsungHelp_mirrorPhoneDisplay": "활성화하면 외부 화면에 휴대전화와 같은 내용이 표시되어 시연에 유용합니다. 작업 공간 확장이 아닌 복제이므로 두 화면에 서로 다른 앱을 표시할 수 없습니다."
+  "samsungHelp_mirrorPhoneDisplay": "활성화하면 외부 화면에 휴대전화와 같은 내용이 표시되어 시연에 유용합니다. 작업 공간 확장이 아닌 복제이므로 두 화면에 서로 다른 앱을 표시할 수 없습니다.",
+  "keyboardThemesTitle":"키보드 테마","keyboardThemesChoose":"테마 선택","keyboardThemesNew":"새 키보드 테마","keyboardThemesName":"테마 이름","keyboardThemesCreate":"만들기","keyboardThemesEdit":"편집","keyboardThemesDone":"완료","keyboardThemesDeleteTitle":"테마를 삭제할까요?","keyboardThemesDeleteBody":"“{name}”을(를) 삭제할까요? 되돌릴 수 없습니다.","keyboardThemesBuiltIn":"기본 테마는 삭제할 수 없습니다","keyboardThemesSelectFirst":"먼저 이 테마를 선택하세요.","keyboardThemesStartFirst":"키보드 데모를 표시하려면 먼저 Dextop을 시작하세요.","keyboardThemesAdd":"사용자 지정 테마 추가","keyboardThemesPreview":"키보드 데모 미리보기","keyboardThemesEditTip":"편집","keyboardThemesImage":"배경 이미지 선택","keyboardThemesExport":"테마 내보내기","keyboardThemesExportDialog":"키보드 테마 내보내기","keyboardThemesOpacity":"불투명도","keyboardThemesBlur":"흐림","keyboardThemesRadius":"모서리 반경","keyboardThemesBackground":"배경","keyboardThemesKey":"키","keyboardThemesBorder":"테두리","keyboardThemesText":"텍스트","keyboardThemesTrackpad":"트랙패드",
+  "@keyboardThemesDeleteBody":{"placeholders":{"name":{"type":"String"}}}
 }

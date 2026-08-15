@@ -328,5 +328,7 @@
   "samsungHelp_autoHideTaskbar": "启用后，Samsung 桌面会在不使用时隐藏任务栏，为应用提供更多纵向空间；将指针移到屏幕底边可再次显示。需要始终看到应用切换时请关闭。",
   "samsungHelp_dexCommandArrow": "启用后显示用于打开 Samsung 命令控制的箭头，可快速访问 Samsung 操作，但可能与 Dextop 浮层或边缘手势重叠。",
   "samsungHelp_includePhoneDisplay": "启用后，手机内置屏幕会加入外接屏幕的同一桌面拓扑，可在两屏之间移动应用和指针。若要将手机保留为独立 Android 控制屏，请关闭。",
-  "samsungHelp_mirrorPhoneDisplay": "启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。"
+  "samsungHelp_mirrorPhoneDisplay": "启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。",
+  "keyboardThemesTitle":"键盘主题","keyboardThemesChoose":"选择主题","keyboardThemesNew":"新建键盘主题","keyboardThemesName":"主题名称","keyboardThemesCreate":"创建","keyboardThemesEdit":"编辑","keyboardThemesDone":"完成","keyboardThemesDeleteTitle":"删除主题？","keyboardThemesDeleteBody":"确定删除“{name}”？此操作无法撤销。","keyboardThemesBuiltIn":"内置主题无法删除","keyboardThemesSelectFirst":"请先选择此主题。","keyboardThemesStartFirst":"请先启动 Dextop 以显示键盘演示。","keyboardThemesAdd":"添加自定义主题","keyboardThemesPreview":"预览键盘演示","keyboardThemesEditTip":"编辑","keyboardThemesImage":"选择背景图片","keyboardThemesExport":"导出主题","keyboardThemesExportDialog":"导出键盘主题","keyboardThemesOpacity":"不透明度","keyboardThemesBlur":"模糊","keyboardThemesRadius":"圆角","keyboardThemesBackground":"背景","keyboardThemesKey":"按键","keyboardThemesBorder":"边框","keyboardThemesText":"文字","keyboardThemesTrackpad":"触控板",
+  "@keyboardThemesDeleteBody":{"placeholders":{"name":{"type":"String"}}}
 }

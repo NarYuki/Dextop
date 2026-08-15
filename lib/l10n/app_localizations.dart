@@ -2353,6 +2353,162 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。'**
   String get samsungHelp_mirrorPhoneDisplay;
+
+  /// No description provided for @keyboardThemesTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードテーマ'**
+  String get keyboardThemesTitle;
+
+  /// No description provided for @keyboardThemesChoose.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマを選択'**
+  String get keyboardThemesChoose;
+
+  /// No description provided for @keyboardThemesNew.
+  ///
+  /// In ja, this message translates to:
+  /// **'新しいキーボードテーマ'**
+  String get keyboardThemesNew;
+
+  /// No description provided for @keyboardThemesName.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマ名'**
+  String get keyboardThemesName;
+
+  /// No description provided for @keyboardThemesCreate.
+  ///
+  /// In ja, this message translates to:
+  /// **'作成'**
+  String get keyboardThemesCreate;
+
+  /// No description provided for @keyboardThemesEdit.
+  ///
+  /// In ja, this message translates to:
+  /// **'編集'**
+  String get keyboardThemesEdit;
+
+  /// No description provided for @keyboardThemesDone.
+  ///
+  /// In ja, this message translates to:
+  /// **'完了'**
+  String get keyboardThemesDone;
+
+  /// No description provided for @keyboardThemesDeleteTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマを削除しますか？'**
+  String get keyboardThemesDeleteTitle;
+
+  /// No description provided for @keyboardThemesDeleteBody.
+  ///
+  /// In ja, this message translates to:
+  /// **'「{name}」を削除しますか？この操作は元に戻せません。'**
+  String keyboardThemesDeleteBody(String name);
+
+  /// No description provided for @keyboardThemesBuiltIn.
+  ///
+  /// In ja, this message translates to:
+  /// **'組み込みテーマは削除できません'**
+  String get keyboardThemesBuiltIn;
+
+  /// No description provided for @keyboardThemesSelectFirst.
+  ///
+  /// In ja, this message translates to:
+  /// **'先にこのテーマを選択してください。'**
+  String get keyboardThemesSelectFirst;
+
+  /// No description provided for @keyboardThemesStartFirst.
+  ///
+  /// In ja, this message translates to:
+  /// **'実際のキーボードデモを表示するには、先にDextopを開始してください。'**
+  String get keyboardThemesStartFirst;
+
+  /// No description provided for @keyboardThemesAdd.
+  ///
+  /// In ja, this message translates to:
+  /// **'カスタムテーマを追加'**
+  String get keyboardThemesAdd;
+
+  /// No description provided for @keyboardThemesPreview.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードデモを表示'**
+  String get keyboardThemesPreview;
+
+  /// No description provided for @keyboardThemesEditTip.
+  ///
+  /// In ja, this message translates to:
+  /// **'編集'**
+  String get keyboardThemesEditTip;
+
+  /// No description provided for @keyboardThemesImage.
+  ///
+  /// In ja, this message translates to:
+  /// **'背景画像を選択'**
+  String get keyboardThemesImage;
+
+  /// No description provided for @keyboardThemesExport.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマをエクスポート'**
+  String get keyboardThemesExport;
+
+  /// No description provided for @keyboardThemesExportDialog.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードテーマをエクスポート'**
+  String get keyboardThemesExportDialog;
+
+  /// No description provided for @keyboardThemesOpacity.
+  ///
+  /// In ja, this message translates to:
+  /// **'不透明度'**
+  String get keyboardThemesOpacity;
+
+  /// No description provided for @keyboardThemesBlur.
+  ///
+  /// In ja, this message translates to:
+  /// **'ぼかし'**
+  String get keyboardThemesBlur;
+
+  /// No description provided for @keyboardThemesRadius.
+  ///
+  /// In ja, this message translates to:
+  /// **'角の丸み'**
+  String get keyboardThemesRadius;
+
+  /// No description provided for @keyboardThemesBackground.
+  ///
+  /// In ja, this message translates to:
+  /// **'背景'**
+  String get keyboardThemesBackground;
+
+  /// No description provided for @keyboardThemesKey.
+  ///
+  /// In ja, this message translates to:
+  /// **'キー'**
+  String get keyboardThemesKey;
+
+  /// No description provided for @keyboardThemesBorder.
+  ///
+  /// In ja, this message translates to:
+  /// **'枠線'**
+  String get keyboardThemesBorder;
+
+  /// No description provided for @keyboardThemesText.
+  ///
+  /// In ja, this message translates to:
+  /// **'文字'**
+  String get keyboardThemesText;
+
+  /// No description provided for @keyboardThemesTrackpad.
+  ///
+  /// In ja, this message translates to:
+  /// **'トラックパッド'**
+  String get keyboardThemesTrackpad;
 }
 
 class _AppLocalizationsDelegate
