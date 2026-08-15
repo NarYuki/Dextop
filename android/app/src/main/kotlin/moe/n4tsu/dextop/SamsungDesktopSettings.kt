@@ -27,6 +27,10 @@ class SamsungDesktopSettings(private val context: Context) {
         "keyboardDex" to Entry(Namespace.GLOBAL, ValueType.INT, "0"),
         "threeFingerGesture" to Entry(Namespace.GLOBAL, ValueType.INT, "4"),
         "fourFingerGesture" to Entry(Namespace.GLOBAL, ValueType.INT, "1"),
+        // Samsung One UI Home owns DexTaskbarWindow. This key is deliberately
+        // kept in the Samsung settings bridge instead of the generic Android
+        // desktop environment settings.
+        "autoHideTaskbar" to Entry(Namespace.GLOBAL, ValueType.INT, "1"),
         "dexCommandArrow" to Entry(Namespace.SYSTEM, ValueType.INT, "0"),
         "mirrorPhoneDisplay" to Entry(Namespace.SECURE, ValueType.INT, "0")
     )
@@ -46,6 +50,7 @@ class SamsungDesktopSettings(private val context: Context) {
         "keyboardDex" to "keyboard_dex",
         "threeFingerGesture" to "three_finger_gesture",
         "fourFingerGesture" to "four_finger_gesture",
+        "autoHideTaskbar" to "taskbar_show_hide_on_hold_enabled",
         "dexCommandArrow" to "dex_cmd_arrow",
         "mirrorPhoneDisplay" to "mirror_built_in_display"
     )

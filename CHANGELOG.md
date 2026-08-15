@@ -1,5 +1,20 @@
 # Changelog
 
+## 1.3.5
+
+### Improved
+
+- Added Samsung DeX taskbar auto-hide control to Samsung desktop settings using the launcher-owned `taskbar_show_hide_on_hold_enabled` key.
+- Included the Samsung DeX taskbar setting in the Samsung desktop settings backup and restore flow.
+- Added runtime resolution of display-topology transaction IDs instead of relying on hard-coded Binder numbers, improving compatibility with OEM Android framework forks.
+- Kept an otherwise usable VirtualDisplay session running when the optional topology API is unavailable or rejected, while recording the skipped operation in the session log.
+
+### Fixed
+
+- Separated the generic Android desktop taskbar setting from Samsung DeX. The Display setting now always controls only `desktop_windowing_force_hide_taskbar`, regardless of the device manufacturer.
+- Fixed topology routing on newer/vendor Android builds where stale transaction IDs could invoke a protected display-mode operation and fail with `android.permission.RESTRICT_DISPLAY_MODES`.
+- Fixed topology activation failures aborting Dextop mirroring instead of degrading gracefully to mirroring without topology routing.
+
 ## 1.3.4
 
 ### Improved
