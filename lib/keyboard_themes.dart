@@ -81,8 +81,10 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();
-    final custom = _themes.where((t) => !(t['builtIn'] == true) &&
-        !_builtIns.any((b) => b['id'] == t['id']));
+    final custom = _themes.where(
+      (t) =>
+          !(t['builtIn'] == true) && !_builtIns.any((b) => b['id'] == t['id']),
+    );
     await prefs.setString(_storageKey, jsonEncode(custom.toList()));
     await prefs.setString('laptop_keyboard_theme', _selected);
     for (final theme in _themes) {
@@ -124,11 +126,20 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('New keyboard theme'),
-        content: TextField(controller: controller, autofocus: true,
-          decoration: const InputDecoration(labelText: 'Theme name')),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Theme name'),
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Cancel')),
-          FilledButton(onPressed: () => Navigator.pop(dialogContext, controller.text), child: const Text('Create')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, controller.text),
+            child: const Text('Create'),
+          ),
         ],
       ),
     );
@@ -148,8 +159,14 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         title: const Text('Delete theme?'),
         content: Text('Delete “${theme['name']}”? This cannot be undone.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(dialogContext, false), child: const Text('Cancel')),
-          FilledButton.tonal(onPressed: () => Navigator.pop(dialogContext, true), child: const Text('Delete')),
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Delete'),
+          ),
         ],
       ),
     );
@@ -162,36 +179,47 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   }
 
   Future<void> _showRealLaptopPreview() async {
-    final shown = await const MethodChannel('app.freedextop/display')
-        .invokeMethod<bool>('previewLaptopOverlay') ?? false;
+    final shown =
+        await const MethodChannel(
+          'app.freedextop/display',
+        ).invokeMethod<bool>('previewLaptopOverlay') ??
+        false;
     if (!shown && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Start Dextop first to show the real laptop overlay.')),
+        const SnackBar(
+          content: Text('Start Dextop first to show the real laptop overlay.'),
+        ),
       );
     }
   }
 
   Future<void> _pickImage(Map<String, dynamic> theme) async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.image,
-        withData: true);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.image,
+      withData: true,
+    );
     final bytes = result?.files.single.bytes;
     if (bytes == null) return;
     setState(() => theme['imageBase64'] = base64Encode(bytes));
     await _save();
   }
 
-  Future<void> _export() async {
+  Future<void> _exportTheme(Map<String, dynamic> theme) async {
     setState(() => _busy = true);
     try {
       final archive = Archive();
-      final manifest = utf8.encode(jsonEncode(_themes));
+      final manifest = utf8.encode(jsonEncode([theme]));
       archive.addFile(ArchiveFile('themes.json', manifest.length, manifest));
       final watermark = utf8.encode('$_themeWatermark;exported-by=free_dextop');
-      archive.addFile(ArchiveFile('.dextop-watermark', watermark.length, watermark));
+      archive.addFile(
+        ArchiveFile('.dextop-watermark', watermark.length, watermark),
+      );
       final bytes = ZipEncoder().encode(archive);
+      final safeName = (theme['name'] as String? ?? 'keyboard-theme')
+          .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-');
       final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Export keyboard themes',
-        fileName: 'dextop-keyboard-themes.zip',
+        dialogTitle: 'Export keyboard theme',
+        fileName: '$safeName.zip',
         type: FileType.custom,
         allowedExtensions: ['zip'],
       );
@@ -202,17 +230,21 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   }
 
   Future<void> _import() async {
-    final result = await FilePicker.platform.pickFiles(type: FileType.custom,
-        allowedExtensions: ['zip'], withData: true);
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['zip'],
+      withData: true,
+    );
     final bytes = result?.files.single.bytes;
     if (bytes == null) return;
     final archive = ZipDecoder().decodeBytes(bytes);
     final file = archive.findFile('themes.json');
     if (file == null) return;
-    final imported = (jsonDecode(utf8.decode(file.content as List<int>)) as List)
-        .map((item) => Map<String, dynamic>.from(item as Map))
-        .where((item) => item['id'] is String && item['name'] is String)
-        .toList();
+    final imported =
+        (jsonDecode(utf8.decode(file.content as List<int>)) as List)
+            .map((item) => Map<String, dynamic>.from(item as Map))
+            .where((item) => item['id'] is String && item['name'] is String)
+            .toList();
     setState(() {
       _themes = [
         ..._builtIns.map((theme) => Map<String, dynamic>.from(theme)),
@@ -229,9 +261,16 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       appBar: AppBar(
         title: const Text('Keyboard themes'),
         actions: [
-          IconButton(onPressed: _showCreateDialog, icon: const Icon(Icons.add), tooltip: 'Add custom theme'),
-          IconButton(onPressed: _busy ? null : _import, icon: const Icon(Icons.file_open_outlined), tooltip: 'Import ZIP'),
-          IconButton(onPressed: _busy ? null : _export, icon: const Icon(Icons.archive_outlined), tooltip: 'Export ZIP'),
+          IconButton(
+            onPressed: _showCreateDialog,
+            icon: const Icon(Icons.add),
+            tooltip: 'Add custom theme',
+          ),
+          IconButton(
+            onPressed: _busy ? null : _import,
+            icon: const Icon(Icons.file_open_outlined),
+            tooltip: 'Import ZIP',
+          ),
         ],
       ),
       body: _themes.isEmpty
@@ -239,46 +278,76 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                Text('Choose a theme', style: Theme.of(context).textTheme.titleLarge),
+                Text(
+                  'Choose a theme',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
                 const SizedBox(height: 12),
                 GridView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 3,
-                      crossAxisSpacing: 12,
-                      mainAxisSpacing: 12,
-                      childAspectRatio: 1.05,
-                    ),
-                    itemCount: _themes.length,
-                    itemBuilder: (context, index) {
-                      final theme = _themes[index];
-                      return SizedBox(
-                        child: Card(
-                          clipBehavior: Clip.antiAlias,
-                          child: InkWell(
-                            onTap: () => _select(theme['id'] as String),
-                            onLongPress: () => _showDeleteDialog(theme),
-                            child: Padding(
-                              padding: const EdgeInsets.all(12),
-                              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                                Expanded(child: _preview(theme, compact: true, includeTrackpad: false)),
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3,
+                    crossAxisSpacing: 12,
+                    mainAxisSpacing: 12,
+                    childAspectRatio: 1.05,
+                  ),
+                  itemCount: _themes.length,
+                  itemBuilder: (context, index) {
+                    final theme = _themes[index];
+                    return SizedBox(
+                      child: Card(
+                        clipBehavior: Clip.antiAlias,
+                        child: InkWell(
+                          onTap: () => _select(theme['id'] as String),
+                          onLongPress: () => _showDeleteDialog(theme),
+                          child: Padding(
+                            padding: const EdgeInsets.all(12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Expanded(
+                                  child: _preview(
+                                    theme,
+                                    compact: true,
+                                    includeTrackpad: false,
+                                  ),
+                                ),
                                 const SizedBox(height: 8),
-                                Text(theme['name'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
-                                Row(children: [
-                                  const Expanded(child: SizedBox()),
-                                  IconButton(icon: const Icon(Icons.preview_outlined), tooltip: 'Show real overlay', onPressed: _showRealLaptopPreview),
-                                  IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => _showEditDialog(theme)),
-                                  Radio<String>(value: theme['id'] as String, groupValue: _selected,
-                                      onChanged: (_) => _select(theme['id'] as String)),
-                                ]),
-                              ]),
+                                Text(
+                                  theme['name'] as String,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                Row(
+                                  children: [
+                                    const Expanded(child: SizedBox()),
+                                    IconButton(
+                                      icon: const Icon(Icons.preview_outlined),
+                                      tooltip: 'Show real overlay',
+                                      onPressed: _showRealLaptopPreview,
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.edit_outlined),
+                                      tooltip: 'Edit',
+                                      onPressed: () => _showEditDialog(theme),
+                                    ),
+                                    Radio<String>(
+                                      value: theme['id'] as String,
+                                      groupValue: _selected,
+                                      onChanged: (_) =>
+                                          _select(theme['id'] as String),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
                         ),
-                      );
-                    },
-                  ),
+                      ),
+                    );
+                  },
+                ),
                 const SizedBox(height: 20),
               ],
             ),
@@ -288,32 +357,134 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   Future<void> _showEditDialog(Map<String, dynamic> theme) async {
     await showDialog<void>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(builder: (context, update) => AlertDialog(
-        title: Text('Edit ${theme['name']}'),
-        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            for (final key in ['background', 'key', 'border', 'text', 'trackpad'])
-              ActionChip(label: Text(key), avatar: CircleAvatar(backgroundColor: _color(theme, key)), onPressed: () { _cycleColor(theme, key); update(() {}); }),
-          ]),
-          _labeledSlider('Opacity', (theme['opacity'] as num).toDouble(), .2, 1, (v) { update(() => theme['opacity'] = v); _save(); }),
-          _labeledSlider('Blur', (theme['blur'] as num).toDouble(), 0, 30, (v) { update(() => theme['blur'] = v); _save(); }),
-          _labeledSlider('Corner radius', (theme['radius'] as num).toDouble(), 0, 28, (v) { update(() => theme['radius'] = v); _save(); }),
-          OutlinedButton.icon(onPressed: () async { await _pickImage(theme); update(() {}); }, icon: const Icon(Icons.image_outlined), label: const Text('Choose background image')),
-          OutlinedButton.icon(onPressed: () { Navigator.pop(dialogContext); _showPreview(theme); }, icon: const Icon(Icons.preview_outlined), label: const Text('Preview keyboard overlay')),
-        ])),
-        actions: [TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('Done'))],
-      )),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, update) => AlertDialog(
+          title: Text('Edit ${theme['name']}'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: [
+                    for (final key in [
+                      'background',
+                      'key',
+                      'border',
+                      'text',
+                      'trackpad',
+                    ])
+                      ActionChip(
+                        label: Text(key),
+                        avatar: CircleAvatar(
+                          backgroundColor: _color(theme, key),
+                        ),
+                        onPressed: () {
+                          _cycleColor(theme, key);
+                          update(() {});
+                        },
+                      ),
+                  ],
+                ),
+                _labeledSlider(
+                  'Opacity',
+                  (theme['opacity'] as num).toDouble(),
+                  .2,
+                  1,
+                  (v) {
+                    update(() => theme['opacity'] = v);
+                    _save();
+                  },
+                ),
+                _labeledSlider(
+                  'Blur',
+                  (theme['blur'] as num).toDouble(),
+                  0,
+                  30,
+                  (v) {
+                    update(() => theme['blur'] = v);
+                    _save();
+                  },
+                ),
+                _labeledSlider(
+                  'Corner radius',
+                  (theme['radius'] as num).toDouble(),
+                  0,
+                  28,
+                  (v) {
+                    update(() => theme['radius'] = v);
+                    _save();
+                  },
+                ),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await _pickImage(theme);
+                    update(() {});
+                  },
+                  icon: const Icon(Icons.image_outlined),
+                  label: const Text('Choose background image'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _showPreview(theme);
+                  },
+                  icon: const Icon(Icons.preview_outlined),
+                  label: const Text('Preview keyboard overlay'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: _busy ? null : () => _exportTheme(theme),
+                  icon: const Icon(Icons.archive_outlined),
+                  label: const Text('Export this theme'),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Done'),
+            ),
+          ],
+        ),
+      ),
     );
   }
 
-  Widget _labeledSlider(String label, double value, double min, double max, ValueChanged<double> onChanged) =>
-      Row(children: [
-        SizedBox(width: 110, child: Text(label)),
-        Expanded(child: Slider(value: value.clamp(min, max), min: min, max: max, label: label, onChanged: onChanged)),
-      ]);
+  Widget _labeledSlider(
+    String label,
+    double value,
+    double min,
+    double max,
+    ValueChanged<double> onChanged,
+  ) => Row(
+    children: [
+      SizedBox(width: 110, child: Text(label)),
+      Expanded(
+        child: Slider(
+          value: value.clamp(min, max),
+          min: min,
+          max: max,
+          label: label,
+          onChanged: onChanged,
+        ),
+      ),
+    ],
+  );
 
   void _cycleColor(Map<String, dynamic> theme, String key) {
-    const colors = ['#FFFFFF', '#DCEBFF', '#C7DDF5', '#FFBE97', '#6E1B1B', '#302E36', '#121216', '#426486'];
+    const colors = [
+      '#FFFFFF',
+      '#DCEBFF',
+      '#C7DDF5',
+      '#FFBE97',
+      '#6E1B1B',
+      '#302E36',
+      '#121216',
+      '#426486',
+    ];
     final current = theme[key] as String? ?? colors.first;
     final next = colors[(colors.indexOf(current) + 1) % colors.length];
     setState(() => theme[key] = next);
@@ -321,14 +492,22 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   }
 
   void _showPreview(Map<String, dynamic> theme) {
-    showDialog<void>(context: context, builder: (_) => Dialog(
-      child: Padding(padding: const EdgeInsets.all(12), child: SizedBox(
-        width: 560, height: 300, child: _preview(theme),
-      )),
-    ));
+    showDialog<void>(
+      context: context,
+      builder: (_) => Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: SizedBox(width: 560, height: 300, child: _preview(theme)),
+        ),
+      ),
+    );
   }
 
-  Widget _preview(Map<String, dynamic> theme, {bool compact = false, bool includeTrackpad = true}) {
+  Widget _preview(
+    Map<String, dynamic> theme, {
+    bool compact = false,
+    bool includeTrackpad = true,
+  }) {
     final background = _color(theme, 'background');
     final key = _color(theme, 'key');
     final border = _color(theme, 'border');
@@ -343,24 +522,74 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     ];
     return Container(
       padding: const EdgeInsets.all(8),
-      decoration: BoxDecoration(color: background, borderRadius: BorderRadius.circular(radius)),
-      child: Column(children: [
-        Expanded(flex: 66, child: Column(children: [
-          for (final row in rows) Expanded(child: Row(children: [
-            for (final char in row.split('')) Expanded(child: Padding(
-              padding: const EdgeInsets.all(2),
-              child: DecoratedBox(decoration: BoxDecoration(color: key, border: Border.all(color: border), borderRadius: BorderRadius.circular(radius / 2)),
-                child: Center(child: Text(char, style: TextStyle(color: text, fontSize: compact ? 9 : 12))),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(radius),
+      ),
+      child: Column(
+        children: [
+          Expanded(
+            flex: 66,
+            child: Column(
+              children: [
+                for (final row in rows)
+                  Expanded(
+                    child: Row(
+                      children: [
+                        for (final char in row.split(''))
+                          Expanded(
+                            child: Padding(
+                              padding: const EdgeInsets.all(2),
+                              child: DecoratedBox(
+                                decoration: BoxDecoration(
+                                  color: key,
+                                  border: Border.all(color: border),
+                                  borderRadius: BorderRadius.circular(
+                                    radius / 2,
+                                  ),
+                                ),
+                                child: Center(
+                                  child: Text(
+                                    char,
+                                    style: TextStyle(
+                                      color: text,
+                                      fontSize: compact ? 9 : 12,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          if (includeTrackpad) const SizedBox(height: 6),
+          if (includeTrackpad)
+            Expanded(
+              flex: 34,
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  color: _color(theme, 'trackpad'),
+                  border: Border.all(color: border),
+                  borderRadius: BorderRadius.circular(radius),
+                ),
+                child: Center(
+                  child: Text(
+                    'TRACKPAD',
+                    style: TextStyle(
+                      color: _color(theme, 'trackpadText'),
+                      letterSpacing: 2,
+                      fontSize: compact ? 8 : 11,
+                    ),
+                  ),
+                ),
               ),
-            )),
-          ])),
-        ])),
-        if (includeTrackpad) const SizedBox(height: 6),
-        if (includeTrackpad) Expanded(flex: 34, child: DecoratedBox(
-          decoration: BoxDecoration(color: _color(theme, 'trackpad'), border: Border.all(color: border), borderRadius: BorderRadius.circular(radius)),
-          child: Center(child: Text('TRACKPAD', style: TextStyle(color: _color(theme, 'trackpadText'), letterSpacing: 2, fontSize: compact ? 8 : 11))),
-        )),
-      ]),
+            ),
+        ],
+      ),
     );
   }
 }
