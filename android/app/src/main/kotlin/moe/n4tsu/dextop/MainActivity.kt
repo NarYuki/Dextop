@@ -190,6 +190,15 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.updateLaptopModeEnabled(call.argument<Boolean>("enabled") == true)
                     result.success(null)
                 }
+                "laptopKeyboardTheme" -> {
+                    val themeId = call.argument<String>("themeId")
+                    if (themeId.isNullOrBlank()) {
+                        result.error("invalid_theme", "A keyboard theme id is required", null)
+                    } else {
+                        MirrorService.updateLaptopTheme(themeId)
+                        result.success(null)
+                    }
+                }
                 "previewLaptopOverlay" -> {
                     val themeId = call.argument<String>("themeId")
                     MirrorService.setPendingLaptopPreviewTheme(themeId)

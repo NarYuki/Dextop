@@ -131,6 +131,11 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         jsonEncode(normalized),
       );
     }
+    // Keep a running laptop deck in sync when a theme is selected or edited
+    // from the settings page. The native overlay re-renders in place.
+    await const MethodChannel(
+      'app.freedextop/display',
+    ).invokeMethod<void>('laptopKeyboardTheme', {'themeId': _selected});
   }
 
   Color _color(Map<String, dynamic> theme, String key) {

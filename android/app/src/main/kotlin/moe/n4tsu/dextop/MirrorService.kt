@@ -177,6 +177,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             instance?.root?.post { instance?.applyFlutterLaptopModeSetting(enabled) }
         }
 
+        /** Apply a theme change to an already visible laptop keyboard. */
+        fun updateLaptopTheme(themeId: String) {
+            val service = instance ?: return
+            service.getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                .edit()
+                .putString("flutter.laptop_keyboard_theme", themeId)
+                .apply()
+            service.getSharedPreferences(PREFS, MODE_PRIVATE)
+                .edit()
+                .putString("laptop_keyboard_theme", themeId)
+                .apply()
+            service.root?.post {
+                if (!isActive() || !service.laptopModeActive || service.demoMode) return@post
+                if (service.laptopSettingsVisible) service.showLaptopKeyboardSettings()
+                else service.rebuildLaptopDeck()
+            }
+        }
+
         /** Shows the real laptop deck on the active virtual-display session. */
         fun showLaptopPreview(themeId: String? = null): Boolean {
             val service = instance ?: return false
@@ -384,6 +402,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopControl = false
     private var laptopAlt = false
     private var laptopCapsLock = false
+    private var laptopMetaLongPressRunnable: Runnable? = null
+    private var laptopMetaLongPressTriggered = false
     private val laptopTypeface: Typeface by lazy {
         Typeface.createFromAsset(assets, "fonts/HarmonyOS_Sans_Medium.ttf")
     }
@@ -453,7 +473,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var filteredHingeAngle: Float? = null
     private var pendingLaptopMode: Boolean? = null
     private var pendingLaptopModeSince = 0L
-    private val laptopModeDebounceMs = 280L
+    private var laptopModeEvaluationGeneration = 0L
+    private var laptopHostMismatchSince = 0L
+    private val laptopModeDebounceMs = 420L
+    private val laptopHostMismatchDebounceMs = 1_200L
 
     private fun currentInputMode(): String = when {
         physicalMouseActive -> "physical_mouse"
@@ -649,7 +672,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (laptopModeActive &&
                 !isDebugLaptopModeForced() &&
                 laptopHostUniqueId != null &&
-                laptopHostUniqueId != defaultDisplayUniqueId()) {
+                defaultDisplayUniqueId()?.let { it != laptopHostUniqueId } == true &&
+                hasStableLaptopHostMismatch()) {
                 // A different internal panel became the default display. This
                 // is the reliable cover-display signal; failure to enumerate
                 // the inactive inner panel must never dismiss laptop mode.
@@ -845,10 +869,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun start(config: Config) {
         laptopModeActive = false
+        laptopManualOverride = false
+        laptopAutoActivated = false
         laptopHostUniqueId = null
         filteredHingeAngle = null
         pendingLaptopMode = null
         pendingLaptopModeSince = 0L
+        laptopModeEvaluationGeneration += 1
+        laptopHostMismatchSince = 0L
         val effectiveConfig = effectiveConfig(config)
         OperationLog.beginSession(
             this,
@@ -1206,14 +1234,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (enabled) startLaptopHardwareKeyboard()
             return
         }
-        if (enabled && !isDebugLaptopModeForced() && !laptopManualOverride &&
-            hingeAngle?.let(::isLaptopHingeAngle) != true && !isFoldableMainDisplay()) return
+        if (enabled && !demoMode && !isLaptopCapableDevice()) {
+            OperationLog.i(
+                this,
+                "LaptopMode",
+                "ignored request on a non-foldable phone-sized display"
+            )
+            return
+        }
         val frame = root ?: return
         val content = laptopContent ?: return
         val surface = surfaceView ?: return
         laptopModeActive = enabled
         if (!enabled) laptopAutoActivated = false
         laptopHostUniqueId = if (enabled) defaultDisplayUniqueId() else null
+        if (!enabled) {
+            laptopHostMismatchSince = 0L
+            laptopModeEvaluationGeneration += 1
+        }
         if (enabled) {
             startLaptopHardwareKeyboard()
             val deck = buildLaptopDeck().apply {
@@ -1337,7 +1375,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun leaveLaptopModeOnCoverDisplay(): Boolean {
         if (!laptopModeActive || isDebugLaptopModeForced()) return false
         val originalHost = laptopHostUniqueId ?: return false
-        if (originalHost == defaultDisplayUniqueId()) return false
+        val currentHost = defaultDisplayUniqueId() ?: return false
+        if (originalHost == currentHost || !hasStableLaptopHostMismatch()) return false
         laptopManualOverride = false
         laptopAutoActivated = false
         OperationLog.i(
@@ -1347,6 +1386,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
         setLaptopMode(false)
         return true
+    }
+
+    /**
+     * Fold/unfold transitions can publish a temporary default display while
+     * the new panel is being attached. Do not tear down the laptop deck until
+     * the host identity has remained different for a full handoff window.
+     */
+    private fun hasStableLaptopHostMismatch(): Boolean {
+        val original = laptopHostUniqueId ?: return false
+        val current = defaultDisplayUniqueId() ?: return false
+        if (current == original) {
+            laptopHostMismatchSince = 0L
+            return false
+        }
+        val now = SystemClock.uptimeMillis()
+        if (laptopHostMismatchSince == 0L) {
+            laptopHostMismatchSince = now
+            return false
+        }
+        return now - laptopHostMismatchSince >= laptopHostMismatchDebounceMs
     }
 
     private fun isLaptopHingeAngle(angle: Float): Boolean = if (laptopModeActive) {
@@ -1385,6 +1444,27 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (pendingLaptopMode != shouldShow) {
             pendingLaptopMode = shouldShow
             pendingLaptopModeSince = now
+            val generation = ++laptopModeEvaluationGeneration
+            android.os.Handler(mainLooper).postDelayed({
+                if (generation != laptopModeEvaluationGeneration || !active ||
+                    suspendedForLockScreen || pendingLaptopMode != shouldShow) return@postDelayed
+                val stableAngle = filteredHingeAngle ?: return@postDelayed
+                if (isLaptopHingeAngle(stableAngle) != shouldShow && !laptopManualOverride) {
+                    pendingLaptopMode = null
+                    pendingLaptopModeSince = 0L
+                    return@postDelayed
+                }
+                pendingLaptopMode = null
+                pendingLaptopModeSince = 0L
+                laptopAutoActivated = shouldShow && !laptopManualOverride
+                OperationLog.i(
+                    this,
+                    "LaptopMode",
+                    "hinge timer angle=$stableAngle manual=$laptopManualOverride " +
+                        "main=$mainDisplay show=$shouldShow"
+                )
+                setLaptopMode(shouldShow)
+            }, laptopModeDebounceMs)
             return
         }
         if (now - pendingLaptopModeSince >= laptopModeDebounceMs) {
@@ -1402,7 +1482,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun applyFlutterLaptopModeSetting(enabled: Boolean) {
         if (!enabled) {
-            if (laptopAutoActivated) setLaptopMode(false)
+            if (laptopAutoActivated && !laptopManualOverride) setLaptopMode(false)
             return
         }
         hingeAngle?.let(::updateLaptopModeForHinge)
@@ -1525,6 +1605,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             getSystemService(SensorManager::class.java)
                 .getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) != null
 
+    /**
+     * Laptop mode needs enough surface for two usable panes. Foldables are
+     * explicitly supported even when one panel is narrower than a tablet;
+     * otherwise require a tablet-class display (600dp smallest width).
+     */
+    private fun isLaptopCapableDevice(): Boolean {
+        if (isFoldableDevice()) return true
+        if (resources.configuration.smallestScreenWidthDp >= 600) return true
+        val display = getSystemService(DisplayManager::class.java)
+            .getDisplay(Display.DEFAULT_DISPLAY) ?: return false
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        display.getRealMetrics(metrics)
+        val densityDpi = metrics.densityDpi.takeIf { it > 0 } ?: 160
+        val minDp = minOf(metrics.widthPixels, metrics.heightPixels) * 160f / densityDpi
+        return minDp >= 600f
+    }
+
     private fun internalDisplays(manager: DisplayManager): List<Display> =
         manager.displays.filter { display ->
             runCatching { Display::class.java.getMethod("getType").invoke(display) as Int == 1 }
@@ -1631,16 +1729,40 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             typeface = materialIconTypeface
             textSize = 22f
         }
-        if (key.code == KeyEvent.KEYCODE_META_LEFT) {
-            setOnLongClickListener {
-                if (!demoMode) showLaptopKeyboardSettings()
-                true
-            }
-        }
         if (key.code < 0) laptopModifierButtons.putIfAbsent(key.code, this)
         if (key.code in laptopShortcutLabels.keys) laptopShortcutButtons[key.code] = this
-        setOnClickListener { handleLaptopKey(key.code) }
+        setOnClickListener {
+            if (key.code != KeyEvent.KEYCODE_META_LEFT) handleLaptopKey(key.code)
+        }
         setOnTouchListener { view, event ->
+            if (key.code == KeyEvent.KEYCODE_META_LEFT) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> {
+                        laptopMetaLongPressTriggered = false
+                        laptopMetaLongPressRunnable?.let(view::removeCallbacks)
+                        laptopMetaLongPressRunnable = Runnable {
+                            if (view.isPressed && !demoMode) {
+                                laptopMetaLongPressTriggered = true
+                                showLaptopKeyboardSettings()
+                            }
+                        }.also { view.postDelayed(it, 620L) }
+                        view.animate().scaleX(.92f).scaleY(.92f).alpha(.72f)
+                            .setDuration(55).start()
+                    }
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                        laptopMetaLongPressRunnable?.let(view::removeCallbacks)
+                        laptopMetaLongPressRunnable = null
+                        view.animate().scaleX(1f).scaleY(1f).alpha(1f)
+                            .setDuration(110).start()
+                        if (event.actionMasked == MotionEvent.ACTION_UP &&
+                            !laptopMetaLongPressTriggered) {
+                            handleLaptopKey(key.code)
+                        }
+                        laptopMetaLongPressTriggered = false
+                    }
+                }
+                return@setOnTouchListener true
+            }
             when (event.actionMasked) {
                 MotionEvent.ACTION_DOWN -> {
                     // Modifiers are latched on press, not release, so a
@@ -1906,6 +2028,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 setTextColor(palette.trackpadText)
             })
             setOnClickListener {
+                getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+                    .putString("flutter.laptop_keyboard_theme", id).apply()
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
                     .putString("laptop_keyboard_theme", id).apply()
                 // Keep the deck attached while changing its contents. Removing
@@ -2736,18 +2860,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     )
     private val controlIds get() = allControlIds.filter {
         when (it) {
-            // Demo mode documents every available control even on a
-            // non-foldable phone; the action only performs work on a
-            // supported foldable when the demo is not active.
-            // Keep the manual control available whenever laptop posture
-            // detection is enabled.  The service menu is hosted on the
-            // virtual/overlay display, and during a fold or display handoff
-            // the default display can briefly report the wrong panel (or no
-            // foldable main panel at all).  Gating this only on
-            // isFoldableMainDisplay() made the button disappear exactly when
-            // automatic laptop mode was enabled.
-            "laptop" -> demoMode || isDebugLaptopModeForced() ||
-                isLaptopAutoDetectionEnabled() || isFoldableDevice() || isFoldableMainDisplay()
+            // Laptop mode is available on foldables and tablet-class displays
+            // without requiring a hinge sensor, but is hidden on clearly
+            // phone-sized devices where the two-pane surface is unusable.
+            "laptop" -> demoMode || isLaptopCapableDevice()
             "mouse_route", "keyboard_route" ->
                 demoMode || physicalInputRoutingSupported && physicalExternalDisplayConnected
             else -> true
@@ -4900,6 +5016,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         removeWindow()
         targetDisplayId = -1
         active = false
+        laptopModeActive = false
+        laptopManualOverride = false
+        laptopAutoActivated = false
+        pendingLaptopMode = null
+        pendingLaptopModeSince = 0L
+        laptopModeEvaluationGeneration += 1
+        laptopHostMismatchSince = 0L
         MainActivity.restoreOrientation()
         val keepInternal120Hz = internalRefreshRateController.isEnabledAndSupported() &&
             !externalDisplayDetector.snapshot().connected
