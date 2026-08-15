@@ -323,6 +323,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private val laptopModifierButtons = mutableMapOf<Int, TextView>()
     private val laptopShortcutButtons = mutableMapOf<Int, TextView>()
+    private val laptopLegendButtons = mutableListOf<Pair<LaptopKeyTextView, String>>()
     private var targetDisplayId = -1
     private var targetWidth = 1920
     private var targetHeight = 1080
@@ -376,6 +377,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var inputManager: InputManager? = null
     private var sensorManager: SensorManager? = null
     private var hingeAngle: Float? = null
+    private var filteredHingeAngle: Float? = null
+    private var pendingLaptopMode: Boolean? = null
+    private var pendingLaptopModeSince = 0L
+    private val laptopModeDebounceMs = 280L
     private val hingeListener = object : SensorEventListener {
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
@@ -666,6 +671,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun start(config: Config) {
         laptopModeActive = false
         laptopHostUniqueId = null
+        filteredHingeAngle = null
+        pendingLaptopMode = null
+        pendingLaptopModeSince = 0L
         val effectiveConfig = effectiveConfig(config)
         OperationLog.beginSession(
             this,
@@ -870,6 +878,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun buildLaptopDeck(): View {
         laptopModifierButtons.clear()
         laptopShortcutButtons.clear()
+        laptopLegendButtons.clear()
         laptopShift = false
         laptopControl = false
         laptopAlt = false
@@ -1139,20 +1148,43 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun updateLaptopModeForHinge(angle: Float) {
         if (!active || root == null || suspendedForLockScreen) return
         if (!isLaptopAutoDetectionEnabled()) return
+        // Hinge sensors on real devices are noisy around the flex posture
+        // thresholds.  Filter small jumps and require the candidate state to
+        // remain stable briefly before rebuilding the laptop deck; otherwise
+        // the deck repeatedly fades in/out and the virtual display is resized
+        // on every sensor fluctuation.
+        val filtered = filteredHingeAngle?.let { previous ->
+            previous + (angle - previous) * 0.25f
+        } ?: angle
+        filteredHingeAngle = filtered
+        hingeAngle = filtered
         // A half-open hinge is itself authoritative: inactive inner panels are
         // omitted from DisplayManager on several foldables and the emulator.
-        val mainDisplay = isLaptopHingeAngle(angle) || isFoldableMainDisplay()
+        val mainDisplay = isLaptopHingeAngle(filtered) || isFoldableMainDisplay()
         if (!mainDisplay) {
             laptopManualOverride = false
             laptopAutoActivated = false
         }
-        val shouldShow = mainDisplay && (laptopManualOverride || isLaptopHingeAngle(angle))
-        if (shouldShow != laptopModeActive) {
+        val shouldShow = mainDisplay && (laptopManualOverride || isLaptopHingeAngle(filtered))
+        if (shouldShow == laptopModeActive) {
+            pendingLaptopMode = null
+            pendingLaptopModeSince = 0L
+            return
+        }
+        val now = SystemClock.uptimeMillis()
+        if (pendingLaptopMode != shouldShow) {
+            pendingLaptopMode = shouldShow
+            pendingLaptopModeSince = now
+            return
+        }
+        if (now - pendingLaptopModeSince >= laptopModeDebounceMs) {
+            pendingLaptopMode = null
+            pendingLaptopModeSince = 0L
             laptopAutoActivated = shouldShow && !laptopManualOverride
             OperationLog.i(
                 this,
                 "LaptopMode",
-                "hinge angle=$angle manual=$laptopManualOverride main=$mainDisplay show=$shouldShow"
+                "hinge angle=$filtered raw=$angle manual=$laptopManualOverride main=$mainDisplay show=$shouldShow"
             )
             setLaptopMode(shouldShow)
         }
@@ -1377,6 +1409,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         else Color.rgb(235, 231, 239)
     ).apply {
         text = key.label
+        if (key.code != KeyEvent.KEYCODE_META_LEFT) {
+            laptopLegendButtons += this to key.label
+        }
         typeface = laptopTypeface
         textSize = if (key.label.length > 2) 9f else 12f
         gravity = Gravity.CENTER
@@ -1633,7 +1668,41 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             laptopKeyBackground(laptopAlt, LAPTOP_ALT)
         laptopModifierButtons[LAPTOP_CAPS]?.background =
             laptopKeyBackground(laptopCapsLock, LAPTOP_CAPS)
+        refreshLaptopKeyLegends()
         refreshLaptopShortcutLabels()
+    }
+
+    private fun refreshLaptopKeyLegends() {
+        val shifted = laptopShift
+        laptopLegendButtons.forEach { (button, base) ->
+            val symbol = if (shifted) shiftedLaptopLegend(base) else base
+            if (button.text.toString() != symbol) button.text = symbol
+        }
+    }
+
+    private fun shiftedLaptopLegend(base: String): String = when (base) {
+        "`" -> "~"
+        "1" -> "!"
+        "2" -> "@"
+        "3" -> "#"
+        "4" -> "\$"
+        "5" -> "%"
+        "6" -> "^"
+        "7" -> "&"
+        "8" -> "*"
+        "9" -> "("
+        "0" -> ")"
+        "-" -> "_"
+        "=" -> "+"
+        "[" -> "{"
+        "]" -> "}"
+        "\\" -> "|"
+        ";" -> ":"
+        "'" -> "\""
+        "," -> "<"
+        "." -> ">"
+        "/" -> "?"
+        else -> base
     }
 
     private fun refreshLaptopShortcutLabels() {
