@@ -13,6 +13,16 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   List<Map<String, dynamic>> _themes = [];
   String _selected = 'cloud';
   bool _busy = false;
+  AppLocalizations get _l10n => AppLocalizations.of(context);
+
+  String _colorLabel(String key) => switch (key) {
+    'background' => _l10n.keyboardThemesBackground,
+    'key' => _l10n.keyboardThemesKey,
+    'border' => _l10n.keyboardThemesBorder,
+    'text' => _l10n.keyboardThemesText,
+    'trackpad' => _l10n.keyboardThemesTrackpad,
+    _ => key,
+  };
 
   @override
   void dispose() {
@@ -144,11 +154,11 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     final name = await showDialog<String>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('New keyboard theme'),
+        title: Text(_l10n.keyboardThemesNew),
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(labelText: 'Theme name'),
+          decoration: InputDecoration(labelText: _l10n.keyboardThemesName),
         ),
         actions: [
           TextButton(
@@ -157,7 +167,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: const Text('Create'),
+            child: Text(_l10n.keyboardThemesCreate),
           ),
         ],
       ),
@@ -170,9 +180,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _showDeleteDialog(Map<String, dynamic> theme) async {
     if (_builtIns.any((item) => item['id'] == theme['id'])) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Built-in themes cannot be deleted')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesBuiltIn)));
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -180,8 +190,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       builder: (dialogContext) => AlertDialog(
         alignment: Alignment.center,
         insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        title: const Text('Delete theme?'),
-        content: Text('Delete “${theme['name']}”? This cannot be undone.'),
+        title: Text(_l10n.keyboardThemesDeleteTitle),
+        content: Text(_l10n.keyboardThemesDeleteBody(theme['name'] as String)),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -204,9 +214,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _showRealLaptopPreview(String themeId) async {
     if (_selected != themeId) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Select this theme first to preview it.')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesSelectFirst)));
       return;
     }
     final shown =
@@ -215,11 +225,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         ).invokeMethod<bool>('previewLaptopOverlay') ??
         false;
     if (!shown && mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Start Dextop first to show the real laptop overlay.'),
-        ),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesStartFirst)));
     }
   }
 
@@ -248,7 +256,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       final safeName = (theme['name'] as String? ?? 'keyboard-theme')
           .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-');
       final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Export keyboard theme',
+        dialogTitle: _l10n.keyboardThemesExportDialog,
         fileName: '$safeName.zip',
         type: FileType.custom,
         allowedExtensions: ['zip'],
@@ -289,12 +297,12 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Keyboard themes'),
+        title: Text(_l10n.keyboardThemesTitle),
         actions: [
           IconButton(
             onPressed: _showCreateDialog,
             icon: const Icon(Icons.add),
-            tooltip: 'Add custom theme',
+            tooltip: _l10n.keyboardThemesAdd,
           ),
           IconButton(
             onPressed: _busy ? null : _import,
@@ -309,7 +317,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
               padding: const EdgeInsets.all(16),
               children: [
                 Text(
-                  'Choose a theme',
+                  _l10n.keyboardThemesChoose,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 12),
@@ -354,7 +362,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                     const Expanded(child: SizedBox()),
                                     IconButton(
                                       icon: const Icon(Icons.preview_outlined),
-                                      tooltip: 'Show real overlay',
+                                      tooltip: _l10n.keyboardThemesPreview,
                                       onPressed: _selected == theme['id']
                                           ? () => _showRealLaptopPreview(
                                               theme['id'] as String,
@@ -363,7 +371,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                     ),
                                     IconButton(
                                       icon: const Icon(Icons.edit_outlined),
-                                      tooltip: 'Edit',
+                                      tooltip: _l10n.keyboardThemesEditTip,
                                       onPressed: () => _showEditDialog(theme),
                                     ),
                                     Radio<String>(
@@ -398,7 +406,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
             horizontal: 24,
             vertical: 24,
           ),
-          title: Text('Edit ${theme['name']}'),
+          title: Text('${_l10n.keyboardThemesEdit} ${theme['name']}'),
           content: SizedBox(
             width: 560,
             height: 700,
@@ -418,7 +426,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                         'trackpad',
                       ])
                         ActionChip(
-                          label: Text(key),
+                          label: Text(_colorLabel(key)),
                           avatar: CircleAvatar(
                             backgroundColor: _color(theme, key),
                           ),
@@ -430,7 +438,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                     ],
                   ),
                   _labeledSlider(
-                    'Opacity',
+                    _l10n.keyboardThemesOpacity,
                     (theme['opacity'] as num).toDouble(),
                     .2,
                     1,
@@ -440,7 +448,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                     },
                   ),
                   _labeledSlider(
-                    'Blur',
+                    _l10n.keyboardThemesBlur,
                     (theme['blur'] as num).toDouble(),
                     0,
                     30,
@@ -450,7 +458,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                     },
                   ),
                   _labeledSlider(
-                    'Corner radius',
+                    _l10n.keyboardThemesRadius,
                     (theme['radius'] as num).toDouble(),
                     0,
                     28,
@@ -465,7 +473,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                       update(() {});
                     },
                     icon: const Icon(Icons.image_outlined),
-                    label: const Text('Choose background image'),
+                    label: Text(_l10n.keyboardThemesImage),
                   ),
                   OutlinedButton.icon(
                     onPressed: _selected == theme['id']
@@ -475,12 +483,12 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                           }
                         : null,
                     icon: const Icon(Icons.preview_outlined),
-                    label: const Text('Preview keyboard overlay'),
+                    label: Text(_l10n.keyboardThemesPreview),
                   ),
                   OutlinedButton.icon(
                     onPressed: _busy ? null : () => _exportTheme(theme),
                     icon: const Icon(Icons.archive_outlined),
-                    label: Text(AppStrings.tr('uiExport')),
+                    label: Text(_l10n.keyboardThemesExport),
                   ),
                   const SizedBox(height: 16),
                   SizedBox(
@@ -499,7 +507,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Done'),
+              child: Text(_l10n.keyboardThemesDone),
             ),
           ],
         ),

@@ -2,18 +2,10 @@
 
 ## 1.3.3
 
-### Improved
+### Keyboard and foldable improvements
 
-- Shift now updates the keyboard legends to their correct symbols (`!@#$%^&*()_+{}|:"<>?`).
-- Ctrl, Shift, and Alt modifiers latch on press, allowing modifier chords and multi-touch shortcuts such as Ctrl+C and Ctrl+V.
-- Added smoother laptop-mode and keyboard-settings transitions with fade, slide, and scale animations.
-- The desktop surface is now black-backed during laptop-mode layout changes so the Android screen cannot show through transparent resize areas.
-- Stabilized hinge-angle detection with filtering and debounce to prevent posture-triggered flicker and repeated virtual-display resizing.
-
-### Fixed
-
-- Fixed keyboard-settings navigation returning abruptly without the laptop transition animation.
-- Fixed unstable laptop-mode toggling caused by noisy real-device hinge sensor readings near posture thresholds.
+- Added laptop-mode keyboard shortcuts, modifier chords, correct Shift symbols, smoother transitions, and safer hinge-angle detection.
+- Prevented Android bleed-through during laptop-mode changes and stabilized keyboard-settings navigation on real foldable devices.
 
 ## 1.3.2
 

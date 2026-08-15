@@ -1159,4 +1159,84 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get samsungHelp_mirrorPhoneDisplay =>
       '启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。';
+
+  @override
+  String get keyboardThemesTitle => '键盘主题';
+
+  @override
+  String get keyboardThemesChoose => '选择主题';
+
+  @override
+  String get keyboardThemesNew => '新建键盘主题';
+
+  @override
+  String get keyboardThemesName => '主题名称';
+
+  @override
+  String get keyboardThemesCreate => '创建';
+
+  @override
+  String get keyboardThemesEdit => '编辑';
+
+  @override
+  String get keyboardThemesDone => '完成';
+
+  @override
+  String get keyboardThemesDeleteTitle => '删除主题？';
+
+  @override
+  String keyboardThemesDeleteBody(String name) {
+    return '确定删除“$name”？此操作无法撤销。';
+  }
+
+  @override
+  String get keyboardThemesBuiltIn => '内置主题无法删除';
+
+  @override
+  String get keyboardThemesSelectFirst => '请先选择此主题。';
+
+  @override
+  String get keyboardThemesStartFirst => '请先启动 Dextop 以显示键盘演示。';
+
+  @override
+  String get keyboardThemesAdd => '添加自定义主题';
+
+  @override
+  String get keyboardThemesPreview => '预览键盘演示';
+
+  @override
+  String get keyboardThemesEditTip => '编辑';
+
+  @override
+  String get keyboardThemesImage => '选择背景图片';
+
+  @override
+  String get keyboardThemesExport => '导出主题';
+
+  @override
+  String get keyboardThemesExportDialog => '导出键盘主题';
+
+  @override
+  String get keyboardThemesOpacity => '不透明度';
+
+  @override
+  String get keyboardThemesBlur => '模糊';
+
+  @override
+  String get keyboardThemesRadius => '圆角';
+
+  @override
+  String get keyboardThemesBackground => '背景';
+
+  @override
+  String get keyboardThemesKey => '按键';
+
+  @override
+  String get keyboardThemesBorder => '边框';
+
+  @override
+  String get keyboardThemesText => '文字';
+
+  @override
+  String get keyboardThemesTrackpad => '触控板';
 }

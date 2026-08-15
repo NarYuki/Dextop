@@ -1176,4 +1176,84 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get samsungHelp_mirrorPhoneDisplay =>
       '활성화하면 외부 화면에 휴대전화와 같은 내용이 표시되어 시연에 유용합니다. 작업 공간 확장이 아닌 복제이므로 두 화면에 서로 다른 앱을 표시할 수 없습니다.';
+
+  @override
+  String get keyboardThemesTitle => '키보드 테마';
+
+  @override
+  String get keyboardThemesChoose => '테마 선택';
+
+  @override
+  String get keyboardThemesNew => '새 키보드 테마';
+
+  @override
+  String get keyboardThemesName => '테마 이름';
+
+  @override
+  String get keyboardThemesCreate => '만들기';
+
+  @override
+  String get keyboardThemesEdit => '편집';
+
+  @override
+  String get keyboardThemesDone => '완료';
+
+  @override
+  String get keyboardThemesDeleteTitle => '테마를 삭제할까요?';
+
+  @override
+  String keyboardThemesDeleteBody(String name) {
+    return '“$name”을(를) 삭제할까요? 되돌릴 수 없습니다.';
+  }
+
+  @override
+  String get keyboardThemesBuiltIn => '기본 테마는 삭제할 수 없습니다';
+
+  @override
+  String get keyboardThemesSelectFirst => '먼저 이 테마를 선택하세요.';
+
+  @override
+  String get keyboardThemesStartFirst => '키보드 데모를 표시하려면 먼저 Dextop을 시작하세요.';
+
+  @override
+  String get keyboardThemesAdd => '사용자 지정 테마 추가';
+
+  @override
+  String get keyboardThemesPreview => '키보드 데모 미리보기';
+
+  @override
+  String get keyboardThemesEditTip => '편집';
+
+  @override
+  String get keyboardThemesImage => '배경 이미지 선택';
+
+  @override
+  String get keyboardThemesExport => '테마 내보내기';
+
+  @override
+  String get keyboardThemesExportDialog => '키보드 테마 내보내기';
+
+  @override
+  String get keyboardThemesOpacity => '불투명도';
+
+  @override
+  String get keyboardThemesBlur => '흐림';
+
+  @override
+  String get keyboardThemesRadius => '모서리 반경';
+
+  @override
+  String get keyboardThemesBackground => '배경';
+
+  @override
+  String get keyboardThemesKey => '키';
+
+  @override
+  String get keyboardThemesBorder => '테두리';
+
+  @override
+  String get keyboardThemesText => '텍스트';
+
+  @override
+  String get keyboardThemesTrackpad => '트랙패드';
 }
