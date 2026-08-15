@@ -312,6 +312,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get detectedResolution => 'Автоматически определённое разрешение';
 
   @override
+  String get automaticResolution => 'Автоматически';
+
+  @override
   String get loadingLabel => 'Загрузка…';
 
   @override
@@ -503,6 +506,13 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get uiDisplayCategory => 'Дисплей';
+
+  @override
+  String get foldableLaptopMode => 'Автоопределение режима ноутбука';
+
+  @override
+  String get foldableLaptopModeDescription =>
+      'Автоматически включать режим ноутбука при поддерживаемом угле сгиба';
 
   @override
   String get topologyNoDisplays => 'Нет дисплеев для размещения';
@@ -1074,7 +1084,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get samsungIncludePhoneDisplay =>
-      'Включить экран телефона в топологию';
+      'Включить Dextop в топологию дисплеев';
 
   @override
   String get samsungMirrorPhoneDisplay => 'Дублировать встроенный экран';

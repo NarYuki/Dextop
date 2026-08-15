@@ -113,7 +113,10 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
   bool sessionRunning = false;
   String? error;
 
-  bool get inputSettingsHidden => widget.isRunning || sessionRunning;
+  // These Samsung input options conflict with Dextop's own touch, keyboard,
+  // and multi-finger routing. Keep their implementation and backup support,
+  // but never expose them from either the portrait page or landscape pane.
+  bool get inputSettingsHidden => true;
 
   @override
   void initState() {

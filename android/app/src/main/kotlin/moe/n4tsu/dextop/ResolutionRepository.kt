@@ -25,8 +25,7 @@ internal class ResolutionRepository(
         val mode = context.getSystemService(DisplayManager::class.java).getDisplay(0)?.mode
         val physicalWidth = mode?.physicalWidth ?: 2340
         val physicalHeight = mode?.physicalHeight ?: 1080
-        val deviceDensity = preferences
-            .getLong("flutter.device_resolution_dpi", fallbackDensity.toLong()).toInt()
+        val deviceDensity = fallbackDensity
         return buildList {
             add(
                 ResolutionProfile(
@@ -56,8 +55,7 @@ internal class ResolutionRepository(
 
     fun save(profile: ResolutionProfile, fallbackDensity: Int) {
         if (profile.device) {
-            preferences.edit()
-                .putLong("flutter.device_resolution_dpi", profile.density.toLong()).apply()
+            preferences.edit().remove("flutter.device_resolution_dpi").apply()
             return
         }
         val items = profiles(fallbackDensity).filterNot { it.device }.toMutableList()

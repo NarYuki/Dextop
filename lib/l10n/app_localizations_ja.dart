@@ -305,6 +305,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get detectedResolution => '自動検出解像度';
 
   @override
+  String get automaticResolution => '自動';
+
+  @override
   String get loadingLabel => '取得中…';
 
   @override
@@ -486,6 +489,13 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get uiDisplayCategory => 'ディスプレイ';
+
+  @override
+  String get foldableLaptopMode => 'ラップトップモードを自動で検知';
+
+  @override
+  String get foldableLaptopModeDescription =>
+      '折りたたみ角度を検知して、ラップトップモードを自動で有効にします';
 
   @override
   String get topologyNoDisplays => '配置できるディスプレイがありません';
@@ -1030,7 +1040,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get samsungDexCommandArrow => 'コマンド矢印を表示';
 
   @override
-  String get samsungIncludePhoneDisplay => '端末画面をディスプレイトポロジーに含める';
+  String get samsungIncludePhoneDisplay => 'Dextopをディスプレイトポロジーに含める';
 
   @override
   String get samsungMirrorPhoneDisplay => '端末画面をミラーリング';

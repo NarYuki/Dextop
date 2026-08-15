@@ -86,7 +86,9 @@ internal object DesktopEnvironmentRegistry {
             "enable_freeform_support" to "1",
             "force_resizable_activities" to "1"
         )
-        if (identity.sdk < 35) settings["force_desktop_mode_on_external_displays"] = "1"
+        // Still honored as a compatibility signal by Pixel's projected-display
+        // policy even when the Android 16+ desktop-first path is available.
+        settings["force_desktop_mode_on_external_displays"] = "1"
         return DesktopEnvironment(
             "android_freeform", NativeStrings.text("nativeAndroidDesktopFreeform"),
             false, settings, true

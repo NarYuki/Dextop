@@ -253,9 +253,15 @@ extension _HomeContent on _HomeScreenState {
                           Icons.restore_rounded,
                           id: 'recovery',
                         );
+                        // Automatic resolution must be sampled again when a
+                        // paused foldable session resumes; the active panel may
+                        // have changed while Dextop was suspended.
+                        final resumeProfile = profile.isDevice
+                            ? profile
+                            : recovered;
                         mutate(() => loading = true);
                         await bridge.start(
-                          recovered,
+                          resumeProfile,
                           false,
                           secure,
                           decorations: effectiveDecorations,

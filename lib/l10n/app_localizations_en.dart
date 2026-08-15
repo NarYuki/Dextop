@@ -314,6 +314,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get detectedResolution => 'Automatically detected resolution';
 
   @override
+  String get automaticResolution => 'Automatic';
+
+  @override
   String get loadingLabel => 'Loading…';
 
   @override
@@ -504,6 +507,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get uiDisplayCategory => 'Display';
+
+  @override
+  String get foldableLaptopMode => 'Automatically detect laptop mode';
+
+  @override
+  String get foldableLaptopModeDescription =>
+      'Automatically enable laptop mode when a supported fold angle is detected';
 
   @override
   String get topologyNoDisplays => 'No displays are available to arrange';
@@ -1064,7 +1074,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get samsungDexCommandArrow => 'Show command arrow';
 
   @override
-  String get samsungIncludePhoneDisplay => 'Include phone display in topology';
+  String get samsungIncludePhoneDisplay => 'Include Dextop in display topology';
 
   @override
   String get samsungMirrorPhoneDisplay => 'Mirror built-in display';

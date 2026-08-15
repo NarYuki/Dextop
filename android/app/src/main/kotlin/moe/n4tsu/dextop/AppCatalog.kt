@@ -62,6 +62,16 @@ internal class AppCatalog(private val context: Context) {
             ?: error(NativeStrings.text("nativeSelectedAppCannotLaunch"))
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(displayId)
+        // Pixel's desk controller can temporarily mark a freshly resized
+        // projected display as ineligible. Explicit freeform launch keeps app
+        // launching and server-side window decorations available regardless of
+        // that asynchronous Shell state.
+        runCatching {
+            ActivityOptions::class.java.getMethod(
+                "setLaunchWindowingMode",
+                Int::class.javaPrimitiveType
+            ).invoke(options, 5)
+        }
         if (bounds != null) options.launchBounds = bounds
         context.startActivity(intent, options.toBundle())
     }

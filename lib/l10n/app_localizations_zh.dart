@@ -302,6 +302,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get detectedResolution => '自动检测分辨率';
 
   @override
+  String get automaticResolution => '自动';
+
+  @override
   String get loadingLabel => '加载中…';
 
   @override
@@ -480,6 +483,12 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get uiDisplayCategory => '显示器';
+
+  @override
+  String get foldableLaptopMode => '自动检测笔记本模式';
+
+  @override
+  String get foldableLaptopModeDescription => '检测到支持的折叠角度时自动启用笔记本模式';
 
   @override
   String get topologyNoDisplays => '没有可排列的显示器';
@@ -1020,7 +1029,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get samsungDexCommandArrow => '显示命令箭头';
 
   @override
-  String get samsungIncludePhoneDisplay => '将手机屏幕加入显示拓扑';
+  String get samsungIncludePhoneDisplay => '将 Dextop 纳入显示拓扑';
 
   @override
   String get samsungMirrorPhoneDisplay => '镜像内置屏幕';

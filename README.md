@@ -42,7 +42,10 @@ You can report bugs, submit device reports, and request features there.
 - [x] Physical mouse support
 - [x] Physical keyboard support
 - [x] Mouse and keyboard input routing between Dextop and the external display on supported devices
-- [x] Automatic resolution switching for foldable open and closed states
+- [x] Multi-display topology with saved monitor placement and cross-display pointer routing
+- [x] Automatic desktop taskbar hiding and optional built-in-display 120 Hz enforcement
+- [x] Foldable laptop mode with a US keyboard, trackpad, manual overlay control, and optional hinge-angle detection
+- [ ] Foldable main/cover-display switching (partial; resolution and panel transitions remain incomplete on some devices)
 - [x] Performance overlay for FPS, refresh rate, memory, battery, and estimated power usage
 - [x] Quick Settings tile launch
 - [x] Interrupted-session recovery and restoration of temporary Android settings

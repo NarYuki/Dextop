@@ -680,6 +680,12 @@ abstract class AppLocalizations {
   /// **'自動検出解像度'**
   String get detectedResolution;
 
+  /// No description provided for @automaticResolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'自動'**
+  String get automaticResolution;
+
   /// No description provided for @loadingLabel.
   ///
   /// In ja, this message translates to:
@@ -1039,6 +1045,18 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'ディスプレイ'**
   String get uiDisplayCategory;
+
+  /// No description provided for @foldableLaptopMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'ラップトップモードを自動で検知'**
+  String get foldableLaptopMode;
+
+  /// No description provided for @foldableLaptopModeDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'折りたたみ角度を検知して、ラップトップモードを自動で有効にします'**
+  String get foldableLaptopModeDescription;
 
   /// No description provided for @topologyNoDisplays.
   ///
@@ -2111,7 +2129,7 @@ abstract class AppLocalizations {
   /// No description provided for @samsungIncludePhoneDisplay.
   ///
   /// In ja, this message translates to:
-  /// **'端末画面をディスプレイトポロジーに含める'**
+  /// **'Dextopをディスプレイトポロジーに含める'**
   String get samsungIncludePhoneDisplay;
 
   /// No description provided for @samsungMirrorPhoneDisplay.

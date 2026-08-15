@@ -232,7 +232,7 @@ These entries are generated from manually reviewed device reports. Compatibility
 | Physical mouse | ⬜ Not tested |
 | Physical keyboard | ⬜ Not tested |
 | Physical mouse and keyboard display routing | ⬜ Not tested |
-| Automatic foldable-device resolution | ✅ Working |
+| Foldable main/cover-display switching | 🟡 Partial — panel and resolution transitions remain incomplete |
 | Performance overlay | ✅ Working |
 | Session shutdown and Android state restoration | ✅ Working |
 
@@ -340,7 +340,7 @@ These entries are generated from manually reviewed device reports. Compatibility
 | Physical mouse | ⬜ Not tested |
 | Physical keyboard | ⬜ Not tested |
 | Physical mouse and keyboard display routing | ⬜ Not tested |
-| Automatic foldable-device resolution | ✅ Working |
+| Foldable main/cover-display switching | 🟡 Partial — panel and resolution transitions remain incomplete |
 | Performance overlay | ✅ Working |
 | Session shutdown and Android state restoration | ✅ Working |
 
