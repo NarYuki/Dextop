@@ -1562,8 +1562,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         Color.parseColor(value ?: "")
     }.getOrDefault(fallback)
 
-    private fun laptopPalette(): LaptopPalette {
-        val id = laptopKeyboardTheme()
+    private fun laptopPalette(): LaptopPalette = laptopPaletteFor(laptopKeyboardTheme())
+
+    /** Resolve a palette for previews as well as the active keyboard. */
+    private fun laptopPaletteFor(id: String): LaptopPalette {
         val crimson = id == "crimson"
         val cloud = id == "cloud"
         val fallback = if (crimson) LaptopPalette(
@@ -1691,15 +1693,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun laptopThemeChoice(id: String, label: String): View {
         val selected = laptopKeyboardTheme() == id
-        val crimson = id == "crimson"
+        val palette = laptopPaletteFor(id)
         return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(18), dp(14), dp(18), dp(14))
             background = GradientDrawable().apply {
-                setColor(if (crimson) Color.rgb(45, 6, 7) else Color.rgb(38, 36, 43))
+                setColor(palette.background)
                 setStroke(dp(if (selected) 2 else 1), if (selected)
-                    if (crimson) Color.rgb(240, 146, 100) else Color.rgb(208, 188, 237)
-                    else if (crimson) Color.rgb(89, 22, 18) else Color.rgb(70, 67, 78))
+                    palette.selected else palette.border)
                 cornerRadius = dp(18).toFloat()
             }
             addView(LinearLayout(this@MirrorService).apply {
@@ -1713,7 +1714,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (selected) addView(ImageView(this@MirrorService).apply {
                     setImageDrawable(KeyboardGlyphDrawable(
                         KeyboardGlyphDrawable.CHECK,
-                        if (crimson) Color.rgb(240, 146, 100) else Color.rgb(208, 188, 237)
+                        palette.selected
                     ))
                 }, LinearLayout.LayoutParams(dp(24), dp(24)))
             }, LinearLayout.LayoutParams(-1, -2))
@@ -1722,11 +1723,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 repeat(7) { index ->
                     addView(View(this@MirrorService).apply {
                         background = GradientDrawable().apply {
-                            setColor(if (crimson)
-                                if (index == 0 || index == 6) Color.rgb(79, 10, 11)
-                                else Color.rgb(110, 27, 27)
-                                else if (index == 0 || index == 6) Color.rgb(58, 55, 65)
-                                else Color.rgb(82, 78, 91))
+                            setColor(if (index == 0 || index == 6) palette.keyVariant else palette.key)
                             cornerRadius = dp(3).toFloat()
                         }
                     }, LinearLayout.LayoutParams(0, dp(35), 1f).apply {
@@ -1738,10 +1735,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 bottomMargin = dp(8)
             })
             addView(TextView(this@MirrorService).apply {
-                text = if (crimson) "Warm crimson inspired by foldable PCs" else "Neutral dark keyboard"
+                text = when (id) {
+                    "crimson" -> "Warm crimson inspired by foldable PCs"
+                    "cloud" -> "Soft cloud blue keyboard"
+                    "standard" -> "Neutral dark keyboard"
+                    else -> "Custom keyboard theme"
+                }
                 typeface = laptopTypeface
                 textSize = 11f
-                setTextColor(if (crimson) Color.rgb(207, 132, 101) else Color.rgb(170, 165, 177))
+                setTextColor(palette.trackpadText)
             })
             setOnClickListener {
                 getSharedPreferences(PREFS, MODE_PRIVATE).edit()
