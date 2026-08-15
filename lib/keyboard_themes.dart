@@ -365,87 +365,95 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       context: context,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, update) => AlertDialog(
+          alignment: Alignment.center,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 24,
+            vertical: 24,
+          ),
           title: Text('Edit ${theme['name']}'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    for (final key in [
-                      'background',
-                      'key',
-                      'border',
-                      'text',
-                      'trackpad',
-                    ])
-                      ActionChip(
-                        label: Text(key),
-                        avatar: CircleAvatar(
-                          backgroundColor: _color(theme, key),
+          content: SizedBox(
+            width: 560,
+            height: 500,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      for (final key in [
+                        'background',
+                        'key',
+                        'border',
+                        'text',
+                        'trackpad',
+                      ])
+                        ActionChip(
+                          label: Text(key),
+                          avatar: CircleAvatar(
+                            backgroundColor: _color(theme, key),
+                          ),
+                          onPressed: () {
+                            _cycleColor(theme, key);
+                            update(() {});
+                          },
                         ),
-                        onPressed: () {
-                          _cycleColor(theme, key);
-                          update(() {});
-                        },
-                      ),
-                  ],
-                ),
-                _labeledSlider(
-                  'Opacity',
-                  (theme['opacity'] as num).toDouble(),
-                  .2,
-                  1,
-                  (v) {
-                    update(() => theme['opacity'] = v);
-                    _save();
-                  },
-                ),
-                _labeledSlider(
-                  'Blur',
-                  (theme['blur'] as num).toDouble(),
-                  0,
-                  30,
-                  (v) {
-                    update(() => theme['blur'] = v);
-                    _save();
-                  },
-                ),
-                _labeledSlider(
-                  'Corner radius',
-                  (theme['radius'] as num).toDouble(),
-                  0,
-                  28,
-                  (v) {
-                    update(() => theme['radius'] = v);
-                    _save();
-                  },
-                ),
-                OutlinedButton.icon(
-                  onPressed: () async {
-                    await _pickImage(theme);
-                    update(() {});
-                  },
-                  icon: const Icon(Icons.image_outlined),
-                  label: const Text('Choose background image'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    _showPreview(theme);
-                  },
-                  icon: const Icon(Icons.preview_outlined),
-                  label: const Text('Preview keyboard overlay'),
-                ),
-                OutlinedButton.icon(
-                  onPressed: _busy ? null : () => _exportTheme(theme),
-                  icon: const Icon(Icons.archive_outlined),
-                  label: const Text('Export this theme'),
-                ),
-              ],
+                    ],
+                  ),
+                  _labeledSlider(
+                    'Opacity',
+                    (theme['opacity'] as num).toDouble(),
+                    .2,
+                    1,
+                    (v) {
+                      update(() => theme['opacity'] = v);
+                      _save();
+                    },
+                  ),
+                  _labeledSlider(
+                    'Blur',
+                    (theme['blur'] as num).toDouble(),
+                    0,
+                    30,
+                    (v) {
+                      update(() => theme['blur'] = v);
+                      _save();
+                    },
+                  ),
+                  _labeledSlider(
+                    'Corner radius',
+                    (theme['radius'] as num).toDouble(),
+                    0,
+                    28,
+                    (v) {
+                      update(() => theme['radius'] = v);
+                      _save();
+                    },
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () async {
+                      await _pickImage(theme);
+                      update(() {});
+                    },
+                    icon: const Icon(Icons.image_outlined),
+                    label: const Text('Choose background image'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                      _showPreview(theme);
+                    },
+                    icon: const Icon(Icons.preview_outlined),
+                    label: const Text('Preview keyboard overlay'),
+                  ),
+                  OutlinedButton.icon(
+                    onPressed: _busy ? null : () => _exportTheme(theme),
+                    icon: const Icon(Icons.archive_outlined),
+                    label: const Text('Export this theme'),
+                  ),
+                ],
+              ),
             ),
           ),
           actions: [
@@ -519,12 +527,14 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     final border = _color(theme, 'border');
     final text = _color(theme, 'text');
     final radius = (theme['radius'] as num).toDouble();
-    final rows = const [
+    final rows = [
       '`1234567890-=⌫',
       'QWERTYUIOP[]\\',
       'ASDFGHJKL;\'⏎',
       '⇧ZXCVBNM,./⇧',
-      'Ctrl   Alt       SPACE       Alt   ←↑↓→',
+      compact
+          ? 'CTRL       META       SPACE'
+          : 'Ctrl   Alt       SPACE       Alt   ←↑↓→',
     ];
     return Container(
       padding: const EdgeInsets.all(8),
