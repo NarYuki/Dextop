@@ -85,6 +85,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   @override
   void initState() {
     super.initState();
+    const MethodChannel('app.freedextop/display').invokeMethod('exitLaptopPreview');
     _load();
   }
 
