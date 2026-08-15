@@ -527,14 +527,14 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     final border = _color(theme, 'border');
     final text = _color(theme, 'text');
     final radius = (theme['radius'] as num).toDouble();
-    final rows = [
-      '`1234567890-=⌫',
-      'QWERTYUIOP[]\\',
-      'ASDFGHJKL;\'⏎',
-      '⇧ZXCVBNM,./⇧',
+    final List<List<String>> rows = [
+      '`1234567890-=⌫'.split(''),
+      'QWERTYUIOP[]\\'.split(''),
+      'ASDFGHJKL;\'⏎'.split(''),
+      '⇧ZXCVBNM,./⇧'.split(''),
       compact
-          ? 'CTRL       META       SPACE'
-          : 'Ctrl   Alt       SPACE       Alt   ←↑↓→',
+          ? ['CTRL', 'META', 'SPACE']
+          : 'Ctrl   Alt       SPACE       Alt   ←↑↓→'.split(''),
     ];
     return Container(
       padding: const EdgeInsets.all(8),
@@ -548,12 +548,15 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
             flex: 66,
             child: Column(
               children: [
-                for (final row in rows)
+                for (var rowIndex = 0; rowIndex < rows.length; rowIndex++)
                   Expanded(
                     child: Row(
                       children: [
-                        for (final char in row.split(''))
+                        for (final token in rows[rowIndex])
                           Expanded(
+                            flex: compact && rowIndex == rows.length - 1
+                                ? (token == 'SPACE' ? 2 : 1)
+                                : 1,
                             child: Padding(
                               padding: const EdgeInsets.all(2),
                               child: DecoratedBox(
@@ -566,7 +569,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                 ),
                                 child: Center(
                                   child: Text(
-                                    char,
+                                    token,
                                     style: TextStyle(
                                       color: text,
                                       fontSize: compact ? 9 : 12,

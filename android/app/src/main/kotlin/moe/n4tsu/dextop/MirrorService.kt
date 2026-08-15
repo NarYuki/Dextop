@@ -1956,20 +1956,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             ))
             deck.animate().alpha(1f).translationY(0f).setDuration(320L).start()
         }
-        frame.addView(controls, menuLayoutParams())
-        frame.addView(info, if (targetWidth >= targetHeight) {
-            FrameLayout.LayoutParams(dp(340), -2, Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(18)
-                bottomMargin = dp(18)
-            }
-        } else {
-            FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
-                leftMargin = dp(12)
-                rightMargin = dp(12)
-                topMargin = dp(24)
-            }
-        })
-        if (targetWidth < targetHeight) {
+        // A laptop keyboard demo is a focused keyboard test surface. It must
+        // not include the normal Dextop controls or the setup hint; those are
+        // reserved for the initial setup/demo surface.
+        if (!laptopDemo) {
+            frame.addView(controls, menuLayoutParams())
+            frame.addView(info, if (targetWidth >= targetHeight) {
+                FrameLayout.LayoutParams(dp(340), -2, Gravity.BOTTOM or Gravity.END).apply {
+                    rightMargin = dp(18)
+                    bottomMargin = dp(18)
+                }
+            } else {
+                FrameLayout.LayoutParams(-1, -2, Gravity.TOP).apply {
+                    leftMargin = dp(12)
+                    rightMargin = dp(12)
+                    topMargin = dp(24)
+                }
+            })
+        }
+        if (!laptopDemo && targetWidth < targetHeight) {
             controls.addOnLayoutChangeListener { _, _, _, _, bottom, _, _, _, _ ->
                 val layout = info.layoutParams as FrameLayout.LayoutParams
                 val wantedTop = bottom + dp(12)
@@ -1980,6 +1985,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         frame.setOnApplyWindowInsetsListener { _, insets ->
+            if (laptopDemo) return@setOnApplyWindowInsetsListener insets
             val safe = insets.getInsetsIgnoringVisibility(
                 WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout()
             )
@@ -2016,10 +2022,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         rootWindowParams = params
         windowManager?.addView(frame, params)
         frame.requestApplyInsets()
-        controls.alpha = 0f
-        controls.scaleX = .94f
-        controls.scaleY = .94f
-        controls.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(240).start()
+        if (!laptopDemo) {
+            controls.alpha = 0f
+            controls.scaleX = .94f
+            controls.scaleY = .94f
+            controls.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(240).start()
+        }
     }
 
     private fun hideDemoWindow() {
