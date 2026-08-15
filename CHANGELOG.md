@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.3.2
+
+### Improved
+
+- Laptop mode now registers its on-screen keyboard as an external physical keyboard while the mode is active.
+- Gboard and other IMEs now follow Android's physical-keyboard preference instead of being forcibly disabled or hidden.
+- The temporary keyboard device is removed when laptop mode, Dextop, or a paused session ends.
+
+### Fixed
+
+- Fixed laptop-mode key input being treated only as synthetic key events, which caused virtual keyboards to appear unexpectedly in text fields.
+
 ## 1.3.1
 
 ### New

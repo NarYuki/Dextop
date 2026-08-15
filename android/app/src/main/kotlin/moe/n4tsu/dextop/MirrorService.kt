@@ -66,6 +66,7 @@ import android.animation.LayoutTransition
 import android.widget.GridLayout
 import java.io.BufferedReader
 import java.io.InputStreamReader
+import java.io.OutputStream
 import moe.shizuku.server.IShizukuService
 import kotlin.math.hypot
 import org.json.JSONArray
@@ -305,6 +306,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopModeActive = false
     private var laptopManualOverride = false
     private var laptopAutoActivated = false
+    private var laptopHardwareKeyboardProcess: moe.shizuku.server.IRemoteProcess? = null
+    private var laptopHardwareKeyboardInput: OutputStream? = null
     private var laptopHostUniqueId: String? = null
     private var laptopShift = false
     private var laptopControl = false
@@ -986,7 +989,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
     private fun setLaptopMode(enabled: Boolean) {
-        if (enabled == laptopModeActive) return
+        if (enabled == laptopModeActive) {
+            if (enabled) startLaptopHardwareKeyboard()
+            return
+        }
         if (enabled && !isDebugLaptopModeForced() && !laptopManualOverride &&
             hingeAngle?.let(::isLaptopHingeAngle) != true && !isFoldableMainDisplay()) return
         val frame = root ?: return
@@ -996,6 +1002,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (!enabled) laptopAutoActivated = false
         laptopHostUniqueId = if (enabled) defaultDisplayUniqueId() else null
         if (enabled) {
+            startLaptopHardwareKeyboard()
             val deck = buildLaptopDeck()
             content.addView(deck, LinearLayout.LayoutParams(-1, 0, 1f))
             cursorView?.contentHeightFraction = .5f
@@ -1003,6 +1010,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             menu?.bringToFront()
             performanceHud?.bringToFront()
         } else {
+            stopLaptopHardwareKeyboard()
             laptopDeck?.let { content.removeView(it) }
             laptopDeck = null
             cursorView?.contentHeightFraction = 1f
@@ -1010,6 +1018,81 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         surface.requestLayout()
         frame.requestLayout()
         applyLaptopGeometryWhenLaidOut(enabled)
+    }
+
+    /**
+     * Registers a real external keyboard with Android's input stack while the
+     * laptop deck is visible. Key events remain display-targeted through
+     * InputDispatcher, but IMEs now use their normal physical-keyboard policy:
+     * Gboard is hidden by default and remains available when the user enables
+     * "Show virtual keyboard" for connected physical keyboards.
+     */
+    private fun startLaptopHardwareKeyboard() {
+        if (laptopHardwareKeyboardProcess?.alive() == true) return
+        stopLaptopHardwareKeyboard()
+        val binder = rikka.shizuku.Shizuku.getBinder() ?: return
+        runCatching {
+            val remote = IShizukuService.Stub.asInterface(binder)
+                .newProcess(arrayOf("uinput", "-"), null, null)
+            val output = android.os.ParcelFileDescriptor.AutoCloseOutputStream(remote.outputStream)
+            laptopHardwareKeyboardProcess = remote
+            laptopHardwareKeyboardInput = output
+            val supportedKeys = (1..127).joinToString(",")
+            val registration = """
+                {
+                  "id": 413,
+                  "command": "register",
+                  "name": "Dextop Laptop Keyboard",
+                  "vid": 6353,
+                  "pid": 5417,
+                  "bus": "usb",
+                  "configuration": [
+                    {"type":"UI_SET_EVBIT","data":["EV_KEY","EV_SYN"]},
+                    {"type":"UI_SET_KEYBIT","data":[$supportedKeys]}
+                  ]
+                }
+            """.trimIndent() + "\n"
+            output.write(registration.toByteArray(Charsets.UTF_8))
+            output.flush()
+            drainLaptopKeyboardPipe(remote.inputStream, "stdout")
+            drainLaptopKeyboardPipe(remote.errorStream, "stderr")
+            OperationLog.i(
+                this,
+                "LaptopMode",
+                "registered external keyboard device; IME follows physical-keyboard preference"
+            )
+        }.onFailure { error ->
+            stopLaptopHardwareKeyboard()
+            OperationLog.w(this, "LaptopMode", "external keyboard registration failed", error)
+            Log.e(logTag, "laptop hardware keyboard registration failed", error)
+        }
+    }
+
+    private fun drainLaptopKeyboardPipe(
+        descriptor: android.os.ParcelFileDescriptor,
+        streamName: String
+    ) {
+        Thread {
+            runCatching {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor)
+                    .bufferedReader().useLines { lines ->
+                        lines.forEach { line ->
+                            if (line.isNotBlank()) Log.d(logTag, "laptop keyboard $streamName: $line")
+                        }
+                    }
+            }
+        }.apply {
+            name = "DextopLaptopKeyboard-$streamName"
+            isDaemon = true
+            start()
+        }
+    }
+
+    private fun stopLaptopHardwareKeyboard() {
+        laptopHardwareKeyboardInput?.let { runCatching { it.close() } }
+        laptopHardwareKeyboardInput = null
+        laptopHardwareKeyboardProcess?.let { runCatching { it.destroy() } }
+        laptopHardwareKeyboardProcess = null
     }
 
     private fun leaveLaptopModeOnCoverDisplay(): Boolean {
@@ -4342,6 +4425,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun detachHostWindow() {
+        stopLaptopHardwareKeyboard()
         // Prevent surfaceDestroyed() from releasing the mirrored display before
         // WindowManager has removed this host and its gesture registrations.
         surfaceView?.holder?.removeCallback(this)
