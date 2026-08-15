@@ -48,6 +48,7 @@ import android.view.Gravity
 import android.view.DragEvent
 import android.view.Display
 import android.view.InputDevice
+import android.view.InputEvent
 import android.view.KeyEvent
 import android.view.MotionEvent
 import android.view.Surface
@@ -327,7 +328,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         WorkspaceLayoutEngine(this, desktopEnvironment, logTag)
     }
     private val resolutionRepository by lazy { ResolutionRepository(this, logTag) }
-    private val inputDispatcher by lazy { InputDispatcher(privilegedAccess) }
+    private val inputDispatcher by lazy {
+        InputDispatcher(privilegedAccess) { event, displayId, accepted, failure ->
+            recordInputDispatch(event, displayId, accepted, failure)
+        }
+    }
     private val physicalInputRouter by lazy { PhysicalInputRouter(this, privilegedAccess) }
     private val externalDisplayDetector by lazy { ExternalDisplayDetector(this) }
     private val sessionJournal by lazy { SessionJournal(this) }
@@ -432,6 +437,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var mouseActuallyRouted = false
     private var keyboardActuallyRouted = false
     private var physicalExternalDisplayConnected = false
+    private var lastInputDiagnosticAt = 0L
+    private var lastTouchDiagnosticAt = 0L
+    private var inputDiagnosticSequence = 0L
+    private var orientationRebuildInProgress = false
     private var refreshRateReapplyGeneration = 0
     private var topologyReapplyGeneration = 0
     private val physicalInputRoutingSupported: Boolean
@@ -445,6 +454,99 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var pendingLaptopMode: Boolean? = null
     private var pendingLaptopModeSince = 0L
     private val laptopModeDebounceMs = 280L
+
+    private fun currentInputMode(): String = when {
+        physicalMouseActive -> "physical_mouse"
+        directTouch -> "direct_touch"
+        else -> "cursor_touchpad"
+    }
+
+    /**
+     * A compact runtime snapshot is attached to the session log whenever the
+     * host surface or logical display changes. This is intentionally separate
+     * from Logcat so a shared diagnostic report contains the geometry that was
+     * actually used for coordinate conversion.
+     */
+    private fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String {
+        val host = surfaceView
+        val width = hostWidth ?: host?.width ?: 0
+        val height = hostHeight ?: host?.height ?: 0
+        val display = targetDisplayId.takeIf { it >= 0 }?.let {
+            getSystemService(DisplayManager::class.java).getDisplay(it)
+        }
+        val metrics = display?.let {
+            runCatching {
+                android.util.DisplayMetrics().also { display.getRealMetrics(it) }
+            }.getOrNull()
+        }
+        val bounds = runCatching { windowManager?.currentWindowMetrics?.bounds }.getOrNull()
+        return "reason=$reason displayId=$targetDisplayId targetDisplayId=$targetDisplayId " +
+            "mirrorDisplayId=$mirrorDisplayId " +
+            "surfaceWidth=$width surfaceHeight=$height " +
+            "windowWidth=${bounds?.width() ?: 0} windowHeight=${bounds?.height() ?: 0} " +
+            "displayWidth=${metrics?.widthPixels ?: 0} displayHeight=${metrics?.heightPixels ?: 0} " +
+            "targetWidth=$targetWidth targetHeight=$targetHeight density=$density " +
+            "displayDensity=${metrics?.densityDpi ?: 0} rotation=${display?.rotation ?: -1} " +
+            "configOrientation=${resources.configuration.orientation} " +
+            "directTouch=$directTouch inputMode=${currentInputMode()}"
+    }
+
+    private fun recordInputDispatch(
+        event: InputEvent,
+        displayId: Int,
+        accepted: Boolean,
+        failure: Throwable?
+    ) {
+        val now = SystemClock.uptimeMillis()
+        val motion = event as? MotionEvent
+        val action = motion?.actionMasked ?: (event as? KeyEvent)?.action ?: -1
+        val move = motion != null && (
+            action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_HOVER_MOVE
+        )
+        // MOVE/HOVER events are sampled to keep the report useful instead of
+        // filling the bounded session file. Rejections are always retained.
+        if (move && accepted && now - lastInputDiagnosticAt < 250L) return
+        lastInputDiagnosticAt = now
+        inputDiagnosticSequence += 1
+        val detail = buildString {
+            append("seq=$inputDiagnosticSequence displayId=$displayId ")
+            append("injectInputEvent=${if (accepted) "accepted" else "rejected"} ")
+            append("accepted=$accepted action=$action source=${event.source} ")
+            if (motion != null) {
+                append("pointers=${motion.pointerCount} pointX:${motion.x} pointY:${motion.y} ")
+            } else if (event is KeyEvent) {
+                append("keyCode=${event.keyCode} repeat=${event.repeatCount} ")
+            }
+            append(displayGeometrySnapshot("input_dispatch"))
+            failure?.let { append(" failure=${it.javaClass.simpleName}") }
+        }
+        if (accepted) OperationLog.i(this, "InputDispatch", detail)
+        else OperationLog.w(this, "InputDispatch", detail)
+    }
+
+    private fun recordTouchRouting(event: MotionEvent, direct: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        val move = event.actionMasked == MotionEvent.ACTION_MOVE ||
+            event.actionMasked == MotionEvent.ACTION_HOVER_MOVE
+        if (move && now - lastTouchDiagnosticAt < 250L) return
+        lastTouchDiagnosticAt = now
+        val view = surfaceView
+        val mappedX = if (view != null && view.width > 0) {
+            (event.x / view.width * targetWidth).coerceIn(0f, targetWidth - 1f)
+        } else 0f
+        val mappedY = if (view != null && view.height > 0) {
+            (event.y / view.height * targetHeight).coerceIn(0f, targetHeight - 1f)
+        } else 0f
+        OperationLog.i(
+            this,
+            "TouchRouting",
+            "action=${event.actionMasked} pointers=${event.pointerCount} source=${event.source} " +
+                "pointX:${event.x} pointY:${event.y} mappedX:${mappedX} mappedY:${mappedY} " +
+                "directTouch=$direct inputMode=${currentInputMode()} " +
+                displayGeometrySnapshot("touch_event")
+        )
+    }
+
     private val hingeListener = object : SensorEventListener {
         override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
 
@@ -462,6 +564,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
+            if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_added_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleTopologyReapplyAfterReconnect()
@@ -470,6 +573,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         override fun onDisplayRemoved(displayId: Int) {
+            if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_removed_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = false)
             if (active && displayId == Display.DEFAULT_DISPLAY) {
@@ -477,6 +581,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         override fun onDisplayChanged(displayId: Int) {
+            if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_changed_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             if (active && displayId == Display.DEFAULT_DISPLAY) {
@@ -658,6 +763,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         if (!active || suspendedForLockScreen) return
+        OperationLog.i(
+            this,
+            "Orientation",
+            "configuration changed orientation=${newConfig.orientation} density=${newConfig.densityDpi} " +
+                displayGeometrySnapshot("configuration_changed")
+        )
         leaveLaptopModeOnCoverDisplay()
         scheduleHostDisplayReconfiguration(
             "configuration changed",
@@ -745,6 +856,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "display=${effectiveConfig.width}x${effectiveConfig.height}/${effectiveConfig.density} " +
                 "secure=${effectiveConfig.secure} decorations=${effectiveConfig.decorations}"
         )
+        lastInputDiagnosticAt = 0L
+        lastTouchDiagnosticAt = 0L
+        inputDiagnosticSequence = 0L
         if (!privilegedAccess.isAvailable()) {
             pending = null
             active = false
@@ -790,6 +904,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         forcePhoneRotation(targetHeight > targetWidth)
         cursorX = targetWidth / 2f
         cursorY = targetHeight / 2f
+        OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_configured"))
         removeWindow()
         addWindow()
         pending = null
@@ -3061,6 +3176,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun trackpad(event: MotionEvent, forceCursorMode: Boolean = false): Boolean {
         val useDirectTouch = directTouch && !forceCursorMode
+        recordTouchRouting(event, useDirectTouch)
         maxPointers = maxOf(maxPointers, event.pointerCount)
         if (experimentalMultiTouch && handleExperimentalEdgeGesture(event)) return true
         if (useDirectTouch && experimentalMultiTouch) {
@@ -3303,6 +3419,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             .putBoolean(KEY_DIRECT_TOUCH, useTapPosition)
             .apply()
         cursorView?.visibility = if (useTapPosition) View.GONE else View.VISIBLE
+        OperationLog.i(
+            this,
+            "InputRouting",
+            "touch mode changed directTouch=$directTouch inputMode=${currentInputMode()} " +
+                displayGeometrySnapshot("touch_mode_changed")
+        )
     }
 
     private fun activateTouchInput() {
@@ -3314,6 +3436,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // touchpad immediately, even if the mouse remains connected.
         cursorView?.visibility = if (directTouch) View.GONE else View.VISIBLE
         if (!directTouch) cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        OperationLog.i(
+            this,
+            "InputRouting",
+            "touch input activated directTouch=$directTouch inputMode=${currentInputMode()} " +
+                displayGeometrySnapshot("touch_input_activated")
+        )
     }
 
     private fun activateLaptopTrackpad() {
@@ -3327,6 +3455,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun activatePhysicalMouse() {
         if (overlayTextInputActive) return
+        val wasActive = physicalMouseActive
         physicalMouseActive = true
         // Physical mice use Android's pointer only. Dextop's cursor is reserved
         // exclusively for touch-panel trackpad mode.
@@ -3335,6 +3464,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         surfaceView?.post {
             surfaceView?.requestFocus()
             surfaceView?.requestPointerCapture()
+        }
+        if (!wasActive) {
+            OperationLog.i(
+                this,
+                "InputRouting",
+                "physical mouse activated inputMode=${currentInputMode()} " +
+                    displayGeometrySnapshot("physical_mouse_activated")
+            )
         }
     }
 
@@ -3650,10 +3787,30 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun changeOrientation() {
         val portrait = targetWidth >= targetHeight
+        OperationLog.i(
+            this,
+            "Orientation",
+            "requested portrait=$portrait from=${targetWidth}x$targetHeight " +
+                displayGeometrySnapshot("orientation_requested")
+        )
         MainActivity.setDisplayOrientation(portrait)
         forcePhoneRotation(portrait)
         val config = Config(targetHeight, targetWidth, density, secureDisplay, showSystemDecorations)
-        root?.postDelayed({ start(config) }, 350)
+        orientationRebuildInProgress = true
+        root?.postDelayed({
+            runCatching { start(config) }
+                .onSuccess {
+                    OperationLog.i(
+                        this,
+                        "Orientation",
+                        "rebuild started portrait=$portrait target=${config.width}x${config.height} " +
+                            displayGeometrySnapshot("orientation_rebuild_started")
+                    )
+                }
+                .onFailure {
+                    OperationLog.e(this, "Orientation", "rebuild failed portrait=$portrait", it)
+                }
+        }, 350)
     }
 
     private fun injectKey(keyCode: Int, metaState: Int = 0) {
@@ -3923,6 +4080,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun surfaceCreated(holder: SurfaceHolder) {
         val view = surfaceView ?: return
         if (view.width <= 0 || view.height <= 0) return
+        OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("surface_created", view.width, view.height))
         if (targetDisplayId >= 0 &&
             getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId) != null) {
             reattachExistingDisplay(view.width, view.height)
@@ -3933,6 +4091,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
+        OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("surface_changed", width, height))
         if (mirrorDisplayId < 0) {
             if (targetDisplayId >= 0 &&
                 getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId) != null) {
@@ -3948,6 +4107,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     override fun surfaceDestroyed(holder: SurfaceHolder) {
+        OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("surface_destroyed"))
         releaseMirror()
     }
 
@@ -3970,6 +4130,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "DisplayBackend",
                 "reattached host Surface to display=$targetDisplayId host=${width}x$height; tasks retained"
             )
+            OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("surface_reattached", width, height))
         }.onFailure { error ->
             displayCreationInProgress = false
             OperationLog.e(this, "DisplayBackend", "existing display reattach failed", error)
@@ -4050,6 +4211,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "DisplayRouting",
                 "externalConnected=${externalDisplays.connected} externalIds=${externalDisplays.displayIds} routedInputs=$routedInputCount"
             )
+            OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("mirror_attached", width, height))
             if (physicalExternalDisplayConnected && routePhysicalMouseToDextop) startRawMouseReader() else stopRawMouseReader()
             root?.postDelayed({
                 refreshActualRoutingState(display)
@@ -4086,8 +4248,21 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "density" to density,
                 "decorations" to showSystemDecorations
             )))
+            if (orientationRebuildInProgress) {
+                orientationRebuildInProgress = false
+                OperationLog.i(
+                    this,
+                    "Orientation",
+                    "rebuild completed target=${targetWidth}x$targetHeight/$density " +
+                        displayGeometrySnapshot("orientation_rebuild_completed", width, height)
+                )
+            }
             Log.i(logTag, "Dextop layer attached target=$targetDisplayId ${width}x$height")
         }.onFailure { error ->
+            if (orientationRebuildInProgress) {
+                orientationRebuildInProgress = false
+                OperationLog.e(this, "Orientation", "rebuild failed during display attachment", error)
+            }
             OperationLog.e(this, "MirrorService", "all mirror strategies failed", error)
             Log.e(logTag, "display mirror attachment failed; stopping safely", error)
             displayCreationInProgress = false
@@ -4135,14 +4310,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 Int::class.javaPrimitiveType,
                 Boolean::class.javaPrimitiveType
             ).invoke(service, targetDisplayId, true)
-        }.onFailure { Log.e(logTag, "orientation request lock failed", it) }
+        }.onSuccess {
+            OperationLog.i(this, "Orientation", "ignore orientation request applied display=$targetDisplayId")
+        }.onFailure {
+            OperationLog.e(this, "Orientation", "orientation request lock failed display=$targetDisplayId", it)
+            Log.e(logTag, "orientation request lock failed", it)
+        }
         runCatching {
             type.getMethod(
                 "setFixedToUserRotation",
                 Int::class.javaPrimitiveType,
                 Int::class.javaPrimitiveType
             ).invoke(service, targetDisplayId, 2)
-        }.onFailure { Log.e(logTag, "fixed rotation failed", it) }
+        }.onSuccess {
+            OperationLog.i(this, "Orientation", "fixed rotation applied display=$targetDisplayId value=2")
+        }.onFailure {
+            OperationLog.e(this, "Orientation", "fixed rotation failed display=$targetDisplayId", it)
+            Log.e(logTag, "fixed rotation failed", it)
+        }
         runCatching {
             val method = type.methods.first {
                 it.name == "freezeDisplayRotation" && it.parameterTypes.size >= 2
@@ -4157,7 +4342,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
             }.toTypedArray()
             method.invoke(service, *args)
-        }.onFailure { Log.e(logTag, "display rotation lock failed", it) }
+        }.onSuccess {
+            OperationLog.i(this, "Orientation", "display rotation lock applied display=$targetDisplayId rotation=$rotation")
+        }.onFailure {
+            OperationLog.e(this, "Orientation", "display rotation lock failed display=$targetDisplayId", it)
+            Log.e(logTag, "display rotation lock failed", it)
+        }
         runCatching {
             type.getMethod("setShouldShowSystemDecors", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
                 .invoke(service, targetDisplayId, showSystemDecorations)
@@ -4267,7 +4457,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     this,
                     "DisplayBackend",
                     "mirror refreshed reason=$reason host=${nextWidth}x$nextHeight " +
-                        "content=${targetWidth}x$targetHeight/$density"
+                        "content=${targetWidth}x$targetHeight/$density " +
+                        displayGeometrySnapshot("mirror_refresh_completed", nextWidth, nextHeight)
                 )
             }.onFailure { error ->
                 OperationLog.e(this, "DisplayBackend", "mirror refresh failed reason=$reason", error)
@@ -4400,7 +4591,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         OperationLog.i(
             this,
             "DisplayBackend",
-            "live resized display=$targetDisplayId to ${next.width}x${next.height}/${next.density}; tasks retained"
+            "live resized display=$targetDisplayId to ${next.width}x${next.height}/${next.density}; " +
+                "tasks retained " + displayGeometrySnapshot("live_resize_applied")
         )
     }
 
@@ -4660,7 +4852,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun forcePhoneRotation(portrait: Boolean) {
         runCatching {
             phoneRotationController.force(portrait)
-        }.onFailure { Log.e(logTag, "phone rotation lock failed", it) }
+        }.onSuccess {
+            OperationLog.i(
+                this,
+                "Orientation",
+                "phone rotation applied portrait=$portrait " + displayGeometrySnapshot("phone_rotation_applied")
+            )
+        }.onFailure {
+            OperationLog.e(this, "Orientation", "phone rotation failed portrait=$portrait", it)
+            Log.e(logTag, "phone rotation lock failed", it)
+        }
     }
 
     private fun releasePhoneRotation(clearSnapshot: Boolean = false) {
@@ -4673,6 +4874,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (stopping) return
         stopping = true
         val wasActive = active
+        if (wasActive) {
+            OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_stopping"))
+        }
         stopHostDisplayMonitor()
         suspendedForLockScreen = false
         suspendedConfig = null
