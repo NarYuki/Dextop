@@ -1581,6 +1581,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Color.rgb(76, 72, 84), Color.rgb(235, 231, 239), Color.rgb(35, 34, 40),
             Color.rgb(145, 141, 151), Color.rgb(208, 188, 237), 7f
         )
+        // Built-in palettes are authoritative. Older Flutter preferences may
+        // contain a normalized copy where keyVariant was incorrectly replaced
+        // with key, which destroys the decorative-key contrast.
+        if (id == "standard" || id == "crimson" || id == "cloud") return fallback
         val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.dextop_keyboard_theme_$id", null) ?: return fallback
         return runCatching {
