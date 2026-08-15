@@ -190,6 +190,7 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.updateLaptopModeEnabled(call.argument<Boolean>("enabled") == true)
                     result.success(null)
                 }
+                "isFoldableDevice" -> result.success(MirrorService.isFoldableDevice())
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
                 "currentDeviceDisplayProfile" -> {
                     val builtIn = getSystemService(DisplayManager::class.java)

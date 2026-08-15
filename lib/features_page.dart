@@ -142,15 +142,22 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     final diagnosticsFuture = needsStatus
         ? channel.invokeMapMethod<String, dynamic>('diagnostics')
         : Future<Map<String, dynamic>?>.value({});
+    final foldableDeviceFuture = channel.invokeMethod<bool>('isFoldableDevice');
     final results = await Future.wait<dynamic>([
       preferencesFuture,
       appsFuture,
       diagnosticsFuture,
+      foldableDeviceFuture,
     ]);
     final preferences = results[0] as SharedPreferences;
     final rawApps = (results[1] as List<dynamic>?) ?? [];
     final rawDiagnostics =
         (results[2] as Map<String, dynamic>?) ?? <String, dynamic>{};
+    final isFoldableDevice = results[3] == true;
+    final savedLaptopMode = preferences.getBool('foldable_laptop_mode');
+    if (savedLaptopMode == null && isFoldableDevice) {
+      await preferences.setBool('foldable_laptop_mode', true);
+    }
     final decoded = needsApps
         ? jsonDecode(preferences.getString('workspaces') ?? '[]') as List
         : <dynamic>[];
@@ -165,7 +172,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
       foldableAuto = preferences.getBool('foldable_auto') ?? false;
-      foldableLaptopMode = preferences.getBool('foldable_laptop_mode') ?? false;
+      foldableLaptopMode = savedLaptopMode ?? isFoldableDevice;
       threeFingerGesture =
           preferences.getString('gesture_three_finger') ?? 'menu';
       twoFingerGesture =
