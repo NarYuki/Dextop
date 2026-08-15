@@ -10,6 +10,7 @@ import android.util.Base64
 import org.json.JSONObject
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
+import org.lsposed.hiddenapibypass.HiddenApiBypass
 import kotlin.math.hypot
 
 /** Privileged bridge for Android's hidden multi-display topology API. */
@@ -17,8 +18,21 @@ class DisplayTopologyController(private val context: Context) {
     private val privilegedAccess = PrivilegedAccess("DextopTopology")
     private val session = context.getSharedPreferences("dextop_topology_session", Context.MODE_PRIVATE)
     private val layout = context.getSharedPreferences("dextop_topology_layout", Context.MODE_PRIVATE)
+    private val transactionCodes: TransactionCodes? by lazy(::resolveTransactionCodes)
+
+    /**
+     * Transaction ids are generated from the platform's IDisplayManager.aidl
+     * order and are not stable across Android releases or OEM framework forks.
+     * Never use a numeric fallback here: on newer builds the old id may point
+     * at requestDisplayModes(), which is protected by RESTRICT_DISPLAY_MODES.
+     */
+    fun isSupported(): Boolean = transactionCodes != null
 
     fun activateDextopTopology(overlayDisplayId: Int) {
+        if (!isSupported()) {
+            OperationLog.w(context, "DisplayTopology", "topology API is unavailable on this framework")
+            return
+        }
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         rememberOriginalTopology()
         val manager = context.getSystemService(DisplayManager::class.java)
@@ -61,6 +75,7 @@ class DisplayTopologyController(private val context: Context) {
     }
 
     fun restoreDextopTopology() {
+        if (!isSupported()) return
         if (!session.getBoolean("snapshot_saved", false)) return
         val wasNull = session.getBoolean("snapshot_was_null", true)
         val topology = if (wasNull) null else {
@@ -143,6 +158,7 @@ class DisplayTopologyController(private val context: Context) {
     }
 
     fun rearrange(rawPositions: Map<*, *>): Map<String, Any> {
+        check(isSupported()) { "Display topology is unavailable on this framework" }
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         val current = readTopology() ?: error("No display topology is active")
         val positions = linkedMapOf<Int, PointF>()
@@ -269,13 +285,13 @@ class DisplayTopologyController(private val context: Context) {
         return hypot(dx.toDouble(), dy.toDouble())
     }
 
-    private fun readTopology(): Topology? = transact(TRANSACTION_GET) { data, reply ->
+    private fun readTopology(): Topology? = transact(transactionCodes?.get ?: unsupportedTransaction("getDisplayTopology")) { data, reply ->
         reply.readException()
         if (reply.readInt() == 0) null else Topology.read(reply)
     }
 
     private fun writeTopology(topology: Topology?) {
-        transact(TRANSACTION_SET, write = { data ->
+        transact(transactionCodes?.set ?: unsupportedTransaction("setDisplayTopology"), write = { data ->
             if (topology == null) data.writeInt(0) else {
                 data.writeInt(1)
                 topology.write(data)
@@ -284,6 +300,36 @@ class DisplayTopologyController(private val context: Context) {
             reply.readException()
         }
     }
+
+    private fun unsupportedTransaction(method: String): Nothing =
+        throw UnsupportedOperationException("$method is unavailable on this framework")
+
+    private fun resolveTransactionCodes(): TransactionCodes? = runCatching {
+        // The Stub fields are hidden on Android, but this app already ships
+        // HiddenApiBypass for the other privileged display/input bridges.
+        HiddenApiBypass.addHiddenApiExemptions("")
+        val stub = Class.forName("$DISPLAY_INTERFACE\$Stub")
+        fun read(name: String): Int = stub.getDeclaredField(name).run {
+            isAccessible = true
+            getInt(null)
+        }
+        TransactionCodes(
+            get = read("TRANSACTION_getDisplayTopology"),
+            set = read("TRANSACTION_setDisplayTopology")
+        ).also {
+            android.util.Log.i(
+                "DextopTopology",
+                "resolved IDisplayManager topology transactions get=${it.get} set=${it.set}"
+            )
+        }
+    }.onFailure {
+        android.util.Log.i(
+            "DextopTopology",
+            "display topology transactions unavailable: ${it.javaClass.simpleName}: ${it.message}"
+        )
+    }.getOrNull()
+
+    private data class TransactionCodes(val get: Int, val set: Int)
 
     private fun <T> transact(
         code: Int,
@@ -386,8 +432,6 @@ class DisplayTopologyController(private val context: Context) {
     companion object {
         private const val KEY_SAVED_ARRANGEMENT = "saved_arrangement_v1"
         private const val DISPLAY_INTERFACE = "android.hardware.display.IDisplayManager"
-        private const val TRANSACTION_GET = 106
-        private const val TRANSACTION_SET = 107
         private const val POSITION_LEFT = 0
         private const val POSITION_TOP = 1
         private const val POSITION_RIGHT = 2

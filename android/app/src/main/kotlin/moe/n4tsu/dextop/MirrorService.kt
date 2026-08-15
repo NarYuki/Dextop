@@ -4192,7 +4192,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val strategyOverride = configuredBackend.takeUnless { it == "auto" }
             attachMirror(width, height, strategyOverride)
             mirrorDisplayId = targetDisplayId
-            DisplayEnvironmentSettings(this).activateTopologyIfEnabled(mirrorDisplayId)
+            // Topology is an optional enhancement. A framework with a vendor
+            // IDisplayManager fork may reject its hidden transaction (for
+            // example with RESTRICT_DISPLAY_MODES); that must not abort an
+            // otherwise usable VirtualDisplay session.
+            runCatching {
+                DisplayEnvironmentSettings(this).activateTopologyIfEnabled(mirrorDisplayId)
+            }.onFailure {
+                OperationLog.w(this, "DisplayTopology", "topology activation skipped", it)
+                Log.w(logTag, "topology activation skipped; mirroring remains active", it)
+            }
             displayCreationInProgress = false
             sessionJournal.running(targetDisplayId)
             val externalDisplays = externalDisplayDetector.snapshot()
