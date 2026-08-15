@@ -2339,7 +2339,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // Demo mode documents every available control even on a
             // non-foldable phone; the action only performs work on a
             // supported foldable when the demo is not active.
-            "laptop" -> demoMode || isDebugLaptopModeForced() || isFoldableMainDisplay()
+            // Keep the manual control available whenever laptop posture
+            // detection is enabled.  The service menu is hosted on the
+            // virtual/overlay display, and during a fold or display handoff
+            // the default display can briefly report the wrong panel (or no
+            // foldable main panel at all).  Gating this only on
+            // isFoldableMainDisplay() made the button disappear exactly when
+            // automatic laptop mode was enabled.
+            "laptop" -> demoMode || isDebugLaptopModeForced() ||
+                isLaptopAutoDetectionEnabled() || isFoldableDevice() || isFoldableMainDisplay()
             "mouse_route", "keyboard_route" ->
                 demoMode || physicalInputRoutingSupported && physicalExternalDisplayConnected
             else -> true
