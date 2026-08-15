@@ -214,6 +214,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             pendingLaptopPreviewThemeId = null
         }
 
+        fun exitLaptopPreview() {
+            instance?.root?.post {
+                instance?.laptopPreviewThemeId = null
+                instance?.laptopManualOverride = false
+                instance?.laptopAutoActivated = false
+                instance?.setLaptopMode(false)
+            }
+        }
+
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
 
         fun launchPackage(packageName: String, bounds: android.graphics.Rect? = null): Boolean = instance?.let { service ->
