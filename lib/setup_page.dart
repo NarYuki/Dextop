@@ -513,39 +513,43 @@ class _DextopSetupPageState extends State<DextopSetupPage>
 
   Widget demo() => threeFingerPrompt();
 
-  Widget threeFingerPrompt() => Column(
-    mainAxisAlignment: MainAxisAlignment.center,
-    children: [
-      Text(
-        Localizations.localeOf(context).languageCode == 'ja'
-            ? 'Dextopのジェスチャーを覚えてみましょう'
-            : l.setupGestureTitle,
-        textAlign: TextAlign.center,
-        style: Theme.of(context).textTheme.headlineMedium,
-      ),
-      const SizedBox(height: 12),
-      if (gestureDemoCompleted)
+  Widget threeFingerPrompt() => SizedBox(
+    width: double.infinity,
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
         Text(
           Localizations.localeOf(context).languageCode == 'ja'
-              ? '新しいジェスチャーの確認が完了しました。'
-              : 'The new gestures have been reviewed.',
+              ? 'Dextopのジェスチャーを覚えてみましょう'
+              : l.setupGestureTitle,
           textAlign: TextAlign.center,
+          style: Theme.of(context).textTheme.headlineMedium,
         ),
-      const SizedBox(height: 32),
-      FilledButton.icon(
-        onPressed: gestureDemoOpening ? null : startGestureDemo,
-        icon: Icon(
-          gestureDemoCompleted
-              ? Icons.replay_rounded
-              : Icons.play_arrow_rounded,
+        const SizedBox(height: 12),
+        if (gestureDemoCompleted)
+          Text(
+            Localizations.localeOf(context).languageCode == 'ja'
+                ? '新しいジェスチャーの確認が完了しました。'
+                : 'The new gestures have been reviewed.',
+            textAlign: TextAlign.center,
+          ),
+        const SizedBox(height: 32),
+        FilledButton.icon(
+          onPressed: gestureDemoOpening ? null : startGestureDemo,
+          icon: Icon(
+            gestureDemoCompleted
+                ? Icons.replay_rounded
+                : Icons.play_arrow_rounded,
+          ),
+          label: Text(
+            Localizations.localeOf(context).languageCode == 'ja'
+                ? (gestureDemoCompleted ? 'デモを再確認' : 'デモを開始')
+                : (gestureDemoCompleted ? 'Review demo again' : 'Start demo'),
+          ),
         ),
-        label: Text(
-          Localizations.localeOf(context).languageCode == 'ja'
-              ? (gestureDemoCompleted ? 'デモを再確認' : 'デモを開始')
-              : (gestureDemoCompleted ? 'Review demo again' : 'Start demo'),
-        ),
-      ),
-    ],
+      ],
+    ),
   );
 
   Widget progressDots() => Row(
