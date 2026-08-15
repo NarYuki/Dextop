@@ -355,5 +355,6 @@
   "keyboardThemesBorder": "枠線",
   "keyboardThemesText": "文字",
   "keyboardThemesTrackpad": "トラックパッド",
+  "keyboardThemesDescription": "ラップトップキーボードのテーマと外観をカスタマイズ",
   "@keyboardThemesDeleteBody": {"placeholders": {"name": {"type": "String"}}}
 }

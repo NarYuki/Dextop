@@ -1250,4 +1250,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => 'トラックパッド';
+
+  @override
+  String get keyboardThemesDescription => 'ラップトップキーボードのテーマと外観をカスタマイズ';
 }

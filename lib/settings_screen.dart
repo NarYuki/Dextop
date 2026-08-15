@@ -27,17 +27,19 @@ extension _SettingsContent on _HomeScreenState {
                   () => _openDisplaySettings(l),
                 ),
                 Divider(height: 1),
-                _categoryTile(
-                  Icons.keyboard_alt_outlined,
-                  'Keyboard',
-                  'Laptop keyboard themes and custom appearance',
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const KeyboardThemesPage(),
+                if (foldableDevice) ...[
+                  _categoryTile(
+                    Icons.keyboard_alt_outlined,
+                    l.keyboardThemesTitle,
+                    l.keyboardThemesDescription,
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const KeyboardThemesPage(),
+                      ),
                     ),
                   ),
-                ),
-                Divider(height: 1),
+                  Divider(height: 1),
+                ],
                 _categoryTile(
                   Icons.apps_outlined,
                   AppStrings.tr('uiAppLauncherSettings'),
@@ -116,12 +118,13 @@ extension _SettingsContent on _HomeScreenState {
         l.display,
         AppStrings.tr('uiSecureDisplayFoldable'),
       ),
-      (
-        'keyboard',
-        Icons.keyboard_alt_outlined,
-        'Keyboard',
-        'Laptop keyboard themes and custom appearance',
-      ),
+      if (foldableDevice)
+        (
+          'keyboard',
+          Icons.keyboard_alt_outlined,
+          l.keyboardThemesTitle,
+          l.keyboardThemesDescription,
+        ),
       (
         'apps',
         Icons.apps_outlined,

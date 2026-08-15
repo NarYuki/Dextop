@@ -2509,6 +2509,12 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'トラックパッド'**
   String get keyboardThemesTrackpad;
+
+  /// No description provided for @keyboardThemesDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ラップトップキーボードのテーマと外観をカスタマイズ'**
+  String get keyboardThemesDescription;
 }
 
 class _AppLocalizationsDelegate
