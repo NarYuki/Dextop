@@ -51,6 +51,7 @@ import android.view.SurfaceView
 import android.view.View
 import android.view.WindowManager
 import android.view.WindowInsets
+import android.view.animation.PathInterpolator
 import android.view.inputmethod.InputMethodManager
 import android.view.accessibility.AccessibilityEvent
 import android.widget.EditText
@@ -744,7 +745,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun addWindow() {
         val frame = TouchRoutingFrame(this).apply {
-            setBackgroundColor(Color.TRANSPARENT)
+            // The accessibility window is translucent so it can host the
+            // mirrored SurfaceView, but uncovered pixels must never reveal
+            // the Android screen during a laptop-pane resize.
+            setBackgroundColor(Color.BLACK)
             // Keep every pointer in one touch stream. Splitting the stream lets
             // the mirrored surface consume fingers before the edge recognizer.
             isMotionEventSplittingEnabled = false
@@ -785,6 +789,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            setBackgroundColor(Color.BLACK)
             addView(surface, LinearLayout.LayoutParams(-1, 0, 1f))
         }
         frame.addView(content, FrameLayout.LayoutParams(-1, -1, Gravity.TOP))
@@ -1017,13 +1022,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val deck = buildLaptopDeck().apply {
                 alpha = 0f
                 translationY = dp(28).toFloat()
+                scaleY = .94f
             }
             content.addView(deck, LinearLayout.LayoutParams(-1, 0, 1f))
             deck.post {
+                deck.pivotY = deck.height.toFloat()
                 deck.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .setDuration(240L)
+                    .scaleY(1f)
+                    .setInterpolator(PathInterpolator(.22f, 1f, .36f, 1f))
+                    .setDuration(360L)
                     .start()
             }
             cursorView?.contentHeightFraction = .5f
@@ -1035,9 +1044,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val deck = laptopDeck
             laptopDeck = null
             deck?.animate()
+                ?.cancel()
+            deck?.animate()
                 ?.alpha(0f)
                 ?.translationY(dp(28).toFloat())
-                ?.setDuration(220L)
+                ?.scaleY(.94f)
+                ?.setInterpolator(PathInterpolator(.55f, 0f, .78f, 0f))
+                ?.setDuration(300L)
                 ?.withEndAction {
                     if (!laptopModeActive) runCatching { content.removeView(deck) }
                 }
