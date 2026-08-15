@@ -223,6 +223,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
 
+        fun setOverlayHiddenForSettings(hidden: Boolean) {
+            instance?.root?.post {
+                instance?.root?.visibility = if (hidden) View.GONE else View.VISIBLE
+            }
+        }
+
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
 
         fun launchPackage(packageName: String, bounds: android.graphics.Rect? = null): Boolean = instance?.let { service ->
