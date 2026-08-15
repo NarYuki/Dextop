@@ -161,6 +161,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun isActive(): Boolean = active
 
+        fun isFoldableDevice(): Boolean = instance?.isFoldableDevice() == true
+
         fun updateLaptopModeEnabled(enabled: Boolean) {
             instance?.root?.post { instance?.applyFlutterLaptopModeSetting(enabled) }
         }
@@ -3970,8 +3972,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun isLaptopAutoDetectionEnabled(): Boolean {
-        return getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getBoolean("flutter.foldable_laptop_mode", false)
+        val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        // Foldables default to posture detection on first use. Once the user
+        // changes the switch, the explicit preference always wins.
+        return if (preferences.contains("flutter.foldable_laptop_mode")) {
+            preferences.getBoolean("flutter.foldable_laptop_mode", false)
+        } else {
+            isFoldableDevice()
+        }
     }
 
     private fun hostSizeDiffersFromTarget(width: Int, height: Int): Boolean {
