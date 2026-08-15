@@ -225,8 +225,6 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   @override
   Widget build(BuildContext context) {
-    final selected = _themes.firstWhere((t) => t['id'] == _selected,
-        orElse: () => _themes.isEmpty ? _builtIns[2] : _themes.first);
     return Scaffold(
       appBar: AppBar(
         title: const Text('Keyboard themes'),
@@ -243,16 +241,19 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
               children: [
                 Text('Choose a theme', style: Theme.of(context).textTheme.titleLarge),
                 const SizedBox(height: 12),
-                SizedBox(
-                  height: 190,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
+                GridView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 3,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 1.05,
+                    ),
                     itemCount: _themes.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
                     itemBuilder: (context, index) {
                       final theme = _themes[index];
                       return SizedBox(
-                        width: 220,
                         child: Card(
                           clipBehavior: Clip.antiAlias,
                           child: InkWell(
@@ -267,7 +268,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                                 Row(children: [
                                   const Expanded(child: SizedBox()),
                                   IconButton(icon: const Icon(Icons.preview_outlined), tooltip: 'Show real overlay', onPressed: _showRealLaptopPreview),
-                                  IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => _select(theme['id'] as String)),
+                                  IconButton(icon: const Icon(Icons.edit_outlined), tooltip: 'Edit', onPressed: () => _showEditDialog(theme)),
                                   Radio<String>(value: theme['id'] as String, groupValue: _selected,
                                       onChanged: (_) => _select(theme['id'] as String)),
                                 ]),
@@ -278,22 +279,11 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                       );
                     },
                   ),
-                ),
-                Align(alignment: Alignment.centerLeft, child: Text('Tap to select · long-press to delete', style: Theme.of(context).textTheme.bodySmall)),
-                const SizedBox(height: 8),
                 const SizedBox(height: 20),
               ],
             ),
     );
   }
-
-  Widget _editor(Map<String, dynamic> theme) => Card(
-        child: ListTile(
-          title: Text(theme['name'] as String),
-          subtitle: const Text('Open the editor to customize colors, image, opacity, blur, and corners.'),
-          trailing: FilledButton.icon(onPressed: () => _showEditDialog(theme), icon: const Icon(Icons.edit_outlined), label: const Text('Edit')),
-        ),
-      );
 
   Future<void> _showEditDialog(Map<String, dynamic> theme) async {
     await showDialog<void>(
