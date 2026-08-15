@@ -1005,16 +1005,34 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopHostUniqueId = if (enabled) defaultDisplayUniqueId() else null
         if (enabled) {
             startLaptopHardwareKeyboard()
-            val deck = buildLaptopDeck()
+            val deck = buildLaptopDeck().apply {
+                alpha = 0f
+                translationY = dp(28).toFloat()
+            }
             content.addView(deck, LinearLayout.LayoutParams(-1, 0, 1f))
+            deck.post {
+                deck.animate()
+                    .alpha(1f)
+                    .translationY(0f)
+                    .setDuration(240L)
+                    .start()
+            }
             cursorView?.contentHeightFraction = .5f
             menuScrim?.bringToFront()
             menu?.bringToFront()
             performanceHud?.bringToFront()
         } else {
             stopLaptopHardwareKeyboard()
-            laptopDeck?.let { content.removeView(it) }
+            val deck = laptopDeck
             laptopDeck = null
+            deck?.animate()
+                ?.alpha(0f)
+                ?.translationY(dp(28).toFloat())
+                ?.setDuration(220L)
+                ?.withEndAction {
+                    if (!laptopModeActive) runCatching { content.removeView(deck) }
+                }
+                ?.start()
             cursorView?.contentHeightFraction = 1f
         }
         surface.requestLayout()
