@@ -172,6 +172,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
+        alignment: Alignment.center,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
         title: const Text('Delete theme?'),
         content: Text('Delete “${theme['name']}”? This cannot be undone.'),
         actions: [
