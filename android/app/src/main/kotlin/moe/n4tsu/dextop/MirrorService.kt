@@ -18,11 +18,13 @@ import android.graphics.Path
 import android.graphics.Rect
 import android.graphics.RectF
 import android.graphics.Typeface
+import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.BitmapDrawable
 import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
@@ -39,6 +41,7 @@ import android.transition.ChangeBounds
 import android.transition.AutoTransition
 import android.transition.TransitionManager
 import android.util.Log
+import android.util.Base64
 import android.view.Gravity
 import android.view.DragEvent
 import android.view.Display
@@ -888,13 +891,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopControl = false
         laptopAlt = false
         laptopCapsLock = false
-        val crimson = laptopKeyboardTheme() == "crimson"
+        val palette = laptopPalette()
         val deck = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(8), dp(8), dp(8), dp(8))
-            background = GradientDrawable().apply {
-                setColor(if (crimson) Color.rgb(89, 14, 14) else Color.rgb(18, 18, 22))
-            }
+            background = palette.imageBase64?.let { encoded ->
+                runCatching {
+                    val bytes = Base64.decode(encoded, Base64.DEFAULT)
+                    BitmapDrawable(resources, BitmapFactory.decodeByteArray(bytes, 0, bytes.size)).apply {
+                        alpha = (palette.opacity * 255f).toInt()
+                    }
+                }.getOrNull()
+            } ?: GradientDrawable().apply { setColor(palette.background) }
         }
         val trackpad = TextView(this).apply {
             text = "TRACKPAD"
@@ -902,11 +910,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             textSize = 11f
             letterSpacing = .12f
             gravity = Gravity.CENTER
-            setTextColor(if (crimson) Color.rgb(222, 137, 102) else Color.rgb(145, 141, 151))
+            setTextColor(palette.trackpadText)
             background = GradientDrawable().apply {
-                setColor(if (crimson) Color.rgb(90, 15, 16) else Color.rgb(35, 34, 40))
-                setStroke(dp(1), if (crimson) Color.rgb(104, 26, 23) else Color.rgb(74, 71, 82))
-                cornerRadius = dp(18).toFloat()
+                setColor(palette.trackpad)
+                setStroke(dp(1), palette.border)
+                cornerRadius = dp(palette.radius.toInt()).toFloat()
             }
             setOnTouchListener { _, event ->
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) activateLaptopTrackpad()
@@ -1418,8 +1426,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun laptopKeyButton(key: LaptopKey): TextView = LaptopKeyTextView(
         this,
         key.code == KeyEvent.KEYCODE_F || key.code == KeyEvent.KEYCODE_J,
-        if (laptopKeyboardTheme() == "crimson") Color.rgb(255, 190, 151)
-        else Color.rgb(235, 231, 239)
+        laptopPalette().text
     ).apply {
         text = key.label
         if (key.code != KeyEvent.KEYCODE_META_LEFT) {
@@ -1428,8 +1435,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         typeface = laptopTypeface
         textSize = if (key.label.length > 2) 9f else 12f
         gravity = Gravity.CENTER
-        setTextColor(if (laptopKeyboardTheme() == "crimson") Color.rgb(255, 190, 151)
-            else Color.rgb(235, 231, 239))
+        setTextColor(laptopPalette().text)
         background = laptopKeyBackground(false, key.code)
         if (key.code == KeyEvent.KEYCODE_META_LEFT) {
             text = "\uE859"
@@ -1465,7 +1471,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun laptopKeyBackground(selected: Boolean, keyCode: Int? = null) = GradientDrawable().apply {
-        val crimson = laptopKeyboardTheme() == "crimson"
+        val palette = laptopPalette()
         val functionKey = keyCode != null &&
             (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 ||
                 keyCode == KeyEvent.KEYCODE_FORWARD_DEL)
@@ -1479,34 +1485,86 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
         setColor(
             if (selected) {
-                if (crimson) Color.rgb(81, 10, 11) else Color.rgb(208, 188, 237)
+                palette.selected
             } else {
-                if (crimson) when {
-                    functionKey -> Color.rgb(79, 10, 11)
-                    modifierKey -> Color.rgb(81, 10, 11)
-                    specialKey -> Color.rgb(81, 10, 11)
-                    else -> Color.rgb(110, 27, 27)
-                } else Color.rgb(48, 46, 54)
+                when {
+                    functionKey || modifierKey || specialKey -> palette.keyVariant
+                    else -> palette.key
+                }
             }
         )
         setStroke(
             dp(1),
             if (selected) {
-                if (crimson) Color.rgb(240, 149, 102) else Color.rgb(232, 222, 248)
+                palette.text
             } else {
-                if (crimson) when {
-                    functionKey -> Color.rgb(92, 20, 18)
-                    modifierKey -> Color.rgb(92, 20, 18)
-                    else -> Color.rgb(126, 32, 27)
-                } else Color.rgb(76, 72, 84)
+                palette.border
             }
         )
-        cornerRadius = dp(7).toFloat()
+        cornerRadius = dp(palette.radius.toInt()).toFloat()
     }
 
     private fun laptopKeyboardTheme(): String =
-        getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getString("laptop_keyboard_theme", "standard") ?: "standard"
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.laptop_keyboard_theme", null)
+            ?: getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getString("laptop_keyboard_theme", "standard") ?: "standard"
+
+    private data class LaptopPalette(
+        val background: Int,
+        val key: Int,
+        val keyVariant: Int,
+        val border: Int,
+        val text: Int,
+        val trackpad: Int,
+        val trackpadText: Int,
+        val selected: Int,
+        val radius: Float,
+        val opacity: Float = 1f,
+        val imageBase64: String? = null,
+    )
+
+    private fun paletteColor(value: String?, fallback: Int): Int = runCatching {
+        Color.parseColor(value ?: "")
+    }.getOrDefault(fallback)
+
+    private fun laptopPalette(): LaptopPalette {
+        val id = laptopKeyboardTheme()
+        val crimson = id == "crimson"
+        val cloud = id == "cloud"
+        val fallback = if (crimson) LaptopPalette(
+            Color.rgb(89, 14, 14), Color.rgb(110, 27, 27), Color.rgb(81, 10, 11),
+            Color.rgb(126, 32, 27), Color.rgb(255, 190, 151), Color.rgb(90, 15, 16),
+            Color.rgb(222, 137, 102), Color.rgb(81, 10, 11), 7f
+        ) else if (cloud) LaptopPalette(
+            Color.rgb(220, 235, 255), Color.WHITE, Color.rgb(247, 251, 255),
+            Color.rgb(183, 212, 245), Color.rgb(66, 100, 134), Color.rgb(199, 221, 245),
+            Color.rgb(82, 120, 159), Color.rgb(190, 218, 248), 16f
+        ) else LaptopPalette(
+            Color.rgb(18, 18, 22), Color.rgb(48, 46, 54), Color.rgb(48, 46, 54),
+            Color.rgb(76, 72, 84), Color.rgb(235, 231, 239), Color.rgb(35, 34, 40),
+            Color.rgb(145, 141, 151), Color.rgb(208, 188, 237), 7f
+        )
+        val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.dextop_keyboard_theme_$id", null) ?: return fallback
+        return runCatching {
+            val json = JSONObject(raw)
+            fallback.copy(
+                background = paletteColor(json.optString("background"), fallback.background),
+                key = paletteColor(json.optString("key"), fallback.key),
+                keyVariant = paletteColor(json.optString("keyVariant"), fallback.keyVariant),
+                border = paletteColor(json.optString("border"), fallback.border),
+                text = paletteColor(json.optString("text"), fallback.text),
+                trackpad = paletteColor(json.optString("trackpad"), fallback.trackpad),
+                trackpadText = paletteColor(json.optString("trackpadText"), fallback.trackpadText),
+                selected = paletteColor(json.optString("selected"), fallback.selected),
+                radius = json.optDouble("radius", fallback.radius.toDouble()).toFloat()
+                    .coerceIn(0f, 40f),
+                opacity = json.optDouble("opacity", 1.0).toFloat().coerceIn(.1f, 1f),
+                imageBase64 = json.optString("imageBase64").takeIf { it.isNotBlank() }
+            )
+        }.getOrDefault(fallback)
+    }
 
     private fun showLaptopKeyboardSettings() {
         val deck = laptopDeck as? LinearLayout ?: return
@@ -1567,13 +1625,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             gravity = Gravity.CENTER
             setPadding(dp(28), dp(8), dp(28), dp(24))
         }
-        choices.addView(laptopThemeChoice("standard", "Standard"), LinearLayout.LayoutParams(0, -1, 1f).apply {
-            rightMargin = dp(12)
-        })
-        choices.addView(laptopThemeChoice("crimson", "Crimson"), LinearLayout.LayoutParams(0, -1, 1f).apply {
-            leftMargin = dp(12)
-        })
+        laptopThemeChoices().forEachIndexed { index, (id, label) ->
+            choices.addView(laptopThemeChoice(id, label), LinearLayout.LayoutParams(0, -1, 1f).apply {
+                if (index > 0) leftMargin = dp(6)
+                if (index < laptopThemeChoices().lastIndex) rightMargin = dp(6)
+            })
+        }
         deck.addView(choices, LinearLayout.LayoutParams(-1, 0, 1f))
+    }
+
+    private fun laptopThemeChoices(): List<Pair<String, String>> {
+        val choices = mutableListOf("standard" to "Standard", "crimson" to "Crimson", "cloud" to "Cloud Pop")
+        val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.dextop_laptop_keyboard_themes", null)
+        runCatching {
+            val list = JSONArray(raw ?: "[]")
+            for (index in 0 until list.length()) {
+                val item = list.optJSONObject(index) ?: continue
+                val id = item.optString("id")
+                val name = item.optString("name")
+                if (id.isNotBlank() && name.isNotBlank()) choices += id to name
+            }
+        }
+        return choices
     }
 
     private fun laptopThemeChoice(id: String, label: String): View {

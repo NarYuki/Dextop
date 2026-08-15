@@ -13,6 +13,8 @@ import 'package:free_dextop/features_page.dart';
 import 'package:free_dextop/setup_page.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:archive/archive.dart';
+import 'package:file_picker/file_picker.dart';
 
 part 'app_info.dart';
 part 'samsung_desktop_settings.dart';
@@ -24,6 +26,7 @@ part 'resolution_ui.dart';
 part 'settings_screen.dart';
 part 'display_topology.dart';
 part 'device_report.dart';
+part 'keyboard_themes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
