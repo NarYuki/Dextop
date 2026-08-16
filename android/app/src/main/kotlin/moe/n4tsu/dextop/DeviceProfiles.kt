@@ -12,6 +12,17 @@ internal object DeviceProfiles {
         ) {
             DesktopEnvironmentRegistry.samsungDex(autoResizeWithHostDisplay = true)
         },
+        // Japanese carrier variants can expose a model identifier beginning
+        // with SC, SCG, or SCV even when Build.MANUFACTURER is not reported as
+        // Samsung. Resolve those identifiers to the Samsung profile before
+        // the generic vendor rules; the prefix is intentionally limited to
+        // the model field so unrelated device codenames are not reclassified.
+        DesktopEnvironmentRule(
+            "samsung_carrier_model",
+            DeviceMatch(modelPrefixes = setOf("scv", "scg", "sc"))
+        ) {
+            DesktopEnvironmentRegistry.samsungDex()
+        },
         DesktopEnvironmentRule("samsung_dex", DeviceMatch(manufacturers = setOf("samsung"))) {
             DesktopEnvironmentRegistry.samsungDex()
         },

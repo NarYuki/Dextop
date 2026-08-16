@@ -22,6 +22,8 @@ internal data class DeviceIdentity(
 internal data class DeviceMatch(
     val manufacturers: Set<String> = emptySet(),
     val models: Set<String> = emptySet(),
+    /** Match regional model identifiers whose suffix varies by carrier. */
+    val modelPrefixes: Set<String> = emptySet(),
     val devices: Set<String> = emptySet(),
     val fingerprintPrefixes: Set<String> = emptySet(),
     val minSdk: Int = 29,
@@ -32,6 +34,9 @@ internal data class DeviceMatch(
         if (identity.sdk !in minSdk..maxSdk) return false
         if (manufacturers.isNotEmpty() && manufacturers.none { it.normalized() == identity.manufacturer.normalized() }) return false
         if (models.isNotEmpty() && models.none { it.normalized() == identity.model.normalized() }) return false
+        if (modelPrefixes.isNotEmpty() && modelPrefixes.none {
+                identity.model.normalized().startsWith(it.normalized())
+            }) return false
         if (devices.isNotEmpty() && devices.none { it.normalized() == identity.device.normalized() }) return false
         if (fingerprintPrefixes.isNotEmpty() && fingerprintPrefixes.none {
                 identity.fingerprint.normalized().startsWith(it)
