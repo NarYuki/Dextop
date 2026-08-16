@@ -710,6 +710,48 @@ abstract class AppLocalizations {
   /// **'下の3つの円へ、3本の指を同時に置いてください。'**
   String get setupGestureDescription;
 
+  /// No description provided for @setupInstallGitHub.
+  ///
+  /// In ja, this message translates to:
+  /// **'GitHubからダウンロード'**
+  String get setupInstallGitHub;
+
+  /// No description provided for @setupGestureReviewed.
+  ///
+  /// In ja, this message translates to:
+  /// **'新しいジェスチャーの確認が完了しました。'**
+  String get setupGestureReviewed;
+
+  /// No description provided for @setupGestureReview.
+  ///
+  /// In ja, this message translates to:
+  /// **'デモを再確認'**
+  String get setupGestureReview;
+
+  /// No description provided for @setupGestureStart.
+  ///
+  /// In ja, this message translates to:
+  /// **'デモを開始'**
+  String get setupGestureStart;
+
+  /// No description provided for @setupGestureLandscape.
+  ///
+  /// In ja, this message translates to:
+  /// **'横向きの場合\n画面左から右に3本指でスワイプ'**
+  String get setupGestureLandscape;
+
+  /// No description provided for @setupGesturePortrait.
+  ///
+  /// In ja, this message translates to:
+  /// **'縦持ちの場合\n画面上から下に3本指でスワイプ'**
+  String get setupGesturePortrait;
+
+  /// No description provided for @setupGestureNext.
+  ///
+  /// In ja, this message translates to:
+  /// **'次へ'**
+  String get setupGestureNext;
+
   /// No description provided for @uiTwoFingerTap.
   ///
   /// In ja, this message translates to:
@@ -2509,6 +2551,24 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'トラックパッド'**
   String get keyboardThemesTrackpad;
+
+  /// No description provided for @keyboardThemesKeyOpacity.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーの透明度'**
+  String get keyboardThemesKeyOpacity;
+
+  /// No description provided for @keyboardThemesTrackpadOpacity.
+  ///
+  /// In ja, this message translates to:
+  /// **'トラックパッドの透明度'**
+  String get keyboardThemesTrackpadOpacity;
+
+  /// No description provided for @keyboardThemesShowTrackpadLabel.
+  ///
+  /// In ja, this message translates to:
+  /// **'TRACKPADの文字を表示'**
+  String get keyboardThemesShowTrackpadLabel;
 
   /// No description provided for @keyboardThemesDescription.
   ///

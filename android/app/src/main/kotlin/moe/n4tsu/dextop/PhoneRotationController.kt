@@ -19,7 +19,13 @@ internal class PhoneRotationController(
                 sessionJournal.rememberPhoneRotation(it.frozen, it.rotation)
             }
         }
-        setFrozen(if (portrait) 0 else 1)
+        // Rotation numbers are relative to the panel's natural orientation,
+        // not to the portrait convention used by most phones. Foldables such
+        // as the Fold8 expose a landscape natural mode (2448x1848), so the
+        // old fixed mapping (portrait=0, landscape=1) inverted the requested
+        // orientation and left the host Surface at 1848x2448 while Dextop was
+        // configured for 2448x1848.
+        setFrozen(rotationFor(portrait))
     }
 
     fun restore(clear: Boolean = false) {
@@ -78,6 +84,23 @@ internal class PhoneRotationController(
             }
         }.toTypedArray()
         method.invoke(service, *args)
+    }
+
+    private fun rotationFor(portrait: Boolean): Int {
+        val naturalLandscape = runCatching {
+            context.getSystemService(android.hardware.display.DisplayManager::class.java)
+                .getDisplay(Display.DEFAULT_DISPLAY)
+                ?.mode
+                ?.let { it.physicalWidth > it.physicalHeight }
+        }.getOrNull()
+        // If the vendor does not expose Display.Mode, retain the conventional
+        // portrait-natural mapping used by AOSP phones.
+        return when {
+            naturalLandscape == true && portrait -> 1
+            naturalLandscape == true && !portrait -> 0
+            naturalLandscape == false && portrait -> 0
+            else -> 1
+        }
     }
 
     private fun thaw() {

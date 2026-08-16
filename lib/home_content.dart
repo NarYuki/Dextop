@@ -262,7 +262,10 @@ extension _HomeContent on _HomeScreenState {
                         mutate(() => loading = true);
                         await bridge.start(
                           resumeProfile,
-                          false,
+                          // Resume with the orientation selected in Dextop.
+                          // Passing false here forced landscape on foldables
+                          // even when the user had selected portrait mode.
+                          portrait,
                           secure,
                           decorations: effectiveDecorations,
                         );

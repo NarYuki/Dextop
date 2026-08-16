@@ -78,6 +78,7 @@ import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
 import moe.shizuku.server.IShizukuService
+import kotlin.math.abs
 import kotlin.math.hypot
 import org.json.JSONArray
 import org.json.JSONObject
@@ -91,6 +92,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val secure: Boolean = false,
         val decorations: Boolean = false
     )
+
+    /**
+     * Samsung's special-size Fold8 exposes the laptop hinge and orientation
+     * differently from the normal-size Fold family. Fold8 Ultra and Fold7
+     * therefore use the normal-size posture gate, while the special Fold8
+     * keeps its dedicated handling.
+     */
+    private enum class LaptopFoldProfile {
+        FOLD8,
+        STANDARD_FOLDABLE
+    }
+
     companion object {
         private const val PREFS = "freedextop_input"
         private const val KEY_DIRECT_TOUCH = "direct_touch"
@@ -106,6 +119,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val LAPTOP_ALT = -3
         private const val LAPTOP_CAPS = -4
         private const val DEBUG_FORCE_LAPTOP_MODE = false
+        private val FOLD8_SPECIAL_MODEL_IDS = setOf(
+            "SMF971", "SMF971B", "SMF971U", "SMF971U1", "SMF971W", "SMF9710",
+            "SMF971N", "SMF971Q", "SMF971Z", "SMF971C", "SCG41", "SC57G"
+        )
+        private val FOLD8_ULTRA_MODEL_IDS = setOf(
+            "SMF976", "SMF976B", "SMF976U", "SMF976U1", "SMF976W", "SMF9760",
+            "SMF976N", "SMF976Q", "SMF976Z", "SMF976C", "SCG39", "SC56G"
+        )
+        private const val FOLD8_SPECIAL_DEVICE_PREFIX = "H8Q"
+        private const val FOLD8_ULTRA_DEVICE_PREFIX = "Q8Q"
         private const val STATUS_BAR_INTERFACE = "com.android.internal.statusbar.IStatusBarService"
         private const val PHONE_NAVIGATION_DISABLE_FLAGS =
             0x00200000 or 0x00400000 or 0x01000000
@@ -127,6 +150,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             completion: (Result<Map<String, Any>>) -> Unit
         ) {
             val running = instance
+            if (running?.stopping == true) {
+                completion(Result.failure(IllegalStateException("Dextop is still finishing its previous session")))
+                return
+            }
             if (active && running != null && running.targetDisplayId >= 0 &&
                 secure == running.secureDisplay && decorations == running.showSystemDecorations) {
                 val requested = Config(width, height, density, secure, decorations)
@@ -239,6 +266,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             instance?.root?.post {
                 instance?.laptopPreviewThemeId = null
                 instance?.laptopManualOverride = false
+                instance?.laptopAutoSuppressedByUser = false
                 instance?.laptopAutoActivated = false
                 instance?.setLaptopMode(false)
             }
@@ -382,6 +410,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var workspaceSaveError: String? = null
     private var pausedForAndroid = false
     private var stopping = false
+    /**
+     * Teardown is deliberately split into two phases.  Samsung's overlay
+     * adapter removes the display asynchronously; restoring phone/DeX state
+     * before that removal has completed races WindowManager/SystemUI.
+     */
+    private var stopCleanupGeneration = 0L
     private var menuScrim: View? = null
     private var demoMode = false
     private var demoInfoView: TextView? = null
@@ -397,6 +431,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopModeActive = false
     private var laptopManualOverride = false
     private var laptopAutoActivated = false
+    /**
+     * Blocks automatic reactivation after the user dismisses an automatically
+     * shown deck. It is cleared only after a flat posture is observed or the
+     * user explicitly enables laptop mode again.
+     */
+    private var laptopAutoSuppressedByUser = false
+    /** Dextop orientation choice, independent from the laptop pane geometry. */
+    private var requestedPortrait = false
+    private var laptopBaseConfig: Config? = null
     private var laptopHardwareKeyboardProcess: moe.shizuku.server.IRemoteProcess? = null
     private var laptopHardwareKeyboardInput: OutputStream? = null
     private var laptopHostUniqueId: String? = null
@@ -404,13 +447,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopControl = false
     private var laptopAlt = false
     private var laptopCapsLock = false
-    private var laptopMetaLongPressRunnable: Runnable? = null
-    private var laptopMetaLongPressTriggered = false
     private val laptopTypeface: Typeface by lazy {
         Typeface.createFromAsset(assets, "fonts/HarmonyOS_Sans_Medium.ttf")
-    }
-    private val materialIconTypeface: Typeface by lazy {
-        Typeface.createFromAsset(assets, "flutter_assets/fonts/MaterialIcons-Regular.otf")
     }
     private val laptopModifierButtons = mutableMapOf<Int, TextView>()
     private val laptopShortcutButtons = mutableMapOf<Int, TextView>()
@@ -477,10 +515,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var pendingLaptopMode: Boolean? = null
     private var pendingLaptopModeSince = 0L
     private var laptopModeEvaluationGeneration = 0L
+    private var laptopPostureReevaluationGeneration = 0L
     private var laptopHostMismatchSince = 0L
     private var foldingApiFoldable: Boolean? = null
     private var foldingApiLaptopPosture: Boolean? = null
+    private var foldingApiHorizontalHinge: Boolean? = null
     private var foldingApiLastProbeAt = 0L
+    private var foldingApiLastSuccessAt = 0L
+    private val foldingApiFailureGraceMs = 1_500L
     private val laptopModeDebounceMs = 420L
     private val laptopHostMismatchDebounceMs = 1_200L
 
@@ -584,6 +626,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             hingeAngle = angle
             refreshFoldingApiState("hinge_sensor")
             Log.d(logTag, "hinge angle=$angle laptop=$laptopModeActive")
+            OperationLog.i(
+                this@MirrorService,
+                "FoldState",
+                "hinge sensor angle=$angle apiFoldable=$foldingApiFoldable " +
+                    "apiHalfOpened=$foldingApiLaptopPosture apiHorizontal=$foldingApiHorizontalHinge"
+            )
             updateLaptopModeForHinge(angle)
         }
     }
@@ -599,6 +647,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleTopologyReapplyAfterReconnect()
+            scheduleLaptopModeReevaluation("display_added")
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display added")
             }
@@ -608,6 +657,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_removed_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = false)
+            scheduleLaptopModeReevaluation("display_removed")
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display removed")
             }
@@ -617,6 +667,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_changed_$displayId"))
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
+            scheduleLaptopModeReevaluation("display_changed")
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 leaveLaptopModeOnCoverDisplay()
                 scheduleHostDisplayReconfiguration("default display changed")
@@ -651,6 +702,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 .onFailure { Log.e(logTag, "display topology reapply after reconnect failed", it) }
         }, 750)
     }
+
+    /**
+     * Foldable vendors do not all deliver a hinge sensor event for the panel
+     * hand-off.  Samsung can instead publish only a display/configuration
+     * change, and its folding API may briefly report an empty feature list
+     * while the new panel is attached.  Re-evaluate after that churn settles
+     * so opening a session flat and then entering flex posture is handled the
+     * same as starting the session half-open.
+     */
+    private fun scheduleLaptopModeReevaluation(reason: String) {
+        if (!active || suspendedForLockScreen) return
+        val generation = ++laptopPostureReevaluationGeneration
+        android.os.Handler(mainLooper).postDelayed({
+            if (generation != laptopPostureReevaluationGeneration ||
+                !active || suspendedForLockScreen) return@postDelayed
+            if (!isLaptopAutoDetectionEnabled()) return@postDelayed
+            refreshFoldingApiState("$reason settled", force = true)
+            val angle = filteredHingeAngle ?: hingeAngle
+            if (angle != null) {
+                updateLaptopModeForHinge(angle)
+            } else {
+                updateLaptopModeFromCurrentPosture(reason)
+            }
+        }, 240L)
+    }
     private val navigationToken = Binder()
     private var navigationRestoreGeneration = 0
     private var screenReceiverRegistered = false
@@ -679,14 +755,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val hostDisplayMonitor = object : Runnable {
         override fun run() {
             if (!active || suspendedForLockScreen) return
+            // WindowManager folding callbacks are not delivered consistently
+            // during Samsung panel hand-off. Poll the posture while a session
+            // is active so a flat/half-open transition is still observed even
+            // when neither a display nor a hinge event is emitted.
+            if (isLaptopAutoDetectionEnabled()) {
+                refreshFoldingApiState("posture_monitor", force = true)
+                updateLaptopModeFromCurrentPosture("posture monitor")
+            }
             if (laptopModeActive &&
                 !isDebugLaptopModeForced() &&
                 laptopHostUniqueId != null &&
                 defaultDisplayUniqueId()?.let { it != laptopHostUniqueId } == true &&
-                hasStableLaptopHostMismatch()) {
+                hasStableLaptopHostMismatch() &&
+                !isFoldableMainDisplay()) {
                 // A different internal panel became the default display. This
-                // is the reliable cover-display signal; failure to enumerate
-                // the inactive inner panel must never dismiss laptop mode.
+                // is only a cover-display signal when the new default is
+                // actually the smaller panel. Fold8 can publish a temporary
+                // unique-id change while the large panel is being re-laid out;
+                // dismissing the deck for that transient event made the
+                // keyboard appear briefly and then disappear.
                 laptopManualOverride = false
                 setLaptopMode(false)
                 hostDisplayMonitorHandler.postDelayed(this, HOST_DISPLAY_MONITOR_INTERVAL_MS)
@@ -798,6 +886,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         super.onConfigurationChanged(newConfig)
         if (!active || suspendedForLockScreen) return
         refreshFoldingApiState("configuration_changed", force = true)
+        scheduleLaptopModeReevaluation("configuration_changed")
         OperationLog.i(
             this,
             "Orientation",
@@ -880,13 +969,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun start(config: Config) {
         laptopModeActive = false
+        laptopBaseConfig = null
         laptopManualOverride = false
+        laptopAutoSuppressedByUser = false
         laptopAutoActivated = false
         laptopHostUniqueId = null
         filteredHingeAngle = null
         pendingLaptopMode = null
         pendingLaptopModeSince = 0L
         laptopModeEvaluationGeneration += 1
+        laptopPostureReevaluationGeneration += 1
         laptopHostMismatchSince = 0L
         val effectiveConfig = effectiveConfig(config)
         OperationLog.beginSession(
@@ -939,8 +1031,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         secureDisplay = effectiveConfig.secure
         showSystemDecorations = effectiveConfig.decorations
         // Dextop orientation is controlled exclusively by its overlay action.
-        // Never thaw this to the phone's accelerometer while a session is live.
-        forcePhoneRotation(targetHeight > targetWidth)
+        // Lock both the activity configuration and the framework rotation. On
+        // foldables the service can be created while the phone is physically
+        // portrait; locking only WMS leaves MainActivity's SurfaceView at
+        // 1848x2448 while the desktop target is 2448x1848, so the first mirror
+        // frame is permanently letterboxed until another configuration event.
+        val portrait = targetHeight > targetWidth
+        requestedPortrait = portrait
+        MainActivity.setDisplayOrientation(portrait)
+        forcePhoneRotation(portrait)
         cursorX = targetWidth / 2f
         cursorY = targetHeight / 2f
         OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_configured"))
@@ -1057,8 +1156,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         windowManager?.addView(frame, params)
         frame.post {
             refreshFoldingApiState("window_added", force = true)
+            OperationLog.i(
+                this,
+                "FoldState",
+                "laptop profile=${laptopFoldProfile()} model=${Build.MODEL} " +
+                    "device=${Build.DEVICE} requestedPortrait=$requestedPortrait " +
+                    "apiHalfOpened=$foldingApiLaptopPosture apiHorizontal=$foldingApiHorizontalHinge"
+            )
             val autoStart = isLaptopAutoDetectionEnabled() &&
-                (foldingApiLaptopPosture ?: hingeAngle?.let(::isLaptopHingeAngle)) == true
+                isLaptopAutoOrientationEligible() && currentLaptopPosture() == true
             val startInLaptopMode = isDebugLaptopModeForced() || laptopManualOverride || autoStart
             laptopAutoActivated = autoStart && !laptopManualOverride
             if (startInLaptopMode) setLaptopMode(true)
@@ -1108,7 +1214,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopCapsLock = false
         val palette = laptopPalette()
         val deck = FrameLayout(this).apply {
-            setBackgroundColor(palette.background)
+            setBackgroundColor(opaqueColor(palette.background))
+            // The deck is an opaque interaction surface.  Without a handler
+            // on its empty areas, a tap between keys can fall through to the
+            // mirrored Android surface underneath the keyboard.
+            isClickable = true
+            setOnTouchListener { _, _ -> true }
         }
         val content = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1119,7 +1230,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 val bytes = Base64.decode(encoded, Base64.DEFAULT)
                 ImageView(this).apply {
                     scaleType = ImageView.ScaleType.CENTER_CROP
-                    alpha = palette.opacity
+                    // The theme opacity controls the keyboard-area veil below
+                    // the keys. Keep the image itself opaque so changing the
+                    // slider actually changes the gaps between keys instead
+                    // of fading the entire image twice.
+                    alpha = 1f
                     setImageBitmap(BitmapFactory.decodeByteArray(bytes, 0, bytes.size))
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && palette.blur > 0f) {
                         setRenderEffect(RenderEffect.createBlurEffect(
@@ -1132,15 +1247,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         deck.addView(content, FrameLayout.LayoutParams(-1, -1))
+        content.setBackgroundColor(opacityColor(palette.background, palette.opacity))
         val trackpad = TextView(this).apply {
-            text = "TRACKPAD"
+            // The label is a per-theme preference. The entire surface remains
+            // an input area whether the label is visible or not.
+            text = if (palette.showTrackpadLabel) "TRACKPAD" else ""
+            gravity = Gravity.CENTER
             typeface = laptopTypeface
             textSize = 11f
-            letterSpacing = .12f
-            gravity = Gravity.CENTER
+            letterSpacing = .15f
             setTextColor(palette.trackpadText)
             background = GradientDrawable().apply {
-                setColor(palette.trackpad)
+                setColor(opacityColor(palette.trackpad, palette.opacity))
                 setStroke(dp(1), palette.border)
                 cornerRadius = dp(palette.radius.toInt()).toFloat()
             }
@@ -1151,6 +1269,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         val keyboard = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
+            // Empty space between keys is part of the theme background. It
+            // must use the same opacity slider as the rest of the keyboard
+            // area, while the opaque deck underneath prevents Android from
+            // showing through or receiving those touches.
+            setBackgroundColor(Color.TRANSPARENT)
+            isClickable = true
+            setOnTouchListener { _, _ -> true }
         }
         laptopKeyboardView = keyboard
         laptopKeyboardRows(laptopFunctionRowVisible).forEachIndexed { index, keys ->
@@ -1172,6 +1297,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_ALT)
                 setOnClickListener {
                     setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
+                }
+                // FN is the keyboard-layer key.  A long press opens the
+                // native theme picker while a short press keeps its existing
+                // function-row toggle.  The demo must remain a passive
+                // keyboard demonstration, so it never opens settings.
+                setOnLongClickListener {
+                    if (demoMode) return@setOnLongClickListener false
+                    showLaptopKeyboardSettings()
+                    true
+                }
+                setOnTouchListener { view, event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> view.animate()
+                            .scaleX(.92f).scaleY(.92f).alpha(.72f)
+                            .setDuration(55).start()
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate()
+                            .scaleX(1f).scaleY(1f).alpha(1f)
+                            .setDuration(110).start()
+                    }
+                    // Keep the listener non-consuming so click/long-click
+                    // dispatch remains handled by TextView itself.
+                    false
                 }
                 laptopFnButton = this
             }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.START).apply {
@@ -1257,6 +1404,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val frame = root ?: return
         val content = laptopContent ?: return
         val surface = surfaceView ?: return
+        // Keep the full-screen logical profile so leaving laptop mode restores
+        // the user's original resolution instead of the half-height pane.
+        val restoreConfig = if (!enabled) laptopBaseConfig else null
+        if (enabled && laptopBaseConfig == null) {
+            laptopBaseConfig = Config(
+                targetWidth,
+                targetHeight,
+                density,
+                secureDisplay,
+                showSystemDecorations
+            )
+        }
         laptopModeActive = enabled
         if (!enabled) laptopAutoActivated = false
         laptopHostUniqueId = if (enabled) defaultDisplayUniqueId() else null
@@ -1269,15 +1428,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val deck = buildLaptopDeck().apply {
                 alpha = 0f
                 translationY = dp(28).toFloat()
-                scaleY = .94f
             }
             content.addView(deck, LinearLayout.LayoutParams(-1, 0, 1f))
             deck.post {
-                deck.pivotY = deck.height.toFloat()
                 deck.animate()
                     .alpha(1f)
                     .translationY(0f)
-                    .scaleY(1f)
                     .setInterpolator(PathInterpolator(.22f, 1f, .36f, 1f))
                     .setDuration(360L)
                     .start()
@@ -1295,7 +1451,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             deck?.animate()
                 ?.alpha(0f)
                 ?.translationY(dp(28).toFloat())
-                ?.scaleY(.94f)
                 ?.setInterpolator(PathInterpolator(.55f, 0f, .78f, 0f))
                 ?.setDuration(300L)
                 ?.withEndAction {
@@ -1306,7 +1461,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         surface.requestLayout()
         frame.requestLayout()
-        applyLaptopGeometryWhenLaidOut(enabled)
+        applyLaptopGeometryWhenLaidOut(enabled, baseOverride = restoreConfig)
+        if (!enabled) laptopBaseConfig = null
     }
 
     /**
@@ -1390,6 +1546,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val currentHost = defaultDisplayUniqueId() ?: return false
         if (originalHost == currentHost || !hasStableLaptopHostMismatch()) return false
         laptopManualOverride = false
+        laptopAutoSuppressedByUser = false
         laptopAutoActivated = false
         OperationLog.i(
             this,
@@ -1426,6 +1583,67 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         angle in 55f..145f
     }
 
+    /**
+     * Resolve posture through the device-specific path. Fold8 keeps the
+     * geometry fallback that protects it from stale WindowManager updates;
+     * normal-size Fold devices use the FoldingFeature half-open state directly
+     * because their hinge orientation flag is not reliable for this layout.
+     */
+    private fun currentLaptopPosture(): Boolean? {
+        val angle = filteredHingeAngle ?: hingeAngle
+        return when (laptopFoldProfile()) {
+            LaptopFoldProfile.FOLD8 -> currentFold8LaptopPosture(angle)
+            LaptopFoldProfile.STANDARD_FOLDABLE -> currentStandardFoldPosture(angle)
+        }
+    }
+
+    private fun currentFold8LaptopPosture(angle: Float?): Boolean? {
+        // WindowManager is the stable posture source on Samsung foldables.
+        // The public hinge sensor can deliver one stale 180° sample while the
+        // inner panel is being attached; letting that sample override a
+        // confirmed HALF_OPENED feature breaks first-start detection. Use the
+        // sensor only when the folding API is unavailable.
+        if (foldingApiLaptopPosture == true) {
+            // Once the laptop deck is active, a stale HALF_OPENED result must
+            // not survive a real return to the full-height host. Samsung can
+            // omit the API transition, but the host geometry still exposes
+            // that the lower pane has been restored.
+            // While the user-dismissal latch is active, the Samsung hinge
+            // sensor is not allowed to clear it: this device can keep a stale
+            // 180-degree sample while FoldingFeature still says HALF_OPENED.
+            // Only a confirmed API transition to flat (the branch below) may
+            // release the latch. The geometry fallback remains for an already
+            // visible deck whose API transition is delayed.
+            if (laptopModeActive && angle != null &&
+                !isLaptopHingeAngle(angle) && laptopHostIsFullHeight()) {
+                return false
+            }
+            return true
+        }
+        foldingApiLaptopPosture?.let { return it }
+        if (angle != null) {
+            return isLaptopHingeAngle(angle)
+        }
+        return null
+    }
+
+    private fun currentStandardFoldPosture(angle: Float?): Boolean? {
+        // Fold7 and earlier normal-size Folds can report a vertical
+        // FoldingFeature orientation while the device is already in the
+        // supported half-open posture. The posture state itself is reliable,
+        // so prefer it and only use the sensor when the API is unavailable.
+        foldingApiLaptopPosture?.let { return it }
+        if (angle != null) return isLaptopHingeAngle(angle)
+        return null
+    }
+
+    private fun laptopHostIsFullHeight(): Boolean {
+        val fullHeight = laptopBaseConfig?.height ?: return false
+        val hostHeight = surfaceView?.height ?: return false
+        if (fullHeight <= 0 || hostHeight <= 0) return false
+        return hostHeight >= (fullHeight * 0.78f).toInt()
+    }
+
     private fun updateLaptopModeForHinge(angle: Float) {
         if (!active || root == null || suspendedForLockScreen) return
         if (!isLaptopAutoDetectionEnabled()) return
@@ -1435,13 +1653,40 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // the deck repeatedly fades in/out and the virtual display is resized
         // on every sensor fluctuation.
         val filtered = filteredHingeAngle?.let { previous ->
-            previous + (angle - previous) * 0.25f
+            // TYPE_HINGE_ANGLE is on-change on Samsung. A complete open/close
+            // can therefore arrive as a single large jump; smoothing that
+            // jump by 25% leaves it on the old side of the threshold forever.
+            // Snap large posture changes, while still filtering small sensor
+            // noise around the flex boundary.
+            if (abs(angle - previous) >= 12f) angle
+            else previous + (angle - previous) * 0.25f
         } ?: angle
         filteredHingeAngle = filtered
-        hingeAngle = filtered
+        hingeAngle = angle
         refreshFoldingApiState("hinge_candidate")
-        val apiLaptopPosture = foldingApiLaptopPosture
-        val laptopPosture = apiLaptopPosture ?: isLaptopHingeAngle(filtered)
+        evaluateLaptopModeForPosture(
+            currentLaptopPosture() ?: false,
+            "hinge angle=$filtered raw=$angle"
+        )
+    }
+
+    /** Re-evaluate from the folding API when no new sensor sample was sent. */
+    private fun updateLaptopModeFromCurrentPosture(reason: String) {
+        if (!active || root == null || suspendedForLockScreen) return
+        if (!isLaptopAutoDetectionEnabled()) return
+        val posture = currentLaptopPosture() ?: return
+        evaluateLaptopModeForPosture(posture, reason)
+    }
+
+    private fun evaluateLaptopModeForPosture(laptopPosture: Boolean, source: String) {
+        // A manual overlay disable is scoped to the current posture. Once the
+        // hinge is flat again, the next flex transition may be auto-detected
+        // normally. Clear this before computing shouldShow so the same sample
+        // cannot re-enable a deck the user just dismissed.
+        if (!laptopPosture && laptopAutoSuppressedByUser) {
+            laptopAutoSuppressedByUser = false
+            OperationLog.i(this, "LaptopMode", "$source flat posture clears manual auto-suppression")
+        }
         // A half-open hinge is itself authoritative: inactive inner panels are
         // omitted from DisplayManager on several foldables and the emulator.
         val mainDisplay = laptopPosture || isFoldableMainDisplay()
@@ -1449,7 +1694,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             laptopManualOverride = false
             laptopAutoActivated = false
         }
-        val shouldShow = mainDisplay && (laptopManualOverride || laptopPosture)
+        // Automatic laptop mode is limited to portrait holding orientation on
+        // Fold8-style devices. Landscape sessions can still be enabled from
+        // the overlay; that explicit manual flag is preserved here.
+        val autoShouldShow = !laptopAutoSuppressedByUser &&
+            isLaptopAutoOrientationEligible() && laptopPosture
+        val shouldShow = mainDisplay &&
+            (laptopManualOverride || autoShouldShow)
         if (shouldShow == laptopModeActive) {
             pendingLaptopMode = null
             pendingLaptopModeSince = 0L
@@ -1463,8 +1714,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             android.os.Handler(mainLooper).postDelayed({
                 if (generation != laptopModeEvaluationGeneration || !active ||
                     suspendedForLockScreen || pendingLaptopMode != shouldShow) return@postDelayed
-                val stableAngle = filteredHingeAngle ?: return@postDelayed
-                val stablePosture = foldingApiLaptopPosture ?: isLaptopHingeAngle(stableAngle)
+                val stableAngle = filteredHingeAngle ?: hingeAngle
+                val stablePosture = currentLaptopPosture() ?: return@postDelayed
                 if (stablePosture != shouldShow && !laptopManualOverride) {
                     pendingLaptopMode = null
                     pendingLaptopModeSince = 0L
@@ -1476,7 +1727,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 OperationLog.i(
                     this,
                     "LaptopMode",
-                    "hinge timer angle=$stableAngle manual=$laptopManualOverride " +
+                    "$source timer angle=$stableAngle manual=$laptopManualOverride " +
                         "main=$mainDisplay show=$shouldShow"
                 )
                 setLaptopMode(shouldShow)
@@ -1490,7 +1741,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             OperationLog.i(
                 this,
                 "LaptopMode",
-                "hinge angle=$filtered raw=$angle manual=$laptopManualOverride main=$mainDisplay show=$shouldShow"
+                "$source manual=$laptopManualOverride main=$mainDisplay show=$shouldShow"
             )
             setLaptopMode(shouldShow)
         }
@@ -1504,19 +1755,23 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         hingeAngle?.let(::updateLaptopModeForHinge)
     }
 
-    private fun applyLaptopGeometryWhenLaidOut(enabled: Boolean, attempt: Int = 0) {
+    private fun applyLaptopGeometryWhenLaidOut(
+        enabled: Boolean,
+        attempt: Int = 0,
+        baseOverride: Config? = null
+    ) {
         val content = laptopContent ?: return
         val surface = surfaceView ?: return
         content.postDelayed({
             if (laptopModeActive != enabled) return@postDelayed
             if (!active) {
-                if (attempt < 20) applyLaptopGeometryWhenLaidOut(enabled, attempt + 1)
+                if (attempt < 20) applyLaptopGeometryWhenLaidOut(enabled, attempt + 1, baseOverride)
                 return@postDelayed
             }
             val expectedHeight = if (enabled) content.height / 2 else content.height
             if ((surface.width <= 0 || kotlin.math.abs(surface.height - expectedHeight) > 2) &&
                 attempt < 20) {
-                applyLaptopGeometryWhenLaidOut(enabled, attempt + 1)
+                applyLaptopGeometryWhenLaidOut(enabled, attempt + 1, baseOverride)
                 return@postDelayed
             }
             val reason = if (enabled) "laptop mode enabled" else "laptop mode disabled"
@@ -1524,7 +1779,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // the measured upper pane. A custom/recovered profile would
             // otherwise be letterboxed inside that pane.
             val next = configForHostGeometry(
-                Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations),
+                baseOverride ?: Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations),
                 surface.width,
                 surface.height,
                 resources.configuration.densityDpi
@@ -1610,6 +1865,54 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         DEBUG_FORCE_LAPTOP_MODE &&
             applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE != 0
 
+    /**
+     * Keep the special-size Fold8 orientation handling isolated from the
+     * normal-size Fold family. The regional model suffix is not sufficient on
+     * its own (carrier models use SCG/SC identifiers in Japan), so all known
+     * retail identifiers are matched after removing punctuation. This also
+     * allows Samsung's longer SKU strings (for example SM-F971BZ...) to match
+     * their regional base model.
+     *
+     * Fold8 (special-size / h8q):
+     *   SM-F971B (global), SM-F971U/U1 (US), SM-F971W (Canada),
+     *   SM-F9710 (China), SM-F971N (Korea), SM-F971Q (Japan SIM-free),
+     *   SM-F971Z (SoftBank), SM-F971C (Rakuten), SCG41 (au), SC-57G (Docomo)
+     * Fold8 Ultra (normal-size / q8q):
+     *   SM-F976B (global), SM-F976U/U1 (US), SM-F976W (Canada),
+     *   SM-F9760 (China), SM-F976N (Korea), SM-F976Q (Japan SIM-free),
+     *   SM-F976Z (SoftBank), SM-F976C (Rakuten), SCG39 (au), SC-56G (Docomo)
+     */
+    private fun laptopFoldProfile(): LaptopFoldProfile {
+        // Build.MODEL may contain a market suffix and Build.DEVICE/PRODUCT may
+        // contain an OEM suffix. Normalize all three before matching so that
+        // SM-F971, SM-F971N, SM-F971NZ... and SC-57G are handled consistently.
+        val modelValue = Build.MODEL.uppercase().filter(Char::isLetterOrDigit)
+        val metadataValues = listOf(Build.DEVICE, Build.PRODUCT)
+            .map { value -> value.uppercase().filter(Char::isLetterOrDigit) }
+        val buildValues = listOf(modelValue) + metadataValues
+
+        fun matchesModel(ids: Set<String>, values: List<String> = buildValues): Boolean = values.any { value ->
+            ids.any { id -> value.startsWith(id) }
+        }
+        fun matchesDevice(prefix: String): Boolean = metadataValues.any { value ->
+            value.startsWith(prefix)
+        }
+
+        // Check Ultra first. It is the normal-size path, and an explicit q8q /
+        // SM-F976 match must never be mistaken for the special-size Fold8.
+        return when {
+            matchesModel(FOLD8_ULTRA_MODEL_IDS, listOf(modelValue)) ->
+                LaptopFoldProfile.STANDARD_FOLDABLE
+            matchesModel(FOLD8_SPECIAL_MODEL_IDS, listOf(modelValue)) ->
+                LaptopFoldProfile.FOLD8
+            matchesModel(FOLD8_ULTRA_MODEL_IDS) || matchesDevice(FOLD8_ULTRA_DEVICE_PREFIX) ->
+                LaptopFoldProfile.STANDARD_FOLDABLE
+            matchesModel(FOLD8_SPECIAL_MODEL_IDS) || matchesDevice(FOLD8_SPECIAL_DEVICE_PREFIX) ->
+                LaptopFoldProfile.FOLD8
+            else -> LaptopFoldProfile.STANDARD_FOLDABLE
+        }
+    }
+
     private fun isFoldableMainDisplay(): Boolean {
         val manager = getSystemService(DisplayManager::class.java)
         val internalDisplays = internalDisplays(manager)
@@ -1643,34 +1946,61 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val info = WindowInfoTracker.getOrCreate(activity)
                 .getCurrentWindowLayoutInfo(activity)
             val features = info.displayFeatures.filterIsInstance<FoldingFeature>()
-            features to features.any { it.state == FoldingFeature.State.HALF_OPENED }
-        }.onSuccess { (features, halfOpened) ->
+            val halfOpenedFeature = features.firstOrNull {
+                it.state == FoldingFeature.State.HALF_OPENED
+            }
+            Triple(
+                features,
+                halfOpenedFeature != null,
+                halfOpenedFeature?.orientation == FoldingFeature.Orientation.HORIZONTAL
+            )
+        }.onSuccess { (features, halfOpened, horizontalHinge) ->
+            foldingApiLastSuccessAt = now
             val foldable = features.isNotEmpty()
-            if (foldingApiFoldable != foldable || foldingApiLaptopPosture != halfOpened) {
+            if (foldingApiFoldable != foldable ||
+                foldingApiLaptopPosture != halfOpened ||
+                foldingApiHorizontalHinge != horizontalHinge
+            ) {
                 OperationLog.i(
                     this,
                     "FoldState",
                     "WindowManager folding API available=true foldable=$foldable " +
-                        "halfOpened=$halfOpened reason=$reason"
+                        "halfOpened=$halfOpened hingeHorizontal=$horizontalHinge reason=$reason"
                 )
             }
             foldingApiFoldable = foldable
             foldingApiLaptopPosture = halfOpened
+            foldingApiHorizontalHinge = horizontalHinge
         }.onFailure {
             // Extension versions before current-window-layout support throw
-            // here. Null means "API unavailable", not "definitely flat".
-            foldingApiFoldable = null
-            foldingApiLaptopPosture = null
+            // here. Keep the last positive HALF_OPENED result for a short
+            // hand-off window: during a fold transition the control Activity
+            // can briefly lose its window token, and treating that exception
+            // as a flat posture hides the keyboard a few hundred ms after it
+            // was shown. Once the grace period expires, the hinge sensor is a
+            // valid fallback again.
+            if (now - foldingApiLastSuccessAt > foldingApiFailureGraceMs) {
+                foldingApiFoldable = null
+                foldingApiLaptopPosture = null
+                foldingApiHorizontalHinge = null
+            }
             if (force) Log.d(logTag, "WindowManager folding API unavailable reason=$reason", it)
         }
     }
 
     private fun isFoldableDevice(): Boolean {
         refreshFoldingApiState("capability", force = true)
-        foldingApiFoldable?.let { return it }
-        return internalDisplays(getSystemService(DisplayManager::class.java)).size >= 2 ||
+        // A fold transition can make WindowManager briefly publish an empty
+        // feature list while the inactive panel is being attached.  That is
+        // not proof that the device stopped being foldable. Keep the positive
+        // API result, but fall back to stable hardware signals before ever
+        // returning false so a transient result cannot disable auto detection.
+        if (foldingApiFoldable == true) return true
+        val manager = getSystemService(DisplayManager::class.java)
+        val hardwareFoldable = internalDisplays(manager).size >= 2 ||
             getSystemService(SensorManager::class.java)
                 .getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) != null
+        return hardwareFoldable || foldingApiFoldable == true
     }
 
     /**
@@ -1793,9 +2123,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         setTextColor(laptopPalette().text)
         background = laptopKeyBackground(false, key.code)
         if (key.code == KeyEvent.KEYCODE_META_LEFT) {
-            text = "\uE859"
-            typeface = materialIconTypeface
-            textSize = 22f
+            // Do not use a private-use Material Icons code point here.  The
+            // Flutter font is not guaranteed to be available to the native
+            // overlay on every packaging/runtime combination, and Android's
+            // fallback font can render the code point as an unrelated CJK
+            // glyph.  The simple 3x3 grid is a deterministic app-launcher
+            // affordance and remains legible on every OEM font stack.
+            text = ""
+            setCustomGlyph(KeyboardGlyphDrawable(
+                KeyboardGlyphDrawable.APP_GRID,
+                laptopPalette().text
+            ))
         }
         if (key.code < 0) laptopModifierButtons.putIfAbsent(key.code, this)
         if (key.code in laptopShortcutLabels.keys) laptopShortcutButtons[key.code] = this
@@ -1804,29 +2142,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         setOnTouchListener { view, event ->
             if (key.code == KeyEvent.KEYCODE_META_LEFT) {
+                // Meta is a normal modifier again.  Theme settings are
+                // intentionally owned by FN long-press so Meta can be used
+                // without an accidental settings transition.
                 when (event.actionMasked) {
-                    MotionEvent.ACTION_DOWN -> {
-                        laptopMetaLongPressTriggered = false
-                        laptopMetaLongPressRunnable?.let(view::removeCallbacks)
-                        laptopMetaLongPressRunnable = Runnable {
-                            if (view.isPressed && !demoMode) {
-                                laptopMetaLongPressTriggered = true
-                                showLaptopKeyboardSettings()
-                            }
-                        }.also { view.postDelayed(it, 620L) }
-                        view.animate().scaleX(.92f).scaleY(.92f).alpha(.72f)
-                            .setDuration(55).start()
-                    }
+                    MotionEvent.ACTION_DOWN -> view.animate().scaleX(.92f).scaleY(.92f).alpha(.72f)
+                        .setDuration(55).start()
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                        laptopMetaLongPressRunnable?.let(view::removeCallbacks)
-                        laptopMetaLongPressRunnable = null
                         view.animate().scaleX(1f).scaleY(1f).alpha(1f)
                             .setDuration(110).start()
-                        if (event.actionMasked == MotionEvent.ACTION_UP &&
-                            !laptopMetaLongPressTriggered) {
-                            handleLaptopKey(key.code)
-                        }
-                        laptopMetaLongPressTriggered = false
+                        if (event.actionMasked == MotionEvent.ACTION_UP) handleLaptopKey(key.code)
                     }
                 }
                 return@setOnTouchListener true
@@ -1862,16 +2187,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP,
             KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT
         )
-        setColor(
-            if (selected) {
-                palette.selected
-            } else {
-                when {
-                    functionKey || modifierKey || specialKey -> palette.keyVariant
-                    else -> palette.key
-                }
+        val fill = if (selected) {
+            palette.selected
+        } else {
+            when {
+                functionKey || modifierKey || specialKey -> palette.keyVariant
+                else -> palette.key
             }
-        )
+        }
+        setColor(opacityColor(fill, palette.keyOpacity))
         setStroke(
             dp(1),
             if (selected) {
@@ -1901,12 +2225,35 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val radius: Float,
         val opacity: Float = 1f,
         val blur: Float = 0f,
+        val keyOpacity: Float = 1f,
+        val showTrackpadLabel: Boolean = true,
         val imageBase64: String? = null,
+    )
+
+    private fun opacityColor(color: Int, opacity: Float): Int = Color.argb(
+        (Color.alpha(color) * opacity.coerceIn(.1f, 1f)).toInt(),
+        Color.red(color),
+        Color.green(color),
+        Color.blue(color)
+    )
+
+    /** Keep transparent theme imports from exposing the mirrored display. */
+    private fun opaqueColor(color: Int): Int = Color.rgb(
+        Color.red(color),
+        Color.green(color),
+        Color.blue(color)
     )
 
     private fun paletteColor(value: String?, fallback: Int): Int = runCatching {
         Color.parseColor(value ?: "")
     }.getOrDefault(fallback)
+
+    private fun contrastingColor(color: Int): Int {
+        val luminance = .299 * Color.red(color) +
+            .587 * Color.green(color) +
+            .114 * Color.blue(color)
+        return if (luminance >= 160) Color.rgb(26, 24, 30) else Color.WHITE
+    }
 
     private fun laptopPalette(): LaptopPalette = laptopPaletteFor(laptopKeyboardTheme())
 
@@ -1921,18 +2268,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         ) else if (cloud) LaptopPalette(
             Color.rgb(220, 235, 255), Color.WHITE, Color.rgb(247, 251, 255),
             Color.rgb(183, 212, 245), Color.rgb(66, 100, 134), Color.rgb(199, 221, 245),
-            Color.rgb(82, 120, 159), Color.rgb(190, 218, 248), 16f
+            Color.rgb(82, 120, 159), Color.rgb(190, 218, 248), 16f, opacity = .94f
         ) else LaptopPalette(
             Color.rgb(18, 18, 22), Color.rgb(48, 46, 54), Color.rgb(48, 46, 54),
             Color.rgb(76, 72, 84), Color.rgb(235, 231, 239), Color.rgb(35, 34, 40),
             Color.rgb(145, 141, 151), Color.rgb(208, 188, 237), 7f
         )
-        // Built-in palettes are authoritative. Older Flutter preferences may
-        // contain a normalized copy where keyVariant was incorrectly replaced
-        // with key, which destroys the decorative-key contrast.
-        if (id == "standard" || id == "crimson" || id == "cloud") return fallback
         val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.dextop_keyboard_theme_$id", null) ?: return fallback
+        // Built-in colors remain authoritative so older normalized preference
+        // copies cannot destroy their decorative-key contrast.  Opacity is a
+        // safe per-theme override, however, and is intentionally read back so
+        // the editor's unified-opacity and key-opacity sliders also work for
+        // built-ins.
+        if (id == "standard" || id == "crimson" || id == "cloud") {
+            return runCatching {
+                val json = JSONObject(raw)
+                fallback.copy(
+                    opacity = json.optDouble("opacity", fallback.opacity.toDouble())
+                        .toFloat().coerceIn(.1f, 1f),
+                    keyOpacity = json.optDouble("keyOpacity", fallback.keyOpacity.toDouble())
+                        .toFloat().coerceIn(.1f, 1f),
+                    showTrackpadLabel = json.optBoolean("showTrackpadLabel", true),
+                )
+            }.getOrDefault(fallback)
+        }
         return runCatching {
             val json = JSONObject(raw)
             fallback.copy(
@@ -1948,6 +2308,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     .coerceIn(0f, 40f),
                 opacity = json.optDouble("opacity", 1.0).toFloat().coerceIn(.1f, 1f),
                 blur = json.optDouble("blur", 0.0).toFloat().coerceIn(0f, 30f),
+                keyOpacity = json.optDouble("keyOpacity", 1.0).toFloat().coerceIn(.1f, 1f),
+                showTrackpadLabel = json.optBoolean("showTrackpadLabel", true),
                 imageBase64 = json.optString("imageBase64").takeIf { it.isNotBlank() }
             )
         }.getOrDefault(fallback)
@@ -1969,7 +2331,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             setPadding(dp(12), dp(10), dp(20), dp(8))
         }
         header.addView(ImageButton(this).apply {
-            contentDescription = "Back"
+            contentDescription = NativeStrings.text("nativeReturn")
             setImageDrawable(KeyboardGlyphDrawable(KeyboardGlyphDrawable.BACK, Color.WHITE))
             setBackgroundColor(Color.TRANSPARENT)
             setPadding(dp(14), dp(14), dp(14), dp(14))
@@ -1978,13 +2340,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         header.addView(LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             addView(TextView(this@MirrorService).apply {
-                text = "Keyboard settings"
+                text = NativeStrings.text("nativeKeyboardSettings")
                 typeface = laptopTypeface
                 textSize = 19f
                 setTextColor(Color.WHITE)
             })
             addView(TextView(this@MirrorService).apply {
-                text = "Customize the appearance of the laptop keyboard"
+                text = NativeStrings.text("nativeKeyboardSettingsDescription")
                 typeface = laptopTypeface
                 textSize = 11f
                 setTextColor(if (crimson) Color.rgb(207, 132, 101) else Color.rgb(170, 165, 177))
@@ -2001,7 +2363,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 ))
             }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { rightMargin = dp(12) })
             addView(TextView(this@MirrorService).apply {
-                text = "Theme"
+                text = NativeStrings.text("nativeTheme")
                 typeface = laptopTypeface
                 textSize = 15f
                 setTextColor(Color.WHITE)
@@ -2026,7 +2388,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun laptopThemeChoices(): List<Pair<String, String>> {
-        val choices = mutableListOf("standard" to "Standard", "crimson" to "Crimson", "cloud" to "Cloud Pop")
+        val choices = mutableListOf(
+            "standard" to NativeStrings.text("nativeKeyboardThemeStandard"),
+            "crimson" to NativeStrings.text("nativeKeyboardThemeCrimson"),
+            "cloud" to NativeStrings.text("nativeKeyboardThemeCloud")
+        )
         val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.dextop_laptop_keyboard_themes", null)
         runCatching {
@@ -2062,18 +2428,33 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     setTextColor(Color.WHITE)
                 }, LinearLayout.LayoutParams(0, -2, 1f))
                 if (selected) addView(ImageView(this@MirrorService).apply {
+                    // Keep the selected state legible on both the dark
+                    // Crimson palette and the light Cloud Pop palette. The
+                    // old check used the same accent as the card background.
+                    val checkColor = contrastingColor(palette.selected)
+                    background = GradientDrawable().apply {
+                        shape = GradientDrawable.OVAL
+                        setColor(palette.selected)
+                        setStroke(dp(1), checkColor)
+                    }
+                    setPadding(dp(3), dp(3), dp(3), dp(3))
                     setImageDrawable(KeyboardGlyphDrawable(
                         KeyboardGlyphDrawable.CHECK,
-                        palette.selected
+                        checkColor
                     ))
-                }, LinearLayout.LayoutParams(dp(24), dp(24)))
+                }, LinearLayout.LayoutParams(dp(30), dp(30)))
             }, LinearLayout.LayoutParams(-1, -2))
             addView(LinearLayout(this@MirrorService).apply {
                 gravity = Gravity.CENTER
                 repeat(7) { index ->
                     addView(View(this@MirrorService).apply {
                         background = GradientDrawable().apply {
-                            setColor(if (index == 0 || index == 6) palette.keyVariant else palette.key)
+                            val fill = if (index == 0 || index == 6) {
+                                palette.keyVariant
+                            } else {
+                                palette.key
+                            }
+                            setColor(opacityColor(fill, palette.keyOpacity))
                             cornerRadius = dp(3).toFloat()
                         }
                     }, LinearLayout.LayoutParams(0, dp(35), 1f).apply {
@@ -2086,10 +2467,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             })
             addView(TextView(this@MirrorService).apply {
                 text = when (id) {
-                    "crimson" -> "Warm crimson inspired by foldable PCs"
-                    "cloud" -> "Soft cloud blue keyboard"
-                    "standard" -> "Neutral dark keyboard"
-                    else -> "Custom keyboard theme"
+                    "crimson" -> NativeStrings.text("nativeKeyboardThemeCrimsonDescription")
+                    "cloud" -> NativeStrings.text("nativeKeyboardThemeCloudDescription")
+                    "standard" -> NativeStrings.text("nativeKeyboardThemeStandardDescription")
+                    else -> NativeStrings.text("nativeKeyboardThemeCustomDescription")
                 }
                 typeface = laptopTypeface
                 textSize = 11f
@@ -2116,15 +2497,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val nextDeck = buildLaptopDeck().apply {
             alpha = 0f
             translationY = dp(28).toFloat()
-            scaleY = .94f
         }
         content.addView(nextDeck, LinearLayout.LayoutParams(-1, 0, 1f))
         nextDeck.post {
-            nextDeck.pivotY = nextDeck.height.toFloat()
             nextDeck.animate()
                 .alpha(1f)
                 .translationY(0f)
-                .scaleY(1f)
                 .setInterpolator(PathInterpolator(.22f, 1f, .36f, 1f))
                 .setDuration(320L)
                 .start()
@@ -3003,7 +3381,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (demoMode) demoExplanation(NativeStrings.text("nativeLaptopModeDescription"))
                 else {
                     val enableManually = !laptopModeActive
-                    laptopManualOverride = enableManually
+                    if (enableManually) {
+                        // An explicit enable always wins over a previous
+                        // manual dismissal and becomes a true manual mode.
+                        laptopAutoSuppressedByUser = false
+                        laptopManualOverride = true
+                        OperationLog.i(this, "LaptopMode", "overlay manual enable")
+                    } else {
+                        // Keep the automatic detector muted until the user
+                        // returns the hinge to a flat posture. Without this
+                        // latch the posture poller sees HALF_OPENED again and
+                        // immediately turns the deck back on.
+                        laptopAutoSuppressedByUser = true
+                        laptopManualOverride = false
+                        pendingLaptopMode = null
+                        pendingLaptopModeSince = 0L
+                        laptopModeEvaluationGeneration += 1
+                        OperationLog.i(
+                            this,
+                            "LaptopMode",
+                            "overlay manual disable; auto detection suppressed until flat posture"
+                        )
+                    }
                     laptopAutoActivated = false
                     setLaptopMode(enableManually)
                 }
@@ -3073,8 +3472,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             else start(Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations))
         }
         else -> squareAction(
-            if (targetWidth >= targetHeight) R.drawable.ic_portrait else R.drawable.ic_landscape,
-            if (targetWidth >= targetHeight) NativeStrings.text("nativeVerticalHolding") else NativeStrings.text("nativeHorizontalHolding")
+            // The live target can be the landscape upper pane while the
+            // selected Dextop orientation is portrait. Show the action for
+            // the next orientation from the explicit selection instead.
+            if (requestedPortrait) R.drawable.ic_landscape else R.drawable.ic_portrait,
+            if (requestedPortrait) NativeStrings.text("nativeHorizontalHolding")
+            else NativeStrings.text("nativeVerticalHolding")
         ) {
             if (demoMode) demoExplanation(NativeStrings.text("nativeSwitchBetweenPortraitAndLandscapeOrientationOf"))
             else changeOrientation()
@@ -3970,7 +4373,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun changeOrientation() {
-        val portrait = targetWidth >= targetHeight
+        // targetWidth/targetHeight are the live pane dimensions in laptop
+        // mode, not the user's full-screen orientation. Toggle the explicit
+        // Dextop choice and swap the saved pre-laptop profile instead.
+        val portrait = !requestedPortrait
+        val base = laptopBaseConfig ?: Config(
+            targetWidth,
+            targetHeight,
+            density,
+            secureDisplay,
+            showSystemDecorations
+        )
         OperationLog.i(
             this,
             "Orientation",
@@ -3978,8 +4391,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 displayGeometrySnapshot("orientation_requested")
         )
         MainActivity.setDisplayOrientation(portrait)
+        requestedPortrait = portrait
         forcePhoneRotation(portrait)
-        val config = Config(targetHeight, targetWidth, density, secureDisplay, showSystemDecorations)
+        val config = Config(base.height, base.width, base.density, base.secure, base.decorations)
         orientationRebuildInProgress = true
         root?.postDelayed({
             runCatching { start(config) }
@@ -4308,6 +4722,23 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }.onSuccess {
             displayCreationInProgress = false
             scheduleHostDisplayReconfiguration("host Surface recreated", width, height)
+            // A Surface recreation can happen during a fold/half-open handoff
+            // while the laptop deck is already visible.  The first geometry
+            // pass may have run before the recreated surface was attached;
+            // synchronize the measured upper pane again after the mirror is
+            // connected so the desktop is not left at the full-panel size.
+            if (laptopModeActive) {
+                root?.postDelayed({
+                    if (active && laptopModeActive && targetDisplayId >= 0) {
+                        applyLaptopGeometryWhenLaidOut(true)
+                    }
+                }, 80L)
+                OperationLog.i(
+                    this,
+                    "LaptopMode",
+                    "host Surface recreated while laptop mode active; queued pane geometry synchronization"
+                )
+            }
             scheduleTopologyReapplyAfterReconnect()
             OperationLog.i(
                 this,
@@ -4376,6 +4807,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val strategyOverride = configuredBackend.takeUnless { it == "auto" }
             attachMirror(width, height, strategyOverride)
             mirrorDisplayId = targetDisplayId
+            // Auto laptop detection can run from addWindow() before the
+            // overlay display exists. In that case the first layout pass has
+            // already split the host Surface, but applyLaptopGeometry...()
+            // correctly deferred because targetDisplayId was still -1. Run
+            // the pane synchronization once the display is attached so the
+            // logical resolution and VirtualDisplay buffer use the measured
+            // upper pane instead of the original full-screen profile.
+            if (laptopModeActive) {
+                root?.postDelayed({
+                    if (active && laptopModeActive && targetDisplayId >= 0) {
+                        applyLaptopGeometryWhenLaidOut(true)
+                    }
+                }, 80L)
+                OperationLog.i(
+                    this,
+                    "LaptopMode",
+                    "display attached while laptop mode active; queued pane geometry synchronization"
+                )
+            }
             // Topology is an optional enhancement. A framework with a vendor
             // IDisplayManager fork may reject its hidden transaction (for
             // example with RESTRICT_DISPLAY_MODES); that must not abort an
@@ -4620,7 +5070,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // triggered when MainActivity is opened on the desktop display.
         // A destroyed Surface is handled separately by surfaceDestroyed /
         // surfaceCreated, and an actual profile change goes through start().
-        if (displayBackend.activeStrategy == "virtual_display" && !forceVirtualDisplay) {
+        // A recording VirtualDisplay can follow content changes without being
+        // recreated, but its destination Surface still has to be rebound when
+        // the host window changes geometry. Foldables commonly create the
+        // service window in portrait and rotate it to landscape a moment
+        // later; skipping that update leaves the virtual display attached to
+        // the old portrait buffer and produces a black/offset desktop.
+        val hostGeometryChanged = width != null && height != null &&
+            (width != mirrorHostWidth || height != mirrorHostHeight)
+        if (displayBackend.activeStrategy == "virtual_display" &&
+            !forceVirtualDisplay && !hostGeometryChanged) {
             OperationLog.i(
                 this,
                 "DisplayBackend",
@@ -4680,6 +5139,35 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * The foldable upper pane is often landscape even when the device is held
+     * vertically. Use the Dextop orientation selection for auto detection,
+     * rather than the measured pane width, so posture changes do not cause a
+     * laptop deck flicker. Landscape remains available through the overlay's
+     * explicit manual action.
+     */
+    private fun isLaptopAutoOrientationEligible(): Boolean {
+        if (!isFoldableDevice()) return false
+        return when (laptopFoldProfile()) {
+            LaptopFoldProfile.FOLD8 -> {
+                // Fold8 laptop posture is the top/bottom (horizontal hinge)
+                // layout. Keep its existing gate: an explicit landscape
+                // orientation must remain manual-only.
+                foldingApiHorizontalHinge?.let { it && requestedPortrait }
+                    ?: requestedPortrait
+            }
+            LaptopFoldProfile.STANDARD_FOLDABLE -> {
+                // On the normal-size Fold family the usable top/bottom
+                // laptop layout is reached after rotating the phone 90° from
+                // its natural portrait orientation. In that posture the
+                // FoldingFeature hinge runs horizontally, so automatic mode
+                // is intentionally landscape-only. Manual overlay activation
+                // still works in portrait for testing and recovery.
+                !requestedPortrait && foldingApiLaptopPosture != false
+            }
+        }
+    }
+
     private fun hostSizeDiffersFromTarget(width: Int, height: Int): Boolean {
         val hostLong = maxOf(width, height)
         val hostShort = minOf(width, height)
@@ -4706,8 +5194,23 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (!active || suspendedForLockScreen || generation != hostReconfigurationGeneration ||
                 !shouldFollowHostDisplay()) return@postDelayed
             val bounds = windowManager?.currentWindowMetrics?.bounds
-            val measuredWidth = width?.takeIf { it > 0 } ?: bounds?.width() ?: return@postDelayed
-            val measuredHeight = height?.takeIf { it > 0 } ?: bounds?.height() ?: return@postDelayed
+            // During laptop mode the window metrics still describe the whole
+            // unfolded panel, while the mirror Surface is split to the upper
+            // pane. A default-display callback must not feed that full-panel
+            // size back into the logical display or it immediately undoes the
+            // pane resize and makes the keyboard appear to disappear. The
+            // measured Surface is the source of truth while the deck is live.
+            val host = surfaceView
+            val measuredWidth = if (laptopModeActive && (host?.width ?: 0) > 0) {
+                host!!.width
+            } else {
+                width?.takeIf { it > 0 } ?: bounds?.width() ?: return@postDelayed
+            }
+            val measuredHeight = if (laptopModeActive && (host?.height ?: 0) > 0) {
+                host!!.height
+            } else {
+                height?.takeIf { it > 0 } ?: bounds?.height() ?: return@postDelayed
+            }
             if (measuredWidth < 480 || measuredHeight < 480) return@postDelayed
 
             val systemDensity = densityDpi ?: resources.configuration.densityDpi
@@ -4767,8 +5270,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // also drops projected-display freeform policy on some Pixel builds,
         // so synchronize rotation and desktop policy after every resize.
         // Preserve the orientation selected from the Dextop gesture menu across
-        // fold, cover-display and physical-display geometry changes.
-        forcePhoneRotation(targetHeight > targetWidth)
+        // fold, cover-display and physical-display geometry changes. The
+        // logical pane may be landscape in laptop mode while the phone remains
+        // intentionally held portrait.
+        MainActivity.setDisplayOrientation(requestedPortrait)
+        forcePhoneRotation(requestedPortrait)
         configureDisplay()
         cursorX = (normalizedCursorX * targetWidth).coerceIn(0f, targetWidth - 1f)
         cursorY = (normalizedCursorY * targetHeight).coerceIn(0f, targetHeight - 1f)
@@ -4797,12 +5303,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     ): Config {
         val automaticDensity = (160 + systemDensity / 160f * 24)
             .toInt().coerceIn(160, 320)
-        val portrait = base.height > base.width
+        // In laptop mode the virtual display must fill the measured upper
+        // pane. That pane can be landscape while the phone remains portrait;
+        // requestedPortrait is applied separately to the physical device.
+        val portrait = if (laptopModeActive) hostHeight > hostWidth else base.height > base.width
         val hostLong = maxOf(hostWidth, hostHeight)
         val hostShort = minOf(hostWidth, hostHeight)
         return base.copy(
-            // The panel size is dynamic, but its orientation is not. Only the
-            // explicit portrait/landscape action may change this state.
+            // The panel size is dynamic; the selected device orientation is
+            // preserved separately by requestedPortrait.
             width = if (portrait) hostShort else hostLong,
             height = if (portrait) hostLong else hostShort,
             density = automaticDensity
@@ -5069,7 +5578,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun stop() {
         if (stopping) return
         stopping = true
+        val cleanupGeneration = ++stopCleanupGeneration
         val wasActive = active
+        val displayBeingRemoved = targetDisplayId
         if (wasActive) {
             OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_stopping"))
         }
@@ -5079,21 +5590,88 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (dragHeld) toggleDrag()
         runCatching { physicalInputRouter.restore() }
             .onFailure { Log.e(logTag, "physical input restoration failed", it) }
-        setPhoneNavigationDisabled(false)
-        releasePhoneRotation(clearSnapshot = true)
-        runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
-            .onFailure { Log.e(logTag, "topology restoration failed", it) }
-        runCatching { displayBackend.clearRequest() }
+
+        // Tear down the host first.  In particular, remove the SurfaceView's
+        // callback before releasing the mirror layer; clearing the overlay
+        // setting first makes One UI deliver surface/display callbacks while
+        // the accessibility host is still registered, which can leave Back,
+        // Circle to Search, or the desktop task in a broken state.
         removeWindow()
         targetDisplayId = -1
         active = false
         laptopModeActive = false
+        laptopBaseConfig = null
         laptopManualOverride = false
+        laptopAutoSuppressedByUser = false
         laptopAutoActivated = false
         pendingLaptopMode = null
         pendingLaptopModeSince = 0L
         laptopModeEvaluationGeneration += 1
+        laptopPostureReevaluationGeneration += 1
         laptopHostMismatchSince = 0L
+
+        // Settings.Global is only a request to OverlayDisplayAdapter.  Do not
+        // restore the phone/DeX environment or mark the session finished until
+        // the display manager has observed the requested display disappear.
+        runCatching { displayBackend.clearRequest() }
+            .onSuccess {
+                OperationLog.i(
+                    this,
+                    "DisplayBackend",
+                    "clear request issued display=$displayBeingRemoved"
+                )
+            }
+            .onFailure { Log.e(logTag, "unable to clear overlay display request", it) }
+        awaitStoppedDisplay(
+            displayBeingRemoved,
+            wasActive,
+            cleanupGeneration,
+            attempt = 0
+        )
+    }
+
+    /**
+     * Wait for OverlayDisplayAdapter/VirtualDisplayAdapter to finish tearing
+     * down the target display.  The wait is bounded so a vendor display
+     * service that does not emit a removal callback cannot keep the service
+     * alive forever; in that case the journal remains the fallback recovery
+     * path and the warning is included in the session report.
+     */
+    private fun awaitStoppedDisplay(
+        displayId: Int,
+        wasActive: Boolean,
+        generation: Long,
+        attempt: Int
+    ) {
+        if (generation != stopCleanupGeneration) return
+        val stillPresent = displayId >= 0 &&
+            getSystemService(DisplayManager::class.java).getDisplay(displayId) != null
+        if (stillPresent && attempt < 40) {
+            android.os.Handler(mainLooper).postDelayed({
+                awaitStoppedDisplay(displayId, wasActive, generation, attempt + 1)
+            }, 50L)
+            return
+        }
+        if (stillPresent) {
+            OperationLog.w(
+                this,
+                "DisplayBackend",
+                "display removal timed out display=$displayId; continuing system restore"
+            )
+        } else if (displayId >= 0) {
+            OperationLog.i(this, "DisplayBackend", "display removed display=$displayId")
+        }
+        finishStop(wasActive, generation)
+    }
+
+    private fun finishStop(wasActive: Boolean, generation: Long) {
+        if (generation != stopCleanupGeneration) return
+        // Keep navigation and rotation locked until the host/display teardown
+        // is complete.  Restoring them earlier is the race observed on One UI.
+        setPhoneNavigationDisabled(false)
+        releasePhoneRotation(clearSnapshot = true)
+        runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
+            .onFailure { Log.e(logTag, "topology restoration failed", it) }
         MainActivity.restoreOrientation()
         val keepInternal120Hz = internalRefreshRateController.isEnabledAndSupported() &&
             !externalDisplayDetector.snapshot().connected
@@ -5149,8 +5727,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun removeWindow() {
-        releaseMirror()
+        // detachHostWindow removes the SurfaceHolder callback before the
+        // mirror layer is released.  This ordering is important on Samsung:
+        // releasing the layer first can make One UI unregister listeners from
+        // a display whose host window is still present.
         detachHostWindow()
+        releaseMirror()
     }
 
     private fun detachHostWindow() {
@@ -5180,6 +5762,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private val showHomePosition: Boolean,
         markColor: Int
     ) : TextView(context) {
+        private var customGlyph: Drawable? = null
         private var secondaryLabel: String? = null
         private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = markColor
@@ -5197,8 +5780,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             invalidate()
         }
 
+        /**
+         * Renders a key icon without relying on a private-use font glyph.
+         * This is used for the Meta/Android key so OEM font fallback cannot
+         * turn the icon into an unrelated character.
+         */
+        fun setCustomGlyph(drawable: Drawable?) {
+            customGlyph = drawable
+            invalidate()
+        }
+
         override fun onDraw(canvas: Canvas) {
             super.onDraw(canvas)
+            customGlyph?.let { drawable ->
+                val size = minOf(width, height) * .46f
+                val left = ((width - size) / 2f).toInt()
+                val top = ((height - size) / 2f).toInt()
+                drawable.setBounds(left, top, (left + size).toInt(), (top + size).toInt())
+                drawable.draw(canvas)
+            }
             val density = resources.displayMetrics.density
             val currentLayout = layout
             if (currentLayout != null && currentLayout.lineCount > 0) {
@@ -5245,15 +5845,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             canvas.scale(scale, scale)
             paint.strokeWidth = 1.5f
             when (kind) {
-                ANDROID -> {
-                    canvas.drawLine(6.5f, 4f, 4.5f, 1.2f, paint)
-                    canvas.drawLine(17.5f, 4f, 19.5f, 1.2f, paint)
-                    canvas.drawRoundRect(RectF(4f, 4f, 20f, 10f), 5f, 5f, paint)
-                    canvas.drawRoundRect(RectF(4f, 8f, 20f, 17f), 1.5f, 1.5f, paint)
-                    canvas.drawRoundRect(RectF(1.5f, 8f, 3.5f, 16f), 1f, 1f, paint)
-                    canvas.drawRoundRect(RectF(20.5f, 8f, 22.5f, 16f), 1f, 1f, paint)
-                    canvas.drawRoundRect(RectF(7f, 15f, 10f, 20f), 1f, 1f, paint)
-                    canvas.drawRoundRect(RectF(14f, 15f, 17f, 20f), 1f, 1f, paint)
+                APP_GRID -> {
+                    val tile = 4f
+                    val gap = 2f
+                    val startX = (24f - tile * 3f - gap * 2f) / 2f
+                    val startY = (20f - tile * 3f - gap * 2f) / 2f
+                    for (row in 0 until 3) {
+                        for (column in 0 until 3) {
+                            val left = startX + column * (tile + gap)
+                            val top = startY + row * (tile + gap)
+                            canvas.drawRect(
+                                left,
+                                top,
+                                left + tile,
+                                top + tile,
+                                paint
+                            )
+                        }
+                    }
                 }
                 BACK -> {
                     paint.style = Paint.Style.STROKE
@@ -5291,7 +5900,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
 
         companion object {
-            const val ANDROID = 1
+            const val APP_GRID = 1
             const val BACK = 2
             const val PALETTE = 3
             const val CHECK = 4

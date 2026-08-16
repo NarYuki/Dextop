@@ -50,6 +50,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       'trackpadText': '#918D97',
       'selected': '#D0BCED',
       'opacity': 1.0,
+      'keyOpacity': 1.0,
+      'showTrackpadLabel': true,
       'blur': 0.0,
       'radius': 7.0,
     },
@@ -65,6 +67,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       'trackpadText': '#DE8966',
       'selected': '#510A0B',
       'opacity': 1.0,
+      'keyOpacity': 1.0,
+      'showTrackpadLabel': true,
       'blur': 0.0,
       'radius': 7.0,
     },
@@ -80,6 +84,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       'trackpadText': '#52789F',
       'selected': '#BEDAF8',
       'opacity': 0.94,
+      'keyOpacity': 1.0,
+      'showTrackpadLabel': true,
       'blur': 8.0,
       'radius': 16.0,
     },
@@ -104,6 +110,13 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         ? <Map<String, dynamic>>[]
         : (jsonDecode(raw) as List)
               .map((item) => Map<String, dynamic>.from(item as Map))
+              // Older theme exports had a separate trackpad opacity.  The
+              // trackpad now follows the single theme opacity, so discard
+              // that obsolete value when loading.
+              .map((theme) => theme..remove('trackpadOpacity'))
+              .map(
+                (theme) => theme..putIfAbsent('showTrackpadLabel', () => true),
+              )
               .toList();
     setState(() {
       _themes = [
@@ -125,7 +138,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     for (final theme in _themes) {
       final normalized = Map<String, dynamic>.from(theme)
         ..['keyVariant'] = theme['keyVariant'] ?? theme['key']
-        ..['selected'] = theme['selected'] ?? theme['border'];
+        ..['selected'] = theme['selected'] ?? theme['border']
+        ..['showTrackpadLabel'] = theme['showTrackpadLabel'] != false
+        ..remove('trackpadOpacity');
       await prefs.setString(
         'dextop_keyboard_theme_${theme['id']}',
         jsonEncode(normalized),
@@ -254,8 +269,22 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     setState(() => _busy = true);
     try {
       final archive = Archive();
-      final manifest = utf8.encode(jsonEncode([theme]));
-      archive.addFile(ArchiveFile('themes.json', manifest.length, manifest));
+      // Keep settings and user-provided artwork as separate archive entries.
+      // The old exporter put the image inline in themes.json, which made the
+      // result unsuitable for sharing and difficult to inspect/import in other
+      // tools.  The importer below still accepts that legacy representation.
+      final exportedTheme = Map<String, dynamic>.from(theme);
+      final imageBase64 = exportedTheme.remove('imageBase64') as String?;
+      String? imagePath;
+      if (imageBase64 != null && imageBase64.isNotEmpty) {
+        final imageBytes = base64Decode(imageBase64);
+        final extension = _imageExtension(imageBytes);
+        imagePath = 'assets/background.$extension';
+        exportedTheme['imagePath'] = imagePath;
+        archive.addFile(ArchiveFile(imagePath, imageBytes.length, imageBytes));
+      }
+      final manifest = utf8.encode(jsonEncode(exportedTheme));
+      archive.addFile(ArchiveFile('theme.json', manifest.length, manifest));
       final watermark = utf8.encode('$_themeWatermark;exported-by=free_dextop');
       archive.addFile(
         ArchiveFile('.dextop-watermark', watermark.length, watermark),
@@ -263,16 +292,51 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       final bytes = ZipEncoder().encode(archive);
       final safeName = (theme['name'] as String? ?? 'keyboard-theme')
           .replaceAll(RegExp(r'[^A-Za-z0-9._-]+'), '-');
-      final path = await FilePicker.platform.saveFile(
-        dialogTitle: _l10n.keyboardThemesExportDialog,
-        fileName: '$safeName.zip',
-        type: FileType.custom,
-        allowedExtensions: ['zip'],
+      final exportDirectory = Directory(
+        '${Directory.systemTemp.path}/dextop-theme-exports',
       );
-      if (path != null) await File(path).writeAsBytes(bytes);
+      await exportDirectory.create(recursive: true);
+      final zipFile = File(
+        '${exportDirectory.path}/$safeName-${DateTime.now().millisecondsSinceEpoch}.zip',
+      );
+      await zipFile.writeAsBytes(bytes, flush: true);
+      await SharePlus.instance.share(
+        ShareParams(
+          files: [XFile(zipFile.path, mimeType: 'application/zip')],
+          subject: theme['name'] as String? ?? _l10n.keyboardThemesExport,
+          title: _l10n.keyboardThemesExportDialog,
+        ),
+      );
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  String _imageExtension(List<int> bytes) {
+    if (bytes.length >= 8 &&
+        bytes[0] == 0x89 &&
+        bytes[1] == 0x50 &&
+        bytes[2] == 0x4E &&
+        bytes[3] == 0x47) {
+      return 'png';
+    }
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xFF &&
+        bytes[1] == 0xD8 &&
+        bytes[2] == 0xFF) {
+      return 'jpg';
+    }
+    if (bytes.length >= 12 &&
+        String.fromCharCodes(bytes.sublist(0, 4)) == 'RIFF' &&
+        String.fromCharCodes(bytes.sublist(8, 12)) == 'WEBP') {
+      return 'webp';
+    }
+    if (bytes.length >= 6 &&
+        (String.fromCharCodes(bytes.sublist(0, 6)) == 'GIF87a' ||
+            String.fromCharCodes(bytes.sublist(0, 6)) == 'GIF89a')) {
+      return 'gif';
+    }
+    return 'bin';
   }
 
   Future<void> _import() async {
@@ -284,13 +348,30 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     final bytes = result?.files.single.bytes;
     if (bytes == null) return;
     final archive = ZipDecoder().decodeBytes(bytes);
-    final file = archive.findFile('themes.json');
+    final file =
+        archive.findFile('theme.json') ?? archive.findFile('themes.json');
     if (file == null) return;
-    final imported =
-        (jsonDecode(utf8.decode(file.content as List<int>)) as List)
-            .map((item) => Map<String, dynamic>.from(item as Map))
-            .where((item) => item['id'] is String && item['name'] is String)
-            .toList();
+    final decoded = jsonDecode(utf8.decode(List<int>.from(file.content)));
+    final rawThemes = decoded is List ? decoded : [decoded];
+    final imported = <Map<String, dynamic>>[];
+    for (final item in rawThemes) {
+      if (item is! Map) continue;
+      final theme = Map<String, dynamic>.from(item)
+        ..remove('trackpadOpacity')
+        ..putIfAbsent('showTrackpadLabel', () => true);
+      final imagePath = theme.remove('imagePath');
+      if (imagePath is String && imagePath.isNotEmpty) {
+        final imageFile = archive.findFile(imagePath);
+        if (imageFile != null) {
+          theme['imageBase64'] = base64Encode(
+            List<int>.from(imageFile.content),
+          );
+        }
+      }
+      if (theme['id'] is String && theme['name'] is String) {
+        imported.add(theme);
+      }
+    }
     setState(() {
       _themes = [
         ..._builtIns.map((theme) => Map<String, dynamic>.from(theme)),
@@ -450,6 +531,14 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     final border = _color(theme, 'border');
     final text = _color(theme, 'text');
     final radius = (theme['radius'] as num).toDouble();
+    final opacity = ((theme['opacity'] as num?)?.toDouble() ?? 1.0).clamp(
+      .1,
+      1.0,
+    );
+    final keyOpacity =
+        (theme['keyOpacity'] as num?)?.toDouble() ??
+        (theme['opacity'] as num?)?.toDouble() ??
+        1.0;
     final List<List<String>> rows = [
       '`1234567890-=⌫'.split(''),
       'QWERTYUIOP[]\\'.split(''),
@@ -462,7 +551,10 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     return Container(
       padding: const EdgeInsets.all(8),
       decoration: BoxDecoration(
-        color: background,
+        // The gap between keys is the theme background. It shares the
+        // single Opacity slider with the trackpad, while keyOpacity remains
+        // independent for the key surfaces themselves.
+        color: background.withValues(alpha: opacity),
         borderRadius: BorderRadius.circular(radius),
       ),
       child: Column(
@@ -484,7 +576,9 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                               padding: const EdgeInsets.all(2),
                               child: DecoratedBox(
                                 decoration: BoxDecoration(
-                                  color: key,
+                                  color: key.withValues(
+                                    alpha: keyOpacity.clamp(.1, 1.0),
+                                  ),
                                   border: Border.all(color: border),
                                   borderRadius: BorderRadius.circular(
                                     radius / 2,
@@ -514,20 +608,22 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
               flex: 34,
               child: DecoratedBox(
                 decoration: BoxDecoration(
-                  color: _color(theme, 'trackpad'),
+                  color: _color(theme, 'trackpad').withValues(alpha: opacity),
                   border: Border.all(color: border),
                   borderRadius: BorderRadius.circular(radius),
                 ),
-                child: Center(
-                  child: Text(
-                    'TRACKPAD',
-                    style: TextStyle(
-                      color: _color(theme, 'trackpadText'),
-                      letterSpacing: 2,
-                      fontSize: compact ? 8 : 11,
-                    ),
-                  ),
-                ),
+                child: theme['showTrackpadLabel'] != false
+                    ? Center(
+                        child: Text(
+                          'TRACKPAD',
+                          style: TextStyle(
+                            color: _color(theme, 'trackpadText'),
+                            letterSpacing: 2,
+                            fontSize: compact ? 8 : 11,
+                          ),
+                        ),
+                      )
+                    : null,
               ),
             ),
         ],
@@ -608,8 +704,18 @@ class _KeyboardThemeEditorPageState extends State<KeyboardThemeEditorPage> {
             ],
           ),
           _editorSlider(l.keyboardThemesOpacity, 'opacity', .2, 1),
+          _editorSlider(l.keyboardThemesKeyOpacity, 'keyOpacity', .1, 1),
           _editorSlider(l.keyboardThemesBlur, 'blur', 0, 30),
           _editorSlider(l.keyboardThemesRadius, 'radius', 0, 28),
+          SwitchListTile.adaptive(
+            contentPadding: EdgeInsets.zero,
+            title: Text(l.keyboardThemesShowTrackpadLabel),
+            value: theme['showTrackpadLabel'] != false,
+            onChanged: (visible) {
+              setState(() => theme['showTrackpadLabel'] = visible);
+              widget.save();
+            },
+          ),
           OutlinedButton.icon(
             onPressed: () async {
               await widget.pickImage(theme);
@@ -637,7 +743,11 @@ class _KeyboardThemeEditorPageState extends State<KeyboardThemeEditorPage> {
 
   Widget _editorSlider(String label, String key, double min, double max) {
     final theme = widget.theme;
-    final value = (theme[key] as num).toDouble().clamp(min, max);
+    final value =
+        ((theme[key] as num?)?.toDouble() ??
+                (theme['opacity'] as num?)?.toDouble() ??
+                1.0)
+            .clamp(min, max);
     return Row(
       children: [
         SizedBox(width: 120, child: Text(label)),

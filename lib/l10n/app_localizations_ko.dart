@@ -322,6 +322,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String get setupGestureDescription => '아래의 3개의 원에 3개의 손가락을 동시에 놓으십시오.';
 
   @override
+  String get setupInstallGitHub => 'GitHub에서 다운로드';
+
+  @override
+  String get setupGestureReviewed => '새 제스처 확인이 완료되었습니다.';
+
+  @override
+  String get setupGestureReview => '데모 다시 확인';
+
+  @override
+  String get setupGestureStart => '데모 시작';
+
+  @override
+  String get setupGestureLandscape => '가로 모드\n화면 왼쪽에서 오른쪽으로 세 손가락 스와이프';
+
+  @override
+  String get setupGesturePortrait => '세로 모드\n화면 위에서 아래로 세 손가락 스와이프';
+
+  @override
+  String get setupGestureNext => '다음';
+
+  @override
   String get uiTwoFingerTap => '두 손가락 탭';
 
   @override
@@ -1256,6 +1277,15 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => '트랙패드';
+
+  @override
+  String get keyboardThemesKeyOpacity => '키 투명도';
+
+  @override
+  String get keyboardThemesTrackpadOpacity => '트랙패드 투명도';
+
+  @override
+  String get keyboardThemesShowTrackpadLabel => 'TRACKPAD 라벨 표시';
 
   @override
   String get keyboardThemesDescription => '노트북 키보드 테마 및 사용자 지정 외관';

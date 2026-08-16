@@ -15,6 +15,7 @@ import 'package:in_app_update/in_app_update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:share_plus/share_plus.dart';
 
 part 'app_info.dart';
 part 'samsung_desktop_settings.dart';

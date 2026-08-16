@@ -856,6 +856,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         active = value['active'] == true;
+        // Keyboard theme editing changes the native laptop overlay while it
+        // is being rendered. Leave that page when a session becomes active;
+        // the settings entry is also disabled below for the whole session.
+        if (active && desktopSettingsSection == 'keyboard') {
+          desktopSettingsSection = 'display';
+        }
         shizukuInstalled = value['shizukuInstalled'] == true;
         shizukuRunning = value['shizukuRunning'] == true;
         shizukuGranted = value['shizukuGranted'] == true;

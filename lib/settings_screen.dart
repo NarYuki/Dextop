@@ -31,11 +31,13 @@ extension _SettingsContent on _HomeScreenState {
                   Icons.keyboard_alt_outlined,
                   l.keyboardThemesTitle,
                   l.keyboardThemesDescription,
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const KeyboardThemesPage(),
-                    ),
-                  ),
+                  active
+                      ? null
+                      : () => Navigator.of(context).push(
+                          MaterialPageRoute<void>(
+                            builder: (_) => const KeyboardThemesPage(),
+                          ),
+                        ),
                 ),
                 Divider(height: 1),
                 _categoryTile(
@@ -215,6 +217,7 @@ extension _SettingsContent on _HomeScreenState {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               leading: Icon(item.$2),
+                              enabled: !(active && item.$1 == 'keyboard'),
                               title: Text(
                                 item.$3,
                                 style: const TextStyle(fontSize: 15),
@@ -228,9 +231,11 @@ extension _SettingsContent on _HomeScreenState {
                                     )
                                   : null,
                               trailing: const Icon(Icons.chevron_right_rounded),
-                              onTap: () => mutate(
-                                () => desktopSettingsSection = item.$1,
-                              ),
+                              onTap: active && item.$1 == 'keyboard'
+                                  ? null
+                                  : () => mutate(
+                                      () => desktopSettingsSection = item.$1,
+                                    ),
                             ),
                           );
                         },
@@ -390,9 +395,10 @@ extension _SettingsContent on _HomeScreenState {
     IconData icon,
     String title,
     String subtitle,
-    VoidCallback action, {
+    VoidCallback? action, {
     String? badge,
   }) => ListTile(
+    enabled: action != null,
     leading: Icon(icon),
     title: Text(title),
     subtitle: Text(subtitle),

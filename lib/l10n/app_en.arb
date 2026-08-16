@@ -101,6 +101,13 @@
   "setupDeviceDescription": "This information is used to set the initial resolution and device-specific desktop controls.",
   "setupGestureTitle": "Open the control panel with a gesture",
   "setupGestureDescription": "Place three fingers on the three circles below at the same time.",
+  "setupInstallGitHub": "Download from GitHub",
+  "setupGestureReviewed": "The new gestures have been reviewed.",
+  "setupGestureReview": "Review demo again",
+  "setupGestureStart": "Start demo",
+  "setupGestureLandscape": "Landscape\nSwipe right with three fingers from the left edge",
+  "setupGesturePortrait": "Portrait\nSwipe down with three fingers from the top edge",
+  "setupGestureNext": "Next",
   "uiTwoFingerTap": "Two-finger tap",
   "ui3FingerTap": "Three-finger tap",
   "ui4Divisions": "Four-way split",
@@ -355,6 +362,9 @@
   "keyboardThemesBorder": "Border",
   "keyboardThemesText": "Text",
   "keyboardThemesTrackpad": "Trackpad",
+  "keyboardThemesKeyOpacity": "Key opacity",
+  "keyboardThemesTrackpadOpacity": "Trackpad opacity",
+  "keyboardThemesShowTrackpadLabel": "Show TRACKPAD label",
   "keyboardThemesDescription": "Laptop keyboard themes and custom appearance",
   "@keyboardThemesDeleteBody": {"placeholders": {"name": {"type": "String"}}}
 }

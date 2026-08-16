@@ -154,6 +154,12 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     final rawDiagnostics =
         (results[2] as Map<String, dynamic>?) ?? <String, dynamic>{};
     final isFoldableDevice = results[3] == true;
+    final savedFoldableAuto = preferences.getBool('foldable_auto');
+    // On foldables, follow the active panel by default. Keep an explicit
+    // user choice (including false) intact when upgrading an existing install.
+    if (savedFoldableAuto == null && isFoldableDevice) {
+      await preferences.setBool('foldable_auto', true);
+    }
     final savedLaptopMode = preferences.getBool('foldable_laptop_mode');
     if (savedLaptopMode == null && isFoldableDevice) {
       await preferences.setBool('foldable_laptop_mode', true);
@@ -171,7 +177,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
       workspaces = decoded
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
-      foldableAuto = preferences.getBool('foldable_auto') ?? false;
+      foldableAuto = savedFoldableAuto ?? isFoldableDevice;
       foldableLaptopMode = savedLaptopMode ?? isFoldableDevice;
       threeFingerGesture =
           preferences.getString('gesture_three_finger') ?? 'menu';
