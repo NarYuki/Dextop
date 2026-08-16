@@ -114,6 +114,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val NOTIFICATION_ROUTE_RETRY_DELAY_MS = 140L
         private const val NOTIFICATION_ROUTE_RETRIES = 5
         private const val HOST_DISPLAY_MONITOR_INTERVAL_MS = 1_000L
+        private const val HOME_DECORATION_RETRY_DELAY_MS = 180L
         private const val LAPTOP_SHIFT = -1
         private const val LAPTOP_CONTROL = -2
         private const val LAPTOP_ALT = -3
@@ -154,9 +155,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 completion(Result.failure(IllegalStateException("Dextop is still finishing its previous session")))
                 return
             }
+            val effectiveDecorations = running?.let {
+                decorations || it.shouldUsePersistedSystemDecorations()
+            } ?: decorations
             if (active && running != null && running.targetDisplayId >= 0 &&
-                secure == running.secureDisplay && decorations == running.showSystemDecorations) {
-                val requested = Config(width, height, density, secure, decorations)
+                secure == running.secureDisplay && effectiveDecorations == running.showSystemDecorations) {
+                val requested = Config(width, height, density, secure, effectiveDecorations)
                 running.root?.post {
                     runCatching {
                         val next = running.effectiveConfig(requested)
@@ -175,7 +179,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
             pendingStartResult = completion
-            pending = Config(width, height, density, secure, decorations)
+            pending = Config(width, height, density, secure, effectiveDecorations)
             val component = ComponentName(context, MirrorService::class.java).flattenToString()
             val current = Settings.Secure.getString(
                 context.contentResolver,
@@ -459,6 +463,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var density = 240
     private var secureDisplay = false
     private var showSystemDecorations = false
+    /** True after the one-time Samsung HOME/decorations recovery has been used. */
+    private var homeDecorationRetryUsed = false
     private var mirrorDisplayId = -1
     private var displayCreationInProgress = false
     private var overlayTextInputActive = false
@@ -980,7 +986,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopModeEvaluationGeneration += 1
         laptopPostureReevaluationGeneration += 1
         laptopHostMismatchSince = 0L
-        val effectiveConfig = effectiveConfig(config)
+        val persistedDecorations = shouldUsePersistedSystemDecorations()
+        val requestedConfig = if (persistedDecorations && !config.decorations) {
+            OperationLog.i(
+                this,
+                "DesktopHome",
+                "using persisted system decorations for firmware=${firmwareIdentity()}"
+            )
+            config.copy(decorations = true)
+        } else {
+            config
+        }
+        val effectiveConfig = effectiveConfig(requestedConfig)
         OperationLog.beginSession(
             this,
             "environment=${desktopEnvironment.id} sdk=${Build.VERSION.SDK_INT} " +
@@ -1030,6 +1047,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         density = effectiveConfig.density
         secureDisplay = effectiveConfig.secure
         showSystemDecorations = effectiveConfig.decorations
+        homeDecorationRetryUsed = false
         // Dextop orientation is controlled exclusively by its overlay action.
         // Lock both the activity configuration and the framework rotation. On
         // foldables the service can be created while the phone is physically
@@ -4864,7 +4882,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             cursorX = targetWidth / 2f
             cursorY = targetHeight / 2f
             cursorView?.update(.5f, .5f)
-            check(launchHome()) { "The desktop HOME activity could not be launched" }
+            if (!launchHome()) {
+                // One UI 8 rejects HOME launches on Samsung-owned virtual
+                // displays that do not advertise system decorations. Rebuild
+                // the display once with that flag instead of tearing down a
+                // session which otherwise mirrored successfully.
+                if (retryHomeLaunchWithSystemDecorations(width, height)) {
+                    return@runCatching
+                }
+                error("The desktop HOME activity could not be launched")
+            }
             pendingPausedWorkspace?.let { workspace ->
                 pendingPausedWorkspace = null
                 root?.postDelayed({
@@ -5003,13 +5030,109 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun launchHome(): Boolean = runCatching {
-            val intent = Intent(Intent.ACTION_MAIN)
-                .addCategory(Intent.CATEGORY_HOME)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            val options = ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplayId)
-            startActivity(intent, options.toBundle())
-            Log.i(logTag, "home launched display=$targetDisplayId")
-        }.onFailure { Log.e(logTag, "home launch failed", it) }.isSuccess
+        val intent = Intent(Intent.ACTION_MAIN)
+            .addCategory(Intent.CATEGORY_HOME)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val options = ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplayId)
+        startActivity(intent, options.toBundle())
+        Log.i(logTag, "home launched display=$targetDisplayId")
+    }.onFailure {
+        OperationLog.e(
+            this,
+            "DesktopHome",
+            "HOME launch failed display=$targetDisplayId decorations=$showSystemDecorations",
+            it
+        )
+        Log.e(logTag, "home launch failed", it)
+    }.isSuccess
+
+    /**
+     * Samsung records whether a firmware needed system decorations for HOME
+     * launches. The record is keyed by the full build fingerprint: after an
+     * OTA we optimistically try the original configuration again, and only
+     * persist the workaround again if that firmware still rejects HOME.
+     */
+    private fun firmwareIdentity(): String = Build.FINGERPRINT.ifBlank {
+        listOf(Build.DISPLAY, Build.VERSION.INCREMENTAL, Build.VERSION.SECURITY_PATCH)
+            .joinToString("/")
+    }
+
+    private fun shouldUsePersistedSystemDecorations(): Boolean {
+        if (!desktopEnvironment.platformManaged) return false
+        val preferences = getSharedPreferences("dextop_home_launch_recovery", MODE_PRIVATE)
+        val stored = preferences.getString("firmware_fingerprint", null) ?: return false
+        if (stored == firmwareIdentity()) return true
+        // Firmware changed. Remove the old workaround so this build gets a
+        // clean first attempt; a failed HOME launch will store the new one.
+        preferences.edit().remove("firmware_fingerprint").apply()
+        OperationLog.i(
+            this,
+            "DesktopHome",
+            "firmware changed; retrying HOME without persisted system decorations"
+        )
+        return false
+    }
+
+    private fun rememberSystemDecorationsForFirmware() {
+        if (!desktopEnvironment.platformManaged) return
+        getSharedPreferences("dextop_home_launch_recovery", MODE_PRIVATE)
+            .edit()
+            .putString("firmware_fingerprint", firmwareIdentity())
+            .apply()
+    }
+
+    /**
+     * Recreates the overlay with system decorations and lets the normal
+     * attach path retry HOME. The existing surface/window stays alive, so the
+     * caller's session is not dropped while OverlayDisplayAdapter replaces
+     * the display instance.
+     */
+    private fun retryHomeLaunchWithSystemDecorations(hostWidth: Int, hostHeight: Int): Boolean {
+        if (showSystemDecorations || !desktopEnvironment.platformManaged || homeDecorationRetryUsed) {
+            return false
+        }
+        homeDecorationRetryUsed = true
+        rememberSystemDecorationsForFirmware()
+        val previousDisplayId = targetDisplayId
+        val existingDisplays = displayBackend.currentDisplayIds()
+        OperationLog.w(
+            this,
+            "DesktopHome",
+            "HOME launch denied on display=$previousDisplayId; retrying with system decorations"
+        )
+        displayBackend.releaseLayer()
+        mirrorDisplayId = -1
+        targetDisplayId = -1
+        showSystemDecorations = true
+        sessionJournal.preparing(targetWidth, targetHeight, density, decorations = true)
+        runCatching { displayBackend.clearRequest() }
+            .onFailure {
+                displayCreationInProgress = false
+                OperationLog.e(this, "DesktopHome", "unable to clear display before HOME retry", it)
+                completeStart(Result.failure(it))
+                stop()
+                return true
+            }
+        root?.postDelayed({
+            if (!active || stopping) return@postDelayed
+            runCatching {
+                displayBackend.requestDisplay(
+                    targetWidth,
+                    targetHeight,
+                    density,
+                    secureDisplay,
+                    decorations = true
+                )
+                waitForOverlay(existingDisplays, hostWidth, hostHeight, 0)
+            }.onFailure {
+                displayCreationInProgress = false
+                OperationLog.e(this, "DesktopHome", "unable to request decorated display for HOME retry", it)
+                completeStart(Result.failure(it))
+                stop()
+            }
+        }, HOME_DECORATION_RETRY_DELAY_MS)
+        return true
+    }
 
     private fun ensurePhoneControlOnDefaultDisplay() {
         runCatching {
