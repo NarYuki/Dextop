@@ -329,6 +329,29 @@ class AppLocalizationsRu extends AppLocalizations {
       'Поместите три пальца одновременно на три круга внизу.';
 
   @override
+  String get setupInstallGitHub => 'Скачать с GitHub';
+
+  @override
+  String get setupGestureReviewed => 'Проверка новых жестов завершена.';
+
+  @override
+  String get setupGestureReview => 'Повторить демонстрацию';
+
+  @override
+  String get setupGestureStart => 'Начать демонстрацию';
+
+  @override
+  String get setupGestureLandscape =>
+      'Альбомная ориентация\nСмахните тремя пальцами слева направо';
+
+  @override
+  String get setupGesturePortrait =>
+      'Портретная ориентация\nСмахните тремя пальцами сверху вниз';
+
+  @override
+  String get setupGestureNext => 'Далее';
+
+  @override
   String get uiTwoFingerTap => 'Касание двумя пальцами';
 
   @override
@@ -1296,6 +1319,15 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => 'Трекпад';
+
+  @override
+  String get keyboardThemesKeyOpacity => 'Непрозрачность клавиш';
+
+  @override
+  String get keyboardThemesTrackpadOpacity => 'Непрозрачность тачпада';
+
+  @override
+  String get keyboardThemesShowTrackpadLabel => 'Показывать надпись TRACKPAD';
 
   @override
   String get keyboardThemesDescription =>

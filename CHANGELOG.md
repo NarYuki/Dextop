@@ -1,5 +1,26 @@
 # Changelog
 
+## 1.3.6
+
+### Improved
+
+- Added complete support for all Galaxy Z Fold series devices running One UI 8.
+- Expanded foldable model recognition for worldwide Fold8 and Fold8 Ultra variants, including Japanese carrier models.
+- Improved foldable profile selection by matching normalized model prefixes when regional suffixes are present.
+- Improved laptop-mode detection compatibility across regional Samsung firmware variants.
+- Added localized keyboard theme settings and transparency controls for keyboard backgrounds, keys, and trackpads.
+- Improved keyboard theme export to include theme settings and associated images in a ZIP archive.
+- Added configurable trackpad label visibility, enabled by default.
+- Improved keyboard theme previews and laptop-mode overlay behavior.
+
+### Fixed
+
+- Fixed incorrect Meta key rendering on devices where the Android icon font fallback produced unexpected characters.
+- Fixed keyboard background transparency not applying to the area between keys.
+- Fixed keyboard theme settings being accessible while Dextop is running.
+- Fixed unlocalized foldable setup and keyboard theme strings.
+- Fixed laptop-mode keyboard and display state handling across foldable posture and display transitions.
+
 ## 1.3.5
 
 ### Improved

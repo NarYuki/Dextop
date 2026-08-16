@@ -331,6 +331,29 @@ class AppLocalizationsEn extends AppLocalizations {
       'Place three fingers on the three circles below at the same time.';
 
   @override
+  String get setupInstallGitHub => 'Download from GitHub';
+
+  @override
+  String get setupGestureReviewed => 'The new gestures have been reviewed.';
+
+  @override
+  String get setupGestureReview => 'Review demo again';
+
+  @override
+  String get setupGestureStart => 'Start demo';
+
+  @override
+  String get setupGestureLandscape =>
+      'Landscape\nSwipe right with three fingers from the left edge';
+
+  @override
+  String get setupGesturePortrait =>
+      'Portrait\nSwipe down with three fingers from the top edge';
+
+  @override
+  String get setupGestureNext => 'Next';
+
+  @override
   String get uiTwoFingerTap => 'Two-finger tap';
 
   @override
@@ -1286,6 +1309,15 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => 'Trackpad';
+
+  @override
+  String get keyboardThemesKeyOpacity => 'Key opacity';
+
+  @override
+  String get keyboardThemesTrackpadOpacity => 'Trackpad opacity';
+
+  @override
+  String get keyboardThemesShowTrackpadLabel => 'Show TRACKPAD label';
 
   @override
   String get keyboardThemesDescription =>

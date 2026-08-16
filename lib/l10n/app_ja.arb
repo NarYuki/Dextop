@@ -101,6 +101,13 @@
   "setupDeviceDescription": "この情報をもとに、初回の解像度と端末固有のデスクトップ制御を設定します。",
   "setupGestureTitle": "ジェスチャーで操作パネルを呼び出しましょう",
   "setupGestureDescription": "下の3つの円へ、3本の指を同時に置いてください。",
+  "setupInstallGitHub": "GitHubからダウンロード",
+  "setupGestureReviewed": "新しいジェスチャーの確認が完了しました。",
+  "setupGestureReview": "デモを再確認",
+  "setupGestureStart": "デモを開始",
+  "setupGestureLandscape": "横向きの場合\n画面左から右に3本指でスワイプ",
+  "setupGesturePortrait": "縦持ちの場合\n画面上から下に3本指でスワイプ",
+  "setupGestureNext": "次へ",
   "uiTwoFingerTap": "2本指タップ",
   "ui3FingerTap": "3本指タップ",
   "ui4Divisions": "4分割",
@@ -355,6 +362,9 @@
   "keyboardThemesBorder": "枠線",
   "keyboardThemesText": "文字",
   "keyboardThemesTrackpad": "トラックパッド",
+  "keyboardThemesKeyOpacity": "キーの透明度",
+  "keyboardThemesTrackpadOpacity": "トラックパッドの透明度",
+  "keyboardThemesShowTrackpadLabel": "TRACKPADの文字を表示",
   "keyboardThemesDescription": "ラップトップキーボードのテーマと外観をカスタマイズ",
   "@keyboardThemesDeleteBody": {"placeholders": {"name": {"type": "String"}}}
 }

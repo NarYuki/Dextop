@@ -320,6 +320,27 @@ class AppLocalizationsJa extends AppLocalizations {
   String get setupGestureDescription => '下の3つの円へ、3本の指を同時に置いてください。';
 
   @override
+  String get setupInstallGitHub => 'GitHubからダウンロード';
+
+  @override
+  String get setupGestureReviewed => '新しいジェスチャーの確認が完了しました。';
+
+  @override
+  String get setupGestureReview => 'デモを再確認';
+
+  @override
+  String get setupGestureStart => 'デモを開始';
+
+  @override
+  String get setupGestureLandscape => '横向きの場合\n画面左から右に3本指でスワイプ';
+
+  @override
+  String get setupGesturePortrait => '縦持ちの場合\n画面上から下に3本指でスワイプ';
+
+  @override
+  String get setupGestureNext => '次へ';
+
+  @override
   String get uiTwoFingerTap => '2本指タップ';
 
   @override
@@ -1250,6 +1271,15 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => 'トラックパッド';
+
+  @override
+  String get keyboardThemesKeyOpacity => 'キーの透明度';
+
+  @override
+  String get keyboardThemesTrackpadOpacity => 'トラックパッドの透明度';
+
+  @override
+  String get keyboardThemesShowTrackpadLabel => 'TRACKPADの文字を表示';
 
   @override
   String get keyboardThemesDescription => 'ラップトップキーボードのテーマと外観をカスタマイズ';

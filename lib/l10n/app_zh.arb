@@ -101,6 +101,13 @@
   "setupDeviceDescription": "此信息用于设置初始分辨率和设备特定的桌面控件。",
   "setupGestureTitle": "通过手势调出控制面板",
   "setupGestureDescription": "将三个手指同时放在下面的三个圆圈上。",
+  "setupInstallGitHub": "从 GitHub 下载",
+  "setupGestureReviewed": "已完成新手势确认。",
+  "setupGestureReview": "重新查看演示",
+  "setupGestureStart": "开始演示",
+  "setupGestureLandscape": "横屏时\n用三指从屏幕左侧向右滑动",
+  "setupGesturePortrait": "竖屏时\n用三指从屏幕顶部向下滑动",
+  "setupGestureNext": "下一步",
   "uiTwoFingerTap": "两根手指点击",
   "ui3FingerTap": "3 指点击",
   "ui4Divisions": "四分屏",
@@ -330,6 +337,9 @@
   "samsungHelp_includePhoneDisplay": "启用后，手机内置屏幕会加入外接屏幕的同一桌面拓扑，可在两屏之间移动应用和指针。若要将手机保留为独立 Android 控制屏，请关闭。",
   "samsungHelp_mirrorPhoneDisplay": "启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。",
   "keyboardThemesTitle":"键盘主题","keyboardThemesChoose":"选择主题","keyboardThemesNew":"新建键盘主题","keyboardThemesName":"主题名称","keyboardThemesCreate":"创建","keyboardThemesEdit":"编辑","keyboardThemesDone":"完成","keyboardThemesDeleteTitle":"删除主题？","keyboardThemesDeleteBody":"确定删除“{name}”？此操作无法撤销。","keyboardThemesBuiltIn":"内置主题无法删除","keyboardThemesSelectFirst":"请先选择此主题。","keyboardThemesStartFirst":"请先启动 Dextop 以显示键盘演示。","keyboardThemesAdd":"添加自定义主题","keyboardThemesPreview":"预览键盘演示","keyboardThemesEditTip":"编辑","keyboardThemesImage":"选择背景图片","keyboardThemesExport":"导出主题","keyboardThemesExportDialog":"导出键盘主题","keyboardThemesOpacity":"不透明度","keyboardThemesBlur":"模糊","keyboardThemesRadius":"圆角","keyboardThemesBackground":"背景","keyboardThemesKey":"按键","keyboardThemesBorder":"边框","keyboardThemesText":"文字","keyboardThemesTrackpad":"触控板",
+  "keyboardThemesKeyOpacity":"按键透明度",
+  "keyboardThemesTrackpadOpacity":"触控板透明度",
+  "keyboardThemesShowTrackpadLabel":"显示 TRACKPAD 标签",
   "keyboardThemesDescription":"笔记本键盘主题和自定义外观",
   "@keyboardThemesDeleteBody":{"placeholders":{"name":{"type":"String"}}}
 }

@@ -317,6 +317,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String get setupGestureDescription => '将三个手指同时放在下面的三个圆圈上。';
 
   @override
+  String get setupInstallGitHub => '从 GitHub 下载';
+
+  @override
+  String get setupGestureReviewed => '已完成新手势确认。';
+
+  @override
+  String get setupGestureReview => '重新查看演示';
+
+  @override
+  String get setupGestureStart => '开始演示';
+
+  @override
+  String get setupGestureLandscape => '横屏时\n用三指从屏幕左侧向右滑动';
+
+  @override
+  String get setupGesturePortrait => '竖屏时\n用三指从屏幕顶部向下滑动';
+
+  @override
+  String get setupGestureNext => '下一步';
+
+  @override
   String get uiTwoFingerTap => '两根手指点击';
 
   @override
@@ -1239,6 +1260,15 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get keyboardThemesTrackpad => '触控板';
+
+  @override
+  String get keyboardThemesKeyOpacity => '按键透明度';
+
+  @override
+  String get keyboardThemesTrackpadOpacity => '触控板透明度';
+
+  @override
+  String get keyboardThemesShowTrackpadLabel => '显示 TRACKPAD 标签';
 
   @override
   String get keyboardThemesDescription => '笔记本键盘主题和自定义外观';

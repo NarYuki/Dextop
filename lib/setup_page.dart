@@ -141,9 +141,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => GestureDemoFlow(
-          title: Localizations.localeOf(context).languageCode == 'ja'
-              ? 'Dextopのジェスチャーを覚えてみましょう'
-              : l.setupGestureTitle,
+          title: l.setupGestureTitle,
           done: l.done,
           back: l.back,
         ),
@@ -466,7 +464,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
               !installed
                   ? (status['privilegeProvider'] == 'stellar' ||
                             (status['sdk'] as int? ?? 0) >= 36
-                        ? 'GitHubからダウンロード'
+                        ? l.setupInstallGitHub
                         : l.setupInstallPlay)
                   : providerText(l.setupAllowPermission),
             ),
@@ -520,18 +518,14 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         Text(
-          Localizations.localeOf(context).languageCode == 'ja'
-              ? 'Dextopのジェスチャーを覚えてみましょう'
-              : l.setupGestureTitle,
+          l.setupGestureTitle,
           textAlign: TextAlign.center,
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 12),
         if (gestureDemoCompleted)
           Text(
-            Localizations.localeOf(context).languageCode == 'ja'
-                ? '新しいジェスチャーの確認が完了しました。'
-                : 'The new gestures have been reviewed.',
+            l.setupGestureReviewed,
             textAlign: TextAlign.center,
           ),
         const SizedBox(height: 32),
@@ -543,9 +537,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                 : Icons.play_arrow_rounded,
           ),
           label: Text(
-            Localizations.localeOf(context).languageCode == 'ja'
-                ? (gestureDemoCompleted ? 'デモを再確認' : 'デモを開始')
-                : (gestureDemoCompleted ? 'Review demo again' : 'Start demo'),
+            gestureDemoCompleted ? l.setupGestureReview : l.setupGestureStart,
           ),
         ),
       ],
@@ -679,8 +671,8 @@ class _GestureDemoFlowState extends State<GestureDemoFlow>
                 const SizedBox(height: 12),
                 Text(
                   step == 0
-                      ? '横向きの場合\n画面左から右に3本指でスワイプ'
-                      : '縦持ちの場合\n画面上から下に3本指でスワイプ',
+                      ? AppLocalizations.of(context).setupGestureLandscape
+                      : AppLocalizations.of(context).setupGesturePortrait,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
@@ -760,7 +752,11 @@ class _GestureDemoFlowState extends State<GestureDemoFlow>
                             ? Icons.arrow_forward_rounded
                             : Icons.check_rounded,
                       ),
-                      label: Text(step == 0 ? '次へ' : widget.done),
+                      label: Text(
+                        step == 0
+                            ? AppLocalizations.of(context).setupGestureNext
+                            : widget.done,
+                      ),
                     ),
                   ],
                 ),
