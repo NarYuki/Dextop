@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.7
+
+### Fixed
+
+- Fixed regional Samsung carrier model identifiers beginning with `SC`, `SCG`, or `SCV` being resolved to a generic vendor profile instead of Samsung DeX.
+- Added prefix-based model matching so carrier suffixes do not prevent Samsung profile detection.
+
 ## 1.3.6
 
 ### Improved

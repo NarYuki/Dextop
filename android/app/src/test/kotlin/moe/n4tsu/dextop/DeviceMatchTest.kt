@@ -41,4 +41,16 @@ class DeviceMatchTest {
         val fold7 = triFold.copy(model = "SM-F966Q", device = "q7q", product = "q7qjpnw")
         assertFalse(DesktopEnvironmentRegistry.resolve(fold7).autoResizeWithHostDisplay)
     }
+
+    @Test fun regionalSamsungCarrierModelPrefixesUseSamsungProfile() {
+        listOf("SC-56F", "SCG39", "SCV46").forEach { model ->
+            val identity = DeviceIdentity(
+                "unknown", "unknown", model, model, model,
+                "unknown/$model/build", 36
+            )
+            val environment = DesktopEnvironmentRegistry.resolve(identity)
+            assertEquals("samsung_dex", environment.id)
+            assertTrue(environment.platformManaged)
+        }
+    }
 }
