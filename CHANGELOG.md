@@ -1,11 +1,13 @@
 # Changelog
 
-## 1.3.7
+## 1.3.7 — Fixed “The desktop HOME activity could not be launched” startup failure
 
 ### Fixed
 
 - Fixed regional Samsung carrier model identifiers beginning with `SC`, `SCG`, or `SCV` being resolved to a generic vendor profile instead of Samsung DeX.
 - Added prefix-based model matching so carrier suffixes do not prevent Samsung profile detection.
+- Added a Samsung HOME-launch fallback that recreates the virtual display with system decorations when One UI rejects HOME on the first attempt.
+- Persisted the successful decoration workaround per firmware fingerprint and automatically retries the original configuration after a firmware update.
 
 ## 1.3.6
 
