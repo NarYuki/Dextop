@@ -526,6 +526,72 @@ class AppLocalizationsEn extends AppLocalizations {
       'Pin a supported built-in screen to 120 Hz while Dextop is running';
 
   @override
+  String get displaySoftwareCursorFallback => 'Use software cursor';
+
+  @override
+  String get displaySoftwareCursorFallbackSummary =>
+      'Use the previous software cursor when enabled';
+
+  @override
+  String get mouseSettingsTitle => 'Mouse';
+
+  @override
+  String get mouseSettingsDescription =>
+      'Configure virtual mouse input and cursor behavior';
+
+  @override
+  String get virtualMouseSettingsTitle => 'Virtual mouse';
+
+  @override
+  String get virtualMouseSettingsDescription =>
+      'Treat touch input as system mouse input';
+
+  @override
+  String get virtualPointerProfile => 'Input device';
+
+  @override
+  String get virtualTouchpad => 'Touchpad';
+
+  @override
+  String get virtualTouchpadDescription => 'Register as a virtual touchpad';
+
+  @override
+  String get virtualPointerMouse => 'Virtual mouse';
+
+  @override
+  String get virtualPointerMouseDescription =>
+      'Register as a relative mouse device';
+
+  @override
+  String get virtualPointerSoftware => 'Software cursor';
+
+  @override
+  String get virtualPointerSoftwareDescription =>
+      'Use Dextop\'s original software cursor';
+
+  @override
+  String get virtualMouseDpi => 'DPI';
+
+  @override
+  String get virtualMouseDpiDescription => 'Cursor movement sensitivity';
+
+  @override
+  String get virtualMouseScrollDirection => 'Scroll direction';
+
+  @override
+  String get virtualMouseNaturalScroll => 'Natural (Mac)';
+
+  @override
+  String get virtualMouseStandardScroll => 'Standard (Windows)';
+
+  @override
+  String get virtualMouseAcceleration => 'Cursor acceleration';
+
+  @override
+  String get virtualMouseAccelerationDescription =>
+      'Change cursor speed based on movement speed';
+
+  @override
   String get uiConvenience => 'Convenience';
 
   @override

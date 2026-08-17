@@ -279,6 +279,12 @@ class NativeBridge {
         {'id': id, 'enabled': enabled},
       ) ??
       {};
+  Future<Map<String, dynamic>> setVirtualPointerProfile(String profile) async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'setVirtualPointerProfile',
+        {'profile': profile},
+      ) ??
+      {};
   Future<List<dynamic>> apps() async =>
       await channel.invokeListMethod<dynamic>('apps') ?? [];
   Future<bool> consumeTileAction() async =>

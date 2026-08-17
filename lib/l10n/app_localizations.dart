@@ -1076,6 +1076,126 @@ abstract class AppLocalizations {
   /// **'Dextop実行中は対応する内蔵画面を120Hzに固定します'**
   String get displayForceInternal120HzSummary;
 
+  /// No description provided for @displaySoftwareCursorFallback.
+  ///
+  /// In ja, this message translates to:
+  /// **'ソフトウェアカーソルに戻す'**
+  String get displaySoftwareCursorFallback;
+
+  /// No description provided for @displaySoftwareCursorFallbackSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'有効にすると従来のソフトウェアカーソルを使用します'**
+  String get displaySoftwareCursorFallbackSummary;
+
+  /// No description provided for @mouseSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'マウス'**
+  String get mouseSettingsTitle;
+
+  /// No description provided for @mouseSettingsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想マウスの入力とカーソルを設定'**
+  String get mouseSettingsDescription;
+
+  /// No description provided for @virtualMouseSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想マウス'**
+  String get virtualMouseSettingsTitle;
+
+  /// No description provided for @virtualMouseSettingsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'タッチ操作をシステムのマウス入力として扱います'**
+  String get virtualMouseSettingsDescription;
+
+  /// No description provided for @virtualPointerProfile.
+  ///
+  /// In ja, this message translates to:
+  /// **'入力デバイス'**
+  String get virtualPointerProfile;
+
+  /// No description provided for @virtualTouchpad.
+  ///
+  /// In ja, this message translates to:
+  /// **'タッチパッド'**
+  String get virtualTouchpad;
+
+  /// No description provided for @virtualTouchpadDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想タッチパッドとして登録します'**
+  String get virtualTouchpadDescription;
+
+  /// No description provided for @virtualPointerMouse.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想マウス'**
+  String get virtualPointerMouse;
+
+  /// No description provided for @virtualPointerMouseDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'相対マウスデバイスとして登録します'**
+  String get virtualPointerMouseDescription;
+
+  /// No description provided for @virtualPointerSoftware.
+  ///
+  /// In ja, this message translates to:
+  /// **'ソフトウェアカーソル'**
+  String get virtualPointerSoftware;
+
+  /// No description provided for @virtualPointerSoftwareDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop内の従来のカーソルを使用します'**
+  String get virtualPointerSoftwareDescription;
+
+  /// No description provided for @virtualMouseDpi.
+  ///
+  /// In ja, this message translates to:
+  /// **'DPI'**
+  String get virtualMouseDpi;
+
+  /// No description provided for @virtualMouseDpiDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'カーソル移動の感度'**
+  String get virtualMouseDpiDescription;
+
+  /// No description provided for @virtualMouseScrollDirection.
+  ///
+  /// In ja, this message translates to:
+  /// **'スクロール方向'**
+  String get virtualMouseScrollDirection;
+
+  /// No description provided for @virtualMouseNaturalScroll.
+  ///
+  /// In ja, this message translates to:
+  /// **'ナチュラル（Mac）'**
+  String get virtualMouseNaturalScroll;
+
+  /// No description provided for @virtualMouseStandardScroll.
+  ///
+  /// In ja, this message translates to:
+  /// **'標準（Windows）'**
+  String get virtualMouseStandardScroll;
+
+  /// No description provided for @virtualMouseAcceleration.
+  ///
+  /// In ja, this message translates to:
+  /// **'カーソル加速度'**
+  String get virtualMouseAcceleration;
+
+  /// No description provided for @virtualMouseAccelerationDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'移動速度に応じてカーソル速度を変化させます'**
+  String get virtualMouseAccelerationDescription;
+
   /// No description provided for @uiConvenience.
   ///
   /// In ja, this message translates to:

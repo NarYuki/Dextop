@@ -37,7 +37,12 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Binder
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.SystemClock
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.provider.Settings
 import android.transition.ChangeBounds
 import android.transition.AutoTransition
@@ -47,6 +52,7 @@ import android.util.Base64
 import android.view.Gravity
 import android.view.DragEvent
 import android.view.Display
+import android.view.HapticFeedbackConstants
 import android.view.InputDevice
 import android.view.InputEvent
 import android.view.KeyEvent
@@ -109,6 +115,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val KEY_DIRECT_TOUCH = "direct_touch"
         private const val KEY_ROUTE_MOUSE = "route_physical_mouse"
         private const val KEY_ROUTE_KEYBOARD = "route_physical_keyboard"
+        /** Explicit compatibility switch for the previous software cursor. */
+        private const val KEY_SOFTWARE_CURSOR_FALLBACK = "software_cursor_fallback"
+        /** Persisted three-way pointer profile; old installs use the fallback key. */
+        private const val KEY_VIRTUAL_POINTER_PROFILE = "virtual_pointer_profile"
+        private const val VIRTUAL_MOUSE_NAME = "Dextop Virtual Mouse"
+        private const val VIRTUAL_TOUCHPAD_NAME = "Dextop Virtual Touchpad"
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val NOTIFICATION_LAUNCH_WINDOW_MS = 3_000L
         private const val NOTIFICATION_ROUTE_RETRY_DELAY_MS = 140L
@@ -364,6 +376,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             pendingDemo = false
         }
 
+        fun setSoftwareCursorFallbackEnabled(enabled: Boolean) {
+            setVirtualPointerProfile(if (enabled) "software" else "touchpad")
+        }
+
+        fun setVirtualPointerProfile(profile: String) {
+            val service = instance ?: return
+            // Display settings are written by MainActivity's worker thread,
+            // while the input device and overlay belong to the service main
+            // looper.  Calling this directly left the old virtual mouse
+            // connected (or updated the cursor view off-thread), making the
+            // switch appear ineffective.
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service) service.applyVirtualPointerProfile(profile)
+            }
+        }
+
 
     }
 
@@ -446,6 +474,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopBaseConfig: Config? = null
     private var laptopHardwareKeyboardProcess: moe.shizuku.server.IRemoteProcess? = null
     private var laptopHardwareKeyboardInput: OutputStream? = null
+    private var virtualMouseProcess: moe.shizuku.server.IRemoteProcess? = null
+    private var virtualMouseInput: OutputStream? = null
+    @Volatile private var virtualMouseReady = false
+    private var virtualMouseDeviceId = -1
+    private var virtualPointerRegisteredProfile = ""
+    /** Runtime-only fallback when a vendor InputReader cannot expose touchpad. */
+    private var virtualPointerRuntimeProfile: String? = null
+    private var virtualMouseGeneration = 0L
+    private var virtualMouseFractionX = 0f
+    private var virtualMouseFractionY = 0f
+    private var virtualMouseWheelFractionX = 0f
+    private var virtualMouseWheelFractionY = 0f
     private var laptopHostUniqueId: String? = null
     private var laptopShift = false
     private var laptopControl = false
@@ -479,9 +519,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var moved = false
     private var maxPointers = 0
     private var twoFinger = false
+    private var twoFingerTravelX = 0f
+    private var twoFingerTravelY = 0f
     private var threeFinger = false
     private var scrolling = false
+    private var lastScrollX = 0f
     private var lastScrollY = 0f
+    private var scrollX = 0f
     private var scrollY = 0f
     private var dragHeld = false
     private var directTouch = false
@@ -532,10 +576,115 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val laptopModeDebounceMs = 420L
     private val laptopHostMismatchDebounceMs = 1_200L
 
+    private fun persistedVirtualPointerProfile(): String {
+        val input = getSharedPreferences(PREFS, MODE_PRIVATE)
+        if (input.contains(KEY_VIRTUAL_POINTER_PROFILE)) {
+            return input.getString(KEY_VIRTUAL_POINTER_PROFILE, "touchpad")
+                .orEmpty().lowercase().let(::normalizeVirtualPointerProfile)
+        }
+        val flutter = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        val stored = flutter.getString("flutter.virtual_pointer_profile", null)
+        if (!stored.isNullOrBlank()) return normalizeVirtualPointerProfile(stored)
+        // Preserve the old switch for upgrades.  A missing switch now means
+        // the new true-touchpad profile, while an explicitly enabled fallback
+        // still selects the software cursor.
+        val display = getSharedPreferences("dextop_display_environment", MODE_PRIVATE)
+        return if (input.getBoolean(KEY_SOFTWARE_CURSOR_FALLBACK,
+                display.getBoolean(KEY_SOFTWARE_CURSOR_FALLBACK, false))) {
+            "software"
+        } else {
+            "touchpad"
+        }
+    }
+
+    private fun normalizeVirtualPointerProfile(value: String): String = when (value) {
+        "touchpad", "touch_pad", "source_touchpad" -> "touchpad"
+        "mouse", "virtual_mouse" -> "mouse"
+        "software", "software_cursor", "cursor" -> "software"
+        else -> "touchpad"
+    }
+
+    private fun activeVirtualPointerProfile(): String =
+        normalizeVirtualPointerProfile(virtualPointerRuntimeProfile ?: persistedVirtualPointerProfile())
+
+    private fun virtualPointerDeviceName(profile: String): String =
+        if (profile == "touchpad") VIRTUAL_TOUCHPAD_NAME else VIRTUAL_MOUSE_NAME
+
     private fun currentInputMode(): String = when {
         physicalMouseActive -> "physical_mouse"
+        laptopTrackpadInputActive() && activeVirtualPointerProfile() == "touchpad" -> "virtual_touchpad"
+        laptopTrackpadInputActive() -> "virtual_mouse"
+        virtualMouseInputActive() && activeVirtualPointerProfile() == "touchpad" -> "virtual_touchpad"
+        virtualMouseInputActive() -> "virtual_mouse"
         directTouch -> "direct_touch"
         else -> "cursor_touchpad"
+    }
+
+    private fun virtualMouseInputEnabled(): Boolean = activeVirtualPointerProfile() != "software"
+
+    /**
+     * Returns whether the kernel pointer is ready for the requested surface.
+     * The phone surface owns the device exclusively in cursor mode, but the
+     * laptop deck is a separate physical surface: its trackpad must be able
+     * to use the device even when the phone display is configured for tap
+     * (direct-touch) input.
+     */
+    private fun virtualPointerInputActive(allowDirectTouch: Boolean): Boolean =
+        !demoMode && virtualMouseInputEnabled() &&
+            virtualPointerRegisteredProfile == activeVirtualPointerProfile() &&
+            virtualMouseReady &&
+            virtualMouseProcessAlive() &&
+            (allowDirectTouch || !directTouch)
+
+    private fun virtualMouseInputActive(): Boolean = virtualPointerInputActive(false)
+
+    private fun laptopTrackpadInputActive(): Boolean =
+        laptopModeActive && virtualPointerInputActive(true)
+
+    private fun virtualMouseProcessAlive(): Boolean =
+        runCatching { virtualMouseProcess?.alive() == true }.getOrDefault(false)
+
+    private fun virtualMouseDpiScale(): Float =
+        (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getInt("flutter.virtual_mouse_dpi", 1000)
+            .coerceIn(400, 2400) / 1000f)
+
+    private fun virtualMouseNaturalScroll(): Boolean =
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getBoolean("flutter.virtual_mouse_natural_scroll", true)
+
+    private fun virtualMouseAccelerationEnabled(): Boolean =
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getBoolean("flutter.virtual_mouse_acceleration", false)
+
+    private fun updateVirtualCursorVisibility() {
+        val cursor = cursorView ?: return
+        // Hide while uinput is starting as well as after it is ready.  Showing
+        // the software cursor during that short window creates a distracting
+        // white flash when the user changes from tap to cursor mode.
+        val virtualMouseStarting = virtualMouseProcess != null
+        cursor.visibility = if (directTouch || virtualMouseReady || virtualMouseStarting) {
+            View.GONE
+        } else {
+            View.VISIBLE
+        }
+    }
+
+    /** Applies the selected DPI and optional Mac-style pointer acceleration. */
+    private fun virtualMouseMotionScale(dx: Float, dy: Float): Float {
+        var scale = virtualMouseDpiScale()
+        if (virtualMouseAccelerationEnabled()) {
+            // Trackpad deltas are reported in physical pixels and can be very
+            // small on high-density panels.  Use the per-event velocity in dp
+            // so the setting remains perceptible on both phones and tablets:
+            // precise movements stay close to 1x, while a fast swipe reaches
+            // roughly 3.5x.  The smoothstep keeps the transition continuous.
+            val speedDp = hypot(dx, dy) / resources.displayMetrics.density.coerceAtLeast(1f)
+            val normalized = ((speedDp - 1.5f) / 10f).coerceIn(0f, 1f)
+            val eased = normalized * normalized * (3f - 2f * normalized)
+            scale *= 1f + eased * 2.5f
+        }
+        return scale
     }
 
     /**
@@ -909,6 +1058,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun onKeyEvent(event: KeyEvent): Boolean = forwardKeyEvent(event)
 
     override fun onMotionEvent(event: MotionEvent) {
+        // Events emitted by our uinput device already travel through
+        // InputReader/InputDispatcher (and therefore display topology). Do
+        // not feed them back through Dextop's target-display injector or they
+        // would be delivered twice and the pointer would fight itself.
+        if (isVirtualMouseEvent(event)) return
         if (!active || !routePhysicalMouseToDextop || !event.isFromSource(InputDevice.SOURCE_MOUSE)) return
         val relativeX = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X)
         val relativeY = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
@@ -974,6 +1128,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun start(config: Config) {
+        // A touchpad-to-mouse compatibility fallback is scoped to one session;
+        // every new session retries the user's selected profile.
+        virtualPointerRuntimeProfile = null
         laptopModeActive = false
         laptopBaseConfig = null
         laptopManualOverride = false
@@ -1094,7 +1251,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             holder.addCallback(this@MirrorService)
             isFocusable = true
             isFocusableInTouchMode = true
-            setOnTouchListener { _, event ->
+            setOnTouchListener { view, event ->
                 if (event.isFromSource(InputDevice.SOURCE_MOUSE)) {
                     if (event.actionMasked == MotionEvent.ACTION_MOVE ||
                         event.actionMasked == MotionEvent.ACTION_HOVER_MOVE) activatePhysicalMouse()
@@ -1114,7 +1271,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val cursor = CursorView(this)
         // A connected mouse alone must not hide the touchpad cursor. Switch the
         // visual cursor only after input from that mouse is actually observed.
-        cursor.visibility = if (directTouch) View.GONE else View.VISIBLE
+        // The helper also keeps the cursor hidden while uinput is registering,
+        // avoiding a one-frame white flash when changing modes.
+        cursor.visibility = if (directTouch || virtualMouseInputActive()) View.GONE else View.VISIBLE
         val controls = buildMenu()
         val scrim = View(this).apply {
             setBackgroundColor(Color.argb(105, 0, 0, 0))
@@ -1280,9 +1439,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 setStroke(dp(1), palette.border)
                 cornerRadius = dp(palette.radius.toInt()).toFloat()
             }
-            setOnTouchListener { _, event ->
+            setOnTouchListener { view, event ->
                 if (event.actionMasked == MotionEvent.ACTION_DOWN) activateLaptopTrackpad()
-                trackpad(event, forceCursorMode = true)
+                // The laptop deck is an independent input surface.  It must
+                // keep using the kernel touchpad even while the phone surface
+                // is in tap/direct-touch mode; only the phone surface is
+                // allowed to disconnect the pointer in that mode.
+                trackpad(
+                    event,
+                    forceCursorMode = true,
+                    allowVirtualPointer = true,
+                    hapticView = view
+                )
             }
         }
         val keyboard = LinearLayout(this).apply {
@@ -1313,9 +1481,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(235, 231, 239))
                 background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_ALT)
-                setOnClickListener {
-                    setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
-                }
                 // FN is the keyboard-layer key.  A long press opens the
                 // native theme picker while a short press keeps its existing
                 // function-row toggle.  The demo must remain a passive
@@ -1324,6 +1489,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     if (demoMode) return@setOnLongClickListener false
                     showLaptopKeyboardSettings()
                     true
+                }
+                setOnClickListener {
+                    performLaptopHaptic(this)
+                    setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
                 }
                 setOnTouchListener { view, event ->
                     when (event.actionMasked) {
@@ -1350,7 +1519,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(235, 231, 239))
                 background = laptopKeyBackground(false, LAPTOP_ALT)
-                setOnClickListener { if (!demoMode) toggleMenu() }
+                setOnClickListener {
+                    if (!demoMode) {
+                        performLaptopHaptic(this)
+                        toggleMenu()
+                    }
+                }
             }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.END).apply {
                 rightMargin = dp(10)
                 bottomMargin = dp(10)
@@ -1408,7 +1582,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun setLaptopMode(enabled: Boolean) {
         if (enabled == laptopModeActive) {
-            if (enabled) startLaptopHardwareKeyboard()
+            if (enabled) {
+                startLaptopHardwareKeyboard()
+                startVirtualMouse()
+            }
             return
         }
         if (enabled && !demoMode && !isLaptopCapableDevice()) {
@@ -1443,6 +1620,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (enabled) {
             startLaptopHardwareKeyboard()
+            startVirtualMouse()
             val deck = buildLaptopDeck().apply {
                 alpha = 0f
                 translationY = dp(28).toFloat()
@@ -1462,6 +1640,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             performanceHud?.bringToFront()
         } else {
             stopLaptopHardwareKeyboard()
+            // In tap/direct-touch mode the pointer belongs only to the
+            // laptop trackpad while the deck is visible. Remove it as soon
+            // as the deck is closed so Android cannot retain its pointer
+            // focus for the next app on the phone surface.
+            if (directTouch) {
+                cancelDesktopTouchStream()
+                stopVirtualMouse()
+            }
             val deck = laptopDeck
             laptopDeck = null
             deck?.animate()
@@ -1549,6 +1735,312 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             isDaemon = true
             start()
         }
+    }
+
+    /**
+     * Registers the touch cursor as a kernel-backed mouse.  Android's
+     * `uinput` command feeds this device through the normal InputReader path,
+     * which means display topology and pointer focus are handled by the
+     * framework instead of by Dextop's software cursor.  The existing
+     * InputDispatcher/touch path remains the fallback for devices where
+     * `uinput` is missing or rejected.
+     */
+    private fun startVirtualMouse(profileOverride: String? = null) {
+        val profile = normalizeVirtualPointerProfile(profileOverride ?: activeVirtualPointerProfile())
+        // Never leave a kernel pointer behind for the phone surface in tap
+        // mode. The laptop deck is an explicit exception: its trackpad is a
+        // separate input surface and may attach the pointer while the phone
+        // surface remains in direct-touch mode. This guard is intentionally
+        // checked at the connection boundary (rather than only in
+        // virtualMouseInputActive()) so switching modes actually removes the
+        // device from InputReader/InputDispatcher.
+        if (!active || demoMode || profile == "software" ||
+            (directTouch && !laptopModeActive)) {
+            updateVirtualCursorVisibility()
+            return
+        }
+        if (virtualMouseProcessAlive()) {
+            updateVirtualCursorVisibility()
+            return
+        }
+        // Hide first, before tearing down a previous registration.  Without
+        // this ordering the software cursor can be drawn for one frame in the
+        // gap between stopVirtualMouse() and assigning the new uinput process.
+        cursorView?.visibility = View.GONE
+        stopVirtualMouse()
+        val binder = rikka.shizuku.Shizuku.getBinder()
+        if (binder == null) {
+            updateVirtualCursorVisibility()
+            return
+        }
+        runCatching {
+            val remote = IShizukuService.Stub.asInterface(binder)
+                .newProcess(arrayOf("uinput", "-"), null, null)
+            val output = android.os.ParcelFileDescriptor.AutoCloseOutputStream(remote.outputStream)
+            virtualMouseProcess = remote
+            virtualMouseInput = output
+            virtualMouseReady = false
+            virtualPointerRegisteredProfile = profile
+            updateVirtualCursorVisibility()
+            virtualMouseFractionX = 0f
+            virtualMouseFractionY = 0f
+            val generation = virtualMouseGeneration
+            val configuration = if (profile == "touchpad") {
+                """
+                    {"type":"UI_SET_EVBIT","data":["EV_REL","EV_ABS","EV_KEY","EV_SYN"]},
+                    {"type":"UI_SET_RELBIT","data":["REL_X","REL_Y","REL_WHEEL","REL_HWHEEL"]},
+                    {"type":"UI_SET_ABSBIT","data":["ABS_X","ABS_Y"]},
+                    {"type":"UI_SET_KEYBIT","data":["BTN_LEFT","BTN_RIGHT","BTN_MIDDLE","BTN_SIDE","BTN_EXTRA","BTN_TOOL_FINGER","BTN_TOUCH"]}
+                """.trimIndent()
+            } else {
+                """
+                    {"type":"UI_SET_EVBIT","data":["EV_REL","EV_KEY","EV_SYN"]},
+                    {"type":"UI_SET_RELBIT","data":["REL_X","REL_Y","REL_WHEEL","REL_HWHEEL"]},
+                    {"type":"UI_SET_KEYBIT","data":["BTN_LEFT","BTN_RIGHT","BTN_MIDDLE","BTN_SIDE","BTN_EXTRA"]}
+                """.trimIndent()
+            }
+            val absInfo = if (profile == "touchpad") {
+                """,
+                  "abs_info": [
+                    {"code":"ABS_X","info":{"value":0,"minimum":0,"maximum":${(targetWidth - 1).coerceAtLeast(1)},"fuzz":0,"flat":0,"resolution":1}},
+                    {"code":"ABS_Y","info":{"value":0,"minimum":0,"maximum":${(targetHeight - 1).coerceAtLeast(1)},"fuzz":0,"flat":0,"resolution":1}}
+                  ]
+                """.trimIndent()
+            } else {
+                ""
+            }
+            val registration = """
+                {
+                  "id": 414,
+                  "command": "register",
+                  "name": "${virtualPointerDeviceName(profile)}",
+                  "vid": 6353,
+                  "pid": 5418,
+                  "bus": "usb",
+                  "configuration": [$configuration]$absInfo
+                }
+            """.trimIndent() + "\n"
+            output.write(registration.toByteArray(Charsets.UTF_8))
+            output.flush()
+            drainLaptopKeyboardPipe(remote.inputStream, "mouse_stdout")
+            drainLaptopKeyboardPipe(remote.errorStream, "mouse_stderr")
+            // uinput creates the InputDevice asynchronously. Wait until
+            // InputReader publishes the device instead of treating a live
+            // uinput process as success; otherwise the first gestures are
+            // silently lost on slower/vendor builds.
+            scheduleVirtualMouseReadyCheck(generation, profile, 0)
+            OperationLog.i(this, "InputRouting", "registered virtual pointer profile=$profile")
+        }.onFailure { error ->
+            stopVirtualMouse()
+            OperationLog.w(this, "InputRouting", "virtual mouse registration failed; using software cursor", error)
+            Log.w(logTag, "virtual mouse registration failed; using software cursor", error)
+        }
+    }
+
+    private fun stopVirtualMouse() {
+        virtualMouseGeneration += 1
+        virtualMouseReady = false
+        virtualMouseDeviceId = -1
+        virtualPointerRegisteredProfile = ""
+        virtualMouseInput?.let { runCatching { it.close() } }
+        virtualMouseInput = null
+        virtualMouseProcess?.let { runCatching { it.destroy() } }
+        virtualMouseProcess = null
+        virtualMouseFractionX = 0f
+        virtualMouseFractionY = 0f
+        virtualMouseWheelFractionX = 0f
+        virtualMouseWheelFractionY = 0f
+    }
+
+    private fun scheduleVirtualMouseReadyCheck(generation: Long, profile: String, attempt: Int) {
+        val check = Runnable {
+            if (generation != virtualMouseGeneration || !active ||
+                activeVirtualPointerProfile() != profile) return@Runnable
+            if (!virtualMouseProcessAlive()) {
+                OperationLog.w(this, "InputRouting", "virtual mouse process exited before InputReader registration")
+                stopVirtualMouse()
+                updateVirtualCursorVisibility()
+                return@Runnable
+            }
+            val device = findVirtualPointerDevice(profile)
+            if (device != null) {
+                virtualMouseDeviceId = device.id
+                virtualMouseReady = true
+                updateVirtualCursorVisibility()
+                OperationLog.i(
+                    this,
+                    "InputRouting",
+                    "virtual pointer ready profile=$profile deviceId=${device.id}; framework routing active " +
+                        displayGeometrySnapshot("virtual_mouse_ready")
+                )
+                return@Runnable
+            }
+            if (attempt < 15) {
+                scheduleVirtualMouseReadyCheck(generation, profile, attempt + 1)
+            } else {
+                OperationLog.w(
+                    this,
+                    "InputRouting",
+                    "uinput profile=$profile was not published by InputReader"
+                )
+                stopVirtualMouse()
+                if (profile == "touchpad") {
+                    // Some vendor InputReaders do not expose SOURCE_TOUCHPAD
+                    // for uinput devices. Keep the requested preference intact
+                    // but use the proven mouse profile for this session.
+                    virtualPointerRuntimeProfile = "mouse"
+                    OperationLog.w(this, "InputRouting", "SOURCE_TOUCHPAD unavailable; falling back to virtual mouse")
+                    startVirtualMouse("mouse")
+                } else {
+                    updateVirtualCursorVisibility()
+                }
+            }
+        }
+        // During the first display setup the root window may not have been
+        // attached yet. Always keep the readiness probe alive on the main
+        // looper so startup ordering cannot leave the cursor permanently in a
+        // half-initialized state.
+        root?.postDelayed(check, if (attempt == 0) 120L else 100L)
+            ?: Handler(mainLooper).postDelayed(check, if (attempt == 0) 120L else 100L)
+    }
+
+    private fun findVirtualPointerDevice(profile: String): InputDevice? = InputDevice.getDeviceIds()
+        .asSequence()
+        .mapNotNull { InputDevice.getDevice(it) }
+        .firstOrNull { device ->
+            device.name == virtualPointerDeviceName(profile) && when (profile) {
+                "touchpad" -> device.sources and InputDevice.SOURCE_TOUCHPAD == InputDevice.SOURCE_TOUCHPAD
+                else -> device.sources and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE
+            }
+        }
+
+    private fun applyVirtualPointerProfile(requested: String) {
+        val profile = normalizeVirtualPointerProfile(requested)
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .putString(KEY_VIRTUAL_POINTER_PROFILE, profile)
+            .putBoolean(KEY_SOFTWARE_CURSOR_FALLBACK, profile == "software")
+            .apply()
+        virtualPointerRuntimeProfile = null
+        if (profile != "software") {
+            cancelDesktopTouchStream()
+            stopVirtualMouse()
+            startVirtualMouse()
+            updateVirtualCursorVisibility()
+        } else {
+            cancelDesktopTouchStream()
+            stopVirtualMouse()
+            updateVirtualCursorVisibility()
+        }
+        OperationLog.i(
+            this,
+            "InputRouting",
+            "virtual pointer profile=$profile active=${virtualMouseInputActive()}"
+        )
+        menuPrimary?.let(::showMainMenu)
+    }
+
+    private fun writeVirtualMouseCommand(command: JSONObject): Boolean {
+        val output = virtualMouseInput ?: return false
+        if (!virtualMouseReady || !virtualMouseProcessAlive()) return false
+        return runCatching {
+            synchronized(output) {
+                output.write(command.toString().toByteArray(Charsets.UTF_8))
+                output.write('\n'.code)
+                output.flush()
+            }
+            true
+        }.onFailure { error ->
+            virtualMouseReady = false
+            stopVirtualMouse()
+            updateVirtualCursorVisibility()
+            OperationLog.w(this, "InputRouting", "virtual mouse event rejected; falling back", error)
+        }.getOrDefault(false)
+    }
+
+    private fun virtualMouseEvents(
+        events: List<Any>,
+        allowDirectTouch: Boolean = false
+    ): Boolean {
+        if (!virtualPointerInputActive(allowDirectTouch)) return false
+        // Interactive commands can be separated by arbitrary pauses. Reset
+        // uinput's time base so a new gesture is never scheduled in the past.
+        if (!writeVirtualMouseCommand(JSONObject().apply {
+            put("id", 414)
+            put("command", "updateTimeBase")
+        })) return false
+        return writeVirtualMouseCommand(JSONObject().apply {
+            put("id", 414)
+            put("command", "inject")
+            put("events", JSONArray(events))
+        })
+    }
+
+    private fun virtualMouseMove(
+        dx: Float,
+        dy: Float,
+        allowDirectTouch: Boolean = false
+    ): Boolean {
+        if (!virtualPointerInputActive(allowDirectTouch)) return false
+        virtualMouseFractionX += dx
+        virtualMouseFractionY += dy
+        val x = virtualMouseFractionX.toInt()
+        val y = virtualMouseFractionY.toInt()
+        if (x == 0 && y == 0) return true
+        virtualMouseFractionX -= x
+        virtualMouseFractionY -= y
+        val events = mutableListOf<Any>()
+        if (x != 0) {
+            events += "EV_REL"; events += "REL_X"; events += x
+        }
+        if (y != 0) {
+            events += "EV_REL"; events += "REL_Y"; events += y
+        }
+        events += "EV_SYN"; events += "SYN_REPORT"; events += 0
+        return virtualMouseEvents(events, allowDirectTouch)
+    }
+
+    private fun virtualMouseButton(
+        button: String,
+        pressed: Boolean,
+        allowDirectTouch: Boolean = false
+    ): Boolean =
+        virtualMouseEvents(
+            listOf("EV_KEY", button, if (pressed) 1 else 0,
+                "EV_SYN", "SYN_REPORT", 0),
+            allowDirectTouch
+        )
+
+    private fun virtualMouseScroll(delta: Float, allowDirectTouch: Boolean = false): Boolean {
+        val direction = if (virtualMouseNaturalScroll()) 1f else -1f
+        // Keep the proven wheel quantization.  Sending steps too frequently
+        // makes Android render the scroll as visible bursts rather than a
+        // steady gesture.
+        virtualMouseWheelFractionY += -delta * direction / dp(12).toFloat()
+        val wheel = virtualMouseWheelFractionY.toInt().coerceIn(-12, 12)
+        if (wheel == 0) return true
+        virtualMouseWheelFractionY -= wheel
+        return virtualMouseEvents(
+            listOf("EV_REL", "REL_WHEEL", wheel,
+                "EV_SYN", "SYN_REPORT", 0),
+            allowDirectTouch
+        )
+    }
+
+    private fun virtualMouseHorizontalScroll(
+        delta: Float,
+        allowDirectTouch: Boolean = false
+    ): Boolean {
+        val direction = if (virtualMouseNaturalScroll()) 1f else -1f
+        // REL_HWHEEL follows the same selected direction as vertical scroll.
+        virtualMouseWheelFractionX += delta * direction / dp(12).toFloat()
+        val wheel = virtualMouseWheelFractionX.toInt().coerceIn(-12, 12)
+        if (wheel == 0) return true
+        virtualMouseWheelFractionX -= wheel
+        return virtualMouseEvents(
+            listOf("EV_REL", "REL_HWHEEL", wheel,
+                "EV_SYN", "SYN_REPORT", 0),
+            allowDirectTouch
+        )
     }
 
     private fun stopLaptopHardwareKeyboard() {
@@ -2155,8 +2647,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (key.code < 0) laptopModifierButtons.putIfAbsent(key.code, this)
         if (key.code in laptopShortcutLabels.keys) laptopShortcutButtons[key.code] = this
-        setOnClickListener {
-            if (key.code != KeyEvent.KEYCODE_META_LEFT) handleLaptopKey(key.code)
+                setOnClickListener {
+            if (key.code != KeyEvent.KEYCODE_META_LEFT) {
+                performLaptopHaptic(this)
+                handleLaptopKey(key.code)
+            }
         }
         setOnTouchListener { view, event ->
             if (key.code == KeyEvent.KEYCODE_META_LEFT) {
@@ -2169,7 +2664,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                         view.animate().scaleX(1f).scaleY(1f).alpha(1f)
                             .setDuration(110).start()
-                        if (event.actionMasked == MotionEvent.ACTION_UP) handleLaptopKey(key.code)
+                        if (event.actionMasked == MotionEvent.ACTION_UP) {
+                            performLaptopHaptic(view)
+                            handleLaptopKey(key.code)
+                        }
                     }
                 }
                 return@setOnTouchListener true
@@ -2179,7 +2677,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     // Modifiers are latched on press, not release, so a
                     // second finger can press C/V/etc. while Ctrl is still
                     // held. This also makes real multi-touch chords work.
-                    if (key.code < 0) handleLaptopKey(key.code)
+                    if (key.code < 0) {
+                        performLaptopHaptic(view)
+                        handleLaptopKey(key.code)
+                    }
                     view.animate()
                     .scaleX(.92f).scaleY(.92f).alpha(.72f)
                     .setDuration(55).start()
@@ -3779,8 +4280,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
-    private fun trackpad(event: MotionEvent, forceCursorMode: Boolean = false): Boolean {
+    private fun trackpad(
+        event: MotionEvent,
+        forceCursorMode: Boolean = false,
+        allowVirtualPointer: Boolean = false,
+        hapticView: View? = null
+    ): Boolean {
         val useDirectTouch = directTouch && !forceCursorMode
+        val useVirtualMouse = (if (allowVirtualPointer) {
+            laptopTrackpadInputActive()
+        } else {
+            virtualMouseInputActive()
+        }) && !useDirectTouch
         recordTouchRouting(event, useDirectTouch)
         maxPointers = maxOf(maxPointers, event.pointerCount)
         if (experimentalMultiTouch && handleExperimentalEdgeGesture(event)) return true
@@ -3797,6 +4308,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 touchStartY = event.y
                 moved = false
                 twoFinger = false
+                twoFingerTravelX = 0f
+                twoFingerTravelY = 0f
                 threeFinger = false
                 scrolling = false
                 longPressTriggered = false
@@ -3810,7 +4323,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 longPressRunnable = Runnable {
                     if (!moved && !twoFinger && maxPointers == 1) {
                         longPressTriggered = true
-                        performLongPressGesture()
+                        performLaptopHaptic(hapticView, strong = true)
+                        performLongPressGesture(allowVirtualPointer)
                     }
                 }.also { root?.postDelayed(it, 450) }
             }
@@ -3822,12 +4336,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 longPressRunnable?.let { root?.removeCallbacks(it) }
                 if (event.pointerCount >= 3) {
                     threeFinger = true
-                    if (scrolling) injectTouch(MotionEvent.ACTION_UP, cursorX, scrollY)
+                    if (scrolling) injectTouch(MotionEvent.ACTION_UP, scrollX, scrollY)
                     scrolling = false
                     return true
                 }
                 if (event.pointerCount == 2) {
                     twoFinger = true
+                    twoFingerTravelX = 0f
+                    twoFingerTravelY = 0f
+                    lastScrollX = event.getX(0)
                     lastScrollY = event.getY(0)
                 }
             }
@@ -3839,16 +4356,34 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 } else if (threeFinger) {
                     moved = true
                 } else if (event.pointerCount >= 2) {
-                    if (!scrolling) {
-                        scrolling = true
-                        scrollY = cursorY
-                        injectTouch(MotionEvent.ACTION_DOWN, cursorX, scrollY)
-                    }
+                    val x = event.getX(0)
                     val y = event.getY(0)
-                    scrollY = (scrollY + (y - lastScrollY) * 2f).coerceIn(0f, targetHeight - 1f)
+                    val dx = x - lastScrollX
+                    val dy = y - lastScrollY
+                    twoFingerTravelX += dx
+                    twoFingerTravelY += dy
+                    val thresholdReached = scrolling ||
+                        hypot(twoFingerTravelX, twoFingerTravelY) >= dp(10)
+                    if (thresholdReached) {
+                        if (useVirtualMouse) {
+                            scrolling = true
+                            virtualMouseHorizontalScroll(dx, allowVirtualPointer)
+                            virtualMouseScroll(dy, allowVirtualPointer)
+                        } else {
+                            if (!scrolling) {
+                                scrolling = true
+                                scrollX = cursorX
+                                scrollY = cursorY
+                                injectTouch(MotionEvent.ACTION_DOWN, scrollX, scrollY)
+                            }
+                            scrollX = (scrollX + dx * 2f).coerceIn(0f, targetWidth - 1f)
+                            scrollY = (scrollY + dy * 2f).coerceIn(0f, targetHeight - 1f)
+                            injectTouch(MotionEvent.ACTION_MOVE, scrollX, scrollY)
+                        }
+                        moved = true
+                    }
+                    lastScrollX = x
                     lastScrollY = y
-                    injectTouch(MotionEvent.ACTION_MOVE, cursorX, scrollY)
-                    moved = true
                 } else if (!twoFinger) {
                     val dx = event.x - lastX
                     val dy = event.y - lastY
@@ -3858,12 +4393,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         moved = true
                         if (!longPressTriggered) longPressRunnable?.let { root?.removeCallbacks(it) }
                     }
-                    moveCursor(dx * 2.2f, dy * 2.2f)
+                    moveCursor(dx * 2.2f, dy * 2.2f, allowVirtualPointer)
                 }
             }
             MotionEvent.ACTION_POINTER_UP -> {
                 if (!threeFinger && scrolling) {
-                    injectTouch(MotionEvent.ACTION_UP, cursorX, scrollY)
+                    if (!useVirtualMouse) injectTouch(MotionEvent.ACTION_UP, scrollX, scrollY)
                     scrolling = false
                 }
             }
@@ -3874,21 +4409,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     moveCursorToTouch(event.x, event.y)
                     injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
                     directTouchHeld = false
-                } else if (scrolling) injectTouch(MotionEvent.ACTION_UP, cursorX, scrollY)
+                } else if (scrolling && !useVirtualMouse) injectTouch(MotionEvent.ACTION_UP, scrollX, scrollY)
                 if (completedDirectTouch) {
                     Unit
                 } else if (threeFinger || maxPointers >= 3) {
                     if (!experimentalMultiTouch) performConfiguredGesture()
                 } else if (longPressTriggered && dragHeld) {
-                    injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
+                    if (useVirtualMouse) {
+                        virtualMouseButton("BTN_LEFT", false, allowVirtualPointer)
+                    }
+                    else injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
                     dragHeld = false
                 } else if (twoFinger && !moved && !scrolling) {
-                    performTwoFingerGesture()
+                    performLaptopHaptic(hapticView, strong = true)
+                    performTwoFingerGesture(allowVirtualPointer)
                 } else if (!twoFinger && !moved && !dragHeld && SystemClock.uptimeMillis() - downTime < 250) {
                     if (useDirectTouch) moveCursorToTouch(event.x, event.y)
-                    leftClick()
+                    performLaptopHaptic(hapticView)
+                    leftClick(allowVirtualPointer)
                 }
                 maxPointers = 0
+                twoFingerTravelX = 0f
+                twoFingerTravelY = 0f
+                twoFinger = false
                 threeFinger = false
                 scrolling = false
             }
@@ -3896,15 +4439,75 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 longPressRunnable?.let { root?.removeCallbacks(it) }
                 if (directTouchHeld) injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
                 directTouchHeld = false
-                if (scrolling) injectTouch(MotionEvent.ACTION_UP, cursorX, scrollY)
-                if (dragHeld) injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
+                if (scrolling && !useVirtualMouse) injectTouch(MotionEvent.ACTION_UP, scrollX, scrollY)
+                if (dragHeld) {
+                    if (useVirtualMouse) {
+                        virtualMouseButton("BTN_LEFT", false, allowVirtualPointer)
+                    }
+                    else injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
+                }
                 dragHeld = false
                 maxPointers = 0
+                twoFingerTravelX = 0f
+                twoFingerTravelY = 0f
+                twoFinger = false
                 threeFinger = false
                 scrolling = false
             }
         }
         return true
+    }
+
+    /**
+     * Use Android's own haptic policy for the laptop deck.  Calling
+     * View.performHapticFeedback keeps this compatible with OEM vibration
+     * settings and avoids injecting a separate vibration permission or a
+     * device-specific amplitude. The predefined heavy click is deliberately
+     * stronger than KEYBOARD_TAP on Samsung and Pixel devices while still
+     * following the system's vibrator policy. The keyboard demo is
+     * interactive, so it uses the same feedback as the live laptop deck.
+     */
+    private fun performLaptopHaptic(view: View?, strong: Boolean = false) {
+        if (!laptopModeActive) return
+        // Only the dedicated laptop surfaces opt into haptics. The upper
+        // mirrored phone surface remains a normal touch target and must not
+        // vibrate merely because the deck is visible.
+        val target = view ?: return
+        val vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            getSystemService(VibratorManager::class.java)?.defaultVibrator
+        } else {
+            @Suppress("DEPRECATION")
+            getSystemService(Vibrator::class.java)
+        }
+        if (vibrator?.hasVibrator() == true) {
+            val effect = runCatching {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    VibrationEffect.createPredefined(VibrationEffect.EFFECT_HEAVY_CLICK)
+                } else {
+                    @Suppress("DEPRECATION")
+                    VibrationEffect.createOneShot(
+                        if (strong) 42L else 30L,
+                        if (strong) 230 else 180
+                    )
+                }
+            }.getOrElse {
+                VibrationEffect.createOneShot(
+                    if (strong) 42L else 30L,
+                    if (strong) 230 else 180
+                )
+            }
+            vibrator.vibrate(effect)
+        } else {
+            // Keep a visual/input-device fallback for devices without a
+            // vibrator, or for environments where the service cannot access
+            // the vibrator manager.
+            val constant = if (strong) {
+                HapticFeedbackConstants.CONTEXT_CLICK
+            } else {
+                HapticFeedbackConstants.KEYBOARD_TAP
+            }
+            target.performHapticFeedback(constant)
+        }
     }
 
     private fun performConfiguredGesture() {
@@ -3985,25 +4588,27 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         return false
     }
 
-    private fun performTwoFingerGesture() {
+    private fun performTwoFingerGesture(allowVirtualPointer: Boolean = false) {
         val action = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.gesture_two_finger", "right_click")
         when (action) {
             "home" -> launchHome()
             "menu" -> toggleMenu()
-            else -> rightClick()
+            else -> rightClick(allowVirtualPointer)
         }
     }
 
-    private fun performLongPressGesture() {
+    private fun performLongPressGesture(allowVirtualPointer: Boolean = false) {
         val action = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.gesture_long_press", "drag")
         when (action) {
-            "right_click" -> rightClick()
+            "right_click" -> rightClick(allowVirtualPointer)
             "menu" -> toggleMenu()
             else -> {
                 dragHeld = true
-                injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
+                if (!virtualMouseButton("BTN_LEFT", true, allowVirtualPointer)) {
+                    injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
+                }
                 cursorView?.pulse()
             }
         }
@@ -4014,16 +4619,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (view.width <= 0 || view.height <= 0) return
         cursorX = x / view.width * targetWidth
         cursorY = y / view.height * targetHeight
-        if (!directTouch) cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        if (!directTouch && !virtualMouseInputActive()) {
+            cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        }
     }
 
     private fun setSavedTouchMode(useTapPosition: Boolean) {
+        // Finish the previous gesture before changing the ownership of the
+        // input stream.  In particular, release a held mouse button before
+        // removing the uinput device so the next app cannot inherit it.
+        cancelDesktopTouchStream()
         directTouch = useTapPosition
         physicalMouseActive = false
         getSharedPreferences(PREFS, MODE_PRIVATE).edit()
             .putBoolean(KEY_DIRECT_TOUCH, useTapPosition)
             .apply()
-        cursorView?.visibility = if (useTapPosition) View.GONE else View.VISIBLE
+        if (useTapPosition) {
+            // Tap mode must not merely ignore virtual mouse events: remove
+            // the device from the system so Android cannot keep pointer focus
+            // on the last mouse-controlled application.
+            stopVirtualMouse()
+            updateVirtualCursorVisibility()
+        } else {
+            startVirtualMouse()
+            updateVirtualCursorVisibility()
+        }
         OperationLog.i(
             this,
             "InputRouting",
@@ -4037,10 +4657,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         surfaceView?.releasePointerCapture()
         setOverlayFocusable(false)
         physicalMouseActive = false
+        if (directTouch) {
+            // A stale virtual pointer can survive a mode change until the
+            // InputReader removal callback arrives. Enforce the tap-mode
+            // boundary when the first phone-surface touch is received as
+            // well, including a device that was attached by the laptop deck.
+            cancelDesktopTouchStream()
+            stopVirtualMouse()
+            updateVirtualCursorVisibility()
+            OperationLog.i(
+                this,
+                "InputRouting",
+                "phone touch surface claimed input; virtual pointer disconnected"
+            )
+        } else {
+            // Reconnect lazily if the device was removed while the session
+            // was in tap mode or during a display/posture transition.
+            startVirtualMouse()
+        }
         // ACTION_DOWN on the phone display hands cursor ownership back to the
         // touchpad immediately, even if the mouse remains connected.
-        cursorView?.visibility = if (directTouch) View.GONE else View.VISIBLE
-        if (!directTouch) cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        updateVirtualCursorVisibility()
+        if (!directTouch && !virtualMouseInputActive()) cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
         OperationLog.i(
             this,
             "InputRouting",
@@ -4054,8 +4692,23 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         surfaceView?.releasePointerCapture()
         setOverlayFocusable(false)
         physicalMouseActive = false
-        cursorView?.visibility = View.VISIBLE
-        cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        // Cursor mode may have been selected while the laptop deck was
+        // already visible. Conversely, tap mode on the phone surface must
+        // not prevent the laptop trackpad from attaching its system pointer.
+        // Connect lazily on the first trackpad touch so a mode change never
+        // races uinput registration.
+        startVirtualMouse()
+        updateVirtualCursorVisibility()
+        OperationLog.i(
+            this,
+            "InputRouting",
+            "laptop trackpad claimed input directTouch=$directTouch " +
+                "pointerProfile=${activeVirtualPointerProfile()} " +
+                "pointerReady=${laptopTrackpadInputActive()}"
+        )
+        if (!directTouch && !virtualMouseInputActive()) {
+            cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        }
     }
 
     private fun activatePhysicalMouse() {
@@ -4081,6 +4734,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun handlePhysicalMouseEvent(event: MotionEvent, view: View): Boolean {
+        if (isVirtualMouseEvent(event)) return true
         if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
         if (event.actionMasked == MotionEvent.ACTION_MOVE ||
             event.actionMasked == MotionEvent.ACTION_HOVER_MOVE) activatePhysicalMouse()
@@ -4088,6 +4742,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun handleCapturedMouseEvent(event: MotionEvent): Boolean {
+        if (isVirtualMouseEvent(event)) return true
         if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
         val dx = event.getAxisValue(MotionEvent.AXIS_RELATIVE_X)
         val dy = event.getAxisValue(MotionEvent.AXIS_RELATIVE_Y)
@@ -4160,7 +4815,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val connected = hasPhysicalMouse()
             if (!connected && physicalMouseActive) {
                 physicalMouseActive = false
-                cursorView?.visibility = if (directTouch) View.GONE else View.VISIBLE
+                updateVirtualCursorVisibility()
             }
         }
     }
@@ -4187,8 +4842,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun hasPhysicalMouse(): Boolean = InputDevice.getDeviceIds().any { id ->
         InputDevice.getDevice(id)?.let { device ->
-            device.sources and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE
+            device.name != VIRTUAL_MOUSE_NAME && device.name != VIRTUAL_TOUCHPAD_NAME &&
+                device.sources and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE
         } == true
+    }
+
+    private fun isVirtualMouseEvent(event: MotionEvent): Boolean {
+        if (event.deviceId < 0) return false
+        return when (InputDevice.getDevice(event.deviceId)?.name) {
+            VIRTUAL_MOUSE_NAME, VIRTUAL_TOUCHPAD_NAME -> true
+            else -> false
+        }
     }
 
     private fun updateKeepAwake(enabled: Boolean) {
@@ -4323,11 +4987,23 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
-    private fun moveCursor(dx: Float, dy: Float) {
-        cursorX = (cursorX + dx).coerceIn(0f, targetWidth - 1f)
-        cursorY = (cursorY + dy).coerceIn(0f, targetHeight - 1f)
-        cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
-        if (dragHeld) injectTouch(MotionEvent.ACTION_MOVE, cursorX, cursorY)
+    private fun moveCursor(
+        dx: Float,
+        dy: Float,
+        allowVirtualPointer: Boolean = false
+    ) {
+        val useVirtualPointer = virtualPointerInputActive(allowVirtualPointer)
+        val scale = if (useVirtualPointer) virtualMouseMotionScale(dx, dy) else 1f
+        val effectiveDx = dx * scale
+        val effectiveDy = dy * scale
+        cursorX = (cursorX + effectiveDx).coerceIn(0f, targetWidth - 1f)
+        cursorY = (cursorY + effectiveDy).coerceIn(0f, targetHeight - 1f)
+        if (useVirtualPointer) {
+            virtualMouseMove(effectiveDx, effectiveDy, allowVirtualPointer)
+        } else {
+            cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+            if (dragHeld) injectTouch(MotionEvent.ACTION_MOVE, cursorX, cursorY)
+        }
     }
 
     /** Tracks the injection position without involving Dextop's touch cursor. */
@@ -4336,15 +5012,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         cursorY = (cursorY + dy).coerceIn(0f, targetHeight - 1f)
     }
 
-    private fun leftClick() {
+    private fun leftClick(allowVirtualPointer: Boolean = false) {
         if (dragHeld) return
-        injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
-        injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
-        if (!directTouch) cursorView?.pulse()
+        if (virtualPointerInputActive(allowVirtualPointer)) {
+            virtualMouseButton("BTN_LEFT", true, allowVirtualPointer)
+            virtualMouseButton("BTN_LEFT", false, allowVirtualPointer)
+        } else {
+            injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
+            injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY)
+            if (!directTouch) cursorView?.pulse()
+        }
     }
 
-    private fun rightClick() {
+    private fun rightClick(allowVirtualPointer: Boolean = false) {
         if (dragHeld || targetDisplayId < 0) return
+        if (virtualPointerInputActive(allowVirtualPointer)) {
+            virtualMouseButton("BTN_RIGHT", true, allowVirtualPointer)
+            virtualMouseButton("BTN_RIGHT", false, allowVirtualPointer)
+            return
+        }
         runCatching {
             val properties = MotionEvent.PointerProperties().apply {
                 id = 0
@@ -4381,13 +5067,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun longPress() {
         if (dragHeld) return
-        injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
-        root?.postDelayed({ injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY) }, 600)
+        if (virtualMouseInputActive()) {
+            virtualMouseButton("BTN_LEFT", true)
+            root?.postDelayed({ virtualMouseButton("BTN_LEFT", false) }, 600)
+        } else {
+            injectTouch(MotionEvent.ACTION_DOWN, cursorX, cursorY)
+            root?.postDelayed({ injectTouch(MotionEvent.ACTION_UP, cursorX, cursorY) }, 600)
+        }
     }
 
     private fun toggleDrag() {
         dragHeld = !dragHeld
-        injectTouch(if (dragHeld) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_UP, cursorX, cursorY)
+        if (virtualMouseInputActive()) {
+            virtualMouseButton("BTN_LEFT", dragHeld)
+        } else {
+            injectTouch(if (dragHeld) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_UP, cursorX, cursorY)
+        }
     }
 
     private fun changeOrientation() {
@@ -4673,15 +5368,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         longPressRunnable = null
 
         if (injectedDirectTouchActive) cancelInjectedDirectTouch()
-        if (targetDisplayId >= 0 && (directTouchHeld || scrolling || dragHeld)) {
+        if (targetDisplayId >= 0 && (directTouchHeld || scrolling || dragHeld) &&
+            !virtualMouseInputActive()) {
             injectTouch(MotionEvent.ACTION_CANCEL, cursorX, cursorY)
         }
+        if (virtualMouseInputActive() && dragHeld) virtualMouseButton("BTN_LEFT", false)
         injectedDirectTouchActive = false
         directTouchHeld = false
         scrolling = false
         dragHeld = false
         moved = false
         twoFinger = false
+        twoFingerTravelX = 0f
+        twoFingerTravelY = 0f
         threeFinger = false
         maxPointers = 0
         longPressTriggered = false
@@ -4873,6 +5572,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "externalConnected=${externalDisplays.connected} externalIds=${externalDisplays.displayIds} routedInputs=$routedInputCount"
             )
             OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("mirror_attached", width, height))
+            startVirtualMouse()
             if (physicalExternalDisplayConnected && routePhysicalMouseToDextop) startRawMouseReader() else stopRawMouseReader()
             root?.postDelayed({
                 refreshActualRoutingState(display)
@@ -5860,6 +6560,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun detachHostWindow() {
         stopLaptopHardwareKeyboard()
+        stopVirtualMouse()
         // Prevent surfaceDestroyed() from releasing the mirrored display before
         // WindowManager has removed this host and its gesture registrations.
         surfaceView?.holder?.removeCallback(this)

@@ -173,6 +173,9 @@ abstract final class AppStrings {
       "displayAutoHideTaskbarSummary": "未使用時にデスクトップのタスクバーを自動的に隠します",
       "displayForceInternal120Hz": "内蔵ディスプレイを120Hzで動作",
       "displayForceInternal120HzSummary": "Dextop実行中は対応する内蔵画面を120Hzに固定します",
+      "displaySoftwareCursorFallback": "ソフトウェアカーソルに戻す",
+      "displaySoftwareCursorFallbackSummary":
+          "有効にすると従来のソフトウェアカーソルを使用します",
       "uiConvenience": "便利機能",
       "uiDisplayCategory": "ディスプレイ",
       "foldableLaptopMode": "ラップトップモードを自動で検知",
@@ -594,6 +597,9 @@ abstract final class AppStrings {
       "displayForceInternal120Hz": "Run built-in display at 120 Hz",
       "displayForceInternal120HzSummary":
           "Pin a supported built-in screen to 120 Hz while Dextop is running",
+      "displaySoftwareCursorFallback": "Use software cursor",
+      "displaySoftwareCursorFallbackSummary":
+          "Use the previous software cursor when enabled",
       "uiConvenience": "Convenience",
       "uiDisplayCategory": "Display",
       "foldableLaptopMode": "Automatically detect laptop mode",
@@ -1012,6 +1018,9 @@ abstract final class AppStrings {
       "displayAutoHideTaskbarSummary": "不使用时自动隐藏桌面任务栏",
       "displayForceInternal120Hz": "内置屏幕以 120 Hz 运行",
       "displayForceInternal120HzSummary": "Dextop 运行时将支持的内置屏幕固定为 120 Hz",
+      "displaySoftwareCursorFallback": "使用软件光标",
+      "displaySoftwareCursorFallbackSummary":
+          "启用时使用原有的软件光标",
       "uiConvenience": "便捷功能",
       "uiDisplayCategory": "显示器",
       "foldableLaptopMode": "自动检测笔记本模式",
@@ -1419,6 +1428,9 @@ abstract final class AppStrings {
       "displayForceInternal120Hz": "내장 디스플레이를 120Hz로 실행",
       "displayForceInternal120HzSummary":
           "Dextop 실행 중 지원되는 내장 화면을 120Hz로 고정합니다",
+      "displaySoftwareCursorFallback": "소프트웨어 커서 사용",
+      "displaySoftwareCursorFallbackSummary":
+          "켜면 기존 소프트웨어 커서를 사용합니다",
       "uiConvenience": "편의 기능",
       "uiDisplayCategory": "디스플레이",
       "foldableLaptopMode": "노트북 모드 자동 감지",
@@ -1845,6 +1857,9 @@ abstract final class AppStrings {
       "displayForceInternal120Hz": "Частота встроенного экрана 120 Гц",
       "displayForceInternal120HzSummary":
           "Фиксирует частоту поддерживаемого встроенного экрана на 120 Гц во время работы Dextop",
+      "displaySoftwareCursorFallback": "Использовать программный курсор",
+      "displaySoftwareCursorFallbackSummary":
+          "При включении используется прежний программный курсор",
       "uiConvenience": "Удобные функции",
       "uiDisplayCategory": "Дисплей",
       "foldableLaptopMode": "Автоопределение режима ноутбука",
