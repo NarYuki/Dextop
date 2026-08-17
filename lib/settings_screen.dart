@@ -28,6 +28,13 @@ extension _SettingsContent on _HomeScreenState {
                 ),
                 Divider(height: 1),
                 _categoryTile(
+                  Icons.mouse_outlined,
+                  l.mouseSettingsTitle,
+                  l.mouseSettingsDescription,
+                  () => _openMouseSettings(l),
+                ),
+                Divider(height: 1),
+                _categoryTile(
                   Icons.keyboard_alt_outlined,
                   l.keyboardThemesTitle,
                   l.keyboardThemesDescription,
@@ -117,6 +124,12 @@ extension _SettingsContent on _HomeScreenState {
         Icons.display_settings_outlined,
         l.display,
         AppStrings.tr('uiSecureDisplayFoldable'),
+      ),
+      (
+        'mouse',
+        Icons.mouse_outlined,
+        l.mouseSettingsTitle,
+        l.mouseSettingsDescription,
       ),
       (
         'keyboard',
@@ -343,6 +356,7 @@ extension _SettingsContent on _HomeScreenState {
           ],
         ),
         'keyboard' => const KeyboardThemesPage(),
+        'mouse' => MouseSettingsPage(bridge: bridge, isRunning: active),
         'interaction' => ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -444,6 +458,15 @@ extension _SettingsContent on _HomeScreenState {
             body: _displaySettingsContent(l, updateRoute),
           ),
         ),
+      ),
+    );
+  }
+
+  void _openMouseSettings(AppLocalizations l) {
+    AppAnalytics.screen('mouse_settings');
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => MouseSettingsPage(bridge: bridge, isRunning: active),
       ),
     );
   }
@@ -807,4 +830,224 @@ extension _SettingsContent on _HomeScreenState {
       ),
     );
   }
+}
+
+class MouseSettingsPage extends StatefulWidget {
+  const MouseSettingsPage({
+    required this.bridge,
+    required this.isRunning,
+    super.key,
+  });
+
+  final NativeBridge bridge;
+  final bool isRunning;
+
+  @override
+  State<MouseSettingsPage> createState() => _MouseSettingsPageState();
+}
+
+class _MouseSettingsPageState extends State<MouseSettingsPage> {
+  SharedPreferences? prefs;
+  var loading = true;
+  var pointerProfile = 'touchpad';
+  var dpi = 1000.0;
+  var naturalScroll = true;
+  var acceleration = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final store = await SharedPreferences.getInstance();
+    final display = await widget.bridge.displayEnvironmentSettings().catchError(
+      (_) => <String, dynamic>{},
+    );
+    if (!mounted) return;
+    final savedProfile = store.getString('virtual_pointer_profile');
+    final fallbackProfile = display['softwareCursorFallback'] == true
+        ? 'software'
+        : 'touchpad';
+    setState(() {
+      prefs = store;
+      pointerProfile =
+          const {'touchpad', 'mouse', 'software'}.contains(savedProfile)
+          ? savedProfile!
+          : fallbackProfile;
+      dpi = (store.getInt('virtual_mouse_dpi') ?? 1000).toDouble().clamp(
+        400,
+        2400,
+      );
+      naturalScroll = store.getBool('virtual_mouse_natural_scroll') ?? true;
+      acceleration = store.getBool('virtual_mouse_acceleration') ?? false;
+      loading = false;
+    });
+  }
+
+  Future<void> _setPointerProfile(String value) async {
+    final previous = pointerProfile;
+    setState(() => pointerProfile = value);
+    await prefs?.setString('virtual_pointer_profile', value);
+    try {
+      await widget.bridge.setVirtualPointerProfile(value);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => pointerProfile = previous);
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(error.toString())));
+    }
+  }
+
+  void _setDpi(double value) {
+    final rounded = (value / 100).round() * 100;
+    setState(() => dpi = rounded.toDouble());
+    unawaited(prefs?.setInt('virtual_mouse_dpi', rounded));
+  }
+
+  void _setNaturalScroll(bool value) {
+    setState(() => naturalScroll = value);
+    unawaited(prefs?.setBool('virtual_mouse_natural_scroll', value));
+  }
+
+  void _setAcceleration(bool value) {
+    setState(() => acceleration = value);
+    unawaited(prefs?.setBool('virtual_mouse_acceleration', value));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Scaffold(
+      appBar: AppBar(title: Text(l.mouseSettingsTitle)),
+      body: ListView(
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        children: [
+          _mouseSectionHeader(
+            l.virtualMouseSettingsTitle,
+            l.virtualMouseSettingsDescription,
+          ),
+          Card(
+            child: ListTileTheme(
+              data: const ListTileThemeData(
+                dense: true,
+                minTileHeight: 60,
+                minVerticalPadding: 6,
+                contentPadding: EdgeInsets.symmetric(horizontal: 16),
+              ),
+              child: Column(
+                children: [
+                  _mouseChoiceTile<String>(
+                    leading: const Icon(Icons.mouse_outlined),
+                    title: l.virtualPointerProfile,
+                    subtitle: switch (pointerProfile) {
+                      'touchpad' => l.virtualTouchpadDescription,
+                      'mouse' => l.virtualPointerMouseDescription,
+                      _ => l.virtualPointerSoftwareDescription,
+                    },
+                    value: pointerProfile,
+                    options: {
+                      'touchpad': l.virtualTouchpad,
+                      'mouse': l.virtualPointerMouse,
+                      'software': l.virtualPointerSoftware,
+                    },
+                    onChanged: _setPointerProfile,
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.speed_rounded),
+                    title: Text(l.virtualMouseDpi),
+                    subtitle: Text(
+                      '${dpi.round()} DPI · ${l.virtualMouseDpiDescription}',
+                    ),
+                  ),
+                  Slider(
+                    value: dpi,
+                    min: 400,
+                    max: 2400,
+                    divisions: 20,
+                    label: '${dpi.round()} DPI',
+                    onChanged: loading ? null : _setDpi,
+                  ),
+                  const Divider(height: 1),
+                  _mouseChoiceTile<bool>(
+                    leading: const Icon(Icons.swap_vert_rounded),
+                    title: l.virtualMouseScrollDirection,
+                    subtitle: naturalScroll
+                        ? l.virtualMouseNaturalScroll
+                        : l.virtualMouseStandardScroll,
+                    value: naturalScroll,
+                    options: {
+                      true: l.virtualMouseNaturalScroll,
+                      false: l.virtualMouseStandardScroll,
+                    },
+                    onChanged: _setNaturalScroll,
+                  ),
+                  const Divider(height: 1),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.trending_up_rounded),
+                    title: Text(l.virtualMouseAcceleration),
+                    subtitle: Text(l.virtualMouseAccelerationDescription),
+                    value: acceleration,
+                    onChanged: loading ? null : _setAcceleration,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _mouseSectionHeader(String title, String subtitle) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 2),
+        Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
+    ),
+  );
+
+  Widget _mouseChoiceTile<T>({
+    required Widget leading,
+    required String title,
+    required String subtitle,
+    required T value,
+    required Map<T, String> options,
+    required ValueChanged<T> onChanged,
+  }) => ListTile(
+    leading: leading,
+    title: Text(title),
+    subtitle: Text(subtitle),
+    trailing: DropdownButtonHideUnderline(
+      child: DropdownButton<T>(
+        value: options.containsKey(value) ? value : options.keys.first,
+        borderRadius: BorderRadius.circular(16),
+        items: options.entries
+            .map(
+              (entry) => DropdownMenuItem<T>(
+                value: entry.key,
+                child: Text(entry.value),
+              ),
+            )
+            .toList(),
+        onChanged: loading
+            ? null
+            : (selected) {
+                if (selected != null) onChanged(selected);
+              },
+      ),
+    ),
+  );
 }

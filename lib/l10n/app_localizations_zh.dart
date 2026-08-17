@@ -500,6 +500,66 @@ class AppLocalizationsZh extends AppLocalizations {
   String get displayForceInternal120HzSummary => 'Dextop 运行时将支持的内置屏幕固定为 120 Hz';
 
   @override
+  String get displaySoftwareCursorFallback => '使用软件光标';
+
+  @override
+  String get displaySoftwareCursorFallbackSummary => '启用时使用原有的软件光标';
+
+  @override
+  String get mouseSettingsTitle => '鼠标';
+
+  @override
+  String get mouseSettingsDescription => '配置虚拟鼠标输入和光标行为';
+
+  @override
+  String get virtualMouseSettingsTitle => '虚拟鼠标';
+
+  @override
+  String get virtualMouseSettingsDescription => '将触摸输入作为系统鼠标输入使用';
+
+  @override
+  String get virtualPointerProfile => '输入设备';
+
+  @override
+  String get virtualTouchpad => '触控板';
+
+  @override
+  String get virtualTouchpadDescription => '注册为虚拟触控板';
+
+  @override
+  String get virtualPointerMouse => '虚拟鼠标';
+
+  @override
+  String get virtualPointerMouseDescription => '注册为相对鼠标设备';
+
+  @override
+  String get virtualPointerSoftware => '软件光标';
+
+  @override
+  String get virtualPointerSoftwareDescription => '使用 Dextop 原有的软件光标';
+
+  @override
+  String get virtualMouseDpi => 'DPI';
+
+  @override
+  String get virtualMouseDpiDescription => '光标移动灵敏度';
+
+  @override
+  String get virtualMouseScrollDirection => '滚动方向';
+
+  @override
+  String get virtualMouseNaturalScroll => '自然（Mac）';
+
+  @override
+  String get virtualMouseStandardScroll => '标准（Windows）';
+
+  @override
+  String get virtualMouseAcceleration => '光标加速度';
+
+  @override
+  String get virtualMouseAccelerationDescription => '根据移动速度改变光标速度';
+
+  @override
   String get uiConvenience => '便捷功能';
 
   @override

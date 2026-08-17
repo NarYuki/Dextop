@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.8 — Stronger laptop keyboard and trackpad feedback
+
+### Improved
+
+- Strengthened haptic feedback for laptop-mode keyboard keys, modifiers, FN/Meta/Menu actions, and trackpad taps, clicks, and long presses.
+- Added a heavy-click vibration effect with an amplitude-controlled fallback for devices that do not expose the predefined effect.
+- Added the virtual touchpad input profile and compact pointer/scroll settings, with localized labels and a software-cursor fallback.
+- Improved virtual pointer lifecycle so switching between cursor and tap input does not leave stale devices or duplicate pointer events.
+
 ## 1.3.7 — Fixed “The desktop HOME activity could not be launched” startup failure
 
 ### Fixed

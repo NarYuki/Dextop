@@ -525,6 +525,74 @@ class AppLocalizationsRu extends AppLocalizations {
       'Фиксирует частоту поддерживаемого встроенного экрана на 120 Гц во время работы Dextop';
 
   @override
+  String get displaySoftwareCursorFallback => 'Использовать программный курсор';
+
+  @override
+  String get displaySoftwareCursorFallbackSummary =>
+      'При включении используется прежний программный курсор';
+
+  @override
+  String get mouseSettingsTitle => 'Мышь';
+
+  @override
+  String get mouseSettingsDescription =>
+      'Настройка виртуального ввода и курсора';
+
+  @override
+  String get virtualMouseSettingsTitle => 'Виртуальная мышь';
+
+  @override
+  String get virtualMouseSettingsDescription =>
+      'Использовать сенсорный ввод как системный ввод мыши';
+
+  @override
+  String get virtualPointerProfile => 'Устройство ввода';
+
+  @override
+  String get virtualTouchpad => 'Сенсорная панель';
+
+  @override
+  String get virtualTouchpadDescription =>
+      'Зарегистрировать как виртуальную сенсорную панель';
+
+  @override
+  String get virtualPointerMouse => 'Виртуальная мышь';
+
+  @override
+  String get virtualPointerMouseDescription =>
+      'Зарегистрировать как относительную мышь';
+
+  @override
+  String get virtualPointerSoftware => 'Программный курсор';
+
+  @override
+  String get virtualPointerSoftwareDescription =>
+      'Использовать исходный курсор Dextop';
+
+  @override
+  String get virtualMouseDpi => 'DPI';
+
+  @override
+  String get virtualMouseDpiDescription =>
+      'Чувствительность перемещения курсора';
+
+  @override
+  String get virtualMouseScrollDirection => 'Направление прокрутки';
+
+  @override
+  String get virtualMouseNaturalScroll => 'Естественное (Mac)';
+
+  @override
+  String get virtualMouseStandardScroll => 'Стандартное (Windows)';
+
+  @override
+  String get virtualMouseAcceleration => 'Ускорение курсора';
+
+  @override
+  String get virtualMouseAccelerationDescription =>
+      'Изменять скорость курсора в зависимости от скорости движения';
+
+  @override
   String get uiConvenience => 'Удобные функции';
 
   @override

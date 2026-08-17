@@ -509,6 +509,66 @@ class AppLocalizationsKo extends AppLocalizations {
       'Dextop 실행 중 지원되는 내장 화면을 120Hz로 고정합니다';
 
   @override
+  String get displaySoftwareCursorFallback => '소프트웨어 커서 사용';
+
+  @override
+  String get displaySoftwareCursorFallbackSummary => '켜면 기존 소프트웨어 커서를 사용합니다';
+
+  @override
+  String get mouseSettingsTitle => '마우스';
+
+  @override
+  String get mouseSettingsDescription => '가상 마우스 입력 및 커서 동작 설정';
+
+  @override
+  String get virtualMouseSettingsTitle => '가상 마우스';
+
+  @override
+  String get virtualMouseSettingsDescription => '터치 입력을 시스템 마우스 입력으로 사용합니다';
+
+  @override
+  String get virtualPointerProfile => '입력 장치';
+
+  @override
+  String get virtualTouchpad => '터치패드';
+
+  @override
+  String get virtualTouchpadDescription => '가상 터치패드로 등록합니다';
+
+  @override
+  String get virtualPointerMouse => '가상 마우스';
+
+  @override
+  String get virtualPointerMouseDescription => '상대 마우스 장치로 등록합니다';
+
+  @override
+  String get virtualPointerSoftware => '소프트웨어 커서';
+
+  @override
+  String get virtualPointerSoftwareDescription => 'Dextop의 기존 소프트웨어 커서를 사용합니다';
+
+  @override
+  String get virtualMouseDpi => 'DPI';
+
+  @override
+  String get virtualMouseDpiDescription => '커서 이동 감도';
+
+  @override
+  String get virtualMouseScrollDirection => '스크롤 방향';
+
+  @override
+  String get virtualMouseNaturalScroll => '자연스러운 방향(Mac)';
+
+  @override
+  String get virtualMouseStandardScroll => '표준 방향(Windows)';
+
+  @override
+  String get virtualMouseAcceleration => '커서 가속';
+
+  @override
+  String get virtualMouseAccelerationDescription => '이동 속도에 따라 커서 속도를 변경합니다';
+
+  @override
   String get uiConvenience => '편의 기능';
 
   @override

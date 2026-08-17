@@ -290,6 +290,20 @@ open class MainActivity : FlutterActivity() {
                         }
                     }
                 }.start()
+                "setVirtualPointerProfile" -> runCatching {
+                    val profile = call.argument<String>("profile")
+                        ?: error("A virtual pointer profile is required")
+                    val normalized = profile.lowercase().let {
+                        when (it) {
+                            "touchpad", "mouse", "software" -> it
+                            else -> error("Unknown virtual pointer profile: $profile")
+                        }
+                    }
+                    MirrorService.setVirtualPointerProfile(normalized)
+                    mapOf("virtualPointerProfile" to normalized)
+                }.onSuccess(result::success).onFailure {
+                    result.error("VIRTUAL_POINTER_PROFILE_WRITE", it.message, null)
+                }
                 "setDisplayTopology" -> Thread {
                     runCatching {
                         val positions = call.argument<Map<*, *>>("positions")

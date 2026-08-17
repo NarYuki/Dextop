@@ -22,7 +22,12 @@ class DisplayEnvironmentSettings(private val context: Context) {
                 0
             ),
             "supportsInternal120Hz" to supportsInternal120Hz(),
-            "forceInternal120Hz" to preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false)
+            "forceInternal120Hz" to preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false),
+            "softwareCursorFallback" to preferences.getBoolean(KEY_SOFTWARE_CURSOR_FALLBACK, false),
+            // Shizuku/Stellar is the capability gate for the platform uinput
+            // command. Runtime registration may still fail on a vendor build;
+            // MirrorService then falls back to its software cursor.
+            "virtualMouseAvailable" to privilegedAccess.isAvailable()
         )
     }
 
@@ -43,6 +48,12 @@ class DisplayEnvironmentSettings(private val context: Context) {
         if (id == "forceInternal120Hz") {
             preferences.edit().putBoolean(KEY_FORCE_INTERNAL_120_HZ, enabled).apply()
             OperationLog.i(context, "DisplayEnvironmentSettings", "$KEY_FORCE_INTERNAL_120_HZ=$enabled")
+            return read()
+        }
+        if (id == "softwareCursorFallback") {
+            preferences.edit().putBoolean(KEY_SOFTWARE_CURSOR_FALLBACK, enabled).apply()
+            MirrorService.setSoftwareCursorFallbackEnabled(enabled)
+            OperationLog.i(context, "DisplayEnvironmentSettings", "$KEY_SOFTWARE_CURSOR_FALLBACK=$enabled")
             return read()
         }
         val target = when (id) {
@@ -119,6 +130,7 @@ class DisplayEnvironmentSettings(private val context: Context) {
         private const val ANDROID_TASKBAR_FORCE_HIDE_KEY =
             "desktop_windowing_force_hide_taskbar"
         private const val KEY_FORCE_INTERNAL_120_HZ = "force_internal_120_hz"
+        private const val KEY_SOFTWARE_CURSOR_FALLBACK = "software_cursor_fallback"
         private const val KEY_DEXTOP_TOPOLOGY = "include_dextop_topology"
         private const val KEY_LEGACY_TOPOLOGY_MIGRATED = "legacy_topology_migrated"
     }

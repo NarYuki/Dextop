@@ -506,6 +506,67 @@ class AppLocalizationsJa extends AppLocalizations {
       'Dextop実行中は対応する内蔵画面を120Hzに固定します';
 
   @override
+  String get displaySoftwareCursorFallback => 'ソフトウェアカーソルに戻す';
+
+  @override
+  String get displaySoftwareCursorFallbackSummary =>
+      '有効にすると従来のソフトウェアカーソルを使用します';
+
+  @override
+  String get mouseSettingsTitle => 'マウス';
+
+  @override
+  String get mouseSettingsDescription => '仮想マウスの入力とカーソルを設定';
+
+  @override
+  String get virtualMouseSettingsTitle => '仮想マウス';
+
+  @override
+  String get virtualMouseSettingsDescription => 'タッチ操作をシステムのマウス入力として扱います';
+
+  @override
+  String get virtualPointerProfile => '入力デバイス';
+
+  @override
+  String get virtualTouchpad => 'タッチパッド';
+
+  @override
+  String get virtualTouchpadDescription => '仮想タッチパッドとして登録します';
+
+  @override
+  String get virtualPointerMouse => '仮想マウス';
+
+  @override
+  String get virtualPointerMouseDescription => '相対マウスデバイスとして登録します';
+
+  @override
+  String get virtualPointerSoftware => 'ソフトウェアカーソル';
+
+  @override
+  String get virtualPointerSoftwareDescription => 'Dextop内の従来のカーソルを使用します';
+
+  @override
+  String get virtualMouseDpi => 'DPI';
+
+  @override
+  String get virtualMouseDpiDescription => 'カーソル移動の感度';
+
+  @override
+  String get virtualMouseScrollDirection => 'スクロール方向';
+
+  @override
+  String get virtualMouseNaturalScroll => 'ナチュラル（Mac）';
+
+  @override
+  String get virtualMouseStandardScroll => '標準（Windows）';
+
+  @override
+  String get virtualMouseAcceleration => 'カーソル加速度';
+
+  @override
+  String get virtualMouseAccelerationDescription => '移動速度に応じてカーソル速度を変化させます';
+
+  @override
   String get uiConvenience => '便利機能';
 
   @override
