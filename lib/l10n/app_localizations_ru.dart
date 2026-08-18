@@ -539,13 +539,6 @@ class AppLocalizationsRu extends AppLocalizations {
       'Настройка виртуального ввода и курсора';
 
   @override
-  String get virtualMouseSettingsTitle => 'Виртуальная мышь';
-
-  @override
-  String get virtualMouseSettingsDescription =>
-      'Использовать сенсорный ввод как системный ввод мыши';
-
-  @override
   String get virtualPointerProfile => 'Устройство ввода';
 
   @override
@@ -570,13 +563,6 @@ class AppLocalizationsRu extends AppLocalizations {
       'Использовать исходный курсор Dextop';
 
   @override
-  String get virtualMouseDpi => 'DPI';
-
-  @override
-  String get virtualMouseDpiDescription =>
-      'Чувствительность перемещения курсора';
-
-  @override
   String get virtualMouseScrollDirection => 'Направление прокрутки';
 
   @override
@@ -584,13 +570,6 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get virtualMouseStandardScroll => 'Стандартное (Windows)';
-
-  @override
-  String get virtualMouseAcceleration => 'Ускорение курсора';
-
-  @override
-  String get virtualMouseAccelerationDescription =>
-      'Изменять скорость курсора в зависимости от скорости движения';
 
   @override
   String get uiConvenience => 'Удобные функции';
