@@ -89,6 +89,23 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       'blur': 8.0,
       'radius': 16.0,
     },
+    {
+      'id': 'amoled',
+      'name': 'AMOLED',
+      'background': '#000000',
+      'key': '#0B0B0D',
+      'keyVariant': '#151519',
+      'border': '#2A2A30',
+      'text': '#F5F5F7',
+      'trackpad': '#030304',
+      'trackpadText': '#8F8F98',
+      'selected': '#3A3A43',
+      'opacity': 1.0,
+      'keyOpacity': 1.0,
+      'showTrackpadLabel': true,
+      'blur': 0.0,
+      'radius': 7.0,
+    },
   ];
 
   @override

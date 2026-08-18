@@ -2761,6 +2761,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun laptopPaletteFor(id: String): LaptopPalette {
         val crimson = id == "crimson"
         val cloud = id == "cloud"
+        val amoled = id == "amoled"
         val fallback = if (crimson) LaptopPalette(
             Color.rgb(89, 14, 14), Color.rgb(110, 27, 27), Color.rgb(81, 10, 11),
             Color.rgb(126, 32, 27), Color.rgb(255, 190, 151), Color.rgb(90, 15, 16),
@@ -2769,6 +2770,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Color.rgb(220, 235, 255), Color.WHITE, Color.rgb(247, 251, 255),
             Color.rgb(183, 212, 245), Color.rgb(66, 100, 134), Color.rgb(199, 221, 245),
             Color.rgb(82, 120, 159), Color.rgb(190, 218, 248), 16f, opacity = .94f
+        ) else if (amoled) LaptopPalette(
+            Color.BLACK, Color.rgb(11, 11, 13), Color.rgb(21, 21, 25),
+            Color.rgb(42, 42, 48), Color.rgb(245, 245, 247), Color.rgb(3, 3, 4),
+            Color.rgb(143, 143, 152), Color.rgb(58, 58, 67), 7f
         ) else LaptopPalette(
             Color.rgb(18, 18, 22), Color.rgb(48, 46, 54), Color.rgb(48, 46, 54),
             Color.rgb(76, 72, 84), Color.rgb(235, 231, 239), Color.rgb(35, 34, 40),
@@ -2781,7 +2786,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // safe per-theme override, however, and is intentionally read back so
         // the editor's unified-opacity and key-opacity sliders also work for
         // built-ins.
-        if (id == "standard" || id == "crimson" || id == "cloud") {
+        if (id == "standard" || id == "crimson" || id == "cloud" || id == "amoled") {
             return runCatching {
                 val json = JSONObject(raw)
                 fallback.copy(
@@ -2820,11 +2825,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopSettingsVisible = true
         TransitionManager.beginDelayedTransition(deck, AutoTransition().apply { duration = 240 })
         deck.removeAllViews()
-        val crimson = laptopKeyboardTheme() == "crimson"
+        val currentTheme = laptopKeyboardTheme()
+        val crimson = currentTheme == "crimson"
+        val amoled = currentTheme == "amoled"
         deck.background = if (crimson) GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(Color.rgb(25, 2, 4), Color.rgb(57, 7, 8), Color.rgb(34, 3, 5))
-        ) else GradientDrawable().apply { setColor(Color.rgb(18, 18, 22)) }
+        ) else GradientDrawable().apply {
+            setColor(if (amoled) Color.BLACK else Color.rgb(18, 18, 22))
+        }
         val header = LinearLayout(this).apply {
             gravity = Gravity.CENTER_VERTICAL
             orientation = LinearLayout.HORIZONTAL
@@ -2891,7 +2900,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val choices = mutableListOf(
             "standard" to NativeStrings.text("nativeKeyboardThemeStandard"),
             "crimson" to NativeStrings.text("nativeKeyboardThemeCrimson"),
-            "cloud" to NativeStrings.text("nativeKeyboardThemeCloud")
+            "cloud" to NativeStrings.text("nativeKeyboardThemeCloud"),
+            "amoled" to NativeStrings.text("nativeKeyboardThemeAmoled")
         )
         val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.dextop_laptop_keyboard_themes", null)
@@ -2969,6 +2979,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 text = when (id) {
                     "crimson" -> NativeStrings.text("nativeKeyboardThemeCrimsonDescription")
                     "cloud" -> NativeStrings.text("nativeKeyboardThemeCloudDescription")
+                    "amoled" -> NativeStrings.text("nativeKeyboardThemeAmoledDescription")
                     "standard" -> NativeStrings.text("nativeKeyboardThemeStandardDescription")
                     else -> NativeStrings.text("nativeKeyboardThemeCustomDescription")
                 }
@@ -3722,6 +3733,33 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         root?.let { windowManager?.updateViewLayout(it, params) }
     }
 
+    /**
+     * OverlayDisplayAdapter treats the global display specification as a
+     * request, so a stale vendor callback can leave the last overlay alive
+     * after the first clear.  Always issue the empty/None request twice at
+     * teardown, even when the setting is already empty.  Each pass is
+     * independent so a transient failure cannot skip the second write.
+     */
+    private fun clearOverlayDisplayRequestTwice(reason: String) {
+        repeat(2) { pass ->
+            runCatching { displayBackend.clearRequest() }
+                .onSuccess {
+                    OperationLog.i(
+                        this,
+                        "DisplayBackend",
+                        "clear request issued reason=$reason pass=${pass + 1}/2"
+                    )
+                }
+                .onFailure {
+                    Log.e(
+                        logTag,
+                        "unable to clear overlay display request reason=$reason pass=${pass + 1}/2",
+                        it
+                    )
+                }
+        }
+    }
+
     private fun temporarilyReturnToAndroid() {
         val pausedWorkspace = captureCurrentWorkspace()
         pausedForAndroid = true
@@ -3752,7 +3790,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
                 .onFailure { Log.e(logTag, "topology restoration failed", it) }
             releaseMirror()
-            runCatching { displayBackend.clearRequest() }
+            clearOverlayDisplayRequestTwice("temporary_android_return")
             targetDisplayId = -1
             desktopModeConfigurator.restore()
             runCatching { internalRefreshRateController.restore() }
@@ -6419,15 +6457,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Settings.Global is only a request to OverlayDisplayAdapter.  Do not
         // restore the phone/DeX environment or mark the session finished until
         // the display manager has observed the requested display disappear.
-        runCatching { displayBackend.clearRequest() }
-            .onSuccess {
-                OperationLog.i(
-                    this,
-                    "DisplayBackend",
-                    "clear request issued display=$displayBeingRemoved"
-                )
-            }
-            .onFailure { Log.e(logTag, "unable to clear overlay display request", it) }
+        clearOverlayDisplayRequestTwice("session_stop display=$displayBeingRemoved")
         awaitStoppedDisplay(
             displayBeingRemoved,
             wasActive,
