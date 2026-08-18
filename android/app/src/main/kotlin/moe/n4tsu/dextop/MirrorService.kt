@@ -644,18 +644,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun virtualMouseProcessAlive(): Boolean =
         runCatching { virtualMouseProcess?.alive() == true }.getOrDefault(false)
 
-    private fun virtualMouseDpiScale(): Float =
-        (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getInt("flutter.virtual_mouse_dpi", 1000)
-            .coerceIn(400, 2400) / 1000f)
-
     private fun virtualMouseNaturalScroll(): Boolean =
         getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getBoolean("flutter.virtual_mouse_natural_scroll", true)
-
-    private fun virtualMouseAccelerationEnabled(): Boolean =
-        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getBoolean("flutter.virtual_mouse_acceleration", false)
 
     private fun updateVirtualCursorVisibility() {
         val cursor = cursorView ?: return
@@ -668,23 +659,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         } else {
             View.VISIBLE
         }
-    }
-
-    /** Applies the selected DPI and optional Mac-style pointer acceleration. */
-    private fun virtualMouseMotionScale(dx: Float, dy: Float): Float {
-        var scale = virtualMouseDpiScale()
-        if (virtualMouseAccelerationEnabled()) {
-            // Trackpad deltas are reported in physical pixels and can be very
-            // small on high-density panels.  Use the per-event velocity in dp
-            // so the setting remains perceptible on both phones and tablets:
-            // precise movements stay close to 1x, while a fast swipe reaches
-            // roughly 3.5x.  The smoothstep keeps the transition continuous.
-            val speedDp = hypot(dx, dy) / resources.displayMetrics.density.coerceAtLeast(1f)
-            val normalized = ((speedDp - 1.5f) / 10f).coerceIn(0f, 1f)
-            val eased = normalized * normalized * (3f - 2f * normalized)
-            scale *= 1f + eased * 2.5f
-        }
-        return scale
     }
 
     /**
@@ -961,6 +935,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     override fun onServiceConnected() {
         HiddenApiBypass.addHiddenApiExemptions("")
+        // These preferences belonged to the removed DPI/acceleration
+        // controls. Clear them here as well as in Flutter startup because the
+        // accessibility service can be started directly by an overlay.
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+            .remove("flutter.virtual_mouse_dpi")
+            .remove("flutter.virtual_mouse_acceleration")
+            .apply()
         directTouch = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(KEY_DIRECT_TOUCH, false)
         routePhysicalMouseToDextop = getSharedPreferences(PREFS, MODE_PRIVATE)
@@ -4993,9 +4974,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         allowVirtualPointer: Boolean = false
     ) {
         val useVirtualPointer = virtualPointerInputActive(allowVirtualPointer)
-        val scale = if (useVirtualPointer) virtualMouseMotionScale(dx, dy) else 1f
-        val effectiveDx = dx * scale
-        val effectiveDy = dy * scale
+        // Pointer sensitivity is deliberately fixed.  Older releases exposed
+        // DPI and acceleration preferences, but those values could persist in
+        // SharedPreferences and make input unusable.  Always use raw deltas.
+        val effectiveDx = dx
+        val effectiveDy = dy
         cursorX = (cursorX + effectiveDx).coerceIn(0f, targetWidth - 1f)
         cursorY = (cursorY + effectiveDy).coerceIn(0f, targetHeight - 1f)
         if (useVirtualPointer) {
