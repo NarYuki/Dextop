@@ -222,8 +222,27 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
          * that reapply the disable flags while the accessibility window is
          * being removed.
          */
-        fun restorePhoneNavigation() {
+        fun restorePhoneNavigation(context: Context? = null) {
             instance?.setPhoneNavigationDisabled(false)
+            // Samsung SystemUI keeps a separate recovery marker for the
+            // bottom-gesture navigation bar.  Clearing the status-bar disable
+            // mask alone leaves this marker at 0 after an interrupted Dextop
+            // session, so SystemUI can continue treating the gesture bar as
+            // suspended even though the bar is visible again.
+            context?.let { restoreSamsungBottomGestureState(it) }
+        }
+
+        private fun restoreSamsungBottomGestureState(context: Context) {
+            if (!Build.MANUFACTURER.equals("samsung", ignoreCase = true)) return
+            runCatching {
+                Settings.Secure.putInt(
+                    context.contentResolver,
+                    "sem_bottom_gesture_restored",
+                    1
+                )
+            }.onFailure {
+                Log.w("DextopMirror", "unable to restore Samsung bottom gesture marker", it)
+            }
         }
 
         fun isFoldableDevice(): Boolean = instance?.isFoldableDevice() == true
@@ -6399,6 +6418,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 runCatching {
                     privilegedAccess.execute("cmd", "statusbar", "send-disable-flag", "none")
                 }
+                restoreSamsungBottomGestureState(this)
             }
             OperationLog.i(this, "PhoneNavigation", "disabled=$disabled method=${method.name}/${method.parameterTypes.size}")
             Log.i(logTag, "phone navigation disabled=$disabled")
