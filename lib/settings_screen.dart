@@ -850,7 +850,9 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
   SharedPreferences? prefs;
   var loading = true;
   var pointerProfile = 'touchpad';
+  var dpi = 1000.0;
   var naturalScroll = true;
+  var acceleration = false;
 
   @override
   void initState() {
@@ -864,11 +866,6 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
       (_) => <String, dynamic>{},
     );
     if (!mounted) return;
-    // DPI and pointer acceleration are intentionally no longer supported.
-    // Remove values written by older releases so a stale setting cannot
-    // affect input after an upgrade (or leave the native side in a bad state).
-    await store.remove('virtual_mouse_dpi');
-    await store.remove('virtual_mouse_acceleration');
     final savedProfile = store.getString('virtual_pointer_profile');
     final fallbackProfile = display['softwareCursorFallback'] == true
         ? 'software'
@@ -879,7 +876,12 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
           const {'touchpad', 'mouse', 'software'}.contains(savedProfile)
           ? savedProfile!
           : fallbackProfile;
+      dpi = (store.getInt('virtual_mouse_dpi') ?? 1000).toDouble().clamp(
+        400,
+        2400,
+      );
       naturalScroll = store.getBool('virtual_mouse_natural_scroll') ?? true;
+      acceleration = store.getBool('virtual_mouse_acceleration') ?? false;
       loading = false;
     });
   }
@@ -899,9 +901,20 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
     }
   }
 
+  void _setDpi(double value) {
+    final rounded = (value / 100).round() * 100;
+    setState(() => dpi = rounded.toDouble());
+    unawaited(prefs?.setInt('virtual_mouse_dpi', rounded));
+  }
+
   void _setNaturalScroll(bool value) {
     setState(() => naturalScroll = value);
     unawaited(prefs?.setBool('virtual_mouse_natural_scroll', value));
+  }
+
+  void _setAcceleration(bool value) {
+    setState(() => acceleration = value);
+    unawaited(prefs?.setBool('virtual_mouse_acceleration', value));
   }
 
   @override
@@ -912,7 +925,10 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
       body: ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          _mouseSectionHeader(l.mouseSettingsTitle),
+          _mouseSectionHeader(
+            l.virtualMouseSettingsTitle,
+            l.virtualMouseSettingsDescription,
+          ),
           Card(
             child: ListTileTheme(
               data: const ListTileThemeData(
@@ -940,6 +956,22 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
                     onChanged: _setPointerProfile,
                   ),
                   const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.speed_rounded),
+                    title: Text(l.virtualMouseDpi),
+                    subtitle: Text(
+                      '${dpi.round()} DPI · ${l.virtualMouseDpiDescription}',
+                    ),
+                  ),
+                  Slider(
+                    value: dpi,
+                    min: 400,
+                    max: 2400,
+                    divisions: 20,
+                    label: '${dpi.round()} DPI',
+                    onChanged: loading ? null : _setDpi,
+                  ),
+                  const Divider(height: 1),
                   _mouseChoiceTile<bool>(
                     leading: const Icon(Icons.swap_vert_rounded),
                     title: l.virtualMouseScrollDirection,
@@ -953,6 +985,14 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
                     },
                     onChanged: _setNaturalScroll,
                   ),
+                  const Divider(height: 1),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.trending_up_rounded),
+                    title: Text(l.virtualMouseAcceleration),
+                    subtitle: Text(l.virtualMouseAccelerationDescription),
+                    value: acceleration,
+                    onChanged: loading ? null : _setAcceleration,
+                  ),
                 ],
               ),
             ),
@@ -962,14 +1002,20 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
     );
   }
 
-  Widget _mouseSectionHeader(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
-    child: Text(
-      title,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-        fontWeight: FontWeight.w600,
-      ),
+  Widget _mouseSectionHeader(String title, String subtitle) => Padding(
+    padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: Theme.of(context).textTheme.titleLarge),
+        const SizedBox(height: 2),
+        Text(
+          subtitle,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ],
     ),
   );
 

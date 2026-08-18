@@ -521,6 +521,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get mouseSettingsDescription => '가상 마우스 입력 및 커서 동작 설정';
 
   @override
+  String get virtualMouseSettingsTitle => '가상 마우스';
+
+  @override
+  String get virtualMouseSettingsDescription => '터치 입력을 시스템 마우스 입력으로 사용합니다';
+
+  @override
   String get virtualPointerProfile => '입력 장치';
 
   @override
@@ -542,6 +548,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get virtualPointerSoftwareDescription => 'Dextop의 기존 소프트웨어 커서를 사용합니다';
 
   @override
+  String get virtualMouseDpi => 'DPI';
+
+  @override
+  String get virtualMouseDpiDescription => '커서 이동 감도';
+
+  @override
   String get virtualMouseScrollDirection => '스크롤 방향';
 
   @override
@@ -549,6 +561,12 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get virtualMouseStandardScroll => '표준 방향(Windows)';
+
+  @override
+  String get virtualMouseAcceleration => '커서 가속';
+
+  @override
+  String get virtualMouseAccelerationDescription => '이동 속도에 따라 커서 속도를 변경합니다';
 
   @override
   String get uiConvenience => '편의 기능';

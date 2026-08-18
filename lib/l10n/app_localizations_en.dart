@@ -540,6 +540,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Configure virtual mouse input and cursor behavior';
 
   @override
+  String get virtualMouseSettingsTitle => 'Virtual mouse';
+
+  @override
+  String get virtualMouseSettingsDescription =>
+      'Treat touch input as system mouse input';
+
+  @override
   String get virtualPointerProfile => 'Input device';
 
   @override
@@ -563,6 +570,12 @@ class AppLocalizationsEn extends AppLocalizations {
       'Use Dextop\'s original software cursor';
 
   @override
+  String get virtualMouseDpi => 'DPI';
+
+  @override
+  String get virtualMouseDpiDescription => 'Cursor movement sensitivity';
+
+  @override
   String get virtualMouseScrollDirection => 'Scroll direction';
 
   @override
@@ -570,6 +583,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get virtualMouseStandardScroll => 'Standard (Windows)';
+
+  @override
+  String get virtualMouseAcceleration => 'Cursor acceleration';
+
+  @override
+  String get virtualMouseAccelerationDescription =>
+      'Change cursor speed based on movement speed';
 
   @override
   String get uiConvenience => 'Convenience';
