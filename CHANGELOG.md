@@ -1,18 +1,18 @@
 # Changelog
 
-## 1.3.9 — Safer virtual pointer lifecycle and secure display handling
+## 1.3.9 — Safer virtual pointer lifecycle
 
 ### Improved
 
 - Removed the virtual mouse DPI and pointer-acceleration controls. Pointer movement now uses a fixed raw scale, and values saved by older releases are cleared automatically.
 - Standardized the Mouse settings page with the same compact section heading used by the other settings categories.
 - Kept Dextop's virtual mouse and touchpad out of physical input-device routing so stopping Dextop cannot disable or re-route a separately connected mouse or touchpad.
-- Added secure display diagnostics and protected host-surface handling for biometric and Secure Folder UI during mirrored sessions.
 
 ### Fixed
 
 - Fixed stale virtual-pointer preferences causing input to stop working until the app was reinstalled.
 - Fixed virtual pointer teardown being mixed with physical-device association handling.
+- Reverted incompatible secure mirror flags that could prevent a Dextop session from starting. The existing secure-display option remains available.
 
 ## 1.3.8 — Stronger laptop keyboard and trackpad feedback
 
