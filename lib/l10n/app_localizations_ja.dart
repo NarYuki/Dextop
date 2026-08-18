@@ -519,12 +519,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get mouseSettingsDescription => '仮想マウスの入力とカーソルを設定';
 
   @override
-  String get virtualMouseSettingsTitle => '仮想マウス';
-
-  @override
-  String get virtualMouseSettingsDescription => 'タッチ操作をシステムのマウス入力として扱います';
-
-  @override
   String get virtualPointerProfile => '入力デバイス';
 
   @override
@@ -546,12 +540,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get virtualPointerSoftwareDescription => 'Dextop内の従来のカーソルを使用します';
 
   @override
-  String get virtualMouseDpi => 'DPI';
-
-  @override
-  String get virtualMouseDpiDescription => 'カーソル移動の感度';
-
-  @override
   String get virtualMouseScrollDirection => 'スクロール方向';
 
   @override
@@ -559,12 +547,6 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get virtualMouseStandardScroll => '標準（Windows）';
-
-  @override
-  String get virtualMouseAcceleration => 'カーソル加速度';
-
-  @override
-  String get virtualMouseAccelerationDescription => '移動速度に応じてカーソル速度を変化させます';
 
   @override
   String get uiConvenience => '便利機能';

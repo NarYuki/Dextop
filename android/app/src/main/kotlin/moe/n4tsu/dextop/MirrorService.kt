@@ -142,6 +142,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
         private const val FOLD8_SPECIAL_DEVICE_PREFIX = "H8Q"
         private const val FOLD8_ULTRA_DEVICE_PREFIX = "Q8Q"
+        // Display.FLAG_* values hidden from the public SDK but present on all
+        // supported Android releases. Keep them numeric for diagnostics only.
+        private const val DISPLAY_FLAG_CAN_SHOW_WITH_INSECURE_KEYGUARD = 1 shl 5
+        private const val DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS = 1 shl 6
+        private const val DISPLAY_FLAG_TRUSTED = 1 shl 7
         private const val STATUS_BAR_INTERFACE = "com.android.internal.statusbar.IStatusBarService"
         private const val PHONE_NAVIGATION_DISABLE_FLAGS =
             0x00200000 or 0x00400000 or 0x01000000
@@ -644,18 +649,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun virtualMouseProcessAlive(): Boolean =
         runCatching { virtualMouseProcess?.alive() == true }.getOrDefault(false)
 
-    private fun virtualMouseDpiScale(): Float =
-        (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getInt("flutter.virtual_mouse_dpi", 1000)
-            .coerceIn(400, 2400) / 1000f)
-
     private fun virtualMouseNaturalScroll(): Boolean =
         getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getBoolean("flutter.virtual_mouse_natural_scroll", true)
-
-    private fun virtualMouseAccelerationEnabled(): Boolean =
-        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getBoolean("flutter.virtual_mouse_acceleration", false)
 
     private fun updateVirtualCursorVisibility() {
         val cursor = cursorView ?: return
@@ -668,23 +664,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         } else {
             View.VISIBLE
         }
-    }
-
-    /** Applies the selected DPI and optional Mac-style pointer acceleration. */
-    private fun virtualMouseMotionScale(dx: Float, dy: Float): Float {
-        var scale = virtualMouseDpiScale()
-        if (virtualMouseAccelerationEnabled()) {
-            // Trackpad deltas are reported in physical pixels and can be very
-            // small on high-density panels.  Use the per-event velocity in dp
-            // so the setting remains perceptible on both phones and tablets:
-            // precise movements stay close to 1x, while a fast swipe reaches
-            // roughly 3.5x.  The smoothstep keeps the transition continuous.
-            val speedDp = hypot(dx, dy) / resources.displayMetrics.density.coerceAtLeast(1f)
-            val normalized = ((speedDp - 1.5f) / 10f).coerceIn(0f, 1f)
-            val eased = normalized * normalized * (3f - 2f * normalized)
-            scale *= 1f + eased * 2.5f
-        }
-        return scale
     }
 
     /**
@@ -705,6 +684,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 android.util.DisplayMetrics().also { display.getRealMetrics(it) }
             }.getOrNull()
         }
+        val displayFlags = display?.flags ?: 0
         val bounds = runCatching { windowManager?.currentWindowMetrics?.bounds }.getOrNull()
         return "reason=$reason displayId=$targetDisplayId targetDisplayId=$targetDisplayId " +
             "mirrorDisplayId=$mirrorDisplayId " +
@@ -713,6 +693,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             "displayWidth=${metrics?.widthPixels ?: 0} displayHeight=${metrics?.heightPixels ?: 0} " +
             "targetWidth=$targetWidth targetHeight=$targetHeight density=$density " +
             "displayDensity=${metrics?.densityDpi ?: 0} rotation=${display?.rotation ?: -1} " +
+            "displayFlags=$displayFlags displaySecure=${displayFlags and Display.FLAG_SECURE != 0} " +
+            "displayTrusted=${displayFlags and DISPLAY_FLAG_TRUSTED != 0} " +
+            "displayKeyguard=${displayFlags and DISPLAY_FLAG_CAN_SHOW_WITH_INSECURE_KEYGUARD != 0} " +
+            "displayDecorations=${displayFlags and DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS != 0} " +
             "configOrientation=${resources.configuration.orientation} " +
             "directTouch=$directTouch inputMode=${currentInputMode()}"
     }
@@ -961,6 +945,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     override fun onServiceConnected() {
         HiddenApiBypass.addHiddenApiExemptions("")
+        // These preferences belonged to the removed DPI/acceleration
+        // controls. Clear them here as well as in Flutter startup because the
+        // accessibility service can be started directly by an overlay.
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+            .remove("flutter.virtual_mouse_dpi")
+            .remove("flutter.virtual_mouse_acceleration")
+            .apply()
         directTouch = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(KEY_DIRECT_TOUCH, false)
         routePhysicalMouseToDextop = getSharedPreferences(PREFS, MODE_PRIVATE)
@@ -1248,6 +1239,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             routeTouchesToSurface = true
         }
         val surface = SurfaceView(this).apply {
+            // A secure source cannot be composed into an unprotected child
+            // surface. This is required for Secure Folder and biometric
+            // dialogs once the display mirror is running in secure mode.
+            setSecure(secureDisplay)
             holder.addCallback(this@MirrorService)
             isFocusable = true
             isFocusableInTouchMode = true
@@ -1319,6 +1314,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
                     .getBoolean("flutter.keep_awake_during_session", false)) {
                 flags = flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+            }
+            if (secureDisplay) {
+                // Keep the host window's composition contract aligned with
+                // the secure overlay and secure VirtualDisplay. Without this
+                // SurfaceFlinger may blank protected child surfaces even when
+                // the mirror itself was created with VIRTUAL_DISPLAY_FLAG_SECURE.
+                flags = flags or WindowManager.LayoutParams.FLAG_SECURE
             }
         }
         root = frame
@@ -4993,9 +4995,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         allowVirtualPointer: Boolean = false
     ) {
         val useVirtualPointer = virtualPointerInputActive(allowVirtualPointer)
-        val scale = if (useVirtualPointer) virtualMouseMotionScale(dx, dy) else 1f
-        val effectiveDx = dx * scale
-        val effectiveDy = dy * scale
+        // Pointer sensitivity is deliberately fixed.  Older releases exposed
+        // DPI and acceleration preferences, but those values could persist in
+        // SharedPreferences and make input unusable.  Always use raw deltas.
+        val effectiveDx = dx
+        val effectiveDy = dy
         cursorX = (cursorX + effectiveDx).coerceIn(0f, targetWidth - 1f)
         cursorY = (cursorY + effectiveDy).coerceIn(0f, targetHeight - 1f)
         if (useVirtualPointer) {
@@ -5517,6 +5521,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 NativeStrings.text("nativeShizukuUnavailable")
             }
             targetDisplayId = display.displayId
+            logDisplaySecurity(display, "overlay_created")
             clearInheritedDisplayOverrides(targetDisplayId)
             configureDisplay()
             val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
@@ -5638,6 +5643,33 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             displayCreationInProgress = false
             completeStart(Result.failure(error))
             stop()
+        }
+    }
+
+    /**
+     * Records the security contract actually published by OverlayDisplayAdapter.
+     * This catches OEMs that silently drop the secure flag, which otherwise
+     * looks like a biometric prompt that flashes and immediately disappears.
+     */
+    private fun logDisplaySecurity(display: Display, reason: String) {
+        val flags = display.flags
+        val secure = flags and Display.FLAG_SECURE != 0
+        val trusted = flags and DISPLAY_FLAG_TRUSTED != 0
+        val keyguard = flags and DISPLAY_FLAG_CAN_SHOW_WITH_INSECURE_KEYGUARD != 0
+        val decorations = flags and DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS != 0
+        OperationLog.i(
+            this,
+            "DisplaySecurity",
+            "reason=$reason display=${display.displayId} requestedSecure=$secureDisplay " +
+                "secure=$secure trusted=$trusted canShowWithKeyguard=$keyguard " +
+                "systemDecorations=$decorations mirrorStrategy=${displayBackend.activeStrategy ?: "pending"}"
+        )
+        if (secureDisplay && !secure) {
+            OperationLog.w(
+                this,
+                "DisplaySecurity",
+                "secure display request was not reflected by the platform"
+            )
         }
     }
 
@@ -5867,6 +5899,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             targetWidth,
             targetHeight,
             density,
+            secureDisplay,
+            showSystemDecorations,
             strategyOverride
         )
         mirrorHostWidth = hostWidth

@@ -34,7 +34,16 @@ internal data class MirrorAttachRequest(
     val hostHeight: Int,
     val contentWidth: Int,
     val contentHeight: Int,
-    val contentDensity: Int
+    val contentDensity: Int,
+    /**
+     * The overlay display may contain FLAG_SECURE windows (Secure Folder,
+     * BiometricPrompt, payment apps, etc.).  The recording VirtualDisplay
+     * must carry the same security contract or SurfaceFlinger blanks those
+     * windows before they reach the host SurfaceView.
+     */
+    val secure: Boolean = false,
+    /** Keep system-auth UI eligible on the recording display when requested. */
+    val decorations: Boolean = false
 )
 
 internal interface MirrorAttachment {
@@ -56,7 +65,7 @@ internal class DisplayMirrorBackend(
         listOf(
             WindowManagerMirrorBackend(privilegedAccess),
             SurfaceControlMirrorBackend(),
-            VirtualDisplayMirrorBackend(privilegedAccess)
+            VirtualDisplayMirrorBackend(privilegedAccess, context)
         )
             .associateBy { it.id }
     }
@@ -91,11 +100,15 @@ internal class DisplayMirrorBackend(
         contentWidth: Int,
         contentHeight: Int,
         contentDensity: Int,
+        secure: Boolean = false,
+        decorations: Boolean = false,
         strategyOverride: String? = null
     ): List<StrategyAttempt> {
         val request = MirrorAttachRequest(
             displayId, host, hostWidth, hostHeight,
-            contentWidth, contentHeight, contentDensity
+            contentWidth, contentHeight, contentDensity,
+            secure = secure,
+            decorations = decorations
         )
         val strategies = strategyOverride?.let(::listOf) ?: environment.mirrorStrategies
         // Resizing/rebinding an existing recording VirtualDisplay keeps its
@@ -201,7 +214,10 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
  * deliberately independent from the SurfaceControl implementations above so a
  * vendor can select it without changing working devices.
  */
-private class VirtualDisplayMirrorBackend(private val privilegedAccess: PrivilegedAccess) : MirrorAttachBackend {
+private class VirtualDisplayMirrorBackend(
+    private val privilegedAccess: PrivilegedAccess,
+    private val context: Context
+) : MirrorAttachBackend {
     override val id = "virtual_display"
 
     private val platform by lazy { VirtualDisplayPlatform.inspect() }
@@ -212,7 +228,41 @@ private class VirtualDisplayMirrorBackend(private val privilegedAccess: Privileg
         val surface = request.host.holder.surface
         check(surface.isValid) { "The destination surface is unavailable" }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
-        return platform.open(service, request, surface)
+        OperationLog.i(
+            context,
+            "DisplaySecurity",
+            "virtual mirror flags secure=${request.secure} trusted=true " +
+                "canShowWithKeyguard=true decorations=${request.decorations}"
+        )
+        return runCatching {
+            platform.open(service, request, surface)
+        }.getOrElse { error ->
+            // Some vendor display services reject the hidden SECURE flag even
+            // when the caller is running through a privileged provider. Keep
+            // the session usable in that case, while making the limitation
+            // explicit in the operation log. Protected windows will remain
+            // unavailable until the device grants secure-display access.
+            if (request.secure && isSecurityFailure(error)) {
+                OperationLog.w(
+                    context,
+                    "DisplayBackend",
+                    "secure VirtualDisplay rejected; retrying non-secure mirror",
+                    error
+                )
+                platform.open(service, request.copy(secure = false), surface)
+            } else {
+                throw error
+            }
+        }
+    }
+
+    private fun isSecurityFailure(error: Throwable): Boolean {
+        var current: Throwable? = error
+        repeat(4) {
+            if (current is SecurityException) return true
+            current = current?.cause
+        }
+        return false
     }
 }
 
@@ -256,10 +306,21 @@ private class VirtualDisplayPlatform private constructor(
             request.contentHeight,
             request.contentDensity
         )
+        // A protected window is blanked on a non-secure virtual display.  The
+        // trusted/keyguard flags are also required for SystemUI biometric and
+        // Secure Folder authentication surfaces to remain attached while the
+        // target display is active. These are the platform constants kept
+        // numeric because the trusted flags are hidden from the public SDK.
+        val flags = VIRTUAL_DISPLAY_FLAG_PUBLIC or
+            VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR or
+            VIRTUAL_DISPLAY_FLAG_CAN_SHOW_WITH_INSECURE_KEYGUARD or
+            VIRTUAL_DISPLAY_FLAG_TRUSTED or
+            (if (request.secure) VIRTUAL_DISPLAY_FLAG_SECURE else 0) or
+            (if (request.decorations) VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS else 0)
         val properties = listOf(
             BuilderProperty("setSurface", Surface::class.java, surface),
             BuilderProperty("setDisplayIdToMirror", Int::class.javaPrimitiveType!!, request.displayId),
-            BuilderProperty("setFlags", Int::class.javaPrimitiveType!!, 1 or 16 or 1024)
+            BuilderProperty("setFlags", Int::class.javaPrimitiveType!!, flags)
         )
         properties.forEach { property ->
             builderType.getMethod(property.name, property.type).invoke(builder, property.value)
@@ -291,6 +352,13 @@ private class VirtualDisplayPlatform private constructor(
 
     companion object {
         const val MANAGER_INTERFACE = "android.hardware.display.IDisplayManager"
+
+        private const val VIRTUAL_DISPLAY_FLAG_PUBLIC = 1
+        private const val VIRTUAL_DISPLAY_FLAG_SECURE = 4
+        private const val VIRTUAL_DISPLAY_FLAG_AUTO_MIRROR = 16
+        private const val VIRTUAL_DISPLAY_FLAG_CAN_SHOW_WITH_INSECURE_KEYGUARD = 32
+        private const val VIRTUAL_DISPLAY_FLAG_SHOULD_SHOW_SYSTEM_DECORATIONS = 512
+        private const val VIRTUAL_DISPLAY_FLAG_TRUSTED = 1024
 
         fun inspect(): VirtualDisplayPlatform {
             val manager = Class.forName(MANAGER_INTERFACE)
