@@ -2801,8 +2801,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Color.rgb(82, 120, 159), Color.rgb(190, 218, 248), 16f, opacity = .94f
         ) else if (amoled) LaptopPalette(
             Color.BLACK, Color.BLACK, Color.rgb(3, 3, 3),
-            Color.rgb(61, 47, 28), Color.rgb(216, 179, 106), Color.BLACK,
-            Color.rgb(140, 116, 74), Color.rgb(74, 50, 22), 7f
+            Color.rgb(59, 59, 59), Color.rgb(220, 220, 220), Color.BLACK,
+            Color.rgb(175, 175, 175), Color.rgb(81, 81, 81), 7f
         ) else LaptopPalette(
             Color.rgb(18, 18, 22), Color.rgb(48, 46, 54), Color.rgb(48, 46, 54),
             Color.rgb(76, 72, 84), Color.rgb(235, 231, 239), Color.rgb(35, 34, 40),
@@ -2857,6 +2857,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val currentTheme = laptopKeyboardTheme()
         val crimson = currentTheme == "crimson"
         val amoled = currentTheme == "amoled"
+        val themeAccent = when {
+            crimson -> Color.rgb(236, 145, 101)
+            amoled -> Color.rgb(210, 210, 210)
+            else -> Color.rgb(208, 188, 237)
+        }
         deck.background = if (crimson) GradientDrawable(
             GradientDrawable.Orientation.TOP_BOTTOM,
             intArrayOf(Color.rgb(25, 2, 4), Color.rgb(57, 7, 8), Color.rgb(34, 3, 5))
@@ -2897,7 +2902,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             addView(ImageView(this@MirrorService).apply {
                 setImageDrawable(KeyboardGlyphDrawable(
                     KeyboardGlyphDrawable.PALETTE,
-                    if (crimson) Color.rgb(236, 145, 101) else Color.rgb(208, 188, 237)
+                    themeAccent
                 ))
             }, LinearLayout.LayoutParams(dp(28), dp(28)).apply { rightMargin = dp(12) })
             addView(TextView(this@MirrorService).apply {
