@@ -216,6 +216,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun isActive(): Boolean = active
 
+        /**
+         * Re-submit the phone navigation restore when the Dextop home activity
+         * becomes visible again.  This covers vendor SystemUI implementations
+         * that reapply the disable flags while the accessibility window is
+         * being removed.
+         */
+        fun restorePhoneNavigation() {
+            instance?.setPhoneNavigationDisabled(false)
+        }
+
         fun isFoldableDevice(): Boolean = instance?.isFoldableDevice() == true
 
         fun updateLaptopModeEnabled(enabled: Boolean) {
@@ -3807,7 +3817,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 startActivity(home, options.toBundle())
             }.onFailure { Log.e(logTag, "unable to return to Dextop home", it) }
             // Keep SessionJournal intact: the app shows its explicit recovery card.
-            android.os.Handler(mainLooper).postDelayed({ disableSelf() }, 180)
+            // Leave the service alive while the delayed navigation restores run;
+            // some vendor SystemUI builds reapply the flags several seconds
+            // after the accessibility window is removed.
+            android.os.Handler(mainLooper).postDelayed({ disableSelf() }, 4_500L)
         }, 320)
         Log.i(logTag, "session paused; returned to Dextop home for explicit recovery")
     }
@@ -6338,7 +6351,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         // SystemUI can recreate its navigation bar after our overlay is
         // removed. Re-submit the zero flags after those asynchronous passes.
-        listOf(120L, 450L, 1_200L).forEach { delay ->
+        listOf(120L, 450L, 1_200L, 2_400L, 4_000L).forEach { delay ->
             hostDisplayMonitorHandler.postDelayed({
                 if (generation != navigationRestoreGeneration || active && !suspendedForLockScreen) {
                     return@postDelayed
@@ -6532,8 +6545,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (wasActive) {
             // Detach the input-filtering accessibility service so Android's
             // back gesture and Circle to Search regain their normal handlers.
-            disableDextopAccessibilityService()
-            disableSelf()
+            // Delay both operations until the navigation restore retries have
+            // completed; disabling the service immediately can terminate the
+            // process before SystemUI accepts the final zero-disable request.
+            android.os.Handler(mainLooper).postDelayed({
+                disableDextopAccessibilityService()
+                disableSelf()
+            }, 4_500L)
         }
         completeStart(Result.failure(IllegalStateException("Dextop was stopped before startup completed")))
         Log.i(logTag, "stopped")

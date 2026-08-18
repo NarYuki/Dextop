@@ -139,6 +139,7 @@ open class MainActivity : FlutterActivity() {
             instance = this
             phoneTaskId = taskId
             if (!MirrorService.isActive()) {
+                MirrorService.restorePhoneNavigation()
                 runCatching { DisplayEnvironmentSettings(this).prepareInactiveState() }
                     .onFailure { Log.w(logTag, "inactive topology cleanup deferred", it) }
             }
