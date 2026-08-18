@@ -2800,9 +2800,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Color.rgb(183, 212, 245), Color.rgb(66, 100, 134), Color.rgb(199, 221, 245),
             Color.rgb(82, 120, 159), Color.rgb(190, 218, 248), 16f, opacity = .94f
         ) else if (amoled) LaptopPalette(
-            Color.BLACK, Color.rgb(11, 11, 13), Color.rgb(21, 21, 25),
-            Color.rgb(42, 42, 48), Color.rgb(245, 245, 247), Color.rgb(3, 3, 4),
-            Color.rgb(143, 143, 152), Color.rgb(58, 58, 67), 7f
+            Color.BLACK, Color.BLACK, Color.rgb(3, 3, 3),
+            Color.rgb(61, 47, 28), Color.rgb(216, 179, 106), Color.BLACK,
+            Color.rgb(140, 116, 74), Color.rgb(74, 50, 22), 7f
         ) else LaptopPalette(
             Color.rgb(18, 18, 22), Color.rgb(48, 46, 54), Color.rgb(48, 46, 54),
             Color.rgb(76, 72, 84), Color.rgb(235, 231, 239), Color.rgb(35, 34, 40),
