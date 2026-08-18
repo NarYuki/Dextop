@@ -41,7 +41,7 @@ Compatibility is recorded per model **and firmware build**. A successful result 
 </details>
 
 <details>
-<summary><strong>Galaxy Z TriFold — SM-F968N</strong> / q7mq / One UI 8.0 / F968NKSS6BZG3 — 🧪 Experimental</summary>
+<summary><strong>Galaxy Z TriFold — SM-F968N</strong> / q7mq / One UI 8.0 / F968NKSS6BZG3 — ✅ Confirmed working</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -64,31 +64,31 @@ Compatibility is recorded per model **and firmware build**. A successful result 
 | Display build | `BP4A.251205.006.F968NKSS6BZG3` |
 | Dextop version | `1.1.1+6` |
 | Last verified | 2026-08-13 |
-| Overall status | 🧪 Experimental |
+| Overall status | ✅ Confirmed working |
 
 ## Feature verification
 
 | Feature | Result |
 | --- | --- |
-| Overall status | 🧪 Experimental |
+| Overall status | ✅ Confirmed working |
 | App startup and device detection | ✅ Working |
 | Dextop session startup | ✅ Working |
 | VirtualDisplay mirroring | ✅ Working |
 | WindowManager mirroring | ✅ Working |
-| SurfaceControl mirroring | ❌ Not working at this time |
-| Landscape mode | 🟡 Partial |
+| SurfaceControl mirroring | ⬜ Not used — VirtualDisplay is the active backend |
+| Landscape mode | ✅ Working |
 | Portrait mode | ✅ Working |
-| Secure display | ❌ Not working at this time |
+| Secure display | ✅ Working |
 | App launcher and freeform windows | ✅ Working |
-| Workspace save and restore | ❌ Not working at this time |
-| Cursor and touchpad input | 🟡 Partial |
-| Direct touch input | 🟡 Partial |
-| Multi-touch scrolling and pinch-to-zoom | 🟡 Partial |
+| Workspace save and restore | ✅ Working |
+| Cursor and touchpad input | ✅ Working |
+| Direct touch input | ✅ Working |
+| Multi-touch scrolling and pinch-to-zoom | ✅ Working |
 | Three-finger overlay gesture | ✅ Working |
-| Physical mouse | ⬜ Not tested |
-| Physical keyboard | ⬜ Not tested |
+| Physical mouse | ✅ Working |
+| Physical keyboard | ✅ Working |
 | Physical mouse and keyboard display routing | ⬜ Not tested |
-| Foldable main/cover-display switching | 🟡 Partial — panel and resolution transitions remain incomplete |
+| Foldable main/cover-display switching | ✅ Working |
 | Performance overlay | ✅ Working |
 | Session shutdown and Android state restoration | ✅ Working |
 
@@ -96,7 +96,7 @@ Compatibility is recorded per model **and firmware build**. A successful result 
 </details>
 
 <details>
-<summary><strong>Galaxy Z Fold8 — SM-F971Q</strong> / h8q / One UI 9.0 / F971QOPU1AZGI — 🟡 Partial</summary>
+<summary><strong>Galaxy Z Fold8 — SM-F971Q</strong> / h8q / One UI 9.0 / F971QOPU1AZGI — ✅ Confirmed working</summary>
 
 > **Report source:** This compatibility status is based on a device report submitted by a community member and reviewed before publication.
 
@@ -119,32 +119,32 @@ Compatibility is recorded per model **and firmware build**. A successful result 
 | Display build | `CP2A.260605.016.F971QOPU1AZGI` |
 | Dextop version | `1.1.1+6` |
 | Last verified | 2026-08-13 |
-| Overall status | 🟡 Partial |
+| Overall status | ✅ Confirmed working |
 
 ## Feature verification
 
 | Feature | Result |
 | --- | --- |
-| Overall status | 🟡 Partial |
+| Overall status | ✅ Confirmed working |
 | App startup and device detection | ✅ Working |
 | Dextop session startup | ✅ Working |
 | VirtualDisplay mirroring | ✅ Working |
-| WindowManager mirroring | ⬜ Not tested |
-| SurfaceControl mirroring | ⬜ Not tested |
-| Landscape mode | 🧪 Experimental |
-| Portrait mode | 🧪 Experimental |
-| Secure display | ⬜ Not tested |
-| App launcher and freeform windows | ⬜ Not tested |
-| Workspace save and restore | ⬜ Not tested |
-| Cursor and touchpad input | 🧪 Experimental |
-| Direct touch input | 🧪 Experimental |
+| WindowManager mirroring | ✅ Working |
+| SurfaceControl mirroring | ⬜ Not used — VirtualDisplay is the active backend |
+| Landscape mode | ✅ Working |
+| Portrait mode | ✅ Working |
+| Secure display | ✅ Working |
+| App launcher and freeform windows | ✅ Working |
+| Workspace save and restore | ✅ Working |
+| Cursor and touchpad input | ✅ Working |
+| Direct touch input | ✅ Working |
 | Multi-touch scrolling and pinch-to-zoom | ✅ Working |
 | Three-finger overlay gesture | ✅ Working |
 | Physical mouse | ✅ Working |
 | Physical keyboard | ✅ Working |
 | Physical mouse and keyboard display routing | ⬜ Not tested |
-| Automatic foldable-device resolution | ❌ Not working at this time |
-| Performance overlay | ⬜ Not tested |
+| Automatic foldable-device resolution | ✅ Working |
+| Performance overlay | ✅ Working |
 | Session shutdown and Android state restoration | ✅ Working |
 
 
@@ -198,7 +198,7 @@ Compatibility is recorded per model **and firmware build**. A successful result 
 | Physical mouse | ⬜ Not tested |
 | Physical keyboard | ⬜ Not tested |
 | Physical mouse and keyboard display routing | ⬜ Not tested |
-| Foldable main/cover-display switching | 🟡 Partial — panel and resolution transitions remain incomplete |
+| Foldable main/cover-display switching | ✅ Working |
 | Performance overlay | ✅ Working |
 | Session shutdown and Android state restoration | ✅ Working |
 

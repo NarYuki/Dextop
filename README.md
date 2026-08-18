@@ -45,7 +45,7 @@ You can report bugs, submit device reports, and request features there.
 - [x] Multi-display topology with saved monitor placement and cross-display pointer routing
 - [x] Automatic desktop taskbar hiding and optional built-in-display 120 Hz enforcement
 - [x] Foldable laptop mode with a US keyboard, trackpad, manual overlay control, and optional hinge-angle detection
-- [ ] Foldable main/cover-display switching (partial; resolution and panel transitions remain incomplete on some devices)
+- [x] Foldable main/cover-display switching
 - [x] Performance overlay for FPS, refresh rate, memory, battery, and estimated power usage
 - [x] Quick Settings tile launch
 - [x] Interrupted-session recovery and restoration of temporary Android settings
@@ -77,8 +77,8 @@ The status below applies only to firmware versions that were actually tested. Op
 | Device | Model | Tested software | Status |
 | --- | --- | --- | --- |
 | Galaxy S26 | SM-S942Z (`m1q`) | Android 16 / One UI 8.5 / `S942ZSCS1AZF2` | ✅ Confirmed working |
-| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / One UI 8.0 / `F968NKSS6BZG3` | 🧪 Experimental |
-| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / One UI 9.0 / `F971QOPU1AZGI` | 🟡 Partial |
+| Galaxy Z TriFold | SM-F968N (`q7mq`) | Android 16 (API 36) / One UI 8.0 / `F968NKSS6BZG3` | ✅ Confirmed working |
+| Galaxy Z Fold8 | SM-F971Q (`h8q`) | Android 17 (API 37) / One UI 9.0 / `F971QOPU1AZGI` | ✅ Confirmed working |
 | Galaxy Z Fold7 | SM-F966Q (`q7q`) | Android 16 (API 36) / One UI 8.0 / `F966QOPU1BZF1` | ✅ Confirmed working |
 | Galaxy Z Fold3 5G | SCG11 (`SCG11`) | Android 15 (API 35) / One UI 7.0 / `SCG11KDS1EZB8` | ❌ Not working at this time |
 
