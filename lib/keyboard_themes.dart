@@ -93,13 +93,16 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
       'id': 'amoled',
       'name': 'AMOLED',
       'background': '#000000',
-      'key': '#0B0B0D',
-      'keyVariant': '#151519',
-      'border': '#2A2A30',
-      'text': '#F5F5F7',
-      'trackpad': '#030304',
-      'trackpadText': '#8F8F98',
-      'selected': '#3A3A43',
+      // True-black keycaps with a restrained warm-gold accent, matching the
+      // near-black foldable-PC keyboard reference.  Keep every key surface
+      // in the AMOLED range so the gaps and caps do not read as a grey slab.
+      'key': '#000000',
+      'keyVariant': '#030303',
+      'border': '#3D2F1C',
+      'text': '#D8B36A',
+      'trackpad': '#000000',
+      'trackpadText': '#8C744A',
+      'selected': '#4A3216',
       'opacity': 1.0,
       'keyOpacity': 1.0,
       'showTrackpadLabel': true,
