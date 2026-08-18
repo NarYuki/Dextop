@@ -113,14 +113,6 @@ internal class PhysicalInputRouter(
     private fun eligibleDevices(mouse: Boolean, keyboard: Boolean): List<InputDevice> = InputDevice.getDeviceIds().toList().mapNotNull(InputDevice::getDevice)
         .filter { device ->
             device.id >= 0 && device.isExternal && device.descriptor.isNotBlank() &&
-                // The uinput pointer belongs to Dextop and is torn down when
-                // the session or cursor mode ends. Never include it in the
-                // physical-device association set: restoring those
-                // associations must not touch a user's separately connected
-                // mouse or touchpad (and the virtual device must not be
-                // routed twice through the physical path).
-                device.name != "Dextop Virtual Mouse" &&
-                device.name != "Dextop Virtual Touchpad" &&
                 (mouse && device.sources and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE ||
                     keyboard && device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC)
         }

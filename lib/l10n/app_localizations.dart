@@ -1100,6 +1100,18 @@ abstract class AppLocalizations {
   /// **'仮想マウスの入力とカーソルを設定'**
   String get mouseSettingsDescription;
 
+  /// No description provided for @virtualMouseSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想マウス'**
+  String get virtualMouseSettingsTitle;
+
+  /// No description provided for @virtualMouseSettingsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'タッチ操作をシステムのマウス入力として扱います'**
+  String get virtualMouseSettingsDescription;
+
   /// No description provided for @virtualPointerProfile.
   ///
   /// In ja, this message translates to:
@@ -1142,6 +1154,18 @@ abstract class AppLocalizations {
   /// **'Dextop内の従来のカーソルを使用します'**
   String get virtualPointerSoftwareDescription;
 
+  /// No description provided for @virtualMouseDpi.
+  ///
+  /// In ja, this message translates to:
+  /// **'DPI'**
+  String get virtualMouseDpi;
+
+  /// No description provided for @virtualMouseDpiDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'カーソル移動の感度'**
+  String get virtualMouseDpiDescription;
+
   /// No description provided for @virtualMouseScrollDirection.
   ///
   /// In ja, this message translates to:
@@ -1159,6 +1183,18 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'標準（Windows）'**
   String get virtualMouseStandardScroll;
+
+  /// No description provided for @virtualMouseAcceleration.
+  ///
+  /// In ja, this message translates to:
+  /// **'カーソル加速度'**
+  String get virtualMouseAcceleration;
+
+  /// No description provided for @virtualMouseAccelerationDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'移動速度に応じてカーソル速度を変化させます'**
+  String get virtualMouseAccelerationDescription;
 
   /// No description provided for @uiConvenience.
   ///

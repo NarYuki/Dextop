@@ -31,12 +31,6 @@ part 'keyboard_themes.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // DPI and pointer acceleration were removed from the virtual-mouse
-  // implementation. Clear values from older installations before any screen
-  // or service can read them, including users who never open Mouse settings.
-  final preferences = await SharedPreferences.getInstance();
-  await preferences.remove('virtual_mouse_dpi');
-  await preferences.remove('virtual_mouse_acceleration');
   await AppAnalytics.initialize();
   runApp(const DextopApp());
 }
