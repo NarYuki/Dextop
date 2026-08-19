@@ -112,6 +112,7 @@
   "ui3FingerTap": "3本指タップ",
   "ui4Divisions": "4分割",
   "uiDextopIsReady": "Dextopの準備ができました",
+  "uiDextopStopping": "Dextopの終了処理中",
   "uiStopDextop": "Dextopを停止",
   "uiDextopCanBeRestarted": "Dextopを再開できます",
   "uiOpenDextop": "Dextopを開く",
@@ -275,6 +276,10 @@
   "uiLongPress": "長押し",
   "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "開いた状態と閉じた状態の実測解像度を自動使用",
   "uiStart": "開始",
+  "uiRunningAuto": "起動中（Auto）",
+  "uiRunningAutoPlus": "起動中（Auto+）",
+  "uiStartPhoneDextop": "この端末でDextopを開始",
+  "uiStopAndroidAuto": "停止（Android Auto）",
   "uiAutomaticSwitchingAccordingToOpenClosedState": "開閉状態に合わせて自動切り替え",
   "uiOpeningQuote": "「",
   "uiDeleteWorkspaceQuestionSuffix": "」を削除しますか？",
@@ -380,5 +385,9 @@
   "keyboardThemesTrackpadOpacity": "トラックパッドの透明度",
   "keyboardThemesShowTrackpadLabel": "TRACKPADの文字を表示",
   "keyboardThemesDescription": "ラップトップキーボードのテーマと外観をカスタマイズ",
+  "autoSettingsTitle": "Auto",
+  "autoSettingsDescription": "Auto専用の表示とスマホ側ミラーリングを設定",
+  "autoMatchPhoneOrientation": "スマホ側ミラーリングの向きをAutoに合わせる",
+  "autoMatchPhoneOrientationDescription": "スマホ側DextopをAutoへ表示するとき、車載画面の縦横比に合わせて向きを変更します。",
   "@keyboardThemesDeleteBody": {"placeholders": {"name": {"type": "String"}}}
 }

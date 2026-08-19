@@ -112,6 +112,7 @@
   "ui3FingerTap": "세 손가락 탭",
   "ui4Divisions": "4분할",
   "uiDextopIsReady": "Dextop 준비됨",
+  "uiDextopStopping": "Dextop 종료 처리 중",
   "uiStopDextop": "Dextop 중지",
   "uiDextopCanBeRestarted": "Dextop을 재개할 수 있습니다.",
   "uiOpenDextop": "Dextop 열기",
@@ -275,6 +276,10 @@
   "uiLongPress": "길게 누르기",
   "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "열린 상태와 닫힌 상태의 실측 해상도 자동 사용",
   "uiStart": "시작",
+  "uiRunningAuto": "실행 중 (Auto)",
+  "uiRunningAutoPlus": "실행 중 (Auto+)",
+  "uiStartPhoneDextop": "이 휴대전화에서 Dextop 시작",
+  "uiStopAndroidAuto": "중지 (Android Auto)",
   "uiAutomaticSwitchingAccordingToOpenClosedState": "개폐 상태에 따라 자동 전환",
   "uiOpeningQuote": "“",
   "uiDeleteWorkspaceQuestionSuffix": "” 작업 공간을 삭제하시겠습니까?",
@@ -355,5 +360,9 @@
   "keyboardThemesTrackpadOpacity":"트랙패드 투명도",
   "keyboardThemesShowTrackpadLabel":"TRACKPAD 라벨 표시",
   "keyboardThemesDescription":"노트북 키보드 테마 및 사용자 지정 외관",
+  "autoSettingsTitle":"Auto",
+  "autoSettingsDescription":"Auto 표시 및 휴대전화 미러링 옵션",
+  "autoMatchPhoneOrientation":"휴대전화 미러링 방향을 Auto에 맞춤",
+  "autoMatchPhoneOrientationDescription":"휴대전화 미러링으로 Auto에 Dextop을 표시할 때 헤드 유닛 종횡비에 맞춰 방향을 조정합니다.",
   "@keyboardThemesDeleteBody":{"placeholders":{"name":{"type":"String"}}}
 }

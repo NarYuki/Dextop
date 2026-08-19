@@ -238,8 +238,19 @@ extension _ResolutionUi on _HomeScreenState {
     return TextField(
       controller: controller,
       enabled: enabled,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      // Do not filter the composing text produced by Samsung DeX/physical
+      // keyboards while the field is being edited.  digitsOnly rejects some
+      // IME composing updates and makes the field appear read-only (most
+      // often for the DPI field).  Values are validated when Apply/Save is
+      // pressed below, so accepting the edit buffer here is safe.
+      keyboardType: TextInputType.numberWithOptions(
+        decimal: false,
+        signed: false,
+      ),
+      textInputAction: TextInputAction.next,
+      autocorrect: false,
+      enableSuggestions: false,
+      enableInteractiveSelection: true,
       decoration: InputDecoration(
         labelText: label,
         border: OutlineInputBorder(),

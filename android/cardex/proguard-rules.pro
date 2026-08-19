@@ -1,0 +1,1 @@
+-keep class moe.n4tsu.cardex.CarDexActivity { *; }

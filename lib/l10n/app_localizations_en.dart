@@ -366,6 +366,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uiDextopIsReady => 'Dextop is ready';
 
   @override
+  String get uiDextopStopping => 'Finishing Dextop shutdown';
+
+  @override
   String get uiStopDextop => 'Stop Dextop';
 
   @override
@@ -882,6 +885,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get uiStart => 'Start';
 
   @override
+  String get uiRunningAuto => 'Running (Auto)';
+
+  @override
+  String get uiRunningAutoPlus => 'Running (Auto+)';
+
+  @override
+  String get uiStartPhoneDextop => 'Start Dextop on this phone';
+
+  @override
+  String get uiStopAndroidAuto => 'Stop (Android Auto)';
+
+  @override
   String get uiAutomaticSwitchingAccordingToOpenClosedState =>
       'Automatic switching according to open/closed state';
 
@@ -1368,4 +1383,19 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get keyboardThemesDescription =>
       'Laptop keyboard themes and custom appearance';
+
+  @override
+  String get autoSettingsTitle => 'Auto';
+
+  @override
+  String get autoSettingsDescription =>
+      'Auto display and phone-side mirroring options';
+
+  @override
+  String get autoMatchPhoneOrientation =>
+      'Match phone mirror orientation to Auto';
+
+  @override
+  String get autoMatchPhoneOrientationDescription =>
+      'When Dextop is shown in Auto from the phone-side mirror, adjust its orientation to the head-unit aspect ratio.';
 }

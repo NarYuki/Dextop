@@ -112,6 +112,7 @@
   "ui3FingerTap": "Касание тремя пальцами",
   "ui4Divisions": "Разделение на четыре области",
   "uiDextopIsReady": "Dextop готов.",
+  "uiDextopStopping": "Завершение работы Dextop",
   "uiStopDextop": "Остановить Dextop",
   "uiDextopCanBeRestarted": "Сеанс Dextop можно возобновить",
   "uiOpenDextop": "Открыть Dextop",
@@ -275,6 +276,10 @@
   "uiLongPress": "Долгое нажатие",
   "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "Автоматически использует измеренное разрешение для открытых и закрытых состояний.",
   "uiStart": "Начать",
+  "uiRunningAuto": "Работает (Auto)",
+  "uiRunningAutoPlus": "Работает (Auto+)",
+  "uiStartPhoneDextop": "Запустить Dextop на этом телефоне",
+  "uiStopAndroidAuto": "Остановить (Android Auto)",
   "uiAutomaticSwitchingAccordingToOpenClosedState": "Автоматическое переключение в зависимости от открытого/закрытого состояния.",
   "uiOpeningQuote": "«",
   "uiDeleteWorkspaceQuestionSuffix": "» — удалить это рабочее пространство?",
@@ -355,5 +360,9 @@
   "keyboardThemesTrackpadOpacity":"Непрозрачность тачпада",
   "keyboardThemesShowTrackpadLabel":"Показывать надпись TRACKPAD",
   "keyboardThemesDescription":"Темы и настройка внешнего вида клавиатуры ноутбука",
+  "autoSettingsTitle":"Auto",
+  "autoSettingsDescription":"Параметры отображения Auto и зеркалирования телефона",
+  "autoMatchPhoneOrientation":"Согласовать ориентацию зеркала телефона с Auto",
+  "autoMatchPhoneOrientationDescription":"При показе Dextop в Auto через зеркало телефона менять ориентацию по соотношению сторон головного устройства.",
   "@keyboardThemesDeleteBody":{"placeholders":{"name":{"type":"String"}}}
 }

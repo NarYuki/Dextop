@@ -46,6 +46,7 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 - [x] デスクトップタスクバーの自動非表示と内蔵ディスプレイの120 Hz維持
 - [x] US配列キーボード、トラックパッド、手動呼び出し、ヒンジ角度の自動検知に対応した折りたたみ端末向けラップトップモード
 - [x] 折りたたみ端末のメイン／サブディスプレイ切り替え
+- [x] Android 15以降の停車中Android Auto向けミラーリングActivity（車載解像度の自動適用、Dextop／端末画面の切り替え、タッチ転送）
 - [x] FPS、リフレッシュレート、メモリ、バッテリー、推定消費電力のパフォーマンス表示
 - [x] クイック設定タイルからの起動
 - [x] 中断されたセッションとAndroid設定の復元
@@ -63,6 +64,8 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 | OPPO ColorOSデスクトップ | 限定的・不完全 | デスクトップは表示できますが、タスクバーなどのシステムUIが表示されない場合があります。 |
 | HyperOS以降を実行しているXiaomi端末 | 無効 | MIUIおよびHyperOSはサポート対象外です。 |
 | その他のAndroid端末 | 実験的 | メーカー、機種、OS更新によって仮想ディスプレイ、ミラーリング、freeformの対応状況が異なります。 |
+
+Android Auto向けはAndroid 15以降の停車中アプリ用`CAR_LAUNCHER` Activityとして公開しています。実際に車載ランチャーへ表示するかはAndroid Auto側が決定し、現在の公開仕様では対象カテゴリが限定されています。
 
 Dextopは実行時に端末の能力を検査し、複数のバックエンドを順番に試します。ただし、Androidの非公開APIやOEM実装を利用するため、同じメーカーでも機種やOSバージョンによって結果が異なります。
 
@@ -164,6 +167,24 @@ Dextopの「GitHubからダウンロード」ボタンからStellarを入手で�
 Google Play版は現在審査中です。
 
 [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest)から最新のAPKをダウンロードし、インストールしてください。
+
+### Nightlyビルド
+
+[GitHub Actions](https://github.com/NarYuki/Dextop/actions)から、最新の変更が適用された開発版を利用できます。最新の成功した**Debug APK**ワークフローを開き、NightlyのArtifactをダウンロードしてください。Artifactには同じビルドのDextop本体とDextop Car CompanionのデバッグAPKが含まれます。Nightlyは最新ソースから自動生成されるベータ版であり、未完成の機能や安定版にはない不具合を含む場合があります。
+
+Android Auto対応を含むGitHub Releasesには、Dextop本体APKと対応する**Dextop Car Companion** APKを両方掲載します。署名とリレー仕様を一致させるため、必ず同じリリースに含まれる2つのAPKを使用してください。
+
+## Android Autoの簡単な使い方
+
+DextopはAndroid 15以降で、**Dextop Car Companion**を使用して対応する停車中のAndroid Auto画面へ専用デスクトップを表示できます。
+
+1. 同じリリースに含まれるDextopと**Dextop Car Companion**のAPKを両方インストールします。
+2. StellarまたはShizukuを起動し、Dextopへ権限を付与して端末側の初期設定を完了します。
+3. 停車中にAndroid Autoへ接続し、車載ランチャーから**Dextop Car Companion**を開きます。
+4. **Start**を選択します。車載画面の解像度に合わせたAuto専用Dextopが作成され、タッチ操作が直接転送されます。
+5. 車載画面の左端から右へスワイプすると、ワークスペース、映像の再接続、停止を行うAuto専用操作パネルが開きます。
+
+Android Auto側が、サイドロードされた停車中アプリを車載ランチャーへ表示するかを決定します。標準の互換表示方式では端末側にAuto用仮想ディスプレイのオーバーレイが表示される場合があります。実験的な非表示方式は**Dextop → 設定 → Auto**から変更できます。インストール条件、表示方式、ジェスチャー、各操作、制限事項、DHU検証、問題の対処方法は[Android Auto Wiki](https://github.com/NarYuki/Dextop/wiki/Android-Auto)を参照してください。
 
 ## 開発
 

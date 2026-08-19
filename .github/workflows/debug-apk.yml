@@ -53,10 +53,16 @@ jobs:
       - name: Build Debug APK
         run: flutter build apk --debug
 
-      - name: Upload Debug APK
+      - name: Build Dextop Car Companion Debug APK
+        working-directory: android
+        run: ./gradlew :cardex:assembleDebug
+
+      - name: Upload Nightly APKs
         uses: actions/upload-artifact@v4
         with:
-          name: dextop-debug-${{ github.sha }}
-          path: build/app/outputs/flutter-apk/app-debug.apk
+          name: dextop-nightly-${{ github.sha }}
+          path: |
+            build/app/outputs/flutter-apk/app-debug.apk
+            build/cardex/outputs/apk/debug/cardex-debug.apk
           if-no-files-found: error
           retention-days: 14

@@ -1,5 +1,48 @@
 # Changelog
 
+## 1.4.0 — Dextop Car Companion and Android Auto support
+
+### New
+
+- Added Dextop Car Companion for launching a dedicated Dextop desktop on supported parked Android Auto displays.
+- Added an independently owned car-display session with head-unit-sized virtual displays and direct touch forwarding without starting a phone-side Dextop session.
+- Added a dedicated in-car overlay with close, reconnect, stop, and workspace controls. Saved workspaces use the same names, icons, save, and launch behavior as Dextop on the phone.
+- Added a compatibility display mode that exposes the Auto virtual display on the phone and an experimental direct-transfer mode that keeps it hidden.
+- Added an Auto settings category with automatic phone-mirror orientation matching and the experimental hidden-display switch.
+- Added recovery integration for unexpectedly disconnected Dextop Car Companion sessions.
+- Added standard, wide, tall, and Subaru-style parked DHU test profiles with touch and parked-state sensors enabled.
+- Added a true-black AMOLED laptop keyboard theme with near-white key legends and restrained accent colors.
+
+### Improved
+
+- Added explicit Running (Auto), stopping, and cleanup states so the home screen reflects the native session owner and prevents another start until teardown is complete.
+- Kept phone and car display ownership isolated across display creation, topology activation, recovery, and teardown.
+- Extended display topology handling to recognize Auto-owned displays while excluding displays that have already been removed.
+- Improved the three-finger menu layout on foldable cover displays by recalculating the available viewport and enabling scrolling after display changes.
+- Improved live resolution changes so VirtualDisplay output follows the measured destination Surface while retaining the requested logical desktop size.
+- Improved DPI-only updates by changing only display density instead of rebuilding size, rotation, and desktop policy.
+- Improved navigation restoration with repeated vendor-SystemUI recovery passes before the accessibility service is detached.
+- Added focused window-launch diagnostics for vendor desktop environments while filtering package names, components, accounts, URIs, and private filesystem paths from shared reports.
+- Serialized and coalesced window diagnostics so launching a workspace cannot create an unbounded number of diagnostic workers.
+- Updated the release APK workflow to produce an arm64-only package while preserving the normal internal version code.
+
+### Fixed
+
+- Fixed DPI fields in the main resolution editor and quick menu rejecting Samsung IME, hardware-keyboard, and composing-text input.
+- Fixed DPI-only changes unnecessarily rebuilding Samsung DeX and causing its taskbar process to disappear.
+- Fixed custom-resolution changes retaining the previous crop, offset, black bars, or small centered image when switching to a full-surface resolution.
+- Fixed removed overlay displays remaining in saved topology snapshots and appearing as an ever-growing list of phantom monitors.
+- Fixed stale overlay display requests surviving session shutdown by clearing and verifying the request twice before reuse.
+- Fixed Dextop being unable to start again after a completed stop because a second accessibility teardown left the stopping latch active.
+- Fixed navigation gestures and Samsung's bottom gesture state remaining disabled after pause, interruption, or session shutdown.
+- Fixed the software cursor remaining hidden after an unsupported mirror backend failed and the user returned to a working backend.
+- Fixed system decorations being applied outside the existing desktop-HOME launch fallback path.
+- Fixed Auto-only sessions being mistaken for broken phone sessions and incorrectly showing the Android repair flow.
+- Fixed ending Dextop Car Companion stopping an unrelated phone-side Dextop session.
+- Fixed configuration changes in Dextop Car Companion being treated as an unexpected Android Auto disconnect.
+- Fixed car-session teardown leaving its virtual display or overlay behind after a normal exit.
+- Fixed unsupported portrait DHU video modes by using supported 1080p streams with cropped portrait content regions.
+
 ## 1.3.9 — Safer virtual pointer lifecycle
 
 ### Improved

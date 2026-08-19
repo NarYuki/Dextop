@@ -46,6 +46,7 @@ You can report bugs, submit device reports, and request features there.
 - [x] Automatic desktop taskbar hiding and optional built-in-display 120 Hz enforcement
 - [x] Foldable laptop mode with a US keyboard, trackpad, manual overlay control, and optional hinge-angle detection
 - [x] Foldable main/cover-display switching
+- [x] Parked Android Auto mirror activity with automatic head-unit sizing, Dextop/phone source selection, and touch forwarding
 - [x] Performance overlay for FPS, refresh rate, memory, battery, and estimated power usage
 - [x] Quick Settings tile launch
 - [x] Interrupted-session recovery and restoration of temporary Android settings
@@ -63,6 +64,8 @@ You can report bugs, submit device reports, and request features there.
 | OPPO ColorOS desktop | Limited and incomplete | The desktop can be displayed, but platform components such as the taskbar may not appear. |
 | Xiaomi devices running HyperOS or later | Disabled | MIUI and HyperOS are not supported. |
 | Other Android devices | Experimental | Virtual-display, mirroring, and freeform support varies by manufacturer, model, and OS update. |
+
+The Android Auto entry is exposed through the parked-app `CAR_LAUNCHER` activity on Android 15 and later. Android Auto's host still decides whether a sideloaded app is shown; its current public parked-app support is limited to approved categories.
 
 Dextop probes device capabilities at runtime and tries compatible backends in order. It still depends on Android hidden APIs and OEM behavior, so results can differ between models and OS versions from the same manufacturer.
 
@@ -164,6 +167,24 @@ If any part of wireless-debugging setup is unclear, follow **Start via wireless 
 The Google Play release is currently under review.
 
 Download the latest APK from [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest) and install it.
+
+### Nightly builds
+
+The latest development build is available from [GitHub Actions](https://github.com/NarYuki/Dextop/actions). Open the newest successful **Debug APK** workflow run and download its Nightly artifact to try changes that have not reached a stable release yet. The artifact contains matching Dextop and Dextop Car Companion debug APKs. Nightly builds are beta builds generated from the latest source and may contain unfinished features or regressions.
+
+Stable GitHub Releases include both the Dextop APK and the matching **Dextop Car Companion** APK when Android Auto support is included. Install both APKs from the same release so their signatures and relay protocol match.
+
+## Android Auto quick start
+
+Dextop supports a dedicated desktop on supported parked Android Auto displays through **Dextop Car Companion** on Android 15 or later.
+
+1. Install Dextop and the matching **Dextop Car Companion** APK from the same release.
+2. Start Stellar or Shizuku, grant Dextop permission, and complete Dextop's phone setup.
+3. Connect Android Auto while parked and open **Dextop Car Companion** from the car launcher.
+4. Select **Start**. Touch input is sent directly from the head unit to the Auto-owned Dextop display.
+5. Swipe right from the left edge of the car display to open the Auto controls for workspaces, video reconnection, and stopping the session.
+
+Android Auto controls whether a sideloaded parked app appears on a particular head unit. The default compatibility mode may show the Auto virtual-display overlay on the phone; an experimental hidden-display mode is available under **Dextop → Settings → Auto**. See the [Android Auto wiki](https://github.com/NarYuki/Dextop/wiki/Android-Auto) for installation details, display modes, gestures, controls, limitations, DHU testing, and troubleshooting.
 
 ## Development
 

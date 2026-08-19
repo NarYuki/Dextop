@@ -232,8 +232,17 @@ class _OverlayMenuState extends State<OverlayMenu> {
   Widget overlayField(TextEditingController controller, String label) {
     return TextField(
       controller: controller,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+      // Keep the edit buffer intact for Samsung's hardware/IME composing
+      // events.  FilteringTextInputFormatter.digitsOnly can discard those
+      // events, which makes DPI look impossible to edit from the quick menu.
+      keyboardType: TextInputType.numberWithOptions(
+        decimal: false,
+        signed: false,
+      ),
+      textInputAction: TextInputAction.next,
+      autocorrect: false,
+      enableSuggestions: false,
+      enableInteractiveSelection: true,
       decoration: InputDecoration(
         labelText: label,
         border: OutlineInputBorder(),

@@ -350,6 +350,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uiDextopIsReady => 'Dextop 已准备就绪';
 
   @override
+  String get uiDextopStopping => '正在完成 Dextop 退出';
+
+  @override
   String get uiStopDextop => '停止 Dextop';
 
   @override
@@ -840,6 +843,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uiStart => '开始';
 
   @override
+  String get uiRunningAuto => '运行中（Auto）';
+
+  @override
+  String get uiRunningAutoPlus => '运行中（Auto+）';
+
+  @override
+  String get uiStartPhoneDextop => '在此手机上启动 Dextop';
+
+  @override
+  String get uiStopAndroidAuto => '停止（Android Auto）';
+
+  @override
   String get uiAutomaticSwitchingAccordingToOpenClosedState => '根据开/关状态自动切换';
 
   @override
@@ -1314,4 +1329,17 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get keyboardThemesDescription => '笔记本键盘主题和自定义外观';
+
+  @override
+  String get autoSettingsTitle => 'Auto';
+
+  @override
+  String get autoSettingsDescription => 'Auto 显示与手机镜像选项';
+
+  @override
+  String get autoMatchPhoneOrientation => '将手机镜像方向匹配到 Auto';
+
+  @override
+  String get autoMatchPhoneOrientationDescription =>
+      '从手机镜像在 Auto 中显示 Dextop 时，根据车机宽高比调整方向。';
 }
