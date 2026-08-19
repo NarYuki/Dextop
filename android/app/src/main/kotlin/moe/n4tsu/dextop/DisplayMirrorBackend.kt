@@ -16,8 +16,9 @@ import java.lang.reflect.Proxy
 
 internal interface VirtualDisplayBackend {
     fun currentDisplayIds(): Set<Int>
+    fun overlayDisplayIds(): Set<Int>
     fun requestDisplay(width: Int, height: Int, density: Int, secure: Boolean, decorations: Boolean)
-    fun findCreatedDisplay(previousIds: Set<Int>): Display?
+    fun findCreatedDisplay(previousIds: Set<Int>, excludedIds: Set<Int> = emptySet()): Display?
     fun clearRequest()
 }
 
@@ -29,7 +30,8 @@ internal interface MirrorAttachBackend {
 
 internal data class MirrorAttachRequest(
     val displayId: Int,
-    val host: SurfaceView,
+    val host: SurfaceView?,
+    val destinationSurface: Surface,
     val hostWidth: Int,
     val hostHeight: Int,
     val contentWidth: Int,
@@ -63,23 +65,70 @@ internal class DisplayMirrorBackend(
 
     override fun currentDisplayIds(): Set<Int> = displayManager.displays.mapTo(mutableSetOf()) { it.displayId }
 
+    override fun overlayDisplayIds(): Set<Int> = displayManager.displays
+        .filter { display ->
+            runCatching {
+                Display::class.java.getMethod("getType").invoke(display) as Int == 4
+            }.getOrDefault(false)
+        }
+        .mapTo(mutableSetOf()) { it.displayId }
+
     override fun requestDisplay(width: Int, height: Int, density: Int, secure: Boolean, decorations: Boolean) {
+        requestDisplay(width, height, density, secure, decorations, emptySet())
+    }
+
+    fun requestDisplay(
+        width: Int,
+        height: Int,
+        density: Int,
+        secure: Boolean,
+        decorations: Boolean,
+        preserveSpecs: Set<String>
+    ) {
         val flags = buildList {
             if (secure) add("secure")
             if (decorations) add("should_show_system_decorations")
         }.joinToString(separator = ",", prefix = if (secure || decorations) "," else "")
-        val requested = "${width}x$height/$density$flags"
+        val spec = "${width}x$height/$density$flags"
+        val current = Settings.Global.getString(resolver, DISPLAY_SPECIFICATION).orEmpty()
+        // A phone and Auto session can legitimately request the same logical
+        // size. Preserve one entry per independently-owned Auto request,
+        // rather than preserving every identical string (which would leave a
+        // stopped phone display alive forever).
+        val preserveQuota = preserveSpecs.associateWith { 1 }.toMutableMap()
+        val preserved = current.split(';').filter { entry ->
+            val remaining = preserveQuota[entry] ?: return@filter false
+            if (remaining <= 0) return@filter false
+            preserveQuota[entry] = remaining - 1
+            true
+        }
+        val requested = (preserved + spec).joinToString(";")
         check(Settings.Global.putString(resolver, DISPLAY_SPECIFICATION, requested)) { "Unable to request overlay display" }
         check(Settings.Global.getString(resolver, DISPLAY_SPECIFICATION) == requested) { "Overlay display request rejected" }
         OperationLog.i(context, "DisplayBackend", "created request strategy=overlay_settings spec=$requested")
     }
 
     override fun clearRequest() {
-        check(Settings.Global.putString(resolver, DISPLAY_SPECIFICATION, "")) { "Unable to clear overlay display" }
+        clearRequestPreserving(emptySet())
     }
 
-    override fun findCreatedDisplay(previousIds: Set<Int>): Display? = displayManager.displays.firstOrNull {
+    fun clearRequestPreserving(preserveSpecs: Set<String>) {
+        val current = Settings.Global.getString(resolver, DISPLAY_SPECIFICATION).orEmpty()
+        val preserveQuota = preserveSpecs.associateWith { 1 }.toMutableMap()
+        val preserved = current.split(';').filter { entry ->
+            val remaining = preserveQuota[entry] ?: return@filter false
+            if (remaining <= 0) return@filter false
+            preserveQuota[entry] = remaining - 1
+            true
+        }
+        check(Settings.Global.putString(resolver, DISPLAY_SPECIFICATION, preserved.joinToString(";"))) {
+            "Unable to clear overlay display"
+        }
+    }
+
+    override fun findCreatedDisplay(previousIds: Set<Int>, excludedIds: Set<Int>): Display? = displayManager.displays.firstOrNull {
         it.displayId != Display.DEFAULT_DISPLAY && it.displayId !in previousIds &&
+            it.displayId !in excludedIds &&
             runCatching { Display::class.java.getMethod("getType").invoke(it) as Int == 4 }.getOrDefault(false)
     }
 
@@ -94,8 +143,13 @@ internal class DisplayMirrorBackend(
         strategyOverride: String? = null
     ): List<StrategyAttempt> {
         val request = MirrorAttachRequest(
-            displayId, host, hostWidth, hostHeight,
+            displayId, host, host.holder.surface, hostWidth, hostHeight,
             contentWidth, contentHeight, contentDensity
+        )
+        OperationLog.i(
+            context,
+            "DisplayBackend",
+            "mirror attach host=${hostWidth}x$hostHeight content=${contentWidth}x$contentHeight/$contentDensity"
         )
         val strategies = strategyOverride?.let(::listOf) ?: environment.mirrorStrategies
         // Resizing/rebinding an existing recording VirtualDisplay keeps its
@@ -103,7 +157,12 @@ internal class DisplayMirrorBackend(
         // leaves stale AOSP desktop desks behind until Shell refuses launches.
         if (activeStrategy == "virtual_display" && "virtual_display" in strategies &&
             attachment?.update(request) == true) {
-            OperationLog.i(context, "DisplayBackend", "mirror strategy=virtual_display updated in place")
+            OperationLog.i(
+                context,
+                "DisplayBackend",
+                "mirror strategy=virtual_display updated in place " +
+                    "host=${hostWidth}x$hostHeight content=${contentWidth}x$contentHeight/$contentDensity"
+            )
             return listOf(StrategyAttempt("virtual_display", true, "updated in place"))
         }
         releaseLayer()
@@ -129,8 +188,32 @@ internal class DisplayMirrorBackend(
         error("No compatible mirror backend: ${attempts.joinToString { "${it.strategy}=${it.detail}" }}")
     }
 
+    fun attachSurface(
+        displayId: Int,
+        surface: Surface,
+        hostWidth: Int,
+        hostHeight: Int,
+        contentWidth: Int,
+        contentHeight: Int,
+        contentDensity: Int
+    ) {
+        val request = MirrorAttachRequest(
+            displayId, null, surface, hostWidth, hostHeight,
+            contentWidth, contentHeight, contentDensity
+        )
+        releaseLayer()
+        val backend = attachBackends.getValue("virtual_display")
+        check(backend.isSupported()) { "Virtual display mirroring is unavailable" }
+        attachment = backend.attach(request)
+        activeStrategy = backend.id
+        OperationLog.i(context, "DisplayBackend", "remote Surface mirror attached")
+    }
+
     fun releaseLayer() {
         runCatching { attachment?.release() }
+            .onFailure {
+                OperationLog.w(context, "DisplayBackend", "mirror attachment release failed", it)
+            }
         attachment = null
         activeStrategy = null
     }
@@ -168,7 +251,8 @@ private class SurfaceControlMirrorBackend : MirrorAttachBackend {
 }
 
 private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): MirrorAttachment {
-    val parent = SurfaceView::class.java.getMethod("getSurfaceControl").invoke(request.host) as SurfaceControl
+    val host = checkNotNull(request.host) { "A SurfaceView host is required for layer mirroring" }
+    val parent = SurfaceView::class.java.getMethod("getSurfaceControl").invoke(host) as SurfaceControl
     val transaction = SurfaceControl.Transaction().reparent(layer, parent).setLayer(layer, 1)
     SurfaceControl.Transaction::class.java.getMethod(
         "setMatrix", SurfaceControl::class.java, Float::class.javaPrimitiveType,
@@ -209,14 +293,19 @@ private class VirtualDisplayMirrorBackend(private val privilegedAccess: Privileg
     override fun isSupported(): Boolean = runCatching { platform }.isSuccess
 
     override fun attach(request: MirrorAttachRequest): MirrorAttachment {
-        val surface = request.host.holder.surface
+        val surface = request.destinationSurface
         check(surface.isValid) { "The destination surface is unavailable" }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
         return platform.open(service, request, surface)
     }
 }
 
-private class VirtualDisplayPlatform private constructor(
+internal data class OwnedVirtualDisplay(
+    val displayId: Int,
+    val attachment: MirrorAttachment
+)
+
+internal class VirtualDisplayPlatform private constructor(
     private val configurationType: Class<*>,
     private val builderType: Class<*>,
     private val callbackType: Class<*>,
@@ -239,7 +328,64 @@ private class VirtualDisplayPlatform private constructor(
         val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
         check(displayId >= 0) { "The virtual display request was declined" }
         return ManagedVirtualDisplay(
-            service, releaseOperation, resizeOperation, surfaceOperation, callback
+            service,
+            releaseOperation,
+            resizeOperation,
+            surfaceOperation,
+            callback,
+            request.hostWidth.takeIf { it > 0 } ?: request.contentWidth,
+            request.hostHeight.takeIf { it > 0 } ?: request.contentHeight,
+            request.contentWidth,
+            request.contentHeight,
+            request.contentDensity
+        )
+    }
+
+    /**
+     * Creates a real, app-owned desktop display whose buffer is written
+     * directly to the CARDEX surface. Unlike OverlayDisplayAdapter this does
+     * not create a draggable "Overlay #" window on the phone display.
+     */
+    fun openOwned(
+        service: Any,
+        surface: Surface,
+        width: Int,
+        height: Int,
+        density: Int,
+        decorations: Boolean
+    ): OwnedVirtualDisplay {
+        check(surface.isValid) { "The Dextop Car Companion destination surface is unavailable" }
+        val constructor = builderType.constructors.single { candidate ->
+            candidate.parameterTypes.contentEquals(
+                arrayOf(String::class.java, Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            )
+        }
+        val builder = constructor.newInstance("Dextop Auto", width, height, density)
+        builderType.getMethod("setSurface", Surface::class.java).invoke(builder, surface)
+        // Keep the Auto-owned display private. Samsung turns PUBLIC virtual
+        // displays into AUTO_MIRROR displays, which conflicts with
+        // OWN_CONTENT_ONLY and makes createVirtualDisplay reject the request.
+        // PRESENTATION | OWN_CONTENT_ONLY | SUPPORTS_TOUCH | TRUSTED keeps the
+        // display launchable while its buffers are sent only to CARDEX.
+        // Decorations remain opt-in for the existing HOME-launch fallback.
+        val flags = 2 or 8 or 64 or 1024 or (if (decorations) 512 else 0)
+        builderType.getMethod("setFlags", Int::class.javaPrimitiveType).invoke(builder, flags)
+        val descriptor = builderType.getMethod("build").invoke(builder)
+        val callback = createCallback()
+        val bindings = mapOf<Class<*>, Any>(configurationType to descriptor, callbackType to callback)
+        val arguments = createOperation.parameterTypes.map { parameter ->
+            bindings.entries.firstOrNull { parameter.isAssignableFrom(it.key) }?.value
+                ?: defaultArgument(parameter)
+        }.toTypedArray()
+        val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
+        check(displayId >= 0) { "The hidden Auto display request was declined" }
+        return OwnedVirtualDisplay(
+            displayId,
+            ManagedVirtualDisplay(
+                service, releaseOperation, resizeOperation, surfaceOperation, callback,
+                width, height, width, height, density
+            )
         )
     }
 
@@ -250,10 +396,19 @@ private class VirtualDisplayPlatform private constructor(
                     Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
             )
         } ?: error("No compatible display configuration constructor")
+        // VirtualDisplay's buffer is written directly into the host
+        // SurfaceView.  Using the logical overlay size here leaves Android's
+        // Surface pipeline free to center/crop a custom profile (for example
+        // a 16:9 profile in a 4:3 DeX host), which is what caused the small or
+        // cropped mirror.  Keep the overlay's logical metrics in
+        // MirrorAttachRequest.contentWidth/contentHeight, but size the output
+        // buffer to the measured host surface so the mirror always fills it.
+        val outputWidth = request.hostWidth.takeIf { it > 0 } ?: request.contentWidth
+        val outputHeight = request.hostHeight.takeIf { it > 0 } ?: request.contentHeight
         val builder = constructor.newInstance(
             "DextopSurface-${request.displayId}",
-            request.contentWidth,
-            request.contentHeight,
+            outputWidth,
+            outputHeight,
             request.contentDensity
         )
         val properties = listOf(
@@ -342,27 +497,56 @@ private class ManagedVirtualDisplay(
     private val releaseOperation: Method,
     private val resizeOperation: Method?,
     private val surfaceOperation: Method?,
-    private val callback: Any
+    private val callback: Any,
+    initialOutputWidth: Int,
+    initialOutputHeight: Int,
+    initialContentWidth: Int,
+    initialContentHeight: Int,
+    initialContentDensity: Int
 ) : MirrorAttachment {
     private var released = false
+    private var outputWidth = initialOutputWidth
+    private var outputHeight = initialOutputHeight
+    private var contentWidth = initialContentWidth
+    private var contentHeight = initialContentHeight
+    private var contentDensity = initialContentDensity
 
     override fun update(request: MirrorAttachRequest): Boolean = runCatching {
         val resize = resizeOperation ?: return false
-        val resizeArgs = resize.parameterTypes.mapIndexed { index, type ->
-            when {
-                index == 0 -> callback
-                type == Int::class.javaPrimitiveType && index == 1 -> request.contentWidth
-                type == Int::class.javaPrimitiveType && index == 2 -> request.contentHeight
-                type == Int::class.javaPrimitiveType -> request.contentDensity
-                else -> null
-            }
-        }.toTypedArray()
-        resize.invoke(service, *resizeArgs)
+        val nextWidth = request.hostWidth.takeIf { it > 0 } ?: request.contentWidth
+        val nextHeight = request.hostHeight.takeIf { it > 0 } ?: request.contentHeight
+        val logicalSizeChanged = request.contentWidth != contentWidth ||
+            request.contentHeight != contentHeight
+        val densityChanged = request.contentDensity != contentDensity
+        // The source overlay's logical size is part of the VirtualDisplay
+        // configuration even when the destination Surface keeps the same
+        // pixel dimensions. Without this resize, switching from a
+        // letterboxed profile to a full-size profile leaves the old source
+        // crop/scale and its black bars in place. A density-only edit is
+        // intentionally excluded: WMS applies that metric and resizing the
+        // recording for DPI alone can make Samsung DeX rebuild its taskbar.
+        if (nextWidth != outputWidth || nextHeight != outputHeight || logicalSizeChanged) {
+            val resizeArgs = resize.parameterTypes.mapIndexed { index, type ->
+                when {
+                    index == 0 -> callback
+                    type == Int::class.javaPrimitiveType && index == 1 -> nextWidth
+                    type == Int::class.javaPrimitiveType && index == 2 -> nextHeight
+                    type == Int::class.javaPrimitiveType -> request.contentDensity
+                    else -> null
+                }
+            }.toTypedArray()
+            resize.invoke(service, *resizeArgs)
+            outputWidth = nextWidth
+            outputHeight = nextHeight
+        }
+        contentWidth = request.contentWidth
+        contentHeight = request.contentHeight
+        if (densityChanged) contentDensity = request.contentDensity
         surfaceOperation?.let { operation ->
             val args = operation.parameterTypes.mapIndexed { index, type ->
                 when {
                     index == 0 -> callback
-                    Surface::class.java.isAssignableFrom(type) -> request.host.holder.surface
+                    Surface::class.java.isAssignableFrom(type) -> request.destinationSurface
                     else -> null
                 }
             }.toTypedArray()

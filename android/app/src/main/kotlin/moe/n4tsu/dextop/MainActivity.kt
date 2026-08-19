@@ -168,6 +168,12 @@ open class MainActivity : FlutterActivity() {
         flutterChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "status" -> result.success(status())
+                "sessionState" -> result.success(mapOf(
+                    "active" to MirrorService.isActive(),
+                    "stopping" to MirrorService.isStopping(),
+                    "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),
+                    "autoActive" to AndroidAutoMirrorActivity.isAutoSessionActive()
+                ))
                 "launchContext" -> {
                     val launchDisplayId = display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
                     result.success(mapOf(
@@ -249,6 +255,10 @@ open class MainActivity : FlutterActivity() {
                     ))
                 }
                 "stop" -> stopDisplay(result)
+                "stopAuto" -> {
+                    AndroidAutoMirrorActivity.stopAutoSessionFromPhone()
+                    result.success(null)
+                }
                 "apps" -> Thread {
                     val apps = AppCatalog(this).launchableApps()
                     runOnUiThread { result.success(apps) }
@@ -476,6 +486,9 @@ open class MainActivity : FlutterActivity() {
         }.getOrDefault(false)
         val status = mapOf(
             "active" to MirrorService.isActive(),
+            "stopping" to MirrorService.isStopping(),
+            "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),
+            "autoActive" to AndroidAutoMirrorActivity.isAutoSessionActive(),
             "privileged" to hasSecureSettingsPermission(),
             "shizukuInstalled" to installed,
             "stellarInstalled" to stellarInstalled,
@@ -629,6 +642,17 @@ open class MainActivity : FlutterActivity() {
     }
 
     private fun startDisplay(arguments: Map<*, *>?, result: MethodChannel.Result) {
+        // Auto-only Dextop owns its own virtual display. Keep the phone-side
+        // companion start disabled for now; otherwise both sessions race on
+        // the shared overlay specification and can attach to the wrong HOME.
+        if (AndroidAutoMirrorActivity.ownsAutoSession()) {
+            result.error(
+                "auto_session_active",
+                "Stop the Android Auto Dextop session before starting Dextop on this phone",
+                null
+            )
+            return
+        }
         val width = (arguments?.get("width") as? Number)?.toInt() ?: 1920
         val height = (arguments?.get("height") as? Number)?.toInt() ?: 1080
         val density = (arguments?.get("density") as? Number)?.toInt() ?: 240
@@ -750,22 +774,34 @@ open class MainActivity : FlutterActivity() {
         }
         val cleanupPreferences = getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE)
         val cleanupPending = cleanupPreferences.getBoolean("cleanup_pending", false)
+        val cardexRepairRequired = cleanupPreferences.getBoolean(
+            CardexRecoveryReceiver.KEY_REPAIR_REQUIRED,
+            false
+        )
         val pausedByUser = cleanupPreferences.getBoolean("paused_by_user", false)
         val recovery = SessionJournal(this).snapshot()
         val transactionOpen = recovery["transactionOpen"] == true
         val pausedSession = recovery["recoverable"] == true && recovery["phase"] == "paused"
+        val autoSessionActive = AndroidAutoMirrorActivity.isAutoSessionActive()
+        val phoneSessionOwned = MirrorService.ownsPhoneSession()
         return mapOf(
             // Accessibility can legitimately remain enabled during setup/demo.
             // A user-paused session is also intentional and must be resumed or
             // discarded through the recovery card, never treated as corruption.
-            "required" to (!MirrorService.isActive() &&
-                !pausedByUser && !pausedSession &&
-                (transactionOpen || cleanupPending)),
+            // Auto owns the shared journal while the phone session is absent;
+            // that is a valid independent session, not a recovery condition.
+            "required" to (cardexRepairRequired ||
+                (!phoneSessionOwned && !autoSessionActive &&
+                    !pausedByUser && !pausedSession &&
+                    (transactionOpen || cleanupPending))),
             "accessibilityResidual" to enabled,
-            "displayResidual" to transactionOpen,
+            "displayResidual" to (cardexRepairRequired || (transactionOpen && !autoSessionActive)),
             "cleanupPending" to cleanupPending,
+            "cardexInterrupted" to cardexRepairRequired,
             "pausedByUser" to pausedByUser,
-            "pausedSession" to pausedSession
+            "pausedSession" to pausedSession,
+            "autoActive" to autoSessionActive,
+            "phoneSession" to phoneSessionOwned
         )
     }
 
@@ -810,6 +846,9 @@ open class MainActivity : FlutterActivity() {
             getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
                 .putBoolean("cleanup_pending", false)
                 .putBoolean("paused_by_user", false)
+                .putBoolean(CardexRecoveryReceiver.KEY_REPAIR_REQUIRED, false)
+                .remove("cardex_interruption_reason")
+                .remove("cardex_interrupted_at")
                 .putLong("verified_at", System.currentTimeMillis())
                 .commit()
         }.onSuccess { result.success(null) }

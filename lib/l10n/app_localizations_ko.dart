@@ -355,6 +355,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uiDextopIsReady => 'Dextop 준비됨';
 
   @override
+  String get uiDextopStopping => 'Dextop 종료 처리 중';
+
+  @override
   String get uiStopDextop => 'Dextop 중지';
 
   @override
@@ -854,6 +857,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uiStart => '시작';
 
   @override
+  String get uiRunningAuto => '실행 중 (Auto)';
+
+  @override
+  String get uiRunningAutoPlus => '실행 중 (Auto+)';
+
+  @override
+  String get uiStartPhoneDextop => '이 휴대전화에서 Dextop 시작';
+
+  @override
+  String get uiStopAndroidAuto => '중지 (Android Auto)';
+
+  @override
   String get uiAutomaticSwitchingAccordingToOpenClosedState =>
       '개폐 상태에 따라 자동 전환';
 
@@ -1331,4 +1346,17 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get keyboardThemesDescription => '노트북 키보드 테마 및 사용자 지정 외관';
+
+  @override
+  String get autoSettingsTitle => 'Auto';
+
+  @override
+  String get autoSettingsDescription => 'Auto 표시 및 휴대전화 미러링 옵션';
+
+  @override
+  String get autoMatchPhoneOrientation => '휴대전화 미러링 방향을 Auto에 맞춤';
+
+  @override
+  String get autoMatchPhoneOrientationDescription =>
+      '휴대전화 미러링으로 Auto에 Dextop을 표시할 때 헤드 유닛 종횡비에 맞춰 방향을 조정합니다.';
 }

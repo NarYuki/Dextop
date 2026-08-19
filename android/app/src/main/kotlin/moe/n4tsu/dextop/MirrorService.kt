@@ -44,6 +44,7 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import android.text.InputType
 import android.transition.ChangeBounds
 import android.transition.AutoTransition
 import android.transition.TransitionManager
@@ -83,6 +84,8 @@ import androidx.window.layout.WindowInfoTracker
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
+import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import moe.shizuku.server.IShizukuService
 import kotlin.math.abs
 import kotlin.math.hypot
@@ -96,7 +99,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val height: Int,
         val density: Int,
         val secure: Boolean = false,
-        val decorations: Boolean = false
+        val decorations: Boolean = false,
+        /**
+         * Creates only the Dextop overlay display.  No accessibility host is
+         * added to the phone display; Android Auto attaches its own recording
+         * VirtualDisplay to that overlay instead.
+         */
+        val autoOnly: Boolean = false
     )
 
     /**
@@ -147,6 +156,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             0x00200000 or 0x00400000 or 0x01000000
         private var instance: MirrorService? = null
         private var pending: Config? = null
+        private var pendingAutoSurface: Surface? = null
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
         private var pendingDemo = false
         private var pendingLaptopDemo = false
@@ -160,6 +170,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             density: Int,
             secure: Boolean,
             decorations: Boolean,
+            autoOnly: Boolean = false,
+            autoSurface: Surface? = null,
             completion: (Result<Map<String, Any>>) -> Unit
         ) {
             val running = instance
@@ -171,8 +183,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 decorations || it.shouldUsePersistedSystemDecorations()
             } ?: decorations
             if (active && running != null && running.targetDisplayId >= 0 &&
-                secure == running.secureDisplay && effectiveDecorations == running.showSystemDecorations) {
-                val requested = Config(width, height, density, secure, effectiveDecorations)
+                secure == running.secureDisplay && effectiveDecorations == running.showSystemDecorations &&
+                autoOnly == running.autoOnlySession) {
+                val requested = Config(width, height, density, secure, effectiveDecorations, autoOnly)
                 running.root?.post {
                     runCatching {
                         val next = running.effectiveConfig(requested)
@@ -191,7 +204,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
             pendingStartResult = completion
-            pending = Config(width, height, density, secure, effectiveDecorations)
+            pending = Config(width, height, density, secure, effectiveDecorations, autoOnly)
+            pendingAutoSurface = autoSurface?.takeIf { autoOnly }
             val component = ComponentName(context, MirrorService::class.java).flattenToString()
             val current = Settings.Secure.getString(
                 context.contentResolver,
@@ -215,6 +229,48 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
         fun isActive(): Boolean = active
+
+        /** True only when the active accessibility session is owned by Car Companion. */
+        fun isAutoOnlySessionActive(): Boolean = active && instance?.autoOnlySession == true
+
+        /** Source display selected for the Android Auto parked-app mirror. */
+        fun androidAutoSourceDisplayId(): Int = instance?.targetDisplayId
+            ?.takeIf { active && it >= 0 }
+            ?: android.view.Display.DEFAULT_DISPLAY
+
+        /**
+         * Aligns the phone-side Dextop orientation with the Android Auto host
+         * only when the user explicitly selected the phone-side mirror mode.
+         * Auto-only sessions never call this method and therefore never rotate
+         * or resize the phone UI.
+         */
+        fun alignPhoneMirrorToAndroidAuto(width: Int, height: Int) {
+            val service = instance ?: return
+            service.root?.post {
+                if (!active || service.autoOnlySession || width <= 0 || height <= 0) return@post
+                val portrait = height > width
+                MainActivity.setDisplayOrientation(portrait)
+                service.forcePhoneRotation(portrait)
+                OperationLog.i(
+                    service,
+                    "AndroidAuto",
+                    "phone-side mirror orientation aligned portrait=$portrait host=${width}x$height"
+                )
+            }
+        }
+
+        /**
+         * True while the previous session is still tearing down its display,
+         * input filters, and phone UI state. The Flutter home screen uses this
+         * to keep the start action disabled until cleanup has completed.
+         */
+        fun isStopping(): Boolean = instance?.stopping == true
+
+        /** True while a phone-side session is active or temporarily paused. */
+        fun ownsPhoneSession(): Boolean = (active && instance?.autoOnlySession != true) ||
+            instance?.pausedForAndroid == true ||
+            (instance?.stopping == true && instance?.autoOnlySession != true) ||
+            pending?.autoOnly == false
 
         /**
          * Re-submit the phone navigation restore when the Dextop home activity
@@ -325,6 +381,30 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
 
+        /**
+         * Display ids currently owned by the phone-side session.  Android
+         * Auto has its own overlay owner; callers creating a second overlay
+         * must exclude this id even while the phone session is resizing or
+         * before its Flutter status has caught up.
+         */
+        fun phoneOverlayDisplayIds(): Set<Int> = instance?.targetDisplayId
+            ?.takeIf { ownsPhoneSession() && it >= 0 }
+            ?.let(::setOf)
+            ?: emptySet()
+
+        /** True only when the phone owner uses this exact overlay entry. */
+        fun ownsOverlaySpec(spec: String): Boolean {
+            val service = instance ?: return false
+            if (!ownsPhoneSession() || service.targetWidth <= 0 || service.targetHeight <= 0) return false
+            val flags = buildList {
+                if (service.secureDisplay) add("secure")
+                if (service.showSystemDecorations) add("should_show_system_decorations")
+            }
+            val phoneSpec = "${service.targetWidth}x${service.targetHeight}/${service.density}" +
+                flags.joinToString(separator = ",", prefix = if (flags.isEmpty()) "" else ",")
+            return phoneSpec == spec
+        }
+
         fun launchPackage(packageName: String, bounds: android.graphics.Rect? = null): Boolean = instance?.let { service ->
             runCatching {
                 val fittedBounds = bounds?.let {
@@ -335,6 +415,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         it
                     )
                 }
+                OperationLog.i(
+                    service,
+                    "AppLaunch",
+                    "requested package=$packageName display=${service.targetDisplayId} " +
+                        "windowingMode=freeform bounds=${fittedBounds ?: "default"} " +
+                        "decorations=${service.showSystemDecorations} environment=${service.desktopEnvironment.id}"
+                )
                 AppCatalog(service).launch(
                     packageName,
                     service.targetDisplayId,
@@ -342,7 +429,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 )
                 service.launchedAppBounds[packageName] = fittedBounds
                     ?: Rect(0, 0, service.targetWidth, service.targetHeight)
-            }.onFailure { Log.e(service.logTag, "app launch failed", it) }.isSuccess
+                OperationLog.i(
+                    service,
+                    "AppLaunch",
+                    "startActivity accepted package=$packageName display=${service.targetDisplayId}"
+                )
+                service.scheduleWindowLaunchDiagnostics("after_app_launch")
+            }.onFailure {
+                Log.e(service.logTag, "app launch failed", it)
+                OperationLog.e(
+                    service,
+                    "AppLaunch",
+                    "startActivity failed package=$packageName display=${service.targetDisplayId}",
+                    it
+                )
+                service.scheduleWindowLaunchDiagnostics("app_launch_failure", delayMs = 0L)
+            }.isSuccess
         } ?: false
 
         fun launchPackageAt(packageName: String, position: String): Boolean = instance?.let { service ->
@@ -380,6 +482,36 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun stopActive() {
             instance?.stop()
+        }
+
+        /** Global navigation requested by the signature-protected CARDEX relay. */
+        fun performCardexAction(action: String): Boolean {
+            val service = instance ?: return false
+            val globalAction = when (action) {
+                "back" -> GLOBAL_ACTION_BACK
+                "home" -> GLOBAL_ACTION_HOME
+                "recents" -> GLOBAL_ACTION_RECENTS
+                else -> return false
+            }
+            return service.performGlobalAction(globalAction)
+        }
+
+        fun cardexWorkspaces(): String = instance?.workspaceJson()?.toString() ?: "[]"
+
+        fun saveCardexWorkspace(): String? = instance?.saveCurrentWorkspace()
+            ?: "Dextop session is unavailable"
+
+        fun launchCardexWorkspace(id: String): Boolean {
+            val service = instance ?: return false
+            val workspaces = service.workspaceJson()
+            for (index in 0 until workspaces.length()) {
+                val workspace = workspaces.optJSONObject(index) ?: continue
+                if (workspace.optString("id") == id) {
+                    service.launchOverlayWorkspace(workspace, closeMenu = false)
+                    return true
+                }
+            }
+            return false
         }
 
         fun showOverlayDemo(context: Context) {
@@ -532,6 +664,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var density = 240
     private var secureDisplay = false
     private var showSystemDecorations = false
+    private var autoOnlySession = false
+    private val windowDiagnosticExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "Dextop-window-diagnostics").apply { isDaemon = true }
+    }
+    private val windowDiagnosticGeneration = AtomicInteger()
+    private var autoDestinationSurface: Surface? = null
+    private var autoOwnedDisplay: OwnedVirtualDisplay? = null
     /** True after the one-time Samsung HOME/decorations recovery has been used. */
     private var homeDecorationRetryUsed = false
     private var mirrorDisplayId = -1
@@ -691,6 +830,34 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     /**
+     * A mirror backend can fail after the input device has already hidden the
+     * software pointer (for example when a vendor rejects WindowManager or
+     * SurfaceControl mirroring).  Keep the failed backend from leaving the
+     * pointer in an invisible state: tear down the virtual pointer and make
+     * the accessibility cursor authoritative again.
+     */
+    private fun restoreSoftwareCursorAfterMirrorFailure(reason: String) {
+        stopVirtualMouse()
+        if (!directTouch) {
+            cursorView?.apply {
+                visibility = View.VISIBLE
+                bringToFront()
+                update(
+                    (cursorX / targetWidth.coerceAtLeast(1)).coerceIn(0f, 1f),
+                    (cursorY / targetHeight.coerceAtLeast(1)).coerceIn(0f, 1f)
+                )
+            }
+        } else {
+            cursorView?.visibility = View.GONE
+        }
+        OperationLog.w(
+            this,
+            "InputRouting",
+            "software cursor restored after mirror failure reason=$reason"
+        )
+    }
+
+    /**
      * A compact runtime snapshot is attached to the session log whenever the
      * host surface or logical display changes. This is intentionally separate
      * from Logcat so a shared diagnostic report contains the geometry that was
@@ -802,6 +969,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onDisplayAdded(displayId: Int) {
             refreshFoldingApiState("display_added", force = true)
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_added_$displayId"))
+            if (active) refreshMenuGeometryAfterDisplayChange()
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleTopologyReapplyAfterReconnect()
@@ -813,6 +981,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onDisplayRemoved(displayId: Int) {
             refreshFoldingApiState("display_removed", force = true)
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_removed_$displayId"))
+            if (active) refreshMenuGeometryAfterDisplayChange()
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = false)
             scheduleLaptopModeReevaluation("display_removed")
@@ -823,6 +992,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onDisplayChanged(displayId: Int) {
             refreshFoldingApiState("display_changed", force = true)
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_changed_$displayId"))
+            if (active) refreshMenuGeometryAfterDisplayChange()
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleLaptopModeReevaluation("display_changed")
@@ -832,6 +1002,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             } else if (active && displayId == targetDisplayId && mirrorDisplayId >= 0) {
                 scheduleMirrorRefresh("source display changed")
             }
+        }
+    }
+
+    private fun refreshMenuGeometryAfterDisplayChange() {
+        val panel = menu ?: return
+        val frame = root ?: return
+        frame.post {
+            if (!active || menu !== panel) return@post
+            panel.layoutParams = menuLayoutParams()
+            panel.requestLayout()
+            scheduleMenuHeightUpdate()
         }
     }
 
@@ -855,7 +1036,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         android.os.Handler(mainLooper).postDelayed({
             if (generation != topologyReapplyGeneration || !active) return@postDelayed
             runCatching {
-                DisplayEnvironmentSettings(this).activateTopologyIfEnabled(mirrorDisplayId)
+                val topologyOverlays = buildSet {
+                    if (mirrorDisplayId >= 0) add(mirrorDisplayId)
+                    AndroidAutoMirrorActivity.autoOverlayDisplayIds().forEach(::add)
+                }
+                DisplayEnvironmentSettings(this).activateTopologyForOverlays(topologyOverlays)
             }
                 .onFailure { Log.e(logTag, "display topology reapply after reconnect failed", it) }
         }, 750)
@@ -1094,7 +1279,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     override fun onUnbind(intent: android.content.Intent?): Boolean {
-        if (!pausedForAndroid) stop()
+        // A completed stop sets active=false before the delayed accessibility
+        // detach runs. Do not start a second teardown from that unbind; doing
+        // so used to leave the service's stopping latch set forever.
+        if (!pausedForAndroid && (active || stopping || pending != null)) stop()
         if (screenReceiverRegistered) unregisterReceiver(screenReceiver)
         inputManager?.unregisterInputDeviceListener(inputDeviceListener)
         sensorManager?.unregisterListener(hingeListener)
@@ -1104,6 +1292,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         screenReceiverRegistered = false
         instance = null
         return super.onUnbind(intent)
+    }
+
+    override fun onDestroy() {
+        windowDiagnosticGeneration.incrementAndGet()
+        windowDiagnosticExecutor.shutdownNow()
+        super.onDestroy()
     }
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -1214,6 +1408,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         density = effectiveConfig.density
         secureDisplay = effectiveConfig.secure
         showSystemDecorations = effectiveConfig.decorations
+        autoOnlySession = effectiveConfig.autoOnly
+        autoDestinationSurface = if (autoOnlySession) {
+            pendingAutoSurface?.takeIf { it.isValid }
+                ?: CardexRelayService.activeDestinationSurface()
+        } else {
+            null
+        }
+        pendingAutoSurface = null
         homeDecorationRetryUsed = false
         // Dextop orientation is controlled exclusively by its overlay action.
         // Lock both the activity configuration and the framework rotation. On
@@ -1223,12 +1425,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // frame is permanently letterboxed until another configuration event.
         val portrait = targetHeight > targetWidth
         requestedPortrait = portrait
-        MainActivity.setDisplayOrientation(portrait)
-        forcePhoneRotation(portrait)
+        if (!autoOnlySession) {
+            MainActivity.setDisplayOrientation(portrait)
+            forcePhoneRotation(portrait)
+        } else {
+            OperationLog.i(
+                this,
+                "AndroidAuto",
+                "starting headless Auto display ${targetWidth}x${targetHeight}/$density; phone orientation unchanged"
+            )
+        }
         cursorX = targetWidth / 2f
         cursorY = targetHeight / 2f
         OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_configured"))
         removeWindow()
+        if (autoOnlySession) {
+            // There is deliberately no SurfaceView on the phone in this mode.
+            // The Auto activity creates the only recording VirtualDisplay and
+            // attaches it to the head-unit surface.
+            pending = null
+            active = true
+            createHeadlessDisplay()
+            return
+        }
         addWindow()
         pending = null
         active = true
@@ -3139,7 +3358,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun menuLayoutParams(): FrameLayout.LayoutParams {
-        return if (targetWidth >= targetHeight) {
+        return if (menuUsesLandscapeLayout()) {
             FrameLayout.LayoutParams(dp(if (workspaceExpanded) 680 else 340), -2, Gravity.START).apply {
                 topMargin = dp(18)
                 bottomMargin = dp(18)
@@ -3152,6 +3371,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 topMargin = dp(12)
             }
         }
+    }
+
+    /**
+     * During a fold/cover hand-off targetWidth/targetHeight can describe the
+     * previous panel for a few frames.  Menu geometry must follow the host
+     * Surface (the panel that actually receives touches), not that stale
+     * logical display profile.
+     */
+    private fun menuUsesLandscapeLayout(): Boolean {
+        val surface = surfaceView
+        val surfaceWidth = surface?.width ?: 0
+        val surfaceHeight = surface?.height ?: 0
+        if (surfaceWidth >= 480 && surfaceHeight >= 480) {
+            return surfaceWidth >= surfaceHeight
+        }
+        val bounds = runCatching { windowManager?.currentWindowMetrics?.bounds }.getOrNull()
+        val width = bounds?.width() ?: 0
+        val height = bounds?.height() ?: 0
+        if (width >= 480 && height >= 480) return width >= height
+        return targetWidth >= targetHeight
     }
 
     private fun buildMenu(): LinearLayout {
@@ -3174,9 +3413,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         container.addView(ScrollView(this).apply {
             isFillViewport = true
+            isVerticalScrollBarEnabled = true
+            isScrollbarFadingEnabled = false
+            overScrollMode = View.OVER_SCROLL_IF_CONTENT_SCROLLS
             addView(primary, FrameLayout.LayoutParams(-1, -2))
-        }, LinearLayout.LayoutParams(if (targetWidth >= targetHeight) dp(340) else 0, -1,
-            if (targetWidth >= targetHeight) 0f else 1f))
+        }, LinearLayout.LayoutParams(if (menuUsesLandscapeLayout()) dp(340) else 0, -1,
+            if (menuUsesLandscapeLayout()) 0f else 1f))
         menuPrimary = primary
         showMainMenu(primary)
         container.post { scheduleMenuHeightUpdate() }
@@ -3234,7 +3476,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // reserved for the initial setup/demo surface.
         if (!laptopDemo) {
             frame.addView(controls, menuLayoutParams())
-            frame.addView(info, if (targetWidth >= targetHeight) {
+            frame.addView(info, if (menuUsesLandscapeLayout()) {
                 FrameLayout.LayoutParams(dp(340), -2, Gravity.BOTTOM or Gravity.END).apply {
                     rightMargin = dp(18)
                     bottomMargin = dp(18)
@@ -3263,7 +3505,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 WindowInsets.Type.statusBars() or WindowInsets.Type.displayCutout()
             )
             val layout = info.layoutParams as FrameLayout.LayoutParams
-            if (targetWidth >= targetHeight) {
+            if (menuUsesLandscapeLayout()) {
                 layout.rightMargin = dp(18) + safe.right
                 layout.bottomMargin = dp(18) + safe.bottom
             } else {
@@ -3329,7 +3571,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private val menuHeightUpdate = Runnable {
         val container = menu ?: return@Runnable
-        val availableWidth = if (targetWidth >= targetHeight) dp(340) else
+        val availableWidth = if (menuUsesLandscapeLayout()) dp(340) else
             (root?.width ?: resources.displayMetrics.widthPixels) - dp(24)
         var wanted = 0
         for (index in 0 until container.childCount) {
@@ -3342,8 +3584,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             wanted = maxOf(wanted, content.measuredHeight)
         }
         if (wanted <= 0) return@Runnable
-        val screenHeight = root?.height?.takeIf { it > 0 } ?: resources.displayMetrics.heightPixels
-        val verticalMargins = if (targetWidth >= targetHeight) dp(36) else dp(24)
+        // The accessibility overlay may briefly retain the unfolded metrics
+        // while the cover Surface is already smaller.  Use the smallest valid
+        // host/WindowManager height so the ScrollView receives the remaining
+        // viewport instead of being clipped below the visible panel.
+        val screenHeight = listOf(
+            root?.height ?: 0,
+            windowManager?.currentWindowMetrics?.bounds?.height() ?: 0,
+            resources.displayMetrics.heightPixels
+        ).filter { it > 0 }.minOrNull() ?: resources.displayMetrics.heightPixels
+        val verticalMargins = if (menuUsesLandscapeLayout()) dp(36) else dp(24)
         val targetHeight = wanted.coerceAtMost((screenHeight - verticalMargins).coerceAtLeast(dp(220)))
         val params = container.layoutParams as? FrameLayout.LayoutParams ?: return@Runnable
         if (params.height == targetHeight) return@Runnable
@@ -3414,7 +3664,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         (menuPrimary?.findViewWithTag<View>("workspace_toggle") as? TextView)?.text =
             if (workspaceExpanded) "‹" else "›"
         val startWidth = container.width.coerceAtLeast(dp(340))
-        val endWidth = if (targetWidth >= targetHeight && workspaceExpanded) dp(680) else dp(340)
+        val endWidth = if (menuUsesLandscapeLayout() && workspaceExpanded) dp(680) else dp(340)
         if (workspaceExpanded) {
             val workspacePanel = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
@@ -3438,15 +3688,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 tag = "workspace_scroll"
                 isFillViewport = true
                 addView(workspacePanel, FrameLayout.LayoutParams(-1, -2))
-            }, LinearLayout.LayoutParams(if (targetWidth >= targetHeight) dp(340) else 0, -1,
-                if (targetWidth >= targetHeight) 0f else 1f))
+            }, LinearLayout.LayoutParams(if (menuUsesLandscapeLayout()) dp(340) else 0, -1,
+                if (menuUsesLandscapeLayout()) 0f else 1f))
         } else {
             container.findViewWithTag<View>("workspace_scroll")?.apply {
                 isClickable = false
                 postDelayed({ container.removeView(this) }, 240)
             }
         }
-        if (targetWidth >= targetHeight) {
+        if (menuUsesLandscapeLayout()) {
             ValueAnimator.ofInt(startWidth, endWidth).apply {
                 duration = 240
                 addUpdateListener { animator ->
@@ -3695,6 +3945,66 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun packageName(): String = applicationContext.packageName
 
+    /** Samples the system state that decides whether a launch became a desktop window. */
+    private fun scheduleWindowLaunchDiagnostics(reason: String, delayMs: Long = 450L) {
+        val diagnosticDisplayId = targetDisplayId
+        val generation = windowDiagnosticGeneration.incrementAndGet()
+        postMainDelayed(delayMs) {
+            windowDiagnosticExecutor.execute {
+                if (generation != windowDiagnosticGeneration.get()) return@execute
+                collectWindowLaunchDiagnostics(reason, diagnosticDisplayId)
+            }
+        }
+    }
+
+    private fun collectWindowLaunchDiagnostics(reason: String, displayId: Int) {
+        if (displayId < 0) return
+        val taskCommand =
+            "dumpsys activity activities | " +
+                "grep -E 'Display: mDisplayId=$displayId|mResumedActivity|topResumedActivity|" +
+                "windowingMode=|bounds=' | tail -n 64"
+        logDiagnosticCommand("ActivityTaskManager", reason, displayId, taskCommand)
+
+        val windowCommand =
+            "dumpsys window displays | " +
+                "grep -E 'Display: mDisplayId=$displayId|mDisplayId=$displayId|mCurrentFocus|" +
+                "mFocusedApp|windowingMode=|mBounds=' | tail -n 64"
+        logDiagnosticCommand("WindowManager", reason, displayId, windowCommand)
+
+        val systemLogCommand =
+            "logcat -d -v brief -t 160 ActivityTaskManager:I WindowManager:I " +
+                "ShellTaskOrganizer:I DesktopMode:I DesktopTasksController:I '*:S' | tail -n 80"
+        logDiagnosticCommand("TaskOrganizer", reason, displayId, systemLogCommand)
+    }
+
+    private fun logDiagnosticCommand(
+        component: String,
+        reason: String,
+        displayId: Int,
+        command: String
+    ) {
+        val result = privilegedAccess.execute("sh", "-c", command)
+        if (!result.succeeded) {
+            OperationLog.w(
+                this,
+                component,
+                "diagnostic unavailable reason=$reason display=$displayId exit=${result.exitCode} " +
+                    "detail=${result.error.take(240)}"
+            )
+            return
+        }
+        val compact = result.output.lineSequence()
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .joinToString(" | ")
+            .ifEmpty { "no matching system records" }
+        OperationLog.i(
+            this,
+            component,
+            "diagnostic reason=$reason display=$displayId $compact"
+        )
+    }
+
     private fun sliderRow(label: String, value: Int, maximum: Int, changed: (Int) -> Unit): View =
         FrameLayout(this).apply {
             val levelIcon = LevelIconView(this@MirrorService, label == NativeStrings.text("nativeVolume")).apply {
@@ -3775,13 +4085,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * independent so a transient failure cannot skip the second write.
      */
     private fun clearOverlayDisplayRequestTwice(reason: String) {
+        val preservedAutoSpecs = AndroidAutoMirrorActivity.autoOverlaySpecs()
         repeat(2) { pass ->
-            runCatching { displayBackend.clearRequest() }
+            runCatching { displayBackend.clearRequestPreserving(preservedAutoSpecs) }
                 .onSuccess {
                     OperationLog.i(
                         this,
                         "DisplayBackend",
-                        "clear request issued reason=$reason pass=${pass + 1}/2"
+                        "clear request issued reason=$reason pass=${pass + 1}/2 " +
+                            "preservedAuto=${preservedAutoSpecs.isNotEmpty()}"
                     )
                 }
                 .onFailure {
@@ -3821,12 +4133,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Search broken until SystemUI is restarted.
         detachHostWindow()
         android.os.Handler(mainLooper).postDelayed({
-            runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
-                .onFailure { Log.e(logTag, "topology restoration failed", it) }
+            val autoSessionActive = AndroidAutoMirrorActivity.isAutoSessionActive()
+            runCatching {
+                if (autoSessionActive) {
+                    DisplayEnvironmentSettings(this).activateTopologyForOverlays(
+                        AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+                    )
+                } else {
+                    DisplayEnvironmentSettings(this).restoreTopology()
+                }
+            }.onFailure { Log.e(logTag, "topology restoration failed", it) }
             releaseMirror()
             clearOverlayDisplayRequestTwice("temporary_android_return")
             targetDisplayId = -1
-            desktopModeConfigurator.restore()
+            if (!autoSessionActive) desktopModeConfigurator.restore()
             runCatching { internalRefreshRateController.restore() }
                 .onFailure { Log.e(logTag, "refresh-rate restoration failed", it) }
             MainActivity.restoreOrientation()
@@ -4315,7 +4635,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun numberField(value: String, label: String): EditText = EditText(this).apply {
         setText(value)
         hint = label
-        inputType = 2
+        // Use the public numeric input type so Samsung IME and hardware
+        // keyboards both deliver editable text to the quick-menu fields.
+        // The previous literal was interpreted as a non-editable field by
+        // some vendor builds.
+        inputType = InputType.TYPE_CLASS_NUMBER
+        isSingleLine = true
+        setSelectAllOnFocus(false)
         textSize = 14f
         gravity = Gravity.CENTER
         setTextColor(Color.rgb(230, 225, 229))
@@ -4852,8 +5178,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         setOverlayFocusable(true)
         field.postDelayed({
             field.requestFocus()
-            (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager)
-                .showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
+            field.setSelection(field.text?.length ?: 0)
+            val input = getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager
+            input.restartInput(field)
+            input.showSoftInput(field, InputMethodManager.SHOW_IMPLICIT)
         }, 160)
     }
 
@@ -4992,7 +5320,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             panel.scaleX = .94f
             panel.scaleY = .94f
             panel.post {
-                if (targetWidth >= targetHeight) {
+                if (menuUsesLandscapeLayout()) {
                     panel.translationX = -panel.width.toFloat()
                 } else {
                     panel.translationY = -panel.height.toFloat()
@@ -5015,7 +5343,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             frame.routeTouchesToSurface = true
             menuScrim?.isClickable = false
             menuScrim?.animate()?.alpha(0f)?.setDuration(180)?.start()
-            val animation = if (targetWidth >= targetHeight) {
+            val animation = if (menuUsesLandscapeLayout()) {
                 panel.animate().translationX(-panel.width.toFloat())
             } else {
                 panel.animate().translationY(-panel.height.toFloat())
@@ -5454,6 +5782,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val view = surfaceView ?: return
         if (view.width <= 0 || view.height <= 0) return
         OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("surface_created", view.width, view.height))
+        if (menu != null) refreshMenuGeometryAfterDisplayChange()
         if (targetDisplayId >= 0 &&
             getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId) != null) {
             reattachExistingDisplay(view.width, view.height)
@@ -5465,6 +5794,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) {
         if (width <= 0 || height <= 0) return
         OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("surface_changed", width, height))
+        if (menu != null) refreshMenuGeometryAfterDisplayChange()
         if (mirrorDisplayId < 0) {
             if (targetDisplayId >= 0 &&
                 getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId) != null) {
@@ -5496,6 +5826,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             mirrorDisplayId = targetDisplayId
         }.onSuccess {
             displayCreationInProgress = false
+            startVirtualMouse()
+            updateVirtualCursorVisibility()
             scheduleHostDisplayReconfiguration("host Surface recreated", width, height)
             // A Surface recreation can happen during a fold/half-open handoff
             // while the laptop deck is already visible.  The first geometry
@@ -5523,6 +5855,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("surface_reattached", width, height))
         }.onFailure { error ->
             displayCreationInProgress = false
+            mirrorDisplayId = -1
+            restoreSoftwareCursorAfterMirrorFailure("existing display reattach")
             OperationLog.e(this, "DisplayBackend", "existing display reattach failed", error)
             Log.e(logTag, "existing display reattach failed", error)
         }
@@ -5536,17 +5870,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         runCatching {
             val existing = displayBackend.currentDisplayIds()
+            val staleOverlays = displayBackend.overlayDisplayIds()
             desktopModeConfigurator.applyForCurrentDevice()
-            displayBackend.clearRequest()
+            clearOverlayDisplayRequestTwice("before_display_create")
             root?.postDelayed({
-                displayBackend.requestDisplay(
-                    targetWidth,
-                    targetHeight,
-                    density,
-                    secureDisplay,
+                waitForOverlayRequestCleared(
+                    existing,
+                    staleOverlays,
+                    width,
+                    height,
+                    0,
                     showSystemDecorations
                 )
-                waitForOverlay(existing, width, height, 0)
             }, 150)
         }.onFailure { error ->
             displayCreationInProgress = false
@@ -5557,10 +5892,173 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
+    /**
+     * Creates the Dextop overlay without adding a host window to the phone.
+     * Android Auto owns the destination Surface in this mode and attaches a
+     * separate recording VirtualDisplay to the overlay once the display id is
+     * published. This keeps the phone display untouched.
+     */
+    private fun createHeadlessDisplay() {
+        if (targetDisplayId >= 0 || displayCreationInProgress) return
+        displayCreationInProgress = true
+        CapabilityProbe(this, privilegedAccess).run().forEach { (name, probe) ->
+            OperationLog.i(this, "CapabilityProbe", "$name supported=${probe.supported} detail=${probe.detail}")
+        }
+        runCatching {
+            desktopModeConfigurator.applyForCurrentDevice()
+            // Remove a stale OverlayDisplayAdapter request left by an older
+            // CARDEX build, then create an app-owned display directly on the
+            // head-unit Surface. No phone-side Overlay window is involved.
+            clearOverlayDisplayRequestTwice("before_hidden_auto_display_create")
+            createDirectAutoDisplay(showSystemDecorations)
+        }.onFailure { error ->
+            displayCreationInProgress = false
+            OperationLog.e(this, "AndroidAuto", "headless display creation failed", error)
+            Log.e(logTag, "headless Auto display creation failed: ${error.message}", error)
+            completeStart(Result.failure(error))
+            stop()
+        }
+    }
+
+    private fun createDirectAutoDisplay(decorations: Boolean) {
+        val destination = autoDestinationSurface
+            ?: error("The Dextop Car Companion destination surface is unavailable")
+        val platform = VirtualDisplayPlatform.inspect()
+        val service = privilegedAccess.service(
+            "display",
+            VirtualDisplayPlatform.MANAGER_INTERFACE
+        )
+        autoOwnedDisplay?.attachment?.release()
+        val owned = platform.openOwned(
+            service,
+            destination,
+            targetWidth,
+            targetHeight,
+            density,
+            decorations
+        )
+        autoOwnedDisplay = owned
+        targetDisplayId = owned.displayId
+        mirrorDisplayId = owned.displayId
+        showSystemDecorations = decorations
+        clearInheritedDisplayOverrides(targetDisplayId)
+        configureDisplay()
+        if (!launchHome()) {
+            if (!decorations) {
+                OperationLog.w(
+                    this,
+                    "DesktopHome",
+                    "hidden Auto HOME rejected; retrying with system decorations",
+                    null
+                )
+                owned.attachment.release()
+                autoOwnedDisplay = null
+                targetDisplayId = -1
+                mirrorDisplayId = -1
+                createDirectAutoDisplay(true)
+                return
+            }
+            error("The desktop HOME activity could not be launched")
+        }
+        displayCreationInProgress = false
+        sessionJournal.running(targetDisplayId)
+        runCatching {
+            DisplayEnvironmentSettings(this).activateTopologyForOverlays(setOf(targetDisplayId))
+        }.onFailure { OperationLog.w(this, "DisplayTopology", "Auto topology activation skipped", it) }
+        completeStart(Result.success(mapOf(
+            "displayId" to targetDisplayId,
+            "width" to targetWidth,
+            "height" to targetHeight,
+            "density" to density,
+            "decorations" to showSystemDecorations
+        )))
+        OperationLog.i(
+            this,
+            "AndroidAuto",
+            "hidden direct Auto display ready display=$targetDisplayId ${targetWidth}x$targetHeight/$density"
+        )
+    }
+
+    private fun postMainDelayed(delayMs: Long, action: () -> Unit) {
+        android.os.Handler(mainLooper).postDelayed(action, delayMs)
+    }
+
+    /**
+     * Settings.Global.overlay_display_devices is a request, not a synchronous
+     * create/destroy API.  Issuing a new request while OverlayDisplayAdapter
+     * is still removing the previous overlay allocates another display id on
+     * several vendor builds.  Wait until every overlay that existed before
+     * the clear has disappeared; if it does not, fail the start instead of
+     * multiplying displays indefinitely.
+     */
+    private fun waitForOverlayRequestCleared(
+        existing: Set<Int>,
+        staleOverlays: Set<Int>,
+        width: Int,
+        height: Int,
+        attempt: Int,
+        decorations: Boolean
+    ) {
+        if (!active || stopping) return
+        // No overlay request is active during this wait. Treat *any* overlay
+        // still reported by DisplayManager as stale, including one whose id
+        // was published just after the initial inventory snapshot.
+        val autoOverlayIds = AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+        val remaining = displayBackend.overlayDisplayIds()
+            .filterNot { it in autoOverlayIds }
+            .toSet()
+        if (remaining.isNotEmpty()) {
+            if (attempt < 60) {
+                postMainDelayed(100L) {
+                    waitForOverlayRequestCleared(
+                        existing,
+                        staleOverlays,
+                        width,
+                        height,
+                        attempt + 1,
+                        decorations
+                    )
+                }
+                return
+            }
+            val error = IllegalStateException(
+                "Overlay display cleanup timed out; refusing to create a duplicate display " +
+                    "ids=${remaining.sorted()} knownBeforeClear=${staleOverlays.sorted()}"
+            )
+            displayCreationInProgress = false
+            OperationLog.e(this, "DisplayBackend", error.message ?: "overlay cleanup timed out", error)
+            completeStart(Result.failure(error))
+            stop()
+            return
+        }
+        runCatching {
+            displayBackend.requestDisplay(
+                targetWidth,
+                targetHeight,
+                density,
+                secureDisplay,
+                decorations,
+                AndroidAutoMirrorActivity.autoOverlaySpecs()
+            )
+            waitForOverlay(existing, width, height, 0)
+        }.onFailure { error ->
+            displayCreationInProgress = false
+            OperationLog.e(this, "MirrorService", "display request failed", error)
+            completeStart(Result.failure(error))
+            stop()
+        }
+    }
+
     private fun waitForOverlay(existing: Set<Int>, width: Int, height: Int, attempt: Int) {
-        val display = displayBackend.findCreatedDisplay(existing)
+        // A phone and Auto session may request the same logical spec. Never
+        // attach the phone Surface to the Auto-owned display merely because
+        // that display was allocated after the phone inventory snapshot.
+        val autoDisplayIds = AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+        val display = displayBackend.findCreatedDisplay(existing, autoDisplayIds)
         if (display == null) {
-            if (attempt < 40) root?.postDelayed({ waitForOverlay(existing, width, height, attempt + 1) }, 100)
+            if (attempt < 40) postMainDelayed(100L) {
+                waitForOverlay(existing, width, height, attempt + 1)
+            }
             else {
                 val error = IllegalStateException("Overlay display creation timed out")
                 displayCreationInProgress = false
@@ -5577,10 +6075,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             targetDisplayId = display.displayId
             clearInheritedDisplayOverrides(targetDisplayId)
             configureDisplay()
-            val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
-            val strategyOverride = configuredBackend.takeUnless { it == "auto" }
-            attachMirror(width, height, strategyOverride)
+            if (!autoOnlySession) {
+                val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                    .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
+                val strategyOverride = configuredBackend.takeUnless { it == "auto" }
+                attachMirror(width, height, strategyOverride)
+            } else {
+                OperationLog.i(
+                    this,
+                    "AndroidAuto",
+                    "overlay display created without phone host display=$targetDisplayId"
+                )
+            }
             mirrorDisplayId = targetDisplayId
             // Auto laptop detection can run from addWindow() before the
             // overlay display exists. In that case the first layout pass has
@@ -5589,7 +6095,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // the pane synchronization once the display is attached so the
             // logical resolution and VirtualDisplay buffer use the measured
             // upper pane instead of the original full-screen profile.
-            if (laptopModeActive) {
+            if (!autoOnlySession && laptopModeActive) {
                 root?.postDelayed({
                     if (active && laptopModeActive && targetDisplayId >= 0) {
                         applyLaptopGeometryWhenLaidOut(true)
@@ -5606,7 +6112,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // example with RESTRICT_DISPLAY_MODES); that must not abort an
             // otherwise usable VirtualDisplay session.
             runCatching {
-                DisplayEnvironmentSettings(this).activateTopologyIfEnabled(mirrorDisplayId)
+                val topologyOverlays = buildSet {
+                    if (mirrorDisplayId >= 0) add(mirrorDisplayId)
+                    AndroidAutoMirrorActivity.autoOverlayDisplayIds().forEach(::add)
+                }
+                DisplayEnvironmentSettings(this).activateTopologyForOverlays(topologyOverlays)
             }.onFailure {
                 OperationLog.w(this, "DisplayTopology", "topology activation skipped", it)
                 Log.w(logTag, "topology activation skipped; mirroring remains active", it)
@@ -5615,7 +6125,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             sessionJournal.running(targetDisplayId)
             val externalDisplays = externalDisplayDetector.snapshot()
             physicalExternalDisplayConnected = physicalInputRoutingSupported && externalDisplays.connected
-            val routedInputCount = if (physicalExternalDisplayConnected) runCatching {
+            val routedInputCount = if (!autoOnlySession && physicalExternalDisplayConnected) runCatching {
                 physicalInputRouter.routeConnectedDevices(
                     display,
                     routePhysicalMouseToDextop,
@@ -5630,16 +6140,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "externalConnected=${externalDisplays.connected} externalIds=${externalDisplays.displayIds} routedInputs=$routedInputCount"
             )
             OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("mirror_attached", width, height))
-            startVirtualMouse()
-            if (physicalExternalDisplayConnected && routePhysicalMouseToDextop) startRawMouseReader() else stopRawMouseReader()
+            if (!autoOnlySession) startVirtualMouse()
+            if (!autoOnlySession && physicalExternalDisplayConnected && routePhysicalMouseToDextop) {
+                startRawMouseReader()
+            } else {
+                stopRawMouseReader()
+            }
             root?.postDelayed({
                 refreshActualRoutingState(display)
                 menuPrimary?.let(::showMainMenu)
             }, 350)
-            menuPrimary?.let(::showMainMenu)
+            if (!autoOnlySession) menuPrimary?.let(::showMainMenu)
             cursorX = targetWidth / 2f
             cursorY = targetHeight / 2f
-            cursorView?.update(.5f, .5f)
+            if (!autoOnlySession) cursorView?.update(.5f, .5f)
             if (!launchHome()) {
                 // One UI 8 rejects HOME launches on Samsung-owned virtual
                 // displays that do not advertise system decorations. Rebuild
@@ -5650,7 +6164,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
                 error("The desktop HOME activity could not be launched")
             }
-            pendingPausedWorkspace?.let { workspace ->
+            pendingPausedWorkspace?.takeUnless { autoOnlySession }?.let { workspace ->
                 pendingPausedWorkspace = null
                 root?.postDelayed({
                     if (!active || targetDisplayId < 0) return@postDelayed
@@ -5668,7 +6182,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // One UI may migrate the foreground phone task to a newly created
             // desktop display. Move the phone control activity back explicitly
             // before a separate DesktopActivity can be launched there.
-            root?.postDelayed({ ensurePhoneControlOnDefaultDisplay() }, 500)
+            if (!autoOnlySession) root?.postDelayed({ ensurePhoneControlOnDefaultDisplay() }, 500)
             completeStart(Result.success(mapOf(
                 "displayId" to targetDisplayId,
                 "width" to targetWidth,
@@ -5685,7 +6199,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         displayGeometrySnapshot("orientation_rebuild_completed", width, height)
                 )
             }
-            Log.i(logTag, "Dextop layer attached target=$targetDisplayId ${width}x$height")
+            Log.i(
+                logTag,
+                "Dextop layer attached target=$targetDisplayId ${targetWidth}x$targetHeight " +
+                    "autoOnly=$autoOnlySession"
+            )
         }.onFailure { error ->
             if (orientationRebuildInProgress) {
                 orientationRebuildInProgress = false
@@ -5853,6 +6371,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         rememberSystemDecorationsForFirmware()
         val previousDisplayId = targetDisplayId
         val existingDisplays = displayBackend.currentDisplayIds()
+        val staleOverlays = displayBackend.overlayDisplayIds()
         OperationLog.w(
             this,
             "DesktopHome",
@@ -5863,32 +6382,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         targetDisplayId = -1
         showSystemDecorations = true
         sessionJournal.preparing(targetWidth, targetHeight, density, decorations = true)
-        runCatching { displayBackend.clearRequest() }
+        runCatching { clearOverlayDisplayRequestTwice("before_home_decoration_retry") }
             .onFailure {
                 displayCreationInProgress = false
                 OperationLog.e(this, "DesktopHome", "unable to clear display before HOME retry", it)
                 completeStart(Result.failure(it))
                 stop()
                 return true
-            }
-        root?.postDelayed({
-            if (!active || stopping) return@postDelayed
-            runCatching {
-                displayBackend.requestDisplay(
-                    targetWidth,
-                    targetHeight,
-                    density,
-                    secureDisplay,
+        }
+        postMainDelayed(HOME_DECORATION_RETRY_DELAY_MS) {
+            if (active && !stopping) {
+                waitForOverlayRequestCleared(
+                    existingDisplays,
+                    staleOverlays,
+                    hostWidth,
+                    hostHeight,
+                    0,
                     decorations = true
                 )
-                waitForOverlay(existingDisplays, hostWidth, hostHeight, 0)
-            }.onFailure {
-                displayCreationInProgress = false
-                OperationLog.e(this, "DesktopHome", "unable to request decorated display for HOME retry", it)
-                completeStart(Result.failure(it))
-                stop()
             }
-        }, HOME_DECORATION_RETRY_DELAY_MS)
+        }
         return true
     }
 
@@ -5909,6 +6422,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         mirrorRefreshGeneration += 1
         stopRawMouseReader()
         displayBackend.releaseLayer()
+        runCatching { autoOwnedDisplay?.attachment?.release() }
+        autoOwnedDisplay = null
+        autoDestinationSurface = null
         mirrorDisplayId = -1
         mirrorHostWidth = 0
         mirrorHostHeight = 0
@@ -5994,6 +6510,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         displayGeometrySnapshot("mirror_refresh_completed", nextWidth, nextHeight)
                 )
             }.onFailure { error ->
+                mirrorDisplayId = -1
+                restoreSoftwareCursorAfterMirrorFailure(reason)
                 OperationLog.e(this, "DisplayBackend", "mirror refresh failed reason=$reason", error)
                 Log.e(logTag, "mirror refresh failed reason=$reason", error)
             }
@@ -6122,23 +6640,40 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val oldHeight = targetHeight.coerceAtLeast(1)
         val normalizedCursorX = cursorX / oldWidth
         val normalizedCursorY = cursorY / oldHeight
+        val sizeChanged = next.width != targetWidth || next.height != targetHeight
+        val densityChanged = next.density != density
+        if (!sizeChanged && !densityChanged) return
+        OperationLog.i(
+            this,
+            "DisplayBackend",
+            "live metric change reason=$reason sizeChanged=$sizeChanged densityChanged=$densityChanged " +
+                "from=${targetWidth}x$targetHeight/$density to=${next.width}x${next.height}/${next.density}"
+        )
         val service = systemService("window", "android.view.IWindowManager")
         val type = Class.forName("android.view.IWindowManager")
         try {
             val userId = android.os.UserHandle::class.java
                 .getMethod("myUserId").invoke(null) as Int
-            type.getMethod(
-                "setForcedDisplaySize",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            ).invoke(service, targetDisplayId, next.width, next.height)
-            type.getMethod(
-                "setForcedDisplayDensityForUser",
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType,
-                Int::class.javaPrimitiveType
-            ).invoke(service, targetDisplayId, next.density, userId)
+            // A DPI-only edit must not look like a full display replacement to
+            // Samsung DeX.  Re-sending the same forced size followed by a
+            // rotation/windowing reconfiguration makes One UI's taskbar tear
+            // down its desktop window.  Update only the metric that changed.
+            if (sizeChanged) {
+                type.getMethod(
+                    "setForcedDisplaySize",
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType
+                ).invoke(service, targetDisplayId, next.width, next.height)
+            }
+            if (densityChanged) {
+                type.getMethod(
+                    "setForcedDisplayDensityForUser",
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType
+                ).invoke(service, targetDisplayId, next.density, userId)
+            }
         } catch (error: Throwable) {
             OperationLog.e(this, "DisplayBackend", "live resize failed reason=$reason", error)
             Log.e(logTag, "live display resize failed reason=$reason", error)
@@ -6147,16 +6682,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         targetWidth = next.width
         targetHeight = next.height
         density = next.density
-        // A live size change can cross the natural-orientation boundary. WMS
-        // also drops projected-display freeform policy on some Pixel builds,
-        // so synchronize rotation and desktop policy after every resize.
-        // Preserve the orientation selected from the Dextop gesture menu across
-        // fold, cover-display and physical-display geometry changes. The
-        // logical pane may be landscape in laptop mode while the phone remains
-        // intentionally held portrait.
-        MainActivity.setDisplayOrientation(requestedPortrait)
-        forcePhoneRotation(requestedPortrait)
-        configureDisplay()
+        if (sizeChanged) {
+            // A live size change can cross the natural-orientation boundary.
+            // WMS also drops projected-display freeform policy on some Pixel
+            // builds, so synchronize rotation and desktop policy after a size
+            // change.  DPI-only edits deliberately skip this path so Samsung
+            // DeX's taskbar is not forced through an unnecessary rebuild.
+            MainActivity.setDisplayOrientation(requestedPortrait)
+            forcePhoneRotation(requestedPortrait)
+            configureDisplay()
+        }
         cursorX = (normalizedCursorX * targetWidth).coerceIn(0f, targetWidth - 1f)
         cursorY = (normalizedCursorY * targetHeight).coerceIn(0f, targetHeight - 1f)
         cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
@@ -6164,7 +6699,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (surface.width > 0 && surface.height > 0) {
                 // Rotation-driven Surface replacement reattaches the mirror in
                 // surfaceCreated(). Do not create extra recording displays here.
-                scheduleMirrorRefresh("$reason; live logical resize", surface.width, surface.height)
+                // A logical size change can leave the host Surface geometry
+                // unchanged (the old letterboxed profile and the new full
+                // profile use the same panel). Force the VirtualDisplay
+                // attachment update in that case so its source crop/scale is
+                // rebuilt instead of retaining the old black bars and offset.
+                scheduleMirrorRefresh(
+                    "$reason; live logical resize",
+                    surface.width,
+                    surface.height,
+                    forceVirtualDisplay = sizeChanged
+                )
             }
         }
         scheduleTopologyReapplyAfterReconnect()
@@ -6542,22 +7087,40 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (generation != stopCleanupGeneration) return
         // Keep navigation and rotation locked until the host/display teardown
         // is complete.  Restoring them earlier is the race observed on One UI.
-        setPhoneNavigationDisabled(false)
-        releasePhoneRotation(clearSnapshot = true)
-        runCatching { DisplayEnvironmentSettings(this).restoreTopology() }
-            .onFailure { Log.e(logTag, "topology restoration failed", it) }
-        MainActivity.restoreOrientation()
+        if (!autoOnlySession) {
+            setPhoneNavigationDisabled(false)
+            releasePhoneRotation(clearSnapshot = true)
+        }
+        val autoSessionActive = AndroidAutoMirrorActivity.isAutoSessionActive()
+        runCatching {
+            if (autoSessionActive) {
+                DisplayEnvironmentSettings(this).activateTopologyForOverlays(
+                    AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+                )
+            } else {
+                DisplayEnvironmentSettings(this).restoreTopology()
+            }
+        }.onFailure { Log.e(logTag, "topology restoration failed", it) }
+        if (!autoOnlySession) MainActivity.restoreOrientation()
         val keepInternal120Hz = internalRefreshRateController.isEnabledAndSupported() &&
             !externalDisplayDetector.snapshot().connected
         if (keepInternal120Hz) {
             runCatching { internalRefreshRateController.keepCurrentValue() }
                 .onFailure { Log.e(logTag, "unable to preserve 120 Hz after disconnect", it) }
         }
-        val restored = runCatching {
-            desktopModeConfigurator.restore()
-            sessionJournal.restoreSystemSettings()
-        }.onFailure { Log.e(logTag, "settings restoration failed", it) }.isSuccess
-        if (restored) sessionJournal.clear()
+        val restored = if (autoSessionActive) {
+            // The Auto overlay owns the shared desktop transaction until it
+            // stops. Restoring here would remove the still-running Auto
+            // display and would make the phone Stop button terminate both
+            // sessions.
+            true
+        } else {
+            runCatching {
+                desktopModeConfigurator.restore()
+                sessionJournal.restoreSystemSettings()
+            }.onFailure { Log.e(logTag, "settings restoration failed", it) }.isSuccess
+        }
+        if (restored && !autoSessionActive) sessionJournal.clear()
         if (restored) {
             getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
                 .putBoolean("cleanup_pending", false)
@@ -6573,13 +7136,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // Delay both operations until the navigation restore retries have
             // completed; disabling the service immediately can terminate the
             // process before SystemUI accepts the final zero-disable request.
-            android.os.Handler(mainLooper).postDelayed({
-                disableDextopAccessibilityService()
-                disableSelf()
-            }, 4_500L)
+            val disableAfterCleanup = object : Runnable {
+                override fun run() {
+                    // A new session may have started during the grace period.
+                    // In that case the old delayed detach must not tear down
+                    // the newly active service.
+                    if (generation != stopCleanupGeneration || active || stopping || pending != null) return
+                    disableDextopAccessibilityService()
+                    disableSelf()
+                }
+            }
+            android.os.Handler(mainLooper).postDelayed(disableAfterCleanup, 4_500L)
         }
+        // All display and system restoration is complete at this point. Clear
+        // the latch before returning so a new start can reuse this service
+        // instance; the delayed detach above is guarded by active/stopping.
+        stopping = false
+        autoOnlySession = false
         completeStart(Result.failure(IllegalStateException("Dextop was stopped before startup completed")))
-        Log.i(logTag, "stopped")
+        Log.i(logTag, "stopped; cleanup ready for a new session")
     }
 
     private fun disableDextopAccessibilityService() {

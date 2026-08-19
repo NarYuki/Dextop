@@ -3,7 +3,7 @@ set -eu
 
 cd "$(dirname "$0")/.."
 
-flutter build apk --release
+flutter build apk --release --target-platform android-arm64
 
 version=$(awk '/^version:/ {print $2; exit}' pubspec.yaml)
 version_name=${version%%+*}

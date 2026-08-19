@@ -39,7 +39,7 @@ internal object OperationLog {
     private fun write(context: Context, level: String, component: String, rawMessage: String) {
         val current = File(context.filesDir, CURRENT_FILE)
         if (!current.exists()) return
-        val message = sanitize(rawMessage)
+        val message = sanitizeForReport(rawMessage)
         val line = "${SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date())} $level/$component $message\n"
         if (level == "E") Log.e(component, message) else if (level == "W") Log.w(component, message)
         synchronized(lock) {
@@ -48,8 +48,12 @@ internal object OperationLog {
         }
     }
 
-    private fun sanitize(value: String): String = value
+    internal fun sanitizeForReport(value: String): String = value
         .replace(Regex("(?i)(package|descriptor|serial|email|account|path|uri|url)=[^ ,}]+"), "$1=<redacted>")
+        .replace(Regex("(?i)\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b"), "<email>")
+        .replace(Regex("(?i)\\b(?:https?|content|file)://[^\\s,}]+"), "<uri>")
+        .replace(Regex("(?i)(?<![A-Za-z0-9_])/(?:data|storage|sdcard|mnt)(?:/[^\\s,}]*)?"), "<path>")
+        .replace(Regex("(?<![A-Za-z0-9_])(?:[A-Za-z][A-Za-z0-9_]*\\.){2,}[A-Za-z][A-Za-z0-9_]*(?:/[A-Za-z0-9_.$]+)?"), "<component>")
         .replace(Regex("(?i)(x|y|rel|pos)=-?[0-9.]+(?:,-?[0-9.]+)?"), "$1=<redacted>")
         .take(2_000)
 

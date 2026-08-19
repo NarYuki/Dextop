@@ -85,6 +85,18 @@ flutter {
     source = "../.."
 }
 
+androidComponents {
+    onVariants(selector().withBuildType("release")) { variant ->
+        variant.packaging.jniLibs.excludes.addAll(
+            listOf(
+                "lib/armeabi-v7a/**",
+                "lib/x86/**",
+                "lib/x86_64/**"
+            )
+        )
+    }
+}
+
 dependencies {
     implementation("androidx.window:window:1.5.1")
     implementation("dev.rikka.shizuku:api:13.1.5")

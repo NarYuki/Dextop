@@ -1,0 +1,32 @@
+<resources>
+    <string name="app_name">Dextop Car Companion</string>
+    <string name="opening_dextop">Dextopを開いています…</string>
+    <string name="relay_description">Dextop Car CompanionはAndroid AutoとDextopを接続します。</string>
+    <string name="dextop_required">Dextopが未インストールか、Dextop Car Companionと署名が一致していません。</string>
+    <string name="open_again">Dextopを開く</string>
+    <string name="ready">Dextop Car Companionを使用できます</string>
+    <string name="not_ready">Dextopに接続できません</string>
+    <string name="start">開始</string>
+    <string name="open_phone">この端末でDextopを開く</string>
+    <string name="connection">接続</string>
+    <string name="dextop_installed">Dextopがインストールされています</string>
+    <string name="dextop_missing">Dextopが必要です</string>
+    <string name="signature_verified">セキュアリレーを確認しました</string>
+    <string name="signature_mismatch">Dextop Car CompanionとDextopを同じリリースからインストールしてください</string>
+    <string name="auto_mode">Android Autoディスプレイ</string>
+    <string name="phone_mode">スマートフォンコンパニオン</string>
+    <string name="parked_note">デスクトップは停車中に利用できます。</string>
+    <string name="starting">Dextopを開始しています…</string>
+    <string name="stop">終了</string>
+    <string name="controls">操作</string>
+    <string name="auto_controls">Auto専用メニュー</string>
+    <string name="swipe_hint">画面左端から右へスワイプして開けます。</string>
+    <string name="back">戻る</string>
+    <string name="home">ホーム</string>
+    <string name="recents">履歴</string>
+    <string name="reconnect">映像を再接続</string>
+    <string name="close">閉じる</string>
+    <string name="workspace">ワークスペース</string>
+    <string name="save_workspace">現在のアプリ配置を追加</string>
+    <string name="no_workspaces">保存済みワークスペースはありません</string>
+</resources>

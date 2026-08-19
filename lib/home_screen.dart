@@ -366,6 +366,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String mirrorBackend = 'virtual_display';
   var loading = true;
   var active = false;
+  var autoConnected = false;
+  var autoActive = false;
+  var stopping = false;
+  Timer? sessionStateTimer;
+  var stopStatusPollActive = false;
   var shizukuInstalled = false;
   var shizukuRunning = false;
   var shizukuGranted = false;
@@ -410,6 +415,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       (_) => _initializeDeviceProfile(),
     );
     _initializeHome();
+    // Android Auto is a separate Activity, so Flutter does not receive a
+    // lifecycle callback when its source/session changes. Poll only the
+    // lightweight native session state to keep the hero card authoritative.
+    sessionStateTimer = Timer.periodic(
+      const Duration(milliseconds: 700),
+      (_) => _refreshSessionState(),
+    );
     _loadHomeSelections();
     AppAnalytics.screen('home');
   }
@@ -806,6 +818,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    sessionStateTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -856,6 +869,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       setState(() {
         active = value['active'] == true;
+        autoConnected = value['autoConnected'] == true;
+        autoActive = value['autoActive'] == true;
+        stopping = value['stopping'] == true;
         // Keyboard theme editing changes the native laptop overlay while it
         // is being rendered. Leave that page when a session becomes active;
         // the settings entry is also disabled below for the whole session.
@@ -879,12 +895,40 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         loading = false;
         error = null;
       });
+      if (stopping) unawaited(_pollStopCompletion());
     } on PlatformException catch (e) {
       if (!mounted) return;
       setState(() {
         loading = false;
         error = e.message;
       });
+    }
+  }
+
+  Future<void> _refreshSessionState() async {
+    if (!mounted || loading) return;
+    try {
+      final value = await bridge.sessionState();
+      if (!mounted) return;
+      final nextActive = value['active'] == true;
+      final nextAutoActive = value['autoActive'] == true;
+      final nextAutoConnected = value['autoConnected'] == true;
+      final nextStopping = value['stopping'] == true;
+      if (active == nextActive &&
+          autoActive == nextAutoActive &&
+          autoConnected == nextAutoConnected &&
+          stopping == nextStopping) {
+        return;
+      }
+      setState(() {
+        active = nextActive;
+        autoActive = nextAutoActive;
+        autoConnected = nextAutoConnected;
+        stopping = nextStopping;
+      });
+    } catch (_) {
+      // A transient binder loss must not make the UI invent a stopped or
+      // Auto-only session; the full refresh path remains authoritative.
     }
   }
 
@@ -971,8 +1015,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> toggleDisplay() async {
-    if (loading) return;
-    if (!active && recovery['recoverable'] == true) return;
+    if (loading || stopping) return;
+    // Do not create a second phone-side session while Android Auto owns its
+    // independent virtual display. Auto-only can still be stopped through the
+    // dedicated Auto stop action in the hero card.
+    if (autoActive && !active) return;
+    if (!active && !autoActive && recovery['recoverable'] == true) return;
     setState(() {
       loading = true;
       error = null;
@@ -980,6 +1028,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       if (active) {
         await bridge.stop();
+        // Refresh once after the native stop request so the user immediately
+        // sees the cleanup state before the polling loop waits for readiness.
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        await refresh();
+        if (stopping) await _pollStopCompletion();
       } else {
         await bridge.start(
           profile,
@@ -987,9 +1040,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           secure,
           decorations: effectiveDecorations,
         );
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        await refresh();
       }
-      await Future<void>.delayed(Duration(milliseconds: 350));
-      await refresh();
     } on PlatformException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -999,8 +1052,30 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  Future<void> _pollStopCompletion() async {
+    if (stopStatusPollActive) return;
+    stopStatusPollActive = true;
+    try {
+      // Display removal and vendor SystemUI restoration are asynchronous.
+      // Keep the home action disabled and refresh until native cleanup clears
+      // its stopping latch, or until a bounded timeout requires a manual
+      // refresh/retry.
+      for (var attempt = 0; attempt < 36 && mounted; attempt++) {
+        if (!stopping) return;
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        await refresh();
+      }
+    } finally {
+      stopStatusPollActive = false;
+    }
+  }
+
   Future<bool> ensureDesktopRunning() async {
     if (active) return true;
+    // Android Auto sessions are intentionally independent, but the phone-side
+    // companion session is temporarily disabled to avoid two owners racing on
+    // the shared display specification.
+    if (autoActive) return false;
     if (loading ||
         !secureSettingsGranted ||
         !shizukuRunning ||

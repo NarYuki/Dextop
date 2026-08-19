@@ -776,6 +776,12 @@ abstract class AppLocalizations {
   /// **'Dextopの準備ができました'**
   String get uiDextopIsReady;
 
+  /// No description provided for @uiDextopStopping.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopの終了処理中'**
+  String get uiDextopStopping;
+
   /// No description provided for @uiStopDextop.
   ///
   /// In ja, this message translates to:
@@ -1754,6 +1760,30 @@ abstract class AppLocalizations {
   /// **'開始'**
   String get uiStart;
 
+  /// No description provided for @uiRunningAuto.
+  ///
+  /// In ja, this message translates to:
+  /// **'起動中（Auto）'**
+  String get uiRunningAuto;
+
+  /// No description provided for @uiRunningAutoPlus.
+  ///
+  /// In ja, this message translates to:
+  /// **'起動中（Auto+）'**
+  String get uiRunningAutoPlus;
+
+  /// No description provided for @uiStartPhoneDextop.
+  ///
+  /// In ja, this message translates to:
+  /// **'この端末でDextopを開始'**
+  String get uiStartPhoneDextop;
+
+  /// No description provided for @uiStopAndroidAuto.
+  ///
+  /// In ja, this message translates to:
+  /// **'停止（Android Auto）'**
+  String get uiStopAndroidAuto;
+
   /// No description provided for @uiAutomaticSwitchingAccordingToOpenClosedState.
   ///
   /// In ja, this message translates to:
@@ -2659,6 +2689,30 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'ラップトップキーボードのテーマと外観をカスタマイズ'**
   String get keyboardThemesDescription;
+
+  /// No description provided for @autoSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Auto'**
+  String get autoSettingsTitle;
+
+  /// No description provided for @autoSettingsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Auto専用の表示とスマホ側ミラーリングを設定'**
+  String get autoSettingsDescription;
+
+  /// No description provided for @autoMatchPhoneOrientation.
+  ///
+  /// In ja, this message translates to:
+  /// **'スマホ側ミラーリングの向きをAutoに合わせる'**
+  String get autoMatchPhoneOrientation;
+
+  /// No description provided for @autoMatchPhoneOrientationDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'スマホ側DextopをAutoへ表示するとき、車載画面の縦横比に合わせて向きを変更します。'**
+  String get autoMatchPhoneOrientationDescription;
 }
 
 class _AppLocalizationsDelegate

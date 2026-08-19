@@ -1,0 +1,26 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="moe.n4tsu.dextop.permission.CARDEX_RELAY" />
+    <queries>
+        <package android:name="moe.n4tsu.dextop" />
+    </queries>
+
+    <application
+        android:allowBackup="false"
+        android:appCategory="game"
+        android:icon="@drawable/ic_cardex"
+        android:label="@string/app_name"
+        android:resizeableActivity="true"
+        android:theme="@style/Theme.CarDex">
+        <activity
+            android:name=".CarDexActivity"
+            android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density|uiMode"
+            android:exported="true"
+            android:launchMode="singleTask">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+                <category android:name="android.intent.category.CAR_LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

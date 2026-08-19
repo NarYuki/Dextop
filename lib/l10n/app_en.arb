@@ -112,6 +112,7 @@
   "ui3FingerTap": "Three-finger tap",
   "ui4Divisions": "Four-way split",
   "uiDextopIsReady": "Dextop is ready",
+  "uiDextopStopping": "Finishing Dextop shutdown",
   "uiStopDextop": "Stop Dextop",
   "uiDextopCanBeRestarted": "Dextop can be resumed",
   "uiOpenDextop": "Open Dextop",
@@ -275,6 +276,10 @@
   "uiLongPress": "Long press",
   "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "Automatically uses measured resolution for open and closed states",
   "uiStart": "Start",
+  "uiRunningAuto": "Running (Auto)",
+  "uiRunningAutoPlus": "Running (Auto+)",
+  "uiStartPhoneDextop": "Start Dextop on this phone",
+  "uiStopAndroidAuto": "Stop (Android Auto)",
   "uiAutomaticSwitchingAccordingToOpenClosedState": "Automatic switching according to open/closed state",
   "uiOpeningQuote": "“",
   "uiDeleteWorkspaceQuestionSuffix": "” — delete this workspace?",
@@ -380,5 +385,9 @@
   "keyboardThemesTrackpadOpacity": "Trackpad opacity",
   "keyboardThemesShowTrackpadLabel": "Show TRACKPAD label",
   "keyboardThemesDescription": "Laptop keyboard themes and custom appearance",
+  "autoSettingsTitle": "Auto",
+  "autoSettingsDescription": "Auto display and phone-side mirroring options",
+  "autoMatchPhoneOrientation": "Match phone mirror orientation to Auto",
+  "autoMatchPhoneOrientationDescription": "When Dextop is shown in Auto from the phone-side mirror, adjust its orientation to the head-unit aspect ratio.",
   "@keyboardThemesDeleteBody": {"placeholders": {"name": {"type": "String"}}}
 }

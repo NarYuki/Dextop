@@ -353,6 +353,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uiDextopIsReady => 'Dextopの準備ができました';
 
   @override
+  String get uiDextopStopping => 'Dextopの終了処理中';
+
+  @override
   String get uiStopDextop => 'Dextopを停止';
 
   @override
@@ -850,6 +853,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uiStart => '開始';
 
   @override
+  String get uiRunningAuto => '起動中（Auto）';
+
+  @override
+  String get uiRunningAutoPlus => '起動中（Auto+）';
+
+  @override
+  String get uiStartPhoneDextop => 'この端末でDextopを開始';
+
+  @override
+  String get uiStopAndroidAuto => '停止（Android Auto）';
+
+  @override
   String get uiAutomaticSwitchingAccordingToOpenClosedState =>
       '開閉状態に合わせて自動切り替え';
 
@@ -1326,4 +1341,17 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get keyboardThemesDescription => 'ラップトップキーボードのテーマと外観をカスタマイズ';
+
+  @override
+  String get autoSettingsTitle => 'Auto';
+
+  @override
+  String get autoSettingsDescription => 'Auto専用の表示とスマホ側ミラーリングを設定';
+
+  @override
+  String get autoMatchPhoneOrientation => 'スマホ側ミラーリングの向きをAutoに合わせる';
+
+  @override
+  String get autoMatchPhoneOrientationDescription =>
+      'スマホ側DextopをAutoへ表示するとき、車載画面の縦横比に合わせて向きを変更します。';
 }

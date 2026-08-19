@@ -28,6 +28,17 @@ extension _SettingsContent on _HomeScreenState {
                 ),
                 Divider(height: 1),
                 _categoryTile(
+                  Icons.directions_car_outlined,
+                  AppStrings.tr('autoSettingsTitle'),
+                  AppStrings.tr('autoSettingsDescription'),
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const AutoSettingsPage(),
+                    ),
+                  ),
+                ),
+                Divider(height: 1),
+                _categoryTile(
                   Icons.mouse_outlined,
                   l.mouseSettingsTitle,
                   l.mouseSettingsDescription,
@@ -124,6 +135,12 @@ extension _SettingsContent on _HomeScreenState {
         Icons.display_settings_outlined,
         l.display,
         AppStrings.tr('uiSecureDisplayFoldable'),
+      ),
+      (
+        'auto',
+        Icons.directions_car_outlined,
+        AppStrings.tr('autoSettingsTitle'),
+        AppStrings.tr('autoSettingsDescription'),
       ),
       (
         'mouse',
@@ -355,6 +372,7 @@ extension _SettingsContent on _HomeScreenState {
             ),
           ],
         ),
+        'auto' => const AutoSettingsPage(embedded: true),
         'keyboard' => const KeyboardThemesPage(),
         'mouse' => MouseSettingsPage(bridge: bridge, isRunning: active),
         'interaction' => ListView(
@@ -1004,4 +1022,107 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
       ),
     ),
   );
+}
+
+class AutoSettingsPage extends StatefulWidget {
+  const AutoSettingsPage({this.embedded = false, super.key});
+
+  final bool embedded;
+
+  @override
+  State<AutoSettingsPage> createState() => _AutoSettingsPageState();
+}
+
+class _AutoSettingsPageState extends State<AutoSettingsPage> {
+  var loading = true;
+  var matchPhoneOrientation = true;
+  var hiddenAutoDisplay = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      matchPhoneOrientation =
+          preferences.getBool('android_auto_match_phone_orientation') ?? true;
+      hiddenAutoDisplay =
+          preferences.getBool('android_auto_hidden_display') ?? false;
+      loading = false;
+    });
+  }
+
+  Future<void> _setHiddenAutoDisplay(bool value) async {
+    setState(() => hiddenAutoDisplay = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('android_auto_hidden_display', value);
+  }
+
+  Future<void> _setMatchPhoneOrientation(bool value) async {
+    setState(() => matchPhoneOrientation = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('android_auto_match_phone_orientation', value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    final body = ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      children: [
+        Text(
+          AppStrings.tr('autoSettingsTitle'),
+          style: Theme.of(context).textTheme.titleLarge,
+        ),
+        const SizedBox(height: 8),
+        Text(AppStrings.tr('autoSettingsDescription')),
+        const SizedBox(height: 16),
+        Card(
+          child: SwitchListTile(
+            secondary: const Icon(Icons.screen_rotation_alt_outlined),
+            title: Text(AppStrings.tr('autoMatchPhoneOrientation')),
+            subtitle: Text(
+              AppStrings.tr('autoMatchPhoneOrientationDescription'),
+            ),
+            value: matchPhoneOrientation,
+            onChanged: loading ? null : _setMatchPhoneOrientation,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
+          child: Text(
+            AppStrings.tr('autoExperimentalFeatures'),
+            style: Theme.of(context).textTheme.titleSmall,
+          ),
+        ),
+        Card(
+          child: SwitchListTile(
+            secondary: const Icon(Icons.visibility_off_outlined),
+            title: Text(AppStrings.tr('autoHiddenDisplay')),
+            subtitle: Text(AppStrings.tr('autoHiddenDisplayDescription')),
+            value: hiddenAutoDisplay,
+            onChanged: loading ? null : _setHiddenAutoDisplay,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.info_outline_rounded),
+            title: Text(l.display),
+            subtitle: Text(AppStrings.tr('autoDisplayModeDescription')),
+          ),
+        ),
+      ],
+    );
+    if (widget.embedded) return body;
+    return Scaffold(
+      appBar: AppBar(title: Text(AppStrings.tr('autoSettingsTitle'))),
+      body: body,
+    );
+  }
 }

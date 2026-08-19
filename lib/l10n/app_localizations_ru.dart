@@ -364,6 +364,9 @@ class AppLocalizationsRu extends AppLocalizations {
   String get uiDextopIsReady => 'Dextop готов.';
 
   @override
+  String get uiDextopStopping => 'Завершение работы Dextop';
+
+  @override
   String get uiStopDextop => 'Остановить Dextop';
 
   @override
@@ -885,6 +888,18 @@ class AppLocalizationsRu extends AppLocalizations {
   String get uiStart => 'Начать';
 
   @override
+  String get uiRunningAuto => 'Работает (Auto)';
+
+  @override
+  String get uiRunningAutoPlus => 'Работает (Auto+)';
+
+  @override
+  String get uiStartPhoneDextop => 'Запустить Dextop на этом телефоне';
+
+  @override
+  String get uiStopAndroidAuto => 'Остановить (Android Auto)';
+
+  @override
   String get uiAutomaticSwitchingAccordingToOpenClosedState =>
       'Автоматическое переключение в зависимости от открытого/закрытого состояния.';
 
@@ -1379,4 +1394,19 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get keyboardThemesDescription =>
       'Темы и настройка внешнего вида клавиатуры ноутбука';
+
+  @override
+  String get autoSettingsTitle => 'Auto';
+
+  @override
+  String get autoSettingsDescription =>
+      'Параметры отображения Auto и зеркалирования телефона';
+
+  @override
+  String get autoMatchPhoneOrientation =>
+      'Согласовать ориентацию зеркала телефона с Auto';
+
+  @override
+  String get autoMatchPhoneOrientationDescription =>
+      'При показе Dextop в Auto через зеркало телефона менять ориентацию по соотношению сторон головного устройства.';
 }

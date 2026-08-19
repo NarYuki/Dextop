@@ -29,6 +29,12 @@ class DisplayTopologyController(private val context: Context) {
     fun isSupported(): Boolean = transactionCodes != null
 
     fun activateDextopTopology(overlayDisplayId: Int) {
+        activateDextopTopology(setOf(overlayDisplayId))
+    }
+
+    fun activateDextopTopology(overlayDisplayIds: Set<Int>) {
+        val requestedOverlays = overlayDisplayIds.filter { it >= 0 }.toSet()
+        if (requestedOverlays.isEmpty()) return
         if (!isSupported()) {
             OperationLog.w(context, "DisplayTopology", "topology API is unavailable on this framework")
             return
@@ -38,9 +44,10 @@ class DisplayTopologyController(private val context: Context) {
         val manager = context.getSystemService(DisplayManager::class.java)
         val externalIds = ExternalDisplayDetector(context).snapshot().displayIds.toSet()
         val eligible = manager.displays.filter { display ->
-            display.displayId == overlayDisplayId || display.displayId in externalIds
+            display.displayId in requestedOverlays || display.displayId in externalIds
         }
-        val overlay = eligible.firstOrNull { it.displayId == overlayDisplayId }
+        val primaryOverlayId = requestedOverlays.sorted().first()
+        val overlay = eligible.firstOrNull { it.displayId == primaryOverlayId }
             ?: error("The Dextop overlay display is not available")
         fun node(display: android.view.Display): Node {
             val metrics = android.util.DisplayMetrics()
@@ -58,19 +65,19 @@ class DisplayTopologyController(private val context: Context) {
         }
         val root = node(overlay)
         var parent = root
-        eligible.filter { it.displayId != overlayDisplayId }
+        eligible.filter { it.displayId != primaryOverlayId }
             .sortedBy { it.displayId }
             .forEach { display ->
                 val child = node(display)
                 parent.children += child
                 parent = child
             }
-        writeTopology(Topology(root, overlayDisplayId))
-        restoreSavedArrangement(overlayDisplayId, eligible)
+        writeTopology(Topology(root, primaryOverlayId))
+        restoreSavedArrangement(primaryOverlayId, eligible)
         OperationLog.i(
             context,
             "DisplayTopology",
-            "activated overlay=$overlayDisplayId external=${eligible.map { it.displayId }.filter { it != overlayDisplayId }}"
+            "activated overlays=${requestedOverlays.sorted()} external=${eligible.map { it.displayId }.filter { it !in requestedOverlays }}"
         )
     }
 
@@ -124,14 +131,18 @@ class DisplayTopologyController(private val context: Context) {
         topology.root?.collectBounds(0f, 0f, bounds)
         val displays = bounds
             .filterKeys { it != android.view.Display.DEFAULT_DISPLAY }
-            .map { (id, rect) ->
-            val display = manager.getDisplay(id)
+            .mapNotNull { (id, rect) ->
+            // A topology snapshot can outlive an overlay display while the
+            // framework is processing its removal. Do not expose those dead
+            // nodes to the arrangement UI as phantom monitors; doing so made
+            // the list appear to grow with every reconnect.
+            val display = manager.getDisplay(id) ?: return@mapNotNull null
             val metrics = android.util.DisplayMetrics()
             @Suppress("DEPRECATION")
-            display?.getRealMetrics(metrics)
+            display.getRealMetrics(metrics)
             linkedMapOf<String, Any>(
                 "id" to id,
-                "name" to (display?.name ?: "Display $id"),
+                "name" to (display.name ?: "Display $id"),
                 "x" to rect.left.toDouble(),
                 "y" to rect.top.toDouble(),
                 "widthDp" to rect.width().toDouble(),
@@ -140,7 +151,10 @@ class DisplayTopologyController(private val context: Context) {
                 "heightPx" to metrics.heightPixels,
                 "densityDpi" to metrics.densityDpi,
                 "primary" to (id == topology.primaryDisplayId),
-                "dextopOverlay" to (id == MirrorService.topologyOverlayDisplayId())
+                "dextopOverlay" to (
+                    id == MirrorService.topologyOverlayDisplayId() ||
+                        id in AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+                )
             )
         }
         linkedMapOf(
@@ -164,15 +178,27 @@ class DisplayTopologyController(private val context: Context) {
         val positions = linkedMapOf<Int, PointF>()
         val currentBounds = linkedMapOf<Int, RectF>()
         current.root?.collectBounds(0f, 0f, currentBounds)
-        currentBounds.forEach { (id, rect) -> positions[id] = PointF(rect.left, rect.top) }
+        val manager = context.getSystemService(DisplayManager::class.java)
+        // Drop nodes whose Display object has already disappeared. Samsung's
+        // topology service can deliver the removal callback one frame after
+        // the saved tree; retaining those ids makes the next rearrange reject
+        // the otherwise valid set of positions and appears as monitor growth.
+        val activeIds = currentBounds.keys.filterTo(linkedSetOf()) { id ->
+            id == android.view.Display.DEFAULT_DISPLAY || manager.getDisplay(id) != null
+        }
+        currentBounds.forEach { (id, rect) ->
+            if (id in activeIds) positions[id] = PointF(rect.left, rect.top)
+        }
         rawPositions.forEach { (rawId, rawPosition) ->
             val id = rawId.toString().toIntOrNull() ?: return@forEach
             val position = rawPosition as? Map<*, *> ?: return@forEach
             val x = (position["x"] as? Number)?.toFloat() ?: return@forEach
             val y = (position["y"] as? Number)?.toFloat() ?: return@forEach
-            positions[id] = PointF(x, y)
+            if (id in activeIds) positions[id] = PointF(x, y)
         }
-        val nodes = current.root?.flatten()?.associateBy { it.displayId }
+        val nodes = current.root?.flatten()
+            ?.filter { it.displayId in activeIds }
+            ?.associateBy { it.displayId }
             ?: error("No displays are present")
         check(nodes.keys == positions.keys) { "Positions must include every active display" }
         val rootId = current.primaryDisplayId.takeIf(nodes::containsKey) ?: nodes.keys.first()

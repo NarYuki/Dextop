@@ -29,3 +29,12 @@ If both Stellar and Shizuku are installed, Dextop asks which service to use. The
 If any part of wireless-debugging setup is unclear, follow **Start via wireless debugging** in the [official Shizuku setup guide](https://shizuku.rikka.app/guide/setup/). Stellar uses the same Android wireless-debugging pairing flow.
 
 The Home screen displays **Dextop is ready** only when the selected provider, its permission, and required system access are available.
+
+## Stable and Nightly builds
+
+- **Stable:** download the latest signed APK from [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest).
+- **Nightly / beta:** open [GitHub Actions](https://github.com/NarYuki/Dextop/actions), select the newest successful **Debug APK** workflow run, and download its Nightly artifact. It contains matching Dextop and Dextop Car Companion debug APKs from that run.
+
+Nightly builds contain the latest committed changes before the next stable release. They may also include unfinished behavior, temporary diagnostics, or regressions, so use the stable release when reliability is more important than early access.
+
+When a release includes Android Auto support, its assets contain both the Dextop APK and the matching **Dextop Car Companion** APK. Install the pair from the same release; a companion signed or built separately cannot use Dextop's signature-protected relay.

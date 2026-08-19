@@ -98,8 +98,14 @@ class DisplayEnvironmentSettings(private val context: Context) {
         preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false)
 
     fun activateTopologyIfEnabled(overlayDisplayId: Int) {
-        if (!topologyEnabled() || overlayDisplayId < 0) return
-        DisplayTopologyController(context).activateDextopTopology(overlayDisplayId)
+        if (overlayDisplayId < 0) return
+        activateTopologyForOverlays(setOf(overlayDisplayId))
+    }
+
+    fun activateTopologyForOverlays(overlayDisplayIds: Set<Int>) {
+        val active = overlayDisplayIds.filter { it >= 0 }.toSet()
+        if (!topologyEnabled() || active.isEmpty()) return
+        DisplayTopologyController(context).activateDextopTopology(active)
     }
 
     fun restoreTopology() {

@@ -6,6 +6,7 @@ Dextop creates a controllable virtual desktop display on Android using Stellar o
 
 - [Installation and initial setup](Installation-and-Setup)
 - [Using Dextop](Using-Dextop)
+- [Android Auto and Dextop Car Companion](Android-Auto)
 - [Features and settings](Features-and-Settings)
 - [Input and gestures](Input-and-Gestures)
 - [Diagnostics and recovery](Diagnostics-and-Recovery)

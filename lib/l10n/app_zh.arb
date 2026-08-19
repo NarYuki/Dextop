@@ -112,6 +112,7 @@
   "ui3FingerTap": "3 指点击",
   "ui4Divisions": "四分屏",
   "uiDextopIsReady": "Dextop 已准备就绪",
+  "uiDextopStopping": "正在完成 Dextop 退出",
   "uiStopDextop": "停止 Dextop",
   "uiDextopCanBeRestarted": "可以恢复 Dextop",
   "uiOpenDextop": "打开 Dextop",
@@ -275,6 +276,10 @@
   "uiLongPress": "长按",
   "uiAutomaticallyUsesMeasuredResolutionForOpenAnd": "自动使用测量的打开和关闭状态分辨率",
   "uiStart": "开始",
+  "uiRunningAuto": "运行中（Auto）",
+  "uiRunningAutoPlus": "运行中（Auto+）",
+  "uiStartPhoneDextop": "在此手机上启动 Dextop",
+  "uiStopAndroidAuto": "停止（Android Auto）",
   "uiAutomaticSwitchingAccordingToOpenClosedState": "根据开/关状态自动切换",
   "uiOpeningQuote": "“",
   "uiDeleteWorkspaceQuestionSuffix": "”？",
@@ -355,5 +360,9 @@
   "keyboardThemesTrackpadOpacity":"触控板透明度",
   "keyboardThemesShowTrackpadLabel":"显示 TRACKPAD 标签",
   "keyboardThemesDescription":"笔记本键盘主题和自定义外观",
+  "autoSettingsTitle":"Auto",
+  "autoSettingsDescription":"Auto 显示与手机镜像选项",
+  "autoMatchPhoneOrientation":"将手机镜像方向匹配到 Auto",
+  "autoMatchPhoneOrientationDescription":"从手机镜像在 Auto 中显示 Dextop 时，根据车机宽高比调整方向。",
   "@keyboardThemesDeleteBody":{"placeholders":{"name":{"type":"String"}}}
 }

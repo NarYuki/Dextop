@@ -18,7 +18,10 @@ extension _HomeContent on _HomeScreenState {
             children: [
               heroPanel(),
               SizedBox(height: 16),
-              if (!active && recovery['recoverable'] == true) ...[
+              if (!active &&
+                  !autoActive &&
+                  !stopping &&
+                  recovery['recoverable'] == true) ...[
                 recoveryPanel(),
                 SizedBox(height: 16),
               ],
@@ -47,9 +50,16 @@ extension _HomeContent on _HomeScreenState {
   Widget heroPanel() {
     final colors = Theme.of(context).colorScheme;
     final ready = secureSettingsGranted && shizukuRunning && shizukuGranted;
-    final hasExistingSession = !active && recovery['recoverable'] == true;
-    final needsAndroidRepair = !active && androidRepair['required'] == true;
-    final showRepairResult = !active && androidRepairCompleted;
+    final hasExistingSession =
+        !active && !autoActive && !stopping && recovery['recoverable'] == true;
+    final needsAndroidRepair =
+        !active && !autoActive && androidRepair['required'] == true;
+    final showRepairResult = !active && !autoActive && androidRepairCompleted;
+    // autoActive is the validated native session owner state. Do not gate
+    // the label on the separate Activity-connection flag: during an Auto
+    // handoff that flag can briefly change while the overlay remains alive.
+    final autoOnly = autoActive && !active;
+    final autoPlus = autoActive && active;
     return Card(
       child: Padding(
         padding: EdgeInsets.all(20),
@@ -63,7 +73,9 @@ extension _HomeContent on _HomeScreenState {
                   dimension: 28,
                   child: Center(
                     child: Icon(
-                      loading
+                      stopping
+                          ? Icons.hourglass_top_rounded
+                          : loading
                           ? Icons.hourglass_top_rounded
                           : needsAndroidRepair
                           ? Icons.warning_amber_rounded
@@ -71,11 +83,13 @@ extension _HomeContent on _HomeScreenState {
                           ? Icons.check_circle_rounded
                           : hasExistingSession
                           ? Icons.history_rounded
-                          : active || ready
+                          : active || autoActive || ready
                           ? Icons.check_circle_rounded
                           : Icons.error_outline_rounded,
                       size: 24,
-                      color: loading
+                      color: stopping
+                          ? colors.onSurfaceVariant
+                          : loading
                           ? colors.onSurfaceVariant
                           : needsAndroidRepair
                           ? colors.tertiary
@@ -83,7 +97,7 @@ extension _HomeContent on _HomeScreenState {
                           ? colors.primary
                           : hasExistingSession
                           ? colors.onSurfaceVariant
-                          : active || ready
+                          : active || autoActive || ready
                           ? colors.primary
                           : colors.error,
                     ),
@@ -92,8 +106,14 @@ extension _HomeContent on _HomeScreenState {
                 SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    loading
+                    stopping
+                        ? AppStrings.tr('uiDextopStopping')
+                        : loading
                         ? AppStrings.tr('uiChecking')
+                        : autoPlus
+                        ? AppStrings.tr('uiRunningAutoPlus')
+                        : autoOnly
+                        ? AppStrings.tr('uiRunningAuto')
                         : active
                         ? AppStrings.tr('running')
                         : needsAndroidRepair
@@ -124,6 +144,27 @@ extension _HomeContent on _HomeScreenState {
               ],
             ),
             SizedBox(height: 20),
+            if (autoOnly) ...[
+              // Auto owns its independent virtual display. Starting another
+              // phone-side session while it is active is intentionally
+              // disabled until the two-session handoff is reintroduced.
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton.tonal(
+                  onPressed: null,
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.phone_android_rounded, size: 20),
+                      SizedBox(width: 8),
+                      Text(AppStrings.tr('uiStartPhoneDextop')),
+                    ],
+                  ),
+                ),
+              ),
+              SizedBox(height: 10),
+            ],
             SizedBox(
               width: double.infinity,
               child: FilledButton(
@@ -133,7 +174,9 @@ extension _HomeContent on _HomeScreenState {
                         foregroundColor: Colors.black,
                       )
                     : null,
-                onPressed: needsAndroidRepair
+                onPressed: stopping
+                    ? null
+                    : needsAndroidRepair
                     ? () async {
                         mutate(() => loading = true);
                         await bridge.repairAndroid();
@@ -147,7 +190,12 @@ extension _HomeContent on _HomeScreenState {
                       }
                     : showRepairResult
                     ? bridge.restartApp
-                    : loading || hasExistingSession || (!active && !ready)
+                    : autoOnly
+                    ? bridge.stopAuto
+                    : loading ||
+                          stopping ||
+                          hasExistingSession ||
+                          (!active && !ready)
                     ? null
                     : toggleDisplay,
                 child: Row(
@@ -155,7 +203,12 @@ extension _HomeContent on _HomeScreenState {
                   mainAxisAlignment: MainAxisAlignment.center,
                   crossAxisAlignment: CrossAxisAlignment.center,
                   children: [
-                    loading
+                    stopping
+                        ? SizedBox.square(
+                            dimension: 20,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : loading
                         ? SizedBox.square(
                             dimension: 20,
                             child: CircularProgressIndicator(strokeWidth: 2),
@@ -165,6 +218,8 @@ extension _HomeContent on _HomeScreenState {
                                 ? Icons.build_rounded
                                 : showRepairResult
                                 ? Icons.restart_alt_rounded
+                                : autoOnly
+                                ? Icons.stop_rounded
                                 : active
                                 ? Icons.stop_rounded
                                 : Icons.play_arrow_rounded,
@@ -172,10 +227,14 @@ extension _HomeContent on _HomeScreenState {
                           ),
                     SizedBox(width: 8),
                     Text(
-                      needsAndroidRepair
+                      stopping
+                          ? AppStrings.tr('uiDextopStopping')
+                          : needsAndroidRepair
                           ? AppStrings.tr('uiRestorePrivileges')
                           : showRepairResult
                           ? AppStrings.tr('uiRestartTheApp')
+                          : autoOnly
+                          ? AppStrings.tr('uiStopAndroidAuto')
                           : active
                           ? AppStrings.tr('stop')
                           : AppStrings.tr('uiStart'),

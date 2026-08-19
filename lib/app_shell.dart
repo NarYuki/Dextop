@@ -207,6 +207,10 @@ class NativeBridge {
     return await channel.invokeMapMethod<String, dynamic>('status') ?? {};
   }
 
+  Future<Map<String, dynamic>> sessionState() async {
+    return await channel.invokeMapMethod<String, dynamic>('sessionState') ?? {};
+  }
+
   Future<Map<String, dynamic>> launchContext() async =>
       await channel.invokeMapMethod<String, dynamic>('launchContext') ?? {};
 
@@ -307,6 +311,10 @@ class NativeBridge {
   Future<void> clearRecovery() => channel.invokeMethod('clearRecovery');
   Future<void> stop() async {
     await channel.invokeMethod('stop');
+  }
+
+  Future<void> stopAuto() async {
+    await channel.invokeMethod('stopAuto');
   }
 
   Future<void> start(
