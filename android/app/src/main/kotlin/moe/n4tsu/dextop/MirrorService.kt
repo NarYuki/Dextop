@@ -128,6 +128,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val KEY_SOFTWARE_CURSOR_FALLBACK = "software_cursor_fallback"
         /** Persisted three-way pointer profile; old installs use the fallback key. */
         private const val KEY_VIRTUAL_POINTER_PROFILE = "virtual_pointer_profile"
+        private const val KEY_ROTATE_180_LANDSCAPE = "rotate_180_landscape"
+        private const val KEY_ROTATE_180_PORTRAIT = "rotate_180_portrait"
         private const val VIRTUAL_MOUSE_NAME = "Dextop Virtual Mouse"
         private const val VIRTUAL_TOUCHPAD_NAME = "Dextop Virtual Touchpad"
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
@@ -1158,10 +1160,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             .apply()
         directTouch = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(KEY_DIRECT_TOUCH, false)
-        routePhysicalMouseToDextop = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getBoolean(KEY_ROUTE_MOUSE, true)
-        routePhysicalKeyboardToDextop = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getBoolean(KEY_ROUTE_KEYBOARD, true)
+        // The overlay routing controls were retired. Leave physical devices
+        // under Android's normal display routing instead of changing them.
+        routePhysicalMouseToDextop = false
+        routePhysicalKeyboardToDextop = false
+        getSharedPreferences(PREFS, MODE_PRIVATE).edit()
+            .remove(KEY_ROUTE_MOUSE)
+            .remove(KEY_ROUTE_KEYBOARD)
+            .apply()
+        runCatching { physicalInputRouter.restore() }
         experimentalMultiTouch = true
         instance = this
         windowManager = getSystemService(WindowManager::class.java)
@@ -4171,21 +4178,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun overlayButtonOrder(): MutableList<String> {
         val saved = getSharedPreferences(PREFS, MODE_PRIVATE)
-            .getString("overlay_button_order", "modes,volume,brightness,resolution,android,stop,reconnect,orientation,mouse_route,keyboard_route").orEmpty()
+            .getString("overlay_button_order", "modes,volume,brightness,resolution,android,stop,reconnect,orientation,rotate_180,cast").orEmpty()
             .replace("actions", "stop,reconnect,orientation")
             .split(',').filter { it in allControlIds }.toMutableList()
-        // Migrate the original routing-button default. Explicit user ordering
-        // remains untouched unless the two controls are still in that exact
-        // legacy position.
-        if (saved.indexOf("mouse_route") + 1 == saved.indexOf("keyboard_route") &&
-            saved.indexOf("keyboard_route") < saved.indexOf("stop")
-        ) {
-            saved.remove("mouse_route")
-            saved.remove("keyboard_route")
-            val insertion = (saved.indexOf("orientation") + 1).coerceAtLeast(0)
-            saved.add(insertion, "mouse_route")
-            saved.add(insertion + 1, "keyboard_route")
-        }
         saved.removeAll { it !in controlIds }
         controlIds.forEach { if (it !in saved) saved.add(it) }
         saved.remove("laptop")
@@ -4197,7 +4192,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private val allControlIds get() = listOf(
         "modes", "volume", "brightness", "resolution", "android", "laptop",
-        "stop", "reconnect", "orientation", "mouse_route", "keyboard_route"
+        "stop", "reconnect", "orientation", "rotate_180", "cast"
     )
     private val controlIds get() = allControlIds.filter {
         when (it) {
@@ -4205,8 +4200,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // without requiring a hinge sensor, but is hidden on clearly
             // phone-sized devices where the two-pane surface is unusable.
             "laptop" -> demoMode || isLaptopCapableDevice()
-            "mouse_route", "keyboard_route" ->
-                demoMode || physicalInputRoutingSupported && physicalExternalDisplayConnected
             else -> true
         }
     }
@@ -4214,8 +4207,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun addCustomControls(panel: LinearLayout, order: List<String>) {
         val mutableOrder = order.toMutableList()
         val views = linkedMapOf<String, View>()
-        val columns = if (demoMode || physicalExternalDisplayConnected) 5 else 3
-        val squareIds = setOf("mouse_route", "keyboard_route", "stop", "reconnect", "orientation")
+        val columns = 5
+        val squareIds = setOf("stop", "reconnect", "orientation", "rotate_180", "cast")
         val grid = GridLayout(this).apply {
             columnCount = columns
             alignmentMode = GridLayout.ALIGN_BOUNDS
@@ -4342,22 +4335,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         panel.addView(grid, LinearLayout.LayoutParams(-1, -2))
     }
 
-    private fun squareControl(id: String): ImageButton = when (id) {
-        "mouse_route" -> routingAction(
-            R.drawable.ic_mouse,
-            NativeStrings.text("nativePhysicalMouse"),
-            mouseActuallyRouted
-        ) {
-            if (demoMode) demoExplanation(NativeStrings.text("nativePhysicalMouseDemo"))
-            else setPhysicalInputRouting(mouse = !mouseActuallyRouted)
+    private fun squareControl(id: String): View = when (id) {
+        "rotate_180" -> squareTextAction("180°", NativeStrings.text("nativeRotate180")) {
+            if (demoMode) demoExplanation(NativeStrings.text("nativeRotate180"))
+            else toggleDisplayRotation180()
         }
-        "keyboard_route" -> routingAction(
-            R.drawable.ic_keyboard,
-            NativeStrings.text("nativePhysicalKeyboard"),
-            keyboardActuallyRouted
-        ) {
-            if (demoMode) demoExplanation(NativeStrings.text("nativePhysicalKeyboardDemo"))
-            else setPhysicalInputRouting(keyboard = !keyboardActuallyRouted)
+        "cast" -> squareAction(R.drawable.ic_cast, NativeStrings.text("nativeCast")) {
+            if (demoMode) demoExplanation(NativeStrings.text("nativeCastDescription"))
+            else openCastPicker()
         }
         "stop" -> squareAction(R.drawable.ic_stop, NativeStrings.text("nativeEnd"), true) {
             if (demoMode) demoExplanation(NativeStrings.text("nativeTerminateYourDextopSession")) else stop()
@@ -4377,6 +4362,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (demoMode) demoExplanation(NativeStrings.text("nativeSwitchBetweenPortraitAndLandscapeOrientationOf"))
             else changeOrientation()
         }
+    }
+
+    private fun squareTextAction(label: String, description: String, action: () -> Unit) =
+        TextView(this).apply {
+            text = label
+            textSize = 16f
+            gravity = Gravity.CENTER
+            contentDescription = description
+            setTextColor(Color.rgb(230, 225, 229))
+            background = GradientDrawable().apply {
+                setColor(Color.rgb(50, 47, 55))
+                cornerRadius = dp(16).toFloat()
+            }
+            setOnClickListener { action() }
+        }
+
+    private fun openCastPicker() {
+        runCatching {
+            startActivity(
+                Intent(this, DextopCastRouteActivity::class.java)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            )
+        }.onFailure { error -> OperationLog.e(this, "Cast", "unable to open Google Cast picker", error) }
     }
 
     private fun squareAction(icon: Int, description: String, destructive: Boolean = false, action: () -> Unit) =
@@ -4492,6 +4500,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         panel.addView(actionButton(R.drawable.ic_add, NativeStrings.text("nativeAddCustomResolution")) {
             showResolutionEditor(panel, null)
         })
+    }
+
+    private fun rotate180PreferenceKey(portrait: Boolean): String =
+        if (portrait) KEY_ROTATE_180_PORTRAIT else KEY_ROTATE_180_LANDSCAPE
+
+    private fun displayRotationFor(portrait: Boolean = requestedPortrait): Int =
+        if (getSharedPreferences(PREFS, MODE_PRIVATE)
+                .getBoolean(rotate180PreferenceKey(portrait), false)
+        ) 2 else 0
+
+    private fun toggleDisplayRotation180() {
+        val portrait = requestedPortrait
+        val key = rotate180PreferenceKey(portrait)
+        val preferences = getSharedPreferences(PREFS, MODE_PRIVATE)
+        val enabled = !preferences.getBoolean(key, false)
+        preferences.edit().putBoolean(key, enabled).apply()
+        val rotation = if (enabled) 2 else 0
+        applyDisplayRotation(rotation)
+        OperationLog.i(
+            this,
+            "Orientation",
+            "180-degree rotation changed portrait=$portrait enabled=$enabled display=$targetDisplayId"
+        )
     }
 
     private fun showResolutionEditor(panel: LinearLayout, existing: ResolutionProfile?) {
@@ -6245,10 +6276,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun configureDisplay() {
         val service = systemService("window", "android.view.IWindowManager")
         val type = Class.forName("android.view.IWindowManager")
-        // Forced display width/height already define the requested orientation.
-        // Rotating the target as well applies the change twice and restores the
-        // old orientation, so the overlay display itself always stays at zero.
-        val rotation = 0
+        // Width/height define portrait or landscape; an optional persisted
+        // half-turn is then applied independently for that orientation.
+        val rotation = displayRotationFor()
         desktopModeConfigurator.configureDisplay(targetDisplayId)
         runCatching {
             type.getMethod(
@@ -6274,8 +6304,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             OperationLog.e(this, "Orientation", "fixed rotation failed display=$targetDisplayId", it)
             Log.e(logTag, "fixed rotation failed", it)
         }
+        applyDisplayRotation(rotation, service, type)
         runCatching {
-            val method = type.methods.first {
+            type.getMethod("setShouldShowSystemDecors", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
+                .invoke(service, targetDisplayId, showSystemDecorations)
+        }
+        runCatching {
+            type.getMethod("setDisplayImePolicy", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                .invoke(service, targetDisplayId, 0)
+        }
+        Log.i(logTag, "Dextop display configured display=$targetDisplayId rotation=$rotation")
+    }
+
+    private fun applyDisplayRotation(
+        rotation: Int,
+        service: Any? = null,
+        type: Class<*>? = null
+    ) {
+        if (targetDisplayId < 0) return
+        val windowService = service ?: systemService("window", "android.view.IWindowManager")
+        val windowType = type ?: Class.forName("android.view.IWindowManager")
+        runCatching {
+            val method = windowType.methods.first {
                 it.name == "freezeDisplayRotation" && it.parameterTypes.size >= 2
             }
             val args = method.parameterTypes.mapIndexed { index, parameter ->
@@ -6287,22 +6337,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     else -> null
                 }
             }.toTypedArray()
-            method.invoke(service, *args)
+            method.invoke(windowService, *args)
         }.onSuccess {
             OperationLog.i(this, "Orientation", "display rotation lock applied display=$targetDisplayId rotation=$rotation")
         }.onFailure {
             OperationLog.e(this, "Orientation", "display rotation lock failed display=$targetDisplayId", it)
             Log.e(logTag, "display rotation lock failed", it)
         }
-        runCatching {
-            type.getMethod("setShouldShowSystemDecors", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
-                .invoke(service, targetDisplayId, showSystemDecorations)
-        }
-        runCatching {
-            type.getMethod("setDisplayImePolicy", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
-                .invoke(service, targetDisplayId, 0)
-        }
-        Log.i(logTag, "Dextop display configured display=$targetDisplayId rotation=$rotation")
     }
 
     private fun launchHome(): Boolean = runCatching {

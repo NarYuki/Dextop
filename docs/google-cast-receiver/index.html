@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Dextop Cast Receiver</title>
+  <style>
+    html, body { width: 100%; height: 100%; margin: 0; background: #000; overflow: hidden; }
+    #stream { width: 100%; height: 100%; object-fit: contain; background: #000; }
+    #status { position: fixed; inset: 0; display: grid; place-items: center; color: #e6e1e5;
+      font: 500 28px system-ui, sans-serif; background: #000; }
+    #status.hidden { display: none; }
+  </style>
+</head>
+<body>
+  <video id="stream" autoplay playsinline></video>
+  <div id="status">Waiting for Dextop…</div>
+  <script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+  <script src="receiver.js"></script>
+</body>
+</html>
