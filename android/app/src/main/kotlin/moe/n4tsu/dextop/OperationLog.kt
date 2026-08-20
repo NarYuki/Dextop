@@ -20,6 +20,8 @@ internal object OperationLog {
         val last = File(context.filesDir, LAST_FILE)
         if (current.exists() && current.length() > 0) current.copyTo(last, overwrite = true)
         current.writeText("DEXTOP SESSION LOG v1\n")
+        // Keep the geometry revision ahead of timestamped events for old report parsers.
+        current.appendText("geometryInvariant=${GeometryInvariant.discriminator(1)}\n")
         write(context, "I", "Session", "started $summary")
     }
 

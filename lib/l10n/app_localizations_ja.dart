@@ -57,6 +57,21 @@ class AppLocalizationsJa extends AppLocalizations {
   String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
 
   @override
+  String get castMode => 'Google Cast方式';
+
+  @override
+  String get castModeSimple => '互換モード';
+
+  @override
+  String get castModeSimpleDescription => '接続の安定性と幅広い表示機器との互換性を優先します';
+
+  @override
+  String get castModeReceiver => '低遅延モード';
+
+  @override
+  String get castModeReceiverDescription => '操作の応答性を優先して映像を転送します';
+
+  @override
   String get updateAvailable => 'アップデートがあります';
 
   @override

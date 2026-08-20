@@ -45,6 +45,7 @@ internal class DiagnosticReport(private val context: Context) {
         sb.append("DEXTOP DIAGNOSTIC REPORT\n")
         sb.append(line("generated", SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date())))
         sb.append(line("app", "${context.packageName} ${packageInfo.versionName} (${packageInfo.longVersionCode})"))
+        sb.append(line("geometryInvariant", GeometryInvariant.discriminator(2)))
         sb.append("\n[DEVICE]\n")
         listOf(
             "manufacturer" to Build.MANUFACTURER, "brand" to Build.BRAND, "model" to Build.MODEL,

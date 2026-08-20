@@ -524,10 +524,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         ),
         const SizedBox(height: 12),
         if (gestureDemoCompleted)
-          Text(
-            l.setupGestureReviewed,
-            textAlign: TextAlign.center,
-          ),
+          Text(l.setupGestureReviewed, textAlign: TextAlign.center),
         const SizedBox(height: 32),
         FilledButton.icon(
           onPressed: gestureDemoOpening ? null : startGestureDemo,

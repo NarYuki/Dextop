@@ -200,6 +200,36 @@ abstract class AppLocalizations {
   /// **'VirtualDisplay'**
   String get mirrorBackendVirtualDisplay;
 
+  /// No description provided for @castMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'Google Cast方式'**
+  String get castMode;
+
+  /// No description provided for @castModeSimple.
+  ///
+  /// In ja, this message translates to:
+  /// **'互換モード'**
+  String get castModeSimple;
+
+  /// No description provided for @castModeSimpleDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続の安定性と幅広い表示機器との互換性を優先します'**
+  String get castModeSimpleDescription;
+
+  /// No description provided for @castModeReceiver.
+  ///
+  /// In ja, this message translates to:
+  /// **'低遅延モード'**
+  String get castModeReceiver;
+
+  /// No description provided for @castModeReceiverDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'操作の応答性を優先して映像を転送します'**
+  String get castModeReceiverDescription;
+
   /// No description provided for @updateAvailable.
   ///
   /// In ja, this message translates to:

@@ -59,6 +59,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
 
   @override
+  String get castMode => 'Google Cast method';
+
+  @override
+  String get castModeSimple => 'Compatibility';
+
+  @override
+  String get castModeSimpleDescription =>
+      'Prioritizes connection stability and compatibility with more displays';
+
+  @override
+  String get castModeReceiver => 'Low latency';
+
+  @override
+  String get castModeReceiverDescription =>
+      'Prioritizes responsive controls while streaming the display';
+
+  @override
   String get updateAvailable => 'Update available';
 
   @override

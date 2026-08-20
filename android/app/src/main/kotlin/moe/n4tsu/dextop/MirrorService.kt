@@ -76,11 +76,20 @@ import android.widget.ScrollView
 import android.widget.HorizontalScrollView
 import android.widget.SeekBar
 import android.widget.TextView
+import android.widget.ProgressBar
 import android.animation.ValueAnimator
 import android.animation.LayoutTransition
 import android.widget.GridLayout
 import androidx.window.layout.FoldingFeature
 import androidx.window.layout.WindowInfoTracker
+import androidx.mediarouter.media.MediaRouteSelector
+import androidx.mediarouter.media.MediaRouter
+import com.google.android.gms.cast.CastMediaControlIntent
+import com.google.android.gms.cast.MediaInfo
+import com.google.android.gms.cast.MediaLoadRequestData
+import com.google.android.gms.cast.framework.CastSession
+import com.google.android.gms.cast.framework.CastContext
+import com.google.android.gms.cast.framework.SessionManagerListener
 import java.io.BufferedReader
 import java.io.InputStreamReader
 import java.io.OutputStream
@@ -251,7 +260,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             service.root?.post {
                 if (!active || service.autoOnlySession || width <= 0 || height <= 0) return@post
                 val portrait = height > width
-                MainActivity.setDisplayOrientation(portrait)
+                service.applyHostDisplayOrientation(portrait)
                 service.forcePhoneRotation(portrait)
                 OperationLog.i(
                     service,
@@ -722,6 +731,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var inputDiagnosticSequence = 0L
     private var orientationRebuildInProgress = false
     private var lastForcedPhonePortrait: Boolean? = null
+    private var lastForcedPhoneHalfTurn: Boolean? = null
+    private var castMediaRouter: MediaRouter? = null
+    private var castRouteCallback: MediaRouter.Callback? = null
+    private var castSessionListener: SessionManagerListener<CastSession>? = null
+    private var castCompatibilityStreamer: CastCompatibilityStreamer? = null
     private var refreshRateReapplyGeneration = 0
     private var topologyReapplyGeneration = 0
     private val physicalInputRoutingSupported: Boolean
@@ -992,6 +1006,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         override fun onDisplayChanged(displayId: Int) {
+            // Preserve the edge walk before refreshing a changed source display.
             refreshFoldingApiState("display_changed", force = true)
             if (active) OperationLog.i(this@MirrorService, "DisplayGeometry", displayGeometrySnapshot("display_changed_$displayId"))
             if (active) refreshMenuGeometryAfterDisplayChange()
@@ -1302,6 +1317,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     override fun onDestroy() {
+        endCastSession("service_destroyed")
         windowDiagnosticGeneration.incrementAndGet()
         windowDiagnosticExecutor.shutdownNow()
         super.onDestroy()
@@ -1433,7 +1449,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val portrait = targetHeight > targetWidth
         requestedPortrait = portrait
         if (!autoOnlySession) {
-            MainActivity.setDisplayOrientation(portrait)
+            applyHostDisplayOrientation(portrait)
             forcePhoneRotation(portrait)
         } else {
             OperationLog.i(
@@ -1611,7 +1627,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             setFitInsetsIgnoringVisibility(true)
         }
         windowManager?.addView(cursor, cursorParams)
-        cursor.update(cursorX / targetWidth, cursorY / targetHeight)
+        updateCursorPosition()
         Log.i(logTag, "fullscreen accessibility overlay added")
     }
 
@@ -3617,6 +3633,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun showMainMenu(panel: LinearLayout) {
+        stopCastRouteDiscovery()
         animateMenuResize(panel)
         endOverlayTextInput()
         setOverlayFocusable(false)
@@ -4379,12 +4396,300 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
     private fun openCastPicker() {
-        runCatching {
-            startActivity(
-                Intent(this, DextopCastRouteActivity::class.java)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        menuPrimary?.let(::showCastRouteMenu)
+    }
+
+    private fun showCastRouteMenu(panel: LinearLayout) {
+        stopCastRouteDiscovery()
+        animateMenuResize(panel)
+        panel.removeAllViews()
+        panel.addView(menuTitle(
+            NativeStrings.text("nativeCast"),
+            NativeStrings.text("nativeReturn")
+        ) { showMainMenu(panel) })
+
+        val selector = runCatching {
+            // Initialize CAF, but do not create a detached MediaRouteButton from
+            // the accessibility-service context. That path requires an Activity
+            // theme and throws IllegalArgumentException on Samsung builds.
+            val castContext = CastContext.getSharedInstance(this)
+            val castMode = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                .getString("flutter.cast_mode", "simple") ?: "simple"
+            val receiverAppId = if (castMode == "receiver") {
+                BuildConfig.CAST_RECEIVER_APP_ID
+            } else {
+                CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID
+            }
+            // CastContext is process-global and OptionsProvider is evaluated only
+            // once. Without updating it here, changing the mode after the first
+            // Cast scan leaves discovery pinned to the previous receiver ID.
+            castContext.setReceiverApplicationId(receiverAppId)
+            val category = if (castMode == "receiver") {
+                CastMediaControlIntent.categoryForCast(
+                    BuildConfig.CAST_RECEIVER_APP_ID,
+                    listOf(DextopCastProtocol.NAMESPACE)
+                )
+            } else {
+                CastMediaControlIntent.categoryForCast(
+                    CastMediaControlIntent.DEFAULT_MEDIA_RECEIVER_APPLICATION_ID
+                )
+            }
+            OperationLog.i(
+                this,
+                "Cast",
+                "creating route selector mode=$castMode receiverAppId=$receiverAppId"
             )
-        }.onFailure { error -> OperationLog.e(this, "Cast", "unable to open Google Cast picker", error) }
+            MediaRouteSelector.Builder()
+                .addControlCategory(category)
+                .build()
+        }.getOrElse { error ->
+            OperationLog.e(this, "Cast", "unable to create Google Cast route selector", error)
+            panel.addView(menuHint(NativeStrings.text("nativeCastUnavailable")))
+            return
+        }
+        val router = MediaRouter.getInstance(this)
+        castMediaRouter = router
+        val sessionManager = CastContext.getSharedInstance(this).sessionManager
+        lateinit var renderRoutes: () -> Unit
+        lateinit var routeCallback: MediaRouter.Callback
+        var scanning = true
+        var scanGeneration = 0L
+
+        fun finishCastConnection(session: CastSession) {
+            val castMode = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                .getString("flutter.cast_mode", "simple") ?: "simple"
+            if (castMode == "receiver") {
+                runCatching {
+                    session.sendMessage(
+                        DextopCastProtocol.NAMESPACE,
+                        "{\"type\":\"status\",\"text\":\"Dextop connected\"}"
+                    )
+                }
+            } else {
+                runCatching {
+                    castCompatibilityStreamer?.stop()
+                    val streamer = CastCompatibilityStreamer(
+                        this,
+                        privilegedAccess,
+                        targetDisplayId,
+                        targetWidth,
+                        targetHeight,
+                        density
+                    )
+                    castCompatibilityStreamer = streamer
+                    val streamUrl = streamer.start()
+                    val media = MediaInfo.Builder(streamUrl)
+                        .setStreamType(MediaInfo.STREAM_TYPE_LIVE)
+                        .setContentType("video/mp4")
+                        .build()
+                    val request = MediaLoadRequestData.Builder()
+                        .setMediaInfo(media)
+                        .setAutoplay(true)
+                        .build()
+                    session.remoteMediaClient?.load(request)
+                        ?: error("Default Media Receiver media client is unavailable")
+                    OperationLog.i(this, "Cast", "compatibility video load requested url=$streamUrl")
+                    // The accessibility control panel must not remain in the
+                    // active render/input path while a second recording
+                    // VirtualDisplay starts consuming the desktop. Close it
+                    // automatically instead of requiring another gesture.
+                    menu?.postDelayed({
+                        if (menu?.visibility == View.VISIBLE) toggleMenu()
+                    }, 120L)
+                }.onFailure { error ->
+                    castCompatibilityStreamer?.stop()
+                    castCompatibilityStreamer = null
+                    OperationLog.e(this, "Cast", "unable to start compatibility video", error)
+                }
+            }
+            OperationLog.i(this, "Cast", "Cast session connected receiver=${session.castDevice?.friendlyName}")
+        }
+
+        castSessionListener?.let { sessionManager.removeSessionManagerListener(it, CastSession::class.java) }
+        val sessionListener = object : SessionManagerListener<CastSession> {
+            override fun onSessionStarted(session: CastSession, sessionId: String) {
+                finishCastConnection(session)
+                renderRoutes()
+            }
+            override fun onSessionResumed(session: CastSession, wasSuspended: Boolean) {
+                finishCastConnection(session)
+                renderRoutes()
+            }
+            override fun onSessionStartFailed(session: CastSession, error: Int) {
+                OperationLog.e(this@MirrorService, "Cast", "Cast session start failed code=$error")
+                panel.addView(menuHint("${NativeStrings.text("nativeCastUnavailable")} ($error)"))
+                scheduleMenuHeightUpdate()
+            }
+            override fun onSessionEnded(session: CastSession, error: Int) {
+                OperationLog.i(this@MirrorService, "Cast", "Cast session ended code=$error")
+                renderRoutes()
+            }
+            override fun onSessionEnding(session: CastSession) = Unit
+            override fun onSessionResumeFailed(session: CastSession, error: Int) = Unit
+            override fun onSessionResuming(session: CastSession, sessionId: String) = Unit
+            override fun onSessionStarting(session: CastSession) = Unit
+            override fun onSessionSuspended(session: CastSession, reason: Int) = Unit
+        }
+        castSessionListener = sessionListener
+        sessionManager.addSessionManagerListener(sessionListener, CastSession::class.java)
+
+        renderRoutes = renderRoutes@{
+            if (menuPrimary !== panel || castMediaRouter !== router) return@renderRoutes
+            while (panel.childCount > 1) panel.removeViewAt(1)
+            val routes = router.routes.filter {
+                !it.isDefault && it.isEnabled && it.matchesSelector(selector)
+            }
+            OperationLog.i(
+                this,
+                "Cast",
+                "route menu refresh total=${router.routes.size} eligible=${routes.size} " +
+                    "routes=${routes.joinToString { it.name.toString() }}"
+            )
+            val activeSession = sessionManager.currentCastSession
+            val activeDeviceName = activeSession?.castDevice?.friendlyName
+            val scanRow = FrameLayout(this).apply {
+                val scanButton = actionButton(
+                    R.drawable.ic_reload,
+                    NativeStrings.text("nativeScanAgain")
+                ) {
+                    scanning = true
+                    val generation = ++scanGeneration
+                    renderRoutes()
+                    router.removeCallback(routeCallback)
+                    router.addCallback(
+                        selector,
+                        routeCallback,
+                        MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN
+                    )
+                    OperationLog.i(this@MirrorService, "Cast", "manual active scan requested")
+                    postDelayed({
+                        if (generation == scanGeneration) {
+                            scanning = false
+                            renderRoutes()
+                        }
+                    }, 2_500L)
+                }
+                addView(scanButton, FrameLayout.LayoutParams(-1, dp(50)))
+                if (scanning) {
+                    addView(ProgressBar(this@MirrorService).apply {
+                        isIndeterminate = true
+                        contentDescription = NativeStrings.text("nativeScanning")
+                    }, FrameLayout.LayoutParams(dp(24), dp(24), Gravity.CENTER_VERTICAL or Gravity.END).apply {
+                        rightMargin = dp(16)
+                    })
+                }
+            }
+            panel.addView(scanRow, LinearLayout.LayoutParams(-1, dp(58)).apply {
+                bottomMargin = dp(2)
+            })
+            if (routes.isEmpty()) {
+                panel.addView(menuHint(if (scanning) {
+                    NativeStrings.text("nativeScanning")
+                } else {
+                    NativeStrings.text("nativeNoCastDevices")
+                }))
+            } else {
+                routes.forEach { route ->
+                    val isActiveRoute = activeSession != null &&
+                        (router.selectedRoute.id == route.id || activeDeviceName == route.name.toString())
+                    val label = if (isActiveRoute) {
+                        "✓ ${route.name}  ·  ${NativeStrings.text("nativeCasting")}"
+                    } else {
+                        route.name.toString()
+                    }
+                    panel.addView(actionButton(R.drawable.ic_cast, label) {
+                        if (activeSession != null) return@actionButton
+                        runCatching { router.selectRoute(route) }
+                            .onSuccess {
+                                OperationLog.i(this, "Cast", "selected receiver=${route.name}")
+                                // Keep discovery alive until CAF confirms that
+                                // the receiver application has actually started.
+                                while (panel.childCount > 1) panel.removeViewAt(1)
+                                panel.addView(menuHint("${NativeStrings.text("nativeCast")}…"))
+                                scheduleMenuHeightUpdate()
+                                panel.postDelayed({
+                                    if (menuPrimary === panel &&
+                                        CastContext.getSharedInstance(this).sessionManager.currentCastSession == null) {
+                                        OperationLog.e(this, "Cast", "Cast receiver launch timed out route=${route.name}")
+                                        showCastRouteMenu(panel)
+                                    }
+                                }, 15_000L)
+                            }
+                            .onFailure { error ->
+                                OperationLog.e(this, "Cast", "unable to select receiver=${route.name}", error)
+                            }
+                    }.apply {
+                        isEnabled = activeSession == null
+                        alpha = if (activeSession == null) 1f else 0.45f
+                    })
+                }
+            }
+            if (activeSession != null) {
+                panel.addView(actionButton(
+                    R.drawable.ic_stop,
+                    NativeStrings.text("nativeStopCasting")
+                ) {
+                    endCastSession("user")
+                    renderRoutes()
+                })
+            }
+            scheduleMenuHeightUpdate()
+        }
+
+        routeCallback = object : MediaRouter.Callback() {
+            override fun onRouteAdded(router: MediaRouter, route: MediaRouter.RouteInfo) = renderRoutes()
+            override fun onRouteRemoved(router: MediaRouter, route: MediaRouter.RouteInfo) = renderRoutes()
+            override fun onRouteChanged(router: MediaRouter, route: MediaRouter.RouteInfo) = renderRoutes()
+        }
+        castRouteCallback = routeCallback
+        router.addCallback(selector, routeCallback, MediaRouter.CALLBACK_FLAG_PERFORM_ACTIVE_SCAN)
+        renderRoutes()
+        // Google Play services publishes mDNS results asynchronously and some
+        // Samsung MediaRouter builds do not deliver the first provider-change
+        // callback to a service-owned router. Refresh after both discovery
+        // windows so the overlay cannot remain stuck on the initial empty list.
+        panel.postDelayed({ renderRoutes() }, 500L)
+        panel.postDelayed({
+            scanning = false
+            renderRoutes()
+        }, 1_500L)
+    }
+
+    private fun stopCastRouteDiscovery() {
+        val router = castMediaRouter
+        val callback = castRouteCallback
+        if (router != null && callback != null) router.removeCallback(callback)
+        castMediaRouter = null
+        castRouteCallback = null
+        castSessionListener?.let { listener ->
+            runCatching {
+                CastContext.getSharedInstance(this).sessionManager
+                    .removeSessionManagerListener(listener, CastSession::class.java)
+            }
+        }
+        castSessionListener = null
+    }
+
+    private fun endCastSession(reason: String) {
+        castCompatibilityStreamer?.stop()
+        castCompatibilityStreamer = null
+        runCatching {
+            val castContext = CastContext.getSharedInstance(this)
+            val hadSession = castContext.sessionManager.currentCastSession != null
+            castContext.sessionManager.endCurrentSession(true)
+            castMediaRouter?.unselect(MediaRouter.UNSELECT_REASON_STOPPED)
+            OperationLog.i(this, "Cast", "Cast stop requested reason=$reason active=$hadSession")
+        }.onFailure { error ->
+            OperationLog.e(this, "Cast", "unable to stop Cast reason=$reason", error)
+        }
+    }
+
+    private fun menuHint(textValue: String): View = TextView(this).apply {
+        text = textValue
+        textSize = 14f
+        setTextColor(Color.rgb(202, 196, 208))
+        gravity = Gravity.CENTER_VERTICAL
+        setPadding(dp(16), dp(14), dp(16), dp(14))
     }
 
     private fun squareAction(icon: Int, description: String, destructive: Boolean = false, action: () -> Unit) =
@@ -4505,10 +4810,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun rotate180PreferenceKey(portrait: Boolean): String =
         if (portrait) KEY_ROTATE_180_PORTRAIT else KEY_ROTATE_180_LANDSCAPE
 
-    private fun displayRotationFor(portrait: Boolean = requestedPortrait): Int =
-        if (getSharedPreferences(PREFS, MODE_PRIVATE)
-                .getBoolean(rotate180PreferenceKey(portrait), false)
-        ) 2 else 0
+    private fun applyHostDisplayOrientation(portrait: Boolean) {
+        val reverse = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(rotate180PreferenceKey(portrait), false)
+        MainActivity.setDisplayOrientation(portrait, reverse)
+    }
+
+    private fun displayRotationFor(@Suppress("UNUSED_PARAMETER") portrait: Boolean = requestedPortrait): Int = 0
+
+    private fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY) {
+        val normalizedX = x / targetWidth.coerceAtLeast(1)
+        val normalizedY = y / targetHeight.coerceAtLeast(1)
+        cursorView?.update(normalizedX, normalizedY)
+    }
 
     private fun toggleDisplayRotation180() {
         val portrait = requestedPortrait
@@ -4516,8 +4830,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val preferences = getSharedPreferences(PREFS, MODE_PRIVATE)
         val enabled = !preferences.getBoolean(key, false)
         preferences.edit().putBoolean(key, enabled).apply()
-        val rotation = if (enabled) 2 else 0
-        applyDisplayRotation(rotation)
+        // Rotate the physical host display. WindowManager then transforms the
+        // Surface, overlay controls, hit regions, and gesture coordinates as
+        // one coherent display instead of leaving input in the old geometry.
+        MainActivity.setDisplayOrientation(portrait, enabled)
+        applyDisplayRotation(0)
+        forcePhoneRotation(portrait, force = true)
         OperationLog.i(
             this,
             "Orientation",
@@ -5033,7 +5351,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         cursorX = x / view.width * targetWidth
         cursorY = y / view.height * targetHeight
         if (!directTouch && !virtualMouseInputActive()) {
-            cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+            updateCursorPosition()
         }
     }
 
@@ -5091,7 +5409,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // ACTION_DOWN on the phone display hands cursor ownership back to the
         // touchpad immediately, even if the mouse remains connected.
         updateVirtualCursorVisibility()
-        if (!directTouch && !virtualMouseInputActive()) cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        if (!directTouch && !virtualMouseInputActive()) updateCursorPosition()
         OperationLog.i(
             this,
             "InputRouting",
@@ -5120,7 +5438,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "pointerReady=${laptopTrackpadInputActive()}"
         )
         if (!directTouch && !virtualMouseInputActive()) {
-            cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+            updateCursorPosition()
         }
     }
 
@@ -5287,6 +5605,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         stopHostDisplayMonitor()
         setPhoneNavigationDisabled(false)
         releasePhoneRotation()
+        MainActivity.restoreOrientation()
         runCatching { desktopModeConfigurator.restore() }
             .onFailure { Log.e(logTag, "lock-screen settings restoration failed", it) }
         removeWindow()
@@ -5418,7 +5737,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (useVirtualPointer) {
             virtualMouseMove(effectiveDx, effectiveDy, allowVirtualPointer)
         } else {
-            cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+            updateCursorPosition()
             if (dragHeld) injectTouch(MotionEvent.ACTION_MOVE, cursorX, cursorY)
         }
     }
@@ -5520,7 +5839,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             "requested portrait=$portrait from=${targetWidth}x$targetHeight " +
                 displayGeometrySnapshot("orientation_requested")
         )
-        MainActivity.setDisplayOrientation(portrait)
+        applyHostDisplayOrientation(portrait)
         requestedPortrait = portrait
         forcePhoneRotation(portrait)
         val config = Config(base.height, base.width, base.density, base.secure, base.decorations)
@@ -6184,7 +6503,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (!autoOnlySession) menuPrimary?.let(::showMainMenu)
             cursorX = targetWidth / 2f
             cursorY = targetHeight / 2f
-            if (!autoOnlySession) cursorView?.update(.5f, .5f)
+            if (!autoOnlySession) updateCursorPosition(targetWidth / 2f, targetHeight / 2f)
             if (!launchHome()) {
                 // One UI 8 rejects HOME launches on Samsung-owned virtual
                 // displays that do not advertise system decorations. Rebuild
@@ -6729,13 +7048,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // builds, so synchronize rotation and desktop policy after a size
             // change.  DPI-only edits deliberately skip this path so Samsung
             // DeX's taskbar is not forced through an unnecessary rebuild.
-            MainActivity.setDisplayOrientation(requestedPortrait)
+            applyHostDisplayOrientation(requestedPortrait)
             forcePhoneRotation(requestedPortrait)
             configureDisplay()
         }
         cursorX = (normalizedCursorX * targetWidth).coerceIn(0f, targetWidth - 1f)
         cursorY = (normalizedCursorY * targetHeight).coerceIn(0f, targetHeight - 1f)
-        cursorView?.update(cursorX / targetWidth, cursorY / targetHeight)
+        updateCursorPosition()
         surfaceView?.let { surface ->
             if (surface.width > 0 && surface.height > 0) {
                 // Rotation-driven Surface replacement reattaches the mirror in
@@ -7019,11 +7338,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
-    private fun forcePhoneRotation(portrait: Boolean) {
-        if (lastForcedPhonePortrait == portrait) return
+    private fun forcePhoneRotation(portrait: Boolean, force: Boolean = false) {
+        val halfTurn = getSharedPreferences(PREFS, MODE_PRIVATE)
+            .getBoolean(rotate180PreferenceKey(portrait), false)
+        if (!force && lastForcedPhonePortrait == portrait && lastForcedPhoneHalfTurn == halfTurn) return
         lastForcedPhonePortrait = portrait
+        lastForcedPhoneHalfTurn = halfTurn
         runCatching {
-            phoneRotationController.force(portrait)
+            phoneRotationController.force(portrait, halfTurn)
         }.onSuccess {
             OperationLog.i(
                 this,
@@ -7038,6 +7360,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun releasePhoneRotation(clearSnapshot: Boolean = false) {
         lastForcedPhonePortrait = null
+        lastForcedPhoneHalfTurn = null
         runCatching {
             phoneRotationController.restore(clearSnapshot)
         }.onFailure { Log.e(logTag, "phone rotation unlock failed", it) }
@@ -7052,6 +7375,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (wasActive) {
             OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_stopping"))
         }
+        endCastSession("dextop_stopped")
         stopHostDisplayMonitor()
         suspendedForLockScreen = false
         suspendedConfig = null
@@ -7231,6 +7555,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun detachHostWindow() {
+        stopCastRouteDiscovery()
         stopLaptopHardwareKeyboard()
         stopVirtualMouse()
         // Prevent surfaceDestroyed() from releasing the mirrored display before

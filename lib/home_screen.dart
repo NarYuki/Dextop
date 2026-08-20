@@ -364,6 +364,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var portrait = false;
   var secure = false;
   String mirrorBackend = 'virtual_display';
+  String castMode = 'simple';
   var loading = true;
   var active = false;
   var autoConnected = false;
@@ -434,6 +435,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         portrait = preferences.getBool('home_portrait') ?? false;
         mirrorBackend =
             preferences.getString('mirror_backend') ?? 'virtual_display';
+        castMode = preferences.getString('cast_mode') ?? 'simple';
       });
     }
   }
@@ -454,6 +456,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     mutate(() => mirrorBackend = value);
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString('mirror_backend', value);
+  }
+
+  Future<void> setCastMode(String value) async {
+    mutate(() => castMode = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString('cast_mode', value);
   }
 
   bool get effectiveDecorations => manufacturer.toLowerCase() != 'samsung';

@@ -1,1 +1,2 @@
 -keep class moe.n4tsu.cardex.CarDexActivity { *; }
+-keep class moe.n4tsu.cardex.RelayInvariant { *; }

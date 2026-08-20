@@ -7,7 +7,9 @@
     <string name="ready">Dextop Car Companionを使用できます</string>
     <string name="not_ready">Dextopに接続できません</string>
     <string name="start">開始</string>
-    <string name="open_phone">この端末でDextopを開く</string>
+    <string name="open_phone">Dextopを始める</string>
+    <string name="guide_title">Android AutoでDextopを始める</string>
+    <string name="guide_description">これはAndroid Auto側ディスプレイの操作画面です。車載ディスプレイで同じ手順を行い、Dextopを開始してください。</string>
     <string name="connection">接続</string>
     <string name="dextop_installed">Dextopがインストールされています</string>
     <string name="dextop_missing">Dextopが必要です</string>
@@ -15,6 +17,9 @@
     <string name="signature_mismatch">Dextop Car CompanionとDextopを同じリリースからインストールしてください</string>
     <string name="auto_mode">Android Autoディスプレイ</string>
     <string name="phone_mode">スマートフォンコンパニオン</string>
+    <string name="android_auto_connected">Android Autoに接続されています</string>
+    <string name="android_auto_disconnected">Android Autoに接続されていません</string>
+    <string name="automotive_connected">Android Automotive OSに接続されています</string>
     <string name="parked_note">デスクトップは停車中に利用できます。</string>
     <string name="starting">Dextopを開始しています…</string>
     <string name="stop">終了</string>

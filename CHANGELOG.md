@@ -1,5 +1,23 @@
 # Changelog
 
+## 1.4.1 — Google Cast support and display controls
+
+### New
+
+- Added Google Cast output with Compatibility and Low latency modes.
+- Added an in-overlay Cast receiver picker with active scanning, connection status, receiver selection, and disconnection controls.
+- Added a persistent 180-degree rotation control that keeps the desktop, overlay controls, touch coordinates, and gesture directions aligned in both portrait and landscape.
+- Added an animated Android Auto setup guide to Dextop Car Companion.
+
+### Improved
+
+- Kept Android Auto displays awake while Dextop Car Companion is running.
+- Removed the unfinished physical mouse and keyboard routing controls from the Dextop overlay.
+
+### Fixed
+
+- Fixed Pixel/AOSP devices on Android 16 or later opening desktop apps without platform window decorations by using the system-managed desktop path. Older Android versions retain the compatibility freeform path.
+
 ## 1.4.0 — Dextop Car Companion and Android Auto support
 
 ### New

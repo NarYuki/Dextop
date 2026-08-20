@@ -33,7 +33,7 @@ internal class DesktopModeConfigurator(
                 savedGlobals += SavedGlobal(key, previous)
                 sessionJournal.rememberGlobal(key, previous)
                 check(Settings.Global.putString(resolver, key, value)) { "setting rejected" }
-                StrategyAttempt("global:$key", true, "$previous -> $value")
+                StrategyAttempt("global:$key", true, "$previous -> ${value ?: "<deleted>"}")
             }.getOrElse {
                 OperationLog.w(context, "DesktopMode", "optional global setting failed key=$key", it)
                 StrategyAttempt("global:$key", false, it.message.orEmpty())

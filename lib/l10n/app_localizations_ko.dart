@@ -57,6 +57,21 @@ class AppLocalizationsKo extends AppLocalizations {
   String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
 
   @override
+  String get castMode => 'Google Cast 방식';
+
+  @override
+  String get castModeSimple => '호환 모드';
+
+  @override
+  String get castModeSimpleDescription => '연결 안정성과 다양한 디스플레이 호환성을 우선합니다';
+
+  @override
+  String get castModeReceiver => '저지연 모드';
+
+  @override
+  String get castModeReceiverDescription => '화면 전송 중 조작 반응성을 우선합니다';
+
+  @override
   String get updateAvailable => '업데이트가 있습니다';
 
   @override

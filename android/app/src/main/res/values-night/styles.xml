@@ -15,4 +15,10 @@
     <style name="NormalTheme" parent="@android:style/Theme.Black.NoTitleBar">
         <item name="android:windowBackground">?android:colorBackground</item>
     </style>
+    <style name="DextopCastRouteTheme" parent="Theme.AppCompat.DayNight.Dialog.Alert">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:colorAccent">#D0BCFF</item>
+    </style>
 </resources>
