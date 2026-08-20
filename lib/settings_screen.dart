@@ -512,6 +512,20 @@ extension _SettingsContent on _HomeScreenState {
                   ? null
                   : () => _selectMirrorBackend(context, l, updateRoute),
             ),
+            Divider(height: 1),
+            ListTile(
+              leading: Icon(Icons.cast_rounded),
+              title: Text(AppStrings.tr('castMode')),
+              subtitle: Text(
+                AppStrings.tr(
+                  castMode == 'receiver'
+                      ? 'castModeReceiver'
+                      : 'castModeSimple',
+                ),
+              ),
+              trailing: Icon(Icons.chevron_right_rounded),
+              onTap: () => _selectCastMode(context, updateRoute),
+            ),
             DisplayEnvironmentSettingsCard(
               bridge: bridge,
               showConvenience: false,
@@ -554,6 +568,42 @@ extension _SettingsContent on _HomeScreenState {
           ]),
         ],
       );
+
+  Future<void> _selectCastMode(
+    BuildContext routeContext,
+    StateSetter updateRoute,
+  ) async {
+    final selected = await showDialog<String>(
+      context: routeContext,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(AppStrings.tr('castMode')),
+        children: [
+          RadioGroup<String>(
+            groupValue: castMode,
+            onChanged: (choice) => Navigator.pop(dialogContext, choice),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  value: 'simple',
+                  title: Text(AppStrings.tr('castModeSimple')),
+                  subtitle: Text(AppStrings.tr('castModeSimpleDescription')),
+                ),
+                RadioListTile<String>(
+                  value: 'receiver',
+                  title: Text(AppStrings.tr('castModeReceiver')),
+                  subtitle: Text(AppStrings.tr('castModeReceiverDescription')),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (selected == null || selected == castMode) return;
+    updateRoute(() => castMode = selected);
+    await setCastMode(selected);
+  }
 
   Widget _displaySettingsSection(String title, List<Widget> children) =>
       Padding(

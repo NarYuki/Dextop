@@ -13,7 +13,7 @@ internal class PhoneRotationController(
 ) {
     private var state: PhoneRotationState? = null
 
-    fun force(portrait: Boolean) {
+    fun force(portrait: Boolean, halfTurn: Boolean = false) {
         if (state == null) {
             state = readState().also {
                 sessionJournal.rememberPhoneRotation(it.frozen, it.rotation)
@@ -25,7 +25,8 @@ internal class PhoneRotationController(
         // old fixed mapping (portrait=0, landscape=1) inverted the requested
         // orientation and left the host Surface at 1848x2448 while Dextop was
         // configured for 2448x1848.
-        setFrozen(rotationFor(portrait))
+        val baseRotation = rotationFor(portrait)
+        setFrozen(if (halfTurn) (baseRotation + 2) % 4 else baseRotation)
     }
 
     fun restore(clear: Boolean = false) {

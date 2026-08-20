@@ -59,6 +59,23 @@ class AppLocalizationsRu extends AppLocalizations {
   String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
 
   @override
+  String get castMode => 'Способ Google Cast';
+
+  @override
+  String get castModeSimple => 'Совместимость';
+
+  @override
+  String get castModeSimpleDescription =>
+      'Приоритет стабильности подключения и совместимости с дисплеями';
+
+  @override
+  String get castModeReceiver => 'Низкая задержка';
+
+  @override
+  String get castModeReceiverDescription =>
+      'Приоритет быстрой реакции управления при передаче экрана';
+
+  @override
   String get updateAvailable => 'Доступно обновление';
 
   @override

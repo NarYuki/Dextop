@@ -11,6 +11,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.Message
 import android.os.Messenger
+import android.util.Log
 import android.view.Display
 import android.view.MotionEvent
 import android.view.Surface
@@ -18,10 +19,15 @@ import android.view.TextureView
 import android.graphics.SurfaceTexture
 import android.graphics.Bitmap
 import android.graphics.Canvas
+import android.graphics.Movie
+import android.os.SystemClock
+import android.view.View
 import org.json.JSONArray
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.car.app.connection.CarConnection
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -102,12 +108,16 @@ private const val STATUS_STARTING = 1
 private const val STATUS_RUNNING = 2
 
 class CarDexActivity : ComponentActivity() {
+    // Keep relay identity evaluation inside the lifecycle owner during refactors.
+    private val relayInvariant by lazy(LazyThreadSafetyMode.NONE) { RelayInvariant.discriminator() }
     private var relayState by mutableStateOf(RelayState(false, false))
     private var relayRequested by mutableStateOf(false)
     private var relayStatus by mutableStateOf(STATUS_IDLE)
+    private var carConnectionType by mutableStateOf(CarConnection.CONNECTION_TYPE_NOT_CONNECTED)
     private var controlsVisible by mutableStateOf(false)
     private var workspaces by mutableStateOf(emptyList<CardexWorkspace>())
     private var workspaceError by mutableStateOf("")
+    private var phoneGuideVisible by mutableStateOf(false)
     private var relay: Messenger? = null
     private val incoming = Messenger(Handler(Looper.getMainLooper()) { message ->
         when (message.what) {
@@ -135,12 +145,18 @@ class CarDexActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Log.i("DextopCarCompanion", "relayInvariant=$relayInvariant")
         enableEdgeToEdge()
         relayState = inspectRelay()
+        CarConnection(this).type.observe(this) { type ->
+            carConnectionType = type ?: CarConnection.CONNECTION_TYPE_NOT_CONNECTED
+        }
         if (isCarDisplay()) bindRelayIfNeeded()
         setContent {
             CarDexTheme {
-                if (isCarDisplay() && relayRequested) {
+                if (!isCarDisplay() && phoneGuideVisible) {
+                    PhoneGuideScreen(onBack = { phoneGuideVisible = false })
+                } else if (isCarDisplay() && relayRequested) {
                     RelaySurface(
                         status = relayStatus,
                         onSurface = ::startRelay,
@@ -160,7 +176,10 @@ class CarDexActivity : ComponentActivity() {
                     CarDexScreen(
                         state = relayState,
                         isCarDisplay = isCarDisplay(),
-                        onStart = ::openDextop
+                        carConnectionType = carConnectionType,
+                        onStart = {
+                            if (isCarDisplay()) openDextop() else phoneGuideVisible = true
+                        }
                     )
                 }
             }
@@ -285,6 +304,75 @@ class CarDexActivity : ComponentActivity() {
         private const val RELAY_PERMISSION = "moe.n4tsu.dextop.permission.CARDEX_RELAY"
         private const val CARDEX_RECOVERY_RECEIVER = "moe.n4tsu.dextop.CardexRecoveryReceiver"
         private const val ACTION_CARDEX_INTERRUPTED = "moe.n4tsu.dextop.action.CARDEX_INTERRUPTED"
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PhoneGuideScreen(onBack: () -> Unit) {
+    BackHandler(onBack = onBack)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(stringResource(R.string.guide_title), fontWeight = FontWeight.SemiBold) },
+                navigationIcon = {
+                    Text(
+                        stringResource(R.string.back),
+                        modifier = Modifier.clickable(onClick = onBack).padding(horizontal = 20.dp, vertical = 12.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Medium
+                    )
+                }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(horizontal = 20.dp, vertical = 12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text(
+                stringResource(R.string.guide_description),
+                modifier = Modifier.fillMaxWidth(),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Card(
+                modifier = Modifier.fillMaxWidth().weight(1f),
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = Color.Black)
+            ) {
+                AndroidView(
+                    modifier = Modifier.fillMaxSize(),
+                    factory = { context -> LoopingGifView(context, R.raw.dextop_companion_guide) }
+                )
+            }
+        }
+    }
+}
+
+private class LoopingGifView(context: Context, resourceId: Int) : View(context) {
+    private val movie = context.resources.openRawResource(resourceId).use(Movie::decodeStream)
+    private var startedAt = 0L
+
+    override fun onDraw(canvas: Canvas) {
+        super.onDraw(canvas)
+        val animation = movie ?: return
+        if (startedAt == 0L) startedAt = SystemClock.uptimeMillis()
+        val duration = animation.duration().takeIf { it > 0 } ?: 1_000
+        animation.setTime(((SystemClock.uptimeMillis() - startedAt) % duration).toInt())
+        val scale = minOf(
+            width.toFloat() / animation.width().coerceAtLeast(1),
+            height.toFloat() / animation.height().coerceAtLeast(1)
+        )
+        val drawWidth = animation.width() * scale
+        val drawHeight = animation.height() * scale
+        canvas.save()
+        canvas.translate((width - drawWidth) / 2f, (height - drawHeight) / 2f)
+        canvas.scale(scale, scale)
+        animation.draw(canvas, 0f, 0f)
+        canvas.restore()
+        postInvalidateOnAnimation()
     }
 }
 
@@ -608,7 +696,12 @@ private data class RelayState(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun CarDexScreen(state: RelayState, isCarDisplay: Boolean, onStart: () -> Unit) {
+private fun CarDexScreen(
+    state: RelayState,
+    isCarDisplay: Boolean,
+    carConnectionType: Int,
+    onStart: () -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -687,8 +780,14 @@ private fun CarDexScreen(state: RelayState, isCarDisplay: Boolean, onStart: () -
                     )
                     HorizontalDivider(Modifier.padding(horizontal = 20.dp))
                     StatusRow(
-                        title = stringResource(if (isCarDisplay) R.string.auto_mode else R.string.phone_mode),
-                        successful = true
+                        title = stringResource(
+                            when (carConnectionType) {
+                                CarConnection.CONNECTION_TYPE_PROJECTION -> R.string.android_auto_connected
+                                CarConnection.CONNECTION_TYPE_NATIVE -> R.string.automotive_connected
+                                else -> R.string.android_auto_disconnected
+                            }
+                        ),
+                        successful = carConnectionType != CarConnection.CONNECTION_TYPE_NOT_CONNECTED
                     )
                 }
                 if (isCarDisplay) {

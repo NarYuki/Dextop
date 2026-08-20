@@ -41,11 +41,12 @@ open class MainActivity : FlutterActivity() {
             }
         }
 
-        fun setDisplayOrientation(portrait: Boolean) {
-            instance?.requestedOrientation = if (portrait) {
-                ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
-            } else {
-                ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
+        fun setDisplayOrientation(portrait: Boolean, reverse: Boolean = false) {
+            instance?.requestedOrientation = when {
+                portrait && reverse -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_PORTRAIT
+                portrait -> ActivityInfo.SCREEN_ORIENTATION_PORTRAIT
+                reverse -> ActivityInfo.SCREEN_ORIENTATION_REVERSE_LANDSCAPE
+                else -> ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
             }
         }
 
@@ -657,8 +658,9 @@ open class MainActivity : FlutterActivity() {
         val height = (arguments?.get("height") as? Number)?.toInt() ?: 1080
         val density = (arguments?.get("density") as? Number)?.toInt() ?: 240
         val secure = arguments?.get("secure") == true
+        val desktopEnvironment = DesktopEnvironmentRegistry.current()
         val decorations = (arguments?.get("decorations") as? Boolean)
-            ?: !Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+            ?: (desktopEnvironment.displayChromeMode == DisplayChromeMode.VISIBLE)
         if (width !in 480..7680 || height !in 480..7680 || density !in 80..640) {
             result.error("profile", NativeStrings.text("nativeDisplayProfileIsOutOfRange"), null)
             return

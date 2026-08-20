@@ -49,8 +49,10 @@ internal data class DesktopEnvironment(
     val id: String,
     val displayName: String,
     val platformManaged: Boolean,
-    val temporaryGlobalSettings: Map<String, String>,
+    val temporaryGlobalSettings: Map<String, String?>,
     val configureFreeformWindowing: Boolean,
+    val startupMode: DesktopStartupMode,
+    val displayChromeMode: DisplayChromeMode,
     val supportsLaunchBounds: Boolean = true,
     /** Recreate a device-resolution session when a foldable host changes size. */
     val autoResizeWithHostDisplay: Boolean = false,
@@ -59,6 +61,35 @@ internal data class DesktopEnvironment(
     val mirrorStrategies: List<String> = listOf("virtual_display", "window_manager", "surface_control"),
     val windowingStrategies: List<String> = listOf("wm", "activity_task_manager")
 )
+
+internal enum class DesktopStartupMode {
+    SYSTEM_MANAGED,
+    COMPAT_WINDOWING,
+    OEM_MANAGED
+}
+
+internal enum class DisplayChromeMode {
+    HIDDEN,
+    VISIBLE
+}
+
+private object AndroidDesktopOverrides {
+    val modernKeys = listOf(
+        "override_desktop_experience_features",
+        "override_desktop_mode_features",
+        "enable_non_resizable_multi_window",
+        "force_desktop_mode_on_secondary_displays",
+        "force_desktop_mode_on_external_displays",
+        "force_resizable_activities",
+        "enable_freeform_support"
+    )
+
+    val compatibilityValues = linkedMapOf(
+        "force_resizable_activities" to "1",
+        "enable_freeform_support" to "1",
+        "force_desktop_mode_on_external_displays" to "1"
+    )
+}
 
 internal data class DesktopEnvironmentRule(
     val id: String,
@@ -83,20 +114,30 @@ internal object DesktopEnvironmentRegistry {
 
     internal fun samsungDex(autoResizeWithHostDisplay: Boolean = false) = DesktopEnvironment(
         "samsung_dex", "Samsung DeX", true, emptyMap(), false,
+        DesktopStartupMode.OEM_MANAGED, DisplayChromeMode.HIDDEN,
         autoResizeWithHostDisplay = autoResizeWithHostDisplay
     )
 
     internal fun aospFreeform(identity: DeviceIdentity): DesktopEnvironment {
-        val settings = linkedMapOf(
-            "enable_freeform_support" to "1",
-            "force_resizable_activities" to "1"
-        )
-        // Still honored as a compatibility signal by Pixel's projected-display
-        // policy even when the Android 16+ desktop-first path is available.
-        settings["force_desktop_mode_on_external_displays"] = "1"
+        val platformNative = identity.sdk >= 36
+        val settings: Map<String, String?> = if (platformNative) {
+            // Let the current Android desktop stack choose its own windowing
+            // configuration. SessionJournal preserves every displaced value.
+            AndroidDesktopOverrides.modernKeys.associateWithTo(linkedMapOf()) { null }
+        } else {
+            AndroidDesktopOverrides.compatibilityValues
+        }
         return DesktopEnvironment(
             "android_freeform", NativeStrings.text("nativeAndroidDesktopFreeform"),
-            false, settings, true
+            false,
+            settings,
+            configureFreeformWindowing = !platformNative,
+            startupMode = if (platformNative) {
+                DesktopStartupMode.SYSTEM_MANAGED
+            } else {
+                DesktopStartupMode.COMPAT_WINDOWING
+            },
+            displayChromeMode = DisplayChromeMode.VISIBLE
         )
     }
 }

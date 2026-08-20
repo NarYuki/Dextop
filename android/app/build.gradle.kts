@@ -105,7 +105,9 @@ androidComponents {
 
 dependencies {
     implementation("androidx.window:window:1.5.1")
+    implementation("androidx.appcompat:appcompat:1.7.1")
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
+    implementation("androidx.media3:media3-muxer:1.10.1")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")

@@ -57,6 +57,21 @@ class AppLocalizationsZh extends AppLocalizations {
   String get mirrorBackendVirtualDisplay => 'VirtualDisplay';
 
   @override
+  String get castMode => 'Google Cast 方式';
+
+  @override
+  String get castModeSimple => '兼容模式';
+
+  @override
+  String get castModeSimpleDescription => '优先保证连接稳定性和更多显示设备的兼容性';
+
+  @override
+  String get castModeReceiver => '低延迟模式';
+
+  @override
+  String get castModeReceiverDescription => '传输画面时优先保证操作响应速度';
+
+  @override
   String get updateAvailable => '有可用更新';
 
   @override
