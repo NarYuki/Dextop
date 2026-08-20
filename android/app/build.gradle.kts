@@ -29,6 +29,7 @@ val releaseKeystore = releaseValue("DEXTOP_KEYSTORE_FILE")
 val releaseAlias = releaseValue("DEXTOP_KEY_ALIAS")
 val releaseStorePassword = releaseValue("DEXTOP_STORE_PASSWORD")
 val releaseKeyPassword = releaseValue("DEXTOP_KEY_PASSWORD")
+val castReceiverAppId = releaseValue("DEXTOP_CAST_RECEIVER_APP_ID").orEmpty()
 val releaseSigningReady = listOf(
     releaseKeystore, releaseAlias, releaseStorePassword, releaseKeyPassword
 ).all { !it.isNullOrBlank() }
@@ -53,6 +54,11 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        buildConfigField("String", "CAST_RECEIVER_APP_ID", "\"$castReceiverAppId\"")
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     signingConfigs {
@@ -99,6 +105,7 @@ androidComponents {
 
 dependencies {
     implementation("androidx.window:window:1.5.1")
+    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")

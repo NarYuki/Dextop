@@ -19,6 +19,7 @@ import android.view.MotionEvent
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
@@ -145,6 +146,7 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
         }
         activeInstance = this
         window.setDimAmount(0f)
+        window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         // Android Auto must never silently fall back to the phone display.
         // Without an explicit source, the parked activity starts in the
         // Dextop/Auto-virtual-display flow and waits for the menu selection.
