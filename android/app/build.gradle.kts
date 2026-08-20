@@ -29,7 +29,7 @@ val releaseKeystore = releaseValue("DEXTOP_KEYSTORE_FILE")
 val releaseAlias = releaseValue("DEXTOP_KEY_ALIAS")
 val releaseStorePassword = releaseValue("DEXTOP_STORE_PASSWORD")
 val releaseKeyPassword = releaseValue("DEXTOP_KEY_PASSWORD")
-val castReceiverAppId = releaseValue("DEXTOP_CAST_RECEIVER_APP_ID").orEmpty()
+val castReceiverAppId = releaseValue("DEXTOP_CAST_RECEIVER_APP_ID") ?: "BABD4047"
 val releaseSigningReady = listOf(
     releaseKeystore, releaseAlias, releaseStorePassword, releaseKeyPassword
 ).all { !it.isNullOrBlank() }
