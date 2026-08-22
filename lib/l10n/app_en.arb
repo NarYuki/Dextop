@@ -392,7 +392,12 @@
   "keyboardThemesDescription": "Laptop keyboard themes and custom appearance",
   "autoSettingsTitle": "Auto",
   "autoSettingsDescription": "Auto display and phone-side mirroring options",
+  "autoSettingsOptions": "Android Auto",
   "autoMatchPhoneOrientation": "Match phone mirror orientation to Auto",
   "autoMatchPhoneOrientationDescription": "When Dextop is shown in Auto from the phone-side mirror, adjust its orientation to the head-unit aspect ratio.",
+  "autoExperimentalFeatures": "Experimental features",
+  "autoHiddenDisplay": "Hide the Auto virtual display on the phone",
+  "autoHiddenDisplayDescription": "Transfers the Auto desktop without showing its virtual display overlay on the phone. Availability depends on the device.",
+  "autoDisplayModeDescription": "Android Auto uses an independent desktop display sized for the connected head unit.",
   "@keyboardThemesDeleteBody": {"placeholders": {"name": {"type": "String"}}}
 }

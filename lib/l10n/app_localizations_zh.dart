@@ -1352,9 +1352,26 @@ class AppLocalizationsZh extends AppLocalizations {
   String get autoSettingsDescription => 'Auto 显示与手机镜像选项';
 
   @override
+  String get autoSettingsOptions => 'Android Auto';
+
+  @override
   String get autoMatchPhoneOrientation => '将手机镜像方向匹配到 Auto';
 
   @override
   String get autoMatchPhoneOrientationDescription =>
       '从手机镜像在 Auto 中显示 Dextop 时，根据车机宽高比调整方向。';
+
+  @override
+  String get autoExperimentalFeatures => '实验性功能';
+
+  @override
+  String get autoHiddenDisplay => '在手机上隐藏 Auto 虚拟显示器';
+
+  @override
+  String get autoHiddenDisplayDescription =>
+      '传输 Auto 桌面时不在手机上显示虚拟显示器浮层。可用性取决于设备。';
+
+  @override
+  String get autoDisplayModeDescription =>
+      'Android Auto 使用按所连接车机屏幕调整大小的独立桌面显示器。';
 }

@@ -2732,6 +2732,12 @@ abstract class AppLocalizations {
   /// **'Auto専用の表示とスマホ側ミラーリングを設定'**
   String get autoSettingsDescription;
 
+  /// No description provided for @autoSettingsOptions.
+  ///
+  /// In ja, this message translates to:
+  /// **'Android Auto'**
+  String get autoSettingsOptions;
+
   /// No description provided for @autoMatchPhoneOrientation.
   ///
   /// In ja, this message translates to:
@@ -2743,6 +2749,30 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'スマホ側DextopをAutoへ表示するとき、車載画面の縦横比に合わせて向きを変更します。'**
   String get autoMatchPhoneOrientationDescription;
+
+  /// No description provided for @autoExperimentalFeatures.
+  ///
+  /// In ja, this message translates to:
+  /// **'実験的な機能'**
+  String get autoExperimentalFeatures;
+
+  /// No description provided for @autoHiddenDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'Auto用仮想ディスプレイを端末で非表示にする'**
+  String get autoHiddenDisplay;
+
+  /// No description provided for @autoHiddenDisplayDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Auto用デスクトップの仮想ディスプレイを端末上へ表示せずに転送します。利用可否は端末によって異なります。'**
+  String get autoHiddenDisplayDescription;
+
+  /// No description provided for @autoDisplayModeDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Android Autoでは、接続した車載画面に合わせた独立したデスクトップを使用します。'**
+  String get autoDisplayModeDescription;
 }
 
 class _AppLocalizationsDelegate

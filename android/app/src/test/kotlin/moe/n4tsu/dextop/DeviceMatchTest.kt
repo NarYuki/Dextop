@@ -29,6 +29,15 @@ class DeviceMatchTest {
         assertFalse(match.matches(pixel.copy(sdk = 36)))
     }
 
+    @Test fun legacyPixelProfileRestoresAospFlagsAndOlderMirrorOrder() {
+        val environment = DesktopEnvironmentRegistry.legacyPixelAosp(pixel.copy(sdk = 36))
+        assertEquals(DesktopStartupMode.COMPAT_WINDOWING, environment.startupMode)
+        assertTrue(environment.configureFreeformWindowing)
+        assertEquals("1", environment.temporaryGlobalSettings["enable_freeform_support"])
+        assertEquals("1", environment.temporaryGlobalSettings["force_resizable_activities"])
+        assertEquals("window_manager", environment.mirrorStrategies.first())
+    }
+
     @Test fun galaxyTriFoldUsesNarrowAutoResizeProfile() {
         val triFold = DeviceIdentity(
             "samsung", "samsung", "SM-F968N", "q7mq", "q7mqksx",

@@ -62,6 +62,7 @@ import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
+import android.view.ViewConfiguration
 import android.view.WindowManager
 import android.view.WindowInsets
 import android.view.animation.PathInterpolator
@@ -568,7 +569,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private val logTag = "DextopMirror"
-    private val desktopEnvironment by lazy { DesktopEnvironmentRegistry.current() }
+    private val useLegacyPixelMirrorProfile by lazy { PixelMirrorFallback.shouldUse(this) }
+    private val desktopEnvironment by lazy {
+        if (useLegacyPixelMirrorProfile) {
+            DesktopEnvironmentRegistry.legacyPixelAosp(DeviceIdentity.current())
+        } else {
+            DesktopEnvironmentRegistry.current()
+        }
+    }
     private val privilegedAccess by lazy { PrivilegedAccess(logTag) }
     private val desktopModeConfigurator by lazy {
         DesktopModeConfigurator(this, contentResolver, privilegedAccess, desktopEnvironment, sessionJournal)
@@ -668,6 +676,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private val laptopModifierButtons = mutableMapOf<Int, TextView>()
     private val laptopShortcutButtons = mutableMapOf<Int, TextView>()
+    private val laptopKeyPresses = mutableMapOf<View, LaptopKeyPressState>()
     private val laptopLegendButtons = mutableListOf<Pair<LaptopKeyTextView, String>>()
     private var targetDisplayId = -1
     private var targetWidth = 1920
@@ -1633,6 +1642,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private data class LaptopKey(val label: String, val code: Int, val weight: Float = 1f)
 
+    private data class LaptopKeyPressState(
+        val keyCode: Int,
+        val metaState: Int,
+        val downTime: Long,
+        var repeatCount: Int = 0,
+        var repeater: Runnable? = null
+    )
+
     private fun buildLaptopDeck(): View {
         laptopModifierButtons.clear()
         laptopShortcutButtons.clear()
@@ -1891,6 +1908,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             menu?.bringToFront()
             performanceHud?.bringToFront()
         } else {
+            finishAllLaptopKeyPresses()
             stopLaptopHardwareKeyboard()
             // In tap/direct-touch mode the pointer belongs only to the
             // laptop trackpad while the deck is visible. Remove it as soon
@@ -2899,12 +2917,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (key.code < 0) laptopModifierButtons.putIfAbsent(key.code, this)
         if (key.code in laptopShortcutLabels.keys) laptopShortcutButtons[key.code] = this
-                setOnClickListener {
-            if (key.code != KeyEvent.KEYCODE_META_LEFT) {
-                performLaptopHaptic(this)
-                handleLaptopKey(key.code)
-            }
-        }
         setOnTouchListener { view, event ->
             if (key.code == KeyEvent.KEYCODE_META_LEFT) {
                 // Meta is a normal modifier again.  Theme settings are
@@ -2932,16 +2944,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     if (key.code < 0) {
                         performLaptopHaptic(view)
                         handleLaptopKey(key.code)
+                    } else {
+                        performLaptopHaptic(view)
+                        startLaptopKeyPress(view, key.code)
                     }
                     view.animate()
                     .scaleX(.92f).scaleY(.92f).alpha(.72f)
                     .setDuration(55).start()
                 }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate()
-                    .scaleX(1f).scaleY(1f).alpha(1f)
-                    .setDuration(110).start()
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                    if (key.code >= 0) finishLaptopKeyPress(view)
+                    view.animate()
+                        .scaleX(1f).scaleY(1f).alpha(1f)
+                        .setDuration(110).start()
+                }
             }
-            key.code < 0
+            true
         }
     }
 
@@ -3279,6 +3297,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val content = laptopContent ?: return
         // Do not fade the whole lower pane: it briefly exposes Android behind
         // the overlay. The replacement is immediate, then the new deck slides in.
+        finishAllLaptopKeyPresses()
         laptopDeck?.let { content.removeView(it) }
         laptopSettingsVisible = false
         val nextDeck = buildLaptopDeck().apply {
@@ -3318,6 +3337,60 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
         refreshLaptopModifierKeys()
+    }
+
+    private fun laptopMetaState(keyCode: Int): Int {
+        var metaState = 0
+        val isLetter = keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z
+        val shifted = if (isLetter) laptopShift.xor(laptopCapsLock) else laptopShift
+        if (shifted) metaState = metaState or KeyEvent.META_SHIFT_ON
+        if (laptopControl) metaState = metaState or KeyEvent.META_CTRL_ON
+        if (laptopAlt) metaState = metaState or KeyEvent.META_ALT_ON
+        return metaState
+    }
+
+    private fun startLaptopKeyPress(view: View, keyCode: Int) {
+        finishLaptopKeyPress(view)
+        if (targetDisplayId < 0) return
+        val metaState = laptopMetaState(keyCode)
+        val downTime = SystemClock.uptimeMillis()
+        if (!injectKeyEvent(keyCode, KeyEvent.ACTION_DOWN, metaState, downTime, 0)) return
+
+        // Shift/Ctrl/Alt remain one-shot modifiers, but their captured state is
+        // retained for every repeat generated by this physical press.
+        laptopShift = false
+        laptopControl = false
+        laptopAlt = false
+        refreshLaptopModifierKeys()
+
+        val state = LaptopKeyPressState(keyCode, metaState, downTime)
+        val repeater = object : Runnable {
+            override fun run() {
+                if (laptopKeyPresses[view] !== state) return
+                state.repeatCount += 1
+                injectKeyEvent(
+                    state.keyCode,
+                    KeyEvent.ACTION_DOWN,
+                    state.metaState,
+                    state.downTime,
+                    state.repeatCount
+                )
+                view.postDelayed(this, ViewConfiguration.getKeyRepeatDelay().toLong())
+            }
+        }
+        state.repeater = repeater
+        laptopKeyPresses[view] = state
+        view.postDelayed(repeater, ViewConfiguration.getKeyRepeatTimeout().toLong())
+    }
+
+    private fun finishLaptopKeyPress(view: View) {
+        val state = laptopKeyPresses.remove(view) ?: return
+        state.repeater?.let(view::removeCallbacks)
+        injectKeyEvent(state.keyCode, KeyEvent.ACTION_UP, state.metaState, state.downTime, 0)
+    }
+
+    private fun finishAllLaptopKeyPresses() {
+        laptopKeyPresses.keys.toList().forEach(::finishLaptopKeyPress)
     }
 
     private fun refreshLaptopModifierKeys() {
@@ -5878,6 +5951,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }.onFailure { Log.e(logTag, "key injection failed", it) }
     }
 
+    private fun injectKeyEvent(
+        keyCode: Int,
+        action: Int,
+        metaState: Int,
+        downTime: Long,
+        repeatCount: Int
+    ): Boolean {
+        if (targetDisplayId < 0) return false
+        return runCatching {
+            val event = KeyEvent(
+                downTime,
+                SystemClock.uptimeMillis(),
+                action,
+                keyCode,
+                repeatCount,
+                metaState
+            )
+            check(inputDispatcher.send(event, targetDisplayId))
+            true
+        }.onFailure { Log.e(logTag, "key injection failed", it) }
+            .getOrDefault(false)
+    }
+
     /** Forwards physical-keyboard input while preserving modifiers and repeat state. */
     private fun forwardKeyEvent(source: KeyEvent): Boolean {
         if (targetDisplayId < 0 || !routePhysicalKeyboardToDextop) return false
@@ -6168,9 +6264,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun reattachExistingDisplay(width: Int, height: Int) {
         if (displayCreationInProgress || mirrorDisplayId >= 0 || targetDisplayId < 0) return
         displayCreationInProgress = true
-        val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
-        val strategyOverride = configuredBackend.takeUnless { it == "auto" }
+        val strategyOverride = configuredMirrorStrategyOverride()
         runCatching {
             attachMirror(width, height, strategyOverride)
             mirrorDisplayId = targetDisplayId
@@ -6426,9 +6520,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             clearInheritedDisplayOverrides(targetDisplayId)
             configureDisplay()
             if (!autoOnlySession) {
-                val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                    .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
-                val strategyOverride = configuredBackend.takeUnless { it == "auto" }
+                val strategyOverride = configuredMirrorStrategyOverride()
                 attachMirror(width, height, strategyOverride)
             } else {
                 OperationLog.i(
@@ -6807,6 +6899,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         mirrorHostHeight = hostHeight
     }
 
+    private fun configuredMirrorStrategyOverride(): String? {
+        // A persisted legacy Pixel profile must be allowed to walk its older
+        // backend order even when the UI still contains the default
+        // "virtual_display" selection from a previous build.
+        if (useLegacyPixelMirrorProfile) return null
+        val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
+        return configuredBackend.takeUnless { it == "auto" }
+    }
+
     /**
      * One UI can replace transition/SystemUI layers when recents, fold state, or
      * the host surface changes. Recreating only the mirror attachment keeps the
@@ -6855,9 +6957,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (nextWidth <= 0 || nextHeight <= 0 || !host.holder.surface.isValid) {
                 return@postDelayed
             }
-            val configuredBackend = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                .getString("flutter.mirror_backend", "virtual_display") ?: "virtual_display"
-            val strategyOverride = configuredBackend.takeUnless { it == "auto" }
+            val strategyOverride = configuredMirrorStrategyOverride()
             runCatching {
                 attachMirror(nextWidth, nextHeight, strategyOverride)
                 mirrorDisplayId = targetDisplayId
@@ -7556,6 +7656,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun detachHostWindow() {
         stopCastRouteDiscovery()
+        finishAllLaptopKeyPresses()
         stopLaptopHardwareKeyboard()
         stopVirtualMouse()
         // Prevent surfaceDestroyed() from releasing the mirrored display before
