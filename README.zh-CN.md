@@ -5,7 +5,7 @@
 <h1 align="center">Dextop</h1>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ko.md">한국어</a>
 </p>
 
 Dextop 是一款开源 Android 应用，可在手机上创建虚拟显示器，并仅使用智能手机提供类似桌面的工作空间。它通过 Stellar 或 Shizuku 以及 Android 系统服务控制应用启动、窗口位置、触摸输入、屏幕方向及相关桌面行为。
