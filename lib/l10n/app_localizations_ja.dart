@@ -1364,9 +1364,26 @@ class AppLocalizationsJa extends AppLocalizations {
   String get autoSettingsDescription => 'Auto専用の表示とスマホ側ミラーリングを設定';
 
   @override
+  String get autoSettingsOptions => 'Android Auto';
+
+  @override
   String get autoMatchPhoneOrientation => 'スマホ側ミラーリングの向きをAutoに合わせる';
 
   @override
   String get autoMatchPhoneOrientationDescription =>
       'スマホ側DextopをAutoへ表示するとき、車載画面の縦横比に合わせて向きを変更します。';
+
+  @override
+  String get autoExperimentalFeatures => '実験的な機能';
+
+  @override
+  String get autoHiddenDisplay => 'Auto用仮想ディスプレイを端末で非表示にする';
+
+  @override
+  String get autoHiddenDisplayDescription =>
+      'Auto用デスクトップの仮想ディスプレイを端末上へ表示せずに転送します。利用可否は端末によって異なります。';
+
+  @override
+  String get autoDisplayModeDescription =>
+      'Android Autoでは、接続した車載画面に合わせた独立したデスクトップを使用します。';
 }

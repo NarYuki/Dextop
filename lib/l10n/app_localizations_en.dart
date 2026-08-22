@@ -1409,10 +1409,27 @@ class AppLocalizationsEn extends AppLocalizations {
       'Auto display and phone-side mirroring options';
 
   @override
+  String get autoSettingsOptions => 'Android Auto';
+
+  @override
   String get autoMatchPhoneOrientation =>
       'Match phone mirror orientation to Auto';
 
   @override
   String get autoMatchPhoneOrientationDescription =>
       'When Dextop is shown in Auto from the phone-side mirror, adjust its orientation to the head-unit aspect ratio.';
+
+  @override
+  String get autoExperimentalFeatures => 'Experimental features';
+
+  @override
+  String get autoHiddenDisplay => 'Hide the Auto virtual display on the phone';
+
+  @override
+  String get autoHiddenDisplayDescription =>
+      'Transfers the Auto desktop without showing its virtual display overlay on the phone. Availability depends on the device.';
+
+  @override
+  String get autoDisplayModeDescription =>
+      'Android Auto uses an independent desktop display sized for the connected head unit.';
 }

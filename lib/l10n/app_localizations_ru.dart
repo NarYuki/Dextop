@@ -1420,10 +1420,28 @@ class AppLocalizationsRu extends AppLocalizations {
       'Параметры отображения Auto и зеркалирования телефона';
 
   @override
+  String get autoSettingsOptions => 'Android Auto';
+
+  @override
   String get autoMatchPhoneOrientation =>
       'Согласовать ориентацию зеркала телефона с Auto';
 
   @override
   String get autoMatchPhoneOrientationDescription =>
       'При показе Dextop в Auto через зеркало телефона менять ориентацию по соотношению сторон головного устройства.';
+
+  @override
+  String get autoExperimentalFeatures => 'Экспериментальные функции';
+
+  @override
+  String get autoHiddenDisplay =>
+      'Скрывать виртуальный дисплей Auto на телефоне';
+
+  @override
+  String get autoHiddenDisplayDescription =>
+      'Передаёт рабочий стол Auto без отображения его виртуального дисплея на телефоне. Доступность зависит от устройства.';
+
+  @override
+  String get autoDisplayModeDescription =>
+      'Android Auto использует отдельный рабочий стол, размер которого соответствует подключённому головному устройству.';
 }

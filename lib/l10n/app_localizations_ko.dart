@@ -1369,9 +1369,26 @@ class AppLocalizationsKo extends AppLocalizations {
   String get autoSettingsDescription => 'Auto 표시 및 휴대전화 미러링 옵션';
 
   @override
+  String get autoSettingsOptions => 'Android Auto';
+
+  @override
   String get autoMatchPhoneOrientation => '휴대전화 미러링 방향을 Auto에 맞춤';
 
   @override
   String get autoMatchPhoneOrientationDescription =>
       '휴대전화 미러링으로 Auto에 Dextop을 표시할 때 헤드 유닛 종횡비에 맞춰 방향을 조정합니다.';
+
+  @override
+  String get autoExperimentalFeatures => '실험적 기능';
+
+  @override
+  String get autoHiddenDisplay => '휴대전화에서 Auto 가상 디스플레이 숨기기';
+
+  @override
+  String get autoHiddenDisplayDescription =>
+      '휴대전화에 가상 디스플레이 오버레이를 표시하지 않고 Auto 데스크톱을 전송합니다. 사용 가능 여부는 기기에 따라 다릅니다.';
+
+  @override
+  String get autoDisplayModeDescription =>
+      'Android Auto는 연결된 헤드 유닛 크기에 맞춘 독립 데스크톱 디스플레이를 사용합니다.';
 }

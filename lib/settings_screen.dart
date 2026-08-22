@@ -29,8 +29,8 @@ extension _SettingsContent on _HomeScreenState {
                 Divider(height: 1),
                 _categoryTile(
                   Icons.directions_car_outlined,
-                  AppStrings.tr('autoSettingsTitle'),
-                  AppStrings.tr('autoSettingsDescription'),
+                  l.autoSettingsTitle,
+                  l.autoSettingsDescription,
                   () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const AutoSettingsPage(),
@@ -139,8 +139,8 @@ extension _SettingsContent on _HomeScreenState {
       (
         'auto',
         Icons.directions_car_outlined,
-        AppStrings.tr('autoSettingsTitle'),
-        AppStrings.tr('autoSettingsDescription'),
+        l.autoSettingsTitle,
+        l.autoSettingsDescription,
       ),
       (
         'mouse',
@@ -1124,55 +1124,71 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
-        Text(
-          AppStrings.tr('autoSettingsTitle'),
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 8),
-        Text(AppStrings.tr('autoSettingsDescription')),
-        const SizedBox(height: 16),
-        Card(
-          child: SwitchListTile(
+        _settingsSection(l.autoSettingsOptions, [
+          SwitchListTile(
             secondary: const Icon(Icons.screen_rotation_alt_outlined),
-            title: Text(AppStrings.tr('autoMatchPhoneOrientation')),
-            subtitle: Text(
-              AppStrings.tr('autoMatchPhoneOrientationDescription'),
-            ),
+            title: Text(l.autoMatchPhoneOrientation),
+            subtitle: Text(l.autoMatchPhoneOrientationDescription),
             value: matchPhoneOrientation,
             onChanged: loading ? null : _setMatchPhoneOrientation,
           ),
-        ),
-        const SizedBox(height: 12),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(4, 8, 4, 4),
-          child: Text(
-            AppStrings.tr('autoExperimentalFeatures'),
-            style: Theme.of(context).textTheme.titleSmall,
+          const Divider(height: 1),
+          ListTile(
+            leading: const Icon(Icons.info_outline_rounded),
+            title: Text(l.display),
+            subtitle: Text(l.autoDisplayModeDescription),
           ),
-        ),
-        Card(
-          child: SwitchListTile(
+        ]),
+        _settingsSection(l.autoExperimentalFeatures, [
+          SwitchListTile(
             secondary: const Icon(Icons.visibility_off_outlined),
-            title: Text(AppStrings.tr('autoHiddenDisplay')),
-            subtitle: Text(AppStrings.tr('autoHiddenDisplayDescription')),
+            title: Text(l.autoHiddenDisplay),
+            subtitle: Text(l.autoHiddenDisplayDescription),
             value: hiddenAutoDisplay,
             onChanged: loading ? null : _setHiddenAutoDisplay,
           ),
-        ),
-        const SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.info_outline_rounded),
-            title: Text(l.display),
-            subtitle: Text(AppStrings.tr('autoDisplayModeDescription')),
-          ),
-        ),
+        ]),
       ],
     );
     if (widget.embedded) return body;
     return Scaffold(
-      appBar: AppBar(title: Text(AppStrings.tr('autoSettingsTitle'))),
+      appBar: AppBar(title: Text(l.autoSettingsTitle)),
       body: body,
     );
   }
+
+  Widget _settingsSection(String title, List<Widget> children) => Padding(
+    padding: const EdgeInsets.only(bottom: 20),
+    child: Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.labelLarge?.copyWith(
+              color: Theme.of(context).colorScheme.primary,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        Card(
+          margin: EdgeInsets.zero,
+          child: ListTileTheme(
+            data: const ListTileThemeData(
+              dense: true,
+              minTileHeight: 56,
+              minVerticalPadding: 4,
+              contentPadding: EdgeInsets.symmetric(horizontal: 16),
+              visualDensity: VisualDensity(vertical: -2),
+            ),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 4),
+              child: Column(children: children),
+            ),
+          ),
+        ),
+      ],
+    ),
+  );
 }

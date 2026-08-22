@@ -112,6 +112,19 @@ internal object DesktopEnvironmentRegistry {
     internal fun vendorFreeform(identity: DeviceIdentity, id: String, stringKey: String) =
         aospFreeform(identity).copy(id = id, displayName = NativeStrings.text(stringKey))
 
+    /** Pre-Android-16 Pixel/AOSP profile retained for firmware compatibility. */
+    internal fun legacyPixelAosp(identity: DeviceIdentity): DesktopEnvironment = DesktopEnvironment(
+        "pixel_aosp_compat", NativeStrings.text("nativePixelAndroidDesktop"),
+        false,
+        AndroidDesktopOverrides.compatibilityValues,
+        configureFreeformWindowing = true,
+        startupMode = DesktopStartupMode.COMPAT_WINDOWING,
+        displayChromeMode = DisplayChromeMode.VISIBLE,
+        // The missing recording-VirtualDisplay API is the reason this profile
+        // is selected. Prefer the older framework mirror paths accordingly.
+        mirrorStrategies = listOf("window_manager", "surface_control", "virtual_display")
+    )
+
     internal fun samsungDex(autoResizeWithHostDisplay: Boolean = false) = DesktopEnvironment(
         "samsung_dex", "Samsung DeX", true, emptyMap(), false,
         DesktopStartupMode.OEM_MANAGED, DisplayChromeMode.HIDDEN,

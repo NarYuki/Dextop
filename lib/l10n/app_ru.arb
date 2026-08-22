@@ -367,7 +367,12 @@
   "keyboardThemesDescription":"Темы и настройка внешнего вида клавиатуры ноутбука",
   "autoSettingsTitle":"Auto",
   "autoSettingsDescription":"Параметры отображения Auto и зеркалирования телефона",
+  "autoSettingsOptions":"Android Auto",
   "autoMatchPhoneOrientation":"Согласовать ориентацию зеркала телефона с Auto",
   "autoMatchPhoneOrientationDescription":"При показе Dextop в Auto через зеркало телефона менять ориентацию по соотношению сторон головного устройства.",
+  "autoExperimentalFeatures":"Экспериментальные функции",
+  "autoHiddenDisplay":"Скрывать виртуальный дисплей Auto на телефоне",
+  "autoHiddenDisplayDescription":"Передаёт рабочий стол Auto без отображения его виртуального дисплея на телефоне. Доступность зависит от устройства.",
+  "autoDisplayModeDescription":"Android Auto использует отдельный рабочий стол, размер которого соответствует подключённому головному устройству.",
   "@keyboardThemesDeleteBody":{"placeholders":{"name":{"type":"String"}}}
 }

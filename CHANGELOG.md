@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.4.2 — Pixel compatibility fallback and keyboard repeat input
+
+### Improved
+
+- Added long-press and continuous repeat input to the laptop-mode keyboard while preserving multi-key input and modifier combinations.
+- Restored the localized Android Auto settings layout and aligned its sections with the rest of Dextop settings.
+
+### Fixed
+
+- Fixed affected Pixel firmware failing to start with `No compatible mirror backend` when `VirtualDisplayConfig.Builder#setDisplayIdToMirror` is unavailable.
+- Added an automatic per-firmware Pixel/AOSP compatibility fallback that restores the legacy freeform flags and mirror backend order. The native Pixel path is probed again after each firmware update.
+- Fixed held laptop keyboard keys remaining pressed when laptop mode closes or the keyboard layout is rebuilt.
+
 ## 1.4.1 — Google Cast support and display controls
 
 ### New
