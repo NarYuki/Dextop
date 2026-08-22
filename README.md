@@ -5,7 +5,7 @@
 <h1 align="center">Dextop</h1>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ko.md">한국어</a>
 </p>
 
 Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. It uses Stellar or Shizuku and Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.

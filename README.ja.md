@@ -5,7 +5,7 @@
 <h1 align="center">Dextop</h1>
 
 <p align="center">
-  <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a>
+  <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ko.md">한국어</a>
 </p>
 
 Dextopは、Android端末上に仮想ディスプレイを作成し、スマートフォンだけでデスクトップ風の作業環境を利用するためのオープンソースアプリです。StellarまたはShizukuとAndroidのシステム機能を利用して、アプリの起動、ウィンドウ配置、タッチ操作、画面方向などを制御します。
