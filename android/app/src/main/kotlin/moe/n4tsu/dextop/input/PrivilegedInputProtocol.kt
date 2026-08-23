@@ -3,7 +3,7 @@ package moe.n4tsu.dextop.input
 import android.graphics.Rect
 
 internal object PrivilegedInputProtocol {
-    const val VERSION = 1
+    const val VERSION = 2
 
     const val PROFILE_DISABLED = 0
     const val PROFILE_TOUCHPAD = 1

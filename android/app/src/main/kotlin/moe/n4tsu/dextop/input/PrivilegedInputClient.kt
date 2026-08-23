@@ -168,6 +168,18 @@ internal class PrivilegedInputClient(
         }.onFailure(::handleRemoteFailure).getOrDefault(false)
     }
 
+    fun injectKeyboard(
+        keyCode: Int,
+        action: Int,
+        metaState: Int,
+        repeatCount: Int
+    ): Boolean {
+        val service = remote ?: return false
+        return runCatching {
+            service.injectKeyboard(keyCode, action, metaState, repeatCount)
+        }.onFailure(::handleRemoteFailure).getOrDefault(false)
+    }
+
     fun setKeyboardVisible(visible: Boolean) {
         keyboardVisible = visible
         val service = remote
