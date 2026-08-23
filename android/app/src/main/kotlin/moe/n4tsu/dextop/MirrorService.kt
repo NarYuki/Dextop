@@ -863,7 +863,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         touchscreenReaderRunning = false
                         touchscreenReaderReady = false
                         touchscreenReaderCandidateCount = 0
-                        updateVirtualCursorVisibility()
+                        fallbackToSoftwarePointer("$category:$message")
                     }
 
                     "uinput_destroyed" -> {

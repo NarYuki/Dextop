@@ -55,6 +55,7 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
         nativeConfigure(config)
     }
 
+    @Synchronized
     override fun start(newCallback: IPrivilegedInputCallback): Boolean {
         callback?.asBinder()?.let { runCatching { it.unlinkToDeath(callbackDeath, 0) } }
         callback = newCallback
@@ -121,6 +122,7 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
             .onFailure { Log.w(TAG, "state callback failed category=$category", it) }
     }
 
+    @Synchronized
     private fun stopNative(reason: String) {
         if (running.getAndSet(false)) {
             nativeStop(reason)

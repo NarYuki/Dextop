@@ -379,13 +379,18 @@ public:
     }
 
     bool start() {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
         if (running_.exchange(true)) return true;
+        // A worker that returned on its own remains joinable until collected.
+        // Assigning a new std::thread over it would call std::terminate().
+        if (worker_.joinable()) worker_.join();
         outputReady_.store(false);
         worker_ = std::thread([this] { run(); });
         return true;
     }
 
     void stop(const std::string& reason) {
+        std::lock_guard<std::mutex> lock(lifecycleMutex_);
         const bool wasRunning = running_.exchange(false);
         if (wasRunning && worker_.joinable()) worker_.join();
         if (!wasRunning && worker_.joinable()) worker_.join();
@@ -526,6 +531,9 @@ private:
         std::vector<int> modifiers;
     };
     std::recursive_mutex keyboardMutex_;
+    // Binder start/stop calls may run on different pool threads. std::thread
+    // assignment and join are not safe when those calls overlap.
+    std::mutex lifecycleMutex_;
     // Pointer frames can arrive through Binder while the worker recreates or
     // tears down the uinput device. Keep the descriptor and its complete
     // frame writes under one lock so an fd cannot be closed or reused midway
