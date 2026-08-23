@@ -144,6 +144,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val KEY_ROTATE_180_PORTRAIT = "rotate_180_portrait"
         private const val VIRTUAL_MOUSE_NAME = "Dextop Virtual Mouse"
         private const val VIRTUAL_TOUCHPAD_NAME = "Dextop Virtual Touchpad"
+        private const val LAPTOP_KEYBOARD_NAME = "Dextop Laptop Keyboard"
+        private const val LAPTOP_KEYBOARD_VENDOR_ID = 6353
+        private const val LAPTOP_KEYBOARD_PRODUCT_ID = 5417
         private const val VIRTUAL_TOUCHPAD_MAX_SLOTS = 5
         private const val VIRTUAL_TOUCHPAD_MAX_X = 1839
         private const val VIRTUAL_TOUCHPAD_MAX_Y = 1199
@@ -673,6 +676,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     /** Dextop orientation choice, independent from the laptop pane geometry. */
     private var requestedPortrait = false
     private var laptopBaseConfig: Config? = null
+    private var laptopKeyboardRequested = false
+    private var laptopKeyboardReady = false
+    private var laptopKeyboardAssociationPending = false
+    private var laptopKeyboardDeviceId = -1
+    private var laptopKeyboardDisplayId = -1
+    private var laptopKeyboardDisplayUniqueId: String? = null
+    private var laptopKeyboardDescriptor: String? = null
+    private var laptopKeyboardGeneration = 0L
     private var privilegedInputStarting = false
     private var privilegedInputConfigGeneration = 0
     private var lastPrivilegedInputSemanticConfig: IntArray? = null
@@ -825,6 +836,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         touchscreenReaderReady = false
                         touchscreenReaderCandidateCount = 0
                     }
+
+                    "keyboard_created" -> {
+                        scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+                    }
+
+                    "keyboard_destroyed" -> clearLaptopKeyboardPublication("native_destroyed")
 
                     "stopped" -> {
                         if (!privilegedInputClient.isEngineRunning()) {
@@ -1133,16 +1150,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onInputDeviceAdded(deviceId: Int) {
             refreshPhysicalInputState()
             scheduleRawTouchscreenTopologyRefresh("input_device_added_$deviceId")
+            if (laptopKeyboardRequested) {
+                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+            }
         }
 
         override fun onInputDeviceRemoved(deviceId: Int) {
             refreshPhysicalInputState()
             scheduleRawTouchscreenTopologyRefresh("input_device_removed_$deviceId")
+            if (deviceId == laptopKeyboardDeviceId) {
+                finishAllLaptopKeyPresses()
+                clearLaptopKeyboardPublication("input_device_removed")
+                if (laptopKeyboardRequested) {
+                    scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+                }
+            }
         }
 
         override fun onInputDeviceChanged(deviceId: Int) {
             refreshPhysicalInputState()
             scheduleRawTouchscreenTopologyRefresh("input_device_changed_$deviceId")
+            if (laptopKeyboardRequested &&
+                (deviceId == laptopKeyboardDeviceId || laptopKeyboardDeviceId < 0)
+            ) {
+                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+            }
         }
     }
     private val displayListener = object : DisplayManager.DisplayListener {
@@ -1158,6 +1190,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleTopologyReapplyAfterReconnect()
             scheduleLaptopModeReevaluation("display_added")
+            if (laptopKeyboardRequested) {
+                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+            }
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display added")
             }
@@ -1174,6 +1209,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = false)
             scheduleLaptopModeReevaluation("display_removed")
+            if (displayId == laptopKeyboardDisplayId) {
+                finishAllLaptopKeyPresses()
+                clearLaptopKeyboardPublication("associated_display_removed")
+            }
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display removed")
             }
@@ -1191,6 +1230,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleLaptopModeReevaluation("display_changed")
+            if (laptopKeyboardRequested && displayId == targetDisplayId) {
+                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+            }
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleRawTouchscreenTopologyRefresh("default_display_changed")
                 leaveLaptopModeOnCoverDisplay()
@@ -1844,7 +1886,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private data class LaptopKeyPressState(
         val keyCode: Int,
         val metaState: Int,
-        val downTime: Long,
         var repeatCount: Int = 0,
         var repeater: Runnable? = null
     )
@@ -2156,18 +2197,128 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     /**
      * Registers a real external keyboard with Android's input stack while the
-     * laptop deck is visible. Key events remain display-targeted through
-     * InputDispatcher, but IMEs now use their normal physical-keyboard policy:
-     * Gboard is hidden by default and remains available when the user enables
-     * "Show virtual keyboard" for connected physical keyboards.
+     * laptop deck is visible. Its descriptor is associated with the Dextop
+     * display before key output is enabled, so native uinput events follow the
+     * physical-keyboard IME path without relying on global keyboard focus.
      */
     private fun startLaptopHardwareKeyboard() {
+        if (!laptopKeyboardRequested) {
+            laptopKeyboardRequested = true
+            laptopKeyboardGeneration += 1
+        }
         privilegedInputClient.setKeyboardVisible(true)
+        scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
         OperationLog.i(
             this,
             "LaptopMode",
-            "requested native external keyboard marker; IME follows physical-keyboard preference"
+            "requested native external keyboard; waiting for InputReader publication"
         )
+    }
+
+    private fun scheduleLaptopKeyboardReadyCheck(generation: Long, attempt: Int) {
+        val check = Runnable {
+            if (generation != laptopKeyboardGeneration || !laptopKeyboardRequested || !active) {
+                return@Runnable
+            }
+            val displayId = targetDisplayId
+            val display = if (displayId >= 0) {
+                getSystemService(DisplayManager::class.java).getDisplay(displayId)
+            } else {
+                null
+            }
+            val device = findLaptopKeyboardDevice()
+            if (device != null && display != null) {
+                val displayUniqueId = runCatching {
+                    Display::class.java.getMethod("getUniqueId").invoke(display) as String
+                }.getOrNull()
+                if (laptopKeyboardReady && laptopKeyboardDeviceId == device.id &&
+                    laptopKeyboardDisplayId == displayId &&
+                    laptopKeyboardDisplayUniqueId == displayUniqueId &&
+                    physicalInputRouter.isDeviceRouted(device, display)
+                ) {
+                    return@Runnable
+                }
+                if (physicalInputRouter.isDeviceRouted(device, display)) {
+                    laptopKeyboardReady = true
+                    laptopKeyboardAssociationPending = false
+                    laptopKeyboardDeviceId = device.id
+                    laptopKeyboardDisplayId = displayId
+                    laptopKeyboardDisplayUniqueId = displayUniqueId
+                    laptopKeyboardDescriptor = device.descriptor
+                    val message = "native keyboard ready deviceId=${device.id} displayId=$displayId " +
+                            "vendor=${device.vendorId} product=${device.productId} " +
+                            "sources=0x${device.sources.toString(16)}"
+                    Log.i(logTag, "$message descriptor=${device.descriptor}")
+                    OperationLog.i(this, "LaptopKeyboard", message)
+                    return@Runnable
+                }
+                laptopKeyboardReady = false
+                if (!laptopKeyboardAssociationPending) {
+                    laptopKeyboardAssociationPending = physicalInputRouter.routeDevice(device, display)
+                }
+            }
+            if (attempt == 0 || attempt == 5 || attempt == 10 || attempt == 20) {
+                Log.i(
+                    logTag,
+                    "waiting for native laptop keyboard attempt=$attempt/20 " +
+                            "displayId=$displayId candidates=${laptopKeyboardPublicationCandidates()}"
+                )
+            }
+            if (attempt < 20) {
+                scheduleLaptopKeyboardReadyCheck(generation, attempt + 1)
+            } else {
+                OperationLog.w(
+                    this,
+                    "LaptopKeyboard",
+                    "native keyboard was not associated with display=$displayId after ${attempt + 1} probes"
+                )
+            }
+        }
+        root?.postDelayed(check, if (attempt == 0) 40L else 100L)
+            ?: Handler(mainLooper).postDelayed(check, if (attempt == 0) 40L else 100L)
+    }
+
+    private fun findLaptopKeyboardDevice(): InputDevice? = InputDevice.getDeviceIds()
+        .asSequence()
+        .mapNotNull(InputDevice::getDevice)
+        .firstOrNull { device ->
+            device.name == LAPTOP_KEYBOARD_NAME &&
+                    device.vendorId == LAPTOP_KEYBOARD_VENDOR_ID &&
+                    device.productId == LAPTOP_KEYBOARD_PRODUCT_ID &&
+                    device.sources and InputDevice.SOURCE_KEYBOARD == InputDevice.SOURCE_KEYBOARD
+        }
+
+    private fun laptopKeyboardPublicationCandidates(): String {
+        val candidates = InputDevice.getDeviceIds().asSequence()
+            .mapNotNull(InputDevice::getDevice)
+            .filter { it.name == LAPTOP_KEYBOARD_NAME || it.name.startsWith("Dextop Laptop") }
+            .toList()
+        return if (candidates.isEmpty()) {
+            "none"
+        } else {
+            candidates.joinToString(prefix = "[", postfix = "]") { device ->
+                "id=${device.id},name=${device.name},vendor=${device.vendorId}," +
+                        "product=${device.productId},sources=0x${device.sources.toString(16)}"
+            }
+        }
+    }
+
+    private fun clearLaptopKeyboardPublication(reason: String) {
+        val descriptor = laptopKeyboardDescriptor
+        if (descriptor != null) physicalInputRouter.restoreDeviceDescriptor(descriptor)
+        if (laptopKeyboardDeviceId >= 0 || laptopKeyboardReady) {
+            Log.i(
+                logTag,
+                "native laptop keyboard cleared reason=$reason deviceId=$laptopKeyboardDeviceId " +
+                        "displayId=$laptopKeyboardDisplayId"
+            )
+        }
+        laptopKeyboardReady = false
+        laptopKeyboardAssociationPending = false
+        laptopKeyboardDeviceId = -1
+        laptopKeyboardDisplayId = -1
+        laptopKeyboardDisplayUniqueId = null
+        laptopKeyboardDescriptor = null
     }
 
     private fun isMenuOverlayVisible(): Boolean {
@@ -2906,6 +3057,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun stopLaptopHardwareKeyboard() {
+        finishAllLaptopKeyPresses()
+        laptopKeyboardRequested = false
+        laptopKeyboardGeneration += 1
+        clearLaptopKeyboardPublication("laptop_keyboard_stopped")
         privilegedInputClient.setKeyboardVisible(false)
     }
 
@@ -3963,10 +4118,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun startLaptopKeyPress(view: View, keyCode: Int) {
         finishLaptopKeyPress(view)
-        if (targetDisplayId < 0) return
         val metaState = laptopMetaState(keyCode)
-        val downTime = SystemClock.uptimeMillis()
-        if (!injectKeyEvent(keyCode, KeyEvent.ACTION_DOWN, metaState, downTime, 0)) return
+        if (!injectLaptopKeyboardEvent(keyCode, KeyEvent.ACTION_DOWN, metaState, 0)) return
 
         // Shift/Ctrl/Alt remain one-shot modifiers, but their captured state is
         // retained for every repeat generated by this physical press.
@@ -3975,16 +4128,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopAlt = false
         refreshLaptopModifierKeys()
 
-        val state = LaptopKeyPressState(keyCode, metaState, downTime)
+        val state = LaptopKeyPressState(keyCode, metaState)
         val repeater = object : Runnable {
             override fun run() {
                 if (laptopKeyPresses[view] !== state) return
                 state.repeatCount += 1
-                injectKeyEvent(
+                injectLaptopKeyboardEvent(
                     state.keyCode,
                     KeyEvent.ACTION_DOWN,
                     state.metaState,
-                    state.downTime,
                     state.repeatCount
                 )
                 view.postDelayed(this, ViewConfiguration.getKeyRepeatDelay().toLong())
@@ -3998,7 +4150,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun finishLaptopKeyPress(view: View) {
         val state = laptopKeyPresses.remove(view) ?: return
         state.repeater?.let(view::removeCallbacks)
-        injectKeyEvent(state.keyCode, KeyEvent.ACTION_UP, state.metaState, state.downTime, 0)
+        injectLaptopKeyboardEvent(state.keyCode, KeyEvent.ACTION_UP, state.metaState, 0)
     }
 
     private fun finishAllLaptopKeyPresses() {
@@ -6841,44 +6993,34 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun injectKey(keyCode: Int, metaState: Int = 0) {
-        if (targetDisplayId < 0) return
-        runCatching {
-            val now = SystemClock.uptimeMillis()
-            listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP).forEach { action ->
-                val event = KeyEvent(
-                    now,
-                    SystemClock.uptimeMillis(),
-                    action,
-                    keyCode,
-                    0,
-                    metaState
-                )
-                check(inputDispatcher.send(event, targetDisplayId))
-            }
-        }.onFailure { Log.e(logTag, "key injection failed", it) }
+        if (!injectLaptopKeyboardEvent(keyCode, KeyEvent.ACTION_DOWN, metaState, 0)) return
+        injectLaptopKeyboardEvent(keyCode, KeyEvent.ACTION_UP, metaState, 0)
     }
 
-    private fun injectKeyEvent(
+    private fun injectLaptopKeyboardEvent(
         keyCode: Int,
         action: Int,
         metaState: Int,
-        downTime: Long,
         repeatCount: Int
     ): Boolean {
-        if (targetDisplayId < 0) return false
-        return runCatching {
-            val event = KeyEvent(
-                downTime,
-                SystemClock.uptimeMillis(),
-                action,
-                keyCode,
-                repeatCount,
-                metaState
+        if (!laptopKeyboardReady) {
+            Log.w(
+                logTag,
+                "native laptop keyboard event rejected before publication " +
+                        "action=$action repeat=$repeatCount deviceId=$laptopKeyboardDeviceId"
             )
-            check(inputDispatcher.send(event, targetDisplayId))
-            true
-        }.onFailure { Log.e(logTag, "key injection failed", it) }
-            .getOrDefault(false)
+            scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+            return false
+        }
+        val injected = privilegedInputClient.injectKeyboard(keyCode, action, metaState, repeatCount)
+        if (!injected) {
+            Log.e(
+                logTag,
+                "native laptop keyboard injection failed action=$action repeat=$repeatCount " +
+                        "deviceId=$laptopKeyboardDeviceId"
+            )
+        }
+        return injected
     }
 
     /** Forwards physical-keyboard input while preserving modifiers and repeat state. */

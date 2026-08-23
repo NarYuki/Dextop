@@ -1,5 +1,7 @@
 #include <jni.h>
 
+#include <android/input.h>
+#include <android/keycodes.h>
 #include <android/log.h>
 #include <dirent.h>
 #include <errno.h>
@@ -32,7 +34,7 @@
 namespace {
 
 constexpr const char* kTag = "DextopNativeInput";
-constexpr int kProtocolVersion = 1;
+constexpr int kProtocolVersion = 2;
 constexpr int kConfigSize = 25;
 constexpr int kProfileDisabled = 0;
 constexpr int kProfileTouchpad = 1;
@@ -260,6 +262,82 @@ const char* targetName(Target target) {
     }
 }
 
+int linuxKeyCodeForAndroid(int keyCode) {
+    switch (keyCode) {
+        case AKEYCODE_ESCAPE: return KEY_ESC;
+        case AKEYCODE_1: return KEY_1;
+        case AKEYCODE_2: return KEY_2;
+        case AKEYCODE_3: return KEY_3;
+        case AKEYCODE_4: return KEY_4;
+        case AKEYCODE_5: return KEY_5;
+        case AKEYCODE_6: return KEY_6;
+        case AKEYCODE_7: return KEY_7;
+        case AKEYCODE_8: return KEY_8;
+        case AKEYCODE_9: return KEY_9;
+        case AKEYCODE_0: return KEY_0;
+        case AKEYCODE_MINUS: return KEY_MINUS;
+        case AKEYCODE_EQUALS: return KEY_EQUAL;
+        case AKEYCODE_DEL: return KEY_BACKSPACE;
+        case AKEYCODE_TAB: return KEY_TAB;
+        case AKEYCODE_Q: return KEY_Q;
+        case AKEYCODE_W: return KEY_W;
+        case AKEYCODE_E: return KEY_E;
+        case AKEYCODE_R: return KEY_R;
+        case AKEYCODE_T: return KEY_T;
+        case AKEYCODE_Y: return KEY_Y;
+        case AKEYCODE_U: return KEY_U;
+        case AKEYCODE_I: return KEY_I;
+        case AKEYCODE_O: return KEY_O;
+        case AKEYCODE_P: return KEY_P;
+        case AKEYCODE_LEFT_BRACKET: return KEY_LEFTBRACE;
+        case AKEYCODE_RIGHT_BRACKET: return KEY_RIGHTBRACE;
+        case AKEYCODE_ENTER: return KEY_ENTER;
+        case AKEYCODE_A: return KEY_A;
+        case AKEYCODE_S: return KEY_S;
+        case AKEYCODE_D: return KEY_D;
+        case AKEYCODE_F: return KEY_F;
+        case AKEYCODE_G: return KEY_G;
+        case AKEYCODE_H: return KEY_H;
+        case AKEYCODE_J: return KEY_J;
+        case AKEYCODE_K: return KEY_K;
+        case AKEYCODE_L: return KEY_L;
+        case AKEYCODE_SEMICOLON: return KEY_SEMICOLON;
+        case AKEYCODE_APOSTROPHE: return KEY_APOSTROPHE;
+        case AKEYCODE_GRAVE: return KEY_GRAVE;
+        case AKEYCODE_BACKSLASH: return KEY_BACKSLASH;
+        case AKEYCODE_Z: return KEY_Z;
+        case AKEYCODE_X: return KEY_X;
+        case AKEYCODE_C: return KEY_C;
+        case AKEYCODE_V: return KEY_V;
+        case AKEYCODE_B: return KEY_B;
+        case AKEYCODE_N: return KEY_N;
+        case AKEYCODE_M: return KEY_M;
+        case AKEYCODE_COMMA: return KEY_COMMA;
+        case AKEYCODE_PERIOD: return KEY_DOT;
+        case AKEYCODE_SLASH: return KEY_SLASH;
+        case AKEYCODE_SPACE: return KEY_SPACE;
+        case AKEYCODE_META_LEFT: return KEY_LEFTMETA;
+        case AKEYCODE_DPAD_LEFT: return KEY_LEFT;
+        case AKEYCODE_DPAD_RIGHT: return KEY_RIGHT;
+        case AKEYCODE_DPAD_UP: return KEY_UP;
+        case AKEYCODE_DPAD_DOWN: return KEY_DOWN;
+        case AKEYCODE_FORWARD_DEL: return KEY_DELETE;
+        case AKEYCODE_F1: return KEY_F1;
+        case AKEYCODE_F2: return KEY_F2;
+        case AKEYCODE_F3: return KEY_F3;
+        case AKEYCODE_F4: return KEY_F4;
+        case AKEYCODE_F5: return KEY_F5;
+        case AKEYCODE_F6: return KEY_F6;
+        case AKEYCODE_F7: return KEY_F7;
+        case AKEYCODE_F8: return KEY_F8;
+        case AKEYCODE_F9: return KEY_F9;
+        case AKEYCODE_F10: return KEY_F10;
+        case AKEYCODE_F11: return KEY_F11;
+        case AKEYCODE_F12: return KEY_F12;
+        default: return -1;
+    }
+}
+
 class Engine {
 public:
     Engine(JavaVM* vm, JNIEnv* env, jobject service)
@@ -340,6 +418,81 @@ public:
         emit(events, false, "binder_inject");
     }
 
+    bool injectKeyboard(int keyCode, int action, int metaState, int repeatCount) {
+        std::lock_guard<std::recursive_mutex> lock(keyboardMutex_);
+        if (keyboardFd_ < 0) {
+            state("keyboard_injection_error", "keyboard uinput device is not ready");
+            return false;
+        }
+        const int linuxCode = linuxKeyCodeForAndroid(keyCode);
+        if (linuxCode < 0) {
+            state("keyboard_injection_error", "unsupported Android keyCode=" + std::to_string(keyCode));
+            return false;
+        }
+
+        if (action == AKEY_EVENT_ACTION_DOWN) {
+            const auto existing = keyboardPresses_.find(keyCode);
+            if (existing != keyboardPresses_.end()) {
+                return writeKeyboardEvents(
+                    {makeEvent(EV_KEY, static_cast<uint16_t>(existing->second.linuxCode), 2)},
+                    repeatCount > 0 ? "keyboard_repeat" : "keyboard_duplicate_down"
+                );
+            }
+
+            KeyboardPress press;
+            press.linuxCode = linuxCode;
+            if ((metaState & AMETA_SHIFT_ON) != 0) press.modifiers.push_back(KEY_LEFTSHIFT);
+            if ((metaState & AMETA_CTRL_ON) != 0) press.modifiers.push_back(KEY_LEFTCTRL);
+            if ((metaState & AMETA_ALT_ON) != 0) press.modifiers.push_back(KEY_LEFTALT);
+            if ((metaState & AMETA_META_ON) != 0) press.modifiers.push_back(KEY_LEFTMETA);
+
+            std::vector<input_event> events;
+            for (const int modifier : press.modifiers) {
+                if (keyboardModifierRefs_[modifier] == 0) {
+                    events.push_back(makeEvent(EV_KEY, static_cast<uint16_t>(modifier), 1));
+                }
+            }
+            events.push_back(makeEvent(EV_KEY, static_cast<uint16_t>(linuxCode), 1));
+            if (!writeKeyboardEvents(events, "keyboard_down")) return false;
+            for (const int modifier : press.modifiers) keyboardModifierRefs_[modifier] += 1;
+            keyboardPresses_[keyCode] = std::move(press);
+            return true;
+        }
+
+        if (action == AKEY_EVENT_ACTION_UP) {
+            const auto existing = keyboardPresses_.find(keyCode);
+            if (existing == keyboardPresses_.end()) {
+                return writeKeyboardEvents(
+                    {makeEvent(EV_KEY, static_cast<uint16_t>(linuxCode), 0)},
+                    "keyboard_orphan_up"
+                );
+            }
+
+            const KeyboardPress press = existing->second;
+            std::vector<input_event> events{
+                makeEvent(EV_KEY, static_cast<uint16_t>(press.linuxCode), 0)
+            };
+            for (auto modifier = press.modifiers.rbegin(); modifier != press.modifiers.rend(); ++modifier) {
+                const auto refs = keyboardModifierRefs_.find(*modifier);
+                if (refs != keyboardModifierRefs_.end() && refs->second <= 1) {
+                    events.push_back(makeEvent(EV_KEY, static_cast<uint16_t>(*modifier), 0));
+                }
+            }
+            if (!writeKeyboardEvents(events, "keyboard_up")) return false;
+            for (const int modifier : press.modifiers) {
+                const auto refs = keyboardModifierRefs_.find(modifier);
+                if (refs == keyboardModifierRefs_.end()) continue;
+                refs->second -= 1;
+                if (refs->second <= 0) keyboardModifierRefs_.erase(refs);
+            }
+            keyboardPresses_.erase(existing);
+            return true;
+        }
+
+        state("keyboard_injection_error", "unsupported key action=" + std::to_string(action));
+        return false;
+    }
+
     void setKeyboardVisible(bool visible) {
         keyboardRequested_.store(visible);
     }
@@ -367,6 +520,14 @@ private:
     std::atomic<bool> outputReady_{false};
     std::atomic<bool> keyboardRequested_{false};
     std::thread worker_;
+
+    struct KeyboardPress {
+        int linuxCode = -1;
+        std::vector<int> modifiers;
+    };
+    std::recursive_mutex keyboardMutex_;
+    std::unordered_map<int, KeyboardPress> keyboardPresses_;
+    std::unordered_map<int, int> keyboardModifierRefs_;
 
     int epollFd_ = -1;
     std::unordered_map<int, std::unique_ptr<Device>> devices_;
@@ -592,9 +753,35 @@ private:
     }
 
     void applyKeyboardIfNeeded() {
+        std::lock_guard<std::recursive_mutex> lock(keyboardMutex_);
         const bool requested = keyboardRequested_.load();
         if (requested && keyboardFd_ < 0) createKeyboard();
         if (!requested && keyboardFd_ >= 0) destroyKeyboard();
+    }
+
+    bool writeKeyboardEvents(std::vector<input_event> events, const std::string& reason) {
+        if (keyboardFd_ < 0 || events.empty()) return false;
+        events.push_back(makeEvent(EV_SYN, SYN_REPORT, 0));
+        return writeEvents(keyboardFd_, events, reason);
+    }
+
+    void releaseAllKeyboardState(const std::string& reason) {
+        if (keyboardFd_ < 0) {
+            keyboardPresses_.clear();
+            keyboardModifierRefs_.clear();
+            return;
+        }
+        std::vector<input_event> events;
+        for (const auto& [keyCode, press] : keyboardPresses_) {
+            (void)keyCode;
+            events.push_back(makeEvent(EV_KEY, static_cast<uint16_t>(press.linuxCode), 0));
+        }
+        for (const auto& [modifier, refs] : keyboardModifierRefs_) {
+            if (refs > 0) events.push_back(makeEvent(EV_KEY, static_cast<uint16_t>(modifier), 0));
+        }
+        if (!events.empty()) writeKeyboardEvents(std::move(events), reason);
+        keyboardPresses_.clear();
+        keyboardModifierRefs_.clear();
     }
 
     int openUinput() const {
@@ -680,6 +867,7 @@ private:
     }
 
     void createKeyboard() {
+        std::lock_guard<std::recursive_mutex> lock(keyboardMutex_);
         keyboardFd_ = openUinput();
         if (keyboardFd_ < 0) {
             state("native_error", errnoText("open keyboard uinput"));
@@ -705,7 +893,9 @@ private:
     }
 
     void destroyKeyboard() {
+        std::lock_guard<std::recursive_mutex> lock(keyboardMutex_);
         if (keyboardFd_ < 0) return;
+        releaseAllKeyboardState("keyboard_destroy");
         ioctl(keyboardFd_, UI_DEV_DESTROY);
         close(keyboardFd_);
         keyboardFd_ = -1;
@@ -1382,6 +1572,19 @@ extern "C" JNIEXPORT void JNICALL
 Java_moe_n4tsu_dextop_input_PrivilegedInputService_nativeInject(
     JNIEnv* env, jobject service, jintArray events) {
     engineFor(env, service)->inject(jintArrayValues(env, events));
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_moe_n4tsu_dextop_input_PrivilegedInputService_nativeInjectKeyboard(
+    JNIEnv* env,
+    jobject service,
+    jint keyCode,
+    jint action,
+    jint metaState,
+    jint repeatCount) {
+    return engineFor(env, service)->injectKeyboard(keyCode, action, metaState, repeatCount)
+        ? JNI_TRUE
+        : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL

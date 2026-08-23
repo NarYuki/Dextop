@@ -75,6 +75,13 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
         nativeInject(events)
     }
 
+    override fun injectKeyboard(
+        keyCode: Int,
+        action: Int,
+        metaState: Int,
+        repeatCount: Int
+    ): Boolean = nativeInjectKeyboard(keyCode, action, metaState, repeatCount)
+
     override fun setKeyboardVisible(visible: Boolean) {
         nativeSetKeyboardVisible(visible)
     }
@@ -129,6 +136,12 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
     private external fun nativeStart(): Boolean
     private external fun nativeSetOutputReady(ready: Boolean)
     private external fun nativeInject(events: IntArray)
+    private external fun nativeInjectKeyboard(
+        keyCode: Int,
+        action: Int,
+        metaState: Int,
+        repeatCount: Int
+    ): Boolean
     private external fun nativeSetKeyboardVisible(visible: Boolean)
     private external fun nativeStop(reason: String)
 }

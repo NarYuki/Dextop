@@ -12,4 +12,5 @@ interface IPrivilegedInputService {
     void inject(in int[] events) = 6;
     void setKeyboardVisible(boolean visible) = 7;
     void stop(String reason) = 8;
+    boolean injectKeyboard(int keyCode, int action, int metaState, int repeatCount) = 9;
 }
