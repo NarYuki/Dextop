@@ -8,7 +8,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import moe.n4tsu.dextop.BuildConfig
-import moe.n4tsu.dextop.MirrorService
 import rikka.shizuku.Shizuku
 
 /** Main-process controller for the privileged input UserService. */
@@ -45,7 +44,6 @@ internal class PrivilegedInputClient(
     private var engineRunning = false
     @Volatile
     private var released = false
-    private var fatalFailurePosted = false
     private var pendingConfig: IntArray? = null
     private var keyboardVisible = false
 
@@ -53,9 +51,6 @@ internal class PrivilegedInputClient(
         override fun onInputState(category: String, message: String) {
             mainHandler.post {
                 listener.onInputState(category, message)
-                if (category == "worker_exited") {
-                    failSession("native input worker exited: $message")
-                }
             }
         }
 
@@ -85,7 +80,6 @@ internal class PrivilegedInputClient(
                 return
             }
             remote = service
-            fatalFailurePosted = false
             val probe = runCatching { service.probe() }
                 .getOrElse { "probe_failed:${it.javaClass.simpleName}:${it.message}" }
             listener.onInputState("connected", probe)
@@ -111,13 +105,11 @@ internal class PrivilegedInputClient(
             engineRunning = false
             val message = "privileged input UserService disconnected"
             listener.onInputState("disconnected", message)
-            failSession(message)
         }
     }
 
     fun start(config: IntArray) {
         released = false
-        fatalFailurePosted = false
         val configChanged = !sameSemanticConfig(pendingConfig, config)
         pendingConfig = config.copyOf()
         val service = remote
@@ -215,7 +207,6 @@ internal class PrivilegedInputClient(
 
     fun release(reason: String) {
         released = true
-        fatalFailurePosted = false
         pendingConfig = null
         keyboardVisible = false
         stopEngine(reason)
@@ -252,16 +243,6 @@ internal class PrivilegedInputClient(
         engineRunning = false
         val message = "Binder call failed ${error.javaClass.simpleName}:${error.message}"
         listener.onInputState("client_error", message)
-        failSession(message)
-    }
-
-    private fun failSession(message: String) {
-        if (released || fatalFailurePosted) return
-        fatalFailurePosted = true
-        Log.e(TAG, "fatal privileged input failure: $message")
-        mainHandler.post {
-            if (!released) MirrorService.stopActive()
-        }
     }
 
     /**
