@@ -526,6 +526,11 @@ private:
         std::vector<int> modifiers;
     };
     std::recursive_mutex keyboardMutex_;
+    // Pointer frames can arrive through Binder while the worker recreates or
+    // tears down the uinput device. Keep the descriptor and its complete
+    // frame writes under one lock so an fd cannot be closed or reused midway
+    // through an injected frame.
+    std::recursive_mutex outputMutex_;
     std::unordered_map<int, KeyboardPress> keyboardPresses_;
     std::unordered_map<int, int> keyboardModifierRefs_;
 
@@ -661,6 +666,7 @@ private:
     }
 
     bool emit(const std::vector<input_event>& events, bool force, const std::string& reason) {
+        std::lock_guard<std::recursive_mutex> lock(outputMutex_);
         if (!force && !outputReady_.load()) {
             droppedFrames_.fetch_add(1);
             if (configSnapshot().debugAllEvents) LOGD("drop output frame reason=%s outputReady=false", reason.c_str());
@@ -801,6 +807,7 @@ private:
     }
 
     bool createOutput(const Config& cfg) {
+        std::lock_guard<std::recursive_mutex> lock(outputMutex_);
         outputFd_ = openUinput();
         if (outputFd_ < 0) {
             state("native_error", errnoText("open /dev/uinput"));
@@ -857,6 +864,7 @@ private:
     }
 
     void destroyOutput() {
+        std::lock_guard<std::recursive_mutex> lock(outputMutex_);
         if (outputFd_ < 0) return;
         releaseAllOutputState("uinput_destroy", true);
         ioctl(outputFd_, UI_DEV_DESTROY);
@@ -1426,6 +1434,7 @@ private:
     }
 
     void releaseAllOutputState(const std::string& reason, bool force) {
+        std::lock_guard<std::recursive_mutex> lock(outputMutex_);
         std::vector<input_event> events;
         for (int slot = 0; slot < kMaxVirtualSlots; ++slot) {
             if (virtualSlotPhysicalIds_[static_cast<size_t>(slot)] < 0) continue;
