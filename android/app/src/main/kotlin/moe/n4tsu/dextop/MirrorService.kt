@@ -685,6 +685,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopKeyboardDescriptor: String? = null
     private var laptopKeyboardGeneration = 0L
     private var privilegedInputStarting = false
+    private var privilegedPointerFallbackInProgress = false
+    private var privilegedPointerFallbackActive = false
     private var privilegedInputConfigGeneration = 0
     private var lastPrivilegedInputSemanticConfig: IntArray? = null
     @Volatile
@@ -872,9 +874,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
                     "native_error", "client_error" -> {
                         privilegedInputStarting = false
-                        if (message.contains("uinput", ignoreCase = true)) {
-                            virtualMouseReady = false
-                            updateVirtualCursorVisibility()
+                        val pointerOutputFailed = category == "client_error" ||
+                                (message.contains("uinput", ignoreCase = true) &&
+                                        !message.contains("keyboard", ignoreCase = true))
+                        if (pointerOutputFailed) {
+                            fallbackToSoftwarePointer("$category:$message")
                         }
                         OperationLog.w(
                             this@MirrorService,
@@ -1602,6 +1606,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // A touchpad-to-mouse compatibility fallback is scoped to one session;
         // every new session retries the user's selected profile.
         virtualPointerRuntimeProfile = null
+        privilegedPointerFallbackInProgress = false
+        privilegedPointerFallbackActive = false
         laptopModeActive = false
         laptopBaseConfig = null
         laptopManualOverride = false
@@ -2464,6 +2470,41 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         resetVirtualTouchpadState("pointer_stopped", logSummary = activeContacts > 0)
     }
 
+    /**
+     * A Shizuku-compatible binder does not guarantee that UserService or
+     * uinput is available on every provider/firmware. Keep the session usable
+     * when the privileged path cannot start: use the existing MotionEvent
+     * software cursor for this session without overwriting the user's saved
+     * pointer preference. The next Dextop session probes the preferred native
+     * profile again.
+     */
+    private fun fallbackToSoftwarePointer(reason: String) {
+        if (privilegedPointerFallbackInProgress || privilegedPointerFallbackActive) return
+        if (!active || directTouch && !laptopModeActive) {
+            privilegedInputStarting = false
+            updateVirtualCursorVisibility()
+            return
+        }
+        privilegedPointerFallbackInProgress = true
+        try {
+            stopVirtualMouse()
+            virtualPointerRuntimeProfile = "software"
+            privilegedPointerFallbackActive = true
+            privilegedInputStarting = false
+            virtualMouseReady = false
+            cursorView?.apply {
+                visibility = if (directTouch) View.GONE else View.VISIBLE
+                if (!directTouch) bringToFront()
+            }
+            updateVirtualCursorVisibility()
+            val message = "privileged pointer unavailable; using session software cursor reason=$reason"
+            OperationLog.w(this, "InputRouting", message)
+            Log.w(logTag, message)
+        } finally {
+            privilegedPointerFallbackInProgress = false
+        }
+    }
+
     private fun scheduleVirtualMouseReadyCheck(generation: Long, profile: String, attempt: Int) {
         val check = Runnable {
             if (generation != virtualMouseGeneration || !active ||
@@ -2471,8 +2512,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             ) return@Runnable
             if (!virtualMouseProcessAlive()) {
                 OperationLog.w(this, "InputRouting", "virtual mouse process exited before InputReader registration")
-                stopVirtualMouse()
-                updateVirtualCursorVisibility()
+                fallbackToSoftwarePointer("native_process_unavailable_before_publication")
                 return@Runnable
             }
             val device = findVirtualPointerDevice(profile)
@@ -2515,8 +2555,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     "uinput profile=$profile was not published by InputReader; " +
                             "candidates=${virtualPointerPublicationCandidates(profile)}"
                 )
-                stopVirtualMouse()
-                updateVirtualCursorVisibility()
+                fallbackToSoftwarePointer("input_reader_publication_timeout:$profile")
             }
         }
         // During the first display setup the root window may not have been
