@@ -83,9 +83,34 @@ internal class PhysicalInputRouter(
         return routeConnectedDevices(display, mouse, keyboard)
     }
 
+    /** Associates one app-owned input device without touching user hardware. */
+    fun routeDevice(device: InputDevice, display: Display): Boolean {
+        val uniqueId = displayUniqueId(display) ?: return false
+        val key = associationKey(device) ?: return false
+        // A recreated Dextop display can keep the same input descriptor. Drop
+        // the previous target before assigning the device to the new display.
+        removeAssociation(key)
+        if (!associate(device, uniqueId)) return false
+        routedKeys += key
+        routedDisplayUniqueId = uniqueId
+        persist()
+        return true
+    }
+
+    fun restoreDeviceDescriptor(descriptor: String?) {
+        val value = descriptor?.takeIf { it.isNotBlank() } ?: return
+        val key = "descriptor:$value"
+        removeAssociation(key)
+        routedKeys -= key
+        persist()
+    }
+
     fun isMouseRouted(display: Display): Boolean = isTypeRouted(display, mouse = true)
 
     fun isKeyboardRouted(display: Display): Boolean = isTypeRouted(display, mouse = false)
+
+    fun isDeviceRouted(device: InputDevice, display: Display): Boolean =
+        associatedDisplayId(device) == display.displayId
 
     private fun isTypeRouted(display: Display, mouse: Boolean): Boolean {
         val devices = eligibleDevices(mouse = mouse, keyboard = !mouse)
