@@ -166,6 +166,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val LAPTOP_CONTROL = -2
         private const val LAPTOP_ALT = -3
         private const val LAPTOP_CAPS = -4
+        private const val LAPTOP_FN = -5
+        private const val LAPTOP_MENU = -6
         private const val DEBUG_FORCE_LAPTOP_MODE = false
         private val FOLD8_SPECIAL_MODEL_IDS = setOf(
             "SMF971", "SMF971B", "SMF971U", "SMF971U1", "SMF971W", "SMF9710",
@@ -660,7 +662,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopFunctionRowVisible = false
     private var laptopKeyboardView: LinearLayout? = null
     private var laptopFnButton: TextView? = null
-    private var laptopMenuButton: TextView? = null
     private var laptopTrackpadView: View? = null
     private var laptopModeActive = false
     private var laptopManualOverride = false
@@ -1993,63 +1994,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         })
         val trackpadArea = FrameLayout(this).apply {
             addView(trackpad, FrameLayout.LayoutParams(-1, -1))
-            addView(TextView(this@MirrorService).apply {
-                text = "FN"
-                typeface = laptopTypeface
-                textSize = 10f
-                gravity = Gravity.CENTER
-                setTextColor(Color.rgb(235, 231, 239))
-                background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_ALT)
-                // FN is the keyboard-layer key.  A long press opens the
-                // native theme picker while a short press keeps its existing
-                // function-row toggle.  The demo must remain a passive
-                // keyboard demonstration, so it never opens settings.
-                setOnLongClickListener {
-                    if (demoMode) return@setOnLongClickListener false
-                    showLaptopKeyboardSettings()
-                    true
-                }
-                setOnClickListener {
-                    performLaptopHaptic(this)
-                    setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
-                }
-                setOnTouchListener { view, event ->
-                    when (event.actionMasked) {
-                        MotionEvent.ACTION_DOWN -> view.animate()
-                            .scaleX(.92f).scaleY(.92f).alpha(.72f)
-                            .setDuration(55).start()
-
-                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate()
-                            .scaleX(1f).scaleY(1f).alpha(1f)
-                            .setDuration(110).start()
-                    }
-                    // Keep the listener non-consuming so click/long-click
-                    // dispatch remains handled by TextView itself.
-                    false
-                }
-                laptopFnButton = this
-            }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.START).apply {
-                leftMargin = dp(10)
-                bottomMargin = dp(10)
-            })
-            addView(TextView(this@MirrorService).apply {
-                text = "MENU"
-                typeface = laptopTypeface
-                textSize = 10f
-                gravity = Gravity.CENTER
-                setTextColor(Color.rgb(235, 231, 239))
-                background = laptopKeyBackground(false, LAPTOP_ALT)
-                setOnClickListener {
-                    if (!demoMode) {
-                        performLaptopHaptic(this)
-                        toggleMenu()
-                    }
-                }
-                laptopMenuButton = this
-            }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.END).apply {
-                rightMargin = dp(10)
-                bottomMargin = dp(10)
-            })
         }
         content.addView(trackpadArea, LinearLayout.LayoutParams(-1, 0, .34f))
         laptopDeck = deck
@@ -2181,7 +2125,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             laptopDeck = null
             laptopTrackpadView = null
             laptopFnButton = null
-            laptopMenuButton = null
             deck?.animate()
                 ?.cancel()
             deck?.animate()
@@ -3659,14 +3602,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             ),
             listOf(
                 LaptopKey("CTRL", LAPTOP_CONTROL, 1.25f),
+                LaptopKey("FN", LAPTOP_FN, 1f),
                 LaptopKey("", KeyEvent.KEYCODE_META_LEFT),
                 LaptopKey("ALT", LAPTOP_ALT, 1.15f),
-                LaptopKey("SPACE", KeyEvent.KEYCODE_SPACE, 5f),
+                LaptopKey("SPACE", KeyEvent.KEYCODE_SPACE, 4.35f),
                 LaptopKey("ALT", LAPTOP_ALT, 1.15f),
                 LaptopKey("←", KeyEvent.KEYCODE_DPAD_LEFT),
                 LaptopKey("↑", KeyEvent.KEYCODE_DPAD_UP),
                 LaptopKey("↓", KeyEvent.KEYCODE_DPAD_DOWN),
-                LaptopKey("→", KeyEvent.KEYCODE_DPAD_RIGHT)
+                LaptopKey("→", KeyEvent.KEYCODE_DPAD_RIGHT),
+                LaptopKey("MENU", LAPTOP_MENU, 1.15f)
             )
         )
         return rows
@@ -3714,9 +3659,46 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 )
             )
         }
-        if (key.code < 0) laptopModifierButtons.putIfAbsent(key.code, this)
+        if (key.code in setOf(LAPTOP_SHIFT, LAPTOP_CONTROL, LAPTOP_ALT, LAPTOP_CAPS)) {
+            laptopModifierButtons.putIfAbsent(key.code, this)
+        }
+        if (key.code == LAPTOP_FN) {
+            laptopFnButton = this
+            background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_FN)
+            setOnClickListener {
+                performLaptopHaptic(this)
+                setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
+            }
+            setOnLongClickListener {
+                if (demoMode) return@setOnLongClickListener false
+                performLaptopHaptic(this)
+                showLaptopKeyboardSettings()
+                true
+            }
+        } else if (key.code == LAPTOP_MENU) {
+            setOnClickListener {
+                if (!demoMode) {
+                    performLaptopHaptic(this)
+                    toggleMenu()
+                }
+            }
+        }
         if (key.code in laptopShortcutLabels.keys) laptopShortcutButtons[key.code] = this
         setOnTouchListener { view, event ->
+            if (key.code == LAPTOP_FN || key.code == LAPTOP_MENU) {
+                when (event.actionMasked) {
+                    MotionEvent.ACTION_DOWN -> view.animate()
+                        .scaleX(.92f).scaleY(.92f).alpha(.72f)
+                        .setDuration(55).start()
+
+                    MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate()
+                        .scaleX(1f).scaleY(1f).alpha(1f)
+                        .setDuration(110).start()
+                }
+                // Let TextView dispatch click/long-click. These are Dextop
+                // internal actions and must never enter the uinput key path.
+                return@setOnTouchListener false
+            }
             if (key.code == KeyEvent.KEYCODE_META_LEFT) {
                 // Meta is a normal modifier again.  Theme settings are
                 // intentionally owned by FN long-press so Meta can be used
