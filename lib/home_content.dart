@@ -192,11 +192,10 @@ extension _HomeContent on _HomeScreenState {
                     ? bridge.restartApp
                     : autoOnly
                     ? bridge.stopAuto
-                    : loading ||
-                          stopping ||
-                          hasExistingSession ||
-                          (!active && !ready)
+                    : loading || stopping || hasExistingSession
                     ? null
+                    : !active && !ready
+                    ? connect
                     : toggleDisplay,
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
@@ -472,7 +471,10 @@ extension _HomeContent on _HomeScreenState {
 
   Widget shizukuPanel() {
     final colors = Theme.of(context).colorScheme;
-    final title = !shizukuInstalled
+    final embedded = privilegeProvider == 'embedded';
+    final title = embedded
+        ? AppLocalizations.of(context).setupEmbeddedPairAndStart
+        : !shizukuInstalled
         ? AppStrings.tr(
             'uiInstallShizuku',
           ).replaceAll('Shizuku', privilegeProviderName)
@@ -485,7 +487,10 @@ extension _HomeContent on _HomeScreenState {
           ).replaceAll('Shizuku', privilegeProviderName);
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: 4),
-      leading: Icon(Icons.warning_amber_rounded, color: colors.error),
+      leading: Icon(
+        embedded ? Icons.wifi_tethering_rounded : Icons.warning_amber_rounded,
+        color: colors.error,
+      ),
       title: Text(title),
       trailing: Icon(Icons.chevron_right_rounded),
       onTap: connect,

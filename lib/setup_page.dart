@@ -18,6 +18,7 @@ class DextopSetupPage extends StatefulWidget {
 class _DextopSetupPageState extends State<DextopSetupPage>
     with WidgetsBindingObserver {
   static const channel = MethodChannel('app.freedextop/display');
+  bool get usesEmbeddedProvider => status['privilegeProvider'] == 'embedded';
   var page = -1;
   var status = <String, dynamic>{};
   var loading = false;
@@ -62,7 +63,10 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     final value =
         await channel.invokeMapMethod<String, dynamic>('status') ?? {};
     if (!mounted || request != statusRequest) return;
-    final installed = value['shizukuInstalled'] == true;
+    // The Play build's embedded provider is part of Dextop itself. It must
+    // not be treated as a missing external Shizuku application.
+    final embedded = value['privilegeProvider'] == 'embedded';
+    final installed = embedded || value['shizukuInstalled'] == true;
     final setupAvailable = installed && value['shizukuRunning'] == true;
     final permissionGranted = setupAvailable && value['shizukuGranted'] == true;
     setState(() {
@@ -70,6 +74,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       if (permissionGranted) shizukuSetupConfirmed = true;
       status = {
         ...value,
+        'shizukuInstalled': installed,
         'shizukuRunning': installed && value['shizukuRunning'] == true,
         'shizukuGranted': installed && value['shizukuGranted'] == true,
       };
@@ -92,30 +97,41 @@ class _DextopSetupPageState extends State<DextopSetupPage>
 
   Future<void> choosePrivilegeProvider() async {
     if (!mounted) return;
+    final providers = (status['privilegeProviders'] as List? ?? const [])
+        .whereType<Map>()
+        .map((value) => Map<String, dynamic>.from(value))
+        .toList();
+    if (providers.length < 2) return;
     final choice = await showDialog<String>(
       context: context,
       barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        icon: const Icon(Icons.admin_panel_settings_rounded),
-        title: Text(l.setupProviderChoiceTitle),
-        content: Text(l.setupProviderChoiceDescription),
-        actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-        actions: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              FilledButton(
-                onPressed: () => Navigator.pop(context, 'stellar'),
-                child: Text(l.setupUseStellar),
-              ),
-              const SizedBox(height: 10),
-              FilledButton(
-                onPressed: () => Navigator.pop(context, 'shizuku'),
-                child: Text(l.setupUseShizuku),
-              ),
-            ],
-          ),
-        ],
+      builder: (context) => PopScope(
+        canPop: false,
+        child: AlertDialog(
+          icon: const Icon(Icons.admin_panel_settings_rounded),
+          title: Text(l.setupProviderChoiceTitle),
+          content: Text(l.setupProviderChoiceDescription),
+          actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+          actions: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children:
+                  providers
+                      .expand(
+                        (provider) => [
+                          FilledButton(
+                            onPressed: () =>
+                                Navigator.pop(context, '${provider['id']}'),
+                            child: Text('${provider['name']}'),
+                          ),
+                          const SizedBox(height: 10),
+                        ],
+                      )
+                      .toList()
+                    ..removeLast(),
+            ),
+          ],
+        ),
       ),
     );
     if (choice == null) return;
@@ -155,6 +171,10 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   }
 
   Future<void> requestShizuku() async {
+    if (usesEmbeddedProvider) {
+      await setupEmbeddedPrivilege();
+      return;
+    }
     final requestingPermission = status['shizukuRunning'] == true;
     if (!requestingPermission) setState(() => loading = true);
     try {
@@ -178,6 +198,46 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       );
     } finally {
       if (!requestingPermission && mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> setupEmbeddedPrivilege() async {
+    if (loading) return;
+    setState(() => loading = true);
+    try {
+      if (status['shizukuRunning'] != true) {
+        await channel.invokeMethod('openWirelessDebugging');
+        return;
+      }
+      await channel.invokeMethod('requestShizuku');
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await refreshStatus(clearPrevious: true);
+      if (mounted && status['shizukuGranted'] == true) {
+        setState(() => shizukuSetupConfirmed = true);
+      }
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message ?? l.setupPermissionCheckFailed)),
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  Future<void> requestEmbeddedNotificationPermission() async {
+    if (loading) return;
+    setState(() => loading = true);
+    try {
+      await channel.invokeMethod<bool>('requestEmbeddedNotificationPermission');
+      await refreshStatus(clearPrevious: true);
+    } on PlatformException catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(error.message ?? l.setupPermissionCheckFailed)),
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
     }
   }
 
@@ -324,7 +384,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         Text(
           [
             l.setupPhaseTerms,
-            providerName,
+            usesEmbeddedProvider ? l.setupEmbeddedTitle : providerName,
             l.setupPhaseDevice,
             l.setupPhaseDemo,
           ][page],
@@ -395,25 +455,113 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         ),
         const SizedBox(height: 24),
         Text(
-          providerText(l.setupShizukuTitle),
+          usesEmbeddedProvider
+              ? l.setupEmbeddedTitle
+              : providerText(l.setupShizukuTitle),
           style: Theme.of(context).textTheme.headlineMedium,
         ),
         const SizedBox(height: 12),
-        Text(providerText(l.setupShizukuDescription)),
+        Text(
+          usesEmbeddedProvider
+              ? l.setupEmbeddedWirelessDebuggingDescription
+              : providerText(l.setupShizukuDescription),
+        ),
         const SizedBox(height: 24),
         _StatusTile(
-          label: providerText(l.setupInstallShizuku),
+          label: usesEmbeddedProvider
+              ? l.setupEmbeddedIncluded
+              : providerText(l.setupInstallShizuku),
           complete: installed,
         ),
+        if (usesEmbeddedProvider)
+          _StatusTile(
+            label: l.setupEmbeddedNotificationPermission,
+            complete: status['embeddedNotificationGranted'] == true,
+          ),
         _StatusTile(
-          label: providerText(l.setupConfigureShizuku),
+          label: usesEmbeddedProvider
+              ? l.setupEmbeddedConfigure
+              : providerText(l.setupConfigureShizuku),
           complete: shizukuSetupConfirmed,
         ),
+        if (usesEmbeddedProvider && !shizukuSetupConfirmed) ...[
+          const SizedBox(height: 12),
+          Card.filled(
+            child: Padding(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.wifi_tethering_rounded,
+                        color: Theme.of(context).colorScheme.primary,
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Text(
+                          l.setupEmbeddedTitle,
+                          style: Theme.of(context).textTheme.titleMedium,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 16),
+                  Text(l.setupEmbeddedDescription),
+                  const SizedBox(height: 16),
+                  if (status['embeddedNotificationGranted'] != true) ...[
+                    SizedBox(
+                      width: double.infinity,
+                      child: FilledButton.tonalIcon(
+                        onPressed: loading
+                            ? null
+                            : requestEmbeddedNotificationPermission,
+                        icon: const Icon(Icons.notifications_rounded),
+                        label: Text(l.setupEmbeddedAllowNotifications),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed:
+                          loading ||
+                              status['embeddedNotificationGranted'] != true
+                          ? null
+                          : () async {
+                              try {
+                                await channel.invokeMethod(
+                                  'openWirelessDebugging',
+                                );
+                              } on PlatformException catch (error) {
+                                if (!mounted) return;
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      error.message ??
+                                          l.setupPermissionCheckFailed,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                      icon: const Icon(Icons.settings_rounded),
+                      label: Text(l.setupEmbeddedOpenWirelessDebugging),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+        ],
         AnimatedSwitcher(
           duration: const Duration(milliseconds: 300),
           switchInCurve: Curves.easeOut,
           switchOutCurve: Curves.easeIn,
-          child: installed && !shizukuSetupConfirmed
+          child: !usesEmbeddedProvider && installed && !shizukuSetupConfirmed
               ? Padding(
                   key: const ValueKey('shizuku-setup-hint'),
                   padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
@@ -451,7 +599,10 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         ),
         _StatusTile(label: l.setupDextopPermission, complete: granted),
         const SizedBox(height: 18),
-        if (!installed || shizukuSetupConfirmed)
+        // An external provider is only selectable after it has already been
+        // discovered on the device. Do not show a misleading download action
+        // from this flow: the remaining action is permission confirmation.
+        if (!usesEmbeddedProvider && installed && shizukuSetupConfirmed)
           FilledButton.tonalIcon(
             onPressed: loading || granted ? null : requestShizuku,
             icon: loading
@@ -459,15 +610,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                     dimension: 18,
                     child: CircularProgressIndicator(strokeWidth: 2),
                   )
-                : Icon(!installed ? Icons.download_rounded : Icons.key_rounded),
-            label: Text(
-              !installed
-                  ? (status['privilegeProvider'] == 'stellar' ||
-                            (status['sdk'] as int? ?? 0) >= 36
-                        ? l.setupInstallGitHub
-                        : l.setupInstallPlay)
-                  : providerText(l.setupAllowPermission),
-            ),
+                : const Icon(Icons.key_rounded),
+            label: Text(providerText(l.setupAllowPermission)),
           ),
       ],
     );

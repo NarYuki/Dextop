@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="accessibility_service_description">Dextop 가상 디스플레이, 입력 및 제어 패널을 제어합니다</string>
+    <string name="embedded_pairing_channel">내장 액세스 설정</string>
+    <string name="embedded_pairing_title">Dextop 페어링</string>
+    <string name="embedded_pairing_notification_text">무선 디버깅에 표시된 6자리 코드를 입력하세요</string>
+    <string name="embedded_pairing_code">6자리 페어링 코드</string>
+    <string name="embedded_pairing_enter_code">페어링 코드 입력</string>
+    <string name="embedded_pairing_success">Dextop이 연결되었습니다</string>
+    <string name="embedded_pairing_success_message">페어링이 완료되었습니다. Dextop으로 돌아가세요.</string>
+    <string name="embedded_pairing_failed">Dextop을 연결할 수 없습니다</string>
+    <string name="embedded_pairing_invalid_code">6자리 코드를 입력하세요</string>
+    <string name="embedded_pairing_searching">페어링 서비스를 검색하는 중</string>
+    <string name="embedded_pairing_service_found">페어링 서비스를 찾았습니다</string>
+    <string name="embedded_pairing_service_not_found">페어링 서비스를 찾을 수 없습니다</string>
+    <string name="embedded_pairing_retry">다시 시도</string>
+    <string name="embedded_pairing_in_progress">페어링 중</string>
 </resources>

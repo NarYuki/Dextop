@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/app_strings.dart';
+import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -639,14 +640,14 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   }
 
   Future<void> reviewThreeFingerGesture() async {
-    final japanese = Localizations.localeOf(context).languageCode == 'ja';
+    final l = AppLocalizations.of(context);
     await Navigator.of(context).push<void>(
       MaterialPageRoute(
         fullscreenDialog: true,
         builder: (_) => GestureDemoFlow(
-          title: japanese ? '3本指ジェスチャーを再確認' : 'Review three-finger gesture',
-          back: japanese ? '戻る' : 'Back',
-          done: japanese ? '完了' : 'Done',
+          title: l.reviewThreeFingerGesture,
+          back: l.back,
+          done: l.done,
         ),
       ),
     );
@@ -904,11 +905,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
               trailing: FilledButton.tonalIcon(
                 onPressed: reviewThreeFingerGesture,
                 icon: const Icon(Icons.replay_rounded),
-                label: Text(
-                  Localizations.localeOf(context).languageCode == 'ja'
-                      ? '再確認'
-                      : 'Review',
-                ),
+                label: Text(AppLocalizations.of(context).review),
               ),
               onTap: reviewThreeFingerGesture,
             )
@@ -1189,32 +1186,44 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   Widget _metric(String label, String value) =>
       ListTile(title: Text(label), trailing: Text(value));
 
-  String _diagnosticLabel(String key) =>
-      {
-        'shizuku': AppStrings.tr('uiShizukuConnection').replaceAll(
-          'Shizuku',
-          '${diagnostics['privilegeProviderName'] ?? 'Stellar'}',
-        ),
-        'secureSettings': AppStrings.tr('uiSecureSettingsPermission'),
-        'accessibility': AppStrings.tr('uiAccessibilityServices'),
-        'overlayWritable': AppStrings.tr('uiAccessibilityOverlay'),
-        'mouse': AppStrings.tr('uiPhysicalMouse'),
-        'keyboard': AppStrings.tr('uiPhysicalKeyboard'),
-        'secondaryIme': AppStrings.tr('uiSecondaryIme'),
-        'desktopMode': AppStrings.tr('uiDesktopMode'),
-        'sessionActive': AppStrings.tr('uiCreateADextopSession'),
-        'virtualDisplay': AppStrings.tr('uiVirtualDisplayCreation'),
-        'appLauncher': AppStrings.tr('uiAppLaunchFunction'),
-        'quickSettingsTile': AppStrings.tr('uiQuickSettingsTile'),
-        'foldableLayout': AppStrings.tr('uiLargeScreenFoldable'),
-        'sdk': 'Android SDK',
-      }[key] ??
-      key;
+  String _diagnosticLabel(String key) {
+    final l = AppLocalizations.of(context);
+    return {
+          'shizuku': AppStrings.tr('uiShizukuConnection').replaceAll(
+            'Shizuku',
+            '${diagnostics['privilegeProviderName'] ?? 'Stellar'}',
+          ),
+          'secureSettings': AppStrings.tr('uiSecureSettingsPermission'),
+          'accessibility': AppStrings.tr('uiAccessibilityServices'),
+          'overlayWritable': AppStrings.tr('uiAccessibilityOverlay'),
+          'mouse': AppStrings.tr('uiPhysicalMouse'),
+          'keyboard': AppStrings.tr('uiPhysicalKeyboard'),
+          'secondaryIme': AppStrings.tr('uiSecondaryIme'),
+          'desktopMode': AppStrings.tr('uiDesktopMode'),
+          'sessionActive': AppStrings.tr('uiCreateADextopSession'),
+          'virtualDisplay': AppStrings.tr('uiVirtualDisplayCreation'),
+          'appLauncher': AppStrings.tr('uiAppLaunchFunction'),
+          'quickSettingsTile': AppStrings.tr('uiQuickSettingsTile'),
+          'foldableLayout': AppStrings.tr('uiLargeScreenFoldable'),
+          'embeddedBinderIncluded': l.appInfoEmbeddedBinder,
+          'embeddedBinderSelected': l.appInfoEmbeddedBinderProvider,
+          'embeddedBinderPaired': l.setupEmbeddedConfigure,
+          'embeddedBinderConnected': l.appInfoEmbeddedBinderConnection,
+          'embeddedBinderNotifications': l.appInfoEmbeddedBinderNotifications,
+          'sdk': 'Android SDK',
+        }[key] ??
+        key;
+  }
 
   static final _availabilityDiagnostics = {
     'accessibility',
     'overlayWritable',
     'sessionActive',
     'virtualDisplay',
+    'embeddedBinderIncluded',
+    'embeddedBinderSelected',
+    'embeddedBinderPaired',
+    'embeddedBinderConnected',
+    'embeddedBinderNotifications',
   };
 }

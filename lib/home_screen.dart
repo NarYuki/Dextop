@@ -375,6 +375,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var shizukuInstalled = false;
   var shizukuRunning = false;
   var shizukuGranted = false;
+  var privilegeTransitionDialogVisible = false;
   String privilegeProvider = 'stellar';
   String privilegeProviderName = 'Stellar';
   var releaseCheckStarted = false;
@@ -903,6 +904,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         loading = false;
         error = null;
       });
+      _schedulePrivilegeTransition(value);
       if (stopping) unawaited(_pollStopCompletion());
     } on PlatformException catch (e) {
       if (!mounted) return;
@@ -911,6 +913,95 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         error = e.message;
       });
     }
+  }
+
+  void _schedulePrivilegeTransition(Map<String, dynamic> value) {
+    if (privilegeTransitionDialogVisible || !mounted) return;
+    final required =
+        value['externalPrivilegeAuthorizationRequired'] == true ||
+        value['embeddedPrivilegeSetupRequired'] == true ||
+        value['privilegeProviderSelectionRequired'] == true;
+    if (!required) return;
+    privilegeTransitionDialogVisible = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        if (value['embeddedPrivilegeSetupRequired'] == true) {
+          await _showEmbeddedPrivilegeSetup();
+        } else {
+          await _showExternalPrivilegeAuthorization(value);
+        }
+      } finally {
+        privilegeTransitionDialogVisible = false;
+      }
+    });
+  }
+
+  Future<void> _showExternalPrivilegeAuthorization(
+    Map<String, dynamic> value,
+  ) async {
+    final l = AppLocalizations.of(context);
+    final providers = (value['privilegeProviders'] as List? ?? const [])
+        .whereType<Map>()
+        .map((item) => Map<String, dynamic>.from(item))
+        .toList();
+    if (providers.isEmpty) return;
+    final needsChoice = value['privilegeProviderSelectionRequired'] == true;
+    final selectedId = needsChoice
+        ? await showDialog<String>(
+            context: context,
+            barrierDismissible: false,
+            builder: (dialogContext) => PopScope(
+              canPop: false,
+              child: AlertDialog(
+                icon: const Icon(Icons.admin_panel_settings_rounded),
+                title: Text(l.setupProviderChoiceTitle),
+                content: Text(l.setupProviderChoiceDescription),
+                actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                actions: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children:
+                        providers
+                            .expand(
+                              (provider) => [
+                                FilledButton(
+                                  onPressed: () => Navigator.pop(
+                                    dialogContext,
+                                    '${provider['id']}',
+                                  ),
+                                  child: Text('${provider['name']}'),
+                                ),
+                                const SizedBox(height: 10),
+                              ],
+                            )
+                            .toList()
+                          ..removeLast(),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : '${value['privilegeProviderId']}';
+    if (selectedId == null || !mounted) return;
+    if (needsChoice) await bridge.selectPrivilegeProvider(selectedId);
+    var current = await bridge.status();
+    if (current['shizukuRunning'] == true) {
+      await bridge.requestShizuku();
+    } else {
+      await bridge.openShizuku();
+    }
+    current = await bridge.status();
+    if (mounted && current['shizukuGranted'] == true) await refresh();
+  }
+
+  Future<void> _showEmbeddedPrivilegeSetup() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute(
+        builder: (_) => EmbeddedBinderSetupPage(onConnected: refresh),
+      ),
+    );
+    if (mounted) await refresh();
   }
 
   Future<void> _refreshSessionState() async {
@@ -1005,6 +1096,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   Future<void> connect() async {
+    if (privilegeProvider == 'embedded') {
+      if (!shizukuRunning) {
+        await _showEmbeddedPrivilegeSetup();
+        return;
+      }
+      setState(() => loading = true);
+      try {
+        await bridge.requestShizuku();
+        await refresh();
+      } finally {
+        if (mounted) setState(() => loading = false);
+      }
+      return;
+    }
     if (!shizukuInstalled || !shizukuRunning) {
       await bridge.openShizuku();
       return;

@@ -134,6 +134,45 @@ class AppLocalizationsRu extends AppLocalizations {
   String get appInfo => 'О приложении';
 
   @override
+  String get appInfoEmbeddedBinder => 'Встроенный Binder';
+
+  @override
+  String get appInfoEmbeddedBinderIncluded => 'Включён в эту сборку';
+
+  @override
+  String get appInfoEmbeddedBinderNotIncluded => 'Не включён в эту сборку';
+
+  @override
+  String get appInfoEmbeddedBinderProvider => 'Состояние использования';
+
+  @override
+  String get appInfoEmbeddedBinderSelected => 'Используется';
+
+  @override
+  String get appInfoEmbeddedBinderStandby => 'Используется внешний поставщик';
+
+  @override
+  String get appInfoEmbeddedBinderConnection => 'Подключение Binder';
+
+  @override
+  String get appInfoEmbeddedBinderPermission => 'Разрешение Dextop';
+
+  @override
+  String get appInfoEmbeddedBinderNotifications => 'Разрешение на уведомления';
+
+  @override
+  String get appInfoStatusConnected => 'Подключено';
+
+  @override
+  String get appInfoStatusDisconnected => 'Не подключено';
+
+  @override
+  String get appInfoStatusGranted => 'Разрешено';
+
+  @override
+  String get appInfoStatusNotGranted => 'Не разрешено';
+
+  @override
   String get licenses => 'Лицензии открытого ПО';
 
   @override
@@ -210,6 +249,12 @@ class AppLocalizationsRu extends AppLocalizations {
   String get back => 'Назад';
 
   @override
+  String get review => 'Повторить';
+
+  @override
+  String get reviewThreeFingerGesture => 'Повторить жест тремя пальцами';
+
+  @override
   String get continueLabel => 'Продолжить';
 
   @override
@@ -266,7 +311,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'Установлены Stellar и Shizuku. Выберите службу, которую будет использовать Dextop.';
+      'Установлено несколько служб, совместимых с Shizuku. Выберите службу для Dextop.';
 
   @override
   String get setupUseStellar => 'Stellar (рекомендуется)';
@@ -304,6 +349,9 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get setupVerified => 'Настройка Shizuku проверена';
+
+  @override
+  String get setupAccessVerified => 'Настройка разрешения доступа проверена';
 
   @override
   String get setupVerificationFailed =>
@@ -1444,4 +1492,97 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get autoDisplayModeDescription =>
       'Android Auto использует отдельный рабочий стол, размер которого соответствует подключённому головному устройству.';
+
+  @override
+  String get setupEmbeddedTitle => 'Настройка доступа Dextop';
+
+  @override
+  String get setupEmbeddedDescription =>
+      'Подключите встроенную службу доступа Dextop.\n\n1. Разрешите уведомления.\n2. Откройте и включите беспроводную отладку.\n3. Нажмите «Сопряжение устройства с помощью кода».\n4. Введите шестизначный код Android в поле уведомления.';
+
+  @override
+  String get setupEmbeddedSetupDescription =>
+      'Откройте «Сопряжение устройства с помощью кода» в разделе беспроводной отладки. Когда служба сопряжения будет обнаружена, автоматически появится уведомление для ввода шестизначного кода.';
+
+  @override
+  String get setupEmbeddedWirelessDebuggingDescription =>
+      'Откройте настройки беспроводной отладки Android и включите беспроводную отладку.';
+
+  @override
+  String get setupEmbeddedOpenWirelessDebugging =>
+      'Открыть беспроводную отладку';
+
+  @override
+  String get setupEmbeddedEnableWirelessDebugging =>
+      'Включить беспроводную отладку';
+
+  @override
+  String get setupEmbeddedPairingCode => 'Код сопряжения';
+
+  @override
+  String get setupEmbeddedPairingCodeHint =>
+      'Шестизначный код, показанный Android';
+
+  @override
+  String get setupEmbeddedInvalidCode => 'Введите правильный шестизначный код';
+
+  @override
+  String get setupEmbeddedPair => 'Сопрячь и запустить';
+
+  @override
+  String get setupEmbeddedPairAndStart => 'Настроить доступ Dextop';
+
+  @override
+  String get setupEmbeddedIncluded => 'Служба доступа Dextop включена';
+
+  @override
+  String get setupEmbeddedConnectedDescription =>
+      'Разрешение доступа Dextop готово к использованию.';
+
+  @override
+  String get setupEmbeddedConfigure => 'Сопряжение беспроводной отладки';
+
+  @override
+  String get setupEmbeddedPairingFailed => 'Не удалось выполнить сопряжение';
+
+  @override
+  String get setupEmbeddedStartFailed =>
+      'Не удалось запустить службу доступа Dextop';
+
+  @override
+  String get setupEmbeddedNotificationPermission => 'Разрешение на уведомления';
+
+  @override
+  String get setupEmbeddedAllowNotifications => 'Разрешить уведомления';
+
+  @override
+  String get setupEmbeddedSearchingPairing => 'Поиск службы сопряжения';
+
+  @override
+  String get setupEmbeddedPairingServiceFound => 'Служба сопряжения найдена';
+
+  @override
+  String get setupEmbeddedPairingInProgress => 'Выполняется сопряжение';
+
+  @override
+  String get setupEmbeddedPairingServiceNotFound =>
+      'Служба сопряжения не найдена';
+
+  @override
+  String get setupEmbeddedRetryPairing => 'Повторить сопряжение';
+
+  @override
+  String get setupEmbeddedPairingNotificationReady =>
+      'Введите шестизначный код в поле уведомления.';
+
+  @override
+  String get experimentalCoverDisplay => 'Сеанс на внешнем экране';
+
+  @override
+  String get experimentalCoverDisplayDescription =>
+      'Используйте Android или отдельный сеанс Dextop на внешнем экране складного устройства';
+
+  @override
+  String get experimentalCoverDisplayUnavailable =>
+      'Доступно только на складных устройствах';
 }

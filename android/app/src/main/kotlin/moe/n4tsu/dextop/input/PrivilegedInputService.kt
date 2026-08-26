@@ -21,7 +21,12 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
         private const val TAG = "DextopInputUserService"
 
         init {
-            System.loadLibrary("dextop_input")
+            val embeddedLibrary = System.getProperty("moe.n4tsu.dextop.embedded_input_library")
+            if (embeddedLibrary.isNullOrBlank()) {
+                System.loadLibrary("dextop_input")
+            } else {
+                System.load(embeddedLibrary)
+            }
         }
     }
 

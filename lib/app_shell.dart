@@ -219,6 +219,19 @@ class NativeBridge {
   }
 
   Future<void> openShizuku() => channel.invokeMethod('openShizuku');
+  Future<Map<String, dynamic>> embeddedPrivilegeInfo() async =>
+      await channel.invokeMapMethod<String, dynamic>('embeddedPrivilegeInfo') ??
+      {};
+  Future<Map<String, dynamic>> pairEmbeddedPrivilege(String code) async =>
+      await channel.invokeMapMethod<String, dynamic>('pairEmbeddedPrivilege', {
+        'code': code,
+      }) ??
+      {};
+  Future<Map<String, dynamic>> startEmbeddedPrivilege() async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'startEmbeddedPrivilege',
+      ) ??
+      {};
   Future<Map<String, dynamic>> selectPrivilegeProvider(String provider) async =>
       await channel.invokeMapMethod<String, dynamic>(
         'selectPrivilegeProvider',
@@ -228,6 +241,11 @@ class NativeBridge {
   Future<void> openAccessibility() => channel.invokeMethod('openAccessibility');
   Future<void> openWirelessDebugging() =>
       channel.invokeMethod('openWirelessDebugging');
+  Future<bool> requestEmbeddedNotificationPermission() async =>
+      await channel.invokeMethod<bool>(
+        'requestEmbeddedNotificationPermission',
+      ) ??
+      false;
   Future<void> openUrl(String url) =>
       channel.invokeMethod('openUrl', {'url': url});
   Future<String> diagnosticReport() async =>

@@ -129,6 +129,45 @@ class AppLocalizationsZh extends AppLocalizations {
   String get appInfo => '应用信息';
 
   @override
+  String get appInfoEmbeddedBinder => '内置 Binder';
+
+  @override
+  String get appInfoEmbeddedBinderIncluded => '已包含在此版本中';
+
+  @override
+  String get appInfoEmbeddedBinderNotIncluded => '未包含在此版本中';
+
+  @override
+  String get appInfoEmbeddedBinderProvider => '使用状态';
+
+  @override
+  String get appInfoEmbeddedBinderSelected => '使用中';
+
+  @override
+  String get appInfoEmbeddedBinderStandby => '正在使用外部提供程序';
+
+  @override
+  String get appInfoEmbeddedBinderConnection => 'Binder 连接';
+
+  @override
+  String get appInfoEmbeddedBinderPermission => 'Dextop 权限';
+
+  @override
+  String get appInfoEmbeddedBinderNotifications => '通知权限';
+
+  @override
+  String get appInfoStatusConnected => '已连接';
+
+  @override
+  String get appInfoStatusDisconnected => '未连接';
+
+  @override
+  String get appInfoStatusGranted => '已允许';
+
+  @override
+  String get appInfoStatusNotGranted => '未允许';
+
+  @override
   String get licenses => '开源许可证';
 
   @override
@@ -204,6 +243,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get back => '返回';
 
   @override
+  String get review => '重新查看';
+
+  @override
+  String get reviewThreeFingerGesture => '重新查看三指手势';
+
+  @override
   String get continueLabel => '继续';
 
   @override
@@ -258,7 +303,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      '已同时安装 Stellar 和 Shizuku。请选择 Dextop 要使用的服务。';
+      '已安装多个兼容 Shizuku 的服务。请选择 Dextop 要使用的服务。';
 
   @override
   String get setupUseStellar => 'Stellar（推荐）';
@@ -293,6 +338,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get setupVerified => '已检查 Shizuku 设置';
+
+  @override
+  String get setupAccessVerified => '已检查访问权限设置';
 
   @override
   String get setupVerificationFailed =>
@@ -1374,4 +1422,89 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get autoDisplayModeDescription =>
       'Android Auto 使用按所连接车机屏幕调整大小的独立桌面显示器。';
+
+  @override
+  String get setupEmbeddedTitle => '设置 Dextop 访问权限';
+
+  @override
+  String get setupEmbeddedDescription =>
+      '连接 Dextop 的内置访问服务。\n\n1. 允许通知。\n2. 打开并启用无线调试。\n3. 点击使用配对码配对设备。\n4. 在通知输入框中输入 Android 显示的六位代码。';
+
+  @override
+  String get setupEmbeddedSetupDescription =>
+      '请在无线调试中打开“使用配对码配对设备”。检测到配对服务后，会自动显示通知以输入六位配对码。';
+
+  @override
+  String get setupEmbeddedWirelessDebuggingDescription =>
+      '打开 Android 的无线调试设置，并在其中启用无线调试。';
+
+  @override
+  String get setupEmbeddedOpenWirelessDebugging => '打开无线调试';
+
+  @override
+  String get setupEmbeddedEnableWirelessDebugging => '启用无线调试';
+
+  @override
+  String get setupEmbeddedPairingCode => '配对码';
+
+  @override
+  String get setupEmbeddedPairingCodeHint => '输入 Android 显示的六位代码';
+
+  @override
+  String get setupEmbeddedInvalidCode => '请输入有效的六位代码';
+
+  @override
+  String get setupEmbeddedPair => '配对并启动';
+
+  @override
+  String get setupEmbeddedPairAndStart => '设置 Dextop 访问权限';
+
+  @override
+  String get setupEmbeddedIncluded => '已内置 Dextop 访问服务';
+
+  @override
+  String get setupEmbeddedConnectedDescription => 'Dextop 访问权限已可用。';
+
+  @override
+  String get setupEmbeddedConfigure => '无线调试配对';
+
+  @override
+  String get setupEmbeddedPairingFailed => '配对失败';
+
+  @override
+  String get setupEmbeddedStartFailed => '无法启动 Dextop 访问服务';
+
+  @override
+  String get setupEmbeddedNotificationPermission => '通知权限';
+
+  @override
+  String get setupEmbeddedAllowNotifications => '允许通知';
+
+  @override
+  String get setupEmbeddedSearchingPairing => '正在搜索配对服务';
+
+  @override
+  String get setupEmbeddedPairingServiceFound => '已找到配对服务';
+
+  @override
+  String get setupEmbeddedPairingInProgress => '正在配对';
+
+  @override
+  String get setupEmbeddedPairingServiceNotFound => '未找到配对服务';
+
+  @override
+  String get setupEmbeddedRetryPairing => '重试配对';
+
+  @override
+  String get setupEmbeddedPairingNotificationReady => '请在通知输入框中输入六位代码。';
+
+  @override
+  String get experimentalCoverDisplay => '外屏会话';
+
+  @override
+  String get experimentalCoverDisplayDescription =>
+      '在折叠设备外屏上使用 Android 或独立的 Dextop 会话';
+
+  @override
+  String get experimentalCoverDisplayUnavailable => '仅适用于折叠设备';
 }

@@ -48,10 +48,10 @@ jobs:
 
       - name: Run Android unit tests
         working-directory: android
-        run: ./gradlew testDebugUnitTest
+        run: ./gradlew testGithubDebugUnitTest
 
       - name: Build Debug APK
-        run: flutter build apk --debug
+        run: flutter build apk --flavor github --debug --dart-define=DISTRIBUTION_CHANNEL=github
 
       - name: Build Dextop Car Companion Debug APK
         working-directory: android
@@ -62,7 +62,7 @@ jobs:
         with:
           name: dextop-nightly-${{ github.sha }}
           path: |
-            build/app/outputs/flutter-apk/app-debug.apk
+            build/app/outputs/flutter-apk/app-github-debug.apk
             build/cardex/outputs/apk/debug/cardex-debug.apk
           if-no-files-found: error
           retention-days: 14

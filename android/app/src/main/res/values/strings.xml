@@ -3,4 +3,18 @@
     <string name="app_name" translatable="false">Dextop</string>
     <string name="quick_settings_tile_label" translatable="false">Dextop</string>
     <string name="accessibility_service_description">Dextopの仮想ディスプレイ、入力、操作パネルを制御します</string>
+    <string name="embedded_pairing_channel">内蔵アクセスサービスの設定</string>
+    <string name="embedded_pairing_title">Dextopをペア設定</string>
+    <string name="embedded_pairing_notification_text">ワイヤレスデバッグに表示された6桁のコードを入力してください</string>
+    <string name="embedded_pairing_code">6桁のペア設定コード</string>
+    <string name="embedded_pairing_enter_code">ペア設定コードを入力</string>
+    <string name="embedded_pairing_success">Dextopの接続が完了しました</string>
+    <string name="embedded_pairing_success_message">ペア設定が完了しました。Dextopに戻ってください。</string>
+    <string name="embedded_pairing_failed">Dextopを接続できませんでした</string>
+    <string name="embedded_pairing_invalid_code">6桁のコードを入力してください</string>
+    <string name="embedded_pairing_searching">ペア設定サービスを検索中</string>
+    <string name="embedded_pairing_service_found">ペア設定サービスが見つかりました</string>
+    <string name="embedded_pairing_service_not_found">ペア設定サービスが見つかりません</string>
+    <string name="embedded_pairing_retry">再試行</string>
+    <string name="embedded_pairing_in_progress">ペア設定中</string>
 </resources>

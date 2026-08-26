@@ -2,6 +2,7 @@ package moe.n4tsu.dextop
 
 import android.os.IBinder
 import android.util.Log
+import moe.n4tsu.dextop.privilege.DistributionPrivilegeRuntime
 import moe.shizuku.server.IShizukuService
 import rikka.shizuku.Shizuku
 import rikka.shizuku.ShizukuBinderWrapper
@@ -9,18 +10,22 @@ import rikka.shizuku.SystemServiceHelper
 
 internal class PrivilegedAccess(private val tag: String) {
     fun isAvailable(): Boolean = runCatching {
-        Shizuku.getBinder()?.isBinderAlive == true
+        DistributionPrivilegeRuntime.available || Shizuku.getBinder()?.isBinderAlive == true
     }.getOrDefault(false)
 
     fun service(name: String, interfaceName: String): Any {
         check(isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
-        val binder = ShizukuBinderWrapper(SystemServiceHelper.getSystemService(name))
+        val binder = DistributionPrivilegeRuntime.serviceBinder(name)
+            ?: ShizukuBinderWrapper(SystemServiceHelper.getSystemService(name))
         return Class.forName("$interfaceName\$Stub")
             .getMethod("asInterface", IBinder::class.java)
             .invoke(null, binder)
     }
 
     fun execute(vararg arguments: String): CommandResult = runCatching {
+        DistributionPrivilegeRuntime.execute(arguments)?.let {
+            return@runCatching CommandResult(it.exitCode, it.output, it.error)
+        }
         val binder = Shizuku.getBinder()
             ?: error(NativeStrings.text("nativeShizukuUnavailable"))
         val process = IShizukuService.Stub.asInterface(binder)
