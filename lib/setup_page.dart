@@ -748,11 +748,15 @@ class _GestureDemoFlowState extends State<GestureDemoFlow>
 
   void down(PointerDownEvent event) {
     pointers[event.pointer] = event.position;
-    if (pointers.length == 3) triggered = false;
+    // Match the production overlay: some touch controllers briefly report a
+    // fourth contact during a three-finger edge swipe.  Keeping the gesture
+    // armed for three or more contacts prevents the setup demo from silently
+    // rejecting an otherwise valid gesture.
+    if (pointers.length >= 3) triggered = false;
   }
 
   void move(PointerMoveEvent event) {
-    if (triggered || pointers.length != 3) return;
+    if (triggered || pointers.length < 3) return;
     final start = pointers[event.pointer];
     if (start == null) return;
     final delta = event.position - start;
@@ -761,7 +765,7 @@ class _GestureDemoFlowState extends State<GestureDemoFlow>
         : start.dy <= 140 && delta.dy >= 90 && delta.dy.abs() > delta.dx.abs();
     if (valid) {
       triggered = true;
-      channel.invokeMethod<void>('showOverlayDemo');
+      unawaited(channel.invokeMethod<void>('showOverlayDemo'));
     }
   }
 

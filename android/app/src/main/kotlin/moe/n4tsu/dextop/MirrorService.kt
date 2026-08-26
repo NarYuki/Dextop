@@ -683,6 +683,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopFunctionRowVisible = false
     private var laptopKeyboardView: LinearLayout? = null
     private var laptopFnButton: TextView? = null
+    private var laptopMenuButton: TextView? = null
     private var laptopTrackpadView: View? = null
     private var laptopModeActive = false
     private var laptopManualOverride = false
@@ -713,6 +714,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var lastPrivilegedInputSemanticConfig: IntArray? = null
     @Volatile
     private var virtualMouseReady = false
+    /**
+     * InputReader can publish the uinput device before it has rendered a
+     * system cursor.  Keep the accessibility cursor visible until a frame has
+     * actually reached the virtual pointer; otherwise a registered-but-idle
+     * touchpad leaves the desktop with no visible pointer.
+     */
+    @Volatile
+    private var virtualPointerOutputObserved = false
     private var virtualMouseDeviceId = -1
     private var virtualPointerRegisteredProfile = ""
 
@@ -862,13 +871,27 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         }
                     }
 
-                    "device_discovered", "source_selected" -> {
+                    "device_discovered" -> {
                         touchscreenReaderRunning = true
-                        touchscreenReaderReady = true
+                        // A readable EventHub node is only a candidate.  Do
+                        // not suppress the overlay's MotionEvent path until
+                        // the native reader has received an actual contact.
+                        touchscreenReaderReady = false
                         touchscreenReaderCandidateCount =
                             touchscreenReaderCandidateCount.coerceAtLeast(1)
                         touchscreenReaderDevice = message.substringAfter("path=", "")
                             .substringBefore(' ')
+                    }
+
+                    "source_selected" -> {
+                        touchscreenReaderRunning = true
+                        touchscreenReaderReady = true
+                        virtualPointerOutputObserved = true
+                        touchscreenReaderCandidateCount =
+                            touchscreenReaderCandidateCount.coerceAtLeast(1)
+                        touchscreenReaderDevice = message.substringAfter("path=", "")
+                            .substringBefore(' ')
+                        updateVirtualCursorVisibility()
                     }
 
                     "device_waiting" -> {
@@ -887,6 +910,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         if (!privilegedInputClient.isEngineRunning()) {
                             privilegedInputStarting = false
                             virtualMouseReady = false
+                            virtualPointerOutputObserved = false
                             touchscreenReaderRunning = false
                             touchscreenReaderReady = false
                             touchscreenReaderCandidateCount = 0
@@ -898,6 +922,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         privilegedInputClient.acknowledgeEngineStopped()
                         privilegedInputStarting = false
                         virtualMouseReady = false
+                        virtualPointerOutputObserved = false
                         touchscreenReaderRunning = false
                         touchscreenReaderReady = false
                         touchscreenReaderCandidateCount = 0
@@ -906,6 +931,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
                     "uinput_destroyed" -> {
                         virtualMouseReady = false
+                        virtualPointerOutputObserved = false
                         privilegedInputClient.setOutputReady(false)
                         updateVirtualCursorVisibility()
                     }
@@ -1046,11 +1072,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun updateVirtualCursorVisibility() {
         val cursor = cursorView ?: return
-        // Hide while uinput is starting as well as after it is ready.  Showing
-        // the software cursor during that short window creates a distracting
-        // white flash when the user changes from tap to cursor mode.
-        val virtualMouseStarting = privilegedInputStarting
-        cursor.visibility = if (directTouch || virtualMouseReady || virtualMouseStarting) {
+        // Device publication alone does not guarantee that InputReader has
+        // rendered a pointer.  The software cursor remains authoritative
+        // until the native EventHub stream or an overlay touch frame has
+        // produced an actual virtual-pointer output.
+        val systemPointerActive = virtualMouseReady && virtualPointerOutputObserved
+        cursor.visibility = if (directTouch || systemPointerActive) {
             View.GONE
         } else {
             View.VISIBLE
@@ -2085,6 +2112,60 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         })
         val trackpadArea = FrameLayout(this).apply {
             addView(trackpad, FrameLayout.LayoutParams(-1, -1))
+            // These are deck controls, not keyboard keys.  Keeping them as
+            // siblings of the raw-touchpad surface preserves their original
+            // lower-corner positions and prevents the EventHub bridge from
+            // treating their taps as pointer gestures.
+            addView(TextView(this@MirrorService).apply {
+                text = "FN"
+                typeface = laptopTypeface
+                textSize = 10f
+                gravity = Gravity.CENTER
+                setTextColor(Color.rgb(235, 231, 239))
+                background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_ALT)
+                setOnLongClickListener {
+                    if (demoMode) return@setOnLongClickListener false
+                    showLaptopKeyboardSettings()
+                    true
+                }
+                setOnClickListener {
+                    performLaptopHaptic(this)
+                    setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
+                }
+                setOnTouchListener { view, event ->
+                    when (event.actionMasked) {
+                        MotionEvent.ACTION_DOWN -> view.animate()
+                            .scaleX(.92f).scaleY(.92f).alpha(.72f)
+                            .setDuration(55).start()
+                        MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> view.animate()
+                            .scaleX(1f).scaleY(1f).alpha(1f)
+                            .setDuration(110).start()
+                    }
+                    false
+                }
+                laptopFnButton = this
+            }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.START).apply {
+                leftMargin = dp(10)
+                bottomMargin = dp(10)
+            })
+            addView(TextView(this@MirrorService).apply {
+                text = "MENU"
+                typeface = laptopTypeface
+                textSize = 10f
+                gravity = Gravity.CENTER
+                setTextColor(Color.rgb(235, 231, 239))
+                background = laptopKeyBackground(false, LAPTOP_ALT)
+                setOnClickListener {
+                    if (!demoMode) {
+                        performLaptopHaptic(this)
+                        toggleMenu()
+                    }
+                }
+                laptopMenuButton = this
+            }, FrameLayout.LayoutParams(dp(58), dp(42), Gravity.BOTTOM or Gravity.END).apply {
+                rightMargin = dp(10)
+                bottomMargin = dp(10)
+            })
         }
         content.addView(trackpadArea, LinearLayout.LayoutParams(-1, 0, .34f))
         laptopDeck = deck
@@ -2216,6 +2297,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             laptopDeck = null
             laptopTrackpadView = null
             laptopFnButton = null
+            laptopMenuButton = null
             deck?.animate()
                 ?.cancel()
             deck?.animate()
@@ -2470,12 +2552,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             updateVirtualCursorVisibility()
             return
         }
-        // Hide first, before tearing down a previous registration.  Without
-        // this ordering the software cursor can be drawn for one frame in the
-        // gap between stopVirtualMouse() and assigning the new uinput process.
-        cursorView?.visibility = View.GONE
         stopVirtualMouse()
         virtualMouseReady = false
+        virtualPointerOutputObserved = false
         virtualPointerRegisteredProfile = profile
         privilegedInputStarting = true
         virtualMouseFractionX = 0f
@@ -2501,6 +2580,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         virtualMouseGeneration += 1
         virtualMouseReady = false
+        virtualPointerOutputObserved = false
         virtualMouseDeviceId = -1
         virtualPointerRegisteredProfile = ""
         privilegedInputStarting = false
@@ -2535,6 +2615,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             privilegedPointerFallbackActive = true
             privilegedInputStarting = false
             virtualMouseReady = false
+            virtualPointerOutputObserved = false
             cursorView?.apply {
                 visibility = if (directTouch) View.GONE else View.VISIBLE
                 if (!directTouch) bringToFront()
@@ -3072,7 +3153,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             encoded[index + 2] = value.toInt()
         }
         val sent = privilegedInputClient.inject(encoded)
-        if (!sent) Log.w(logTag, "privileged primitive injection rejected events=${events.size / 3}")
+        if (!sent) {
+            Log.w(logTag, "privileged primitive injection rejected events=${events.size / 3}")
+        } else if (!virtualPointerOutputObserved) {
+            virtualPointerOutputObserved = true
+            updateVirtualCursorVisibility()
+            OperationLog.i(this, "InputRouting", "virtual pointer output observed; software cursor hidden")
+        }
         return sent
     }
 
@@ -3740,16 +3827,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             ),
             listOf(
                 LaptopKey("CTRL", LAPTOP_CONTROL, 1.25f),
-                LaptopKey("FN", LAPTOP_FN, 1f),
                 LaptopKey("", KeyEvent.KEYCODE_META_LEFT),
                 LaptopKey("ALT", LAPTOP_ALT, 1.15f),
-                LaptopKey("SPACE", KeyEvent.KEYCODE_SPACE, 4.35f),
+                LaptopKey("SPACE", KeyEvent.KEYCODE_SPACE, 5f),
                 LaptopKey("ALT", LAPTOP_ALT, 1.15f),
                 LaptopKey("←", KeyEvent.KEYCODE_DPAD_LEFT),
                 LaptopKey("↑", KeyEvent.KEYCODE_DPAD_UP),
                 LaptopKey("↓", KeyEvent.KEYCODE_DPAD_DOWN),
-                LaptopKey("→", KeyEvent.KEYCODE_DPAD_RIGHT),
-                LaptopKey("MENU", LAPTOP_MENU, 1.15f)
+                LaptopKey("→", KeyEvent.KEYCODE_DPAD_RIGHT)
             )
         )
         return rows
