@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="accessibility_service_description">控制 Dextop 虚拟显示、输入和操作面板</string>
+    <string name="embedded_pairing_channel">内置访问设置</string>
+    <string name="embedded_pairing_title">配对 Dextop</string>
+    <string name="embedded_pairing_notification_text">输入无线调试中显示的六位代码</string>
+    <string name="embedded_pairing_code">六位配对代码</string>
+    <string name="embedded_pairing_enter_code">输入配对代码</string>
+    <string name="embedded_pairing_success">Dextop 已连接</string>
+    <string name="embedded_pairing_success_message">配对已完成。请返回 Dextop。</string>
+    <string name="embedded_pairing_failed">无法连接 Dextop</string>
+    <string name="embedded_pairing_invalid_code">请输入六位代码</string>
+    <string name="embedded_pairing_searching">正在搜索配对服务</string>
+    <string name="embedded_pairing_service_found">已找到配对服务</string>
+    <string name="embedded_pairing_service_not_found">未找到配对服务</string>
+    <string name="embedded_pairing_retry">重试</string>
+    <string name="embedded_pairing_in_progress">正在配对</string>
 </resources>

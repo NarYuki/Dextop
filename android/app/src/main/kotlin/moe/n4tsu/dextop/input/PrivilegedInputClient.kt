@@ -8,6 +8,7 @@ import android.os.IBinder
 import android.os.Looper
 import android.util.Log
 import moe.n4tsu.dextop.BuildConfig
+import moe.n4tsu.dextop.privilege.DistributionPrivilegeRuntime
 import rikka.shizuku.Shizuku
 
 /** Main-process controller for the privileged input UserService. */
@@ -46,6 +47,8 @@ internal class PrivilegedInputClient(
     private var released = false
     private var pendingConfig: IntArray? = null
     private var keyboardVisible = false
+    @Volatile
+    private var usingEmbeddedRuntime = false
 
     private val callback = object : IPrivilegedInputCallback.Stub() {
         override fun onInputState(category: String, message: String) {
@@ -67,7 +70,7 @@ internal class PrivilegedInputClient(
         override fun onServiceConnected(name: ComponentName, binder: IBinder) {
             binding = false
             if (released) {
-                runCatching { Shizuku.unbindUserService(args, this, true) }
+                unbindExternalUserService()
                 return
             }
             val service = IPrivilegedInputService.Stub.asInterface(binder)
@@ -76,7 +79,7 @@ internal class PrivilegedInputClient(
                 val message = "protocol mismatch client=${PrivilegedInputProtocol.VERSION} service=$protocol"
                 Log.e(TAG, message)
                 listener.onInputState("client_error", message)
-                runCatching { Shizuku.unbindUserService(args, this, true) }
+                unbindExternalUserService()
                 return
             }
             remote = service
@@ -212,12 +215,27 @@ internal class PrivilegedInputClient(
         stopEngine(reason)
         remote = null
         binding = false
-        runCatching { Shizuku.unbindUserService(args, connection, true) }
-            .onFailure { Log.w(TAG, "UserService unbind failed reason=$reason", it) }
+        unbindExternalUserService(reason)
     }
 
     private fun bind() {
         if (binding || released) return
+        DistributionPrivilegeRuntime.inputServiceBinder()?.let { binder ->
+            binding = true
+            usingEmbeddedRuntime = true
+            mainHandler.post {
+                if (released) {
+                    binding = false
+                } else {
+                    connection.onServiceConnected(
+                        ComponentName(appContext, PrivilegedInputService::class.java),
+                        binder
+                    )
+                }
+            }
+            return
+        }
+        usingEmbeddedRuntime = false
         if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false)) {
             listener.onInputState("client_error", "Shizuku-compatible binder unavailable")
             return
@@ -237,12 +255,27 @@ internal class PrivilegedInputClient(
             }
     }
 
+    private fun unbindExternalUserService(reason: String? = null) {
+        if (usingEmbeddedRuntime) return
+        runCatching { Shizuku.unbindUserService(args, connection, true) }
+            .onFailure { error ->
+                Log.w(TAG, "UserService unbind failed${reason?.let { " reason=$it" }.orEmpty()}", error)
+            }
+    }
+
     private fun handleRemoteFailure(error: Throwable) {
         Log.e(TAG, "privileged input Binder call failed", error)
         remote = null
         engineRunning = false
         val message = "Binder call failed ${error.javaClass.simpleName}:${error.message}"
         listener.onInputState("client_error", message)
+        // The bundled process can be restarted after a shell-side death. Keep
+        // the active session recoverable instead of permanently falling back.
+        if (!released && pendingConfig != null) {
+            mainHandler.postDelayed({
+                if (!released && remote == null) bind()
+            }, 750)
+        }
     }
 
     /**

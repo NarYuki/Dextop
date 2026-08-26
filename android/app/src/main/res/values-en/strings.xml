@@ -1,4 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="accessibility_service_description">Controls the Dextop virtual display, input, and control panel</string>
+    <string name="embedded_pairing_channel">Built-in access setup</string>
+    <string name="embedded_pairing_title">Pair Dextop</string>
+    <string name="embedded_pairing_notification_text">Enter the six-digit code shown in Wireless debugging</string>
+    <string name="embedded_pairing_code">Six-digit pairing code</string>
+    <string name="embedded_pairing_enter_code">Enter pairing code</string>
+    <string name="embedded_pairing_success">Dextop is connected</string>
+    <string name="embedded_pairing_success_message">Pairing is complete. Return to Dextop.</string>
+    <string name="embedded_pairing_failed">Dextop could not connect</string>
+    <string name="embedded_pairing_invalid_code">Enter a six-digit code</string>
+    <string name="embedded_pairing_searching">Searching for pairing service</string>
+    <string name="embedded_pairing_service_found">Pairing service found</string>
+    <string name="embedded_pairing_service_not_found">Pairing service not found</string>
+    <string name="embedded_pairing_retry">Retry</string>
+    <string name="embedded_pairing_in_progress">Pairing in progress</string>
 </resources>

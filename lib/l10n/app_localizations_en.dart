@@ -136,6 +136,45 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appInfo => 'App information';
 
   @override
+  String get appInfoEmbeddedBinder => 'Built-in Binder';
+
+  @override
+  String get appInfoEmbeddedBinderIncluded => 'Included in this build';
+
+  @override
+  String get appInfoEmbeddedBinderNotIncluded => 'Not included in this build';
+
+  @override
+  String get appInfoEmbeddedBinderProvider => 'Usage status';
+
+  @override
+  String get appInfoEmbeddedBinderSelected => 'In use';
+
+  @override
+  String get appInfoEmbeddedBinderStandby => 'Using an external provider';
+
+  @override
+  String get appInfoEmbeddedBinderConnection => 'Binder connection';
+
+  @override
+  String get appInfoEmbeddedBinderPermission => 'Dextop permission';
+
+  @override
+  String get appInfoEmbeddedBinderNotifications => 'Notification permission';
+
+  @override
+  String get appInfoStatusConnected => 'Connected';
+
+  @override
+  String get appInfoStatusDisconnected => 'Disconnected';
+
+  @override
+  String get appInfoStatusGranted => 'Granted';
+
+  @override
+  String get appInfoStatusNotGranted => 'Not granted';
+
+  @override
   String get licenses => 'Open-source licenses';
 
   @override
@@ -212,6 +251,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get back => 'Back';
 
   @override
+  String get review => 'Review';
+
+  @override
+  String get reviewThreeFingerGesture => 'Review three-finger gesture';
+
+  @override
   String get continueLabel => 'Continue';
 
   @override
@@ -268,7 +313,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'Stellar and Shizuku are both installed. Choose which service Dextop should use.';
+      'Multiple Shizuku-compatible services are installed. Choose which service Dextop should use.';
 
   @override
   String get setupUseStellar => 'Stellar (recommended)';
@@ -306,6 +351,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get setupVerified => 'Shizuku setup verified';
+
+  @override
+  String get setupAccessVerified => 'Access permission setup verified';
 
   @override
   String get setupVerificationFailed =>
@@ -1432,4 +1480,95 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get autoDisplayModeDescription =>
       'Android Auto uses an independent desktop display sized for the connected head unit.';
+
+  @override
+  String get setupEmbeddedTitle => 'Set up Dextop access';
+
+  @override
+  String get setupEmbeddedDescription =>
+      'Connect Dextop\'s built-in access service.\n\n1. Allow notifications.\n2. Open and enable Wireless debugging.\n3. Tap Pair device with pairing code.\n4. Enter Android\'s six-digit code in the notification field.';
+
+  @override
+  String get setupEmbeddedSetupDescription =>
+      'Open “Pair device with pairing code” in Wireless debugging. When the pairing service is detected, a notification automatically appears for entering the six-digit code.';
+
+  @override
+  String get setupEmbeddedWirelessDebuggingDescription =>
+      'Open Android’s Wireless debugging settings and enable Wireless debugging there.';
+
+  @override
+  String get setupEmbeddedOpenWirelessDebugging => 'Open Wireless debugging';
+
+  @override
+  String get setupEmbeddedEnableWirelessDebugging =>
+      'Enable Wireless debugging';
+
+  @override
+  String get setupEmbeddedPairingCode => 'Pairing code';
+
+  @override
+  String get setupEmbeddedPairingCodeHint =>
+      'Enter the six-digit code shown by Android';
+
+  @override
+  String get setupEmbeddedInvalidCode => 'Enter a valid six-digit code';
+
+  @override
+  String get setupEmbeddedPair => 'Pair and start';
+
+  @override
+  String get setupEmbeddedPairAndStart => 'Set up Dextop access';
+
+  @override
+  String get setupEmbeddedIncluded => 'Dextop access service included';
+
+  @override
+  String get setupEmbeddedConnectedDescription =>
+      'Dextop access permission is ready to use.';
+
+  @override
+  String get setupEmbeddedConfigure => 'Wireless debugging paired';
+
+  @override
+  String get setupEmbeddedPairingFailed => 'Pairing failed';
+
+  @override
+  String get setupEmbeddedStartFailed =>
+      'The Dextop access service could not be started';
+
+  @override
+  String get setupEmbeddedNotificationPermission => 'Notification permission';
+
+  @override
+  String get setupEmbeddedAllowNotifications => 'Allow notifications';
+
+  @override
+  String get setupEmbeddedSearchingPairing => 'Searching for pairing service';
+
+  @override
+  String get setupEmbeddedPairingServiceFound => 'Pairing service found';
+
+  @override
+  String get setupEmbeddedPairingInProgress => 'Pairing in progress';
+
+  @override
+  String get setupEmbeddedPairingServiceNotFound => 'Pairing service not found';
+
+  @override
+  String get setupEmbeddedRetryPairing => 'Retry pairing';
+
+  @override
+  String get setupEmbeddedPairingNotificationReady =>
+      'Enter the six-digit code in the notification input field.';
+
+  @override
+  String get experimentalCoverDisplay => 'Cover display session';
+
+  @override
+  String get experimentalCoverDisplayDescription =>
+      'Use Android or an independent Dextop session on a foldable cover display';
+
+  @override
+  String get experimentalCoverDisplayUnavailable =>
+      'Available on foldable devices only';
 }

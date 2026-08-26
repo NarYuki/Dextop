@@ -129,6 +129,45 @@ class AppLocalizationsJa extends AppLocalizations {
   String get appInfo => 'アプリ情報';
 
   @override
+  String get appInfoEmbeddedBinder => '内蔵Binder';
+
+  @override
+  String get appInfoEmbeddedBinderIncluded => 'このビルドに内蔵されています';
+
+  @override
+  String get appInfoEmbeddedBinderNotIncluded => 'このビルドには内蔵されていません';
+
+  @override
+  String get appInfoEmbeddedBinderProvider => '使用状態';
+
+  @override
+  String get appInfoEmbeddedBinderSelected => '使用中';
+
+  @override
+  String get appInfoEmbeddedBinderStandby => '外部プロバイダーを使用中';
+
+  @override
+  String get appInfoEmbeddedBinderConnection => 'Binder接続';
+
+  @override
+  String get appInfoEmbeddedBinderPermission => 'Dextop権限';
+
+  @override
+  String get appInfoEmbeddedBinderNotifications => '通知権限';
+
+  @override
+  String get appInfoStatusConnected => '接続済み';
+
+  @override
+  String get appInfoStatusDisconnected => '未接続';
+
+  @override
+  String get appInfoStatusGranted => '許可済み';
+
+  @override
+  String get appInfoStatusNotGranted => '未許可';
+
+  @override
   String get licenses => 'オープンソースライセンス';
 
   @override
@@ -204,6 +243,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get back => '戻る';
 
   @override
+  String get review => '再確認';
+
+  @override
+  String get reviewThreeFingerGesture => '3本指ジェスチャーを再確認';
+
+  @override
   String get continueLabel => '続ける';
 
   @override
@@ -260,7 +305,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。';
+      '複数のShizuku互換サービスがインストールされています。Dextopで使用するサービスを選択してください。';
 
   @override
   String get setupUseStellar => 'Stellar（推奨）';
@@ -296,6 +341,9 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get setupVerified => 'Shizukuの設定を確認しました';
+
+  @override
+  String get setupAccessVerified => 'アクセス権限の設定を確認しました';
 
   @override
   String get setupVerificationFailed =>
@@ -1386,4 +1434,89 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get autoDisplayModeDescription =>
       'Android Autoでは、接続した車載画面に合わせた独立したデスクトップを使用します。';
+
+  @override
+  String get setupEmbeddedTitle => 'Dextopアクセスを設定';
+
+  @override
+  String get setupEmbeddedDescription =>
+      'Dextopの内蔵アクセスサービスを接続します。\n\n1. 通知を許可します。\n2. ワイヤレスデバッグを開いて有効にします。\n3. 「ペア設定コードによるデバイスのペア設定」をタップします。\n4. 通知の入力欄にAndroidが表示した6桁のコードを入力します。';
+
+  @override
+  String get setupEmbeddedSetupDescription =>
+      'ワイヤレスデバッグの「ペア設定コードによるデバイスのペア設定」を開いてください。ペア設定サービスを検出すると、6桁のコードを入力する通知が自動的に表示されます。';
+
+  @override
+  String get setupEmbeddedWirelessDebuggingDescription =>
+      'Androidのワイヤレスデバッグ設定を開きます。ここでワイヤレスデバッグを有効にしてください。';
+
+  @override
+  String get setupEmbeddedOpenWirelessDebugging => 'ワイヤレスデバッグを開く';
+
+  @override
+  String get setupEmbeddedEnableWirelessDebugging => 'ワイヤレスデバッグを有効化';
+
+  @override
+  String get setupEmbeddedPairingCode => 'ペア設定コード';
+
+  @override
+  String get setupEmbeddedPairingCodeHint => 'Androidに表示された6桁のコード';
+
+  @override
+  String get setupEmbeddedInvalidCode => '有効な6桁のコードを入力してください';
+
+  @override
+  String get setupEmbeddedPair => 'ペア設定して開始';
+
+  @override
+  String get setupEmbeddedPairAndStart => 'Dextopアクセスを設定';
+
+  @override
+  String get setupEmbeddedIncluded => 'Dextopアクセスサービス内蔵';
+
+  @override
+  String get setupEmbeddedConnectedDescription => 'Dextopのアクセス権限を使用できます。';
+
+  @override
+  String get setupEmbeddedConfigure => 'ワイヤレスデバッグのペア設定';
+
+  @override
+  String get setupEmbeddedPairingFailed => 'ペア設定に失敗しました';
+
+  @override
+  String get setupEmbeddedStartFailed => 'Dextopアクセスサービスを開始できませんでした';
+
+  @override
+  String get setupEmbeddedNotificationPermission => '通知権限';
+
+  @override
+  String get setupEmbeddedAllowNotifications => '通知を許可';
+
+  @override
+  String get setupEmbeddedSearchingPairing => 'ペア設定サービスを検索中';
+
+  @override
+  String get setupEmbeddedPairingServiceFound => 'ペア設定サービスが見つかりました';
+
+  @override
+  String get setupEmbeddedPairingInProgress => 'ペア設定中';
+
+  @override
+  String get setupEmbeddedPairingServiceNotFound => 'ペア設定サービスが見つかりません';
+
+  @override
+  String get setupEmbeddedRetryPairing => 'ペア設定を再試行';
+
+  @override
+  String get setupEmbeddedPairingNotificationReady => '通知の入力欄に6桁のコードを入力してください。';
+
+  @override
+  String get experimentalCoverDisplay => 'カバーディスプレイセッション';
+
+  @override
+  String get experimentalCoverDisplayDescription =>
+      '折りたたみ端末のカバー画面で通常のAndroidまたは独立したDextopセッションを使用します';
+
+  @override
+  String get experimentalCoverDisplayUnavailable => '折りたたみ端末でのみ利用できます';
 }

@@ -130,6 +130,45 @@ class AppLocalizationsKo extends AppLocalizations {
   String get appInfo => '앱 정보';
 
   @override
+  String get appInfoEmbeddedBinder => '내장 Binder';
+
+  @override
+  String get appInfoEmbeddedBinderIncluded => '이 빌드에 포함됨';
+
+  @override
+  String get appInfoEmbeddedBinderNotIncluded => '이 빌드에 포함되지 않음';
+
+  @override
+  String get appInfoEmbeddedBinderProvider => '사용 상태';
+
+  @override
+  String get appInfoEmbeddedBinderSelected => '사용 중';
+
+  @override
+  String get appInfoEmbeddedBinderStandby => '외부 공급자 사용 중';
+
+  @override
+  String get appInfoEmbeddedBinderConnection => 'Binder 연결';
+
+  @override
+  String get appInfoEmbeddedBinderPermission => 'Dextop 권한';
+
+  @override
+  String get appInfoEmbeddedBinderNotifications => '알림 권한';
+
+  @override
+  String get appInfoStatusConnected => '연결됨';
+
+  @override
+  String get appInfoStatusDisconnected => '연결 안 됨';
+
+  @override
+  String get appInfoStatusGranted => '허용됨';
+
+  @override
+  String get appInfoStatusNotGranted => '허용 안 됨';
+
+  @override
   String get licenses => '오픈 소스 라이선스';
 
   @override
@@ -205,6 +244,12 @@ class AppLocalizationsKo extends AppLocalizations {
   String get back => '뒤로';
 
   @override
+  String get review => '다시 보기';
+
+  @override
+  String get reviewThreeFingerGesture => '세 손가락 제스처 다시 보기';
+
+  @override
   String get continueLabel => '계속';
 
   @override
@@ -261,7 +306,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get setupProviderChoiceDescription =>
-      'Stellar와 Shizuku가 모두 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요.';
+      '여러 Shizuku 호환 서비스가 설치되어 있습니다. Dextop에서 사용할 서비스를 선택하세요.';
 
   @override
   String get setupUseStellar => 'Stellar(권장)';
@@ -298,6 +343,9 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get setupVerified => 'Shizuku 설정을 확인했습니다';
+
+  @override
+  String get setupAccessVerified => '액세스 권한 설정을 확인했습니다';
 
   @override
   String get setupVerificationFailed =>
@@ -1391,4 +1439,89 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get autoDisplayModeDescription =>
       'Android Auto는 연결된 헤드 유닛 크기에 맞춘 독립 데스크톱 디스플레이를 사용합니다.';
+
+  @override
+  String get setupEmbeddedTitle => 'Dextop 액세스 설정';
+
+  @override
+  String get setupEmbeddedDescription =>
+      'Dextop의 내장 액세스 서비스를 연결합니다.\n\n1. 알림을 허용합니다.\n2. 무선 디버깅을 열고 사용 설정합니다.\n3. 페어링 코드로 기기 페어링을 탭합니다.\n4. 알림 입력란에 Android가 표시한 6자리 코드를 입력합니다.';
+
+  @override
+  String get setupEmbeddedSetupDescription =>
+      '무선 디버깅에서 \'페어링 코드로 기기 페어링\'을 여세요. 페어링 서비스를 찾으면 6자리 코드를 입력할 수 있는 알림이 자동으로 표시됩니다.';
+
+  @override
+  String get setupEmbeddedWirelessDebuggingDescription =>
+      'Android의 무선 디버깅 설정을 열고 여기에서 무선 디버깅을 활성화하세요.';
+
+  @override
+  String get setupEmbeddedOpenWirelessDebugging => '무선 디버깅 열기';
+
+  @override
+  String get setupEmbeddedEnableWirelessDebugging => '무선 디버깅 사용 설정';
+
+  @override
+  String get setupEmbeddedPairingCode => '페어링 코드';
+
+  @override
+  String get setupEmbeddedPairingCodeHint => 'Android에 표시된 6자리 코드';
+
+  @override
+  String get setupEmbeddedInvalidCode => '올바른 6자리 코드를 입력하세요';
+
+  @override
+  String get setupEmbeddedPair => '페어링 및 시작';
+
+  @override
+  String get setupEmbeddedPairAndStart => 'Dextop 액세스 설정';
+
+  @override
+  String get setupEmbeddedIncluded => 'Dextop 액세스 서비스 포함됨';
+
+  @override
+  String get setupEmbeddedConnectedDescription => 'Dextop 액세스 권한을 사용할 수 있습니다.';
+
+  @override
+  String get setupEmbeddedConfigure => '무선 디버깅 페어링';
+
+  @override
+  String get setupEmbeddedPairingFailed => '페어링에 실패했습니다';
+
+  @override
+  String get setupEmbeddedStartFailed => 'Dextop 액세스 서비스를 시작할 수 없습니다';
+
+  @override
+  String get setupEmbeddedNotificationPermission => '알림 권한';
+
+  @override
+  String get setupEmbeddedAllowNotifications => '알림 허용';
+
+  @override
+  String get setupEmbeddedSearchingPairing => '페어링 서비스를 검색하는 중';
+
+  @override
+  String get setupEmbeddedPairingServiceFound => '페어링 서비스를 찾았습니다';
+
+  @override
+  String get setupEmbeddedPairingInProgress => '페어링 중';
+
+  @override
+  String get setupEmbeddedPairingServiceNotFound => '페어링 서비스를 찾을 수 없습니다';
+
+  @override
+  String get setupEmbeddedRetryPairing => '페어링 다시 시도';
+
+  @override
+  String get setupEmbeddedPairingNotificationReady => '알림 입력란에 6자리 코드를 입력하세요.';
+
+  @override
+  String get experimentalCoverDisplay => '커버 디스플레이 세션';
+
+  @override
+  String get experimentalCoverDisplayDescription =>
+      '폴더블 커버 화면에서 Android 또는 독립적인 Dextop 세션을 사용합니다';
+
+  @override
+  String get experimentalCoverDisplayUnavailable => '폴더블 기기에서만 사용할 수 있습니다';
 }

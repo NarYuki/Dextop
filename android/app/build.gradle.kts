@@ -50,11 +50,15 @@ android {
 
     defaultConfig {
         applicationId = "moe.n4tsu.dextop"
-        minSdk = 29
+        // Dextop relies on the modern display/windowing APIs introduced with
+        // Android 11. Keeping the declared floor aligned with that runtime
+        // contract avoids exposing an unsupported setup path on Android 10.
+        minSdk = 30
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
         buildConfigField("String", "CAST_RECEIVER_APP_ID", "\"$castReceiverAppId\"")
+        buildConfigField("boolean", "EMBEDDED_STELLAR", "true")
 
         externalNativeBuild {
             cmake {
@@ -63,9 +67,29 @@ android {
         }
     }
 
+    flavorDimensions += "distribution"
+    productFlavors {
+        create("github") {
+            dimension = "distribution"
+            buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"github\"")
+            buildConfigField("boolean", "EMBEDDED_STELLAR", "true")
+        }
+        create("play") {
+            dimension = "distribution"
+            buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"play\"")
+            buildConfigField("boolean", "EMBEDDED_STELLAR", "true")
+        }
+    }
+
     buildFeatures {
         buildConfig = true
         aidl = true
+    }
+
+    packaging {
+        resources {
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+        }
     }
 
     externalNativeBuild {
@@ -97,6 +121,7 @@ android {
             }
             isMinifyEnabled = true
             isShrinkResources = true
+            proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
@@ -125,11 +150,18 @@ dependencies {
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+    // 2.1.1 is the newest Kadb line compatible with this project's compileSdk 36.
+    implementation("com.flyfishxu:kadb:2.1.1")
     testImplementation(kotlin("test"))
 }
 
 tasks.configureEach {
-    if (name == "packageRelease" || name == "bundleRelease") {
+    if (name in setOf(
+            "packageGithubRelease",
+            "bundleGithubRelease",
+            "packagePlayRelease",
+            "bundlePlayRelease"
+        )) {
         doFirst {
             if (!releaseSigningReady) {
                 throw GradleException(

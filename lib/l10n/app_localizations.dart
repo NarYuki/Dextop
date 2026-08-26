@@ -8,6 +8,7 @@ import 'package:intl/intl.dart' as intl;
 import 'app_localizations_en.dart';
 import 'app_localizations_ja.dart';
 import 'app_localizations_ko.dart';
+import 'app_localizations_pt.dart';
 import 'app_localizations_ru.dart';
 import 'app_localizations_zh.dart';
 
@@ -100,6 +101,8 @@ abstract class AppLocalizations {
     Locale('en'),
     Locale('ja'),
     Locale('ko'),
+    Locale('pt'),
+    Locale('pt', 'BR'),
     Locale('ru'),
     Locale('zh'),
   ];
@@ -344,6 +347,84 @@ abstract class AppLocalizations {
   /// **'アプリ情報'**
   String get appInfo;
 
+  /// No description provided for @appInfoEmbeddedBinder.
+  ///
+  /// In ja, this message translates to:
+  /// **'内蔵Binder'**
+  String get appInfoEmbeddedBinder;
+
+  /// No description provided for @appInfoEmbeddedBinderIncluded.
+  ///
+  /// In ja, this message translates to:
+  /// **'このビルドに内蔵されています'**
+  String get appInfoEmbeddedBinderIncluded;
+
+  /// No description provided for @appInfoEmbeddedBinderNotIncluded.
+  ///
+  /// In ja, this message translates to:
+  /// **'このビルドには内蔵されていません'**
+  String get appInfoEmbeddedBinderNotIncluded;
+
+  /// No description provided for @appInfoEmbeddedBinderProvider.
+  ///
+  /// In ja, this message translates to:
+  /// **'使用状態'**
+  String get appInfoEmbeddedBinderProvider;
+
+  /// No description provided for @appInfoEmbeddedBinderSelected.
+  ///
+  /// In ja, this message translates to:
+  /// **'使用中'**
+  String get appInfoEmbeddedBinderSelected;
+
+  /// No description provided for @appInfoEmbeddedBinderStandby.
+  ///
+  /// In ja, this message translates to:
+  /// **'外部プロバイダーを使用中'**
+  String get appInfoEmbeddedBinderStandby;
+
+  /// No description provided for @appInfoEmbeddedBinderConnection.
+  ///
+  /// In ja, this message translates to:
+  /// **'Binder接続'**
+  String get appInfoEmbeddedBinderConnection;
+
+  /// No description provided for @appInfoEmbeddedBinderPermission.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop権限'**
+  String get appInfoEmbeddedBinderPermission;
+
+  /// No description provided for @appInfoEmbeddedBinderNotifications.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知権限'**
+  String get appInfoEmbeddedBinderNotifications;
+
+  /// No description provided for @appInfoStatusConnected.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続済み'**
+  String get appInfoStatusConnected;
+
+  /// No description provided for @appInfoStatusDisconnected.
+  ///
+  /// In ja, this message translates to:
+  /// **'未接続'**
+  String get appInfoStatusDisconnected;
+
+  /// No description provided for @appInfoStatusGranted.
+  ///
+  /// In ja, this message translates to:
+  /// **'許可済み'**
+  String get appInfoStatusGranted;
+
+  /// No description provided for @appInfoStatusNotGranted.
+  ///
+  /// In ja, this message translates to:
+  /// **'未許可'**
+  String get appInfoStatusNotGranted;
+
   /// No description provided for @licenses.
   ///
   /// In ja, this message translates to:
@@ -494,6 +575,18 @@ abstract class AppLocalizations {
   /// **'戻る'**
   String get back;
 
+  /// No description provided for @review.
+  ///
+  /// In ja, this message translates to:
+  /// **'再確認'**
+  String get review;
+
+  /// No description provided for @reviewThreeFingerGesture.
+  ///
+  /// In ja, this message translates to:
+  /// **'3本指ジェスチャーを再確認'**
+  String get reviewThreeFingerGesture;
+
   /// No description provided for @continueLabel.
   ///
   /// In ja, this message translates to:
@@ -599,7 +692,7 @@ abstract class AppLocalizations {
   /// No description provided for @setupProviderChoiceDescription.
   ///
   /// In ja, this message translates to:
-  /// **'StellarとShizukuの両方がインストールされています。Dextopで使用するサービスを選択してください。'**
+  /// **'複数のShizuku互換サービスがインストールされています。Dextopで使用するサービスを選択してください。'**
   String get setupProviderChoiceDescription;
 
   /// No description provided for @setupUseStellar.
@@ -667,6 +760,12 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'Shizukuの設定を確認しました'**
   String get setupVerified;
+
+  /// No description provided for @setupAccessVerified.
+  ///
+  /// In ja, this message translates to:
+  /// **'アクセス権限の設定を確認しました'**
+  String get setupAccessVerified;
 
   /// No description provided for @setupVerificationFailed.
   ///
@@ -2773,6 +2872,168 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'Android Autoでは、接続した車載画面に合わせた独立したデスクトップを使用します。'**
   String get autoDisplayModeDescription;
+
+  /// No description provided for @setupEmbeddedTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopアクセスを設定'**
+  String get setupEmbeddedTitle;
+
+  /// No description provided for @setupEmbeddedDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopの内蔵アクセスサービスを接続します。\n\n1. 通知を許可します。\n2. ワイヤレスデバッグを開いて有効にします。\n3. 「ペア設定コードによるデバイスのペア設定」をタップします。\n4. 通知の入力欄にAndroidが表示した6桁のコードを入力します。'**
+  String get setupEmbeddedDescription;
+
+  /// No description provided for @setupEmbeddedSetupDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワイヤレスデバッグの「ペア設定コードによるデバイスのペア設定」を開いてください。ペア設定サービスを検出すると、6桁のコードを入力する通知が自動的に表示されます。'**
+  String get setupEmbeddedSetupDescription;
+
+  /// No description provided for @setupEmbeddedWirelessDebuggingDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Androidのワイヤレスデバッグ設定を開きます。ここでワイヤレスデバッグを有効にしてください。'**
+  String get setupEmbeddedWirelessDebuggingDescription;
+
+  /// No description provided for @setupEmbeddedOpenWirelessDebugging.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワイヤレスデバッグを開く'**
+  String get setupEmbeddedOpenWirelessDebugging;
+
+  /// No description provided for @setupEmbeddedEnableWirelessDebugging.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワイヤレスデバッグを有効化'**
+  String get setupEmbeddedEnableWirelessDebugging;
+
+  /// No description provided for @setupEmbeddedPairingCode.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定コード'**
+  String get setupEmbeddedPairingCode;
+
+  /// No description provided for @setupEmbeddedPairingCodeHint.
+  ///
+  /// In ja, this message translates to:
+  /// **'Androidに表示された6桁のコード'**
+  String get setupEmbeddedPairingCodeHint;
+
+  /// No description provided for @setupEmbeddedInvalidCode.
+  ///
+  /// In ja, this message translates to:
+  /// **'有効な6桁のコードを入力してください'**
+  String get setupEmbeddedInvalidCode;
+
+  /// No description provided for @setupEmbeddedPair.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定して開始'**
+  String get setupEmbeddedPair;
+
+  /// No description provided for @setupEmbeddedPairAndStart.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopアクセスを設定'**
+  String get setupEmbeddedPairAndStart;
+
+  /// No description provided for @setupEmbeddedIncluded.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopアクセスサービス内蔵'**
+  String get setupEmbeddedIncluded;
+
+  /// No description provided for @setupEmbeddedConnectedDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopのアクセス権限を使用できます。'**
+  String get setupEmbeddedConnectedDescription;
+
+  /// No description provided for @setupEmbeddedConfigure.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワイヤレスデバッグのペア設定'**
+  String get setupEmbeddedConfigure;
+
+  /// No description provided for @setupEmbeddedPairingFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定に失敗しました'**
+  String get setupEmbeddedPairingFailed;
+
+  /// No description provided for @setupEmbeddedStartFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopアクセスサービスを開始できませんでした'**
+  String get setupEmbeddedStartFailed;
+
+  /// No description provided for @setupEmbeddedNotificationPermission.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知権限'**
+  String get setupEmbeddedNotificationPermission;
+
+  /// No description provided for @setupEmbeddedAllowNotifications.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知を許可'**
+  String get setupEmbeddedAllowNotifications;
+
+  /// No description provided for @setupEmbeddedSearchingPairing.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定サービスを検索中'**
+  String get setupEmbeddedSearchingPairing;
+
+  /// No description provided for @setupEmbeddedPairingServiceFound.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定サービスが見つかりました'**
+  String get setupEmbeddedPairingServiceFound;
+
+  /// No description provided for @setupEmbeddedPairingInProgress.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定中'**
+  String get setupEmbeddedPairingInProgress;
+
+  /// No description provided for @setupEmbeddedPairingServiceNotFound.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定サービスが見つかりません'**
+  String get setupEmbeddedPairingServiceNotFound;
+
+  /// No description provided for @setupEmbeddedRetryPairing.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定を再試行'**
+  String get setupEmbeddedRetryPairing;
+
+  /// No description provided for @setupEmbeddedPairingNotificationReady.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知の入力欄に6桁のコードを入力してください。'**
+  String get setupEmbeddedPairingNotificationReady;
+
+  /// No description provided for @experimentalCoverDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバーディスプレイセッション'**
+  String get experimentalCoverDisplay;
+
+  /// No description provided for @experimentalCoverDisplayDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'折りたたみ端末のカバー画面で通常のAndroidまたは独立したDextopセッションを使用します'**
+  String get experimentalCoverDisplayDescription;
+
+  /// No description provided for @experimentalCoverDisplayUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'折りたたみ端末でのみ利用できます'**
+  String get experimentalCoverDisplayUnavailable;
 }
 
 class _AppLocalizationsDelegate
@@ -2785,14 +3046,32 @@ class _AppLocalizationsDelegate
   }
 
   @override
-  bool isSupported(Locale locale) =>
-      <String>['en', 'ja', 'ko', 'ru', 'zh'].contains(locale.languageCode);
+  bool isSupported(Locale locale) => <String>[
+    'en',
+    'ja',
+    'ko',
+    'pt',
+    'ru',
+    'zh',
+  ].contains(locale.languageCode);
 
   @override
   bool shouldReload(_AppLocalizationsDelegate old) => false;
 }
 
 AppLocalizations lookupAppLocalizations(Locale locale) {
+  // Lookup logic when language+country codes are specified.
+  switch (locale.languageCode) {
+    case 'pt':
+      {
+        switch (locale.countryCode) {
+          case 'BR':
+            return AppLocalizationsPtBr();
+        }
+        break;
+      }
+  }
+
   // Lookup logic when only language code is specified.
   switch (locale.languageCode) {
     case 'en':
@@ -2801,6 +3080,8 @@ AppLocalizations lookupAppLocalizations(Locale locale) {
       return AppLocalizationsJa();
     case 'ko':
       return AppLocalizationsKo();
+    case 'pt':
+      return AppLocalizationsPt();
     case 'ru':
       return AppLocalizationsRu();
     case 'zh':

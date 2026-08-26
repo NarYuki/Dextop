@@ -79,6 +79,7 @@ import android.widget.HorizontalScrollView
 import android.widget.SeekBar
 import android.widget.TextView
 import android.widget.ProgressBar
+import android.widget.Toast
 import android.animation.ValueAnimator
 import android.animation.LayoutTransition
 import android.widget.GridLayout
@@ -330,7 +331,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
 
-        fun isFoldableDevice(): Boolean = instance?.isFoldableDevice() == true
+        /**
+         * A cover session is only exposed on devices for which at least one
+         * hardware foldability signal is available.  While the accessibility
+         * service is connected the WindowManager folding API is also queried;
+         * before that, a hinge sensor or multiple internal panels is enough to
+         * identify a foldable without relying on a model-name allowlist.
+         */
+        fun isFoldableDevice(context: Context? = null): Boolean {
+            instance?.let { if (it.isFoldableDevice()) return true }
+            val resolved = context ?: return false
+            val displays = resolved.getSystemService(DisplayManager::class.java)
+            val internalPanels = displays.displays.count { display ->
+                runCatching {
+                    Display::class.java.getMethod("getType").invoke(display) as Int == 1
+                }.getOrDefault(display.displayId == Display.DEFAULT_DISPLAY)
+            }
+            val hasHinge = resolved.getSystemService(SensorManager::class.java)
+                .getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) != null
+            return internalPanels >= 2 || hasHinge
+        }
 
         fun updateLaptopModeEnabled(enabled: Boolean) {
             instance?.root?.post { instance?.applyFlutterLaptopModeSetting(enabled) }
@@ -616,6 +636,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private val physicalInputRouter by lazy { PhysicalInputRouter(this, privilegedAccess) }
     private val externalDisplayDetector by lazy { ExternalDisplayDetector(this) }
+    private val coverDisplayController by lazy { CoverDisplaySessionController(this) }
     private val sessionJournal by lazy { SessionJournal(this) }
     private val internalRefreshRateController by lazy {
         InternalRefreshRateController(this, sessionJournal)
@@ -788,6 +809,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var mouseActuallyRouted = false
     private var keyboardActuallyRouted = false
     private var physicalExternalDisplayConnected = false
+    // Keep the last physical-display inventory independently from input
+    // routing.  Samsung leaves physical mouse routing disabled, but its
+    // external panels still participate in the display-topology transaction.
+    // Once DisplayManager reports removal the panel is no longer returned by
+    // snapshot(), so this is the only reliable way to identify that callback
+    // as an external-display disconnect.
+    @Volatile
+    private var knownPhysicalExternalDisplayIds: Set<Int> = emptySet()
     private var lastInputDiagnosticAt = 0L
     private var lastTouchDiagnosticAt = 0L
     private var inputDiagnosticSequence = 0L
@@ -810,6 +839,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var touchscreenReaderDevice = ""
     private var touchscreenReaderCandidateCount = 0
     private var rawTouchscreenTopologyRefreshGeneration = 0L
+    /**
+     * Display 0 can emit change callbacks without a corresponding input
+     * geometry change on recent Samsung builds.  Re-publishing the native
+     * EventHub reader for each of those callbacks interrupts an otherwise
+     * healthy pointer stream, so retain the last configuration that actually
+     * reached the reader.  Input-device callbacks still force a refresh.
+     */
+    private var appliedRawTouchscreenTopologyFingerprint: String? = null
     private val privilegedInputClientDelegate: Lazy<PrivilegedInputClient> = lazy {
         PrivilegedInputClient(this, object : PrivilegedInputClient.Listener {
             override fun onInputState(category: String, message: String) {
@@ -1087,12 +1124,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val now = SystemClock.uptimeMillis()
         val motion = event as? MotionEvent
         val action = motion?.actionMasked ?: (event as? KeyEvent)?.action ?: -1
-        val move = motion != null && (
-                action == MotionEvent.ACTION_MOVE || action == MotionEvent.ACTION_HOVER_MOVE
-                )
-        // MOVE/HOVER events are sampled to keep the report useful instead of
-        // filling the bounded session file. Rejections are always retained.
-        if (move && accepted && now - lastInputDiagnosticAt < 250L) return
+        // Diagnostics are written synchronously to the session report. Logging
+        // every accepted down/up/move frame on the overlay's main thread makes
+        // pointer motion visibly hitch on high-refresh Samsung panels. Keep all
+        // rejected events, but sample successful input as a whole.
+        if (accepted && now - lastInputDiagnosticAt < 750L) return
         lastInputDiagnosticAt = now
         inputDiagnosticSequence += 1
         val detail = buildString {
@@ -1113,9 +1149,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun recordTouchRouting(event: MotionEvent, direct: Boolean) {
         val now = SystemClock.uptimeMillis()
-        val move = event.actionMasked == MotionEvent.ACTION_MOVE ||
-                event.actionMasked == MotionEvent.ACTION_HOVER_MOVE
-        if (move && now - lastTouchDiagnosticAt < 250L) return
+        // See recordInputDispatch(): session logging must never become part of
+        // the touch rendering path. One geometry sample per 750 ms is enough
+        // for a useful report without synchronous file churn.
+        if (now - lastTouchDiagnosticAt < 750L) return
         lastTouchDiagnosticAt = now
         val view = surfaceView
         val mappedX = if (view != null && view.width > 0) {
@@ -1148,13 +1185,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "hinge sensor angle=$angle apiFoldable=$foldingApiFoldable " +
                         "apiHalfOpened=$foldingApiLaptopPosture apiHorizontal=$foldingApiHorizontalHinge"
             )
+            scheduleCoverDisplayLifecycleCheck("hinge_sensor")
             updateLaptopModeForHinge(angle)
         }
     }
     private val inputDeviceListener = object : InputManager.InputDeviceListener {
         override fun onInputDeviceAdded(deviceId: Int) {
             refreshPhysicalInputState()
-            scheduleRawTouchscreenTopologyRefresh("input_device_added_$deviceId")
+            scheduleRawTouchscreenTopologyRefresh("input_device_added_$deviceId", force = true)
             if (laptopKeyboardRequested) {
                 scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
             }
@@ -1162,7 +1200,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         override fun onInputDeviceRemoved(deviceId: Int) {
             refreshPhysicalInputState()
-            scheduleRawTouchscreenTopologyRefresh("input_device_removed_$deviceId")
+                scheduleRawTouchscreenTopologyRefresh("input_device_removed_$deviceId", force = true)
             if (deviceId == laptopKeyboardDeviceId) {
                 finishAllLaptopKeyPresses()
                 clearLaptopKeyboardPublication("input_device_removed")
@@ -1174,7 +1212,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         override fun onInputDeviceChanged(deviceId: Int) {
             refreshPhysicalInputState()
-            scheduleRawTouchscreenTopologyRefresh("input_device_changed_$deviceId")
+            scheduleRawTouchscreenTopologyRefresh("input_device_changed_$deviceId", force = true)
             if (laptopKeyboardRequested &&
                 (deviceId == laptopKeyboardDeviceId || laptopKeyboardDeviceId < 0)
             ) {
@@ -1185,6 +1223,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val displayListener = object : DisplayManager.DisplayListener {
         override fun onDisplayAdded(displayId: Int) {
             refreshFoldingApiState("display_added", force = true)
+            scheduleCoverDisplayLifecycleCheck("display_added_$displayId")
             if (active) OperationLog.i(
                 this@MirrorService,
                 "DisplayGeometry",
@@ -1204,7 +1243,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
         override fun onDisplayRemoved(displayId: Int) {
+            val removedPhysicalExternalDisplay = displayId in knownPhysicalExternalDisplayIds
             refreshFoldingApiState("display_removed", force = true)
+            scheduleCoverDisplayLifecycleCheck("display_removed_$displayId")
             if (active) OperationLog.i(
                 this@MirrorService,
                 "DisplayGeometry",
@@ -1212,6 +1253,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             )
             if (active) refreshMenuGeometryAfterDisplayChange()
             refreshExternalDisplayState()
+            if (removedPhysicalExternalDisplay) {
+                scheduleExternalDisplayDisconnectTopologyReconcile(displayId)
+            }
             scheduleInternal120HzReapply(requireExternalDisplay = false)
             scheduleLaptopModeReevaluation("display_removed")
             if (displayId == laptopKeyboardDisplayId) {
@@ -1226,6 +1270,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onDisplayChanged(displayId: Int) {
             // Preserve the edge walk before refreshing a changed source display.
             refreshFoldingApiState("display_changed", force = true)
+            scheduleCoverDisplayLifecycleCheck("display_changed_$displayId")
             if (active) OperationLog.i(
                 this@MirrorService,
                 "DisplayGeometry",
@@ -1245,6 +1290,33 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             } else if (active && displayId == targetDisplayId && mirrorDisplayId >= 0) {
                 scheduleMirrorRefresh("source display changed")
             }
+        }
+    }
+
+    private var coverLifecycleCheckGeneration = 0
+
+    private fun scheduleCoverDisplayLifecycleCheck(reason: String) {
+        if (!coverDisplayController.state().desktopActive) return
+        val generation = ++coverLifecycleCheckGeneration
+        Handler(mainLooper).postDelayed({
+            if (generation != coverLifecycleCheckGeneration) return@postDelayed
+            refreshFoldingApiState("cover_lifecycle", force = true)
+            coverDisplayController.reconcileLifecycle(reason, coverDisplayLifecycleToken())
+        }, 300L)
+    }
+
+    private fun coverDisplayLifecycleToken(): String {
+        val manager = getSystemService(DisplayManager::class.java)
+        val display = manager.getDisplay(Display.DEFAULT_DISPLAY)
+        val mode = display?.mode
+        val internalIds = internalDisplays(manager).map { it.displayId }.sorted()
+        return buildString {
+            append(display?.name.orEmpty())
+            append('|').append(mode?.physicalWidth ?: 0)
+            append('x').append(mode?.physicalHeight ?: 0)
+            append("|internal=").append(internalIds.joinToString(","))
+            append("|foldable=").append(isFoldableDevice())
+            append("|half=").append(foldingApiLaptopPosture)
         }
     }
 
@@ -1278,15 +1350,32 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val generation = ++topologyReapplyGeneration
         android.os.Handler(mainLooper).postDelayed({
             if (generation != topologyReapplyGeneration || !active) return@postDelayed
-            runCatching {
-                val topologyOverlays = buildSet {
-                    if (mirrorDisplayId >= 0) add(mirrorDisplayId)
-                    AndroidAutoMirrorActivity.autoOverlayDisplayIds().forEach(::add)
-                }
-                DisplayEnvironmentSettings(this).activateTopologyForOverlays(topologyOverlays)
-            }
-                .onFailure { Log.e(logTag, "display topology reapply after reconnect failed", it) }
+            activateTopologyForIndependentDisplays("display_reconnect")
         }, 750)
+    }
+
+    /**
+     * A topology write includes every currently connected physical panel.  On
+     * unplug, the removed panel vanishes from DisplayManager before this
+     * callback arrives, so merely refreshing the input routes leaves a stale
+     * node in the system topology.  Rebuild from the surviving displays after
+     * the adapter has settled; do not stop the phone-side Dextop session.
+     */
+    private fun scheduleExternalDisplayDisconnectTopologyReconcile(removedDisplayId: Int) {
+        if (!active || stopping || removedDisplayId == mirrorDisplayId) return
+        val generation = ++topologyReapplyGeneration
+        Handler(mainLooper).postDelayed({
+            if (generation != topologyReapplyGeneration || !active || stopping) return@postDelayed
+            val manager = getSystemService(DisplayManager::class.java)
+            if (manager.getDisplay(removedDisplayId) != null) return@postDelayed
+            if (mirrorDisplayId < 0 || manager.getDisplay(mirrorDisplayId) == null) return@postDelayed
+            activateTopologyForIndependentDisplays("external_display_removed")
+            OperationLog.i(
+                this,
+                "DisplayTopology",
+                "external display removed id=$removedDisplayId; rebuilt topology from surviving displays"
+            )
+        }, 300L)
     }
 
     /**
@@ -1435,7 +1524,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             } ?: Log.i(logTag, "hinge-angle sensor unavailable")
         }
         getSystemService(DisplayManager::class.java).registerDisplayListener(displayListener, null)
-        physicalExternalDisplayConnected = physicalInputRoutingSupported && externalDisplayDetector.snapshot().connected
+        val externalState = externalDisplayDetector.snapshot()
+        knownPhysicalExternalDisplayIds = externalState.displayIds.toSet()
+        physicalExternalDisplayConnected = physicalInputRoutingSupported && externalState.connected
         if (!physicalInputRoutingSupported) runCatching { physicalInputRouter.restore() }
         physicalMouseActive = false
         if (!screenReceiverRegistered) {
@@ -1825,7 +1916,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             setFitInsetsIgnoringVisibility(true)
             softInputMode = WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE
             if (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                    .getBoolean("flutter.keep_awake_during_session", false)
+                    .getBoolean("flutter.keep_awake_during_session", true)
             ) {
                 flags = flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             }
@@ -2488,6 +2579,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (attempt < 15) {
                 scheduleVirtualMouseReadyCheck(generation, profile, attempt + 1)
             } else {
+                // Some OEM InputReader builds accept the uinput touchpad node
+                // but never publish it with SOURCE_TOUCHPAD. Retry this
+                // session as a relative mouse before falling back to the
+                // software cursor. The stored user preference is untouched,
+                // so a later firmware update retries true touchpad input.
+                if (profile == "touchpad" && virtualPointerRuntimeProfile != "mouse") {
+                    OperationLog.w(
+                        this,
+                        "InputRouting",
+                        "SOURCE_TOUCHPAD was not published; retrying with virtual mouse"
+                    )
+                    Log.w(
+                        logTag,
+                        "uinput touchpad was not published by InputReader; retrying as virtual mouse"
+                    )
+                    stopVirtualMouse()
+                    virtualPointerRuntimeProfile = "mouse"
+                    startVirtualMouse("mouse")
+                    return@Runnable
+                }
                 OperationLog.w(
                     this,
                     "InputRouting",
@@ -4986,15 +5097,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * independent so a transient failure cannot skip the second write.
      */
     private fun clearOverlayDisplayRequestTwice(reason: String) {
-        val preservedAutoSpecs = AndroidAutoMirrorActivity.autoOverlaySpecs()
+        val preservedSpecs = AndroidAutoMirrorActivity.autoOverlaySpecs() +
+            coverDisplayController.ownedSpecs()
         repeat(2) { pass ->
-            runCatching { displayBackend.clearRequestPreserving(preservedAutoSpecs) }
+            runCatching { displayBackend.clearRequestPreserving(preservedSpecs) }
                 .onSuccess {
                     OperationLog.i(
                         this,
                         "DisplayBackend",
                         "clear request issued reason=$reason pass=${pass + 1}/2 " +
-                                "preservedAuto=${preservedAutoSpecs.isNotEmpty()}"
+                                "preservedIndependent=${preservedSpecs.isNotEmpty()}"
                     )
                 }
                 .onFailure {
@@ -5038,10 +5150,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         detachHostWindow()
         android.os.Handler(mainLooper).postDelayed({
             val autoSessionActive = AndroidAutoMirrorActivity.isAutoSessionActive()
+            val coverSessionActive = coverDisplayController.state().desktopActive
             runCatching {
-                if (autoSessionActive) {
+                if (autoSessionActive || coverSessionActive) {
                     DisplayEnvironmentSettings(this).activateTopologyForOverlays(
-                        AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+                        AndroidAutoMirrorActivity.autoOverlayDisplayIds() +
+                            coverDisplayController.ownedDisplayIds()
                     )
                 } else {
                     DisplayEnvironmentSettings(this).restoreTopology()
@@ -5050,7 +5164,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             releaseMirror()
             clearOverlayDisplayRequestTwice("temporary_android_return")
             targetDisplayId = -1
-            if (!autoSessionActive) desktopModeConfigurator.restore()
+            if (!autoSessionActive && !coverSessionActive) desktopModeConfigurator.restore()
             runCatching { internalRefreshRateController.restore() }
                 .onFailure { Log.e(logTag, "refresh-rate restoration failed", it) }
             MainActivity.restoreOrientation()
@@ -5083,16 +5197,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             .split(',').filter { it in allControlIds }.toMutableList()
         saved.removeAll { it !in controlIds }
         controlIds.forEach { if (it !in saved) saved.add(it) }
+        saved.remove("cover")
+        if ("cover" in controlIds) {
+            saved.add((saved.indexOf("android") + 1).coerceAtLeast(0), "cover")
+        }
         saved.remove("laptop")
         if ("laptop" in controlIds) {
-            saved.add((saved.indexOf("android") + 1).coerceAtLeast(0), "laptop")
+            val insertAfter = saved.indexOf("cover").takeIf { it >= 0 }
+                ?: saved.indexOf("android")
+            saved.add((insertAfter + 1).coerceAtLeast(0), "laptop")
         }
         return saved
     }
 
     private val allControlIds
         get() = listOf(
-            "modes", "volume", "brightness", "resolution", "android", "laptop",
+            "modes", "volume", "brightness", "resolution", "android", "cover", "laptop",
             "stop", "reconnect", "orientation", "rotate_180", "cast"
         )
     private val controlIds
@@ -5102,6 +5222,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 // without requiring a hinge sensor, but is hidden on clearly
                 // phone-sized devices where the two-pane surface is unusable.
                 "laptop" -> demoMode || isLaptopCapableDevice()
+                // This is deliberately independent from the Fold8/Ultra laptop
+                // profile. Any concrete folding signal qualifies only this
+                // experimental cover-session control.
+                "cover" -> demoMode || (isFoldableDevice() &&
+                    getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                        .getBoolean("flutter.experimental_cover_display", false))
                 else -> true
             }
         }
@@ -5184,6 +5310,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 else temporarilyReturnToAndroid()
             }
 
+            "cover" -> actionButton(
+                R.drawable.ic_smartphone,
+                NativeStrings.text("nativeCoverDisplay"),
+            ) {
+                if (demoMode) showCoverDisplayDemoMenu(panel)
+                else showCoverDisplayMenu(panel)
+            }
+
             "laptop" -> actionButton(
                 R.drawable.ic_keyboard,
                 NativeStrings.text("nativeLaptopMode")
@@ -5258,6 +5392,105 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         applyGridPositions()
         panel.addView(grid, LinearLayout.LayoutParams(-1, -2))
+    }
+
+    private fun showCoverDisplayMenu(panel: LinearLayout) {
+        stopCastRouteDiscovery()
+        animateMenuResize(panel)
+        panel.removeAllViews()
+        panel.addView(menuTitle(
+            NativeStrings.text("nativeCoverDisplay"),
+            NativeStrings.text("nativeReturn"),
+        ) { showMainMenu(panel) })
+
+        val state = coverDisplayController.state()
+        panel.addView(actionButton(
+            R.drawable.ic_smartphone,
+            NativeStrings.text(
+                if (state.androidVisible) "nativeStopCoverAndroid" else "nativeOpenCoverAndroid",
+            ),
+        ) {
+            coverDisplayController.setAndroidVisible(!state.androidVisible) { result ->
+                result.onFailure { showCoverDisplayFailure(it) }
+                showCoverDisplayMenu(panel)
+            }
+        })
+        panel.addView(actionButton(
+            R.drawable.ic_monitor,
+            NativeStrings.text(
+                if (state.desktopActive) "nativeStopCoverDextop" else "nativeStartCoverDextop",
+            ),
+        ) {
+            if (state.desktopActive) {
+                coverDisplayController.stopDesktop { result ->
+                    result.onFailure { showCoverDisplayFailure(it) }
+                    showCoverDisplayMenu(panel)
+                }
+            } else {
+                coverDisplayController.startDesktop(
+                    targetWidth,
+                    targetHeight,
+                    density,
+                    secureDisplay,
+                    ::coverDisplayLifecycleToken,
+                ) { result ->
+                    result.onSuccess {
+                        activateTopologyForIndependentDisplays("cover_started")
+                    }.onFailure { showCoverDisplayFailure(it) }
+                    showCoverDisplayMenu(panel)
+                }
+            }
+        })
+        scheduleMenuHeightUpdate()
+    }
+
+    /**
+     * The setup overlay must show the same destination menu as the live
+     * cover-display control, without attempting a vendor device-state change.
+     */
+    private fun showCoverDisplayDemoMenu(panel: LinearLayout) {
+        stopCastRouteDiscovery()
+        animateMenuResize(panel)
+        panel.removeAllViews()
+        panel.addView(menuTitle(
+            NativeStrings.text("nativeCoverDisplay"),
+            NativeStrings.text("nativeReturn"),
+        ) { showMainMenu(panel) })
+        panel.addView(menuHint(NativeStrings.text("nativeCoverDisplayDescription")))
+        panel.addView(actionButton(
+            R.drawable.ic_smartphone,
+            NativeStrings.text("nativeOpenCoverAndroid"),
+        ) {
+            demoExplanation(NativeStrings.text("nativeCoverAndroidDescription"))
+        })
+        panel.addView(actionButton(
+            R.drawable.ic_monitor,
+            NativeStrings.text("nativeStartCoverDextop"),
+        ) {
+            demoExplanation(NativeStrings.text("nativeCoverDextopDescription"))
+        })
+        scheduleMenuHeightUpdate()
+    }
+
+    private fun showCoverDisplayFailure(error: Throwable) {
+        OperationLog.e(this, "CoverDisplay", "session update failed", error)
+        Toast.makeText(
+            this,
+            error.message ?: NativeStrings.text("nativeCoverDisplayFailed"),
+            Toast.LENGTH_LONG,
+        ).show()
+    }
+
+    private fun activateTopologyForIndependentDisplays(reason: String) {
+        runCatching {
+            DisplayEnvironmentSettings(this).activateTopologyForOverlays(buildSet {
+                if (mirrorDisplayId >= 0) add(mirrorDisplayId)
+                addAll(AndroidAutoMirrorActivity.autoOverlayDisplayIds())
+                addAll(coverDisplayController.ownedDisplayIds())
+            })
+        }.onFailure {
+            OperationLog.w(this, "DisplayTopology", "topology activation skipped reason=$reason", it)
+        }
     }
 
     private fun squareControl(id: String): View = when (id) {
@@ -5665,7 +5898,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun refreshExternalDisplayState() {
         root?.post {
-            val connected = physicalInputRoutingSupported && externalDisplayDetector.snapshot().connected
+            val externalState = externalDisplayDetector.snapshot()
+            knownPhysicalExternalDisplayIds = externalState.displayIds.toSet()
+            val connected = physicalInputRoutingSupported && externalState.connected
             if (connected == physicalExternalDisplayConnected) return@post
             physicalExternalDisplayConnected = connected
             val display = getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId)
@@ -7530,9 +7765,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // No overlay request is active during this wait. Treat *any* overlay
         // still reported by DisplayManager as stale, including one whose id
         // was published just after the initial inventory snapshot.
-        val autoOverlayIds = AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+        val independentDisplayIds = AndroidAutoMirrorActivity.autoOverlayDisplayIds() +
+            coverDisplayController.ownedDisplayIds()
         val remaining = displayBackend.overlayDisplayIds()
-            .filterNot { it in autoOverlayIds }
+            .filterNot { it in independentDisplayIds }
             .toSet()
         if (remaining.isNotEmpty()) {
             if (attempt < 60) {
@@ -7565,7 +7801,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 density,
                 secureDisplay,
                 decorations,
-                AndroidAutoMirrorActivity.autoOverlaySpecs()
+                AndroidAutoMirrorActivity.autoOverlaySpecs() +
+                    coverDisplayController.ownedSpecs()
             )
             waitForOverlay(existing, width, height, 0)
         }.onFailure { error ->
@@ -7580,8 +7817,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // A phone and Auto session may request the same logical spec. Never
         // attach the phone Surface to the Auto-owned display merely because
         // that display was allocated after the phone inventory snapshot.
-        val autoDisplayIds = AndroidAutoMirrorActivity.autoOverlayDisplayIds()
-        val display = displayBackend.findCreatedDisplay(existing, autoDisplayIds)
+        val independentDisplayIds = AndroidAutoMirrorActivity.autoOverlayDisplayIds() +
+            coverDisplayController.ownedDisplayIds()
+        val display = displayBackend.findCreatedDisplay(existing, independentDisplayIds)
         if (display == null) {
             if (attempt < 40) postMainDelayed(100L) {
                 waitForOverlay(existing, width, height, attempt + 1)
@@ -7636,16 +7874,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // IDisplayManager fork may reject its hidden transaction (for
             // example with RESTRICT_DISPLAY_MODES); that must not abort an
             // otherwise usable VirtualDisplay session.
-            runCatching {
-                val topologyOverlays = buildSet {
-                    if (mirrorDisplayId >= 0) add(mirrorDisplayId)
-                    AndroidAutoMirrorActivity.autoOverlayDisplayIds().forEach(::add)
-                }
-                DisplayEnvironmentSettings(this).activateTopologyForOverlays(topologyOverlays)
-            }.onFailure {
-                OperationLog.w(this, "DisplayTopology", "topology activation skipped", it)
-                Log.w(logTag, "topology activation skipped; mirroring remains active", it)
-            }
+            activateTopologyForIndependentDisplays("main_display_attached")
             displayCreationInProgress = false
             sessionJournal.running(targetDisplayId)
             val externalDisplays = externalDisplayDetector.snapshot()
@@ -8339,15 +8568,21 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
-    private fun scheduleRawTouchscreenTopologyRefresh(reason: String) {
+    private fun scheduleRawTouchscreenTopologyRefresh(reason: String, force: Boolean = false) {
         val refreshGeneration = ++rawTouchscreenTopologyRefreshGeneration
         root?.postDelayed({
             if (refreshGeneration != rawTouchscreenTopologyRefreshGeneration || !active) {
                 return@postDelayed
             }
             if (rawTouchscreenBridgeEligible()) {
+                val fingerprint = rawTouchscreenTopologyFingerprint()
+                if (!force && fingerprint == appliedRawTouchscreenTopologyFingerprint) {
+                    Log.d(logTag, "native input topology unchanged; skipping refresh reason=$reason")
+                    return@postDelayed
+                }
                 refreshPrivilegedInputConfig("topology_refresh:$reason")
                 startRawTouchscreenReaderIfEligible()
+                appliedRawTouchscreenTopologyFingerprint = fingerprint
             }
             val message = "native input topology refresh reason=$reason " +
                     "running=$touchscreenReaderRunning eligible=${rawTouchscreenBridgeEligible()}"
@@ -8355,6 +8590,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Log.i(logTag, message)
         }, 220L)
     }
+
+    private fun rawTouchscreenTopologyFingerprint(): String = listOf(
+        "profile=$virtualPointerRegisteredProfile",
+        "target=$targetDisplayId:$targetWidth:$targetHeight",
+        "rotation=${rawTouchscreenDisplayRotation()}",
+        "surface=${rawTouchscreenViewBounds(surfaceView)}",
+        "trackpad=${rawTouchscreenViewBounds(laptopTrackpadView)}",
+        "laptop=$laptopModeActive",
+        "direct=$directTouch"
+    ).joinToString(";")
 
     private fun startRawTouchscreenReaderIfEligible() {
         if (!rawTouchscreenBridgeEligible()) return
@@ -8368,6 +8613,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "trackpad=${rawTouchscreenViewBounds(laptopTrackpadView)}"
         OperationLog.i(this, "InputRouting", message)
         Log.i(logTag, message)
+        appliedRawTouchscreenTopologyFingerprint = rawTouchscreenTopologyFingerprint()
     }
 
     private fun rawTouchscreenViewBounds(view: View?): Rect? {
@@ -8388,6 +8634,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         touchscreenReaderReady = false
         touchscreenReaderCandidateCount = 0
         touchscreenReaderDevice = ""
+        appliedRawTouchscreenTopologyFingerprint = null
         if (wasRunning) {
             val message = "native EventHub routing state cleared reason=$reason"
             OperationLog.i(this, "InputRouting", message)
@@ -8645,10 +8892,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             releasePhoneRotation(clearSnapshot = true)
         }
         val autoSessionActive = AndroidAutoMirrorActivity.isAutoSessionActive()
+        val coverSessionActive = coverDisplayController.state().desktopActive
         runCatching {
-            if (autoSessionActive) {
+            if (autoSessionActive || coverSessionActive) {
                 DisplayEnvironmentSettings(this).activateTopologyForOverlays(
-                    AndroidAutoMirrorActivity.autoOverlayDisplayIds()
+                    AndroidAutoMirrorActivity.autoOverlayDisplayIds() +
+                        coverDisplayController.ownedDisplayIds()
                 )
             } else {
                 DisplayEnvironmentSettings(this).restoreTopology()
@@ -8661,11 +8910,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             runCatching { internalRefreshRateController.keepCurrentValue() }
                 .onFailure { Log.e(logTag, "unable to preserve 120 Hz after disconnect", it) }
         }
-        val restored = if (autoSessionActive) {
-            // The Auto overlay owns the shared desktop transaction until it
-            // stops. Restoring here would remove the still-running Auto
-            // display and would make the phone Stop button terminate both
-            // sessions.
+        val restored = if (autoSessionActive || coverSessionActive) {
+            // An independent Auto or cover overlay owns the shared desktop
+            // transaction until it stops. Restoring here would remove the
+            // still-running independent session.
             true
         } else {
             runCatching {
@@ -8673,7 +8921,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 sessionJournal.restoreSystemSettings()
             }.onFailure { Log.e(logTag, "settings restoration failed", it) }.isSuccess
         }
-        if (restored && !autoSessionActive) sessionJournal.clear()
+        if (restored && !autoSessionActive && !coverSessionActive) sessionJournal.clear()
         if (restored) {
             getSharedPreferences("dextop_cleanup_state", MODE_PRIVATE).edit()
                 .putBoolean("cleanup_pending", false)

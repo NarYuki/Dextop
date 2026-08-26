@@ -889,8 +889,13 @@ private:
             state("native_error", errnoText("open keyboard uinput"));
             return;
         }
+        // Android's InputReader only treats EV_KEY value=2 as a key repeat
+        // for keyboard devices that explicitly advertise EV_REP.  Without it
+        // laptop-overlay long presses delivered their first key-down but OEM
+        // builds could discard every subsequent repeat frame.
         bool ok = ioctl(keyboardFd_, UI_SET_EVBIT, EV_SYN) >= 0 &&
-            ioctl(keyboardFd_, UI_SET_EVBIT, EV_KEY) >= 0;
+            ioctl(keyboardFd_, UI_SET_EVBIT, EV_KEY) >= 0 &&
+            ioctl(keyboardFd_, UI_SET_EVBIT, EV_REP) >= 0;
         for (int key = 1; key <= 127; ++key) ok = ok && ioctl(keyboardFd_, UI_SET_KEYBIT, key) >= 0;
         uinput_setup setup{};
         setup.id.bustype = BUS_USB;

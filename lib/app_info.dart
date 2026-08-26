@@ -71,6 +71,73 @@ class AppInfoPage extends StatelessWidget {
           ),
         ),
         SizedBox(height: 12),
+        FutureBuilder<Map<String, dynamic>>(
+          future: bridge.status(),
+          builder: (context, snapshot) {
+            final info = snapshot.data;
+            final included = info?['embeddedPrivilegeIncluded'] == true;
+            final selected = info?['embeddedPrivilegeSelected'] == true;
+            final binderAlive = info?['shizukuBinderAlive'] == true;
+            final granted = info?['shizukuGranted'] == true;
+            final notifications = info?['embeddedNotificationGranted'] == true;
+            return Card(
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: snapshot.connectionState == ConnectionState.waiting
+                        ? const SizedBox.square(
+                            dimension: 24,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : Icon(
+                            included
+                                ? Icons.memory_rounded
+                                : Icons.memory_outlined,
+                          ),
+                    title: Text(l.appInfoEmbeddedBinder),
+                    subtitle: Text(
+                      included
+                          ? l.appInfoEmbeddedBinderIncluded
+                          : l.appInfoEmbeddedBinderNotIncluded,
+                    ),
+                  ),
+                  if (included && info != null) ...[
+                    const Divider(height: 1),
+                    _AppInfoStatusRow(
+                      label: l.appInfoEmbeddedBinderProvider,
+                      value: selected
+                          ? l.appInfoEmbeddedBinderSelected
+                          : l.appInfoEmbeddedBinderStandby,
+                      active: selected,
+                    ),
+                    _AppInfoStatusRow(
+                      label: l.appInfoEmbeddedBinderConnection,
+                      value: binderAlive
+                          ? l.appInfoStatusConnected
+                          : l.appInfoStatusDisconnected,
+                      active: binderAlive,
+                    ),
+                    _AppInfoStatusRow(
+                      label: l.appInfoEmbeddedBinderPermission,
+                      value: granted
+                          ? l.appInfoStatusGranted
+                          : l.appInfoStatusNotGranted,
+                      active: granted,
+                    ),
+                    _AppInfoStatusRow(
+                      label: l.appInfoEmbeddedBinderNotifications,
+                      value: notifications
+                          ? l.appInfoStatusGranted
+                          : l.appInfoStatusNotGranted,
+                      active: notifications,
+                    ),
+                  ],
+                ],
+              ),
+            );
+          },
+        ),
+        SizedBox(height: 12),
         Card(
           child: ListTile(
             leading: checking
@@ -147,6 +214,8 @@ class AppInfoPage extends StatelessWidget {
           ),
         ),
         SizedBox(height: 12),
+        _CoverDisplayExperimentalTile(isRunning: isRunning),
+        SizedBox(height: 12),
         _SamsungExperimentalSettingsTile(
           bridge: bridge,
           isRunning: isRunning,
@@ -161,6 +230,92 @@ class AppInfoPage extends StatelessWidget {
             body: content,
           );
   }
+}
+
+class _CoverDisplayExperimentalTile extends StatefulWidget {
+  const _CoverDisplayExperimentalTile({required this.isRunning});
+
+  final bool isRunning;
+
+  @override
+  State<_CoverDisplayExperimentalTile> createState() =>
+      _CoverDisplayExperimentalTileState();
+}
+
+class _CoverDisplayExperimentalTileState
+    extends State<_CoverDisplayExperimentalTile> {
+  bool enabled = false;
+  bool supported = false;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final preferences = await SharedPreferences.getInstance();
+    var foldable = false;
+    try {
+      foldable =
+          await NativeBridge.channel.invokeMethod<bool>('isFoldableDevice') ??
+          false;
+    } catch (_) {}
+    if (!mounted) return;
+    setState(() {
+      enabled = preferences.getBool('experimental_cover_display') ?? false;
+      supported = foldable;
+      loading = false;
+    });
+  }
+
+  Future<void> _update(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('experimental_cover_display', value);
+    if (mounted) setState(() => enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Card(
+      child: SwitchListTile(
+        secondary: const Icon(Icons.flip_to_back_rounded),
+        value: enabled && supported,
+        onChanged: loading || !supported || widget.isRunning ? null : _update,
+        title: Text(l.experimentalCoverDisplay),
+        subtitle: Text(
+          supported || loading
+              ? l.experimentalCoverDisplayDescription
+              : l.experimentalCoverDisplayUnavailable,
+        ),
+      ),
+    );
+  }
+}
+
+class _AppInfoStatusRow extends StatelessWidget {
+  const _AppInfoStatusRow({
+    required this.label,
+    required this.value,
+    required this.active,
+  });
+
+  final String label;
+  final String value;
+  final bool active;
+
+  @override
+  Widget build(BuildContext context) => ListTile(
+    dense: true,
+    leading: Icon(
+      active ? Icons.check_circle_rounded : Icons.cancel_outlined,
+      color: active ? Theme.of(context).colorScheme.primary : null,
+    ),
+    title: Text(label),
+    trailing: Text(value),
+  );
 }
 
 class _DiagnosticLogPage extends StatefulWidget {
@@ -286,7 +441,7 @@ class _KeepAwakeTileState extends State<_KeepAwakeTile> {
     SharedPreferences.getInstance().then((preferences) {
       if (mounted) {
         setState(() {
-          enabled = preferences.getBool('keep_awake_during_session') ?? false;
+          enabled = preferences.getBool('keep_awake_during_session') ?? true;
         });
       }
     });

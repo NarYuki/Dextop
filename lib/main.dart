@@ -11,6 +11,7 @@ import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/app_strings.dart';
 import 'package:free_dextop/features_page.dart';
 import 'package:free_dextop/setup_page.dart';
+import 'package:free_dextop/embedded_binder_setup.dart';
 import 'package:in_app_update/in_app_update.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:archive/archive.dart';
@@ -37,6 +38,10 @@ Future<void> main() async {
   final preferences = await SharedPreferences.getInstance();
   await preferences.remove('virtual_mouse_dpi');
   await preferences.remove('virtual_mouse_acceleration');
+  // Keep the host display awake unless the user has explicitly opted out.
+  if (!preferences.containsKey('keep_awake_during_session')) {
+    await preferences.setBool('keep_awake_during_session', true);
+  }
   await AppAnalytics.initialize();
   runApp(const DextopApp());
 }

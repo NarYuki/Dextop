@@ -7,6 +7,7 @@ import android.hardware.display.DisplayManager
 import android.os.IBinder
 import android.os.Parcel
 import android.util.Base64
+import moe.n4tsu.dextop.privilege.DistributionPrivilegeRuntime
 import org.json.JSONObject
 import rikka.shizuku.ShizukuBinderWrapper
 import rikka.shizuku.SystemServiceHelper
@@ -363,9 +364,11 @@ class DisplayTopologyController(private val context: Context) {
         read: (Parcel, Parcel) -> T
     ): T {
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
-        val binder: IBinder = ShizukuBinderWrapper(
-            SystemServiceHelper.getSystemService(Context.DISPLAY_SERVICE)
-        )
+        // The bundled runtime owns a shell-side ServiceManager bridge. Do not
+        // bypass it through Shizuku's binder wrapper or topology silently stops
+        // working whenever Dextop is using its built-in privilege provider.
+        val binder: IBinder = DistributionPrivilegeRuntime.serviceBinder(Context.DISPLAY_SERVICE)
+            ?: ShizukuBinderWrapper(SystemServiceHelper.getSystemService(Context.DISPLAY_SERVICE))
         val data = Parcel.obtain()
         val reply = Parcel.obtain()
         try {

@@ -22,7 +22,18 @@ abstract final class AppAnalytics {
     );
   }
 
-  static Future<void> event(String name, [Map<String, Object>? parameters]) =>
-      _analytics?.logEvent(name: name, parameters: parameters) ??
-      Future.value();
+  static Future<void> event(String name, [Map<String, Object>? parameters]) {
+    // Firebase accepts only strings and numbers. Keep call sites expressive while
+    // normalizing flags here so analytics can never interrupt a user action.
+    final normalized = parameters?.map((key, value) {
+      final Object safeValue = switch (value) {
+        bool flag => flag ? 1 : 0,
+        String() || num() => value,
+        _ => value.toString(),
+      };
+      return MapEntry(key, safeValue);
+    });
+    return _analytics?.logEvent(name: name, parameters: normalized) ??
+        Future.value();
+  }
 }

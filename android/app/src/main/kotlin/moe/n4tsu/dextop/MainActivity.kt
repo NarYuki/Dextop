@@ -7,7 +7,6 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
 import android.net.Uri
-import android.os.ParcelFileDescriptor
 import android.os.Handler
 import android.os.Looper
 import android.os.Build
@@ -18,16 +17,24 @@ import android.util.DisplayMetrics
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
-import java.io.InputStream
-import java.io.OutputStream
-import moe.shizuku.server.IRemoteProcess
-import moe.shizuku.server.IShizukuService
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import moe.n4tsu.dextop.privilege.DistributionPrivilegeBootstrap
+import moe.n4tsu.dextop.privilege.DistributionPrivilegeRuntime
 import rikka.shizuku.Shizuku
 
 open class MainActivity : FlutterActivity() {
     companion object {
         private const val STELLAR_PACKAGE = "roro.stellar.manager"
+        private const val SHEVERY_PACKAGE = "com.hamondev.shevery"
+        private const val SHIZUKU_PERMISSION = "moe.shizuku.manager.permission.API_V23"
         private const val STELLAR_REQUEST_BINDER_ACTION = "roro.stellar.intent.action.REQUEST_BINDER"
+        private const val EMBEDDED_NOTIFICATION_PERMISSION_REQUEST = 8104
 
         private var instance: MainActivity? = null
         private var phoneTaskId = -1
@@ -96,24 +103,39 @@ open class MainActivity : FlutterActivity() {
         )
     }
     private var flutterChannel: MethodChannel? = null
+    private var pendingWirelessDebuggingResult: MethodChannel.Result? = null
+    private var pendingNotificationPermissionResult: MethodChannel.Result? = null
+    private val distributionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    // Embedded ADB restore must survive the launcher activity replacing its Flutter engine.
+    private val embeddedPrivilegeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var embeddedRestoreInProgress = false
+    @Volatile private var embeddedRestoreNeedsSetup = false
+
+    /** Flutter's binary messenger is main-thread only, including Binder callbacks. */
+    private fun notifyFlutterPrivilegeStatus() {
+        runOnUiThread {
+            flutterChannel?.invokeMethod("shizukuStatusChanged", null)
+        }
+    }
 
     private val binderReceivedListener = Shizuku.OnBinderReceivedListener {
         stellarBinderRetryGate.reset()
         refreshBinderAvailability()
         Log.i(logTag, "privilege binder received alive=$shizukuBinderAvailable")
-        flutterChannel?.invokeMethod("shizukuStatusChanged", null)
+        notifyFlutterPrivilegeStatus()
     }
     private val binderDeadListener = Shizuku.OnBinderDeadListener {
-        val provider = selectedPrivilegeProvider(isStellarInstalled(), isShizukuInstalled())
+        val provider = selectedPrivilegeProvider(installedPrivilegeProviders())
         refreshBinderAvailability(provider, requestIfMissing = true)
         Log.w(logTag, "privilege binder death reported alive=$shizukuBinderAvailable provider=$provider")
-        flutterChannel?.invokeMethod("shizukuStatusChanged", null)
+        notifyFlutterPrivilegeStatus()
     }
     private val permissionListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
         if (requestCode == permissionRequestCode) {
             permissionHandler.removeCallbacks(permissionTimeout)
             Log.i(logTag, "Shizuku permission result=$grantResult")
             if (grantResult == PackageManager.PERMISSION_GRANTED) {
+                rememberPrivilegeMode("external")
                 runCatching { grantSecureSettings() }
                     .onSuccess { pendingPermissionResult?.success(true) }
                     .onFailure { pendingPermissionResult?.error("grant", it.message, null) }
@@ -136,6 +158,12 @@ open class MainActivity : FlutterActivity() {
 
     override fun onStart() {
         super.onStart()
+        DistributionPrivilegeRuntime.onRuntimeDied = {
+            currentActivity()?.runOnUiThread {
+                currentActivity()?.restoreEmbeddedPrivilegeIfPossible("runtime_died")
+            }
+        }
+        restoreEmbeddedPrivilegeIfPossible("activity_started")
         if (display?.displayId == android.view.Display.DEFAULT_DISPLAY) {
             instance = this
             phoneTaskId = taskId
@@ -144,6 +172,93 @@ open class MainActivity : FlutterActivity() {
                 runCatching { DisplayEnvironmentSettings(this).prepareInactiveState() }
                     .onFailure { Log.w(logTag, "inactive topology cleanup deferred", it) }
             }
+        }
+    }
+
+    private fun restoreEmbeddedPrivilegeIfPossible(reason: String) {
+        updatePrivilegeRuntimePolicy()
+        val installedProviders = installedPrivilegeProviders()
+        val storedPairing = DistributionPrivilegeBootstrap.hasStoredPairing(applicationContext)
+        Log.i(
+            logTag,
+            "EmbeddedPrivilege restore check reason=$reason included=${DistributionPrivilegeBootstrap.included} " +
+                "providers=${installedProviders.map { it.packageName }} runtime=${DistributionPrivilegeRuntime.available} " +
+                "inProgress=$embeddedRestoreInProgress storedPairing=$storedPairing enabled=${DistributionPrivilegeRuntime.enabled}",
+        )
+        if (
+            !DistributionPrivilegeBootstrap.included ||
+            !DistributionPrivilegeRuntime.enabled ||
+            DistributionPrivilegeRuntime.available ||
+            embeddedRestoreInProgress ||
+            !storedPairing
+        ) return
+        var wirelessDebuggingEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+            runCatching {
+                Settings.Global.getInt(contentResolver, "adb_wifi_enabled", 0) == 1
+            }.getOrDefault(false)
+        if (!wirelessDebuggingEnabled && hasSecureSettingsPermission()) {
+            wirelessDebuggingEnabled = runCatching {
+                Settings.Global.putInt(contentResolver, "adb_wifi_enabled", 1)
+            }.getOrDefault(false)
+            if (wirelessDebuggingEnabled) {
+                OperationLog.i(
+                    this,
+                    "EmbeddedPrivilege",
+                    "wireless debugging enabled for stored pairing",
+                )
+            }
+        }
+        if (!wirelessDebuggingEnabled) return
+
+        embeddedRestoreInProgress = true
+        embeddedRestoreNeedsSetup = false
+        OperationLog.i(this, "EmbeddedPrivilege", "restoring stored pairing reason=$reason")
+        embeddedPrivilegeScope.launch {
+            var restored = false
+            var lastDetail: String? = null
+            repeat(4) { attempt ->
+                if (restored) return@repeat
+                val start = runCatching {
+                    DistributionPrivilegeBootstrap.connectAndStart(applicationContext)
+                }.onFailure { error ->
+                    lastDetail = error.message ?: error.javaClass.simpleName
+                }.getOrNull()
+                if (start?.started == true) {
+                    restored = true
+                    DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+                    rememberPrivilegeMode("embedded")
+                    OperationLog.i(
+                        this@MainActivity,
+                        "EmbeddedPrivilege",
+                        "stored pairing restored endpoint=${start.endpoint ?: "unknown"} attempt=${attempt + 1}",
+                    )
+                    notifyFlutterPrivilegeStatus()
+                    return@repeat
+                }
+                lastDetail = start?.detail ?: lastDetail
+                if (!restored && attempt < 3) delay(1_000)
+            }
+            if (!restored) {
+                embeddedRestoreNeedsSetup = true
+                // Only an advertised ADB connect endpoint that rejects every
+                // saved-key attempt is evidence that the pairing was revoked.
+                // A missing endpoint is normal while Wireless debugging starts
+                // and must not trigger a needless re-pairing notification.
+                val pairingRevoked = lastDetail
+                    ?.contains("rejected all local connection candidates", ignoreCase = true) == true
+                if (pairingRevoked) {
+                    DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
+                } else {
+                    DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+                }
+                OperationLog.w(
+                    this@MainActivity,
+                    "EmbeddedPrivilege",
+                    "stored pairing could not reconnect after retries revoked=$pairingRevoked detail=${lastDetail ?: "unknown"}",
+                )
+                notifyFlutterPrivilegeStatus()
+            }
+            embeddedRestoreInProgress = false
         }
     }
 
@@ -162,6 +277,7 @@ open class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        updatePrivilegeRuntimePolicy()
         Shizuku.addRequestPermissionResultListener(permissionListener)
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
@@ -187,6 +303,14 @@ open class MainActivity : FlutterActivity() {
                 }
                 "requestShizuku" -> requestShizuku(result)
                 "openShizuku" -> openShizuku(result)
+                "embeddedPrivilegeInfo" -> result.success(
+                    mapOf("included" to DistributionPrivilegeBootstrap.included),
+                )
+                "pairEmbeddedPrivilege" -> pairEmbeddedPrivilege(
+                    call.argument<String>("code").orEmpty(),
+                    result,
+                )
+                "startEmbeddedPrivilege" -> startEmbeddedPrivilege(result)
                 "selectPrivilegeProvider" -> selectPrivilegeProvider(call.argument<String>("provider"), result)
                 "showOverlayDemo" -> {
                     MirrorService.showOverlayDemo(this)
@@ -234,7 +358,7 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.setOverlayHiddenForSettings(false)
                     result.success(null)
                 }
-                "isFoldableDevice" -> result.success(MirrorService.isFoldableDevice())
+                "isFoldableDevice" -> result.success(MirrorService.isFoldableDevice(this))
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
                 "currentDeviceDisplayProfile" -> {
                     val builtIn = getSystemService(DisplayManager::class.java)
@@ -432,7 +556,10 @@ open class MainActivity : FlutterActivity() {
                 "recovery" -> result.success(SessionJournal(this).snapshot())
                 "clearRecovery" -> discardRecovery(result)
                 "openAccessibility" -> openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS, result)
-                "openWirelessDebugging" -> openSettings("android.settings.WIRELESS_DEBUGGING_SETTINGS", result)
+                "openWirelessDebugging" -> openWirelessDebuggingSettings(result)
+                "openWirelessDebuggingSettingsOnly" -> openSystemWirelessDebuggingSettings(result)
+                "requestEmbeddedNotificationPermission" -> requestEmbeddedNotificationPermission(result)
+                "prepareEmbeddedPairingNotification" -> prepareEmbeddedPairingNotification(result)
                 "openUrl" -> {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url"))))
                     result.success(null)
@@ -451,17 +578,66 @@ open class MainActivity : FlutterActivity() {
         permissionHandler.removeCallbacks(startTimeout)
         pendingPermissionResult = null
         pendingStartResult = null
+        distributionScope.cancel()
         super.cleanUpFlutterEngine(flutterEngine)
+    }
+
+    private fun pairEmbeddedPrivilege(code: String, result: MethodChannel.Result) {
+        if (!DistributionPrivilegeBootstrap.included) {
+            result.error("embedded_unavailable", "The built-in access service is unavailable", null)
+            return
+        }
+        distributionScope.launch {
+            runCatching { DistributionPrivilegeBootstrap.pair(applicationContext, code) }
+                .onSuccess { pairing ->
+                    result.success(
+                        mapOf(
+                            "paired" to pairing.paired,
+                            "endpoint" to pairing.endpoint,
+                            "detail" to pairing.detail,
+                        ),
+                    )
+                }
+                .onFailure { error ->
+                    result.error("embedded_pairing", error.message, null)
+                }
+        }
+    }
+
+    private fun startEmbeddedPrivilege(result: MethodChannel.Result) {
+        if (!DistributionPrivilegeBootstrap.included) {
+            result.error("embedded_unavailable", "The built-in access service is unavailable", null)
+            return
+        }
+        distributionScope.launch {
+            runCatching { DistributionPrivilegeBootstrap.connectAndStart(applicationContext) }
+                .onSuccess { start ->
+                    result.success(
+                        mapOf(
+                            "started" to start.started,
+                            "endpoint" to start.endpoint,
+                            "detail" to start.detail,
+                        ),
+                    )
+                }
+                .onFailure { error ->
+                    result.error("embedded_start", error.message, null)
+                }
+        }
     }
 
     private fun status(): Map<String, Any> {
         val packageInfo = packageManager.getPackageInfo(packageName, 0)
-        val shizukuInstalled = isShizukuInstalled()
-        val stellarInstalled = isStellarInstalled()
+        val providers = installedPrivilegeProviders()
+        val stellarInstalled = providers.any { it.kind == "stellar" }
+        val shizukuInstalled = providers.any { it.kind == "shizuku" }
         val savedProvider = getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
             .getString("selected", null)
-        val provider = selectedPrivilegeProvider(stellarInstalled, shizukuInstalled)
-        val installed = if (provider == "stellar") stellarInstalled else shizukuInstalled
+        val useEmbedded = shouldUseEmbeddedRuntime(providers)
+        DistributionPrivilegeRuntime.enabled = useEmbedded
+        val selected = if (useEmbedded) null else selectedPrivilegeProvider(providers)
+        val provider = if (useEmbedded) "embedded" else selected?.kind ?: "shizuku"
+        val installed = useEmbedded || selected != null
         // A binder from an earlier Shizuku session can remain visible briefly even
         // after the manager has been removed.  Installation is therefore a hard
         // prerequisite for both the service and permission states.
@@ -473,18 +649,29 @@ open class MainActivity : FlutterActivity() {
         // supplied a binder in the same app process. Always verify the binder
         // itself, and ask Stellar to resend it when the selected provider is
         // still installed but the shared Shizuku API state has lost the binder.
-        val binderAlive = installed && refreshBinderAvailability(
-            provider,
-            requestIfMissing = true
-        )
+        val binderAlive = DistributionPrivilegeRuntime.available ||
+            (installed && !useEmbedded && refreshBinderAvailability(selected, requestIfMissing = true))
         // The guided setup uses wireless debugging. A live/stale binder alone is
         // not enough to mark that setup as completed.
         // The service may be started through wireless debugging, wired ADB, or
         // root. Binder liveness is the authoritative running-state signal.
         val running = binderAlive
-        val granted = running && runCatching {
+        val granted = running && (DistributionPrivilegeRuntime.available || runCatching {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
-        }.getOrDefault(false)
+        }.getOrDefault(false))
+        if (granted) rememberPrivilegeMode(if (useEmbedded) "embedded" else "external")
+        val previousMode = getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
+            .getString("last_mode", null)
+        // Installing a compatible manager must not tear down a live embedded
+        // session. Ask once before switching that session to an external one.
+        val externalAuthorizationRequired = DistributionPrivilegeBootstrap.included &&
+            useEmbedded && providers.isNotEmpty()
+        val embeddedPairingStored = DistributionPrivilegeBootstrap.included &&
+            DistributionPrivilegeBootstrap.hasStoredPairing(applicationContext)
+        val embeddedSetupRequired = DistributionPrivilegeBootstrap.included && useEmbedded && !granted &&
+            ((!embeddedPairingStored && previousMode == "external") || embeddedRestoreNeedsSetup)
+        val notificationGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         val status = mapOf(
             "active" to MirrorService.isActive(),
             "stopping" to MirrorService.isStopping(),
@@ -494,11 +681,22 @@ open class MainActivity : FlutterActivity() {
             "shizukuInstalled" to installed,
             "stellarInstalled" to stellarInstalled,
             "originalShizukuInstalled" to shizukuInstalled,
-            "bothPrivilegeProvidersInstalled" to (stellarInstalled && shizukuInstalled),
+            "bothPrivilegeProvidersInstalled" to (providers.size > 1),
+            "embeddedPrivilegeIncluded" to DistributionPrivilegeBootstrap.included,
+            "embeddedPrivilegeSelected" to useEmbedded,
+            "embeddedPrivilegePaired" to embeddedPairingStored,
+            "embeddedPairingState" to DistributionPrivilegeBootstrap.pairingState(),
             "privilegeProviderSelectionRequired" to
-                (stellarInstalled && shizukuInstalled && savedProvider !in setOf("stellar", "shizuku")),
+                (!useEmbedded && providers.size > 1 && providers.none { it.packageName == savedProvider }),
             "privilegeProvider" to provider,
-            "privilegeProviderName" to if (provider == "stellar") "Stellar" else "Shizuku",
+            "privilegeProviderId" to (selected?.packageName ?: provider),
+            "privilegeProviderName" to if (useEmbedded) "Dextop" else selected?.displayName ?: "Shizuku",
+            "privilegeProviders" to providers.map {
+                mapOf("id" to it.packageName, "name" to it.displayName, "kind" to it.kind)
+            },
+            "externalPrivilegeAuthorizationRequired" to externalAuthorizationRequired,
+            "embeddedPrivilegeSetupRequired" to embeddedSetupRequired,
+            "embeddedNotificationGranted" to notificationGranted,
             "wirelessDebuggingEnabled" to wirelessDebuggingEnabled,
             "shizukuBinderAlive" to binderAlive,
             "shizukuRunning" to running,
@@ -514,6 +712,16 @@ open class MainActivity : FlutterActivity() {
     }
 
     private fun requestShizuku(result: MethodChannel.Result) {
+        updatePrivilegeRuntimePolicy()
+        if (DistributionPrivilegeRuntime.available) {
+            runCatching { grantSecureSettings() }
+                .onSuccess {
+                    rememberPrivilegeMode("embedded")
+                    result.success(true)
+                }
+                .onFailure { result.error("grant", it.message, null) }
+            return
+        }
         val current = status()
         val installed = current["shizukuInstalled"] == true
         if (!installed) {
@@ -526,7 +734,10 @@ open class MainActivity : FlutterActivity() {
         }
         if (Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED) {
             runCatching { grantSecureSettings() }
-                .onSuccess { result.success(true) }
+                .onSuccess {
+                    rememberPrivilegeMode("external")
+                    result.success(true)
+                }
                 .onFailure { result.error("grant", it.message, null) }
             return
         }
@@ -546,12 +757,8 @@ open class MainActivity : FlutterActivity() {
     private fun openShizuku(result: MethodChannel.Result) {
         val current = status()
         val provider = current["privilegeProvider"] as String
-        val launch = if (provider == "stellar") {
-            packageManager.getLaunchIntentForPackage("roro.stellar.manager")
-        } else {
-            packageManager.getLaunchIntentForPackage("moe.shizuku.privileged.api")
-                ?: packageManager.getLaunchIntentForPackage("moe.shizuku.manager")
-        }
+        val providerId = current["privilegeProviderId"] as? String
+        val launch = providerId?.let(packageManager::getLaunchIntentForPackage)
         if (launch != null) {
             startActivity(launch)
             result.success(null)
@@ -573,19 +780,77 @@ open class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun selectedPrivilegeProvider(stellarInstalled: Boolean, shizukuInstalled: Boolean): String {
+    private data class PrivilegeProvider(
+        val packageName: String,
+        val displayName: String,
+        val kind: String,
+    )
+
+    private fun updatePrivilegeRuntimePolicy() {
+        DistributionPrivilegeRuntime.enabled = shouldUseEmbeddedRuntime(installedPrivilegeProviders())
+    }
+
+    /**
+     * An already selected bundled session remains active until the user picks an
+     * external provider. This prevents an app install from disconnecting input
+     * in the middle of a Dextop session.
+     */
+    private fun shouldUseEmbeddedRuntime(providers: List<PrivilegeProvider>): Boolean {
+        if (!DistributionPrivilegeBootstrap.included) return false
+        if (providers.isEmpty()) return true
+        val preferences = getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
+        val lastMode = preferences.getString("last_mode", null)
+        val selected = preferences.getString("selected", null)
+        return lastMode == "embedded" && selected == null
+    }
+
+    private fun rememberPrivilegeMode(mode: String) {
+        getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
+            .edit().putString("last_mode", mode).apply()
+    }
+
+    @Suppress("DEPRECATION")
+    private fun installedPrivilegeProviders(): List<PrivilegeProvider> {
+        val flags = PackageManager.GET_PERMISSIONS
+        return runCatching { packageManager.getInstalledPackages(flags) }
+            .getOrDefault(emptyList())
+            .asSequence()
+            .filter { info ->
+                val packageName = info.packageName
+                packageName != this.packageName && (
+                    packageName == STELLAR_PACKAGE ||
+                        packageName == SHEVERY_PACKAGE ||
+                        packageName == "moe.shizuku.privileged.api" ||
+                        packageName == "moe.shizuku.manager" ||
+                        info.permissions?.any { it.name == SHIZUKU_PERMISSION } == true
+                    )
+            }
+            .map { info ->
+                PrivilegeProvider(
+                    packageName = info.packageName,
+                    displayName = runCatching {
+                        packageManager.getApplicationLabel(info.applicationInfo!!).toString()
+                    }.getOrDefault(
+                        if (info.packageName == STELLAR_PACKAGE) "Stellar" else "Shizuku",
+                    ),
+                    kind = if (info.packageName == STELLAR_PACKAGE) "stellar" else "shizuku",
+                )
+            }
+            .distinctBy { it.packageName }
+            .sortedWith(compareBy<PrivilegeProvider> { it.kind == "stellar" }.thenBy { it.displayName })
+            .toList()
+    }
+
+    private fun selectedPrivilegeProvider(providers: List<PrivilegeProvider>): PrivilegeProvider? {
         val preferences = getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
         val saved = preferences.getString("selected", null)
-        val selected = when {
-            stellarInstalled && shizukuInstalled && saved in setOf("stellar", "shizuku") -> saved!!
-            stellarInstalled -> "stellar"
-            shizukuInstalled -> "shizuku"
-            else -> "stellar"
-        }
-        // The explicit choice remains valid only while both managers stay
-        // installed. Once either is removed, discard it so a later coexistence
-        // requires a fresh conflict-avoidance choice.
-        if (!(stellarInstalled && shizukuInstalled) && saved != null) {
+        val selected = providers.firstOrNull { it.packageName == saved }
+            ?: providers.firstOrNull { saved == "stellar" && it.kind == "stellar" }
+            ?: providers.firstOrNull { saved == "shizuku" && it.kind == "shizuku" }
+            ?: providers.singleOrNull()
+            ?: providers.firstOrNull { it.kind == "shizuku" }
+            ?: providers.firstOrNull()
+        if (saved != null && providers.none { it.packageName == saved } && saved !in setOf("stellar", "shizuku")) {
             preferences.edit().remove("selected").apply()
         }
         return selected
@@ -595,19 +860,15 @@ open class MainActivity : FlutterActivity() {
         packageManager.getPackageInfo(STELLAR_PACKAGE, 0)
     }.isSuccess
 
-    private fun isShizukuInstalled(): Boolean = runCatching {
-        packageManager.getPackageInfo("moe.shizuku.privileged.api", 0)
-    }.isSuccess || runCatching {
-        packageManager.getPackageInfo("moe.shizuku.manager", 0)
-    }.isSuccess
+    private fun isShizukuInstalled(): Boolean = installedPrivilegeProviders().any { it.kind == "shizuku" }
 
     private fun refreshBinderAvailability(
-        provider: String? = null,
+        provider: PrivilegeProvider? = null,
         requestIfMissing: Boolean = false
     ): Boolean {
         val alive = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
         shizukuBinderAvailable = alive
-        if (!alive && requestIfMissing && provider == "stellar") {
+        if (!alive && requestIfMissing && provider?.kind == "stellar") {
             requestStellarBinder()
         }
         return alive
@@ -627,18 +888,17 @@ open class MainActivity : FlutterActivity() {
     }
 
     private fun selectPrivilegeProvider(provider: String?, result: MethodChannel.Result) {
-        val stellarInstalled = isStellarInstalled()
-        val shizukuInstalled = isShizukuInstalled()
-        if (provider !in setOf("stellar", "shizuku") ||
-            (provider == "stellar" && !stellarInstalled) ||
-            (provider == "shizuku" && !shizukuInstalled)) {
+        val providers = installedPrivilegeProviders()
+        val selected = providers.firstOrNull { it.packageName == provider }
+        if (selected == null) {
             result.error("provider_unavailable", "The selected privilege provider is not installed", null)
             return
         }
         getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
-            .edit().putString("selected", provider).commit()
-        OperationLog.i(this, "MainActivity", "privilege provider selected=$provider")
-        flutterChannel?.invokeMethod("shizukuStatusChanged", null)
+            .edit().putString("selected", provider).putString("last_mode", "external").commit()
+        updatePrivilegeRuntimePolicy()
+        OperationLog.i(this, "MainActivity", "privilege provider selected=${selected.packageName}")
+        notifyFlutterPrivilegeStatus()
         result.success(status())
     }
 
@@ -665,9 +925,11 @@ open class MainActivity : FlutterActivity() {
             result.error("profile", NativeStrings.text("nativeDisplayProfileIsOutOfRange"), null)
             return
         }
-        val provider = selectedPrivilegeProvider(isStellarInstalled(), isShizukuInstalled())
-        val binderReady = refreshBinderAvailability(provider, requestIfMissing = true)
-        val permissionGranted = binderReady && runCatching {
+        updatePrivilegeRuntimePolicy()
+        val provider = selectedPrivilegeProvider(installedPrivilegeProviders())
+        val binderReady = DistributionPrivilegeRuntime.available ||
+            refreshBinderAvailability(provider, requestIfMissing = true)
+        val permissionGranted = DistributionPrivilegeRuntime.available || binderReady && runCatching {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         }.getOrDefault(false)
         if (!permissionGranted) {
@@ -914,20 +1176,16 @@ open class MainActivity : FlutterActivity() {
             }
             return
         }
-        if (!runCatching { Shizuku.pingBinder() }.getOrDefault(false) ||
-            Shizuku.checkSelfPermission() != PackageManager.PERMISSION_GRANTED
-        ) {
+        if (!PrivilegedAccess(logTag).isAvailable()) {
             result.error("permission", NativeStrings.text("nativeRequiresConnectionToShizukuAndPermissions"), null)
             return
         }
         runCatching {
             Log.i(logTag, "writeOverlaySetting through Shizuku value=$value")
-            val process = remoteProcess(
-                arrayOf("settings", "put", "global", "overlay_display_devices", value)
+            val command = PrivilegedAccess(logTag).execute(
+                "settings", "put", "global", "overlay_display_devices", value
             )
-            val error = process.errorStream.bufferedReader().use { it.readText() }
-            val exit = process.waitFor()
-            check(exit == 0) { error.ifBlank { "settings command failed" } }
+            check(command.succeeded) { command.error.ifBlank { "settings command failed" } }
         }.onSuccess {
             onSuccess()
             result.success(null)
@@ -947,46 +1205,271 @@ open class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun hasSecureSettingsPermission(): Boolean {
-        return checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
+    private fun openWirelessDebuggingSettings(result: MethodChannel.Result) {
+        if (
+            DistributionPrivilegeBootstrap.included &&
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+        ) {
+            if (pendingWirelessDebuggingResult != null) {
+                result.error("notification_permission_busy", "Notification permission is already being requested", null)
+                return
+            }
+            pendingWirelessDebuggingResult = result
+            requestPermissions(
+                arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                EMBEDDED_NOTIFICATION_PERMISSION_REQUEST,
+            )
+            return
+        }
+        launchWirelessDebuggingSettings(result)
     }
 
-    private fun remoteProcess(command: Array<String>): Process {
-        val binder = Shizuku.getBinder()
-            ?: error(NativeStrings.text("nativeShizukuBinderUnavailable"))
-        val remote = IShizukuService.Stub.asInterface(binder).newProcess(command, null, null)
-        return BinderProcess(remote)
+    private fun requestEmbeddedNotificationPermission(result: MethodChannel.Result) {
+        if (!DistributionPrivilegeBootstrap.included) {
+            result.success(false)
+            return
+        }
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        ) {
+            result.success(true)
+            return
+        }
+        if (pendingNotificationPermissionResult != null || pendingWirelessDebuggingResult != null) {
+            result.error("notification_permission_busy", "Notification permission is already being requested", null)
+            return
+        }
+        pendingNotificationPermissionResult = result
+        requestPermissions(
+            arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+            EMBEDDED_NOTIFICATION_PERMISSION_REQUEST,
+        )
+    }
+
+    /**
+     * Starts the embedded pairing flow before the user opens Wireless
+     * debugging. The Play bootstrap first discovers the pairing endpoint, then
+     * publishes the RemoteInput action only when Android exposes a usable
+     * pairing service.
+     */
+    private fun prepareEmbeddedPairingNotification(result: MethodChannel.Result) {
+        if (!DistributionPrivilegeBootstrap.included) {
+            result.success(false)
+            return
+        }
+        val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        if (!granted) {
+            result.error("notification_permission_required", "Notification permission is required for pairing", null)
+            return
+        }
+        DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
+        result.success(true)
+    }
+
+    private fun launchWirelessDebuggingSettings(result: MethodChannel.Result) {
+        val hasStoredPairing = DistributionPrivilegeBootstrap.included &&
+            DistributionPrivilegeBootstrap.hasStoredPairing(applicationContext)
+        if (DistributionPrivilegeBootstrap.included && !hasStoredPairing) {
+            DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
+            openSystemWirelessDebuggingSettings(result)
+            return
+        }
+        if (hasStoredPairing) {
+            DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+            val enabledByApp = hasSecureSettingsPermission() && runCatching {
+                val alreadyEnabled = Settings.Global.getInt(
+                    contentResolver,
+                    "adb_wifi_enabled",
+                    0,
+                ) == 1
+                if (!alreadyEnabled) {
+                    Settings.Global.putInt(contentResolver, "adb_wifi_enabled", 1)
+                }
+                Settings.Global.getInt(contentResolver, "adb_wifi_enabled", 0) == 1
+            }.onFailure {
+                OperationLog.w(
+                    this,
+                    "EmbeddedPrivilege",
+                    "app-side wireless debugging enable failed: ${it.javaClass.simpleName}",
+                )
+            }.getOrDefault(false)
+            if (enabledByApp) {
+                distributionScope.launch {
+                    val connected = runCatching {
+                        withTimeoutOrNull(4_000) {
+                            DistributionPrivilegeBootstrap.canConnect(applicationContext)
+                        }
+                    }.onFailure {
+                        Log.w(logTag, "Embedded Binder connection failed after app-side enable", it)
+                    }.getOrDefault(false) ?: false
+                    runOnUiThread {
+                        if (connected) {
+                            distributionScope.launch {
+                                val started = runCatching {
+                                    DistributionPrivilegeBootstrap.connectAndStart(applicationContext).started
+                                }.getOrDefault(false)
+                                runOnUiThread {
+                                    if (started) {
+                                        DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+                                        rememberPrivilegeMode("embedded")
+                                        notifyFlutterPrivilegeStatus()
+                                        result.success(null)
+                                    } else {
+                                        DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+                                        openSystemWirelessDebuggingSettings(result)
+                                    }
+                                }
+                            }
+                        } else {
+                            DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+                            OperationLog.w(
+                                this@MainActivity,
+                                "EmbeddedPrivilege",
+                                "app-side enable did not produce a Binder; opening system settings",
+                            )
+                            openSystemWirelessDebuggingSettings(result)
+                        }
+                    }
+                }
+                return
+            }
+            OperationLog.w(
+                this,
+                "EmbeddedPrivilege",
+                "app-side wireless debugging enable unavailable; opening system settings",
+            )
+            DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+        }
+        openSystemWirelessDebuggingSettings(result)
+    }
+
+    private fun openSystemWirelessDebuggingSettings(result: MethodChannel.Result) {
+        val actions = listOf(
+            "android.settings.WIRELESS_DEBUGGING_SETTINGS",
+            Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,
+        )
+        val launched = actions.firstNotNullOfOrNull { action ->
+            val intent = Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (intent.resolveActivity(packageManager) == null) return@firstNotNullOfOrNull null
+            runCatching { startActivity(intent) }.getOrNull()?.let { action }
+        }
+        if (launched != null) {
+            OperationLog.i(this, "MainActivity", "opened wireless debugging settings action=$launched")
+            retryEmbeddedPrivilegeWhileSettingsVisible()
+            result.success(null)
+        } else {
+            result.error(
+                "settings_unavailable",
+                "Wireless debugging settings are unavailable on this device",
+                null,
+            )
+        }
+    }
+
+    private fun retryEmbeddedPrivilegeWhileSettingsVisible() {
+        if (
+            !DistributionPrivilegeBootstrap.included ||
+            !DistributionPrivilegeBootstrap.hasStoredPairing(applicationContext) ||
+            installedPrivilegeProviders().isNotEmpty()
+        ) return
+        distributionScope.launch {
+            repeat(8) { attempt ->
+                if (DistributionPrivilegeRuntime.available) return@launch
+                val connected = runCatching {
+                    withTimeoutOrNull(3_500) {
+                        DistributionPrivilegeBootstrap.canConnect(applicationContext)
+                    }
+                }.getOrDefault(false) ?: false
+                if (!connected) {
+                    // The saved public key may have been removed from Android's
+                    // Wireless debugging screen.  This is the explicit
+                    // re-pairing path: keep the stored identity, but restart
+                    // pairing-service discovery so a newly shown device code
+                    // receives its RemoteInput notification just like first
+                    // setup.  Previously this branch dismissed the notification
+                    // and made re-pairing impossible.
+                    embeddedRestoreNeedsSetup = true
+                    DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
+                    OperationLog.i(
+                        this@MainActivity,
+                        "EmbeddedPrivilege",
+                        "stored pairing unavailable; started re-pairing discovery",
+                    )
+                    notifyFlutterPrivilegeStatus()
+                    return@launch
+                }
+                val started = runCatching {
+                    DistributionPrivilegeBootstrap.connectAndStart(applicationContext).started
+                }.getOrDefault(false)
+                if (started) {
+                    DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
+                    rememberPrivilegeMode("embedded")
+                    OperationLog.i(
+                        this@MainActivity,
+                        "EmbeddedPrivilege",
+                        "Binder restored while wireless settings visible attempt=${attempt + 1}",
+                    )
+                    notifyFlutterPrivilegeStatus()
+                    return@launch
+                }
+                delay(750)
+            }
+            OperationLog.w(
+                this@MainActivity,
+                "EmbeddedPrivilege",
+                "Binder was not restored while wireless settings were open",
+            )
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray,
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != EMBEDDED_NOTIFICATION_PERMISSION_REQUEST) return
+        val permissionGranted = grantResults.firstOrNull() == PackageManager.PERMISSION_GRANTED
+        pendingNotificationPermissionResult?.let { result ->
+            pendingNotificationPermissionResult = null
+            if (permissionGranted && DistributionPrivilegeBootstrap.included &&
+                !DistributionPrivilegeBootstrap.hasStoredPairing(applicationContext)
+            ) {
+                DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
+            }
+            result.success(permissionGranted)
+            return
+        }
+        val result = pendingWirelessDebuggingResult ?: return
+        pendingWirelessDebuggingResult = null
+        if (permissionGranted) {
+            launchWirelessDebuggingSettings(result)
+        } else {
+            result.error(
+                "notification_permission_denied",
+                "Notification permission is required to enter the pairing code while Wireless debugging is open",
+                null,
+            )
+        }
+    }
+
+    private fun hasSecureSettingsPermission(): Boolean {
+        return checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) == PackageManager.PERMISSION_GRANTED
     }
 
     private fun grantSecureSettings() {
         if (hasSecureSettingsPermission()) return
         Log.i(logTag, "grantSecureSettings package=$packageName")
-        val process = remoteProcess(
-            arrayOf(
-                "pm",
-                "grant",
-                packageName,
-                Manifest.permission.WRITE_SECURE_SETTINGS
-            )
+        val command = PrivilegedAccess(logTag).execute(
+            "pm", "grant", packageName, Manifest.permission.WRITE_SECURE_SETTINGS
         )
-        val error = process.errorStream.bufferedReader().use { it.readText() }
-        val exit = process.waitFor()
-        check(exit == 0) { error.ifBlank { "WRITE_SECURE_SETTINGS grant failed" } }
+        check(command.succeeded) {
+            command.error.ifBlank { "WRITE_SECURE_SETTINGS grant failed" }
+        }
         Log.i(logTag, "grantSecureSettings complete")
     }
 
-    private class BinderProcess(private val remote: IRemoteProcess) : Process() {
-        private val input by lazy { ParcelFileDescriptor.AutoCloseInputStream(remote.inputStream) }
-        private val output by lazy { ParcelFileDescriptor.AutoCloseOutputStream(remote.outputStream) }
-        private val error by lazy { ParcelFileDescriptor.AutoCloseInputStream(remote.errorStream) }
-
-        override fun getInputStream(): InputStream = input
-        override fun getOutputStream(): OutputStream = output
-        override fun getErrorStream(): InputStream = error
-        override fun waitFor(): Int = remote.waitFor()
-        override fun exitValue(): Int = remote.exitValue()
-        override fun destroy() = remote.destroy()
-        override fun destroyForcibly(): Process = apply { destroy() }
-        override fun isAlive(): Boolean = remote.alive()
-    }
 }

@@ -13,6 +13,8 @@ import android.os.Build
 import android.provider.Settings
 import android.view.InputDevice
 import android.view.accessibility.AccessibilityManager
+import moe.n4tsu.dextop.privilege.DistributionPrivilegeBootstrap
+import moe.n4tsu.dextop.privilege.DistributionPrivilegeRuntime
 import rikka.shizuku.Shizuku
 
 internal class DeviceDiagnostics(private val context: Context) {
@@ -25,15 +27,34 @@ internal class DeviceDiagnostics(private val context: Context) {
         }.isSuccess || runCatching {
             context.packageManager.getPackageInfo("moe.shizuku.manager", 0)
         }.isSuccess
+        @Suppress("DEPRECATION")
+        val compatibleProviders = runCatching {
+            context.packageManager.getInstalledPackages(PackageManager.GET_PERMISSIONS)
+                .filter { info ->
+                    info.packageName != context.packageName && (
+                        info.packageName == "roro.stellar.manager" ||
+                            info.packageName == "com.hamondev.shevery" ||
+                            info.packageName == "moe.shizuku.privileged.api" ||
+                            info.packageName == "moe.shizuku.manager" ||
+                            info.permissions?.any {
+                                it.name == "moe.shizuku.manager.permission.API_V23"
+                            } == true
+                        )
+                }
+        }.getOrDefault(emptyList())
         val savedProvider = context.getSharedPreferences(
             "dextop_privilege_provider",
             Context.MODE_PRIVATE
         ).getString("selected", null)
-        val privilegeProvider = when {
-            stellarInstalled && originalShizukuInstalled && savedProvider == "shizuku" -> "shizuku"
-            stellarInstalled -> "stellar"
-            originalShizukuInstalled -> "shizuku"
-            else -> "stellar"
+        val embeddedSelected = DistributionPrivilegeBootstrap.included && DistributionPrivilegeRuntime.enabled
+        val selectedExternal = compatibleProviders.firstOrNull { it.packageName == savedProvider }
+            ?: compatibleProviders.firstOrNull()
+        val privilegeProvider = if (embeddedSelected) {
+            "embedded"
+        } else if (selectedExternal?.packageName == "roro.stellar.manager") {
+            "stellar"
+        } else {
+            "shizuku"
         }
         val managerEnabled = context.getSystemService(AccessibilityManager::class.java)
             .getEnabledAccessibilityServiceList(AccessibilityServiceInfo.FEEDBACK_ALL_MASK)
@@ -50,7 +71,8 @@ internal class DeviceDiagnostics(private val context: Context) {
         }
         val secureSettings = context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) ==
             android.content.pm.PackageManager.PERMISSION_GRANTED
-        val shizuku = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        val embeddedRuntime = DistributionPrivilegeRuntime.available
+        val shizuku = !embeddedRuntime && runCatching { Shizuku.pingBinder() }.getOrDefault(false)
         val shizukuGranted = shizuku && runCatching {
             Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED
         }.getOrDefault(false)
@@ -70,7 +92,7 @@ internal class DeviceDiagnostics(private val context: Context) {
             info.permission == android.Manifest.permission.BIND_ACCESSIBILITY_SERVICE &&
                 info.metaData != null
         }.getOrDefault(false)
-        val canManageAccessibility = secureSettings || shizukuGranted
+        val canManageAccessibility = secureSettings || shizukuGranted || embeddedRuntime
         val accessibilityCapable = serviceDeclared && (accessibility || canManageAccessibility)
         val overlayCapable = accessibilityCapable
         val displayCapable = Build.VERSION.SDK_INT >= 29 && canManageAccessibility
@@ -83,12 +105,26 @@ internal class DeviceDiagnostics(private val context: Context) {
         }
         val externalDisplays = ExternalDisplayDetector(context).snapshot()
         val configuration = context.resources.configuration
+        val embeddedIncluded = DistributionPrivilegeBootstrap.included
+        val embeddedPaired = embeddedIncluded &&
+            DistributionPrivilegeBootstrap.hasStoredPairing(context)
+        val embeddedConnected = embeddedSelected && embeddedRuntime
+        val embeddedNotificationsGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) ==
+                PackageManager.PERMISSION_GRANTED
         return mapOf(
             "shizuku" to shizukuGranted,
             "privilegeProvider" to privilegeProvider,
-            "privilegeProviderName" to if (privilegeProvider == "stellar") "Stellar" else "Shizuku",
+            "privilegeProviderName" to when (privilegeProvider) {
+                "embedded" -> "Dextop"
+                "stellar" -> "Stellar"
+                else -> selectedExternal?.applicationInfo?.let {
+                    context.packageManager.getApplicationLabel(it).toString()
+                }.orEmpty().ifBlank { "Shizuku" }
+            },
             "stellarInstalled" to stellarInstalled,
             "originalShizukuInstalled" to originalShizukuInstalled,
+            "compatiblePrivilegeProviders" to compatibleProviders.map { it.packageName },
             "secureSettings" to secureSettings,
             "accessibility" to accessibilityCapable,
             "overlayWritable" to overlayCapable,
@@ -107,6 +143,11 @@ internal class DeviceDiagnostics(private val context: Context) {
             ).isNotEmpty()),
             "quickSettingsTile" to (Build.VERSION.SDK_INT >= 24),
             "foldableLayout" to (configuration.smallestScreenWidthDp >= 600),
+            "embeddedBinderIncluded" to embeddedIncluded,
+            "embeddedBinderSelected" to embeddedSelected,
+            "embeddedBinderPaired" to embeddedPaired,
+            "embeddedBinderConnected" to embeddedConnected,
+            "embeddedBinderNotifications" to embeddedNotificationsGranted,
             "sdk" to Build.VERSION.SDK_INT
         )
     }
