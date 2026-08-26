@@ -97,11 +97,14 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
 
   void handlePointerDown(PointerDownEvent event) {
     gesturePointers[event.pointer] = event.position;
-    if (gesturePointers.length == 3) gestureTriggered = false;
+    // Touch hardware can report an extra contact while three fingers are
+    // already on the glass.  The real overlay accepts the gesture in that
+    // situation, so the tutorial must not require an exact pointer count.
+    if (gesturePointers.length >= 3) gestureTriggered = false;
   }
 
   void handlePointerMove(PointerMoveEvent event) {
-    if (gestureTriggered || gesturePointers.length != 3) return;
+    if (gestureTriggered || gesturePointers.length < 3) return;
     final origin = gesturePointers[event.pointer];
     if (origin == null) return;
     final delta = event.position - origin;
@@ -110,7 +113,7 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
         : origin.dy <= 140 && delta.dy >= 90 && delta.dy.abs() > delta.dx.abs();
     if (!valid) return;
     gestureTriggered = true;
-    channel.invokeMethod<void>('showOverlayDemo');
+    unawaited(channel.invokeMethod<void>('showOverlayDemo'));
   }
 
   void handlePointerEnd(PointerEvent event) {
