@@ -216,7 +216,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 autoOnly == running.autoOnlySession
             ) {
                 val requested = Config(width, height, density, secure, effectiveDecorations, autoOnly)
-                running.root?.post {
+                Handler(Looper.getMainLooper()).post {
                     runCatching {
                         val next = running.effectiveConfig(requested)
                         running.resizeActiveDisplay(next, "resolution changed from Android UI")
@@ -229,7 +229,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         )
                     }.onSuccess { completion(Result.success(it)) }
                         .onFailure { completion(Result.failure(it)) }
-                } ?: completion(Result.failure(IllegalStateException("Dextop overlay is unavailable")))
+                }
                 return
             }
             pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
@@ -2384,17 +2384,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 else -> PrivilegedInputProtocol.PROFILE_DISABLED
             }
         }
+        val fullscreenBounds = rawTouchscreenViewBounds(surfaceView)
+        val trackpadBounds = rawTouchscreenViewBounds(laptopTrackpadView)
+        // A touchpad reports relative movement from its absolute contact
+        // range.  Keep that range proportional to the actual input region;
+        // the former fixed landscape 1839×1199 range made portrait input
+        // horizontally over-sensitive and vertically sluggish.
+        val touchpadBounds = if (laptopModeActive) trackpadBounds else fullscreenBounds
+        val touchpadMaxX = touchpadBounds?.width()?.coerceAtLeast(1) ?: VIRTUAL_TOUCHPAD_MAX_X
+        val touchpadMaxY = touchpadBounds?.height()?.coerceAtLeast(1) ?: VIRTUAL_TOUCHPAD_MAX_Y
         val candidate = PrivilegedInputProtocol.buildConfig(
             profile = nativeProfile,
             rotation = rawTouchscreenDisplayRotation(),
             hostWidth = hostWidth,
             hostHeight = hostHeight,
-            fullscreen = rawTouchscreenViewBounds(surfaceView),
-            trackpad = rawTouchscreenViewBounds(laptopTrackpadView),
+            fullscreen = fullscreenBounds,
+            trackpad = trackpadBounds,
             directTouch = directTouch,
             laptopMode = laptopModeActive,
-            touchpadMaxX = VIRTUAL_TOUCHPAD_MAX_X,
-            touchpadMaxY = VIRTUAL_TOUCHPAD_MAX_Y,
+            touchpadMaxX = touchpadMaxX,
+            touchpadMaxY = touchpadMaxY,
             touchpadResolution = VIRTUAL_TOUCHPAD_RESOLUTION,
             debugAllEvents = BuildConfig.DEBUG,
             naturalScroll = virtualMouseNaturalScroll(),
@@ -2751,10 +2760,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             )
             return null
         }
-        val x = (event.getX(pointerIndex) / sourceView.width.toFloat() * VIRTUAL_TOUCHPAD_MAX_X)
-            .roundToInt().coerceIn(0, VIRTUAL_TOUCHPAD_MAX_X)
-        val y = (event.getY(pointerIndex) / sourceView.height.toFloat() * VIRTUAL_TOUCHPAD_MAX_Y)
-            .roundToInt().coerceIn(0, VIRTUAL_TOUCHPAD_MAX_Y)
+        // Match the uinput contact range to the source region.  This keeps
+        // horizontal and vertical relative travel balanced in portrait too.
+        val maxX = sourceView.width.coerceAtLeast(1)
+        val maxY = sourceView.height.coerceAtLeast(1)
+        val x = (event.getX(pointerIndex) / sourceView.width.toFloat() * maxX)
+            .roundToInt().coerceIn(0, maxX)
+        val y = (event.getY(pointerIndex) / sourceView.height.toFloat() * maxY)
+            .roundToInt().coerceIn(0, maxY)
         return x to y
     }
 
@@ -8465,14 +8478,33 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         targetWidth = next.width
         targetHeight = next.height
         density = next.density
+        if (autoOnlySession && sizeChanged) {
+            val destination = autoDestinationSurface
+            val updated = destination?.takeIf { it.isValid }?.let {
+                autoOwnedDisplay?.resize(it, targetWidth, targetHeight, density)
+            } == true
+            OperationLog.i(
+                this,
+                "CarCompanion",
+                "Auto-owned display buffer resize applied=$updated desktop=${targetWidth}x${targetHeight}/$density"
+            )
+            if (!updated) {
+                throw IllegalStateException("Unable to resize the Android Auto desktop buffer")
+            }
+        }
         if (sizeChanged) {
             // A live size change can cross the natural-orientation boundary.
             // WMS also drops projected-display freeform policy on some Pixel
             // builds, so synchronize rotation and desktop policy after a size
             // change.  DPI-only edits deliberately skip this path so Samsung
             // DeX's taskbar is not forced through an unnecessary rebuild.
-            applyHostDisplayOrientation(requestedPortrait)
-            forcePhoneRotation(requestedPortrait)
+            // Headless Car Companion sessions have no phone-side host. Their
+            // logical desktop may resize for the connected car display, but
+            // that must never rotate or otherwise alter the phone UI.
+            if (!autoOnlySession) {
+                applyHostDisplayOrientation(requestedPortrait)
+                forcePhoneRotation(requestedPortrait)
+            }
             configureDisplay()
         }
         cursorX = (normalizedCursorX * targetWidth).coerceIn(0f, targetWidth - 1f)
@@ -8618,10 +8650,23 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun rawTouchscreenViewBounds(view: View?): Rect? {
         val target = view ?: return null
-        if (!target.isAttachedToWindow || target.width <= 0 || target.height <= 0) return null
-        val location = IntArray(2)
-        target.getLocationOnScreen(location)
-        return Rect(location[0], location[1], location[0] + target.width, location[1] + target.height)
+        val host = root ?: return null
+        if (!target.isAttachedToWindow || target.width <= 0 || target.height <= 0 ||
+            !host.isAttachedToWindow || host.width <= 0 || host.height <= 0
+        ) return null
+
+        // The native input bridge first maps a physical touchscreen contact to
+        // hostWidth × hostHeight.  Keep the target rectangles in that same
+        // root-local coordinate space.  getLocationOnScreen() alone is an
+        // absolute display coordinate and diverges from root coordinates when
+        // portrait locks, insets, or a rotated foldable layout are involved.
+        val targetLocation = IntArray(2)
+        val hostLocation = IntArray(2)
+        target.getLocationOnScreen(targetLocation)
+        host.getLocationOnScreen(hostLocation)
+        val left = targetLocation[0] - hostLocation[0]
+        val top = targetLocation[1] - hostLocation[1]
+        return Rect(left, top, left + target.width, top + target.height)
     }
 
     private fun rawTouchscreenDisplayRotation(): Int =

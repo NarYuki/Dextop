@@ -571,6 +571,7 @@ private:
     float lastTapX_ = 0;
     float lastTapY_ = 0;
     bool touchpadSecondTap_ = false;
+    int64_t touchpadSecondTapStartedAt_ = 0;
     bool leftButtonDown_ = false;
 
     float wheelFractionX_ = 0;
@@ -1114,15 +1115,15 @@ private:
         }
         gestureMaxTravel_ = 0;
         touchpadSecondTap_ = false;
+        touchpadSecondTapStartedAt_ = 0;
         if (cfg.profile == kProfileTouchpad && lastTapValid_ && !contacts.empty()) {
             const int64_t gap = gestureStartedAt_ - lastTapAt_;
             const float distance = std::hypot(contacts.front().localX - lastTapX_, contacts.front().localY - lastTapY_);
             if (gap >= 0 && gap <= cfg.doubleTapTimeoutMs && distance <= tapSlopPixels(cfg) * 2.0f) {
                 touchpadSecondTap_ = true;
-                leftButtonDown_ = true;
-                state("drag", "touchpad second tap armed BTN_LEFT_DOWN gapMs=" + std::to_string(gap) +
-                    " distance=" + std::to_string(distance));
-                callbackHaptic(false);
+                touchpadSecondTapStartedAt_ = gestureStartedAt_;
+                state("drag", "touchpad second tap armed gapMs=" + std::to_string(gap) +
+                    " distance=" + std::to_string(distance) + " holdDelayMs=180");
             }
         }
         std::ostringstream out;
@@ -1294,8 +1295,15 @@ private:
                     " toolKey=" + std::to_string(activeToolKey_)
             );
         }
-        if (touchpadSecondTap_ && leftButtonDown_ && previousCount == 0 && currentCount > 0) {
+        // Do not turn a quick second tap into a drag at contact-down.  A
+        // short hold prevents accidental drags while preserving normal
+        // double-tap clicks; the first frame after the hold begins dragging.
+        if (touchpadSecondTap_ && !leftButtonDown_ && currentCount > 0 &&
+            nowMs() - touchpadSecondTapStartedAt_ >= 180) {
             events.push_back(makeEvent(EV_KEY, BTN_LEFT, 1));
+            leftButtonDown_ = true;
+            state("drag", "touchpad second tap hold complete BTN_LEFT_DOWN");
+            callbackHaptic(false);
         }
         if (previousCount > 0 && currentCount == 0) events.push_back(makeEvent(EV_KEY, BTN_TOUCH, 0));
         if (currentCount == 0 && leftButtonDown_) {
@@ -1439,6 +1447,7 @@ private:
         gestureMoved_ = false;
         gestureTwoFinger_ = false;
         touchpadSecondTap_ = false;
+        touchpadSecondTapStartedAt_ = 0;
         mouseLongPressTriggered_ = false;
         wheelFractionX_ = 0;
         wheelFractionY_ = 0;

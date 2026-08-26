@@ -34,4 +34,6 @@
     <string name="workspace">Workspace</string>
     <string name="save_workspace">Add current app arrangement</string>
     <string name="no_workspaces">No saved workspaces</string>
+    <string name="display_scale">Display scale</string>
+    <string name="display_scale_description">Reduce item size for a better fit on compact in-car displays.</string>
 </resources>

@@ -11,6 +11,7 @@ import android.os.Messenger
 import android.util.Log
 import android.view.MotionEvent
 import android.view.Surface
+import kotlin.math.roundToInt
 
 /** Signature-protected in-process renderer for the CARDEX parked activity. */
 class CardexRelayService : Service() {
@@ -22,8 +23,10 @@ class CardexRelayService : Service() {
     private var surface: Surface? = null
     private var width = 0
     private var height = 0
+    private var renderScale = 1f
     private var gracefulStopRequested = false
     private var directSessionOwned = false
+    private var relayGeneration = 0L
 
     override fun onBind(intent: Intent?): IBinder = messenger.binder
 
@@ -46,7 +49,13 @@ class CardexRelayService : Service() {
                 client = message.replyTo
                 val data = message.data.apply { classLoader = Surface::class.java.classLoader }
                 val nextSurface = data.getParcelable(KEY_SURFACE, Surface::class.java) ?: return true
-                startRelay(nextSurface, data.getInt(KEY_WIDTH), data.getInt(KEY_HEIGHT), data.getInt(KEY_DENSITY, 160))
+                startRelay(
+                    nextSurface,
+                    data.getInt(KEY_WIDTH),
+                    data.getInt(KEY_HEIGHT),
+                    data.getInt(KEY_DENSITY, 160),
+                    data.getFloat(KEY_RENDER_SCALE, 1f),
+                )
             }
             MSG_TOUCH -> {
                 message.data.classLoader = MotionEvent::class.java.classLoader
@@ -78,7 +87,13 @@ class CardexRelayService : Service() {
         return true
     }
 
-    private fun startRelay(nextSurface: Surface, nextWidth: Int, nextHeight: Int, density: Int) {
+    private fun startRelay(
+        nextSurface: Surface,
+        nextWidth: Int,
+        nextHeight: Int,
+        density: Int,
+        requestedScale: Float,
+    ) {
         if (!nextSurface.isValid || nextWidth <= 0 || nextHeight <= 0) return
         controller?.stop()
         if (surface !== nextSurface) surface?.release()
@@ -86,10 +101,13 @@ class CardexRelayService : Service() {
         destinationSurface = nextSurface
         width = nextWidth
         height = nextHeight
+        renderScale = requestedScale.coerceIn(MIN_RENDER_SCALE, 1f)
+        val generation = ++relayGeneration
+        relaySessionActive = true
         sendStatus(STATUS_STARTING)
         gracefulStopRequested = false
         requestPrivilegedBinder()
-        waitForPrivilegedAccess(nextSurface, nextWidth, nextHeight, density.coerceIn(80, 640), 0)
+        waitForPrivilegedAccess(nextSurface, nextWidth, nextHeight, density.coerceIn(80, 640), 0, generation)
     }
 
     private fun waitForPrivilegedAccess(
@@ -97,13 +115,14 @@ class CardexRelayService : Service() {
         nextWidth: Int,
         nextHeight: Int,
         density: Int,
-        attempt: Int
+        attempt: Int,
+        generation: Long
     ) {
-        if (surface !== nextSurface || !nextSurface.isValid) return
+        if (generation != relayGeneration || surface !== nextSurface || !nextSurface.isValid) return
         if (!PrivilegedAccess("CardexRelayService").isAvailable()) {
             if (attempt < 20) {
                 handler.postDelayed({
-                    waitForPrivilegedAccess(nextSurface, nextWidth, nextHeight, density, attempt + 1)
+                    waitForPrivilegedAccess(nextSurface, nextWidth, nextHeight, density, attempt + 1, generation)
                 }, 150L)
             } else {
                 sendError(IllegalStateException(NativeStrings.text("nativeShizukuUnavailable")))
@@ -112,15 +131,22 @@ class CardexRelayService : Service() {
         }
         val hiddenDisplay = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getBoolean("flutter.android_auto_hidden_display", false)
+        val (desktopWidth, desktopHeight) = scaledDesktopSize(nextWidth, nextHeight)
+        OperationLog.i(
+            this,
+            "CarCompanion",
+            "relay display physical=${nextWidth}x$nextHeight scale=$renderScale desktop=${desktopWidth}x$desktopHeight/$density"
+        )
         if (!hiddenDisplay) {
-            startLegacyOverlay(nextSurface, nextWidth, nextHeight, density)
+            startLegacyOverlay(nextSurface, nextWidth, nextHeight, desktopWidth, desktopHeight, density, generation)
             return
         }
         MirrorService.launch(
-            this, nextWidth, nextHeight, density.coerceIn(80, 640),
+            this, desktopWidth, desktopHeight, density.coerceIn(80, 640),
             secure = false, decorations = false, autoOnly = true, autoSurface = nextSurface
         ) { result ->
             result.onSuccess { session ->
+                if (generation != relayGeneration) return@onSuccess
                 directSessionOwned = true
                 val activeSurface = surface
                 if (activeSurface == null || !activeSurface.isValid) {
@@ -150,11 +176,25 @@ class CardexRelayService : Service() {
         )
     }
 
-    private fun startLegacyOverlay(nextSurface: Surface, nextWidth: Int, nextHeight: Int, density: Int) {
+    private fun startLegacyOverlay(
+        nextSurface: Surface,
+        nextWidth: Int,
+        nextHeight: Int,
+        desktopWidth: Int,
+        desktopHeight: Int,
+        density: Int,
+        generation: Long,
+    ) {
         directSessionOwned = false
-        legacySession?.stop()
-        legacySession = AutoDisplaySession(this).also { session ->
-            session.start(nextWidth, nextHeight, density, secure = false, decorations = false) { result ->
+        // A render-scale change is a new logical display, not merely a
+        // Surface resize.  Overlay removal is asynchronous; creating the
+        // next request before it completes lets DisplayManager hand us the
+        // old display and makes the selected scale appear to do nothing.
+        controller?.stop()
+        controller = null
+        val startFresh = {
+            legacySession = AutoDisplaySession(this).also { session ->
+            session.start(desktopWidth, desktopHeight, density, secure = false, decorations = false) { result ->
                 result.onSuccess { displayId ->
                     runCatching {
                         AndroidAutoMirrorController(this, AndroidAutoMirrorActivity.SOURCE_AUTO).also {
@@ -167,9 +207,19 @@ class CardexRelayService : Service() {
                 }.onFailure(::sendError)
             }
         }
+        }
+        val previousSession = legacySession
+        if (previousSession?.ownsSession == true) {
+            previousSession.stop {
+                if (generation == relayGeneration && surface === nextSurface && nextSurface.isValid) startFresh()
+            }
+        } else {
+            startFresh()
+        }
     }
 
     private fun stopRelay() {
+        relayGeneration += 1
         controller?.stop()
         controller = null
         legacySession?.stop()
@@ -181,6 +231,7 @@ class CardexRelayService : Service() {
             MirrorService.stopActive()
         }
         directSessionOwned = false
+        relaySessionActive = false
         surface?.release()
         surface = null
         destinationSurface = null
@@ -193,10 +244,11 @@ class CardexRelayService : Service() {
         // The direct display already owns this Surface. Reconnect now
         // re-submits that same surface through the normal start path rather
         // than creating a second recording display.
-        startRelay(activeSurface, width, height, resources.displayMetrics.densityDpi)
+        startRelay(activeSurface, width, height, resources.displayMetrics.densityDpi, renderScale)
     }
 
     private fun sendError(error: Throwable) {
+        relaySessionActive = false
         OperationLog.e(this, "CarCompanion", "relay failed", error)
         Log.e("DextopCarCompanion", "relay failed: ${error.message}", error)
         sendStatus(STATUS_ERROR, error.message.orEmpty())
@@ -227,10 +279,15 @@ class CardexRelayService : Service() {
     companion object {
         @Volatile
         private var destinationSurface: Surface? = null
+        @Volatile
+        private var relaySessionActive = false
 
         /** Keep the CARDEX Surface valid across accessibility reconnects. */
         internal fun activeDestinationSurface(): Surface? =
             destinationSurface?.takeIf { it.isValid }
+
+        /** True while Car Companion owns a relay display or is preparing one. */
+        fun isRelaySessionActive(): Boolean = relaySessionActive
 
         const val MSG_START = 1
         const val MSG_TOUCH = 2
@@ -242,6 +299,7 @@ class CardexRelayService : Service() {
         const val KEY_WIDTH = "width"
         const val KEY_HEIGHT = "height"
         const val KEY_DENSITY = "density"
+        const val KEY_RENDER_SCALE = "render_scale"
         const val KEY_EVENT = "event"
         const val KEY_STATUS = "status"
         const val KEY_DETAIL = "detail"
@@ -256,5 +314,17 @@ class CardexRelayService : Service() {
         const val STATUS_STARTING = 1
         const val STATUS_RUNNING = 2
         const val STATUS_ERROR = 3
+        private const val MIN_RENDER_SCALE = 0.50f
+        private const val MAX_DESKTOP_EDGE = 4096
+    }
+
+    private fun scaledDesktopSize(physicalWidth: Int, physicalHeight: Int): Pair<Int, Int> {
+        val inverse = 1f / renderScale
+        val rawWidth = (physicalWidth * inverse).roundToInt().coerceAtLeast(1)
+        val rawHeight = (physicalHeight * inverse).roundToInt().coerceAtLeast(1)
+        val cap = MAX_DESKTOP_EDGE.toFloat() / maxOf(rawWidth, rawHeight).toFloat()
+        return if (cap >= 1f) rawWidth to rawHeight else
+            (rawWidth * cap).roundToInt().coerceAtLeast(1) to
+                (rawHeight * cap).roundToInt().coerceAtLeast(1)
     }
 }

@@ -303,7 +303,27 @@ private class VirtualDisplayMirrorBackend(private val privilegedAccess: Privileg
 internal data class OwnedVirtualDisplay(
     val displayId: Int,
     val attachment: MirrorAttachment
-)
+) {
+    /**
+     * Updates the real Auto-owned virtual display without going through a
+     * phone SurfaceView.  This is used when CARDEX raises its render scale:
+     * the destination panel is unchanged but the desktop's logical buffer
+     * must grow so desktop controls become smaller.
+     */
+    fun resize(surface: Surface, width: Int, height: Int, density: Int): Boolean =
+        attachment.update(
+            MirrorAttachRequest(
+                displayId = displayId,
+                host = null,
+                destinationSurface = surface,
+                hostWidth = width,
+                hostHeight = height,
+                contentWidth = width,
+                contentHeight = height,
+                contentDensity = density
+            )
+        )
+}
 
 internal class VirtualDisplayPlatform private constructor(
     private val configurationType: Class<*>,
