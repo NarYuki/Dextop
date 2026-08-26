@@ -4,11 +4,11 @@ import android.content.AttributionSource
 import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
+import android.os.Handler
 import android.os.Looper
 import android.os.Parcel
 import moe.n4tsu.dextop.input.PrivilegedInputService
 import java.io.File
-import kotlin.system.exitProcess
 import org.lsposed.hiddenapibypass.HiddenApiBypass
 
 /** Minimal bundled ADB process. It exposes no package-management UI or third-party API. */
@@ -22,11 +22,33 @@ object EmbeddedPrivilegeServer {
         Looper.prepareMainLooper()
         HiddenApiBypass.addHiddenApiExemptions("Landroid/app/", "Landroid/content/", "Landroid/os/")
         val server = RuntimeBinder()
-        val response = publishBinder("$packageName.embedded_privilege", server)
-        check(response?.getBoolean("accepted") == true) { "Dextop rejected the embedded runtime" }
-        val lifecycle = response?.getBinder(EmbeddedPrivilegeProtocol.providerLifecycleBinder)
-            ?: error("Dextop did not return its lifecycle Binder")
-        lifecycle.linkToDeath({ exitProcess(0) }, 0)
+        val handler = Handler(Looper.getMainLooper())
+        lateinit var publishAndWatch: () -> Unit
+        publishAndWatch = {
+            val response = runCatching {
+                publishBinder("$packageName.embedded_privilege", server)
+            }.getOrNull()
+            val lifecycle = response
+                ?.takeIf { it.getBoolean("accepted") }
+                ?.getBinder(EmbeddedPrivilegeProtocol.providerLifecycleBinder)
+            if (lifecycle == null) {
+                // The app process may be absent while the wireless-debugging
+                // shell process is still healthy.  Do not terminate the
+                // embedded Binder: retain it and retry publishing when the
+                // provider becomes available again.
+                handler.postDelayed(publishAndWatch, 1_500L)
+            } else {
+                runCatching {
+                    lifecycle.linkToDeath(
+                        { handler.postDelayed(publishAndWatch, 500L) },
+                        0
+                    )
+                }.onFailure {
+                    handler.postDelayed(publishAndWatch, 500L)
+                }
+            }
+        }
+        publishAndWatch()
         Looper.loop()
     }
 

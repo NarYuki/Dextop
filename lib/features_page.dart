@@ -162,8 +162,11 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
       await preferences.setBool('foldable_auto', true);
     }
     final savedLaptopMode = preferences.getBool('foldable_laptop_mode');
+    // Automatic laptop mode must be an explicit opt-in.  A half-open fold is
+    // a substantial layout change, so new installs start with it disabled.
+    // Keep any existing user choice untouched on upgrade.
     if (savedLaptopMode == null && isFoldableDevice) {
-      await preferences.setBool('foldable_laptop_mode', true);
+      await preferences.setBool('foldable_laptop_mode', false);
     }
     final decoded = needsApps
         ? jsonDecode(preferences.getString('workspaces') ?? '[]') as List
@@ -179,7 +182,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
           .map((item) => Map<String, dynamic>.from(item as Map))
           .toList();
       foldableAuto = savedFoldableAuto ?? isFoldableDevice;
-      foldableLaptopMode = savedLaptopMode ?? isFoldableDevice;
+      foldableLaptopMode = savedLaptopMode ?? false;
       threeFingerGesture =
           preferences.getString('gesture_three_finger') ?? 'menu';
       twoFingerGesture =
