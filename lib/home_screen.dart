@@ -470,6 +470,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _initializeHome() async {
     await Future.wait([refresh(), loadHomeWorkspaces(loadIcons: false)]);
+    if (mounted) await _showAppUpdatedDialogIfNeeded();
     if (mounted && !releaseCheckStarted) {
       releaseCheckStarted = true;
       unawaited(_checkForUpdates());
@@ -479,6 +480,54 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
     if (mounted) await _consumeTileAction();
     if (mounted) await _showMultiTouchUpgradeNoticeIfNeeded();
+  }
+
+  Future<void> _showAppUpdatedDialogIfNeeded() async {
+    const previousVersionKey = 'last_launched_app_version';
+    final currentVersion = appVersion.trim().split('+').first;
+    if (currentVersion.isEmpty) return;
+    final preferences = await SharedPreferences.getInstance();
+    final previousVersion = (preferences.getString(previousVersionKey) ?? '')
+        .trim()
+        .split('+')
+        .first;
+    // First launch establishes a baseline. Only an actual version change
+    // after that baseline shows the update acknowledgement.
+    await preferences.setString(previousVersionKey, currentVersion);
+    if (previousVersion.isEmpty ||
+        previousVersion == currentVersion ||
+        !mounted) {
+      return;
+    }
+    final language = Localizations.localeOf(context).languageCode;
+    final title = switch (language) {
+      'ja' => '$currentVersionへ更新されました！',
+      'ko' => '$currentVersion(으)로 업데이트되었습니다!',
+      'zh' => '已更新至 $currentVersion！',
+      'ru' => 'Обновлено до версии $currentVersion!',
+      _ => 'Updated to $currentVersion!',
+    };
+    final message = switch (language) {
+      'ja' => 'Dextopが最新バージョンになりました。',
+      'ko' => 'Dextop이 최신 버전으로 업데이트되었습니다.',
+      'zh' => 'Dextop 已更新至最新版本。',
+      'ru' => 'Dextop обновлён до последней версии.',
+      _ => 'Dextop has been updated to the latest version.',
+    };
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        icon: const Icon(Icons.system_update_rounded),
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: Text(AppLocalizations.of(context).close),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showMultiTouchUpgradeNoticeIfNeeded() async {

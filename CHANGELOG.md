@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.5.2 — Fold8 laptop-mode reliability
+
+### Fixed
+
+- Fixed Fold8 laptop mode failing to start when One UI temporarily reports an incorrect fold posture or hinge orientation.
+- Added the hardware hinge angle as a safe Fold8 posture fallback while preserving the WindowManager posture path.
+- Kept the embedded privileged Binder alive and able to republish after the app process is restarted.
+- Added an in-app update confirmation shown once after a successful version upgrade.
+
+### Changed
+
+- Automatic laptop-mode detection is now disabled by default on new installations. Existing user choices are preserved.
+
 ## 1.4.2 — Pixel compatibility fallback and keyboard repeat input
 
 ### Improved

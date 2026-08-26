@@ -3251,11 +3251,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             return true
         }
-        foldingApiLaptopPosture?.let { return it }
-        if (angle != null) {
-            return isLaptopHingeAngle(angle)
+        // Some Fold8 firmware builds report FLAT or a vertical hinge from the
+        // WindowManager extension while the hardware hinge is already in the
+        // stable laptop range.  A valid local hinge sample is therefore the
+        // fallback for the special Fold8 profile as well; otherwise laptop
+        // mode never starts on those builds.  The API still wins for a
+        // confirmed HALF_OPENED posture above, and a flat sensor sample still
+        // turns the deck off normally.
+        if (angle != null && isLaptopHingeAngle(angle)) {
+            return true
         }
-        return null
+        foldingApiLaptopPosture?.let { return it }
+        return angle?.let(::isLaptopHingeAngle)
     }
 
     private fun currentStandardFoldPosture(angle: Float?): Boolean? {
@@ -3633,6 +3640,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun isFoldableDevice(): Boolean {
         refreshFoldingApiState("capability", force = true)
+        // Fold8 can expose only its active internal panel while the session
+        // starts, and a few One UI builds do not publish TYPE_HINGE_ANGLE to
+        // third-party services.  Its known model/profile is therefore a
+        // stable hardware capability signal, not an automatic-posture signal.
+        // Without it, even the explicit overlay action is rejected as a
+        // phone-sized non-foldable before the laptop deck is created.
+        if (laptopFoldProfile() == LaptopFoldProfile.FOLD8) return true
         // A fold transition can make WindowManager briefly publish an empty
         // feature list while the inactive panel is being attached.  That is
         // not proof that the device stopped being foldable. Keep the positive
@@ -8323,12 +8337,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun isLaptopAutoDetectionEnabled(): Boolean {
         val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-        // Foldables default to posture detection on first use. Once the user
-        // changes the switch, the explicit preference always wins.
+        // Automatic laptop mode is opt-in. Once the user changes the switch,
+        // the explicit preference always wins.
         return if (preferences.contains("flutter.foldable_laptop_mode")) {
             preferences.getBoolean("flutter.foldable_laptop_mode", false)
         } else {
-            isFoldableDevice()
+            false
         }
     }
 
@@ -8344,10 +8358,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         return when (laptopFoldProfile()) {
             LaptopFoldProfile.FOLD8 -> {
                 // Fold8 laptop posture is the top/bottom (horizontal hinge)
-                // layout. Keep its existing gate: an explicit landscape
-                // orientation must remain manual-only.
-                foldingApiHorizontalHinge?.let { it && requestedPortrait }
-                    ?: requestedPortrait
+                // layout. Keep its portrait-only automatic gate, but do not
+                // reject the session when One UI reports a transient vertical
+                // hinge orientation during the panel transition.
+                requestedPortrait
             }
 
             LaptopFoldProfile.STANDARD_FOLDABLE -> {
