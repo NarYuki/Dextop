@@ -32,6 +32,7 @@ open class MainActivity : FlutterActivity() {
     companion object {
         private const val STELLAR_PACKAGE = "roro.stellar.manager"
         private const val SHEVERY_PACKAGE = "com.hamondev.shevery"
+        private const val CAR_COMPANION_PACKAGE = "moe.n4tsu.cardex"
         private const val SHIZUKU_PERMISSION = "moe.shizuku.manager.permission.API_V23"
         private const val STELLAR_REQUEST_BINDER_ACTION = "roro.stellar.intent.action.REQUEST_BINDER"
         private const val EMBEDDED_NOTIFICATION_PERMISSION_REQUEST = 8104
@@ -289,7 +290,11 @@ open class MainActivity : FlutterActivity() {
                     "active" to MirrorService.isActive(),
                     "stopping" to MirrorService.isStopping(),
                     "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),
-                    "autoActive" to AndroidAutoMirrorActivity.isAutoSessionActive()
+                    "autoActive" to (
+                        AndroidAutoMirrorActivity.isAutoSessionActive() ||
+                            MirrorService.isAutoOnlySessionActive() ||
+                            CardexRelayService.isRelaySessionActive()
+                        )
                 ))
                 "launchContext" -> {
                     val launchDisplayId = display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
@@ -672,11 +677,19 @@ open class MainActivity : FlutterActivity() {
             ((!embeddedPairingStored && previousMode == "external") || embeddedRestoreNeedsSetup)
         val notificationGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val carCompanionInstalled = runCatching {
+            packageManager.getPackageInfo(CAR_COMPANION_PACKAGE, 0)
+        }.isSuccess
         val status = mapOf(
             "active" to MirrorService.isActive(),
             "stopping" to MirrorService.isStopping(),
             "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),
-            "autoActive" to AndroidAutoMirrorActivity.isAutoSessionActive(),
+            "autoActive" to (
+                AndroidAutoMirrorActivity.isAutoSessionActive() ||
+                    MirrorService.isAutoOnlySessionActive() ||
+                    CardexRelayService.isRelaySessionActive()
+                ),
+            "carCompanionInstalled" to carCompanionInstalled,
             "privileged" to hasSecureSettingsPermission(),
             "shizukuInstalled" to installed,
             "stellarInstalled" to stellarInstalled,
@@ -1046,7 +1059,9 @@ open class MainActivity : FlutterActivity() {
         val recovery = SessionJournal(this).snapshot()
         val transactionOpen = recovery["transactionOpen"] == true
         val pausedSession = recovery["recoverable"] == true && recovery["phase"] == "paused"
-        val autoSessionActive = AndroidAutoMirrorActivity.isAutoSessionActive()
+        val autoSessionActive = AndroidAutoMirrorActivity.isAutoSessionActive() ||
+            MirrorService.isAutoOnlySessionActive() ||
+            CardexRelayService.isRelaySessionActive()
         val phoneSessionOwned = MirrorService.ownsPhoneSession()
         return mapOf(
             // Accessibility can legitimately remain enabled during setup/demo.

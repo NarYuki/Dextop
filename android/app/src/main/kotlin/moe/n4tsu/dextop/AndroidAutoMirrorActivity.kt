@@ -527,6 +527,7 @@ internal class AutoDisplaySession(private val activity: Context) {
         private set
     private var desktopConfigurator: DesktopModeConfigurator? = null
     private var completion: ((Result<Int>) -> Unit)? = null
+    private var stopCompletion: (() -> Unit)? = null
     private var creating = false
     private var stopping = false
     private var homeDecorationRetryUsed = false
@@ -643,9 +644,24 @@ internal class AutoDisplaySession(private val activity: Context) {
         }.onFailure { fail(it) }
     }
 
-    fun stop() {
+    fun stop(onStopped: (() -> Unit)? = null) {
+        if (onStopped != null) {
+            val previous = stopCompletion
+            stopCompletion = if (previous == null) onStopped else {
+                {
+                    previous()
+                    onStopped()
+                }
+            }
+        }
         if (stopping) return
-        if (!ownsSession && sessionJournal.snapshot()["transactionOpen"] != true) return
+        if (!ownsSession && sessionJournal.snapshot()["transactionOpen"] != true) {
+            stopCompletion?.also { completion ->
+                stopCompletion = null
+                completion()
+            }
+            return
+        }
         stopping = true
         val oldId = displayId
         isActive = false
@@ -708,6 +724,10 @@ internal class AutoDisplaySession(private val activity: Context) {
         stopping = false
         AndroidAutoMirrorActivity.setAutoOwnershipBusy(false)
         reapplyTopologyForRemainingDisplays()
+        stopCompletion?.also { completion ->
+            stopCompletion = null
+            completion()
+        }
     }
 
     private fun waitForDisplay(

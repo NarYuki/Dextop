@@ -1176,12 +1176,15 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
       for (var index = 0; index < children.length; index++) ...[
         children[index],
         if (index != children.length - 1 &&
-            children[index] is ListTile &&
-            children[index + 1] is ListTile)
+            _isSettingsRow(children[index]) &&
+            _isSettingsRow(children[index + 1]))
           Divider(height: 1, indent: 56),
       ],
     ];
   }
+
+  bool _isSettingsRow(Widget child) =>
+      child is ListTile || child is SwitchListTile;
 
   Widget _metric(String label, String value) =>
       ListTile(title: Text(label), trailing: Text(value));

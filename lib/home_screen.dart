@@ -404,6 +404,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var androidRepair = <String, dynamic>{};
   var androidRepairCompleted = false;
   var workspaceExpanded = false;
+  var carCompanionInstalled = false;
   var homeWorkspaces = <Map<String, dynamic>>[];
   var homeApps = <String, Map<String, dynamic>>{};
   var homeAppsLoading = false;
@@ -880,6 +881,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         active = value['active'] == true;
         autoConnected = value['autoConnected'] == true;
         autoActive = value['autoActive'] == true;
+        carCompanionInstalled = value['carCompanionInstalled'] == true;
+        if (!carCompanionInstalled && desktopSettingsSection == 'auto') {
+          desktopSettingsSection = 'display';
+        }
         stopping = value['stopping'] == true;
         // Keyboard theme editing changes the native laptop overlay while it
         // is being rendered. Leave that page when a session becomes active;

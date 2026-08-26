@@ -34,4 +34,6 @@
     <string name="workspace">ワークスペース</string>
     <string name="save_workspace">現在のアプリ配置を追加</string>
     <string name="no_workspaces">保存済みワークスペースはありません</string>
+    <string name="display_scale">表示倍率</string>
+    <string name="display_scale_description">表示項目を縮小して、狭い車載ディスプレイでも見切れにくくします。</string>
 </resources>

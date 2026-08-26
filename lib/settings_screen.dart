@@ -27,17 +27,19 @@ extension _SettingsContent on _HomeScreenState {
                   () => _openDisplaySettings(l),
                 ),
                 Divider(height: 1),
-                _categoryTile(
-                  Icons.directions_car_outlined,
-                  l.autoSettingsTitle,
-                  l.autoSettingsDescription,
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const AutoSettingsPage(),
+                if (carCompanionInstalled) ...[
+                  _categoryTile(
+                    Icons.directions_car_outlined,
+                    l.autoSettingsTitle,
+                    l.autoSettingsDescription,
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => const AutoSettingsPage(),
+                      ),
                     ),
                   ),
-                ),
-                Divider(height: 1),
+                  Divider(height: 1),
+                ],
                 _categoryTile(
                   Icons.mouse_outlined,
                   l.mouseSettingsTitle,
@@ -136,12 +138,13 @@ extension _SettingsContent on _HomeScreenState {
         l.display,
         AppStrings.tr('uiSecureDisplayFoldable'),
       ),
-      (
-        'auto',
-        Icons.directions_car_outlined,
-        l.autoSettingsTitle,
-        l.autoSettingsDescription,
-      ),
+      if (carCompanionInstalled)
+        (
+          'auto',
+          Icons.directions_car_outlined,
+          l.autoSettingsTitle,
+          l.autoSettingsDescription,
+        ),
       (
         'mouse',
         Icons.mouse_outlined,

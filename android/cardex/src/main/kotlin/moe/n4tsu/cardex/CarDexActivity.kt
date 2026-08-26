@@ -45,6 +45,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -85,6 +86,7 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
@@ -98,6 +100,7 @@ private const val KEY_SURFACE = "surface"
 private const val KEY_WIDTH = "width"
 private const val KEY_HEIGHT = "height"
 private const val KEY_DENSITY = "density"
+private const val KEY_RENDER_SCALE = "render_scale"
 private const val KEY_EVENT = "event"
 private const val KEY_STATUS = "status"
 private const val KEY_ACTION = "action"
@@ -106,6 +109,7 @@ private const val KEY_GRACEFUL = "graceful"
 private const val STATUS_IDLE = 0
 private const val STATUS_STARTING = 1
 private const val STATUS_RUNNING = 2
+private val CAR_UI_SCALES = setOf(1f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f)
 
 class CarDexActivity : ComponentActivity() {
     // Keep relay identity evaluation inside the lifecycle owner during refactors.
@@ -118,6 +122,10 @@ class CarDexActivity : ComponentActivity() {
     private var workspaces by mutableStateOf(emptyList<CardexWorkspace>())
     private var workspaceError by mutableStateOf("")
     private var phoneGuideVisible by mutableStateOf(false)
+    private var carUiScale by mutableStateOf(1f)
+    private var relaySurface: Surface? = null
+    private var relaySurfaceWidth = 0
+    private var relaySurfaceHeight = 0
     private var relay: Messenger? = null
     private val incoming = Messenger(Handler(Looper.getMainLooper()) { message ->
         when (message.what) {
@@ -147,6 +155,10 @@ class CarDexActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         Log.i("DextopCarCompanion", "relayInvariant=$relayInvariant")
         enableEdgeToEdge()
+        carUiScale = getSharedPreferences("cardex_preferences", MODE_PRIVATE)
+            .getFloat("car_ui_scale", 1f)
+            .takeIf { it in CAR_UI_SCALES }
+            ?: 1f
         relayState = inspectRelay()
         CarConnection(this).type.observe(this) { type ->
             carConnectionType = type ?: CarConnection.CONNECTION_TYPE_NOT_CONNECTED
@@ -170,13 +182,17 @@ class CarDexActivity : ComponentActivity() {
                         onHideControls = { controlsVisible = false },
                         onAction = { sendAction(it, keepOpen = true) },
                         workspaces = workspaces,
-                        workspaceError = workspaceError
+                        workspaceError = workspaceError,
+                        uiScale = carUiScale,
+                        onUiScaleChanged = ::updateCarUiScale
                     )
                 } else {
                     CarDexScreen(
                         state = relayState,
                         isCarDisplay = isCarDisplay(),
                         carConnectionType = carConnectionType,
+                        uiScale = carUiScale,
+                        onUiScaleChanged = ::updateCarUiScale,
                         onStart = {
                             if (isCarDisplay()) openDextop() else phoneGuideVisible = true
                         }
@@ -204,6 +220,17 @@ class CarDexActivity : ComponentActivity() {
     }
 
     private fun isCarDisplay(): Boolean = display?.displayId != Display.DEFAULT_DISPLAY
+
+    private fun updateCarUiScale(scale: Float) {
+        if (scale !in CAR_UI_SCALES || carUiScale == scale) return
+        carUiScale = scale
+        getSharedPreferences("cardex_preferences", MODE_PRIVATE)
+            .edit()
+            .putFloat("car_ui_scale", scale)
+            .apply()
+        relaySurface?.takeIf { it.isValid && relaySurfaceWidth > 0 && relaySurfaceHeight > 0 }
+            ?.let { startRelay(it, relaySurfaceWidth, relaySurfaceHeight) }
+    }
 
     private fun inspectRelay(): RelayState {
         val installed = runCatching {
@@ -251,6 +278,9 @@ class CarDexActivity : ComponentActivity() {
             return
         }
         if (!surface.isValid || width <= 0 || height <= 0) return
+        relaySurface = surface
+        relaySurfaceWidth = width
+        relaySurfaceHeight = height
         target.send(Message.obtain(null, MSG_START).apply {
             replyTo = incoming
             data = Bundle().apply {
@@ -258,6 +288,7 @@ class CarDexActivity : ComponentActivity() {
                 putInt(KEY_WIDTH, width)
                 putInt(KEY_HEIGHT, height)
                 putInt(KEY_DENSITY, resources.displayMetrics.densityDpi)
+                putFloat(KEY_RENDER_SCALE, carUiScale)
             }
         })
     }
@@ -280,6 +311,9 @@ class CarDexActivity : ComponentActivity() {
         relayRequested = false
         relayStatus = STATUS_IDLE
         controlsVisible = false
+        relaySurface = null
+        relaySurfaceWidth = 0
+        relaySurfaceHeight = 0
     }
 
     private fun markUnexpectedDisconnect(reason: String) {
@@ -387,7 +421,9 @@ private fun RelaySurface(
     onHideControls: () -> Unit,
     onAction: (String) -> Unit,
     workspaces: List<CardexWorkspace>,
-    workspaceError: String
+    workspaceError: String,
+    uiScale: Float,
+    onUiScaleChanged: (Float) -> Unit
 ) {
     Box(Modifier.fillMaxSize()) {
         AndroidView(
@@ -469,7 +505,9 @@ private fun RelaySurface(
                 onAction = onAction,
                 onStop = onStop,
                 workspaces = workspaces,
-                workspaceError = workspaceError
+                workspaceError = workspaceError,
+                uiScale = uiScale,
+                onUiScaleChanged = onUiScaleChanged
             )
         }
     }
@@ -482,7 +520,9 @@ private fun AutoControlPanel(
     onAction: (String) -> Unit,
     onStop: () -> Unit,
     workspaces: List<CardexWorkspace>,
-    workspaceError: String
+    workspaceError: String,
+    uiScale: Float,
+    onUiScaleChanged: (Float) -> Unit
 ) {
     var workspaceExpanded by remember { mutableStateOf(false) }
     val wideLayout = LocalConfiguration.current.screenWidthDp >= 700
@@ -536,6 +576,17 @@ private fun AutoControlPanel(
                         destructive = true,
                         icon = Icons.Default.Close
                     ) { onStop() }
+                    Text(
+                        stringResource(R.string.display_scale),
+                        color = Color(0xFFE6E1E5),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    DisplayScaleSelector(
+                        scale = uiScale,
+                        onScaleChanged = onUiScaleChanged,
+                        dark = true
+                    )
                 }
             }
             AnimatedVisibility(
@@ -694,12 +745,51 @@ private data class RelayState(
     val ready: Boolean get() = installed && signaturePermission
 }
 
+@Composable
+private fun DisplayScaleSelector(
+    scale: Float,
+    onScaleChanged: (Float) -> Unit,
+    dark: Boolean = false
+) {
+    val selectedBackground = if (dark) Color(0xFFD7BFFF) else MaterialTheme.colorScheme.primary
+    val selectedForeground = if (dark) Color(0xFF2A163D) else MaterialTheme.colorScheme.onPrimary
+    val normalBackground = if (dark) Color(0xFF322F37) else MaterialTheme.colorScheme.surfaceVariant
+    val normalForeground = if (dark) Color(0xFFE6E1E5) else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        CAR_UI_SCALES.sortedDescending().forEach { option ->
+            val selected = scale == option
+            Text(
+                text = "${(option * 100).toInt()}%",
+                modifier = Modifier
+                    .width(82.dp)
+                    .background(
+                        if (selected) selectedBackground else normalBackground,
+                        RoundedCornerShape(14.dp)
+                    )
+                    .clickable { onScaleChanged(option) }
+                    .padding(vertical = 12.dp),
+                color = if (selected) selectedForeground else normalForeground,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                style = MaterialTheme.typography.labelLarge,
+                textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun CarDexScreen(
     state: RelayState,
     isCarDisplay: Boolean,
     carConnectionType: Int,
+    uiScale: Float,
+    onUiScaleChanged: (Float) -> Unit,
     onStart: () -> Unit
 ) {
     Scaffold(
@@ -791,6 +881,25 @@ private fun CarDexScreen(
                     )
                 }
                 if (isCarDisplay) {
+                    Text(
+                        stringResource(R.string.display_scale),
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Card(shape = RoundedCornerShape(24.dp)) {
+                        Column(Modifier.fillMaxWidth().padding(20.dp)) {
+                            Text(
+                                stringResource(R.string.display_scale_description),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            Spacer(Modifier.height(14.dp))
+                            DisplayScaleSelector(
+                                scale = uiScale,
+                                onScaleChanged = onUiScaleChanged
+                            )
+                        }
+                    }
                     Text(
                         stringResource(R.string.parked_note),
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
