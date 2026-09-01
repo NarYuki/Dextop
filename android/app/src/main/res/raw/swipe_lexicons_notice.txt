@@ -1,0 +1,17 @@
+Dextop offline swipe lexicons
+
+English, French, German, Spanish, Italian, Brazilian Portuguese, Russian,
+Ukrainian, and Korean frequency data are generated from hermitdave/FrequencyWords
+revision 525f9b560de45753a5ea01069454e72e9aa541c6 (MIT; corpus data attribution
+is documented by that project): https://github.com/hermitdave/FrequencyWords
+
+Japanese reading data are generated from rimeinn/rime-kagiroi revision
+1951bab3742495f763b79809af253884c33358e9 (GPL-3.0):
+https://github.com/rimeinn/rime-kagiroi
+
+Simplified Chinese word and pinyin data are generated from iDvel/rime-ice
+revision fbb516b2786e4d5444383706d13c31c2e4d10c08 (GPL-3.0-only):
+https://github.com/iDvel/rime-ice
+
+The generated trace/value files are distributed under the applicable upstream
+licenses together with Dextop's GPL-3.0 source distribution.

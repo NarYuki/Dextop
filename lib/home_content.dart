@@ -326,6 +326,8 @@ extension _HomeContent on _HomeScreenState {
                           portrait,
                           secure,
                           decorations: effectiveDecorations,
+                          workspaceMagnificationPercent:
+                              workspaceMagnificationPercent,
                         );
                         await Future<void>.delayed(Duration(milliseconds: 350));
                         await refresh();

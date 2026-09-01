@@ -280,12 +280,31 @@ class NativeBridge {
       {};
   Future<Map<String, dynamic>> displayTopology() async =>
       await channel.invokeMapMethod<String, dynamic>('displayTopology') ?? {};
+  Future<Map<String, dynamic>> displayModeDisplays() async =>
+      await channel.invokeMapMethod<String, dynamic>('displayModeDisplays') ??
+      {};
   Future<Map<String, dynamic>> setDisplayTopology(
     Map<String, Map<String, double>> positions,
   ) async =>
       await channel.invokeMapMethod<String, dynamic>('setDisplayTopology', {
         'positions': positions,
       }) ??
+      {};
+  Future<Map<String, dynamic>> setDisplayPreferredMode({
+    required int displayId,
+    required int width,
+    required int height,
+    required double refreshRate,
+  }) async =>
+      await channel.invokeMapMethod<String, dynamic>(
+        'setDisplayPreferredMode',
+        {
+          'displayId': displayId,
+          'width': width,
+          'height': height,
+          'refreshRate': refreshRate,
+        },
+      ) ??
       {};
   Future<Map<String, dynamic>> displayEnvironmentSettings() async =>
       await channel.invokeMapMethod<String, dynamic>(
@@ -340,6 +359,7 @@ class NativeBridge {
     bool portrait,
     bool secure, {
     required bool decorations,
+    int workspaceMagnificationPercent = 100,
   }) async {
     var effectiveProfile = profile;
     if (profile.isDevice) {
@@ -364,27 +384,62 @@ class NativeBridge {
         );
       }
     }
-    AppAnalytics.event('desktop_start', {
-      'orientation': portrait ? 'portrait' : 'landscape',
-      'secure_display': secure,
-      'resolution': '${effectiveProfile.width}x${effectiveProfile.height}',
-      'dynamic_resolution': profile.isDevice,
-    });
     final longSide = effectiveProfile.width > effectiveProfile.height
         ? effectiveProfile.width
         : effectiveProfile.height;
     final shortSide = effectiveProfile.width > effectiveProfile.height
         ? effectiveProfile.height
         : effectiveProfile.width;
+    final baseWidth = portrait ? shortSide : longSide;
+    final baseHeight = portrait ? longSide : shortSide;
+    final workspaceDisplay = _workspaceDisplayForMagnification(
+      baseWidth,
+      baseHeight,
+      effectiveProfile.density,
+      workspaceMagnificationPercent,
+    );
+    AppAnalytics.event('desktop_start', {
+      'orientation': portrait ? 'portrait' : 'landscape',
+      'secure_display': secure,
+      'resolution': '${workspaceDisplay.$1}x${workspaceDisplay.$2}',
+      'density': workspaceDisplay.$3,
+      'dynamic_resolution': profile.isDevice,
+      'workspace_magnification': workspaceMagnificationPercent,
+    });
     await channel.invokeMethod('start', {
-      // currentDeviceDisplayProfile returns the host's current orientation.
-      // Normalize it before applying the Dextop selection so choosing
-      // landscape while Android is portrait cannot retain portrait dimensions.
-      'width': portrait ? shortSide : longSide,
-      'height': portrait ? longSide : shortSide,
-      'density': effectiveProfile.density,
+      'width': workspaceDisplay.$1,
+      'height': workspaceDisplay.$2,
+      'density': workspaceDisplay.$3,
       'secure': secure,
       'decorations': decorations,
     });
+  }
+
+  /// Creates a display specification for the selected workspace scale.
+  /// Resolution and density are derived together from the chosen profile, so
+  /// a smaller logical display does not retain an unrelated high DPI value.
+  (int, int, int) _workspaceDisplayForMagnification(
+    int width,
+    int height,
+    int density,
+    int percent,
+  ) {
+    final boundedPercent = percent.clamp(100, 200);
+    if (boundedPercent == 100) return (width, height, density);
+    final factor = boundedPercent / 100;
+    var scaledWidth = (width / factor).round();
+    var scaledHeight = (height / factor).round();
+    final shortest = scaledWidth < scaledHeight ? scaledWidth : scaledHeight;
+    if (shortest < 480) {
+      final correction = 480 / shortest;
+      scaledWidth = (scaledWidth * correction).round();
+      scaledHeight = (scaledHeight * correction).round();
+    }
+    // Most virtual-display implementations are more stable with even sizes.
+    final evenWidth = scaledWidth.clamp(480, 7680) & ~1;
+    final evenHeight = scaledHeight.clamp(480, 7680) & ~1;
+    final appliedScale = evenWidth / width;
+    final scaledDensity = (density * appliedScale).round().clamp(72, 960);
+    return (evenWidth, evenHeight, scaledDensity);
   }
 }

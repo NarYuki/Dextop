@@ -1074,16 +1074,34 @@ private:
             const auto [nx, ny] = rotatePoint(device, contact.x, contact.y, cfg);
             const float screenX = nx * static_cast<float>(std::max(1, cfg.hostWidth - 1));
             const float screenY = ny * static_cast<float>(std::max(1, cfg.hostHeight - 1));
-            const float localX = std::clamp(screenX - rect->left, 0.0f, static_cast<float>(rect->width()));
-            const float localY = std::clamp(screenY - rect->top, 0.0f, static_cast<float>(rect->height()));
+            // Target selection is latched on the first contact in
+            // handleFrame(). For a laptop trackpad, keep that initial hit
+            // test restricted to cfg.trackpad, but do not keep clipping the
+            // captured gesture to that rectangle. This lets a drag that
+            // began on the trackpad continue through the keyboard and all
+            // the way to the physical screen edge.
+            const bool unboundedLaptopTrackpad =
+                target_ == Target::TRACKPAD && cfg.laptopMode;
+            const float localX = unboundedLaptopTrackpad
+                ? std::clamp(screenX, 0.0f, static_cast<float>(std::max(1, cfg.hostWidth - 1)))
+                : std::clamp(screenX - rect->left, 0.0f, static_cast<float>(rect->width()));
+            const float localY = unboundedLaptopTrackpad
+                ? std::clamp(screenY, 0.0f, static_cast<float>(std::max(1, cfg.hostHeight - 1)))
+                : std::clamp(screenY - rect->top, 0.0f, static_cast<float>(rect->height()));
+            const float mappingWidth = unboundedLaptopTrackpad
+                ? static_cast<float>(std::max(1, cfg.hostWidth - 1))
+                : static_cast<float>(rect->width());
+            const float mappingHeight = unboundedLaptopTrackpad
+                ? static_cast<float>(std::max(1, cfg.hostHeight - 1))
+                : static_cast<float>(rect->height());
             mapped.push_back({
                 contact.trackingId,
                 screenX,
                 screenY,
                 localX,
                 localY,
-                std::clamp(static_cast<int>(std::lround(localX / rect->width() * cfg.touchpadMaxX)), 0, cfg.touchpadMaxX),
-                std::clamp(static_cast<int>(std::lround(localY / rect->height() * cfg.touchpadMaxY)), 0, cfg.touchpadMaxY),
+                std::clamp(static_cast<int>(std::lround(localX / mappingWidth * cfg.touchpadMaxX)), 0, cfg.touchpadMaxX),
+                std::clamp(static_cast<int>(std::lround(localY / mappingHeight * cfg.touchpadMaxY)), 0, cfg.touchpadMaxY),
                 std::clamp(contact.major > 0 ? contact.major : 20, 1, 255)
             });
         }

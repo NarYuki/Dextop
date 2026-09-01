@@ -18,6 +18,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get resolution => '해상도';
 
   @override
+  String get displayMagnification => '표시 배율';
+
+  @override
+  String get displayMagnificationDescription =>
+      '데스크톱 전체를 보기 쉽게 확대합니다. 배율이 높을수록 작업 공간은 줄어듭니다.';
+
+  @override
   String get theme => '테마';
 
   @override
@@ -634,6 +641,39 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get topologyUnavailable => '이 기기에서는 디스플레이 토폴로지를 사용할 수 없습니다';
+
+  @override
+  String get displaySettingsTitle => '디스플레이 설정';
+
+  @override
+  String get displaySettingsSummary => '디스플레이 배치와 해상도를 관리합니다';
+
+  @override
+  String get displayResolutionListTitle => '디스플레이 해상도';
+
+  @override
+  String get displayResolutionListSummary => '연결된 디스플레이 정보와 지원 모드를 확인합니다';
+
+  @override
+  String get displayDetailsTitle => '디스플레이 정보';
+
+  @override
+  String get displayNoLongerAvailable => '선택한 디스플레이를 더 이상 사용할 수 없습니다';
+
+  @override
+  String get displaySupportedResolutions => '지원 해상도';
+
+  @override
+  String get displayDextopResolutionTitle => 'Dextop 세션 해상도';
+
+  @override
+  String get displayDextopResolutionSummary => '홈 화면의 해상도에서 변경할 수 있습니다';
+
+  @override
+  String get displayCurrentMode => '현재 사용 중';
+
+  @override
+  String get displayModeApplied => '디스플레이 해상도를 변경했습니다';
 
   @override
   String get uiTap => '탭';
@@ -1319,6 +1359,39 @@ class AppLocalizationsKo extends AppLocalizations {
       '활성화하면 외부 화면에 휴대전화와 같은 내용이 표시되어 시연에 유용합니다. 작업 공간 확장이 아닌 복제이므로 두 화면에 서로 다른 앱을 표시할 수 없습니다.';
 
   @override
+  String get keyboardSettingsTitle => '키보드';
+
+  @override
+  String get keyboardSettingsDescription => '키보드 테마와 스와이프 입력 언어 설정';
+
+  @override
+  String get keyboardSwipeLanguages => '스와이프 입력 언어';
+
+  @override
+  String get keyboardSwipeLanguagesDescription =>
+      'MENU를 길게 눌렀을 때 표시할 언어를 선택합니다. 기본적으로 영어만 활성화됩니다.';
+
+  @override
+  String get keyboardSwipeAddLanguage => '언어 추가';
+
+  @override
+  String get keyboardSwipeDefaultLanguage => '기본값';
+
+  @override
+  String get keyboardSwipeInput => '스와이프 입력';
+
+  @override
+  String get keyboardSwipeInputDescription =>
+      '키보드를 따라 그어 단어를 입력합니다. 기본값은 꺼짐입니다.';
+
+  @override
+  String get keyboardSwipeCandidates => '변환 후보 표시';
+
+  @override
+  String get keyboardSwipeCandidatesDescription =>
+      '스와이프 입력 후 선택 가능한 후보 목록을 표시합니다.';
+
+  @override
   String get keyboardThemesTitle => '키보드 테마';
 
   @override
@@ -1524,4 +1597,18 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get experimentalCoverDisplayUnavailable => '폴더블 기기에서만 사용할 수 있습니다';
+
+  @override
+  String get experimentalForceLaptopMode => '노트북 모드 강제 사용';
+
+  @override
+  String get experimentalForceLaptopModeDescription =>
+      '폴더블이 아닌 기기에서도 오버레이에서 노트북 모드를 수동으로 시작할 수 있습니다';
+
+  @override
+  String get experimentalBlackBerryMode => 'BlackBerry 모드';
+
+  @override
+  String get experimentalBlackBerryModeDescription =>
+      'Dextop 오버레이에서 스마트폰용 소형 물리 키보드 스타일 배열을 사용할 수 있습니다';
 }

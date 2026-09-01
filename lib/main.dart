@@ -29,6 +29,7 @@ part 'settings_screen.dart';
 part 'display_topology.dart';
 part 'device_report.dart';
 part 'keyboard_themes.dart';
+part 'keyboard_settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();

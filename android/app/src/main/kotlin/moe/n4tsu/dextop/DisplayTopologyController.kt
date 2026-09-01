@@ -151,6 +151,16 @@ class DisplayTopologyController(private val context: Context) {
                 "widthPx" to metrics.widthPixels,
                 "heightPx" to metrics.heightPixels,
                 "densityDpi" to metrics.densityDpi,
+                "activeModeId" to display.mode.modeId,
+                "refreshRate" to display.refreshRate.toDouble(),
+                "supportedModes" to display.supportedModes.map { mode ->
+                    linkedMapOf<String, Any>(
+                        "id" to mode.modeId,
+                        "width" to mode.physicalWidth,
+                        "height" to mode.physicalHeight,
+                        "refreshRate" to mode.refreshRate.toDouble()
+                    )
+                },
                 "primary" to (id == topology.primaryDisplayId),
                 "dextopOverlay" to (
                     id == MirrorService.topologyOverlayDisplayId() ||
@@ -169,6 +179,69 @@ class DisplayTopologyController(private val context: Context) {
             "supported" to false,
             "reason" to (it.cause?.message ?: it.message ?: "Display topology is unavailable"),
             "displays" to emptyList<Map<String, Any>>()
+        )
+    }
+
+    /** Displays for the resolution picker.  Unlike topology this remains
+     * available before a Dextop session has created its overlay. */
+    fun availableDisplays(): Map<String, Any> = runCatching {
+        val manager = context.getSystemService(DisplayManager::class.java)
+        val topology = readTopology()
+        val bounds = linkedMapOf<Int, RectF>()
+        topology?.root?.collectBounds(0f, 0f, bounds)
+        val topologyIds = bounds.keys
+        val externalIds = ExternalDisplayDetector(context).snapshot().displayIds
+        val overlayIds = buildSet {
+            MirrorService.topologyOverlayDisplayId().takeIf { it >= 0 }?.let(::add)
+            addAll(AndroidAutoMirrorActivity.autoOverlayDisplayIds())
+        }
+        val ids = (topologyIds + externalIds + overlayIds)
+            .filter { it != android.view.Display.DEFAULT_DISPLAY }
+            .distinct()
+        val displays = ids.mapNotNull { id ->
+            manager.getDisplay(id)?.let { display ->
+                displayInfo(display, overlayIds.contains(id), topology?.primaryDisplayId == id)
+            }
+        }
+        linkedMapOf("supported" to true, "displays" to displays)
+    }.getOrElse {
+        linkedMapOf(
+            "supported" to false,
+            "reason" to (it.cause?.message ?: it.message ?: "Display information is unavailable"),
+            "displays" to emptyList<Map<String, Any>>()
+        )
+    }
+
+    private fun displayInfo(
+        display: android.view.Display,
+        dextopOverlay: Boolean,
+        primary: Boolean
+    ): Map<String, Any> {
+        val metrics = android.util.DisplayMetrics()
+        @Suppress("DEPRECATION")
+        display.getRealMetrics(metrics)
+        return linkedMapOf(
+            "id" to display.displayId,
+            "name" to (display.name ?: "Display ${display.displayId}"),
+            "x" to 0.0,
+            "y" to 0.0,
+            "widthDp" to (metrics.widthPixels * 160f / metrics.densityDpi.coerceAtLeast(1)).toDouble(),
+            "heightDp" to (metrics.heightPixels * 160f / metrics.densityDpi.coerceAtLeast(1)).toDouble(),
+            "widthPx" to metrics.widthPixels,
+            "heightPx" to metrics.heightPixels,
+            "densityDpi" to metrics.densityDpi,
+            "activeModeId" to display.mode.modeId,
+            "refreshRate" to display.refreshRate.toDouble(),
+            "supportedModes" to display.supportedModes.map { mode ->
+                linkedMapOf<String, Any>(
+                    "id" to mode.modeId,
+                    "width" to mode.physicalWidth,
+                    "height" to mode.physicalHeight,
+                    "refreshRate" to mode.refreshRate.toDouble()
+                )
+            },
+            "primary" to primary,
+            "dextopOverlay" to dextopOverlay
         )
     }
 
@@ -236,6 +309,62 @@ class DisplayTopologyController(private val context: Context) {
         saveArrangement(positions, nodes, rootId)
         OperationLog.i(context, "DisplayTopology", "rearranged ${positions.keys.sorted()}")
         return read()
+    }
+
+    /**
+     * Select one of the modes advertised by a physical display.  The shell
+     * command deliberately receives only a mode that DisplayManager exposed;
+     * this prevents an arbitrary resolution from leaving an HDMI sink blank.
+     */
+    fun setPreferredMode(
+        displayId: Int,
+        width: Int,
+        height: Int,
+        refreshRate: Float
+    ): Map<String, Any> {
+        check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
+        val display = context.getSystemService(DisplayManager::class.java).getDisplay(displayId)
+            ?: error("The selected display is no longer connected")
+        check(display.displayId != MirrorService.topologyOverlayDisplayId()) {
+            "Change the Dextop session resolution from the home screen"
+        }
+        val mode = display.supportedModes.firstOrNull {
+            it.physicalWidth == width &&
+                it.physicalHeight == height &&
+                kotlin.math.abs(it.refreshRate - refreshRate) < .1f
+        } ?: error("This display does not support the selected mode")
+        val result = privilegedAccess.execute(
+            "cmd",
+            "display",
+            "set-user-preferred-display-mode",
+            mode.physicalWidth.toString(),
+            mode.physicalHeight.toString(),
+            mode.refreshRate.toString(),
+            displayId.toString(),
+            "true"
+        )
+        check(result.succeeded) {
+            result.error.ifBlank { result.output.ifBlank { "The display mode could not be applied" } }
+        }
+        // A number of vendor builds accept the preferred-mode request while
+        // retaining the old physical HDMI mode.  Treat that as a failed
+        // request instead of presenting an internal scaling change as an
+        // output-resolution change in the UI.
+        Thread.sleep(250)
+        val applied = context.getSystemService(DisplayManager::class.java)
+            .getDisplay(displayId)
+            ?.mode
+        check(applied != null &&
+            applied.physicalWidth == mode.physicalWidth &&
+            applied.physicalHeight == mode.physicalHeight &&
+            kotlin.math.abs(applied.refreshRate - mode.refreshRate) < .1f
+        ) { "The connected display kept its current output mode" }
+        OperationLog.i(
+            context,
+            "DisplayTopology",
+            "preferred mode display=$displayId ${mode.physicalWidth}x${mode.physicalHeight}@${mode.refreshRate}"
+        )
+        return availableDisplays()
     }
 
     private fun saveArrangement(

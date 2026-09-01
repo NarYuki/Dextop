@@ -18,6 +18,13 @@ class AppLocalizationsPt extends AppLocalizations {
   String get resolution => 'Resolução';
 
   @override
+  String get displayMagnification => 'Ampliação da área de trabalho';
+
+  @override
+  String get displayMagnificationDescription =>
+      'Ajusta o tamanho do conteúdo da área de trabalho';
+
+  @override
   String get theme => 'Tema';
 
   @override
@@ -667,6 +674,43 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get topologyUnavailable =>
       'A topologia da exibição não está disponível neste dispositivo';
+
+  @override
+  String get displaySettingsTitle => 'Definições do ecrã';
+
+  @override
+  String get displaySettingsSummary =>
+      'Gerir a disposição e a resolução dos ecrãs';
+
+  @override
+  String get displayResolutionListTitle => 'Resolução do ecrã';
+
+  @override
+  String get displayResolutionListSummary =>
+      'Ver ecrãs ligados e modos compatíveis';
+
+  @override
+  String get displayDetailsTitle => 'Informações do ecrã';
+
+  @override
+  String get displayNoLongerAvailable =>
+      'O ecrã selecionado deixou de estar disponível';
+
+  @override
+  String get displaySupportedResolutions => 'Resoluções suportadas';
+
+  @override
+  String get displayDextopResolutionTitle => 'Resolução da sessão Dextop';
+
+  @override
+  String get displayDextopResolutionSummary =>
+      'Altere-a na resolução no ecrã inicial';
+
+  @override
+  String get displayCurrentMode => 'Em utilização';
+
+  @override
+  String get displayModeApplied => 'A resolução do ecrã foi alterada';
 
   @override
   String get uiTap => 'Toque em';
@@ -1374,6 +1418,40 @@ class AppLocalizationsPt extends AppLocalizations {
       'Quando activado, a área de trabalho externa mostra o mesmo conteúdo que a tela de telefone incorporada. Isto é útil para demonstrações, mas duplica em vez de expandir a área de trabalho, pelo que as duas telas não podem mostrar aplicações independentes.';
 
   @override
+  String get keyboardSettingsTitle => 'Teclado';
+
+  @override
+  String get keyboardSettingsDescription =>
+      'Temas do teclado e idiomas de escrita por gesto';
+
+  @override
+  String get keyboardSwipeLanguages => 'Idiomas de escrita por gesto';
+
+  @override
+  String get keyboardSwipeLanguagesDescription =>
+      'Escolha os idiomas mostrados ao manter MENU pressionado. Apenas inglês vem ativado por padrão.';
+
+  @override
+  String get keyboardSwipeAddLanguage => 'Adicionar idioma';
+
+  @override
+  String get keyboardSwipeDefaultLanguage => 'Padrão';
+
+  @override
+  String get keyboardSwipeInput => 'Escrita por gesto';
+
+  @override
+  String get keyboardSwipeInputDescription =>
+      'Introduza palavras deslizando pelo teclado. Desativado por predefinição.';
+
+  @override
+  String get keyboardSwipeCandidates => 'Mostrar sugestões de conversão';
+
+  @override
+  String get keyboardSwipeCandidatesDescription =>
+      'Mostra uma lista selecionável depois da escrita por gesto.';
+
+  @override
   String get keyboardThemesTitle => 'Temas do teclado';
 
   @override
@@ -1595,6 +1673,21 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get experimentalCoverDisplayUnavailable =>
       'Disponível apenas em dispositivos dobráveis';
+
+  @override
+  String get experimentalForceLaptopMode =>
+      'Forçar disponibilidade do modo portátil';
+
+  @override
+  String get experimentalForceLaptopModeDescription =>
+      'Permite iniciar manualmente o modo portátil pela sobreposição em dispositivos não dobráveis';
+
+  @override
+  String get experimentalBlackBerryMode => 'Modo BlackBerry';
+
+  @override
+  String get experimentalBlackBerryModeDescription =>
+      'Ativa no painel Dextop um teclado compacto para telemóvel inspirado em teclados físicos';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
@@ -1611,6 +1704,13 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get resolution => 'Resolução';
 
   @override
+  String get displayMagnification => 'Ampliação da área de trabalho';
+
+  @override
+  String get displayMagnificationDescription =>
+      'Ajusta o tamanho do conteúdo da área de trabalho';
+
+  @override
   String get theme => 'Tema';
 
   @override
@@ -2260,6 +2360,43 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get topologyUnavailable =>
       'A topologia da exibição não está disponível neste dispositivo';
+
+  @override
+  String get displaySettingsTitle => 'Configurações de exibição';
+
+  @override
+  String get displaySettingsSummary =>
+      'Gerencie o posicionamento e a resolução das telas';
+
+  @override
+  String get displayResolutionListTitle => 'Resolução da tela';
+
+  @override
+  String get displayResolutionListSummary =>
+      'Veja telas conectadas e modos compatíveis';
+
+  @override
+  String get displayDetailsTitle => 'Informações da tela';
+
+  @override
+  String get displayNoLongerAvailable =>
+      'A tela selecionada não está mais disponível';
+
+  @override
+  String get displaySupportedResolutions => 'Resoluções compatíveis';
+
+  @override
+  String get displayDextopResolutionTitle => 'Resolução da sessão do Dextop';
+
+  @override
+  String get displayDextopResolutionSummary =>
+      'Altere-a na resolução da tela inicial';
+
+  @override
+  String get displayCurrentMode => 'Em uso';
+
+  @override
+  String get displayModeApplied => 'Resolução da tela alterada';
 
   @override
   String get uiTap => 'Toque em';
@@ -2967,6 +3104,40 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
       'Quando activado, a área de trabalho externa mostra o mesmo conteúdo que a tela de telefone incorporada. Isto é útil para demonstrações, mas duplica em vez de expandir a área de trabalho, pelo que as duas telas não podem mostrar aplicações independentes.';
 
   @override
+  String get keyboardSettingsTitle => 'Teclado';
+
+  @override
+  String get keyboardSettingsDescription =>
+      'Temas do teclado e idiomas de digitação por gesto';
+
+  @override
+  String get keyboardSwipeLanguages => 'Idiomas de digitação por gesto';
+
+  @override
+  String get keyboardSwipeLanguagesDescription =>
+      'Escolha os idiomas exibidos ao manter MENU pressionado. Apenas inglês vem ativado por padrão.';
+
+  @override
+  String get keyboardSwipeAddLanguage => 'Adicionar idioma';
+
+  @override
+  String get keyboardSwipeDefaultLanguage => 'Padrão';
+
+  @override
+  String get keyboardSwipeInput => 'Digitação por gesto';
+
+  @override
+  String get keyboardSwipeInputDescription =>
+      'Digite palavras deslizando pelo teclado. Desativado por padrão.';
+
+  @override
+  String get keyboardSwipeCandidates => 'Mostrar sugestões de conversão';
+
+  @override
+  String get keyboardSwipeCandidatesDescription =>
+      'Mostra uma lista selecionável após a digitação por gesto.';
+
+  @override
   String get keyboardThemesTitle => 'Temas do teclado';
 
   @override
@@ -3188,4 +3359,19 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get experimentalCoverDisplayUnavailable =>
       'Disponível apenas em dispositivos dobráveis';
+
+  @override
+  String get experimentalForceLaptopMode =>
+      'Forçar disponibilidade do modo notebook';
+
+  @override
+  String get experimentalForceLaptopModeDescription =>
+      'Permite iniciar manualmente o modo notebook pela sobreposição em dispositivos não dobráveis';
+
+  @override
+  String get experimentalBlackBerryMode => 'Modo BlackBerry';
+
+  @override
+  String get experimentalBlackBerryModeDescription =>
+      'Ativa no painel do Dextop um teclado compacto para celular inspirado em teclados físicos';
 }

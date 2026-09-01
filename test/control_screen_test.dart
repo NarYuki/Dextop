@@ -68,4 +68,33 @@ void main() {
     expect((received?.arguments as Map)['decorations'], isFalse);
     expect((received?.arguments as Map)['secure'], isTrue);
   });
+
+  test('applies workspace magnification after resolving a profile', () async {
+    MethodCall? received;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          received = call;
+          return {'displayId': 7};
+        });
+    final bridge = NativeBridge();
+    await bridge.start(
+      DisplayProfile(
+        'Test',
+        '240 dpi',
+        1920,
+        1080,
+        240,
+        Icons.desktop_windows_rounded,
+        id: 'test',
+      ),
+      false,
+      false,
+      decorations: false,
+      workspaceMagnificationPercent: 200,
+    );
+    final arguments = received?.arguments as Map;
+    expect(arguments['width'], 960);
+    expect(arguments['height'], 540);
+    expect(arguments['density'], 120);
+  });
 }

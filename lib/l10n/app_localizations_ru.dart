@@ -18,6 +18,13 @@ class AppLocalizationsRu extends AppLocalizations {
   String get resolution => 'Разрешение';
 
   @override
+  String get displayMagnification => 'Масштаб отображения';
+
+  @override
+  String get displayMagnificationDescription =>
+      'Увеличивает весь рабочий стол для удобного просмотра. При большем масштабе рабочая область уменьшается.';
+
+  @override
   String get theme => 'Тема';
 
   @override
@@ -658,6 +665,42 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get topologyUnavailable =>
       'Топология дисплеев недоступна на этом устройстве';
+
+  @override
+  String get displaySettingsTitle => 'Настройки дисплея';
+
+  @override
+  String get displaySettingsSummary =>
+      'Управление расположением и разрешением дисплеев';
+
+  @override
+  String get displayResolutionListTitle => 'Разрешение дисплея';
+
+  @override
+  String get displayResolutionListSummary =>
+      'Просмотр подключённых дисплеев и поддерживаемых режимов';
+
+  @override
+  String get displayDetailsTitle => 'Сведения о дисплее';
+
+  @override
+  String get displayNoLongerAvailable => 'Выбранный дисплей больше недоступен';
+
+  @override
+  String get displaySupportedResolutions => 'Поддерживаемые разрешения';
+
+  @override
+  String get displayDextopResolutionTitle => 'Разрешение сеанса Dextop';
+
+  @override
+  String get displayDextopResolutionSummary =>
+      'Изменяется в разделе разрешения на главном экране';
+
+  @override
+  String get displayCurrentMode => 'Используется сейчас';
+
+  @override
+  String get displayModeApplied => 'Разрешение дисплея изменено';
 
   @override
   String get uiTap => 'Касание';
@@ -1367,6 +1410,40 @@ class AppLocalizationsRu extends AppLocalizations {
       'При включении внешний экран показывает то же содержимое, что и телефон. Это удобно для демонстраций, но дублирует, а не расширяет рабочую область, поэтому разные приложения на двух экранах недоступны.';
 
   @override
+  String get keyboardSettingsTitle => 'Клавиатура';
+
+  @override
+  String get keyboardSettingsDescription =>
+      'Темы клавиатуры и языки свайп-ввода';
+
+  @override
+  String get keyboardSwipeLanguages => 'Языки свайп-ввода';
+
+  @override
+  String get keyboardSwipeLanguagesDescription =>
+      'Выберите языки, отображаемые при удержании MENU. По умолчанию включён только английский.';
+
+  @override
+  String get keyboardSwipeAddLanguage => 'Добавить язык';
+
+  @override
+  String get keyboardSwipeDefaultLanguage => 'По умолчанию';
+
+  @override
+  String get keyboardSwipeInput => 'Ввод свайпом';
+
+  @override
+  String get keyboardSwipeInputDescription =>
+      'Вводите слова, проводя по клавиатуре. По умолчанию выключено.';
+
+  @override
+  String get keyboardSwipeCandidates => 'Показывать варианты';
+
+  @override
+  String get keyboardSwipeCandidatesDescription =>
+      'Показывать список вариантов после ввода свайпом.';
+
+  @override
   String get keyboardThemesTitle => 'Темы клавиатуры';
 
   @override
@@ -1585,4 +1662,19 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get experimentalCoverDisplayUnavailable =>
       'Доступно только на складных устройствах';
+
+  @override
+  String get experimentalForceLaptopMode =>
+      'Принудительно разрешить режим ноутбука';
+
+  @override
+  String get experimentalForceLaptopModeDescription =>
+      'Разрешить ручной запуск режима ноутбука из панели на нескладных устройствах';
+
+  @override
+  String get experimentalBlackBerryMode => 'Режим BlackBerry';
+
+  @override
+  String get experimentalBlackBerryModeDescription =>
+      'Компактная раскладка в стиле физической клавиатуры для телефона в панели Dextop';
 }
