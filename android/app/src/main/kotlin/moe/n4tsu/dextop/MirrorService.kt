@@ -952,7 +952,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var lastInputDiagnosticAt = 0L
     private var lastTouchDiagnosticAt = 0L
     private var inputDiagnosticSequence = 0L
-    private var orientationRebuildInProgress = false
     private var lastForcedPhonePortrait: Boolean? = null
     private var lastForcedPhoneHalfTurn: Boolean? = null
     private var castMediaRouter: MediaRouter? = null
@@ -9093,19 +9092,37 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         requestedPortrait = portrait
         forcePhoneRotation(portrait)
         val config = Config(base.height, base.width, base.density, base.secure, base.decorations)
-        orientationRebuildInProgress = true
+        // Keep the existing virtual display and its task stack. Re-entering
+        // start() here used to remove the overlay display and create another
+        // one, so Android could discard the open windows and their placement.
+        // A laptop deck needs the same live resize, but its logical desktop is
+        // the measured upper pane rather than the full-screen profile.
+        if (laptopModeActive) laptopBaseConfig = config
         root?.postDelayed({
-            runCatching { start(config) }
+            runCatching {
+                if (!active || targetDisplayId < 0) {
+                    error("The active display is unavailable for orientation change")
+                }
+                if (laptopModeActive) {
+                    applyLaptopGeometryWhenLaidOut(
+                        enabled = true,
+                        baseOverride = config,
+                        preserveMenu = true,
+                    )
+                } else {
+                    resizeActiveDisplay(config, "manual orientation change")
+                }
+            }
                 .onSuccess {
                     OperationLog.i(
                         this,
                         "Orientation",
-                        "rebuild started portrait=$portrait target=${config.width}x${config.height} " +
-                                displayGeometrySnapshot("orientation_rebuild_started")
+                        "live resize requested portrait=$portrait target=${config.width}x${config.height} " +
+                                displayGeometrySnapshot("orientation_live_resize_requested")
                     )
                 }
                 .onFailure {
-                    OperationLog.e(this, "Orientation", "rebuild failed portrait=$portrait", it)
+                    OperationLog.e(this, "Orientation", "live resize failed portrait=$portrait", it)
                 }
         }, 350)
     }
@@ -9810,25 +9827,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     )
                 )
             )
-            if (orientationRebuildInProgress) {
-                orientationRebuildInProgress = false
-                OperationLog.i(
-                    this,
-                    "Orientation",
-                    "rebuild completed target=${targetWidth}x$targetHeight/$density " +
-                            displayGeometrySnapshot("orientation_rebuild_completed", width, height)
-                )
-            }
             Log.i(
                 logTag,
                 "Dextop layer attached target=$targetDisplayId ${targetWidth}x$targetHeight " +
                         "autoOnly=$autoOnlySession"
             )
         }.onFailure { error ->
-            if (orientationRebuildInProgress) {
-                orientationRebuildInProgress = false
-                OperationLog.e(this, "Orientation", "rebuild failed during display attachment", error)
-            }
             OperationLog.e(this, "MirrorService", "all mirror strategies failed", error)
             Log.e(logTag, "display mirror attachment failed; stopping safely", error)
             displayCreationInProgress = false
