@@ -1,7 +1,9 @@
 package moe.n4tsu.dextop
 
+import android.app.WallpaperManager
 import android.content.Context
 import android.provider.Settings
+import android.util.Log
 
 internal class SessionJournal(private val context: Context) {
     private val preferences = context.getSharedPreferences("dextop_session_journal", Context.MODE_PRIVATE)
@@ -17,6 +19,17 @@ internal class SessionJournal(private val context: Context) {
                 .putBoolean("transaction_open", true)
                 .putBoolean("overlay_was_null", previousOverlay == null)
                 .putString("overlay_before", previousOverlay.orEmpty())
+            val wallpaper = WallpaperManager.getInstance(context)
+            val display = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+                .getDisplay(android.view.Display.DEFAULT_DISPLAY)
+            val mode = display?.mode
+            val wallpaperWidth = wallpaper.desiredMinimumWidth.takeIf { it > 0 }
+                ?: mode?.physicalWidth ?: context.resources.displayMetrics.widthPixels
+            val wallpaperHeight = wallpaper.desiredMinimumHeight.takeIf { it > 0 }
+                ?: mode?.physicalHeight ?: context.resources.displayMetrics.heightPixels
+            editor
+                .putInt("wallpaper_width_before", wallpaperWidth)
+                .putInt("wallpaper_height_before", wallpaperHeight)
         }
         check(editor
             .putString("phase", "preparing")
@@ -116,7 +129,30 @@ internal class SessionJournal(private val context: Context) {
         )) { "Unable to restore the original overlay display setting" }
         val actual = Settings.Global.getString(resolver, DisplayMirrorBackend.DISPLAY_SPECIFICATION)
         check(actual == overlay) { "The original overlay display setting was not restored" }
+        restoreWallpaperDimensions()
         return true
+    }
+
+    /**
+     * Re-sends the pre-session wallpaper dimensions after a temporary pane or
+     * virtual-display size has disappeared. OEM launchers do not always issue
+     * this hint themselves, leaving the wallpaper cropped after Dextop exits.
+     */
+    fun restoreWallpaperDimensions(): Boolean {
+        val display = context.getSystemService(android.hardware.display.DisplayManager::class.java)
+            .getDisplay(android.view.Display.DEFAULT_DISPLAY)
+        val mode = display?.mode
+        val width = preferences.getInt("wallpaper_width_before", 0).takeIf { it > 0 }
+            ?: mode?.physicalWidth ?: context.resources.displayMetrics.widthPixels
+        val height = preferences.getInt("wallpaper_height_before", 0).takeIf { it > 0 }
+            ?: mode?.physicalHeight ?: context.resources.displayMetrics.heightPixels
+        return runCatching {
+            WallpaperManager.getInstance(context).suggestDesiredDimensions(width, height)
+            Log.i("DextopSessionJournal", "wallpaper dimensions restored to ${width}x$height")
+            true
+        }.onFailure {
+            Log.e("DextopSessionJournal", "wallpaper dimension restoration failed", it)
+        }.getOrDefault(false)
     }
 
     fun running(displayId: Int) {

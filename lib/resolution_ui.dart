@@ -32,62 +32,126 @@ extension _ResolutionUi on _HomeScreenState {
       isScrollControlled: true,
       showDragHandle: true,
       builder: (sheetContext) {
-        return Padding(
-          padding: EdgeInsets.fromLTRB(
-            20,
-            0,
-            20,
-            MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
-          ),
-          child: SingleChildScrollView(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  AppStrings.tr('resolution'),
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                SizedBox(height: 12),
-                ...profiles.map(
-                  (item) => ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(item.name),
-                    subtitle: Text(item.detail),
-                    trailing: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        if (profile.id == item.id) Icon(Icons.check_rounded),
-                        IconButton(
-                          tooltip: AppStrings.tr('uiEdit'),
-                          icon: Icon(Icons.edit_rounded),
-                          onPressed: () async {
-                            Navigator.pop(sheetContext);
-                            await showResolutionEditor(item);
-                          },
-                        ),
-                      ],
+        return StatefulBuilder(
+          builder: (sheetContext, setSheetState) => Padding(
+            padding: EdgeInsets.fromLTRB(
+              20,
+              0,
+              20,
+              MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    AppStrings.tr('resolution'),
+                    style: Theme.of(context).textTheme.headlineMedium,
+                  ),
+                  SizedBox(height: 12),
+                  Card(
+                    margin: EdgeInsets.zero,
+                    child: Padding(
+                      padding: EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Icon(Icons.zoom_in_rounded),
+                              SizedBox(width: 12),
+                              Expanded(
+                                child: Text(
+                                  AppStrings.tr('displayMagnification'),
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleMedium,
+                                ),
+                              ),
+                              Text('$workspaceMagnificationPercent%'),
+                            ],
+                          ),
+                          SizedBox(height: 6),
+                          Text(
+                            AppStrings.tr('displayMagnificationDescription'),
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          SizedBox(height: 4),
+                          Slider(
+                            value: workspaceMagnificationPercent.toDouble(),
+                            min: 100,
+                            max: 200,
+                            divisions: 5,
+                            label: '$workspaceMagnificationPercent%',
+                            onChanged: active
+                                ? null
+                                : (value) {
+                                    setSheetState(
+                                      () => workspaceMagnificationPercent =
+                                          value.round(),
+                                    );
+                                  },
+                            onChangeEnd: active
+                                ? null
+                                : (value) async {
+                                    await setWorkspaceMagnification(
+                                      value.round(),
+                                    );
+                                  },
+                          ),
+                          Padding(
+                            padding: EdgeInsets.symmetric(horizontal: 8),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [Text('100%'), Text('200%')],
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
-                    onTap: () async {
-                      mutate(() => profile = item);
-                      await _saveProfiles();
-                      if (!sheetContext.mounted) return;
-                      Navigator.pop(sheetContext);
-                    },
                   ),
-                ),
-                SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton.icon(
-                    icon: Icon(Icons.add_rounded),
-                    onPressed: () async {
-                      Navigator.pop(sheetContext);
-                      await showResolutionEditor(null);
-                    },
-                    label: Text(AppStrings.tr('customAdd')),
+                  SizedBox(height: 12),
+                  ...profiles.map(
+                    (item) => ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      title: Text(item.name),
+                      subtitle: Text(item.detail),
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (profile.id == item.id) Icon(Icons.check_rounded),
+                          IconButton(
+                            tooltip: AppStrings.tr('uiEdit'),
+                            icon: Icon(Icons.edit_rounded),
+                            onPressed: () async {
+                              Navigator.pop(sheetContext);
+                              await showResolutionEditor(item);
+                            },
+                          ),
+                        ],
+                      ),
+                      onTap: () async {
+                        mutate(() => profile = item);
+                        await _saveProfiles();
+                        if (!sheetContext.mounted) return;
+                        Navigator.pop(sheetContext);
+                      },
+                    ),
                   ),
-                ),
-              ],
+                  SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      icon: Icon(Icons.add_rounded),
+                      onPressed: () async {
+                        Navigator.pop(sheetContext);
+                        await showResolutionEditor(null);
+                      },
+                      label: Text(AppStrings.tr('customAdd')),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         );

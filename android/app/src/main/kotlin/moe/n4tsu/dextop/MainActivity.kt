@@ -338,6 +338,12 @@ open class MainActivity : FlutterActivity() {
                         result.success(null)
                     }
                 }
+                "laptopSwipeLanguagesChanged" -> {
+                    MirrorService.updateLaptopSwipeSettings(
+                        call.argument<Boolean>("enabled")
+                    )
+                    result.success(null)
+                }
                 "previewLaptopOverlay" -> {
                     val themeId = call.argument<String>("themeId")
                     MirrorService.setPendingLaptopPreviewTheme(themeId)
@@ -413,6 +419,10 @@ open class MainActivity : FlutterActivity() {
                     val state = DisplayTopologyController(this).read()
                     runOnUiThread { result.success(state) }
                 }.start()
+                "displayModeDisplays" -> Thread {
+                    val state = DisplayTopologyController(this).availableDisplays()
+                    runOnUiThread { result.success(state) }
+                }.start()
                 "displayEnvironmentSettings" -> Thread {
                     val state = DisplayEnvironmentSettings(this).read()
                     runOnUiThread { result.success(state) }
@@ -456,6 +466,35 @@ open class MainActivity : FlutterActivity() {
                         Log.e(logTag, "Display topology update failed", error)
                         runOnUiThread {
                             result.error("DISPLAY_TOPOLOGY_WRITE", error.cause?.message ?: error.message, null)
+                        }
+                    }
+                }.start()
+                "setDisplayPreferredMode" -> Thread {
+                    runCatching {
+                        val displayId = call.argument<Int>("displayId")
+                            ?: error("A display id is required")
+                        val width = call.argument<Int>("width")
+                            ?: error("A display width is required")
+                        val height = call.argument<Int>("height")
+                            ?: error("A display height is required")
+                        val refreshRate = (call.argument<Number>("refreshRate")
+                            ?: error("A refresh rate is required")).toFloat()
+                        DisplayTopologyController(this).setPreferredMode(
+                            displayId = displayId,
+                            width = width,
+                            height = height,
+                            refreshRate = refreshRate
+                        )
+                    }.onSuccess { state ->
+                        runOnUiThread { result.success(state) }
+                    }.onFailure { error ->
+                        Log.e(logTag, "Display mode update failed", error)
+                        runOnUiThread {
+                            result.error(
+                                "DISPLAY_MODE_WRITE",
+                                error.cause?.message ?: error.message,
+                                null
+                            )
                         }
                     }
                 }.start()

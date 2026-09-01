@@ -364,6 +364,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     isDevice: true,
   );
   var deviceProfileInitialized = false;
+  // Kept independent from saved resolution profiles: this is a workspace
+  // presentation preference, applied only after a profile has been resolved.
+  var workspaceMagnificationPercent = 100;
   var portrait = false;
   var secure = false;
   String mirrorBackend = 'virtual_display';
@@ -441,6 +444,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         mirrorBackend =
             preferences.getString('mirror_backend') ?? 'virtual_display';
         castMode = preferences.getString('cast_mode') ?? 'simple';
+        workspaceMagnificationPercent =
+            (preferences.getInt('desktop_workspace_magnification_percent') ??
+                    100)
+                .clamp(100, 200);
       });
     }
   }
@@ -467,6 +474,16 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     mutate(() => castMode = value);
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString('cast_mode', value);
+  }
+
+  Future<void> setWorkspaceMagnification(int value) async {
+    final normalized = value.clamp(100, 200);
+    mutate(() => workspaceMagnificationPercent = normalized);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setInt(
+      'desktop_workspace_magnification_percent',
+      normalized,
+    );
   }
 
   bool get effectiveDecorations => manufacturer.toLowerCase() != 'samsung';
@@ -941,9 +958,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         // Keyboard theme editing changes the native laptop overlay while it
         // is being rendered. Leave that page when a session becomes active;
         // the settings entry is also disabled below for the whole session.
-        if (active && desktopSettingsSection == 'keyboard') {
-          desktopSettingsSection = 'display';
-        }
         shizukuInstalled = value['shizukuInstalled'] == true;
         shizukuRunning = value['shizukuRunning'] == true;
         shizukuGranted = value['shizukuGranted'] == true;
@@ -1209,6 +1223,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           portrait,
           secure,
           decorations: effectiveDecorations,
+          workspaceMagnificationPercent: workspaceMagnificationPercent,
         );
         await Future<void>.delayed(const Duration(milliseconds: 350));
         await refresh();
@@ -1263,6 +1278,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         portrait,
         secure,
         decorations: effectiveDecorations,
+        workspaceMagnificationPercent: workspaceMagnificationPercent,
       );
       await Future<void>.delayed(Duration(milliseconds: 450));
       await refresh();

@@ -216,6 +216,8 @@ class AppInfoPage extends StatelessWidget {
         SizedBox(height: 12),
         _CoverDisplayExperimentalTile(isRunning: isRunning),
         SizedBox(height: 12),
+        _ForceLaptopModeExperimentalTile(isRunning: isRunning),
+        SizedBox(height: 12),
         _SamsungExperimentalSettingsTile(
           bridge: bridge,
           isRunning: isRunning,
@@ -229,6 +231,57 @@ class AppInfoPage extends StatelessWidget {
             appBar: AppBar(title: Text(l.appInfo)),
             body: content,
           );
+  }
+}
+
+class _ForceLaptopModeExperimentalTile extends StatefulWidget {
+  const _ForceLaptopModeExperimentalTile({required this.isRunning});
+
+  final bool isRunning;
+
+  @override
+  State<_ForceLaptopModeExperimentalTile> createState() =>
+      _ForceLaptopModeExperimentalTileState();
+}
+
+class _ForceLaptopModeExperimentalTileState
+    extends State<_ForceLaptopModeExperimentalTile> {
+  bool enabled = false;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      enabled = preferences.getBool('experimental_force_laptop_mode') ?? false;
+      loading = false;
+    });
+  }
+
+  Future<void> _update(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('experimental_force_laptop_mode', value);
+    if (mounted) setState(() => enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Card(
+      child: SwitchListTile(
+        secondary: const Icon(Icons.laptop_chromebook_rounded),
+        value: enabled,
+        onChanged: loading || widget.isRunning ? null : _update,
+        title: Text(l.experimentalForceLaptopMode),
+        subtitle: Text(l.experimentalForceLaptopModeDescription),
+      ),
+    );
   }
 }
 

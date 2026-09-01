@@ -18,6 +18,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resolution => 'Resolution';
 
   @override
+  String get displayMagnification => 'Display magnification';
+
+  @override
+  String get displayMagnificationDescription =>
+      'Enlarges the whole desktop for easier viewing. Higher values leave less workspace.';
+
+  @override
   String get theme => 'Theme';
 
   @override
@@ -658,6 +665,43 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get topologyUnavailable =>
       'Display topology is unavailable on this device';
+
+  @override
+  String get displaySettingsTitle => 'Display settings';
+
+  @override
+  String get displaySettingsSummary =>
+      'Manage display arrangement and resolution';
+
+  @override
+  String get displayResolutionListTitle => 'Display resolution';
+
+  @override
+  String get displayResolutionListSummary =>
+      'View connected displays and their supported modes';
+
+  @override
+  String get displayDetailsTitle => 'Display information';
+
+  @override
+  String get displayNoLongerAvailable =>
+      'The selected display is no longer available';
+
+  @override
+  String get displaySupportedResolutions => 'Supported resolutions';
+
+  @override
+  String get displayDextopResolutionTitle => 'Dextop session resolution';
+
+  @override
+  String get displayDextopResolutionSummary =>
+      'Change this from the resolution on the home screen';
+
+  @override
+  String get displayCurrentMode => 'Currently in use';
+
+  @override
+  String get displayModeApplied => 'Display resolution changed';
 
   @override
   String get uiTap => 'Tap';
@@ -1355,6 +1399,40 @@ class AppLocalizationsEn extends AppLocalizations {
       'When enabled, the external desktop shows the same content as the built-in phone screen. This is useful for demonstrations, but it duplicates rather than expands the workspace, so the two screens cannot show independent apps.';
 
   @override
+  String get keyboardSettingsTitle => 'Keyboard';
+
+  @override
+  String get keyboardSettingsDescription =>
+      'Keyboard themes and swipe input languages';
+
+  @override
+  String get keyboardSwipeLanguages => 'Swipe input languages';
+
+  @override
+  String get keyboardSwipeLanguagesDescription =>
+      'Choose the languages shown when you hold MENU. English is enabled by default.';
+
+  @override
+  String get keyboardSwipeAddLanguage => 'Add language';
+
+  @override
+  String get keyboardSwipeDefaultLanguage => 'Default';
+
+  @override
+  String get keyboardSwipeInput => 'Swipe input';
+
+  @override
+  String get keyboardSwipeInputDescription =>
+      'Enter words by tracing across the keyboard. Disabled by default.';
+
+  @override
+  String get keyboardSwipeCandidates => 'Show conversion candidates';
+
+  @override
+  String get keyboardSwipeCandidatesDescription =>
+      'Show a selectable candidate list after swipe input.';
+
+  @override
   String get keyboardThemesTitle => 'Keyboard themes';
 
   @override
@@ -1571,4 +1649,18 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get experimentalCoverDisplayUnavailable =>
       'Available on foldable devices only';
+
+  @override
+  String get experimentalForceLaptopMode => 'Force laptop mode availability';
+
+  @override
+  String get experimentalForceLaptopModeDescription =>
+      'Allow laptop mode to be started manually from the overlay on non-foldable devices';
+
+  @override
+  String get experimentalBlackBerryMode => 'BlackBerry mode';
+
+  @override
+  String get experimentalBlackBerryModeDescription =>
+      'Enable a compact phone keyboard layout inspired by physical keyboards from the Dextop overlay';
 }

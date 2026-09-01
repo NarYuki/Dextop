@@ -49,15 +49,13 @@ extension _SettingsContent on _HomeScreenState {
                 Divider(height: 1),
                 _categoryTile(
                   Icons.keyboard_alt_outlined,
-                  l.keyboardThemesTitle,
-                  l.keyboardThemesDescription,
-                  active
-                      ? null
-                      : () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => const KeyboardThemesPage(),
-                          ),
-                        ),
+                  l.keyboardSettingsTitle,
+                  l.keyboardSettingsDescription,
+                  () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => KeyboardSettingsPage(isRunning: active),
+                    ),
+                  ),
                 ),
                 Divider(height: 1),
                 _categoryTile(
@@ -154,8 +152,8 @@ extension _SettingsContent on _HomeScreenState {
       (
         'keyboard',
         Icons.keyboard_alt_outlined,
-        l.keyboardThemesTitle,
-        l.keyboardThemesDescription,
+        l.keyboardSettingsTitle,
+        l.keyboardSettingsDescription,
       ),
       (
         'apps',
@@ -250,7 +248,7 @@ extension _SettingsContent on _HomeScreenState {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               leading: Icon(item.$2),
-                              enabled: !(active && item.$1 == 'keyboard'),
+                              enabled: true,
                               title: Text(
                                 item.$3,
                                 style: const TextStyle(fontSize: 15),
@@ -264,11 +262,9 @@ extension _SettingsContent on _HomeScreenState {
                                     )
                                   : null,
                               trailing: const Icon(Icons.chevron_right_rounded),
-                              onTap: active && item.$1 == 'keyboard'
-                                  ? null
-                                  : () => mutate(
-                                      () => desktopSettingsSection = item.$1,
-                                    ),
+                              onTap: () => mutate(
+                                () => desktopSettingsSection = item.$1,
+                              ),
                             ),
                           );
                         },
@@ -376,7 +372,7 @@ extension _SettingsContent on _HomeScreenState {
           ],
         ),
         'auto' => const AutoSettingsPage(embedded: true),
-        'keyboard' => const KeyboardThemesPage(),
+        'keyboard' => KeyboardSettingsPage(embedded: true, isRunning: active),
         'mouse' => MouseSettingsPage(bridge: bridge, isRunning: active),
         'interaction' => ListView(
           padding: const EdgeInsets.all(20),
@@ -497,12 +493,16 @@ extension _SettingsContent on _HomeScreenState {
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
           _displaySettingsSection(AppStrings.tr('uiDisplayCategory'), [
-            DisplayEnvironmentSettingsCard(
-              bridge: bridge,
-              showDisplay: false,
-              showConvenience: false,
-              showTopology: true,
-              wrapInCard: false,
+            ListTile(
+              leading: const Icon(Icons.desktop_windows_outlined),
+              title: Text(AppStrings.tr('displaySettingsTitle')),
+              subtitle: Text(AppStrings.tr('displaySettingsSummary')),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => DisplaySettingsPage(bridge: bridge),
+                ),
+              ),
             ),
             Divider(height: 1),
             ListTile(
@@ -532,7 +532,6 @@ extension _SettingsContent on _HomeScreenState {
             DisplayEnvironmentSettingsCard(
               bridge: bridge,
               showConvenience: false,
-              showTopology: false,
               displayLeadingDivider: true,
               wrapInCard: false,
             ),
@@ -546,7 +545,6 @@ extension _SettingsContent on _HomeScreenState {
             DisplayEnvironmentSettingsCard(
               bridge: bridge,
               showDisplay: false,
-              showTopology: false,
               wrapInCard: false,
             ),
             Divider(height: 1),

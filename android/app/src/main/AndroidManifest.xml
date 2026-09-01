@@ -6,6 +6,7 @@
     </queries>
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -127,6 +128,18 @@
             <meta-data
                 android:name="android.accessibilityservice"
                 android:resource="@xml/mirror_accessibility_service" />
+        </service>
+        <service
+            android:name=".input.DextopSwipeInputMethodService"
+            android:label="Dextop swipe input"
+            android:permission="android.permission.BIND_INPUT_METHOD"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.view.InputMethod" />
+            </intent-filter>
+            <meta-data
+                android:name="android.view.im"
+                android:resource="@xml/dextop_swipe_input_method" />
         </service>
         <service
             android:name=".DextopTileService"

@@ -18,6 +18,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get resolution => '分辨率';
 
   @override
+  String get displayMagnification => '显示倍率';
+
+  @override
+  String get displayMagnificationDescription => '放大整个桌面以便查看。倍率越高，可用工作区越小。';
+
+  @override
   String get theme => '主题';
 
   @override
@@ -624,6 +630,39 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get topologyUnavailable => '此设备不支持显示器拓扑';
+
+  @override
+  String get displaySettingsTitle => '显示设置';
+
+  @override
+  String get displaySettingsSummary => '管理显示器排列和分辨率';
+
+  @override
+  String get displayResolutionListTitle => '显示器分辨率';
+
+  @override
+  String get displayResolutionListSummary => '查看已连接显示器的信息和支持的模式';
+
+  @override
+  String get displayDetailsTitle => '显示器信息';
+
+  @override
+  String get displayNoLongerAvailable => '所选显示器已不可用';
+
+  @override
+  String get displaySupportedResolutions => '支持的分辨率';
+
+  @override
+  String get displayDextopResolutionTitle => 'Dextop 会话分辨率';
+
+  @override
+  String get displayDextopResolutionSummary => '可从主页的分辨率设置中更改';
+
+  @override
+  String get displayCurrentMode => '当前使用中';
+
+  @override
+  String get displayModeApplied => '显示器分辨率已更改';
 
   @override
   String get uiTap => '点击';
@@ -1302,6 +1341,36 @@ class AppLocalizationsZh extends AppLocalizations {
       '启用后，外接屏幕显示与手机内置屏幕相同的内容，适合演示；它是复制而非扩展工作区，因此两块屏幕不能显示不同应用。';
 
   @override
+  String get keyboardSettingsTitle => '键盘';
+
+  @override
+  String get keyboardSettingsDescription => '设置键盘主题和滑行输入语言';
+
+  @override
+  String get keyboardSwipeLanguages => '滑行输入语言';
+
+  @override
+  String get keyboardSwipeLanguagesDescription => '选择长按 MENU 时显示的语言。默认仅启用英语。';
+
+  @override
+  String get keyboardSwipeAddLanguage => '添加语言';
+
+  @override
+  String get keyboardSwipeDefaultLanguage => '默认';
+
+  @override
+  String get keyboardSwipeInput => '滑行输入';
+
+  @override
+  String get keyboardSwipeInputDescription => '在键盘上滑动以输入单词。默认关闭。';
+
+  @override
+  String get keyboardSwipeCandidates => '显示转换候选';
+
+  @override
+  String get keyboardSwipeCandidatesDescription => '滑行输入后显示可选择的候选列表。';
+
+  @override
   String get keyboardThemesTitle => '键盘主题';
 
   @override
@@ -1507,4 +1576,17 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get experimentalCoverDisplayUnavailable => '仅适用于折叠设备';
+
+  @override
+  String get experimentalForceLaptopMode => '强制启用笔记本模式';
+
+  @override
+  String get experimentalForceLaptopModeDescription => '允许在非折叠设备上从浮层手动启动笔记本模式';
+
+  @override
+  String get experimentalBlackBerryMode => 'BlackBerry 模式';
+
+  @override
+  String get experimentalBlackBerryModeDescription =>
+      '可从 Dextop 浮层使用适合手机的紧凑实体键盘风格布局';
 }

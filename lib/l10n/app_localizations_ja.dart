@@ -18,6 +18,13 @@ class AppLocalizationsJa extends AppLocalizations {
   String get resolution => '解像度';
 
   @override
+  String get displayMagnification => '表示倍率';
+
+  @override
+  String get displayMagnificationDescription =>
+      'デスクトップ全体を見やすく拡大します。倍率を上げるほど作業領域は小さくなります。';
+
+  @override
   String get theme => 'テーマ';
 
   @override
@@ -632,6 +639,39 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get topologyUnavailable => 'この端末ではディスプレイトポロジーを利用できません';
+
+  @override
+  String get displaySettingsTitle => 'ディスプレイ設定';
+
+  @override
+  String get displaySettingsSummary => 'ディスプレイの配置と解像度を管理します';
+
+  @override
+  String get displayResolutionListTitle => 'ディスプレイの解像度';
+
+  @override
+  String get displayResolutionListSummary => '接続されているディスプレイの情報と対応モードを確認します';
+
+  @override
+  String get displayDetailsTitle => 'ディスプレイ情報';
+
+  @override
+  String get displayNoLongerAvailable => '選択したディスプレイは利用できなくなりました';
+
+  @override
+  String get displaySupportedResolutions => '対応する解像度';
+
+  @override
+  String get displayDextopResolutionTitle => 'Dextopセッションの解像度';
+
+  @override
+  String get displayDextopResolutionSummary => 'ホーム画面の解像度から変更できます';
+
+  @override
+  String get displayCurrentMode => '現在使用中';
+
+  @override
+  String get displayModeApplied => 'ディスプレイの解像度を変更しました';
 
   @override
   String get uiTap => 'タップ';
@@ -1314,6 +1354,37 @@ class AppLocalizationsJa extends AppLocalizations {
       '有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。';
 
   @override
+  String get keyboardSettingsTitle => 'キーボード';
+
+  @override
+  String get keyboardSettingsDescription => 'キーボードテーマとスワイプ入力言語を設定';
+
+  @override
+  String get keyboardSwipeLanguages => 'スワイプ入力の言語';
+
+  @override
+  String get keyboardSwipeLanguagesDescription =>
+      'MENUを長押しした時に表示する言語を選択します。初期状態では英語のみ有効です。';
+
+  @override
+  String get keyboardSwipeAddLanguage => '言語を追加';
+
+  @override
+  String get keyboardSwipeDefaultLanguage => 'デフォルト';
+
+  @override
+  String get keyboardSwipeInput => 'なぞり入力';
+
+  @override
+  String get keyboardSwipeInputDescription => 'キーボードをなぞって単語を入力します。初期状態では無効です。';
+
+  @override
+  String get keyboardSwipeCandidates => '変換候補を表示';
+
+  @override
+  String get keyboardSwipeCandidatesDescription => 'なぞり入力後に選択できる変換候補を表示します。';
+
+  @override
   String get keyboardThemesTitle => 'キーボードテーマ';
 
   @override
@@ -1519,4 +1590,18 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get experimentalCoverDisplayUnavailable => '折りたたみ端末でのみ利用できます';
+
+  @override
+  String get experimentalForceLaptopMode => 'ラップトップモードを強制的に利用';
+
+  @override
+  String get experimentalForceLaptopModeDescription =>
+      '非折りたたみ端末でもオーバーレイからラップトップモードを手動で起動できるようにします';
+
+  @override
+  String get experimentalBlackBerryMode => 'BlackBerryモード';
+
+  @override
+  String get experimentalBlackBerryModeDescription =>
+      'スマートフォン向けのコンパクトな物理キーボード風配列をオーバーレイから利用できるようにします';
 }

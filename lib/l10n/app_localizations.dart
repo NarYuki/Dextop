@@ -125,6 +125,18 @@ abstract class AppLocalizations {
   /// **'解像度'**
   String get resolution;
 
+  /// No description provided for @displayMagnification.
+  ///
+  /// In ja, this message translates to:
+  /// **'表示倍率'**
+  String get displayMagnification;
+
+  /// No description provided for @displayMagnificationDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ全体を見やすく拡大します。倍率を上げるほど作業領域は小さくなります。'**
+  String get displayMagnificationDescription;
+
   /// No description provided for @theme.
   ///
   /// In ja, this message translates to:
@@ -1330,6 +1342,72 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'この端末ではディスプレイトポロジーを利用できません'**
   String get topologyUnavailable;
+
+  /// No description provided for @displaySettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイ設定'**
+  String get displaySettingsTitle;
+
+  /// No description provided for @displaySettingsSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイの配置と解像度を管理します'**
+  String get displaySettingsSummary;
+
+  /// No description provided for @displayResolutionListTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイの解像度'**
+  String get displayResolutionListTitle;
+
+  /// No description provided for @displayResolutionListSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続されているディスプレイの情報と対応モードを確認します'**
+  String get displayResolutionListSummary;
+
+  /// No description provided for @displayDetailsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイ情報'**
+  String get displayDetailsTitle;
+
+  /// No description provided for @displayNoLongerAvailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'選択したディスプレイは利用できなくなりました'**
+  String get displayNoLongerAvailable;
+
+  /// No description provided for @displaySupportedResolutions.
+  ///
+  /// In ja, this message translates to:
+  /// **'対応する解像度'**
+  String get displaySupportedResolutions;
+
+  /// No description provided for @displayDextopResolutionTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopセッションの解像度'**
+  String get displayDextopResolutionTitle;
+
+  /// No description provided for @displayDextopResolutionSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'ホーム画面の解像度から変更できます'**
+  String get displayDextopResolutionSummary;
+
+  /// No description provided for @displayCurrentMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'現在使用中'**
+  String get displayCurrentMode;
+
+  /// No description provided for @displayModeApplied.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディスプレイの解像度を変更しました'**
+  String get displayModeApplied;
 
   /// No description provided for @uiTap.
   ///
@@ -2639,6 +2717,66 @@ abstract class AppLocalizations {
   /// **'有効にすると端末内蔵画面と同じ内容をデスクトップ側にも表示します。説明やデモで同じ画面を見せたい場合に便利ですが、作業領域を拡張する機能ではなく、両画面に別々のアプリを表示できなくなります。'**
   String get samsungHelp_mirrorPhoneDisplay;
 
+  /// No description provided for @keyboardSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボード'**
+  String get keyboardSettingsTitle;
+
+  /// No description provided for @keyboardSettingsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードテーマとスワイプ入力言語を設定'**
+  String get keyboardSettingsDescription;
+
+  /// No description provided for @keyboardSwipeLanguages.
+  ///
+  /// In ja, this message translates to:
+  /// **'スワイプ入力の言語'**
+  String get keyboardSwipeLanguages;
+
+  /// No description provided for @keyboardSwipeLanguagesDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'MENUを長押しした時に表示する言語を選択します。初期状態では英語のみ有効です。'**
+  String get keyboardSwipeLanguagesDescription;
+
+  /// No description provided for @keyboardSwipeAddLanguage.
+  ///
+  /// In ja, this message translates to:
+  /// **'言語を追加'**
+  String get keyboardSwipeAddLanguage;
+
+  /// No description provided for @keyboardSwipeDefaultLanguage.
+  ///
+  /// In ja, this message translates to:
+  /// **'デフォルト'**
+  String get keyboardSwipeDefaultLanguage;
+
+  /// No description provided for @keyboardSwipeInput.
+  ///
+  /// In ja, this message translates to:
+  /// **'なぞり入力'**
+  String get keyboardSwipeInput;
+
+  /// No description provided for @keyboardSwipeInputDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードをなぞって単語を入力します。初期状態では無効です。'**
+  String get keyboardSwipeInputDescription;
+
+  /// No description provided for @keyboardSwipeCandidates.
+  ///
+  /// In ja, this message translates to:
+  /// **'変換候補を表示'**
+  String get keyboardSwipeCandidates;
+
+  /// No description provided for @keyboardSwipeCandidatesDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'なぞり入力後に選択できる変換候補を表示します。'**
+  String get keyboardSwipeCandidatesDescription;
+
   /// No description provided for @keyboardThemesTitle.
   ///
   /// In ja, this message translates to:
@@ -3034,6 +3172,30 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'折りたたみ端末でのみ利用できます'**
   String get experimentalCoverDisplayUnavailable;
+
+  /// No description provided for @experimentalForceLaptopMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'ラップトップモードを強制的に利用'**
+  String get experimentalForceLaptopMode;
+
+  /// No description provided for @experimentalForceLaptopModeDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'非折りたたみ端末でもオーバーレイからラップトップモードを手動で起動できるようにします'**
+  String get experimentalForceLaptopModeDescription;
+
+  /// No description provided for @experimentalBlackBerryMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'BlackBerryモード'**
+  String get experimentalBlackBerryMode;
+
+  /// No description provided for @experimentalBlackBerryModeDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'スマートフォン向けのコンパクトな物理キーボード風配列をオーバーレイから利用できるようにします'**
+  String get experimentalBlackBerryModeDescription;
 }
 
 class _AppLocalizationsDelegate
