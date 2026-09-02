@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="dextop_swipe_ime_label">Dextop swipe input</string>
     <string name="accessibility_service_description">Controls the Dextop virtual display, input, and control panel</string>
     <string name="embedded_pairing_channel">Built-in access setup</string>
     <string name="embedded_pairing_title">Pair Dextop</string>

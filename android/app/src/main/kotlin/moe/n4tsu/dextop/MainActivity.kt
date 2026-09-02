@@ -32,7 +32,7 @@ open class MainActivity : FlutterActivity() {
     companion object {
         private const val STELLAR_PACKAGE = "roro.stellar.manager"
         private const val SHEVERY_PACKAGE = "com.hamondev.shevery"
-        private const val CAR_COMPANION_PACKAGE = "moe.n4tsu.cardex"
+        private const val CAR_COMPANION_PACKAGE = "moe.n4tsu.dextop.cardex"
         private const val SHIZUKU_PERMISSION = "moe.shizuku.manager.permission.API_V23"
         private const val STELLAR_REQUEST_BINDER_ACTION = "roro.stellar.intent.action.REQUEST_BINDER"
         private const val EMBEDDED_NOTIFICATION_PERMISSION_REQUEST = 8104

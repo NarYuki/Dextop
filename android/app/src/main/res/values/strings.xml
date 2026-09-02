@@ -1,8 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="dextop_swipe_ime_label">Dextop swipe input</string>
     <string name="app_name" translatable="false">Dextop</string>
     <string name="quick_settings_tile_label" translatable="false">Dextop</string>
+    <string name="dextop_swipe_ime_label">Dextop なぞり入力</string>
     <string name="accessibility_service_description">Dextopの仮想ディスプレイ、入力、操作パネルを制御します</string>
     <string name="embedded_pairing_channel">内蔵アクセスサービスの設定</string>
     <string name="embedded_pairing_title">Dextopをペア設定</string>

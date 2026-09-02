@@ -6,7 +6,7 @@ extension _HomeContent on _HomeScreenState {
       key: ValueKey('overview'),
       slivers: [
         SliverAppBar.large(
-          title: Text(AppStrings.tr('appName')),
+          title: Text(currentLocalizations().appName),
           actions: [
             IconButton(onPressed: refresh, icon: Icon(Icons.refresh_rounded)),
             SizedBox(width: 8),
@@ -34,7 +34,7 @@ extension _HomeContent on _HomeScreenState {
                 shizukuPanel(),
                 SizedBox(height: 28),
               ],
-              sectionTitle(AppStrings.tr('display')),
+              sectionTitle(currentLocalizations().display),
               SizedBox(height: 12),
               profileGrid(),
               SizedBox(height: 12),
@@ -107,26 +107,25 @@ extension _HomeContent on _HomeScreenState {
                 Expanded(
                   child: Text(
                     stopping
-                        ? AppStrings.tr('uiDextopStopping')
+                        ? currentLocalizations().uiDextopStopping
                         : loading
-                        ? AppStrings.tr('uiChecking')
+                        ? currentLocalizations().uiChecking
                         : autoPlus
-                        ? AppStrings.tr('uiRunningAutoPlus')
+                        ? currentLocalizations().uiRunningAutoPlus
                         : autoOnly
-                        ? AppStrings.tr('uiRunningAuto')
+                        ? currentLocalizations().uiRunningAuto
                         : active
-                        ? AppStrings.tr('running')
+                        ? currentLocalizations().running
                         : needsAndroidRepair
-                        ? AppStrings.tr('uiAbnormalSessionWarning')
+                        ? currentLocalizations().uiAbnormalSessionWarning
                         : showRepairResult
-                        ? AppStrings.tr(
-                            'uiTerminationProcessingCompletedSuccessfully',
-                          )
+                        ? currentLocalizations()
+                              .uiTerminationProcessingCompletedSuccessfully
                         : hasExistingSession
-                        ? AppStrings.tr('uiThereIsAnExistingSession')
+                        ? currentLocalizations().uiThereIsAnExistingSession
                         : ready
-                        ? AppStrings.tr('uiDextopIsReady')
-                        : AppStrings.tr('uiPreparationIsRequired'),
+                        ? currentLocalizations().uiDextopIsReady
+                        : currentLocalizations().uiPreparationIsRequired,
                     softWrap: true,
                     overflow: TextOverflow.visible,
                     strutStyle: StrutStyle(
@@ -158,7 +157,7 @@ extension _HomeContent on _HomeScreenState {
                     children: [
                       Icon(Icons.phone_android_rounded, size: 20),
                       SizedBox(width: 8),
-                      Text(AppStrings.tr('uiStartPhoneDextop')),
+                      Text(currentLocalizations().uiStartPhoneDextop),
                     ],
                   ),
                 ),
@@ -227,16 +226,16 @@ extension _HomeContent on _HomeScreenState {
                     SizedBox(width: 8),
                     Text(
                       stopping
-                          ? AppStrings.tr('uiDextopStopping')
+                          ? currentLocalizations().uiDextopStopping
                           : needsAndroidRepair
-                          ? AppStrings.tr('uiRestorePrivileges')
+                          ? currentLocalizations().uiRestorePrivileges
                           : showRepairResult
-                          ? AppStrings.tr('uiRestartTheApp')
+                          ? currentLocalizations().uiRestartTheApp
                           : autoOnly
-                          ? AppStrings.tr('uiStopAndroidAuto')
+                          ? currentLocalizations().uiStopAndroidAuto
                           : active
-                          ? AppStrings.tr('stop')
-                          : AppStrings.tr('uiStart'),
+                          ? currentLocalizations().stop
+                          : currentLocalizations().uiStart,
                       strutStyle: StrutStyle(
                         fontSize: 14,
                         height: 1,
@@ -276,10 +275,9 @@ extension _HomeContent on _HomeScreenState {
                       Text(
                         recovery['phase'] == 'running' ||
                                 recovery['phase'] == 'paused'
-                            ? AppStrings.tr('uiDextopCanBeRestarted')
-                            : AppStrings.tr(
-                                'uiYouCanRestoreYourPreviousSession',
-                              ),
+                            ? currentLocalizations().uiDextopCanBeRestarted
+                            : currentLocalizations()
+                                  .uiYouCanRestoreYourPreviousSession,
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                       SizedBox(height: 2),
@@ -303,7 +301,7 @@ extension _HomeContent on _HomeScreenState {
                     child: FilledButton.tonal(
                       onPressed: () async {
                         final recovered = DisplayProfile(
-                          AppStrings.tr('uiRecoverySession'),
+                          currentLocalizations().uiRecoverySession,
                           '$density dpi',
                           width,
                           height,
@@ -320,10 +318,9 @@ extension _HomeContent on _HomeScreenState {
                         mutate(() => loading = true);
                         await bridge.start(
                           resumeProfile,
-                          // Resume with the orientation selected in Dextop.
-                          // Passing false here forced landscape on foldables
-                          // even when the user had selected portrait mode.
-                          portrait,
+                          // Resolve automatic orientation again when resuming:
+                          // the device may have rotated while suspended.
+                          resolveHomePortrait(),
                           secure,
                           decorations: effectiveDecorations,
                           workspaceMagnificationPercent:
@@ -332,7 +329,7 @@ extension _HomeContent on _HomeScreenState {
                         await Future<void>.delayed(Duration(milliseconds: 350));
                         await refresh();
                       },
-                      child: Text(AppStrings.tr('uiRestart')),
+                      child: Text(currentLocalizations().uiRestart),
                     ),
                   ),
                 ),
@@ -345,7 +342,7 @@ extension _HomeContent on _HomeScreenState {
                         await bridge.clearRecovery();
                         await refresh();
                       },
-                      child: Text(AppStrings.tr('uiDestruction')),
+                      child: Text(currentLocalizations().uiDestruction),
                     ),
                   ),
                 ),
@@ -374,16 +371,16 @@ extension _HomeContent on _HomeScreenState {
         children: [
           ListTile(
             leading: Icon(Icons.apps_rounded),
-            title: Text(AppStrings.tr('uiAppLauncher')),
-            subtitle: Text(AppStrings.tr('uiOpenAppOnDesktop')),
+            title: Text(currentLocalizations().uiAppLauncher),
+            subtitle: Text(currentLocalizations().uiOpenAppOnDesktop),
             trailing: Icon(Icons.chevron_right_rounded),
             onTap: openApps,
           ),
           Divider(height: 1),
           ListTile(
             leading: Icon(Icons.space_dashboard_rounded),
-            title: Text(AppStrings.tr('uiWorkSpace')),
-            subtitle: Text(AppStrings.tr('uiOpenASavedAppConfiguration')),
+            title: Text(currentLocalizations().uiWorkSpace),
+            subtitle: Text(currentLocalizations().uiOpenASavedAppConfiguration),
             trailing: AnimatedRotation(
               turns: workspaceExpanded ? .5 : 0,
               duration: Duration(milliseconds: 220),
@@ -402,7 +399,9 @@ extension _HomeContent on _HomeScreenState {
                       if (homeWorkspaces.isEmpty)
                         ListTile(
                           contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                          title: Text(AppStrings.tr('uiNoSavedWorkspaces')),
+                          title: Text(
+                            currentLocalizations().uiNoSavedWorkspaces,
+                          ),
                         ),
                       if (homeAppsLoading)
                         Padding(
@@ -477,16 +476,19 @@ extension _HomeContent on _HomeScreenState {
     final title = embedded
         ? AppLocalizations.of(context).setupEmbeddedPairAndStart
         : !shizukuInstalled
-        ? AppStrings.tr(
-            'uiInstallShizuku',
-          ).replaceAll('Shizuku', privilegeProviderName)
+        ? currentLocalizations().uiInstallShizuku.replaceAll(
+            'Shizuku',
+            privilegeProviderName,
+          )
         : !shizukuRunning
-        ? AppStrings.tr(
-            'uiCheckingShizukuConnection',
-          ).replaceAll('Shizuku', privilegeProviderName)
-        : AppStrings.tr(
-            'uiAllowShizukuPermissions',
-          ).replaceAll('Shizuku', privilegeProviderName);
+        ? currentLocalizations().uiCheckingShizukuConnection.replaceAll(
+            'Shizuku',
+            privilegeProviderName,
+          )
+        : currentLocalizations().uiAllowShizukuPermissions.replaceAll(
+            'Shizuku',
+            privilegeProviderName,
+          );
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: 4),
       leading: Icon(

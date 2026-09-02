@@ -42,6 +42,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.tappableElement
+import androidx.compose.foundation.layout.union
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -425,7 +430,18 @@ private fun RelaySurface(
     uiScale: Float,
     onUiScaleChanged: (Float) -> Unit
 ) {
-    Box(Modifier.fillMaxSize()) {
+    // Android Auto hosts may reserve a persistent navigation rail on either
+    // side of the projection surface. Edge-to-edge remains enabled for modern
+    // hosts, but the desktop destination must use only the host's safe content
+    // rectangle. Because the TextureView itself is inset, its measured size,
+    // relay resolution and touch coordinates all share the same origin.
+    Box(
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(
+                WindowInsets.safeDrawing.union(WindowInsets.tappableElement)
+            )
+    ) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->

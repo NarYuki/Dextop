@@ -31,52 +31,14 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
 
   ({String title, String body, String landscape, String portrait, String close})
   _copy(BuildContext context) {
-    switch (Localizations.localeOf(context).languageCode) {
-      case 'ja':
-        return (
-          title: 'アプリが更新され、ジェスチャーが変更されました。',
-          body: '',
-          landscape: '横向きの場合\n画面左から右に3本指でスワイプ',
-          portrait: '縦持ちの場合\n画面上から下に3本指でスワイプ',
-          close: '確認',
-        );
-      case 'zh':
-        return (
-          title: '应用已更新',
-          body: '现已支持多点触控，因此三指手势也已更新。',
-          landscape: '横屏时\n用三指从屏幕左侧向右滑动',
-          portrait: '竖屏时\n用三指从屏幕顶部向下滑动',
-          close: '确定',
-        );
-      case 'ko':
-        return (
-          title: '앱이 업데이트되었습니다',
-          body: '멀티터치를 지원하며 이에 따라 제스처가 업데이트되었습니다.',
-          landscape: '가로 모드\n화면 왼쪽에서 오른쪽으로 세 손가락 스와이프',
-          portrait: '세로 모드\n화면 위에서 아래로 세 손가락 스와이프',
-          close: '확인',
-        );
-      case 'ru':
-        return (
-          title: 'Приложение обновлено',
-          body: 'Добавлен мультитач, поэтому жесты также были обновлены.',
-          landscape:
-              'Альбомная ориентация\nСмахните тремя пальцами слева направо',
-          portrait:
-              'Портретная ориентация\nСмахните тремя пальцами сверху вниз',
-          close: 'Понятно',
-        );
-      default:
-        return (
-          title: 'The app has been updated',
-          body:
-              'Multi-touch is now supported, so the gestures have been updated.',
-          landscape:
-              'Landscape\nSwipe right with three fingers from the left edge',
-          portrait: 'Portrait\nSwipe down with three fingers from the top edge',
-          close: 'Got it',
-        );
-    }
+    final l = AppLocalizations.of(context);
+    return (
+      title: l.multiTouchUpgradeTitle,
+      body: l.multiTouchUpgradeBody,
+      landscape: l.multiTouchUpgradeLandscape,
+      portrait: l.multiTouchUpgradePortrait,
+      close: l.multiTouchUpgradeClose,
+    );
   }
 
   Future<void> applyOrientation() => SystemChrome.setPreferredOrientations(
@@ -348,13 +310,15 @@ class _ThreeFingerGestureDemoState extends State<_ThreeFingerGestureDemo>
   }
 }
 
+enum _HomeOrientationMode { automatic, landscape, portrait }
+
 class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   void mutate(VoidCallback change) => setState(change);
   final bridge = NativeBridge();
   var page = 0;
   var profiles = <DisplayProfile>[];
   var profile = DisplayProfile(
-    AppStrings.tr('uiTerminalResolution'),
+    currentLocalizations().uiTerminalResolution,
     '240 dpi',
     1920,
     1080,
@@ -367,7 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Kept independent from saved resolution profiles: this is a workspace
   // presentation preference, applied only after a profile has been resolved.
   var workspaceMagnificationPercent = 100;
-  var portrait = false;
+  var orientationMode = _HomeOrientationMode.landscape;
   var secure = false;
   String mirrorBackend = 'virtual_display';
   String castMode = 'simple';
@@ -440,7 +404,18 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         secure = preferences.getBool('secure_display') ?? false;
-        portrait = preferences.getBool('home_portrait') ?? false;
+        final savedOrientation = preferences.getString('home_orientation_mode');
+        orientationMode = switch (savedOrientation) {
+          'automatic' => _HomeOrientationMode.automatic,
+          'portrait' => _HomeOrientationMode.portrait,
+          'landscape' => _HomeOrientationMode.landscape,
+          // Preserve the setting used by builds before automatic orientation
+          // was introduced.
+          _ =>
+            (preferences.getBool('home_portrait') ?? false)
+                ? _HomeOrientationMode.portrait
+                : _HomeOrientationMode.landscape,
+        };
         mirrorBackend =
             preferences.getString('mirror_backend') ?? 'virtual_display';
         castMode = preferences.getString('cast_mode') ?? 'simple';
@@ -452,11 +427,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> setPortrait(bool value) async {
-    mutate(() => portrait = value);
+  Future<void> setHomeOrientation(_HomeOrientationMode value) async {
+    mutate(() => orientationMode = value);
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool('home_portrait', value);
+    await preferences.setString('home_orientation_mode', value.name);
+    if (value != _HomeOrientationMode.automatic) {
+      await preferences.setBool(
+        'home_portrait',
+        value == _HomeOrientationMode.portrait,
+      );
+    }
   }
+
+  bool resolveHomePortrait() => switch (orientationMode) {
+    _HomeOrientationMode.automatic =>
+      MediaQuery.orientationOf(context) == Orientation.portrait,
+    _HomeOrientationMode.landscape => false,
+    _HomeOrientationMode.portrait => true,
+  };
 
   Future<void> setSecureDisplay(bool value) async {
     mutate(() => secure = value);
@@ -519,21 +507,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         !mounted) {
       return;
     }
-    final language = Localizations.localeOf(context).languageCode;
-    final title = switch (language) {
-      'ja' => '$currentVersionへ更新されました！',
-      'ko' => '$currentVersion(으)로 업데이트되었습니다!',
-      'zh' => '已更新至 $currentVersion！',
-      'ru' => 'Обновлено до версии $currentVersion!',
-      _ => 'Updated to $currentVersion!',
-    };
-    final message = switch (language) {
-      'ja' => 'Dextopが最新バージョンになりました。',
-      'ko' => 'Dextop이 최신 버전으로 업데이트되었습니다.',
-      'zh' => 'Dextop 已更新至最新版本。',
-      'ru' => 'Dextop обновлён до последней версии.',
-      _ => 'Dextop has been updated to the latest version.',
-    };
+    final l = AppLocalizations.of(context);
+    final title = l.appUpdatedTitle(currentVersion);
+    final message = l.appUpdatedMessage;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -713,12 +689,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         icon: const Icon(Icons.system_update_alt_rounded),
         title: Text(
           isPlayDistribution
-              ? AppStrings.tr('playUpdateAvailableTitle')
+              ? currentLocalizations().playUpdateAvailableTitle
               : l.updateAvailableTitle,
         ),
         content: Text(
           isPlayDistribution
-              ? AppStrings.tr('playUpdateAvailableDescription')
+              ? currentLocalizations().playUpdateAvailableDescription
               : '${l.currentVersion}: $appVersion\n${l.latestVersion}: $latestReleaseVersion',
         ),
         actions: [
@@ -740,7 +716,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                 Navigator.pop(dialogContext);
                 await _startPlayStoreUpdate();
               },
-              child: Text(AppStrings.tr('updateNow')),
+              child: Text(currentLocalizations().updateNow),
             ),
         ],
       ),
@@ -826,7 +802,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         .round()
         .clamp(160, 320);
     final deviceProfile = DisplayProfile(
-      '${AppStrings.tr('automaticResolution')} ($landscapeWidth × $landscapeHeight)',
+      '${currentLocalizations().automaticResolution} ($landscapeWidth × $landscapeHeight)',
       '$deviceDensity dpi',
       landscapeWidth,
       landscapeHeight,
@@ -1220,7 +1196,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       } else {
         await bridge.start(
           profile,
-          portrait,
+          resolveHomePortrait(),
           secure,
           decorations: effectiveDecorations,
           workspaceMagnificationPercent: workspaceMagnificationPercent,
@@ -1275,7 +1251,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       await bridge.start(
         profile,
-        portrait,
+        resolveHomePortrait(),
         secure,
         decorations: effectiveDecorations,
         workspaceMagnificationPercent: workspaceMagnificationPercent,
@@ -1324,12 +1300,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                   NavigationRailDestination(
                     icon: const Icon(Icons.space_dashboard_outlined),
                     selectedIcon: const Icon(Icons.space_dashboard_rounded),
-                    label: Text(AppStrings.tr('home')),
+                    label: Text(currentLocalizations().home),
                   ),
                   NavigationRailDestination(
                     icon: _settingsNavigationIcon(Icons.tune_outlined),
                     selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
-                    label: Text(AppStrings.tr('settings')),
+                    label: Text(currentLocalizations().settings),
                   ),
                 ],
               ),
@@ -1349,12 +1325,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           NavigationDestination(
             icon: Icon(Icons.home_outlined),
             selectedIcon: Icon(Icons.home_rounded),
-            label: AppStrings.tr('home'),
+            label: currentLocalizations().home,
           ),
           NavigationDestination(
             icon: _settingsNavigationIcon(Icons.tune_outlined),
             selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
-            label: AppStrings.tr('settings'),
+            label: currentLocalizations().settings,
           ),
         ],
       ),

@@ -45,6 +45,33 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
   var _loading = true;
   var _sending = false;
 
+  String _featureLabel(String feature) {
+    final l = currentLocalizations();
+    return switch (feature) {
+      'reportFeatureStartup' => l.reportFeatureStartup,
+      'reportFeatureSession' => l.reportFeatureSession,
+      'reportFeatureVirtualDisplay' => l.reportFeatureVirtualDisplay,
+      'reportFeatureWindowManager' => l.reportFeatureWindowManager,
+      'reportFeatureSurfaceControl' => l.reportFeatureSurfaceControl,
+      'reportFeatureLandscape' => l.reportFeatureLandscape,
+      'reportFeaturePortrait' => l.reportFeaturePortrait,
+      'reportFeatureSecureDisplay' => l.reportFeatureSecureDisplay,
+      'reportFeatureLauncher' => l.reportFeatureLauncher,
+      'reportFeatureWorkspace' => l.reportFeatureWorkspace,
+      'reportFeatureCursor' => l.reportFeatureCursor,
+      'reportFeatureDirectTouch' => l.reportFeatureDirectTouch,
+      'reportFeatureMultiTouch' => l.reportFeatureMultiTouch,
+      'reportFeatureGesture' => l.reportFeatureGesture,
+      'reportFeatureMouse' => l.reportFeatureMouse,
+      'reportFeatureKeyboard' => l.reportFeatureKeyboard,
+      'reportFeatureRouting' => l.reportFeatureRouting,
+      'reportFeatureFoldable' => l.reportFeatureFoldable,
+      'reportFeaturePerformance' => l.reportFeaturePerformance,
+      'reportFeatureCleanup' => l.reportFeatureCleanup,
+      _ => feature,
+    };
+  }
+
   @override
   void initState() {
     super.initState();
@@ -74,15 +101,15 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
   }
 
   String _label(_ReportResult value) => switch (value) {
-    _ReportResult.working => AppStrings.tr('reportWorking'),
-    _ReportResult.notWorking => AppStrings.tr('reportNotWorking'),
-    _ReportResult.untested => AppStrings.tr('reportUntested'),
+    _ReportResult.working => currentLocalizations().reportWorking,
+    _ReportResult.notWorking => currentLocalizations().reportNotWorking,
+    _ReportResult.untested => currentLocalizations().reportUntested,
   };
 
   String _markdownResult(_ReportResult value) => switch (value) {
-    _ReportResult.working => '✅ ${AppStrings.tr('reportWorking')}',
-    _ReportResult.notWorking => '❌ ${AppStrings.tr('reportNotWorking')}',
-    _ReportResult.untested => '⬜ ${AppStrings.tr('reportUntested')}',
+    _ReportResult.working => '✅ ${currentLocalizations().reportWorking}',
+    _ReportResult.notWorking => '❌ ${currentLocalizations().reportNotWorking}',
+    _ReportResult.untested => '⬜ ${currentLocalizations().reportUntested}',
   };
 
   Widget _selector(_ReportResult value, ValueChanged<_ReportResult> changed) =>
@@ -107,7 +134,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
   String _buildTemplate() {
     final date = DateTime.now().toIso8601String().split('T').first;
     final buffer = StringBuffer()
-      ..writeln('## ${AppStrings.tr('reportTemplateTitle')}')
+      ..writeln('## ${currentLocalizations().reportTemplateTitle}')
       ..writeln()
       ..writeln('| Item | Reported value |')
       ..writeln('| --- | --- |')
@@ -136,7 +163,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
       ..writeln('| --- | --- | --- |');
     for (final feature in _features) {
       buffer.writeln(
-        '| ${AppStrings.tr(feature)} | ${_markdownResult(_results[feature]!)} | |',
+        '| ${_featureLabel(feature)} | ${_markdownResult(_results[feature]!)} | |',
       );
     }
     buffer
@@ -146,7 +173,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
       ..writeln('```text')
       ..writeln(
         _lastSessionLog.trim().isEmpty
-            ? AppStrings.tr('reportNoSessionLog')
+            ? currentLocalizations().reportNoSessionLog
             : _lastSessionLog.trim(),
       )
       ..writeln('```')
@@ -164,7 +191,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
       ..writeln()
       ..writeln(
         _notes.text.trim().isEmpty
-            ? AppStrings.tr('reportNoNotes')
+            ? currentLocalizations().reportNoNotes
             : _notes.text.trim(),
       );
     return buffer.toString();
@@ -182,7 +209,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              error.message ?? AppStrings.tr('reportEmailUnavailable'),
+              error.message ?? currentLocalizations().reportEmailUnavailable,
             ),
           ),
         );
@@ -194,16 +221,16 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(AppStrings.tr('deviceReport'))),
+    appBar: AppBar(title: Text(currentLocalizations().deviceReport)),
     body: _loading
         ? const Center(child: CircularProgressIndicator())
         : ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
-              Text(AppStrings.tr('deviceReportIntro')),
+              Text(currentLocalizations().deviceReportIntro),
               const SizedBox(height: 20),
               Text(
-                AppStrings.tr('reportOverall'),
+                currentLocalizations().reportOverall,
                 style: Theme.of(context).textTheme.titleMedium,
               ),
               const SizedBox(height: 8),
@@ -211,7 +238,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
               const SizedBox(height: 24),
               for (final feature in _features) ...[
                 Text(
-                  AppStrings.tr(feature),
+                  _featureLabel(feature),
                   style: Theme.of(context).textTheme.titleSmall,
                 ),
                 const SizedBox(height: 8),
@@ -226,7 +253,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
                 minLines: 3,
                 maxLines: 8,
                 decoration: InputDecoration(
-                  labelText: AppStrings.tr('reportNotes'),
+                  labelText: currentLocalizations().reportNotes,
                   border: const OutlineInputBorder(),
                 ),
               ),
@@ -234,7 +261,7 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
               FilledButton.icon(
                 onPressed: _sending ? null : _send,
                 icon: const Icon(Icons.email_outlined),
-                label: Text(AppStrings.tr('sendDeviceReport')),
+                label: Text(currentLocalizations().sendDeviceReport),
               ),
             ],
           ),

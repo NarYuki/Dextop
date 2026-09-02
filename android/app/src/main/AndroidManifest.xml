@@ -131,7 +131,7 @@
         </service>
         <service
             android:name=".input.DextopSwipeInputMethodService"
-            android:label="Dextop swipe input"
+            android:label="@string/dextop_swipe_ime_label"
             android:permission="android.permission.BIND_INPUT_METHOD"
             android:exported="true">
             <intent-filter>

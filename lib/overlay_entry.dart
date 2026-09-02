@@ -126,7 +126,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
                             Icon(Icons.tune_rounded, size: 28),
                             SizedBox(width: 12),
                             Text(
-                              AppStrings.tr('uiOperationMenu'),
+                              currentLocalizations().uiOperationMenu,
                               style: Theme.of(context).textTheme.headlineSmall,
                             ),
                             Spacer(),
@@ -138,7 +138,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
                         ),
                         SizedBox(height: 18),
                         Text(
-                          AppStrings.tr('uiTrackpad'),
+                          currentLocalizations().uiTrackpad,
                           style: Theme.of(context).textTheme.titleMedium,
                         ),
                         SizedBox(height: 10),
@@ -147,12 +147,12 @@ class _OverlayMenuState extends State<OverlayMenu> {
                             ButtonSegment(
                               value: false,
                               icon: Icon(Icons.mouse_rounded),
-                              label: Text(AppStrings.tr('uiCursor')),
+                              label: Text(currentLocalizations().uiCursor),
                             ),
                             ButtonSegment(
                               value: true,
                               icon: Icon(Icons.touch_app_rounded),
-                              label: Text(AppStrings.tr('uiTap')),
+                              label: Text(currentLocalizations().uiTap),
                             ),
                           ],
                           selected: {direct},
@@ -167,7 +167,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
                         ListTile(
                           contentPadding: EdgeInsets.symmetric(horizontal: 4),
                           leading: Icon(Icons.monitor_rounded),
-                          title: Text(AppStrings.tr('resolution')),
+                          title: Text(currentLocalizations().resolution),
                           subtitle: Text(
                             '${width.text} × ${height.text}  ${density.text} dpi',
                           ),
@@ -181,7 +181,9 @@ class _OverlayMenuState extends State<OverlayMenu> {
                             onPressed: () =>
                                 channel.invokeMethod('exitFullscreen'),
                             icon: Icon(Icons.fullscreen_exit_rounded),
-                            label: Text(AppStrings.tr('uiCancelFullScreen')),
+                            label: Text(
+                              currentLocalizations().uiCancelFullScreen,
+                            ),
                           ),
                         ),
                         SizedBox(height: 10),
@@ -193,10 +195,10 @@ class _OverlayMenuState extends State<OverlayMenu> {
                             icon: Icon(Icons.screen_rotation_rounded),
                             label: Text(
                               landscape
-                                  ? AppStrings.tr(
-                                      'uiChangeToPortraitOrientation',
-                                    )
-                                  : AppStrings.tr('uiChangeToHorizontalHold'),
+                                  ? currentLocalizations()
+                                        .uiChangeToPortraitOrientation
+                                  : currentLocalizations()
+                                        .uiChangeToHorizontalHold,
                             ),
                           ),
                         ),
@@ -214,7 +216,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
                             ),
                             onPressed: () => channel.invokeMethod('stop'),
                             icon: Icon(Icons.stop_circle_rounded),
-                            label: Text(AppStrings.tr('uiEnd')),
+                            label: Text(currentLocalizations().uiEnd),
                           ),
                         ),
                       ],
@@ -271,7 +273,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
         portrait ? shortSide : longSide,
         portrait ? longSide : shortSide,
         240,
-        AppStrings.tr('uiTerminalResolution'),
+        currentLocalizations().uiTerminalResolution,
       ),
     ];
     await showModalBottomSheet<void>(
@@ -290,7 +292,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                AppStrings.tr('resolution'),
+                currentLocalizations().resolution,
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               SizedBox(height: 12),
@@ -312,16 +314,18 @@ class _OverlayMenuState extends State<OverlayMenu> {
               ),
               Divider(height: 28),
               Text(
-                AppStrings.tr('customAdd'),
+                currentLocalizations().customAdd,
                 style: Theme.of(context).textTheme.titleLarge,
               ),
               SizedBox(height: 14),
               Row(
                 children: [
-                  Expanded(child: overlayField(width, AppStrings.tr('width'))),
+                  Expanded(
+                    child: overlayField(width, currentLocalizations().width),
+                  ),
                   SizedBox(width: 10),
                   Expanded(
-                    child: overlayField(height, AppStrings.tr('height')),
+                    child: overlayField(height, currentLocalizations().height),
                   ),
                 ],
               ),
@@ -335,7 +339,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
                     Navigator.pop(sheetContext);
                     applyResolution();
                   },
-                  child: Text(AppStrings.tr('customAdd')),
+                  child: Text(currentLocalizations().customAdd),
                 ),
               ),
             ],

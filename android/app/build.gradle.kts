@@ -130,6 +130,27 @@ flutter {
     source = "../.."
 }
 
+val generateNativeStrings by tasks.registering(Exec::class) {
+    group = "localization"
+    description = "Generates NativeStrings.kt from the Flutter ARB catalogs"
+    workingDir(rootProject.file(".."))
+    commandLine("python3", "tool/generate_native_strings.py")
+    inputs.files(
+        fileTree(rootProject.file("../lib/l10n")) {
+            include("app_*.arb")
+        }
+    )
+    outputs.file(file("src/main/kotlin/moe/n4tsu/dextop/NativeStrings.kt"))
+}
+
+tasks.configureEach {
+    if ((name.startsWith("compile") && name.endsWith("Kotlin")) ||
+        name.contains("SourceSetPaths")
+    ) {
+        dependsOn(generateNativeStrings)
+    }
+}
+
 androidComponents {
     onVariants(selector().withBuildType("release")) { variant ->
         variant.packaging.jniLibs.excludes.addAll(

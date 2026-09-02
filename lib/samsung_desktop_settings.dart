@@ -1,7 +1,5 @@
 part of 'main.dart';
 
-String _samsung(String key) => AppStrings.tr(key);
-
 class _SamsungExperimentalSettingsTile extends StatefulWidget {
   const _SamsungExperimentalSettingsTile({
     required this.bridge,
@@ -59,18 +57,18 @@ class _SamsungExperimentalSettingsTileState
           secondary: const Icon(Icons.science_outlined),
           value: enabled && supported,
           onChanged: loading || !supported ? null : update,
-          title: Text(_samsung('samsungExperimentalTitle')),
+          title: Text(currentLocalizations().samsungExperimentalTitle),
           subtitle: Text(
             !supported && !loading
-                ? _samsung('samsungUnavailable')
-                : _samsung('samsungExperimentalDescription'),
+                ? currentLocalizations().samsungUnavailable
+                : currentLocalizations().samsungExperimentalDescription,
           ),
         ),
         if (enabled && supported)
           ListTile(
             leading: const Icon(Icons.desktop_windows_outlined),
-            title: Text(_samsung('samsungSettingsTitle')),
-            subtitle: Text(_samsung('samsungSettingsSummary')),
+            title: Text(currentLocalizations().samsungSettingsTitle),
+            subtitle: Text(currentLocalizations().samsungSettingsSummary),
             trailing: const Icon(Icons.chevron_right_rounded),
             onTap:
                 widget.onOpenSettings ??
@@ -214,7 +212,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
         sensitiveSettingsUnlocked = false;
       });
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(_samsung('samsungRestoreSuccess'))),
+        SnackBar(content: Text(currentLocalizations().samsungRestoreSuccess)),
       );
     } catch (exception) {
       if (mounted) {
@@ -230,8 +228,8 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
       context: context,
       builder: (dialogContext) => AlertDialog(
         icon: const Icon(Icons.warning_amber_rounded),
-        title: Text(_samsung('samsungConfirmTitle')),
-        content: Text(_samsung('samsungPermanentWarning')),
+        title: Text(currentLocalizations().samsungConfirmTitle),
+        content: Text(currentLocalizations().samsungPermanentWarning),
         actions: [
           SizedBox(
             width: double.infinity,
@@ -240,12 +238,12 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
               children: [
                 FilledButton(
                   onPressed: () => Navigator.pop(dialogContext, true),
-                  child: Text(_samsung('samsungAcceptEnable')),
+                  child: Text(currentLocalizations().samsungAcceptEnable),
                 ),
                 const SizedBox(height: 8),
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, false),
-                  child: Text(_samsung('cancel')),
+                  child: Text(currentLocalizations().uiCancel),
                 ),
               ],
             ),
@@ -332,7 +330,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
       Expanded(child: Text(title)),
       IconButton(
         visualDensity: VisualDensity.compact,
-        tooltip: _samsung('samsungAboutSetting'),
+        tooltip: currentLocalizations().samsungAboutSetting,
         onPressed: () => showDialog<void>(
           context: context,
           builder: (context) => AlertDialog(
@@ -342,7 +340,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
             actions: [
               TextButton(
                 onPressed: () => Navigator.pop(context),
-                child: Text(_samsung('ok')),
+                child: Text(currentLocalizations().close),
               ),
             ],
           ),
@@ -352,7 +350,30 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
     ],
   );
 
-  String settingHelp(String id) => _samsung('samsungHelp_$id');
+  String settingHelp(String id) {
+    final l = currentLocalizations();
+    return switch (id) {
+      'resolution' => l.samsungHelp_resolution,
+      'screenZoom' => l.samsungHelp_screenZoom,
+      'fontScale' => l.samsungHelp_fontScale,
+      'screenTimeout' => l.samsungHelp_screenTimeout,
+      'audioOutput' => l.samsungHelp_audioOutput,
+      'displayOrientation' => l.samsungHelp_displayOrientation,
+      'displayArrangement' => l.samsungHelp_displayArrangement,
+      'autorunTouchpad' => l.samsungHelp_autorunTouchpad,
+      'touchpadScrollDirection' => l.samsungHelp_touchpadScrollDirection,
+      'touchKeyboard' => l.samsungHelp_touchKeyboard,
+      'keyboardDex' => l.samsungHelp_keyboardDex,
+      'spenInputMode' => l.samsungHelp_spenInputMode,
+      'threeFingerGesture' => l.samsungHelp_threeFingerGesture,
+      'fourFingerGesture' => l.samsungHelp_fourFingerGesture,
+      'autoHideTaskbar' => l.samsungHelp_autoHideTaskbar,
+      'dexCommandArrow' => l.samsungHelp_dexCommandArrow,
+      'includePhoneDisplay' => l.samsungHelp_includePhoneDisplay,
+      'mirrorPhoneDisplay' => l.samsungHelp_mirrorPhoneDisplay,
+      _ => id,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -373,18 +394,18 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
                 child: FilledButton.tonalIcon(
                   onPressed: backupAvailable ? restoreEnvironment : null,
                   icon: const Icon(Icons.restore_rounded),
-                  label: Text(_samsung('samsungRestoreEnvironment')),
+                  label: Text(currentLocalizations().samsungRestoreEnvironment),
                 ),
               ),
               Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text(_samsung('samsungSettingsIntro')),
+                child: Text(currentLocalizations().samsungSettingsIntro),
               ),
               if (!sensitiveSettingsUnlocked) unlockBanner(),
-              section(_samsung('display')),
+              section(currentLocalizations().display),
               choice<String>(
                 'resolution',
-                _samsung('samsungResolution'),
+                currentLocalizations().samsungResolution,
                 values['resolution']?.toString() ?? 'FHD',
                 const {
                   'HD': 'HD',
@@ -401,7 +422,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
               ),
               choice<int>(
                 'screenZoom',
-                _samsung('samsungScreenZoom'),
+                currentLocalizations().samsungScreenZoom,
                 integer('screenZoom', 160),
                 const {
                   100: '100',
@@ -420,7 +441,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
               ),
               choice<double>(
                 'fontScale',
-                _samsung('samsungFontScale'),
+                currentLocalizations().samsungFontScale,
                 decimal('fontScale', 1.0),
                 {
                   0.85: '85%',
@@ -434,31 +455,31 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
               ),
               choice<int>(
                 'screenTimeout',
-                _samsung('samsungScreenTimeout'),
+                currentLocalizations().samsungScreenTimeout,
                 integer('screenTimeout', 600000),
                 {
-                  15000: _samsung('samsungSeconds15'),
-                  30000: _samsung('samsungSeconds30'),
-                  60000: _samsung('samsungMinute1'),
-                  120000: _samsung('samsungMinutes2'),
-                  300000: _samsung('samsungMinutes5'),
-                  600000: _samsung('samsungMinutes10'),
-                  1200000: _samsung('samsungMinutes20'),
-                  1800000: _samsung('samsungMinutes30'),
-                  3600000: _samsung('samsungHour1'),
+                  15000: currentLocalizations().samsungSeconds15,
+                  30000: currentLocalizations().samsungSeconds30,
+                  60000: currentLocalizations().samsungMinute1,
+                  120000: currentLocalizations().samsungMinutes2,
+                  300000: currentLocalizations().samsungMinutes5,
+                  600000: currentLocalizations().samsungMinutes10,
+                  1200000: currentLocalizations().samsungMinutes20,
+                  1800000: currentLocalizations().samsungMinutes30,
+                  3600000: currentLocalizations().samsungHour1,
                 },
                 enabled: sensitiveSettingsUnlocked,
                 lockedAction: requestUnlock,
               ),
               toggle(
                 'audioOutput',
-                _samsung('samsungAudioOutput'),
+                currentLocalizations().samsungAudioOutput,
                 enabled: sensitiveSettingsUnlocked,
                 lockedAction: requestUnlock,
               ),
               choice<int>(
                 'displayOrientation',
-                _samsung('samsungDisplayOrientation'),
+                currentLocalizations().samsungDisplayOrientation,
                 integer('displayOrientation', 0),
                 const {0: '0°', 1: '90°', 2: '180°', 3: '270°'},
                 enabled: sensitiveSettingsUnlocked,
@@ -466,62 +487,71 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
               ),
               choice<int>(
                 'displayArrangement',
-                _samsung('samsungDisplayArrangement'),
+                currentLocalizations().samsungDisplayArrangement,
                 integer('displayArrangement', 2),
                 {
-                  0: _samsung('samsungLeft'),
-                  1: _samsung('samsungRight'),
-                  2: _samsung('samsungAutomatic'),
+                  0: currentLocalizations().samsungLeft,
+                  1: currentLocalizations().samsungRight,
+                  2: currentLocalizations().samsungAutomatic,
                 },
                 enabled: sensitiveSettingsUnlocked,
                 lockedAction: requestUnlock,
               ),
-              section(_samsung('samsungSectionInput')),
+              section(currentLocalizations().samsungSectionInput),
               if (!inputSettingsHidden)
-                toggle('autorunTouchpad', _samsung('samsungAutorunTouchpad')),
+                toggle(
+                  'autorunTouchpad',
+                  currentLocalizations().samsungAutorunTouchpad,
+                ),
               toggle(
                 'touchpadScrollDirection',
-                _samsung('samsungTouchpadScrollDirection'),
+                currentLocalizations().samsungTouchpadScrollDirection,
               ),
               if (!inputSettingsHidden)
-                toggle('touchKeyboard', _samsung('samsungTouchKeyboard')),
+                toggle(
+                  'touchKeyboard',
+                  currentLocalizations().samsungTouchKeyboard,
+                ),
               if (!inputSettingsHidden)
-                toggle('keyboardDex', _samsung('samsungKeyboardDex')),
+                toggle(
+                  'keyboardDex',
+                  currentLocalizations().samsungKeyboardDex,
+                ),
               toggle(
                 'spenInputMode',
-                _samsung('samsungSpenInputMode'),
+                currentLocalizations().samsungSpenInputMode,
                 fallback: true,
               ),
               if (!inputSettingsHidden)
                 choice<int>(
                   'threeFingerGesture',
-                  _samsung('samsungThreeFingerGesture'),
+                  currentLocalizations().samsungThreeFingerGesture,
                   integer('threeFingerGesture', 4),
                   gestureOptions,
                 ),
               if (!inputSettingsHidden)
                 choice<int>(
                   'fourFingerGesture',
-                  _samsung('samsungFourFingerGesture'),
+                  currentLocalizations().samsungFourFingerGesture,
                   integer('fourFingerGesture', 1),
                   gestureOptions,
                 ),
-              section(_samsung('samsungSectionDesktop')),
+              section(currentLocalizations().samsungSectionDesktop),
               toggle(
                 'autoHideTaskbar',
-                _samsung('samsungAutoHideTaskbar'),
+                currentLocalizations().samsungAutoHideTaskbar,
                 enabled: sensitiveSettingsUnlocked,
                 lockedAction: requestUnlock,
               ),
               toggle(
                 'dexCommandArrow',
-                _samsung('samsungDexCommandArrow'),
+                currentLocalizations().samsungDexCommandArrow,
                 enabled: sensitiveSettingsUnlocked,
                 lockedAction: requestUnlock,
               ),
               toggle(
                 'mirrorPhoneDisplay',
-                _samsung('samsungMirrorPhoneDisplay'),
+                currentLocalizations().samsungMirrorPhoneDisplay,
                 enabled: sensitiveSettingsUnlocked,
                 lockedAction: requestUnlock,
               ),
@@ -530,7 +560,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
     if (widget.embedded) return body;
     return Scaffold(
       appBar: AppBar(
-        title: Text(_samsung('samsungSettingsTitle')),
+        title: Text(currentLocalizations().samsungSettingsTitle),
         actions: [
           IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
         ],
@@ -544,17 +574,17 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
     child: OutlinedButton.icon(
       onPressed: requestUnlock,
       icon: const Icon(Icons.lock_outline_rounded),
-      label: Text(_samsung('samsungReviewEnable')),
+      label: Text(currentLocalizations().samsungReviewEnable),
     ),
   );
 
   Map<int, String> get gestureOptions => {
-    0: _samsung('samsungGestureNone'),
-    1: _samsung('samsungGestureApps'),
-    2: _samsung('home'),
-    3: _samsung('samsungGestureRecents'),
-    4: _samsung('back'),
-    5: _samsung('samsungGestureNotifications'),
-    6: _samsung('samsungGestureQuickSettings'),
+    0: currentLocalizations().samsungGestureNone,
+    1: currentLocalizations().samsungGestureApps,
+    2: currentLocalizations().home,
+    3: currentLocalizations().samsungGestureRecents,
+    4: currentLocalizations().back,
+    5: currentLocalizations().samsungGestureNotifications,
+    6: currentLocalizations().samsungGestureQuickSettings,
   };
 }

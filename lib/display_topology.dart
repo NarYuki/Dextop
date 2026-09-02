@@ -88,8 +88,8 @@ class _DisplayEnvironmentSettingsCardState
         if (widget.showConvenience)
           SwitchListTile(
             secondary: const Icon(Icons.phone_android_rounded),
-            title: Text(AppStrings.tr('samsungIncludePhoneDisplay')),
-            subtitle: Text(AppStrings.tr('displayIncludePhoneSummary')),
+            title: Text(currentLocalizations().samsungIncludePhoneDisplay),
+            subtitle: Text(currentLocalizations().displayIncludePhoneSummary),
             value: includePhoneDisplay,
             onChanged: loading
                 ? null
@@ -99,8 +99,10 @@ class _DisplayEnvironmentSettingsCardState
         if (widget.showConvenience)
           SwitchListTile(
             secondary: const Icon(Icons.vertical_align_bottom_rounded),
-            title: Text(AppStrings.tr('samsungAutoHideTaskbar')),
-            subtitle: Text(AppStrings.tr('displayAutoHideTaskbarSummary')),
+            title: Text(currentLocalizations().samsungAutoHideTaskbar),
+            subtitle: Text(
+              currentLocalizations().displayAutoHideTaskbarSummary,
+            ),
             value: autoHideTaskbar,
             onChanged: loading
                 ? null
@@ -110,8 +112,10 @@ class _DisplayEnvironmentSettingsCardState
           if (widget.displayLeadingDivider) const Divider(height: 1),
           SwitchListTile(
             secondary: const Icon(Icons.speed_rounded),
-            title: Text(AppStrings.tr('displayForceInternal120Hz')),
-            subtitle: Text(AppStrings.tr('displayForceInternal120HzSummary')),
+            title: Text(currentLocalizations().displayForceInternal120Hz),
+            subtitle: Text(
+              currentLocalizations().displayForceInternal120HzSummary,
+            ),
             value: forceInternal120Hz,
             onChanged: loading
                 ? null
@@ -143,7 +147,7 @@ class DisplaySettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(AppStrings.tr('displaySettingsTitle'))),
+    appBar: AppBar(title: Text(currentLocalizations().displaySettingsTitle)),
     body: DisplayTopologyEditor(bridge: bridge, showSettingsHeader: true),
   );
 }
@@ -155,7 +159,7 @@ class DisplayTopologyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(AppStrings.tr('topologyTitle'))),
+    appBar: AppBar(title: Text(currentLocalizations().topologyTitle)),
     body: DisplayTopologyEditor(bridge: bridge),
   );
 }
@@ -190,7 +194,7 @@ class _DisplayResolutionListPageState extends State<DisplayResolutionListPage> {
       final state = await widget.bridge.displayModeDisplays();
       if (state['supported'] != true) {
         throw Exception(
-          state['reason'] ?? AppStrings.tr('topologyUnavailable'),
+          state['reason'] ?? currentLocalizations().topologyUnavailable,
         );
       }
       final next = (state['displays'] as List? ?? const [])
@@ -218,10 +222,10 @@ class _DisplayResolutionListPageState extends State<DisplayResolutionListPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(
-      title: Text(AppStrings.tr('displayResolutionListTitle')),
+      title: Text(currentLocalizations().displayResolutionListTitle),
       actions: [
         IconButton(
-          tooltip: AppStrings.tr('topologyRefresh'),
+          tooltip: currentLocalizations().topologyRefresh,
           onPressed: loading ? null : load,
           icon: const Icon(Icons.refresh_rounded),
         ),
@@ -234,7 +238,7 @@ class _DisplayResolutionListPageState extends State<DisplayResolutionListPage> {
             child: FilledButton.tonalIcon(
               onPressed: load,
               icon: const Icon(Icons.refresh_rounded),
-              label: Text(AppStrings.tr('topologyRefresh')),
+              label: Text(currentLocalizations().topologyRefresh),
             ),
           )
         : ListView(
@@ -317,7 +321,7 @@ class _DisplayResolutionDetailPageState
           .toList();
       final next = candidates.isEmpty ? null : candidates.first;
       if (next == null) {
-        throw Exception(AppStrings.tr('displayNoLongerAvailable'));
+        throw Exception(currentLocalizations().displayNoLongerAvailable);
       }
       if (!mounted) return;
       setState(() {
@@ -348,7 +352,7 @@ class _DisplayResolutionDetailPageState
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppStrings.tr('displayModeApplied'))),
+          SnackBar(content: Text(currentLocalizations().displayModeApplied)),
         );
       }
     } catch (exception) {
@@ -376,7 +380,9 @@ class _DisplayResolutionDetailPageState
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(current?.name ?? AppStrings.tr('displayDetailsTitle')),
+        title: Text(
+          current?.name ?? currentLocalizations().displayDetailsTitle,
+        ),
       ),
       body: loading
           ? const Center(child: CircularProgressIndicator())
@@ -385,7 +391,7 @@ class _DisplayResolutionDetailPageState
               child: FilledButton.tonalIcon(
                 onPressed: load,
                 icon: const Icon(Icons.refresh_rounded),
-                label: Text(AppStrings.tr('topologyRefresh')),
+                label: Text(currentLocalizations().topologyRefresh),
               ),
             )
           : ListView(
@@ -407,7 +413,7 @@ class _DisplayResolutionDetailPageState
                 ),
                 const SizedBox(height: 20),
                 Text(
-                  AppStrings.tr('displaySupportedResolutions'),
+                  currentLocalizations().displaySupportedResolutions,
                   style: Theme.of(context).textTheme.labelLarge?.copyWith(
                     color: Theme.of(context).colorScheme.primary,
                     fontWeight: FontWeight.w600,
@@ -419,10 +425,10 @@ class _DisplayResolutionDetailPageState
                     child: ListTile(
                       leading: const Icon(Icons.info_outline_rounded),
                       title: Text(
-                        AppStrings.tr('displayDextopResolutionTitle'),
+                        currentLocalizations().displayDextopResolutionTitle,
                       ),
                       subtitle: Text(
-                        AppStrings.tr('displayDextopResolutionSummary'),
+                        currentLocalizations().displayDextopResolutionSummary,
                       ),
                     ),
                   )
@@ -445,7 +451,9 @@ class _DisplayResolutionDetailPageState
                               subtitle:
                                   current.supportedModes[index].id ==
                                       current.activeModeId
-                                  ? Text(AppStrings.tr('displayCurrentMode'))
+                                  ? Text(
+                                      currentLocalizations().displayCurrentMode,
+                                    )
                                   : null,
                             ),
                           ],
@@ -565,7 +573,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       final state = await widget.bridge.displayTopology();
       if (state['supported'] != true) {
         throw Exception(
-          state['reason'] ?? AppStrings.tr('topologyUnavailable'),
+          state['reason'] ?? currentLocalizations().topologyUnavailable,
         );
       }
       final next = (state['displays'] as List? ?? const [])
@@ -624,9 +632,9 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
           selectedDisplayId = null;
         }
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(AppStrings.tr('topologyApplied'))));
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(currentLocalizations().topologyApplied)),
+      );
     } catch (exception) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -642,7 +650,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(AppStrings.tr('topologyIdentify')),
+        title: Text(currentLocalizations().topologyIdentify),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -659,7 +667,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(AppStrings.tr('close')),
+            child: Text(currentLocalizations().close),
           ),
         ],
       ),
@@ -680,7 +688,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       await load();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(AppStrings.tr('displayModeApplied'))),
+          SnackBar(content: Text(currentLocalizations().displayModeApplied)),
         );
       }
     } catch (exception) {
@@ -701,8 +709,8 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         margin: EdgeInsets.zero,
         child: ListTile(
           leading: const Icon(Icons.touch_app_rounded),
-          title: Text(AppStrings.tr('displayResolutionListTitle')),
-          subtitle: Text(AppStrings.tr('displayResolutionListSummary')),
+          title: Text(currentLocalizations().displayResolutionListTitle),
+          subtitle: Text(currentLocalizations().displayResolutionListSummary),
         ),
       );
     }
@@ -712,7 +720,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         child: ListTile(
           leading: const Icon(Icons.info_outline_rounded),
           title: Text(display.name),
-          subtitle: Text(AppStrings.tr('displayDextopResolutionSummary')),
+          subtitle: Text(currentLocalizations().displayDextopResolutionSummary),
         ),
       );
     }
@@ -752,7 +760,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                     title: Text(display.supportedModes[index].label),
                     subtitle:
                         display.supportedModes[index].id == display.activeModeId
-                        ? Text(AppStrings.tr('displayCurrentMode'))
+                        ? Text(currentLocalizations().displayCurrentMode)
                         : null,
                   ),
                 ],
@@ -781,7 +789,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
               OutlinedButton.icon(
                 onPressed: load,
                 icon: const Icon(Icons.refresh_rounded),
-                label: Text(AppStrings.tr('topologyRefresh')),
+                label: Text(currentLocalizations().topologyRefresh),
               ),
             ],
           ),
@@ -794,12 +802,12 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         children: [
           if (widget.showSettingsHeader) ...[
             Text(
-              AppStrings.tr('topologyArrangeDisplays'),
+              currentLocalizations().topologyArrangeDisplays,
               style: Theme.of(context).textTheme.titleLarge,
             ),
             const SizedBox(height: 4),
           ],
-          Text(AppStrings.tr('topologyDescription')),
+          Text(currentLocalizations().topologyDescription),
           const SizedBox(height: 12),
           SizedBox(
             height: (constraints.maxHeight * .42).clamp(250.0, 390.0),
@@ -862,7 +870,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                     child: FilledButton.tonalIcon(
                       onPressed: applying ? null : resetPositions,
                       icon: const Icon(Icons.restart_alt_rounded, size: 18),
-                      label: Text(AppStrings.tr('topologyReset')),
+                      label: Text(currentLocalizations().topologyReset),
                     ),
                   ),
                   SizedBox(
@@ -871,7 +879,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                     child: FilledButton.tonalIcon(
                       onPressed: displays.isEmpty ? null : identify,
                       icon: const Icon(Icons.visibility_rounded, size: 18),
-                      label: Text(AppStrings.tr('topologyIdentify')),
+                      label: Text(currentLocalizations().topologyIdentify),
                     ),
                   ),
                   SizedBox(
@@ -880,7 +888,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                     child: FilledButton.icon(
                       onPressed: applying || displays.length < 2 ? null : apply,
                       icon: const Icon(Icons.check_rounded, size: 18),
-                      label: Text(AppStrings.tr('topologyApply')),
+                      label: Text(currentLocalizations().topologyApply),
                     ),
                   ),
                 ],
@@ -1027,7 +1035,7 @@ class _TopologyCanvasState extends State<_TopologyCanvas> {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, constraints) {
       if (widget.displays.isEmpty) {
-        return Center(child: Text(AppStrings.tr('topologyNoDisplays')));
+        return Center(child: Text(currentLocalizations().topologyNoDisplays));
       }
       updateTransform(constraints);
       final colors = Theme.of(context).colorScheme;
@@ -1171,7 +1179,7 @@ class _TopologyDisplay {
       _TopologyDisplay(
         id: (map['id'] as num).toInt(),
         name: map['dextopOverlay'] == true
-            ? AppStrings.tr('topologyBuiltInScreen')
+            ? currentLocalizations().topologyBuiltInScreen
             : map['name']?.toString() ?? 'Display',
         position: Offset(
           (map['x'] as num?)?.toDouble() ?? 0,

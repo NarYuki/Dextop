@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="dextop_swipe_ime_label">Ввод жестами Dextop</string>
     <string name="accessibility_service_description">Управляет виртуальным дисплеем, вводом и панелью управления Dextop</string>
     <string name="embedded_pairing_channel">Настройка встроенного доступа</string>
     <string name="embedded_pairing_title">Сопряжение Dextop</string>

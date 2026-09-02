@@ -107,6 +107,7 @@ import moe.n4tsu.dextop.input.PrivilegedInputProtocol
 import moe.n4tsu.dextop.input.LaptopSwipeDecoder
 import moe.n4tsu.dextop.input.SwipeObservingKeyboardLayout
 import moe.n4tsu.dextop.input.DextopSwipeInputMethodService
+import moe.n4tsu.dextop.input.LaptopSwipeImeCoordinator
 import kotlin.math.abs
 import kotlin.math.hypot
 import kotlin.math.max
@@ -177,15 +178,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val NOTIFICATION_ROUTE_RETRIES = 5
         private const val HOST_DISPLAY_MONITOR_INTERVAL_MS = 1_000L
         private const val HOME_DECORATION_RETRY_DELAY_MS = 180L
-        private const val LAPTOP_SHIFT = -1
-        private const val LAPTOP_CONTROL = -2
-        private const val LAPTOP_ALT = -3
-        private const val LAPTOP_CAPS = -4
-        private const val LAPTOP_FN = -5
-        private const val LAPTOP_MENU = -6
-        private const val LAPTOP_BACK = -7
-        private const val LAPTOP_SPACER = -8
-        private const val LAPTOP_SYM = -9
         private const val DEBUG_FORCE_LAPTOP_MODE = false
         private val FOLD8_SPECIAL_MODEL_IDS = setOf(
             "SMF971", "SMF971B", "SMF971U", "SMF971U1", "SMF971W", "SMF9710",
@@ -436,6 +428,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (!swipeEnabled) {
                     service.laptopSwipeGeneration += 1
                     service.hideLaptopSwipeCandidates()
+                    service.laptopKeyboardView?.cancelSwipeRecognition()
                 }
                 val enabled = service.laptopSwipeLanguageChoices().map { it.first }.toSet()
                 if (service.laptopSwipeLanguage() !in enabled) {
@@ -711,6 +704,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         WorkspaceLayoutEngine(this, desktopEnvironment, logTag)
     }
     private val resolutionRepository by lazy { ResolutionRepository(this, logTag) }
+    private val laptopThemeRepository by lazy { LaptopKeyboardThemeRepository(this) }
     private val inputDispatcher by lazy {
         InputDispatcher(privilegedAccess) { event, displayId, accepted, failure ->
             recordInputDispatch(event, displayId, accepted, failure)
@@ -765,7 +759,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopPreviewThemeId: String? = null
     private var laptopSettingsVisible = false
     private var laptopFunctionRowVisible = false
-    private var laptopKeyboardView: LinearLayout? = null
+    private var laptopKeyboardView: SwipeObservingKeyboardLayout? = null
     private var laptopCandidateBar: LinearLayout? = null
     private var laptopFloatingCandidates: View? = null
     private var laptopLanguagePopup: View? = null
@@ -785,8 +779,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     private val laptopSwipeHandler = Handler(Looper.getMainLooper())
     private var laptopSwipeGeneration = 0L
-    private var laptopSwipeImeGeneration = 0L
-    private var laptopSwipePreviousIme: String? = null
+    private val laptopSwipeImeCoordinator by lazy(LazyThreadSafetyMode.NONE) {
+        LaptopSwipeImeCoordinator(applicationContext, privilegedAccess)
+    }
     private var laptopLastEditorBounds: Rect? = null
     private var laptopLastEditorBoundsAt = 0L
     private data class LaptopSwipeAutoCommit(
@@ -1088,10 +1083,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
 
             override fun onHaptic(strong: Boolean) {
-                laptopTrackpadView?.performHapticFeedback(
-                    if (strong) HapticFeedbackConstants.LONG_PRESS
-                    else HapticFeedbackConstants.KEYBOARD_TAP
-                )
+                performLaptopHaptic(laptopTrackpadView, strong)
             }
         })
     }
@@ -1581,6 +1573,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var longPressRunnable: Runnable? = null
     private var mirrorHostWidth = 0
     private var mirrorHostHeight = 0
+    private val desktopWallpaperController by lazy(LazyThreadSafetyMode.NONE) {
+        DesktopWallpaperController(applicationContext)
+    }
     private var mirrorRefreshGeneration = 0
     private var hostReconfigurationGeneration = 0
     private val hostDisplayMonitorHandler by lazy { android.os.Handler(mainLooper) }
@@ -1828,8 +1823,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         windowDiagnosticGeneration.incrementAndGet()
         windowDiagnosticExecutor.shutdownNow()
         laptopSwipeGeneration += 1
+        laptopSwipeImeCoordinator.close()
         laptopSwipeExecutor.shutdownNow()
         laptopInputExecutor.shutdownNow()
+        desktopWallpaperController.cancel()
         if (privilegedInputClientDelegate.isInitialized()) {
             privilegedInputClient.release("service_destroyed")
         }
@@ -2125,9 +2122,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             )
             val autoStart = isLaptopAutoDetectionEnabled() &&
                     isLaptopAutoOrientationEligible() && currentLaptopPosture() == true
+            val blackBerryAutoStart = requestedPortrait &&
+                    !isFoldableDevice() &&
+                    isBlackBerryModeEnabled() &&
+                    getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                        .getBoolean("flutter.blackberry_auto_start", false)
             val startInLaptopMode = isDebugLaptopModeForced() || laptopManualOverride || autoStart
-            laptopAutoActivated = autoStart && !laptopManualOverride
-            if (startInLaptopMode) setLaptopMode(true)
+            laptopAutoActivated = autoStart && !laptopManualOverride && !blackBerryAutoStart
+            if (blackBerryAutoStart) {
+                setLaptopMode(true, KeyboardDeckStyle.BLACKBERRY)
+            } else if (startInLaptopMode) {
+                setLaptopMode(true)
+            }
         }
         if (experimentalMultiTouch) {
             frame.post {
@@ -2162,8 +2168,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         Log.i(logTag, "fullscreen accessibility overlay added")
     }
 
-    private data class LaptopKey(val label: String, val code: Int, val weight: Float = 1f)
-
     private fun blackBerryDeckFraction(): Float {
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         if (prefs.getBoolean(KEY_BLACKBERRY_HEIGHT_MANUAL, false)) {
@@ -2194,6 +2198,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     )
 
     private fun buildLaptopDeck(): View {
+        // The internal IME is a transient swipe-commit bridge only. A service
+        // restart or interrupted commit must not leave it selected while the
+        // user performs ordinary key taps.
+        laptopSwipeImeCoordinator.ensureExternalImeSelected()
         hideLaptopSwipeCandidates()
         laptopModifierButtons.clear()
         laptopShortcutButtons.clear()
@@ -2316,7 +2324,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     decodeLaptopSwipe(points, capitalizeFirst, uppercaseAll)
                     // A tapped Shift is one-shot. A Shift finger physically
                     // held during the swipe remains active until its ACTION_UP.
-                    if (LAPTOP_SHIFT !in heldLaptopModifiers) laptopShift = false
+                    if (LaptopKeyboardLayout.SHIFT !in heldLaptopModifiers) laptopShift = false
                     refreshLaptopModifierKeys()
                 }
 
@@ -2350,9 +2358,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         laptopKeyboardView = keyboard
         val keyboardRows = if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY) {
-            blackBerryKeyboardRows()
+            LaptopKeyboardLayout.blackBerryRows(laptopFunctionRowVisible)
         } else {
-            laptopKeyboardRows(laptopFunctionRowVisible)
+            LaptopKeyboardLayout.laptopRows(laptopFunctionRowVisible)
         }
         keyboardRows.forEachIndexed { index, keys ->
             val row = buildLaptopKeyboardRow(keys)
@@ -2399,7 +2407,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 textSize = 10f
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(235, 231, 239))
-                background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_ALT)
+                background = laptopKeyBackground(laptopFunctionRowVisible, LaptopKeyboardLayout.ALT)
                 setOnLongClickListener {
                     if (demoMode) return@setOnLongClickListener false
                     showLaptopKeyboardSettings()
@@ -2431,7 +2439,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 textSize = 10f
                 gravity = Gravity.CENTER
                 setTextColor(Color.rgb(235, 231, 239))
-                background = laptopKeyBackground(false, LAPTOP_ALT)
+                background = laptopKeyBackground(false, LaptopKeyboardLayout.ALT)
                 setOnClickListener {
                     if (!demoMode) {
                         performLaptopHaptic(this)
@@ -2460,11 +2468,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (visible == laptopFunctionRowVisible) return
         val keyboard = laptopKeyboardView ?: return
         laptopFunctionRowVisible = visible
-        laptopFnButton?.background = laptopKeyBackground(visible, LAPTOP_FN)
+        laptopFnButton?.background = laptopKeyBackground(visible, LaptopKeyboardLayout.FN)
         if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY) {
             val previous = keyboard.findViewWithTag<View>("blackberry_control_row") ?: return
             val index = keyboard.indexOfChild(previous).coerceAtLeast(0)
-            val replacement = buildLaptopKeyboardRow(blackBerryTopRow()).apply {
+            val replacement = buildLaptopKeyboardRow(LaptopKeyboardLayout.blackBerryTopRow(laptopFunctionRowVisible)).apply {
                 tag = "blackberry_control_row"
                 setPadding(dp(8), 0, dp(8), 0)
                 styleBlackBerryTopRow(this, management = !visible)
@@ -2482,7 +2490,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 keyboard,
                 ChangeBounds().apply { duration = 200 }
             )
-            val row = buildLaptopKeyboardRow(laptopKeyboardRows(true).first()).apply {
+            val row = buildLaptopKeyboardRow(LaptopKeyboardLayout.laptopRows(true).first()).apply {
                 tag = "laptop_function_row"
                 alpha = 0f
                 translationY = -dp(24).toFloat()
@@ -4205,126 +4213,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 .getOrDefault(display.displayId == Display.DEFAULT_DISPLAY)
         }
 
-    private fun laptopKeyboardRows(showFunctionRow: Boolean): List<List<LaptopKey>> {
-        val rows = mutableListOf<List<LaptopKey>>()
-        if (showFunctionRow) rows +=
-            listOf(
-                LaptopKey("ESC", KeyEvent.KEYCODE_ESCAPE, 1.15f),
-                LaptopKey("F1", KeyEvent.KEYCODE_F1), LaptopKey("F2", KeyEvent.KEYCODE_F2),
-                LaptopKey("F3", KeyEvent.KEYCODE_F3), LaptopKey("F4", KeyEvent.KEYCODE_F4),
-                LaptopKey("F5", KeyEvent.KEYCODE_F5), LaptopKey("F6", KeyEvent.KEYCODE_F6),
-                LaptopKey("F7", KeyEvent.KEYCODE_F7), LaptopKey("F8", KeyEvent.KEYCODE_F8),
-                LaptopKey("F9", KeyEvent.KEYCODE_F9), LaptopKey("F10", KeyEvent.KEYCODE_F10),
-                LaptopKey("F11", KeyEvent.KEYCODE_F11), LaptopKey("F12", KeyEvent.KEYCODE_F12),
-                LaptopKey("DEL", KeyEvent.KEYCODE_FORWARD_DEL, 1.15f)
-            )
-        rows += listOf(
-            listOf(
-                LaptopKey("`", KeyEvent.KEYCODE_GRAVE),
-                LaptopKey("1", KeyEvent.KEYCODE_1), LaptopKey("2", KeyEvent.KEYCODE_2),
-                LaptopKey("3", KeyEvent.KEYCODE_3), LaptopKey("4", KeyEvent.KEYCODE_4),
-                LaptopKey("5", KeyEvent.KEYCODE_5), LaptopKey("6", KeyEvent.KEYCODE_6),
-                LaptopKey("7", KeyEvent.KEYCODE_7), LaptopKey("8", KeyEvent.KEYCODE_8),
-                LaptopKey("9", KeyEvent.KEYCODE_9), LaptopKey("0", KeyEvent.KEYCODE_0),
-                LaptopKey("-", KeyEvent.KEYCODE_MINUS), LaptopKey("=", KeyEvent.KEYCODE_EQUALS),
-                LaptopKey("⌫", KeyEvent.KEYCODE_DEL, 1.55f)
-            ),
-            listOf(
-                LaptopKey("TAB", KeyEvent.KEYCODE_TAB, 1.35f),
-                LaptopKey("Q", KeyEvent.KEYCODE_Q), LaptopKey("W", KeyEvent.KEYCODE_W),
-                LaptopKey("E", KeyEvent.KEYCODE_E), LaptopKey("R", KeyEvent.KEYCODE_R),
-                LaptopKey("T", KeyEvent.KEYCODE_T), LaptopKey("Y", KeyEvent.KEYCODE_Y),
-                LaptopKey("U", KeyEvent.KEYCODE_U), LaptopKey("I", KeyEvent.KEYCODE_I),
-                LaptopKey("O", KeyEvent.KEYCODE_O), LaptopKey("P", KeyEvent.KEYCODE_P),
-                LaptopKey("[", KeyEvent.KEYCODE_LEFT_BRACKET),
-                LaptopKey("]", KeyEvent.KEYCODE_RIGHT_BRACKET),
-                LaptopKey("\\", KeyEvent.KEYCODE_BACKSLASH, 1.35f)
-            ),
-            listOf(
-                LaptopKey("CAPS", LAPTOP_CAPS, 1.65f),
-                LaptopKey("A", KeyEvent.KEYCODE_A), LaptopKey("S", KeyEvent.KEYCODE_S),
-                LaptopKey("D", KeyEvent.KEYCODE_D), LaptopKey("F", KeyEvent.KEYCODE_F),
-                LaptopKey("G", KeyEvent.KEYCODE_G), LaptopKey("H", KeyEvent.KEYCODE_H),
-                LaptopKey("J", KeyEvent.KEYCODE_J), LaptopKey("K", KeyEvent.KEYCODE_K),
-                LaptopKey("L", KeyEvent.KEYCODE_L), LaptopKey(";", KeyEvent.KEYCODE_SEMICOLON),
-                LaptopKey("'", KeyEvent.KEYCODE_APOSTROPHE),
-                LaptopKey("ENTER", KeyEvent.KEYCODE_ENTER, 1.75f)
-            ),
-            listOf(
-                LaptopKey("SHIFT", LAPTOP_SHIFT, 2.15f),
-                LaptopKey("Z", KeyEvent.KEYCODE_Z), LaptopKey("X", KeyEvent.KEYCODE_X),
-                LaptopKey("C", KeyEvent.KEYCODE_C), LaptopKey("V", KeyEvent.KEYCODE_V),
-                LaptopKey("B", KeyEvent.KEYCODE_B), LaptopKey("N", KeyEvent.KEYCODE_N),
-                LaptopKey("M", KeyEvent.KEYCODE_M), LaptopKey(",", KeyEvent.KEYCODE_COMMA),
-                LaptopKey(".", KeyEvent.KEYCODE_PERIOD), LaptopKey("/", KeyEvent.KEYCODE_SLASH),
-                LaptopKey("SHIFT", LAPTOP_SHIFT, 2.15f)
-            ),
-            listOf(
-                LaptopKey("CTRL", LAPTOP_CONTROL, 1.25f),
-                LaptopKey("", KeyEvent.KEYCODE_META_LEFT),
-                LaptopKey("ALT", LAPTOP_ALT, 1.15f),
-                LaptopKey("SPACE", KeyEvent.KEYCODE_SPACE, 5f),
-                LaptopKey("ALT", LAPTOP_ALT, 1.15f),
-                LaptopKey("←", KeyEvent.KEYCODE_DPAD_LEFT),
-                LaptopKey("↑", KeyEvent.KEYCODE_DPAD_UP),
-                LaptopKey("↓", KeyEvent.KEYCODE_DPAD_DOWN),
-                LaptopKey("→", KeyEvent.KEYCODE_DPAD_RIGHT)
-            )
-        )
-        return rows
-    }
-
-    private fun blackBerryTopRow(): List<LaptopKey> =
-        if (laptopFunctionRowVisible) {
-            listOf(
-                LaptopKey("ESC", KeyEvent.KEYCODE_ESCAPE, 1.1f),
-                LaptopKey("F1", KeyEvent.KEYCODE_F1), LaptopKey("F2", KeyEvent.KEYCODE_F2),
-                LaptopKey("F3", KeyEvent.KEYCODE_F3), LaptopKey("F4", KeyEvent.KEYCODE_F4),
-                LaptopKey("F5", KeyEvent.KEYCODE_F5), LaptopKey("F6", KeyEvent.KEYCODE_F6),
-                LaptopKey("F7", KeyEvent.KEYCODE_F7), LaptopKey("F8", KeyEvent.KEYCODE_F8),
-                LaptopKey("F9", KeyEvent.KEYCODE_F9), LaptopKey("F10", KeyEvent.KEYCODE_F10),
-                LaptopKey("F11", KeyEvent.KEYCODE_F11), LaptopKey("F12", KeyEvent.KEYCODE_F12),
-            )
-        } else {
-            listOf(
-                LaptopKey("←", LAPTOP_BACK, 1.35f),
-                LaptopKey("", KeyEvent.KEYCODE_META_LEFT, 1.35f),
-                LaptopKey("MENU", LAPTOP_MENU, 1.35f),
-            )
-        }
-
-    private fun blackBerryKeyboardRows(): List<List<LaptopKey>> = listOf(
-        blackBerryTopRow(),
-        listOf(
-            LaptopKey("#\nQ", KeyEvent.KEYCODE_Q), LaptopKey("1\nW", KeyEvent.KEYCODE_W),
-            LaptopKey("2\nE", KeyEvent.KEYCODE_E), LaptopKey("3\nR", KeyEvent.KEYCODE_R),
-            LaptopKey("(\nT", KeyEvent.KEYCODE_T), LaptopKey(")\nY", KeyEvent.KEYCODE_Y),
-            LaptopKey("_\nU", KeyEvent.KEYCODE_U), LaptopKey("-\nI", KeyEvent.KEYCODE_I),
-            LaptopKey("+\nO", KeyEvent.KEYCODE_O), LaptopKey("@\nP", KeyEvent.KEYCODE_P),
-        ),
-        listOf(
-            LaptopKey("*\nA", KeyEvent.KEYCODE_A), LaptopKey("4\nS", KeyEvent.KEYCODE_S),
-            LaptopKey("5\nD", KeyEvent.KEYCODE_D), LaptopKey("6\nF", KeyEvent.KEYCODE_F),
-            LaptopKey("/\nG", KeyEvent.KEYCODE_G), LaptopKey(":\nH", KeyEvent.KEYCODE_H),
-            LaptopKey(";\nJ", KeyEvent.KEYCODE_J), LaptopKey("'\nK", KeyEvent.KEYCODE_K),
-            LaptopKey("\"\nL", KeyEvent.KEYCODE_L), LaptopKey("⌫", KeyEvent.KEYCODE_DEL),
-        ),
-        listOf(
-            LaptopKey("ALT", LAPTOP_ALT, 1.15f), LaptopKey("7\nZ", KeyEvent.KEYCODE_Z, 1.1f),
-            LaptopKey("8\nX", KeyEvent.KEYCODE_X, 1.1f), LaptopKey("9\nC", KeyEvent.KEYCODE_C, 1.1f),
-            LaptopKey("?\nV", KeyEvent.KEYCODE_V, 1.1f), LaptopKey("!\nB", KeyEvent.KEYCODE_B, 1.1f),
-            LaptopKey(",\nN", KeyEvent.KEYCODE_N, 1.1f), LaptopKey(".\nM", KeyEvent.KEYCODE_M, 1.1f),
-            LaptopKey("↵", KeyEvent.KEYCODE_ENTER, 1.3f),
-        ),
-        listOf(
-            LaptopKey("CTRL", LAPTOP_CONTROL, 1.5f),
-            LaptopKey("SHIFT", LAPTOP_SHIFT, 1.1f),
-            LaptopKey("SPACE", KeyEvent.KEYCODE_SPACE, 4.8f),
-            LaptopKey("SYM", LAPTOP_SYM, 1.25f),
-            LaptopKey("FN", LAPTOP_FN, 1.5f),
-        ),
-    )
-
     private val laptopShortcutLabels = mapOf(
         KeyEvent.KEYCODE_C to "Copy",
         KeyEvent.KEYCODE_V to "Paste",
@@ -4360,22 +4248,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         text = displayedLabel
         tag = key.code
         val usesCustomGlyph = (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY &&
-                key.code == LAPTOP_SHIFT) ||
+                key.code == LaptopKeyboardLayout.SHIFT) ||
                 (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY &&
-                        key.code in setOf(LAPTOP_BACK, KeyEvent.KEYCODE_ENTER))
+                        key.code in setOf(LaptopKeyboardLayout.BACK, KeyEvent.KEYCODE_ENTER))
         if (key.code != KeyEvent.KEYCODE_META_LEFT && !usesCustomGlyph) {
             laptopLegendButtons += this to displayedLabel
         }
         typeface = laptopTypeface
         textSize = if (displayedLabel.length > 2) 9f else 12f
-        if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY && key.code == LAPTOP_MENU) {
+        if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY && key.code == LaptopKeyboardLayout.MENU) {
             textSize = 10.8f
         }
         gravity = Gravity.CENTER
         setTextColor(laptopPalette().text)
         setTopSecondaryLabel(blackBerryLegend?.firstOrNull(), laptopPalette().text)
         background = laptopKeyBackground(false, key.code)
-        if (key.code == LAPTOP_SPACER) {
+        if (key.code == LaptopKeyboardLayout.SPACER) {
             visibility = View.INVISIBLE
             isClickable = false
             return@apply
@@ -4396,7 +4284,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY) .552f else .46f,
             )
         }
-        if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY && key.code == LAPTOP_BACK) {
+        if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY && key.code == LaptopKeyboardLayout.BACK) {
             text = ""
             setCustomGlyph(
                 KeyboardGlyphDrawable(KeyboardGlyphDrawable.BACK, laptopPalette().text),
@@ -4413,20 +4301,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             )
         }
         if (key.code in setOf(
-                LAPTOP_SHIFT, LAPTOP_CONTROL, LAPTOP_ALT, LAPTOP_CAPS, LAPTOP_SYM
+                LaptopKeyboardLayout.SHIFT, LaptopKeyboardLayout.CONTROL, LaptopKeyboardLayout.ALT, LaptopKeyboardLayout.CAPS, LaptopKeyboardLayout.SYM
             )) {
             laptopModifierButtons.getOrPut(key.code) { mutableListOf() } += this
         }
-        if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY && key.code == LAPTOP_SHIFT) {
+        if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY && key.code == LaptopKeyboardLayout.SHIFT) {
             text = ""
             setCustomGlyph(
                 KeyboardGlyphDrawable(KeyboardGlyphDrawable.SHIFT, laptopPalette().text),
                 .5f,
             )
         }
-        if (key.code == LAPTOP_FN) {
+        if (key.code == LaptopKeyboardLayout.FN) {
             laptopFnButton = this
-            background = laptopKeyBackground(laptopFunctionRowVisible, LAPTOP_FN)
+            background = laptopKeyBackground(laptopFunctionRowVisible, LaptopKeyboardLayout.FN)
             setOnClickListener {
                 performLaptopHaptic(this)
                 setLaptopFunctionRowVisible(!laptopFunctionRowVisible)
@@ -4437,7 +4325,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 showLaptopKeyboardSettings()
                 true
             }
-        } else if (key.code == LAPTOP_MENU) {
+        } else if (key.code == LaptopKeyboardLayout.MENU) {
             setOnClickListener {
                 if (!demoMode) {
                     performLaptopHaptic(this)
@@ -4453,7 +4341,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (key.code in laptopShortcutLabels.keys) laptopShortcutButtons[key.code] = this
         setOnTouchListener { view, event ->
-            if (key.code == LAPTOP_FN || key.code == LAPTOP_MENU) {
+            if (key.code == LaptopKeyboardLayout.FN || key.code == LaptopKeyboardLayout.MENU) {
                 when (event.actionMasked) {
                     MotionEvent.ACTION_DOWN -> view.animate()
                         .scaleX(.92f).scaleY(.92f).alpha(.72f)
@@ -4492,7 +4380,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     // second finger can press C/V/etc. while Ctrl is still
                     // held. This also makes real multi-touch chords work.
                     if (key.code in setOf(
-                            LAPTOP_SHIFT, LAPTOP_CONTROL, LAPTOP_ALT, LAPTOP_SYM
+                            LaptopKeyboardLayout.SHIFT, LaptopKeyboardLayout.CONTROL, LaptopKeyboardLayout.ALT, LaptopKeyboardLayout.SYM
                         )) {
                         performLaptopHaptic(view)
                         pressLaptopModifier(key.code)
@@ -4509,7 +4397,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
                 MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
                     if (key.code in setOf(
-                            LAPTOP_SHIFT, LAPTOP_CONTROL, LAPTOP_ALT, LAPTOP_SYM
+                            LaptopKeyboardLayout.SHIFT, LaptopKeyboardLayout.CONTROL, LaptopKeyboardLayout.ALT, LaptopKeyboardLayout.SYM
                         )) {
                         releaseLaptopModifier(key.code)
                     } else if (key.code >= 0) finishLaptopKeyPress(view)
@@ -4524,7 +4412,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun laptopKeyBackground(selected: Boolean, keyCode: Int? = null) = GradientDrawable().apply {
         val palette = laptopPalette()
-        val lockedShift = keyCode == LAPTOP_SHIFT && laptopShiftLocked
+        val lockedShift = keyCode == LaptopKeyboardLayout.SHIFT && laptopShiftLocked
         val functionKey = keyCode != null &&
                 (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 ||
                         keyCode == KeyEvent.KEYCODE_FORWARD_DEL)
@@ -4597,23 +4485,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         ?: getSharedPreferences(PREFS, MODE_PRIVATE)
             .getString("laptop_keyboard_theme", "standard") ?: "standard"
 
-    private data class LaptopPalette(
-        val background: Int,
-        val key: Int,
-        val keyVariant: Int,
-        val border: Int,
-        val text: Int,
-        val trackpad: Int,
-        val trackpadText: Int,
-        val selected: Int,
-        val radius: Float,
-        val opacity: Float = 1f,
-        val blur: Float = 0f,
-        val keyOpacity: Float = 1f,
-        val showTrackpadLabel: Boolean = true,
-        val imageBase64: String? = null,
-    )
-
     private fun opacityColor(color: Int, opacity: Float): Int = Color.argb(
         (Color.alpha(color) * opacity.coerceIn(.1f, 1f)).toInt(),
         Color.red(color),
@@ -4628,81 +4499,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         Color.blue(color)
     )
 
-    private fun paletteColor(value: String?, fallback: Int): Int = runCatching {
-        Color.parseColor(value ?: "")
-    }.getOrDefault(fallback)
-
-    private fun contrastingColor(color: Int): Int {
-        val luminance = .299 * Color.red(color) +
-                .587 * Color.green(color) +
-                .114 * Color.blue(color)
-        return if (luminance >= 160) Color.rgb(26, 24, 30) else Color.WHITE
-    }
+    private fun contrastingColor(color: Int): Int =
+        LaptopKeyboardThemeRepository.contrastingColor(color)
 
     private fun laptopPalette(): LaptopPalette = laptopPaletteFor(laptopKeyboardTheme())
 
     /** Resolve a palette for previews as well as the active keyboard. */
-    private fun laptopPaletteFor(id: String): LaptopPalette {
-        val crimson = id == "crimson"
-        val cloud = id == "cloud"
-        val amoled = id == "amoled"
-        val fallback = if (crimson) LaptopPalette(
-            Color.rgb(89, 14, 14), Color.rgb(110, 27, 27), Color.rgb(81, 10, 11),
-            Color.rgb(126, 32, 27), Color.rgb(255, 190, 151), Color.rgb(90, 15, 16),
-            Color.rgb(222, 137, 102), Color.rgb(81, 10, 11), 7f
-        ) else if (cloud) LaptopPalette(
-            Color.rgb(220, 235, 255), Color.WHITE, Color.rgb(247, 251, 255),
-            Color.rgb(183, 212, 245), Color.rgb(66, 100, 134), Color.rgb(199, 221, 245),
-            Color.rgb(82, 120, 159), Color.rgb(190, 218, 248), 16f, opacity = .94f
-        ) else if (amoled) LaptopPalette(
-            Color.BLACK, Color.BLACK, Color.rgb(3, 3, 3),
-            Color.rgb(59, 59, 59), Color.rgb(220, 220, 220), Color.BLACK,
-            Color.rgb(175, 175, 175), Color.rgb(81, 81, 81), 7f
-        ) else LaptopPalette(
-            Color.rgb(18, 18, 22), Color.rgb(48, 46, 54), Color.rgb(48, 46, 54),
-            Color.rgb(76, 72, 84), Color.rgb(235, 231, 239), Color.rgb(35, 34, 40),
-            Color.rgb(145, 141, 151), Color.rgb(208, 188, 237), 7f
-        )
-        val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getString("flutter.dextop_keyboard_theme_$id", null) ?: return fallback
-        // Built-in colors remain authoritative so older normalized preference
-        // copies cannot destroy their decorative-key contrast.  Opacity is a
-        // safe per-theme override, however, and is intentionally read back so
-        // the editor's unified-opacity and key-opacity sliders also work for
-        // built-ins.
-        if (id == "standard" || id == "crimson" || id == "cloud" || id == "amoled") {
-            return runCatching {
-                val json = JSONObject(raw)
-                fallback.copy(
-                    opacity = json.optDouble("opacity", fallback.opacity.toDouble())
-                        .toFloat().coerceIn(.1f, 1f),
-                    keyOpacity = json.optDouble("keyOpacity", fallback.keyOpacity.toDouble())
-                        .toFloat().coerceIn(.1f, 1f),
-                    showTrackpadLabel = json.optBoolean("showTrackpadLabel", true),
-                )
-            }.getOrDefault(fallback)
-        }
-        return runCatching {
-            val json = JSONObject(raw)
-            fallback.copy(
-                background = paletteColor(json.optString("background"), fallback.background),
-                key = paletteColor(json.optString("key"), fallback.key),
-                keyVariant = paletteColor(json.optString("keyVariant"), fallback.keyVariant),
-                border = paletteColor(json.optString("border"), fallback.border),
-                text = paletteColor(json.optString("text"), fallback.text),
-                trackpad = paletteColor(json.optString("trackpad"), fallback.trackpad),
-                trackpadText = paletteColor(json.optString("trackpadText"), fallback.trackpadText),
-                selected = paletteColor(json.optString("selected"), fallback.selected),
-                radius = json.optDouble("radius", fallback.radius.toDouble()).toFloat()
-                    .coerceIn(0f, 40f),
-                opacity = json.optDouble("opacity", 1.0).toFloat().coerceIn(.1f, 1f),
-                blur = json.optDouble("blur", 0.0).toFloat().coerceIn(0f, 30f),
-                keyOpacity = json.optDouble("keyOpacity", 1.0).toFloat().coerceIn(.1f, 1f),
-                showTrackpadLabel = json.optBoolean("showTrackpadLabel", true),
-                imageBase64 = json.optString("imageBase64").takeIf { it.isNotBlank() }
-            )
-        }.getOrDefault(fallback)
-    }
+    private fun laptopPaletteFor(id: String): LaptopPalette = laptopThemeRepository.palette(id)
 
     private fun showLaptopKeyboardSettings() {
         val deck = laptopDeckContent ?: return
@@ -5101,12 +4904,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun handleLaptopKey(keyCode: Int) {
         when (keyCode) {
-            LAPTOP_SHIFT -> laptopShift = !laptopShift
-            LAPTOP_CONTROL -> laptopControl = !laptopControl
-            LAPTOP_ALT -> laptopAlt = !laptopAlt
-            LAPTOP_CAPS -> laptopCapsLock = !laptopCapsLock
-            LAPTOP_SYM -> laptopSymbolMode = !laptopSymbolMode
-            LAPTOP_BACK -> injectTargetedBack()
+            LaptopKeyboardLayout.SHIFT -> laptopShift = !laptopShift
+            LaptopKeyboardLayout.CONTROL -> laptopControl = !laptopControl
+            LaptopKeyboardLayout.ALT -> laptopAlt = !laptopAlt
+            LaptopKeyboardLayout.CAPS -> laptopCapsLock = !laptopCapsLock
+            LaptopKeyboardLayout.SYM -> laptopSymbolMode = !laptopSymbolMode
+            LaptopKeyboardLayout.BACK -> injectTargetedBack()
             else -> {
                 val isLetter = keyCode in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z
                 val activeShift = laptopShift || laptopShiftLocked
@@ -5125,19 +4928,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun laptopModifierActive(keyCode: Int): Boolean = when (keyCode) {
-        LAPTOP_SHIFT -> laptopShift || laptopShiftLocked
-        LAPTOP_CONTROL -> laptopControl
-        LAPTOP_ALT -> laptopAlt
-        LAPTOP_SYM -> laptopSymbolMode
+        LaptopKeyboardLayout.SHIFT -> laptopShift || laptopShiftLocked
+        LaptopKeyboardLayout.CONTROL -> laptopControl
+        LaptopKeyboardLayout.ALT -> laptopAlt
+        LaptopKeyboardLayout.SYM -> laptopSymbolMode
         else -> false
     }
 
     private fun setLaptopModifierActive(keyCode: Int, active: Boolean) {
         when (keyCode) {
-            LAPTOP_SHIFT -> laptopShift = active
-            LAPTOP_CONTROL -> laptopControl = active
-            LAPTOP_ALT -> laptopAlt = active
-            LAPTOP_SYM -> laptopSymbolMode = active
+            LaptopKeyboardLayout.SHIFT -> laptopShift = active
+            LaptopKeyboardLayout.CONTROL -> laptopControl = active
+            LaptopKeyboardLayout.ALT -> laptopAlt = active
+            LaptopKeyboardLayout.SYM -> laptopSymbolMode = active
         }
     }
 
@@ -5155,7 +4958,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val wasActive = laptopModifierStateBeforePress.remove(keyCode) ?: false
         // A standalone tap toggles the latch. When used with another key, the
         // modifier remains active until this finger is actually released.
-        if (keyCode == LAPTOP_SHIFT && !usedAsChord) {
+        if (keyCode == LaptopKeyboardLayout.SHIFT && !usedAsChord) {
             val now = SystemClock.uptimeMillis()
             if (laptopShiftLocked) {
                 laptopShiftLocked = false
@@ -5565,71 +5368,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         value: String,
         rememberAutoCommit: Boolean,
     ) {
-        val ownIme = ComponentName(
-            this,
-            DextopSwipeInputMethodService::class.java,
-        ).flattenToShortString()
-        val current = Settings.Secure.getString(
-            contentResolver,
-            Settings.Secure.DEFAULT_INPUT_METHOD,
-        ).orEmpty().takeIf { it.isNotBlank() }
-        val generation = ++laptopSwipeImeGeneration
         val fallback = {
             if (!commitLaptopSwipeToFocusedEditor(value, rememberAutoCommit)) {
                 commitLaptopSwipeCandidateFallback(value, rememberAutoCommit)
             }
         }
-        if (current == null || current.endsWith("/.input.DextopSwipeInputMethodService")) {
-            // A stale installation may have left Dextop selected. Do not keep
-            // using an un-restorable global IME state.
-            fallback()
-            return
-        }
-        laptopSwipePreviousIme = current
-        val finish: (Boolean) -> Unit = { committed ->
-            if (generation == laptopSwipeImeGeneration) {
-                if (committed && rememberAutoCommit) {
-                    rememberLaptopSwipeImeCommit(value)
-                }
-                laptopSwipeImeGeneration += 1
-                DextopSwipeInputMethodService.cancelPending()
-                laptopSwipePreviousIme = null
-                laptopSwipeExecutor.execute {
-                    privilegedAccess.execute("ime", "set", current)
-                    laptopSwipeHandler.post {
-                        if (!committed) fallback()
-                    }
-                }
-            }
-        }
-        DextopSwipeInputMethodService.prepareCommit(
-            text = value,
-            ensureLeadingSpace = true,
-            ensureTrailingSpace = shouldAppendLaptopSwipeSpace(),
+        laptopSwipeImeCoordinator.commit(
+            value = value,
+            rememberAutoCommit = rememberAutoCommit,
             expectedDisplayId = targetDisplayId,
-            callback = finish,
+            appendTrailingSpace = shouldAppendLaptopSwipeSpace(),
+            onCommitted = ::rememberLaptopSwipeImeCommit,
+            fallback = fallback,
         )
-        laptopSwipeExecutor.execute {
-            val enabled = privilegedAccess.execute("ime", "enable", ownIme).succeeded
-            val selected = enabled && privilegedAccess.execute("ime", "set", ownIme).succeeded
-            if (!selected) {
-                laptopSwipeHandler.post { finish(false) }
-            } else {
-                // The IME normally receives onStartInput immediately. Keep a
-                // hard timeout so an OEM binding failure can never leave it as
-                // the user's default keyboard.
-                laptopSwipeHandler.postDelayed({ finish(false) }, 900L)
-            }
-        }
     }
 
-    private fun restoreDextopSwipeIme() {
-        laptopSwipeImeGeneration += 1
-        DextopSwipeInputMethodService.cancelPending()
-        val previous = laptopSwipePreviousIme?.takeIf { it.isNotBlank() } ?: return
-        laptopSwipePreviousIme = null
-        laptopSwipeExecutor.execute { privilegedAccess.execute("ime", "set", previous) }
-    }
+    private fun restoreDextopSwipeIme() = laptopSwipeImeCoordinator.restore()
 
     /** Accessibility/clipboard fallback for OEMs that reject shell IME switching. */
     private fun commitLaptopSwipeCandidateFallback(
@@ -5840,6 +5594,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun startLaptopKeyPress(view: View, keyCode: Int) {
+        laptopSwipeImeCoordinator.ensureExternalImeSelected()
         finishLaptopKeyPress(view)
         val symbolKey = if (
             keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY && laptopSymbolMode
@@ -5855,10 +5610,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // active for every repeat until its own finger is released. A latched
         // modifier that was tapped alone remains one-shot.
         consumedLaptopModifiers += heldLaptopModifiers
-        if (LAPTOP_SHIFT !in heldLaptopModifiers) laptopShift = false
-        if (LAPTOP_CONTROL !in heldLaptopModifiers) laptopControl = false
-        if (LAPTOP_ALT !in heldLaptopModifiers) laptopAlt = false
-        if (symbolKey != null && LAPTOP_SYM !in heldLaptopModifiers) {
+        if (LaptopKeyboardLayout.SHIFT !in heldLaptopModifiers) laptopShift = false
+        if (LaptopKeyboardLayout.CONTROL !in heldLaptopModifiers) laptopControl = false
+        if (LaptopKeyboardLayout.ALT !in heldLaptopModifiers) laptopAlt = false
+        if (symbolKey != null && LaptopKeyboardLayout.SYM !in heldLaptopModifiers) {
             laptopSymbolMode = false
         }
         refreshLaptopModifierKeys()
@@ -5934,13 +5689,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 button.background = laptopKeyBackground(selected, code)
             }
         }
-        update(LAPTOP_SHIFT, laptopShift || laptopShiftLocked)
-        update(LAPTOP_CONTROL, laptopControl)
-        update(LAPTOP_ALT, laptopAlt)
-        update(LAPTOP_CAPS, laptopCapsLock)
-        update(LAPTOP_SYM, laptopSymbolMode)
+        update(LaptopKeyboardLayout.SHIFT, laptopShift || laptopShiftLocked)
+        update(LaptopKeyboardLayout.CONTROL, laptopControl)
+        update(LaptopKeyboardLayout.ALT, laptopAlt)
+        update(LaptopKeyboardLayout.CAPS, laptopCapsLock)
+        update(LaptopKeyboardLayout.SYM, laptopSymbolMode)
         if (keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY) {
-            laptopModifierButtons[LAPTOP_SHIFT].orEmpty().forEach { button ->
+            laptopModifierButtons[LaptopKeyboardLayout.SHIFT].orEmpty().forEach { button ->
                 (button as? LaptopKeyTextView)?.apply {
                     text = ""
                     setCustomGlyph(
@@ -8343,6 +8098,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      */
     private fun performLaptopHaptic(view: View?, strong: Boolean = false) {
         if (!laptopModeActive) return
+        if (!getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                .getBoolean("flutter.laptop_keyboard_haptics_enabled", true)
+        ) return
+        // Respect both silent and vibrate-only ringer modes. Direct vibrator
+        // calls otherwise bypass the user's mute intent on several One UI
+        // builds even though ordinary keyboard feedback is silent.
+        val audio = getSystemService(AudioManager::class.java)
+        if (audio?.ringerMode != AudioManager.RINGER_MODE_NORMAL) return
         // Only the dedicated laptop surfaces opt into haptics. The upper
         // mirrored phone surface remains a normal touch target and must not
         // vibrate merely because the deck is visible.
@@ -9756,6 +9519,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             activateTopologyForIndependentDisplays("main_display_attached")
             displayCreationInProgress = false
             sessionJournal.running(targetDisplayId)
+            synchronizeDesktopWallpaperDimensions(
+                targetWidth,
+                targetHeight,
+                "display attached",
+            )
             val externalDisplays = externalDisplayDetector.snapshot()
             physicalExternalDisplayConnected = physicalInputRoutingSupported && externalDisplays.connected
             val routedInputCount = if (!autoOnlySession && physicalExternalDisplayConnected) runCatching {
@@ -10331,6 +10099,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         targetWidth = next.width
         targetHeight = next.height
         density = next.density
+        if (sizeChanged) {
+            synchronizeDesktopWallpaperDimensions(targetWidth, targetHeight, reason)
+        }
         if (autoOnlySession && sizeChanged) {
             val destination = autoDestinationSurface
             val updated = destination?.takeIf { it.isValid }?.let {
@@ -10389,6 +10160,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
     }
 
+    private fun synchronizeDesktopWallpaperDimensions(
+        width: Int,
+        height: Int,
+        reason: String,
+    ) {
+        val displayId = targetDisplayId
+        desktopWallpaperController.synchronize(displayId, width, height, reason) {
+            active && targetDisplayId == displayId
+        }
+    }
+
     private fun configForHostGeometry(
         base: Config,
         hostWidth: Int,
@@ -10397,10 +10179,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     ): Config {
         val automaticDensity = (160 + systemDensity / 160f * 24)
             .toInt().coerceIn(160, 320)
-        // In laptop mode the virtual display must fill the measured upper
-        // pane. That pane can be landscape while the phone remains portrait;
-        // requestedPortrait is applied separately to the physical device.
-        val portrait = if (laptopModeActive) hostHeight > hostWidth else base.height > base.width
+        if (laptopModeActive) {
+            // The keyboard deck only reduces the height of the host Surface.
+            // Keep the logical scale selected when the desktop was started
+            // (including workspace magnification and custom DPI) instead of
+            // replacing it with the physical panel metrics. Replacing both
+            // size and density here makes One UI detach the desktop taskbar
+            // and its task stack, leaving only WallpaperService visible.
+            val logicalScale = base.width.toFloat() / hostWidth.coerceAtLeast(1)
+            val paneWidth = base.width.coerceIn(480, 7680) and -2
+            val paneHeight = (hostHeight * logicalScale)
+                .roundToInt()
+                .coerceIn(480, 7680) and -2
+            return base.copy(
+                width = paneWidth,
+                height = paneHeight,
+                density = base.density.coerceIn(72, 960)
+            )
+        }
+        // Outside a keyboard deck, follow the complete host panel geometry.
+        val portrait = base.height > base.width
         val hostLong = maxOf(hostWidth, hostHeight)
         val hostShort = minOf(hostWidth, hostHeight)
         return base.copy(
@@ -10922,378 +10720,4 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
 
-    private class BottomDividerDrawable(
-        color: Int,
-        private val thickness: Int,
-        private val bottomInset: Int = 0,
-    ) : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = color
-            style = Paint.Style.FILL
-        }
-
-        override fun draw(canvas: Canvas) {
-            canvas.drawRect(
-                bounds.left.toFloat(),
-                (bounds.bottom - bottomInset - thickness).toFloat(),
-                bounds.right.toFloat(),
-                (bounds.bottom - bottomInset).toFloat(),
-                paint,
-            )
-        }
-
-        override fun setAlpha(alpha: Int) { paint.alpha = alpha }
-        override fun setColorFilter(colorFilter: android.graphics.ColorFilter?) {
-            paint.colorFilter = colorFilter
-        }
-        @Deprecated("Deprecated in Android")
-        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
-    }
-
-    private class LaptopKeyTextView(
-        context: Context,
-        private val showHomePosition: Boolean,
-        markColor: Int
-    ) : TextView(context) {
-        private var customGlyph: Drawable? = null
-        private var customGlyphScale = .46f
-        private var secondaryLabel: String? = null
-        private var topSecondaryLabel: String? = null
-        private val markPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = markColor
-            strokeWidth = context.resources.displayMetrics.density * 1.6f
-            strokeCap = Paint.Cap.ROUND
-        }
-        private val secondaryPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            textAlign = Paint.Align.CENTER
-            textSize = context.resources.displayMetrics.scaledDensity * 7f
-        }
-
-        fun setSecondaryLabel(label: String?, color: Int) {
-            secondaryLabel = label
-            secondaryPaint.color = color
-            invalidate()
-        }
-
-        fun setTopSecondaryLabel(label: String?, color: Int) {
-            topSecondaryLabel = label
-            secondaryPaint.color = color
-            invalidate()
-        }
-
-        /**
-         * Renders a key icon without relying on a private-use font glyph.
-         * This is used for the Meta/Android key so OEM font fallback cannot
-         * turn the icon into an unrelated character.
-         */
-        fun setCustomGlyph(drawable: Drawable?, scale: Float = .46f) {
-            customGlyph = drawable
-            customGlyphScale = scale
-            invalidate()
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            customGlyph?.let { drawable ->
-                val size = minOf(width, height) * customGlyphScale
-                val left = ((width - size) / 2f).toInt()
-                val top = ((height - size) / 2f).toInt()
-                drawable.setBounds(left, top, (left + size).toInt(), (top + size).toInt())
-                drawable.draw(canvas)
-            }
-            val density = resources.displayMetrics.density
-            val currentLayout = layout
-            if (currentLayout != null && currentLayout.lineCount > 0) {
-                val layoutTop = (height - currentLayout.height) / 2f
-                val primaryBaseline = layoutTop + currentLayout.getLineBaseline(0)
-                if (showHomePosition) {
-                    // Keep the tactile home-position mark below the key legend.
-                    // When Ctrl shortcut hints are visible, place it below the
-                    // secondary label as well so the two never overlap.
-                    val y = primaryBaseline + if (secondaryLabel == null) {
-                        6f * density
-                    } else {
-                        13f * density
-                    }
-                    val halfWidth = 6f * density
-                    canvas.drawLine(width / 2f - halfWidth, y, width / 2f + halfWidth, y, markPaint)
-                }
-                secondaryLabel?.let { label ->
-                    secondaryPaint.typeface = typeface
-                    canvas.drawText(label, width / 2f, primaryBaseline + 8f * density, secondaryPaint)
-                }
-                topSecondaryLabel?.let { label ->
-                    secondaryPaint.typeface = typeface
-                    canvas.drawText(label, width / 2f, primaryBaseline - 12f * density, secondaryPaint)
-                }
-            }
-        }
-    }
-
-    private class KeyboardGlyphDrawable(
-        private val kind: Int,
-        private val glyphColor: Int
-    ) : Drawable() {
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            this.color = glyphColor
-            style = Paint.Style.FILL
-            strokeCap = Paint.Cap.ROUND
-        }
-
-        override fun draw(canvas: Canvas) {
-            paint.color = glyphColor
-            val b = bounds
-            val scale = minOf(b.width() / 24f, b.height() / 20f)
-            val offsetX = (b.width() - 24f * scale) / 2f
-            val offsetY = (b.height() - 20f * scale) / 2f
-            canvas.save()
-            canvas.translate(b.left + offsetX, b.top + offsetY)
-            canvas.scale(scale, scale)
-            paint.strokeWidth = 1.5f
-            when (kind) {
-                APP_GRID -> {
-                    val tile = 4f
-                    val gap = 2f
-                    val startX = (24f - tile * 3f - gap * 2f) / 2f
-                    val startY = (20f - tile * 3f - gap * 2f) / 2f
-                    for (row in 0 until 3) {
-                        for (column in 0 until 3) {
-                            val left = startX + column * (tile + gap)
-                            val top = startY + row * (tile + gap)
-                            canvas.drawRect(
-                                left,
-                                top,
-                                left + tile,
-                                top + tile,
-                                paint
-                            )
-                        }
-                    }
-                }
-
-                BACK -> {
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.2f
-                    canvas.drawLine(18f, 10f, 6f, 10f, paint)
-                    canvas.drawLine(6f, 10f, 11f, 5f, paint)
-                    canvas.drawLine(6f, 10f, 11f, 15f, paint)
-                    paint.style = Paint.Style.FILL
-                }
-
-                ENTER -> {
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.25f
-                    paint.strokeJoin = Paint.Join.ROUND
-                    val path = Path().apply {
-                        moveTo(18.5f, 4.5f)
-                        lineTo(18.5f, 8.5f)
-                        cubicTo(18.5f, 10.2f, 17.2f, 11.5f, 15.5f, 11.5f)
-                        lineTo(6f, 11.5f)
-                        moveTo(6f, 11.5f)
-                        lineTo(10.5f, 7f)
-                        moveTo(6f, 11.5f)
-                        lineTo(10.5f, 16f)
-                    }
-                    canvas.drawPath(path, paint)
-                    paint.style = Paint.Style.FILL
-                }
-
-                SHIFT, SHIFT_LOCKED -> {
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.15f
-                    paint.strokeJoin = Paint.Join.ROUND
-                    val arrow = Path().apply {
-                        moveTo(12f, 3.5f)
-                        lineTo(6.5f, 9f)
-                        lineTo(9.3f, 9f)
-                        lineTo(9.3f, 15f)
-                        lineTo(14.7f, 15f)
-                        lineTo(14.7f, 9f)
-                        lineTo(17.5f, 9f)
-                        close()
-                    }
-                    canvas.drawPath(arrow, paint)
-                    if (kind == SHIFT_LOCKED) {
-                        canvas.drawLine(8.5f, 18f, 15.5f, 18f, paint)
-                    }
-                    paint.style = Paint.Style.FILL
-                }
-
-                PALETTE -> {
-                    canvas.drawOval(RectF(2f, 2f, 22f, 18f), paint)
-                    paint.color = Color.rgb(35, 33, 39)
-                    canvas.drawCircle(17.5f, 14f, 3.5f, paint)
-                    canvas.drawCircle(7f, 7f, 1.5f, paint)
-                    canvas.drawCircle(12f, 5f, 1.5f, paint)
-                    canvas.drawCircle(17f, 7.5f, 1.5f, paint)
-                }
-
-                CHECK -> {
-                    paint.style = Paint.Style.STROKE
-                    paint.strokeWidth = 2.4f
-                    canvas.drawCircle(12f, 10f, 8f, paint)
-                    canvas.drawLine(7.5f, 10f, 10.5f, 13f, paint)
-                    canvas.drawLine(10.5f, 13f, 16.5f, 7f, paint)
-                    paint.style = Paint.Style.FILL
-                }
-            }
-            canvas.restore()
-        }
-
-        override fun setAlpha(alpha: Int) {
-            paint.alpha = alpha
-        }
-
-        override fun setColorFilter(filter: android.graphics.ColorFilter?) {
-            paint.colorFilter = filter
-        }
-
-        @Suppress("DEPRECATION")
-        override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
-
-        companion object {
-            const val APP_GRID = 1
-            const val BACK = 2
-            const val PALETTE = 3
-            const val CHECK = 4
-            const val ENTER = 5
-            const val SHIFT = 6
-            const val SHIFT_LOCKED = 7
-        }
-    }
-
-    private class TouchRoutingFrame(context: Context) : FrameLayout(context) {
-        var routeTouchesToSurface = false
-
-        override fun dispatchTouchEvent(event: MotionEvent): Boolean {
-            if (routeTouchesToSurface) {
-                val surface = getChildAt(0)
-                if (surface != null) {
-                    val handled = surface.dispatchTouchEvent(event)
-                    return handled
-                }
-            }
-            return super.dispatchTouchEvent(event)
-        }
-    }
-
-    private class LevelIconView(context: Context, private val volume: Boolean) : View(context) {
-        private val density = resources.displayMetrics.density
-        private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.rgb(62, 62, 66)
-            style = Paint.Style.STROKE
-            strokeWidth = 1.9f * density
-            strokeCap = Paint.Cap.ROUND
-            strokeJoin = Paint.Join.ROUND
-        }
-        var level = 0f
-            set(value) {
-                field = value.coerceIn(0f, 1f)
-                invalidate()
-            }
-
-        override fun onDraw(canvas: Canvas) {
-            super.onDraw(canvas)
-            if (volume) drawVolume(canvas) else drawSun(canvas)
-        }
-
-        private fun drawSun(canvas: Canvas) {
-            val cx = width / 2f
-            val cy = height / 2f
-            val base = minOf(width, height).toFloat()
-            val coreRadius = base * (.12f + level * .045f)
-            paint.style = Paint.Style.FILL
-            canvas.drawCircle(cx, cy, coreRadius, paint)
-            paint.style = Paint.Style.STROKE
-            val rayStart = base * .25f
-            val rayLength = base * (.055f + .16f * level)
-            paint.alpha = (125 + 130 * level).toInt()
-            for (index in 0 until 8) {
-                val angle = Math.PI * index / 4.0
-                val cos = kotlin.math.cos(angle).toFloat()
-                val sin = kotlin.math.sin(angle).toFloat()
-                canvas.drawLine(
-                    cx + cos * rayStart,
-                    cy + sin * rayStart,
-                    cx + cos * (rayStart + rayLength),
-                    cy + sin * (rayStart + rayLength),
-                    paint
-                )
-            }
-            paint.alpha = 255
-        }
-
-        private fun drawVolume(canvas: Canvas) {
-            val base = minOf(width, height).toFloat()
-            // Keep the combined speaker + waves visually centered: the speaker
-            // starts centered while muted, then shifts left as waves expand.
-            val cx = width * (.50f - .22f * level)
-            val cy = height / 2f
-            val speaker = Path().apply {
-                moveTo(cx - base * .24f, cy - base * .11f)
-                lineTo(cx - base * .10f, cy - base * .11f)
-                lineTo(cx + base * .08f, cy - base * .27f)
-                lineTo(cx + base * .08f, cy + base * .27f)
-                lineTo(cx - base * .10f, cy + base * .11f)
-                lineTo(cx - base * .24f, cy + base * .11f)
-                close()
-            }
-            paint.style = Paint.Style.FILL
-            paint.alpha = 255
-            canvas.drawPath(speaker, paint)
-            paint.style = Paint.Style.STROKE
-            val thresholds = floatArrayOf(.02f, .34f, .67f)
-            val waveCount = thresholds.count { level >= it }
-            for (index in 0 until waveCount) {
-                val threshold = thresholds[index]
-                val local = ((level - threshold) / (1f - threshold)).coerceIn(0f, 1f)
-                val baseRadius = when (index) {
-                    0 -> .17f
-                    1 -> .29f
-                    else -> .41f
-                }
-                val radius = base * baseRadius * (.78f + .22f * local)
-                paint.alpha = (105 + 150 * local).toInt()
-                val rect = android.graphics.RectF(
-                    cx - radius * .15f,
-                    cy - radius,
-                    cx + radius * 1.85f,
-                    cy + radius
-                )
-                canvas.drawArc(rect, -47f, 94f, false, paint)
-            }
-            paint.alpha = 255
-        }
-    }
-
-    private class CursorView(context: Context) : View(context) {
-        private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE }
-        private val stroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.BLACK
-            style = Paint.Style.STROKE
-            strokeWidth = 4f
-        }
-        private var normalizedX = .5f
-        private var normalizedY = .5f
-        private var radius = 13f
-        var contentHeightFraction = 1f
-        fun update(x: Float, y: Float) {
-            normalizedX = x
-            normalizedY = y
-            invalidate()
-        }
-
-        fun pulse() {
-            radius = 19f
-            invalidate()
-            postDelayed({ radius = 13f; invalidate() }, 100)
-        }
-
-        override fun onDraw(canvas: Canvas) {
-            val x = normalizedX * width
-            val y = normalizedY * height * contentHeightFraction
-            canvas.drawCircle(x, y, radius, fill)
-            canvas.drawCircle(x, y, radius, stroke)
-        }
-    }
 }

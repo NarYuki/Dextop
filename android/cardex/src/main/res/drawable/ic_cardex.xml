@@ -1,8 +1,7 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="108dp" android:height="108dp"
-    android:viewportWidth="108" android:viewportHeight="108">
-    <path android:fillColor="#17121F" android:pathData="M0,0h108v108h-108z" />
-    <path android:fillColor="#B9A0FF" android:pathData="M20,25h68v47h-68z" />
-    <path android:fillColor="#17121F" android:pathData="M27,32h54v33h-54z" />
-    <path android:fillColor="#B9A0FF" android:pathData="M43,72h22v7h-22zM34,79h40v7h-40z" />
-</vector>
+<?xml version="1.0" encoding="utf-8"?>
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:antialias="true"
+    android:dither="true"
+    android:filter="true"
+    android:gravity="fill"
+    android:src="@drawable/ic_cardex_full" />

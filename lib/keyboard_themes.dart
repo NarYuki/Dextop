@@ -212,7 +212,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext),
-            child: Text(AppStrings.tr('uiCancel')),
+            child: Text(currentLocalizations().uiCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, controller.text),
@@ -244,11 +244,11 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(AppStrings.tr('uiCancel')),
+            child: Text(currentLocalizations().uiCancel),
           ),
           FilledButton.tonal(
             onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(AppStrings.tr('uiDelete')),
+            child: Text(currentLocalizations().uiDelete),
           ),
         ],
       ),
@@ -416,7 +416,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
           IconButton(
             onPressed: _busy ? null : _import,
             icon: const Icon(Icons.file_open_outlined),
-            tooltip: AppStrings.tr('uiImport'),
+            tooltip: currentLocalizations().uiImport,
           ),
         ],
       ),
