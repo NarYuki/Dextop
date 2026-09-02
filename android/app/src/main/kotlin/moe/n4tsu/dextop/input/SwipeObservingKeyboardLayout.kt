@@ -50,7 +50,7 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
     }
     private val trailPath = Path()
     private val slop = ViewConfiguration.get(context).scaledTouchSlop * 1.8f
-    private val twoFingerSlop = ViewConfiguration.get(context).scaledTouchSlop * .65f
+    private val twoFingerSlop = ViewConfiguration.get(context).scaledTouchSlop * 1.6f
     private var firstKeyCode = KeyEvent.KEYCODE_UNKNOWN
     private var swiping = false
     private var cancelledChild = false
@@ -66,8 +66,14 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
     private var trailAlpha = 0f
     private var trailFade: ValueAnimator? = null
     private var twoFingerNavigation = false
+    private var twoFingerCandidate = false
+    private var twoFingerNavigationSuppressed = false
     private var twoFingerStartX = 0f
     private var twoFingerStartY = 0f
+    private var twoFingerFirstStartX = 0f
+    private var twoFingerFirstStartY = 0f
+    private var twoFingerSecondStartX = 0f
+    private var twoFingerSecondStartY = 0f
     private var twoFingerDirection = KeyEvent.KEYCODE_UNKNOWN
     /** 0=undecided, 1=horizontal, 2=vertical. Locked until all fingers lift. */
     private var twoFingerAxis = 0
@@ -89,23 +95,10 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
         // Some OEM ViewGroups split the POINTER_DOWN before the child stream
         // reaches this layout. Recover from the first two-pointer MOVE too.
         if (twoFingerNavigationEnabled && !twoFingerNavigation &&
+            !twoFingerCandidate && !twoFingerNavigationSuppressed &&
             event.actionMasked == MotionEvent.ACTION_MOVE && event.pointerCount >= 2
         ) {
-            val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
-            super.dispatchTouchEvent(cancel)
-            cancel.recycle()
-            twoFingerNavigation = true
-            val historical = event.historySize - 1
-            twoFingerStartX = if (historical >= 0) {
-                (event.getHistoricalX(0, historical) + event.getHistoricalX(1, historical)) / 2f
-            } else (event.getX(0) + event.getX(1)) / 2f
-            twoFingerStartY = if (historical >= 0) {
-                (event.getHistoricalY(0, historical) + event.getHistoricalY(1, historical)) / 2f
-            } else (event.getY(0) + event.getY(1)) / 2f
-            twoFingerDirection = KeyEvent.KEYCODE_UNKNOWN
-            twoFingerAxis = 0
-            listener?.onTwoFingerNavigationStarted(firstKeyCode)
-            reset()
+            prepareTwoFingerCandidate(event)
         }
         // BlackBerry two-finger navigation can remain enabled independently
         // of swipe typing. In that configuration a single finger must be a
@@ -141,27 +134,56 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
             }
 
             MotionEvent.ACTION_POINTER_DOWN -> {
+                val addedKeyCode = keyCodeAt(
+                    event.getX(event.actionIndex),
+                    event.getY(event.actionIndex),
+                )
+                // Once a stream contains a chord-capable key, or grows beyond
+                // the exact two contacts used by navigation, it remains a
+                // keyboard chord for its entire lifetime. This preserves
+                // combinations such as Ctrl+C+A, Shift+Alt+key and other
+                // arbitrary multi-key presses.
+                if (twoFingerNavigationSuppressed ||
+                    blocksTwoFingerNavigation(addedKeyCode) ||
+                    event.pointerCount > 2
+                ) {
+                    twoFingerCandidate = false
+                    twoFingerNavigationSuppressed = true
+                    if (twoFingerNavigation) {
+                        finishTwoFingerNavigation()
+                        return true
+                    }
+                    return super.dispatchTouchEvent(event)
+                }
                 if (twoFingerNavigationEnabled && event.pointerCount == 2) {
-                    if (swiping) listener?.onSwipeCancelled()
-                    val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
-                    super.dispatchTouchEvent(cancel)
-                    cancel.recycle()
-                    twoFingerNavigation = true
-                    twoFingerStartX = (event.getX(0) + event.getX(1)) / 2f
-                    twoFingerStartY = (event.getY(0) + event.getY(1)) / 2f
-                    twoFingerDirection = KeyEvent.KEYCODE_UNKNOWN
-                    twoFingerAxis = 0
-                    listener?.onTwoFingerNavigationStarted(firstKeyCode)
-                    reset()
-                    invalidate()
-                    return true
+                    // Modifier chords and Space+key combinations are keyboard
+                    // input, never navigation gestures. Keep the complete
+                    // multi-pointer stream routed to the child keys until all
+                    // fingers lift.
+                    if (blocksTwoFingerNavigation(firstKeyCode) ||
+                        blocksTwoFingerNavigation(addedKeyCode)
+                    ) {
+                        twoFingerCandidate = false
+                        twoFingerNavigationSuppressed = true
+                        return super.dispatchTouchEvent(event)
+                    }
+                    prepareTwoFingerCandidate(event)
+                    return super.dispatchTouchEvent(event)
                 }
                 if (swiping) listener?.onSwipeCancelled()
+                twoFingerCandidate = false
                 reset()
                 return super.dispatchTouchEvent(event)
             }
 
             MotionEvent.ACTION_MOVE -> {
+                if (twoFingerCandidate && event.pointerCount >= 2) {
+                    if (isDeliberateTwoFingerNavigation(event)) {
+                        beginTwoFingerNavigation(event)
+                        return true
+                    }
+                    return super.dispatchTouchEvent(event)
+                }
                 if (twoFingerNavigation) {
                     if (event.pointerCount < 2) {
                         finishTwoFingerNavigation()
@@ -231,6 +253,8 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
             }
 
             MotionEvent.ACTION_UP -> {
+                twoFingerCandidate = false
+                twoFingerNavigationSuppressed = false
                 if (twoFingerNavigation) {
                     finishTwoFingerNavigation()
                     return true
@@ -259,9 +283,12 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
                     finishTwoFingerNavigation()
                     return true
                 }
+                twoFingerCandidate = false
             }
 
             MotionEvent.ACTION_CANCEL -> {
+                twoFingerCandidate = false
+                twoFingerNavigationSuppressed = false
                 if (twoFingerNavigation) {
                     finishTwoFingerNavigation()
                     return true
@@ -306,6 +333,71 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
         listener?.onTwoFingerNavigationFinished()
         invalidate()
     }
+
+    private fun prepareTwoFingerCandidate(event: MotionEvent) {
+        if (event.pointerCount < 2) return
+        twoFingerCandidate = true
+        twoFingerFirstStartX = event.getX(0)
+        twoFingerFirstStartY = event.getY(0)
+        twoFingerSecondStartX = event.getX(1)
+        twoFingerSecondStartY = event.getY(1)
+        twoFingerStartX = (twoFingerFirstStartX + twoFingerSecondStartX) / 2f
+        twoFingerStartY = (twoFingerFirstStartY + twoFingerSecondStartY) / 2f
+    }
+
+    private fun isDeliberateTwoFingerNavigation(event: MotionEvent): Boolean {
+        val firstDx = event.getX(0) - twoFingerFirstStartX
+        val firstDy = event.getY(0) - twoFingerFirstStartY
+        val secondDx = event.getX(1) - twoFingerSecondStartX
+        val secondDy = event.getY(1) - twoFingerSecondStartY
+        val centerDx = ((event.getX(0) + event.getX(1)) / 2f) - twoFingerStartX
+        val centerDy = ((event.getY(0) + event.getY(1)) / 2f) - twoFingerStartY
+        if (hypot(centerDx, centerDy) < twoFingerSlop) return false
+        if (hypot(firstDx, firstDy) < twoFingerSlop * .7f ||
+            hypot(secondDx, secondDy) < twoFingerSlop * .7f
+        ) return false
+
+        val horizontal = kotlin.math.abs(centerDx) >= kotlin.math.abs(centerDy)
+        val firstParallel = if (horizontal) firstDx else firstDy
+        val secondParallel = if (horizontal) secondDx else secondDy
+        val perpendicular = if (horizontal) {
+            maxOf(kotlin.math.abs(firstDy), kotlin.math.abs(secondDy))
+        } else {
+            maxOf(kotlin.math.abs(firstDx), kotlin.math.abs(secondDx))
+        }
+        val parallel = minOf(kotlin.math.abs(firstParallel), kotlin.math.abs(secondParallel))
+        return firstParallel * secondParallel > 0f &&
+            parallel >= twoFingerSlop * .55f &&
+            perpendicular <= parallel * .7f
+    }
+
+    private fun beginTwoFingerNavigation(event: MotionEvent) {
+        val originalFirstKeyCode = firstKeyCode
+        if (swiping) listener?.onSwipeCancelled()
+        val cancel = MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+        super.dispatchTouchEvent(cancel)
+        cancel.recycle()
+        twoFingerCandidate = false
+        twoFingerNavigation = true
+        twoFingerDirection = KeyEvent.KEYCODE_UNKNOWN
+        twoFingerAxis = 0
+        listener?.onTwoFingerNavigationStarted(originalFirstKeyCode)
+        reset()
+        invalidate()
+    }
+
+    private fun blocksTwoFingerNavigation(keyCode: Int): Boolean =
+        keyCode < 0 || keyCode in setOf(
+            KeyEvent.KEYCODE_SPACE,
+            KeyEvent.KEYCODE_META_LEFT,
+            KeyEvent.KEYCODE_META_RIGHT,
+            KeyEvent.KEYCODE_ALT_LEFT,
+            KeyEvent.KEYCODE_ALT_RIGHT,
+            KeyEvent.KEYCODE_SHIFT_LEFT,
+            KeyEvent.KEYCODE_SHIFT_RIGHT,
+            KeyEvent.KEYCODE_CTRL_LEFT,
+            KeyEvent.KEYCODE_CTRL_RIGHT,
+        )
 
     private fun drawNavigationOverlay(canvas: Canvas) {
         canvas.drawRoundRect(

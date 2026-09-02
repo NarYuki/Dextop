@@ -92,10 +92,13 @@ extension _ResolutionUi on _HomeScreenState {
                           ),
                           SizedBox(height: 4),
                           Slider(
+                            // Flutter still defaults to the legacy 2023 shape.
+                            // ignore: deprecated_member_use
+                            year2023: false,
                             value: workspaceMagnificationPercent.toDouble(),
                             min: 100,
                             max: 200,
-                            divisions: 5,
+                            divisions: 10,
                             label: '$workspaceMagnificationPercent%',
                             onChanged: active
                                 ? null

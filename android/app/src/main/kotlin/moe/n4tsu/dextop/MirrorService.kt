@@ -6757,11 +6757,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
 
             "laptop" -> {
-                val laptopAvailable = demoMode ||
-                        (isLaptopCapableDevice() && !isCurrentFoldableCoverDisplay())
-                val blackBerryAvailable = demoMode || isBlackBerryModeAvailable() ||
-                        (laptopModeActive && keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY)
-                val hasStyleChoice = laptopAvailable && blackBerryAvailable
+                val laptopAvailable = isLaptopStyleAvailable()
+                val blackBerryAvailable = isBlackBerryStyleAvailable()
+                val hasStyleChoice = hasKeyboardStyleChoice()
                 val mainAction = actionButton(
                     R.drawable.ic_keyboard,
                     NativeStrings.text(
@@ -6875,7 +6873,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         scheduleMenuHeightUpdate()
     }
 
+    private fun isLaptopStyleAvailable(): Boolean = demoMode ||
+            (isLaptopCapableDevice() && !isCurrentFoldableCoverDisplay())
+
+    private fun isBlackBerryStyleAvailable(): Boolean = demoMode ||
+            isBlackBerryModeAvailable() ||
+            (laptopModeActive && keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY)
+
+    private fun hasKeyboardStyleChoice(): Boolean =
+        isLaptopStyleAvailable() && isBlackBerryStyleAvailable()
+
     private fun showKeyboardStyleMenu(panel: LinearLayout) {
+        // A style chooser is valid only when both destinations are genuinely
+        // available. In particular, returning from the BlackBerry height
+        // editor on a phone must not expose Laptop mode through a route that
+        // was absent from the root overlay.
+        if (!hasKeyboardStyleChoice()) {
+            showMainMenu(panel)
+            return
+        }
         stopCastRouteDiscovery()
         animateMenuResize(panel)
         panel.removeAllViews()
@@ -6936,7 +6952,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         panel.addView(menuTitle(
             NativeStrings.text("nativeBlackBerryLayout"),
             NativeStrings.text("nativeReturn"),
-        ) { showKeyboardStyleMenu(panel) })
+        ) {
+            if (hasKeyboardStyleChoice()) showKeyboardStyleMenu(panel)
+            else showMainMenu(panel)
+        })
 
         val prefs = getSharedPreferences(PREFS, MODE_PRIVATE)
         val manual = prefs.getBoolean(KEY_BLACKBERRY_HEIGHT_MANUAL, false)
