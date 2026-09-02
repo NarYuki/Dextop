@@ -270,7 +270,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get setupSystemDescription =>
-      'Dextop은 Shizuku와 ADB를 사용하여 가상 디스플레이, 화면 방향, 입력, 시스템 UI 등의 동작을 제어합니다.';
+      'Dextop은 Shizuku와 ADB를 사용하여 가상 디스플레이, 화면 방향, 입력 및 시스템 UI를 제어합니다. AccessibilityService API는 데스크톱 오버레이 표시와 조작, 사용자가 요청한 터치·포인터·탐색 입력 전달, 세션 종료 시 기기 UI 복원에 사용됩니다. 접근성 데이터는 수집, 저장 또는 공유하지 않습니다.';
 
   @override
   String get setupDisclaimer =>
@@ -1369,7 +1369,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get keyboardSwipeLanguagesDescription =>
-      'MENU를 길게 눌렀을 때 표시할 언어를 선택합니다. 기본적으로 영어만 활성화됩니다.';
+      'MENU를 길게 눌렀을 때 표시할 언어를 선택합니다.';
 
   @override
   String get keyboardSwipeAddLanguage => '언어 추가';
@@ -1611,4 +1611,477 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get experimentalBlackBerryModeDescription =>
       'Dextop 오버레이에서 스마트폰용 소형 물리 키보드 스타일 배열을 사용할 수 있습니다';
+
+  @override
+  String get blackBerryAutoStart => 'BlackBerry 모드 자동 시작';
+
+  @override
+  String get blackBerryAutoStartDescription =>
+      '세로 모드로 Dextop 세션을 시작할 때 BlackBerry 키보드를 자동으로 표시합니다';
+
+  @override
+  String get keyboardHaptics => '키보드 햅틱';
+
+  @override
+  String get keyboardHapticsDescription => '키보드 키와 트랙패드를 누를 때 진동합니다';
+
+  @override
+  String get nativeUnknownPermissionResult => 'Shizuku에서 알 수 없는 권한 결과를 반환했습니다';
+
+  @override
+  String get nativeDevice => '기기';
+
+  @override
+  String get nativeCoverDisplay => '커버 디스플레이';
+
+  @override
+  String get nativeCoverDisplayDescription =>
+      '커버 화면에서 Android를 열거나 독립적인 Dextop 세션을 만듭니다';
+
+  @override
+  String get nativeCoverAndroidDescription =>
+      '메인 Dextop 세션을 유지한 채 커버 화면을 일반 Android로 사용합니다.';
+
+  @override
+  String get nativeCoverDextopDescription =>
+      '메인 세션과 독립된 Dextop 세션을 커버 화면에 만듭니다.';
+
+  @override
+  String get nativeOpenCoverAndroid => '커버 화면에서 Android 열기';
+
+  @override
+  String get nativeStopCoverAndroid => 'Android 세션 종료';
+
+  @override
+  String get nativeStartCoverDextop => '커버 화면에 Dextop 세션 만들기';
+
+  @override
+  String get nativeStopCoverDextop => '커버 Dextop 세션 종료';
+
+  @override
+  String get nativeCoverDisplayFailed => '커버 디스플레이를 변경할 수 없습니다';
+
+  @override
+  String get nativeSwitchToResolutionSuffix => '이 해상도와 DPI로 전환합니다';
+
+  @override
+  String get nativeShizukuUnavailable => 'Shizuku를 사용할 수 없습니다';
+
+  @override
+  String get nativeSelectedAppCannotLaunch => '선택한 앱을 실행할 수 없습니다';
+
+  @override
+  String get nativeShizukuBinderUnavailable => 'Shizuku 연결을 사용할 수 없습니다';
+
+  @override
+  String get nativeMirrorSurfaceUnavailable => '미러 표시 영역을 사용할 수 없습니다';
+
+  @override
+  String get nativeRotationReleaseUnsupported => '화면 회전 잠금 해제를 지원하지 않습니다';
+
+  @override
+  String get nativePerformanceHudFormat =>
+      '%1\$.1f FPS  |  %2\$d MB\n배터리: %3\$d%%  |  %4\$s\nCPU: %6\$s  |  입력: %5\$s';
+
+  @override
+  String get nativeInputMouse => '마우스';
+
+  @override
+  String get nativeInputTouch => '터치';
+
+  @override
+  String get nativeInputTrackpad => '트랙패드';
+
+  @override
+  String get nativeInputIdle => '대기 중';
+
+  @override
+  String get nativePhysicalMouse => '물리 마우스 입력 대상 전환';
+
+  @override
+  String get nativePhysicalKeyboard => '물리 키보드 입력 대상 전환';
+
+  @override
+  String get nativePhysicalMouseDemo =>
+      '물리 마우스를 Android와 Dextop 사이에서 전환합니다. 지원 기기에 외부 디스플레이가 연결된 경우 사용할 수 있습니다.';
+
+  @override
+  String get nativePhysicalKeyboardDemo =>
+      '물리 키보드를 Android와 Dextop 사이에서 전환합니다. 지원 기기에 외부 디스플레이가 연결된 경우 사용할 수 있습니다.';
+
+  @override
+  String get nativeTheThreeFingerGestureIsAnEssential =>
+      '세 손가락 제스처는 Dextop 사용 중에 필수적인 조작 방법입니다. \\n각 버튼을 탭하면 여기에 기능 설명이 표시됩니다.';
+
+  @override
+  String get nativeAsusZenuiRogUiDesktop => 'ASUS ZenUI / ROG UI 데스크톱';
+
+  @override
+  String get nativeAndroidDesktopFreeform => 'Android 데스크톱(Freeform)';
+
+  @override
+  String get nativeColorosDesktop => 'ColorOS 기반 데스크톱';
+
+  @override
+  String get nativeAdjustTheVolumeOfPlaybackOnDextop =>
+      'Dextop에서 재생할 볼륨을 조정합니다.';
+
+  @override
+  String get nativeSwitchBetweenPortraitAndLandscapeOrientationOf =>
+      'Dextop의 세로 방향과 가로 방향을 전환합니다.';
+
+  @override
+  String get nativeSwitchDextopResolutionAndDpi => 'Dextop 해상도와 DPI 간 전환';
+
+  @override
+  String get nativePauseDextopAndReturnYourAndroidTo =>
+      'Dextop을 일시 중지하고 Android를 정상적으로 조작할 수 있는 상태로 되돌립니다.';
+
+  @override
+  String get nativeTerminateYourDextopSession => 'Dextop 세션을 종료합니다.';
+
+  @override
+  String get nativeAdjustTheBrightnessOfTheDesktopDisplay =>
+      'Dextop 디스플레이의 밝기를 조정합니다.';
+
+  @override
+  String get nativeHonorMagicosDesktop => 'HONOR MagicOS 데스크톱';
+
+  @override
+  String get nativeHuaweiEmuiDesktop => 'Huawei EMUI 데스크톱';
+
+  @override
+  String get nativeHyperosMiuiDesktop => 'HyperOS / MIUI 데스크톱';
+
+  @override
+  String get nativeMotorolaLenovoDesktop => 'Motorola / Lenovo 데스크톱';
+
+  @override
+  String get nativeNothingOsDesktop => 'Nothing OS 데스크톱';
+
+  @override
+  String get nativeOriginosFuntouchOsDesktop => 'OriginOS / Funtouch OS 데스크톱';
+
+  @override
+  String get nativePixelAndroidDesktop => 'Pixel Android 데스크톱';
+
+  @override
+  String get nativeShizukuPermissionCheckTimedOut =>
+      'Shizuku의 권한 확인 시간이 초과되었습니다.';
+
+  @override
+  String get nativeRequiresConnectionToShizukuAndPermissions =>
+      'Shizuku에 연결하고 권한이 필요합니다.';
+
+  @override
+  String get nativePermissionDeniedToShizuku => 'Shizuku에 대한 권한이 거부되었습니다.';
+
+  @override
+  String get nativePleaseInstallShizuku => 'Shizuku를 설치하십시오';
+
+  @override
+  String get nativePleaseStartShizuku => 'Shizuku를 시작하십시오.';
+
+  @override
+  String get nativeRemoveThisResolution => '이 해상도 삭제';
+
+  @override
+  String get nativeNoAppSelected => '앱이 선택되지 않음';
+
+  @override
+  String get nativeCouldNotStartApp => '앱을 시작할 수 없습니다.';
+
+  @override
+  String get nativeAddCustomResolution => '맞춤 해상도 추가';
+
+  @override
+  String get nativeRotate180 => '180° 회전';
+
+  @override
+  String get nativeCast => '전송';
+
+  @override
+  String get nativeCastDescription => '전송할 기기 선택';
+
+  @override
+  String get nativeNoCastDevices => '사용 가능한 Google Cast 기기가 없습니다';
+
+  @override
+  String get nativeCastUnavailable => 'Google Cast를 초기화할 수 없습니다';
+
+  @override
+  String get nativeCasting => '전송 중';
+
+  @override
+  String get nativeStopCasting => '전송 중지';
+
+  @override
+  String get nativeScanAgain => '다시 검색';
+
+  @override
+  String get nativeScanning => '검색 중…';
+
+  @override
+  String get nativeCursor => '커서';
+
+  @override
+  String get nativeTap => '탭';
+
+  @override
+  String get nativeTapToExit => '탭하여 종료';
+
+  @override
+  String get nativeTapToOpen => '탭하여 열기';
+
+  @override
+  String get nativeYouCanRearrangeTheLayoutInThe =>
+      '버튼을 길게 눌러 조작 패널의 배치를 정렬할 수 있습니다.';
+
+  @override
+  String get nativeWorkSpace => '작업 공간';
+
+  @override
+  String get nativeExpandWorkspace => '작업 공간 펼치기';
+
+  @override
+  String get nativeTemporarilyReturnToAndroid => '일시적으로 Android로 돌아가기';
+
+  @override
+  String get nativeLaptopMode => '노트북 모드';
+
+  @override
+  String get nativeLaptopModeDescription => '폴더블 기기 하단에 키보드와 트랙패드를 표시합니다.';
+
+  @override
+  String get nativeKeyboardStyle => '스타일';
+
+  @override
+  String get nativeBlackBerryMode => 'BlackBerry 모드';
+
+  @override
+  String get nativeBlackBerryLayout => 'BlackBerry 레이아웃';
+
+  @override
+  String get nativeAutomaticLayout => '자동 레이아웃';
+
+  @override
+  String get nativeManualHeight => '높이 수동 조절';
+
+  @override
+  String get nativeKeyboardHeight => '키보드 높이';
+
+  @override
+  String get nativeBlackBerryModeDescription => '트랙패드 없이 휴대전화용 소형 키보드를 표시합니다.';
+
+  @override
+  String get nativeKeyboardSettings => '키보드 설정';
+
+  @override
+  String get nativeKeyboardSettingsDescription => '노트북 키보드 모양을 사용자 지정합니다';
+
+  @override
+  String get nativeTheme => '테마';
+
+  @override
+  String get nativeSwipeLanguage => '스와이프 입력 언어';
+
+  @override
+  String get nativeSwipeLanguageDescription => '탭 입력은 현재 입력기를 계속 사용합니다';
+
+  @override
+  String get nativeKeyboardThemeStandard => '표준';
+
+  @override
+  String get nativeKeyboardThemeCrimson => '크림슨';
+
+  @override
+  String get nativeKeyboardThemeCloud => 'Cloud Pop';
+
+  @override
+  String get nativeKeyboardThemeAmoled => 'AMOLED';
+
+  @override
+  String get nativeKeyboardThemeStandardDescription => '중성적인 다크 키보드';
+
+  @override
+  String get nativeKeyboardThemeCrimsonDescription => '폴더블 PC에서 영감을 받은 따뜻한 크림슨';
+
+  @override
+  String get nativeKeyboardThemeCloudDescription => '부드러운 구름빛 블루 키보드';
+
+  @override
+  String get nativeKeyboardThemeAmoledDescription => '순수한 검정 기반의 절전 키보드';
+
+  @override
+  String get nativeKeyboardThemeCustomDescription => '사용자 지정 키보드 테마';
+
+  @override
+  String get nativeOpenDextopWithYourSavedAppPlacement =>
+      '저장된 앱 배치에서 Dextop을 엽니다.';
+
+  @override
+  String get nativeSaveAndApply => '저장하고 적용';
+
+  @override
+  String get nativeFailedToSaveUnableToRetrieveRunning =>
+      '저장할 수 없습니다. Dextop에서 실행 중인 앱을 가져올 수 없습니다.';
+
+  @override
+  String get nativeFailedToSaveFailedToWriteTo =>
+      '저장할 수 없습니다. 기기 저장소에 쓰지 못했습니다.';
+
+  @override
+  String get nativeViewSavedWorkspacesAndSaveCurrentArrangement =>
+      '저장된 작업 공간을 표시하고 현재 배치를 저장할 수 있습니다.';
+
+  @override
+  String get nativeNoSavedWorkspaces => '저장된 작업공간 없음';
+
+  @override
+  String get nativePleaseStartDextopFirst => '먼저 Dextop을 시작하십시오.';
+
+  @override
+  String get nativeReconnect => '재연결';
+
+  @override
+  String get nativeWidth => '너비';
+
+  @override
+  String get nativeReturn => '뒤로';
+
+  @override
+  String get nativePermissionRequestInProgress => '권한 요청이 진행 중입니다.';
+
+  @override
+  String get nativeHorizontalHolding => '가로';
+
+  @override
+  String get nativeSaveTheCurrentAppArrangementAsA => '현재 앱 배치를 작업공간으로 저장';
+
+  @override
+  String get nativeAddCurrentAppPlacement => '현재 앱 배치 추가';
+
+  @override
+  String get nativeScreenBrightness => '화면 밝기';
+
+  @override
+  String get nativeUseTheScreenAsATrackpadTo => '화면을 트랙패드로 사용하여 커서를 조작합니다.';
+
+  @override
+  String get nativeEnd => '종료';
+
+  @override
+  String get nativeEdit => '편집';
+
+  @override
+  String get nativeVerticalHolding => '세로';
+
+  @override
+  String get nativeReconnectIfYouHaveDisplayOrConnection =>
+      '화면 표시나 연결에 문제가 있으면 다시 연결합니다.';
+
+  @override
+  String get nativeDisplayProfileIsOutOfRange => '표시 프로필이 범위를 벗어났습니다.';
+
+  @override
+  String get nativeResolution => '해상도';
+
+  @override
+  String get nativeEditResolution => '해상도 편집';
+
+  @override
+  String get nativeAddResolution => '해상도 추가';
+
+  @override
+  String get nativeSendsTheTouchedPositionDirectlyToDextop =>
+      '터치한 위치를 Dextop에 직접 탭으로 보냅니다.';
+
+  @override
+  String get nativeAddAndApply => '추가 및 적용';
+
+  @override
+  String get nativeEditPlacement => '배치 편집';
+
+  @override
+  String get nativeCompletePlacementEdit => '배치 편집 완료';
+
+  @override
+  String get nativeVolume => '볼륨';
+
+  @override
+  String get nativeHeight => '높이';
+
+  @override
+  String get multiTouchUpgradeTitle => '앱이 업데이트되었습니다';
+
+  @override
+  String get multiTouchUpgradeBody => '멀티터치를 지원하며 이에 따라 제스처가 업데이트되었습니다.';
+
+  @override
+  String get multiTouchUpgradeLandscape => '가로 모드\\n화면 왼쪽에서 오른쪽으로 세 손가락 스와이프';
+
+  @override
+  String get multiTouchUpgradePortrait => '세로 모드\\n화면 위에서 아래로 세 손가락 스와이프';
+
+  @override
+  String get multiTouchUpgradeClose => '확인';
+
+  @override
+  String appUpdatedTitle(String version) {
+    return '$version(으)로 업데이트되었습니다!';
+  }
+
+  @override
+  String get appUpdatedMessage => 'Dextop이 최신 버전으로 업데이트되었습니다.';
+
+  @override
+  String get androidSwipeImeLabel => 'Dextop 스와이프 입력';
+
+  @override
+  String get androidAccessibilityServiceDescription =>
+      'Dextop 가상 디스플레이, 입력 및 제어 패널을 제어합니다';
+
+  @override
+  String get androidEmbeddedPairingChannel => '내장 액세스 설정';
+
+  @override
+  String get androidEmbeddedPairingTitle => 'Dextop 페어링';
+
+  @override
+  String get androidEmbeddedPairingNotificationText =>
+      '무선 디버깅에 표시된 6자리 코드를 입력하세요';
+
+  @override
+  String get androidEmbeddedPairingCode => '6자리 페어링 코드';
+
+  @override
+  String get androidEmbeddedPairingEnterCode => '페어링 코드 입력';
+
+  @override
+  String get androidEmbeddedPairingSuccess => 'Dextop이 연결되었습니다';
+
+  @override
+  String get androidEmbeddedPairingSuccessMessage =>
+      '페어링이 완료되었습니다. Dextop으로 돌아가세요.';
+
+  @override
+  String get androidEmbeddedPairingFailed => 'Dextop을 연결할 수 없습니다';
+
+  @override
+  String get androidEmbeddedPairingInvalidCode => '6자리 코드를 입력하세요';
+
+  @override
+  String get androidEmbeddedPairingSearching => '페어링 서비스를 검색하는 중';
+
+  @override
+  String get androidEmbeddedPairingServiceFound => '페어링 서비스를 찾았습니다';
+
+  @override
+  String get androidEmbeddedPairingServiceNotFound => '페어링 서비스를 찾을 수 없습니다';
+
+  @override
+  String get androidEmbeddedPairingRetry => '다시 시도';
+
+  @override
+  String get androidEmbeddedPairingInProgress => '페어링 중';
 }

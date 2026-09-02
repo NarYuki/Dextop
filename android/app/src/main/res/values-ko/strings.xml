@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="dextop_swipe_ime_label">Dextop 스와이프 입력</string>
     <string name="accessibility_service_description">Dextop 가상 디스플레이, 입력 및 제어 패널을 제어합니다</string>
     <string name="embedded_pairing_channel">내장 액세스 설정</string>
     <string name="embedded_pairing_title">Dextop 페어링</string>

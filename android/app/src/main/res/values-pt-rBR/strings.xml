@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dextop_swipe_ime_label">Entrada por deslize do Dextop</string>
+    <string name="accessibility_service_description">Controla a tela virtual, a entrada e o painel de controle do Dextop</string>
+    <string name="embedded_pairing_channel">Configuração de acesso integrado</string>
+    <string name="embedded_pairing_title">Parear o Dextop</string>
+    <string name="embedded_pairing_notification_text">Digite o código de seis dígitos exibido na depuração sem fio</string>
+    <string name="embedded_pairing_code">Código de pareamento de seis dígitos</string>
+    <string name="embedded_pairing_enter_code">Digitar código de pareamento</string>
+    <string name="embedded_pairing_success">O Dextop está conectado</string>
+    <string name="embedded_pairing_success_message">O pareamento foi concluído. Volte ao Dextop.</string>
+    <string name="embedded_pairing_failed">Não foi possível conectar o Dextop</string>
+    <string name="embedded_pairing_invalid_code">Digite um código de seis dígitos</string>
+    <string name="embedded_pairing_searching">Procurando serviço de pareamento</string>
+    <string name="embedded_pairing_service_found">Serviço de pareamento encontrado</string>
+    <string name="embedded_pairing_service_not_found">Serviço de pareamento não encontrado</string>
+    <string name="embedded_pairing_retry">Tentar novamente</string>
+    <string name="embedded_pairing_in_progress">Pareamento em andamento</string>
+</resources>

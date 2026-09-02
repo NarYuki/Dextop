@@ -23,7 +23,7 @@ extension _SettingsContent on _HomeScreenState {
                 _categoryTile(
                   Icons.display_settings_outlined,
                   l.display,
-                  AppStrings.tr('uiSecureDisplayFoldable'),
+                  currentLocalizations().uiSecureDisplayFoldable,
                   () => _openDisplaySettings(l),
                 ),
                 Divider(height: 1),
@@ -60,29 +60,30 @@ extension _SettingsContent on _HomeScreenState {
                 Divider(height: 1),
                 _categoryTile(
                   Icons.apps_outlined,
-                  AppStrings.tr('uiAppLauncherSettings'),
-                  AppStrings.tr('uiManageLaunchedAppsAndConfigurations'),
+                  currentLocalizations().uiAppLauncherSettings,
+                  currentLocalizations().uiManageLaunchedAppsAndConfigurations,
                   () => _openFeatureCategory('apps', launcherOnly: true),
                 ),
                 Divider(height: 1),
                 _categoryTile(
                   Icons.gesture_rounded,
-                  AppStrings.tr('uiInputAndGestures'),
-                  AppStrings.tr('uiTapPressAndHoldMultiFingerOperation'),
+                  currentLocalizations().uiInputAndGestures,
+                  currentLocalizations().uiTapPressAndHoldMultiFingerOperation,
                   () => _openFeatureCategory('interaction'),
                 ),
                 Divider(height: 1),
                 _categoryTile(
                   Icons.monitor_heart_outlined,
-                  AppStrings.tr('uiConditionAndDiagnosis'),
-                  AppStrings.tr('uiPerformanceCompatibility'),
+                  currentLocalizations().uiConditionAndDiagnosis,
+                  currentLocalizations().uiPerformanceCompatibility,
                   () => _openFeatureCategory('status'),
                 ),
                 Divider(height: 1),
                 _categoryTile(
                   Icons.devices_outlined,
-                  AppStrings.tr('uiTerminalAndPermissions'),
-                  AppStrings.tr('uiDeviceInformationDesktopModeAccessibility'),
+                  currentLocalizations().uiTerminalAndPermissions,
+                  currentLocalizations()
+                      .uiDeviceInformationDesktopModeAccessibility,
                   () => _openDeviceSettings(l),
                 ),
                 Divider(height: 1),
@@ -112,8 +113,8 @@ extension _SettingsContent on _HomeScreenState {
               settingsCard([
                 _categoryTile(
                   Icons.fact_check_outlined,
-                  AppStrings.tr('deviceReport'),
-                  AppStrings.tr('deviceReportDescription'),
+                  currentLocalizations().deviceReport,
+                  currentLocalizations().deviceReportDescription,
                   () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
                       builder: (_) => const DeviceReportPage(),
@@ -134,7 +135,7 @@ extension _SettingsContent on _HomeScreenState {
         'display',
         Icons.display_settings_outlined,
         l.display,
-        AppStrings.tr('uiSecureDisplayFoldable'),
+        currentLocalizations().uiSecureDisplayFoldable,
       ),
       if (carCompanionInstalled)
         (
@@ -158,26 +159,26 @@ extension _SettingsContent on _HomeScreenState {
       (
         'apps',
         Icons.apps_outlined,
-        AppStrings.tr('uiAppLauncherSettings'),
-        AppStrings.tr('uiManageLaunchedAppsAndConfigurations'),
+        currentLocalizations().uiAppLauncherSettings,
+        currentLocalizations().uiManageLaunchedAppsAndConfigurations,
       ),
       (
         'interaction',
         Icons.gesture_rounded,
-        AppStrings.tr('uiInputAndGestures'),
-        AppStrings.tr('uiTapPressAndHoldMultiFingerOperation'),
+        currentLocalizations().uiInputAndGestures,
+        currentLocalizations().uiTapPressAndHoldMultiFingerOperation,
       ),
       (
         'status',
         Icons.monitor_heart_outlined,
-        AppStrings.tr('uiConditionAndDiagnosis'),
-        AppStrings.tr('uiPerformanceCompatibility'),
+        currentLocalizations().uiConditionAndDiagnosis,
+        currentLocalizations().uiPerformanceCompatibility,
       ),
       (
         'device',
         Icons.devices_outlined,
-        AppStrings.tr('uiTerminalAndPermissions'),
-        AppStrings.tr('uiDeviceInformationDesktopModeAccessibility'),
+        currentLocalizations().uiTerminalAndPermissions,
+        currentLocalizations().uiDeviceInformationDesktopModeAccessibility,
       ),
       (
         'about',
@@ -193,13 +194,13 @@ extension _SettingsContent on _HomeScreenState {
           'samsung' => (
             'samsung',
             Icons.desktop_windows_outlined,
-            AppStrings.tr('samsungSettingsTitle'),
+            currentLocalizations().samsungSettingsTitle,
             '',
           ),
           'diagnostics' => (
             'diagnostics',
             Icons.article_outlined,
-            AppStrings.tr('diagnosticLog'),
+            currentLocalizations().diagnosticLog,
             '',
           ),
           _ => sections.firstWhere((item) => item.$1 == desktopSettingsSection),
@@ -373,7 +374,11 @@ extension _SettingsContent on _HomeScreenState {
         ),
         'auto' => const AutoSettingsPage(embedded: true),
         'keyboard' => KeyboardSettingsPage(embedded: true, isRunning: active),
-        'mouse' => MouseSettingsPage(bridge: bridge, isRunning: active),
+        'mouse' => MouseSettingsPage(
+          bridge: bridge,
+          isRunning: active,
+          embedded: true,
+        ),
         'interaction' => ListView(
           padding: const EdgeInsets.all(20),
           children: [
@@ -492,11 +497,11 @@ extension _SettingsContent on _HomeScreenState {
       ListView(
         padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
         children: [
-          _displaySettingsSection(AppStrings.tr('uiDisplayCategory'), [
+          _displaySettingsSection(currentLocalizations().uiDisplayCategory, [
             ListTile(
               leading: const Icon(Icons.desktop_windows_outlined),
-              title: Text(AppStrings.tr('displaySettingsTitle')),
-              subtitle: Text(AppStrings.tr('displaySettingsSummary')),
+              title: Text(currentLocalizations().displaySettingsTitle),
+              subtitle: Text(currentLocalizations().displaySettingsSummary),
               trailing: const Icon(Icons.chevron_right_rounded),
               onTap: () => Navigator.of(context).push(
                 MaterialPageRoute<void>(
@@ -518,13 +523,11 @@ extension _SettingsContent on _HomeScreenState {
             Divider(height: 1),
             ListTile(
               leading: Icon(Icons.cast_rounded),
-              title: Text(AppStrings.tr('castMode')),
+              title: Text(currentLocalizations().castMode),
               subtitle: Text(
-                AppStrings.tr(
-                  castMode == 'receiver'
-                      ? 'castModeReceiver'
-                      : 'castModeSimple',
-                ),
+                castMode == 'receiver'
+                    ? currentLocalizations().castModeReceiver
+                    : currentLocalizations().castModeSimple,
               ),
               trailing: Icon(Icons.chevron_right_rounded),
               onTap: () => _selectCastMode(context, updateRoute),
@@ -541,7 +544,7 @@ extension _SettingsContent on _HomeScreenState {
             embedded: true,
             category: 'display',
           ),
-          _displaySettingsSection(AppStrings.tr('uiConvenience'), [
+          _displaySettingsSection(currentLocalizations().uiConvenience, [
             DisplayEnvironmentSettingsCard(
               bridge: bridge,
               showDisplay: false,
@@ -577,7 +580,7 @@ extension _SettingsContent on _HomeScreenState {
     final selected = await showDialog<String>(
       context: routeContext,
       builder: (dialogContext) => SimpleDialog(
-        title: Text(AppStrings.tr('castMode')),
+        title: Text(currentLocalizations().castMode),
         children: [
           RadioGroup<String>(
             groupValue: castMode,
@@ -587,13 +590,17 @@ extension _SettingsContent on _HomeScreenState {
               children: [
                 RadioListTile<String>(
                   value: 'simple',
-                  title: Text(AppStrings.tr('castModeSimple')),
-                  subtitle: Text(AppStrings.tr('castModeSimpleDescription')),
+                  title: Text(currentLocalizations().castModeSimple),
+                  subtitle: Text(
+                    currentLocalizations().castModeSimpleDescription,
+                  ),
                 ),
                 RadioListTile<String>(
                   value: 'receiver',
-                  title: Text(AppStrings.tr('castModeReceiver')),
-                  subtitle: Text(AppStrings.tr('castModeReceiverDescription')),
+                  title: Text(currentLocalizations().castModeReceiver),
+                  subtitle: Text(
+                    currentLocalizations().castModeReceiverDescription,
+                  ),
                 ),
               ],
             ),
@@ -696,7 +703,7 @@ extension _SettingsContent on _HomeScreenState {
       MaterialPageRoute<void>(
         builder: (_) => Scaffold(
           appBar: AppBar(
-            title: Text(AppStrings.tr('uiTerminalAndPermissions')),
+            title: Text(currentLocalizations().uiTerminalAndPermissions),
           ),
           body: _deviceSettingsContent(l),
         ),
@@ -713,7 +720,7 @@ extension _SettingsContent on _HomeScreenState {
           title: Text(
             [manufacturer, model].where((e) => e.isNotEmpty).join(' '),
           ),
-          subtitle: Text('${AppStrings.tr('uiAndroid')} $androidVersion'),
+          subtitle: Text('${currentLocalizations().uiAndroid} $androidVersion'),
         ),
         Divider(height: 1),
         ListTile(
@@ -905,11 +912,13 @@ class MouseSettingsPage extends StatefulWidget {
   const MouseSettingsPage({
     required this.bridge,
     required this.isRunning,
+    this.embedded = false,
     super.key,
   });
 
   final NativeBridge bridge;
   final bool isRunning;
+  final bool embedded;
 
   @override
   State<MouseSettingsPage> createState() => _MouseSettingsPageState();
@@ -976,71 +985,61 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: Text(l.mouseSettingsTitle)),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-        children: [
-          _mouseSectionHeader(l.mouseSettingsTitle),
-          Card(
-            child: ListTileTheme(
-              data: const ListTileThemeData(
-                dense: true,
-                minTileHeight: 60,
-                minVerticalPadding: 6,
-                contentPadding: EdgeInsets.symmetric(horizontal: 16),
-              ),
-              child: Column(
-                children: [
-                  _mouseChoiceTile<String>(
-                    leading: const Icon(Icons.mouse_outlined),
-                    title: l.virtualPointerProfile,
-                    subtitle: switch (pointerProfile) {
-                      'touchpad' => l.virtualTouchpadDescription,
-                      'mouse' => l.virtualPointerMouseDescription,
-                      _ => l.virtualPointerSoftwareDescription,
-                    },
-                    value: pointerProfile,
-                    options: {
-                      'touchpad': l.virtualTouchpad,
-                      'mouse': l.virtualPointerMouse,
-                      'software': l.virtualPointerSoftware,
-                    },
-                    onChanged: _setPointerProfile,
-                  ),
-                  const Divider(height: 1),
-                  _mouseChoiceTile<bool>(
-                    leading: const Icon(Icons.swap_vert_rounded),
-                    title: l.virtualMouseScrollDirection,
-                    subtitle: naturalScroll
-                        ? l.virtualMouseNaturalScroll
-                        : l.virtualMouseStandardScroll,
-                    value: naturalScroll,
-                    options: {
-                      true: l.virtualMouseNaturalScroll,
-                      false: l.virtualMouseStandardScroll,
-                    },
-                    onChanged: _setNaturalScroll,
-                  ),
-                ],
-              ),
+    final content = ListView(
+      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      children: [
+        Card(
+          child: ListTileTheme(
+            data: const ListTileThemeData(
+              dense: true,
+              minTileHeight: 60,
+              minVerticalPadding: 6,
+              contentPadding: EdgeInsets.symmetric(horizontal: 16),
+            ),
+            child: Column(
+              children: [
+                _mouseChoiceTile<String>(
+                  leading: const Icon(Icons.mouse_outlined),
+                  title: l.virtualPointerProfile,
+                  subtitle: switch (pointerProfile) {
+                    'touchpad' => l.virtualTouchpadDescription,
+                    'mouse' => l.virtualPointerMouseDescription,
+                    _ => l.virtualPointerSoftwareDescription,
+                  },
+                  value: pointerProfile,
+                  options: {
+                    'touchpad': l.virtualTouchpad,
+                    'mouse': l.virtualPointerMouse,
+                    'software': l.virtualPointerSoftware,
+                  },
+                  onChanged: _setPointerProfile,
+                ),
+                const Divider(height: 1),
+                _mouseChoiceTile<bool>(
+                  leading: const Icon(Icons.swap_vert_rounded),
+                  title: l.virtualMouseScrollDirection,
+                  subtitle: naturalScroll
+                      ? l.virtualMouseNaturalScroll
+                      : l.virtualMouseStandardScroll,
+                  value: naturalScroll,
+                  options: {
+                    true: l.virtualMouseNaturalScroll,
+                    false: l.virtualMouseStandardScroll,
+                  },
+                  onChanged: _setNaturalScroll,
+                ),
+              ],
             ),
           ),
-        ],
-      ),
+        ),
+      ],
+    );
+    if (widget.embedded) return content;
+    return Scaffold(
+      appBar: AppBar(title: Text(l.mouseSettingsTitle)),
+      body: content,
     );
   }
-
-  Widget _mouseSectionHeader(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
-    child: Text(
-      title,
-      style: Theme.of(context).textTheme.labelLarge?.copyWith(
-        color: Theme.of(context).colorScheme.primary,
-        fontWeight: FontWeight.w600,
-      ),
-    ),
-  );
 
   Widget _mouseChoiceTile<T>({
     required Widget leading,

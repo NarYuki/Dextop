@@ -51,7 +51,7 @@ class AppInfoPage extends StatelessWidget {
                 ),
                 SizedBox(height: 16),
                 Text(
-                  AppStrings.tr('appName'),
+                  currentLocalizations().appName,
                   style: Theme.of(context).textTheme.headlineMedium,
                 ),
                 SizedBox(height: 4),
@@ -172,8 +172,8 @@ class AppInfoPage extends StatelessWidget {
             children: [
               ListTile(
                 leading: Icon(Icons.code_rounded),
-                title: Text(AppStrings.tr('uiGitHub')),
-                subtitle: Text(AppStrings.tr('uiGitHubRepository')),
+                title: Text(currentLocalizations().uiGitHub),
+                subtitle: Text(currentLocalizations().uiGitHubRepository),
                 trailing: Icon(Icons.open_in_new_rounded),
                 onTap: () =>
                     bridge.openUrl('https://github.com/NarYuki/Dextop'),
@@ -185,7 +185,7 @@ class AppInfoPage extends StatelessWidget {
                 trailing: Icon(Icons.chevron_right_rounded),
                 onTap: () => showLicensePage(
                   context: context,
-                  applicationName: AppStrings.tr('appName'),
+                  applicationName: currentLocalizations().appName,
                   applicationVersion: appVersion,
                   applicationIcon: ClipRRect(
                     borderRadius: BorderRadius.all(Radius.circular(16)),
@@ -199,8 +199,8 @@ class AppInfoPage extends StatelessWidget {
               ),
               ListTile(
                 leading: Icon(Icons.article_outlined),
-                title: Text(AppStrings.tr('diagnosticLog')),
-                subtitle: Text(AppStrings.tr('diagnosticLogDescription')),
+                title: Text(currentLocalizations().diagnosticLog),
+                subtitle: Text(currentLocalizations().diagnosticLogDescription),
                 trailing: Icon(Icons.chevron_right_rounded),
                 onTap:
                     onOpenDiagnosticLog ??
@@ -411,14 +411,14 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
   Widget build(BuildContext context) {
     final actions = <Widget>[
       IconButton(
-        tooltip: AppStrings.tr('copyDiagnosticLog'),
+        tooltip: currentLocalizations().copyDiagnosticLog,
         onPressed: report.isEmpty
             ? null
             : () => Clipboard.setData(ClipboardData(text: report)),
         icon: Icon(Icons.copy_rounded),
       ),
       IconButton(
-        tooltip: AppStrings.tr('shareDiagnosticLog'),
+        tooltip: currentLocalizations().shareDiagnosticLog,
         onPressed: loading ? null : widget.bridge.shareDiagnosticReport,
         icon: Icon(Icons.share_rounded),
       ),
@@ -429,7 +429,7 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
         itemBuilder: (_) => [
           PopupMenuItem(
             value: 'clear',
-            child: Text(AppStrings.tr('clearDiagnosticLog')),
+            child: Text(currentLocalizations().clearDiagnosticLog),
           ),
         ],
       ),
@@ -455,7 +455,7 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
     if (!widget.embedded) {
       return Scaffold(
         appBar: AppBar(
-          title: Text(AppStrings.tr('diagnosticLog')),
+          title: Text(currentLocalizations().diagnosticLog),
           actions: actions,
         ),
         body: body,
@@ -512,9 +512,9 @@ class _KeepAwakeTileState extends State<_KeepAwakeTile> {
     secondary: Icon(Icons.screen_lock_portrait_rounded),
     value: enabled,
     onChanged: update,
-    title: Text(AppStrings.tr('uiDoNotSleepWhileRunningDextop')),
+    title: Text(currentLocalizations().uiDoNotSleepWhileRunningDextop),
     subtitle: Text(
-      AppStrings.tr('uiPreventsTheScreenFromTurningOffAutomatically'),
+      currentLocalizations().uiPreventsTheScreenFromTurningOffAutomatically,
     ),
   );
 }

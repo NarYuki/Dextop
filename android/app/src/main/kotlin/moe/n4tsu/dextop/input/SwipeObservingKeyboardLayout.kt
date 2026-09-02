@@ -31,6 +31,11 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
 
     var listener: Listener? = null
     var swipeEnabled: Boolean = false
+        set(value) {
+            if (field == value) return
+            field = value
+            if (!value) cancelSwipeRecognition()
+        }
     var twoFingerNavigationEnabled: Boolean = false
     var swipeTrailColor: Int = Color.rgb(190, 160, 255)
     private val trace = ArrayList<PointF>(64)
@@ -101,6 +106,16 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
             twoFingerAxis = 0
             listener?.onTwoFingerNavigationStarted(firstKeyCode)
             reset()
+        }
+        // BlackBerry two-finger navigation can remain enabled independently
+        // of swipe typing. In that configuration a single finger must be a
+        // completely ordinary key stream: do not collect a trace, defer DOWN,
+        // cancel the child, or consume MOVE/UP events.
+        if (!swipeEnabled && !twoFingerNavigation && event.pointerCount < 2) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+                firstKeyCode = keyCodeAt(event.x, event.y)
+            }
+            return super.dispatchTouchEvent(event)
         }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
@@ -180,7 +195,9 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
                     }
                     return true
                 }
-                if (event.pointerCount != 1 || firstKeyCode !in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z) {
+                if (!swipeEnabled || event.pointerCount != 1 ||
+                    firstKeyCode !in KeyEvent.KEYCODE_A..KeyEvent.KEYCODE_Z
+                ) {
                     return super.dispatchTouchEvent(event)
                 }
                 val point = PointF(event.x, event.y)
@@ -263,7 +280,7 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
         if (twoFingerNavigation && twoFingerDirection != KeyEvent.KEYCODE_UNKNOWN) {
             drawNavigationOverlay(canvas)
         }
-        if (trailAlpha <= 0f || trace.size < 2) return
+        if (!swipeEnabled || trailAlpha <= 0f || trace.size < 2) return
         rebuildTrailPath()
         trailGlowPaint.color = Color.argb(
             (52 * trailAlpha).toInt(),
@@ -358,6 +375,21 @@ internal class SwipeObservingKeyboardLayout(context: Context) : LinearLayout(con
         trailAlpha = 0f
         trace.clear()
         invalidate()
+    }
+
+    /** Clears every observer-owned event without touching normal key input. */
+    fun cancelSwipeRecognition() {
+        if (swiping) listener?.onSwipeCancelled()
+        removeCallbacks(dispatchDeferredDown)
+        deferredDown?.let { down ->
+            if (deferredDownSent || cancelledChild) {
+                val cancel = MotionEvent.obtain(down).apply { action = MotionEvent.ACTION_CANCEL }
+                super.dispatchTouchEvent(cancel)
+                cancel.recycle()
+            }
+        }
+        clearTrail()
+        reset()
     }
 
     private fun keyCodeAt(x: Float, y: Float): Int {

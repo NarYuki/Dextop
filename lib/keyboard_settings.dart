@@ -18,7 +18,9 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
   static const _storageKey = 'laptop_swipe_languages_json';
   static const _swipeEnabledKey = 'laptop_swipe_enabled';
   static const _candidatesEnabledKey = 'laptop_swipe_candidates_enabled';
+  static const _hapticsEnabledKey = 'laptop_keyboard_haptics_enabled';
   static const _blackBerryEnabledKey = 'experimental_blackberry_mode';
+  static const _blackBerryAutoStartKey = 'blackberry_auto_start';
   static const _channel = MethodChannel('app.freedextop/display');
   static const _languages = <(String, String)>[
     ('en', 'English'),
@@ -37,7 +39,10 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
   Set<String> _enabled = {'en'};
   bool _swipeEnabled = false;
   bool _candidatesEnabled = false;
+  bool _hapticsEnabled = true;
   bool _blackBerryEnabled = false;
+  bool _blackBerryAutoStart = false;
+  bool _foldableDevice = true;
 
   @override
   void initState() {
@@ -47,6 +52,11 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
 
   Future<void> _load() async {
     final prefs = await SharedPreferences.getInstance();
+    var foldableDevice = true;
+    try {
+      foldableDevice =
+          await _channel.invokeMethod<bool>('isFoldableDevice') ?? true;
+    } catch (_) {}
     final raw = prefs.getString(_storageKey);
     final parsed = <String>{};
     if (raw != null) {
@@ -61,7 +71,10 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
         _enabled = parsed;
         _swipeEnabled = prefs.getBool(_swipeEnabledKey) ?? false;
         _candidatesEnabled = prefs.getBool(_candidatesEnabledKey) ?? false;
+        _hapticsEnabled = prefs.getBool(_hapticsEnabledKey) ?? true;
         _blackBerryEnabled = prefs.getBool(_blackBerryEnabledKey) ?? false;
+        _blackBerryAutoStart = prefs.getBool(_blackBerryAutoStartKey) ?? false;
+        _foldableDevice = foldableDevice;
       });
     }
   }
@@ -75,10 +88,18 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
         _swipeEnabled = value;
       } else if (key == _candidatesEnabledKey) {
         _candidatesEnabled = value;
+      } else if (key == _hapticsEnabledKey) {
+        _hapticsEnabled = value;
       } else if (key == _blackBerryEnabledKey) {
         _blackBerryEnabled = value;
+        if (!value) _blackBerryAutoStart = false;
+      } else if (key == _blackBerryAutoStartKey) {
+        _blackBerryAutoStart = value;
       }
     });
+    if (key == _blackBerryEnabledKey && !value) {
+      await prefs.setBool(_blackBerryAutoStartKey, false);
+    }
     await _channel.invokeMethod<void>('laptopSwipeLanguagesChanged', {
       'enabled': key == _swipeEnabledKey ? value : _swipeEnabled,
     });
@@ -166,6 +187,26 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
                     : (value) => _setOption(_blackBerryEnabledKey, value),
                 title: Text(l.experimentalBlackBerryMode),
                 subtitle: Text(l.experimentalBlackBerryModeDescription),
+              ),
+              if (!_foldableDevice) ...[
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.play_circle_outline_rounded),
+                  value: _blackBerryAutoStart,
+                  onChanged: _blackBerryEnabled && !widget.isRunning
+                      ? (value) => _setOption(_blackBerryAutoStartKey, value)
+                      : null,
+                  title: Text(l.blackBerryAutoStart),
+                  subtitle: Text(l.blackBerryAutoStartDescription),
+                ),
+              ],
+              const Divider(height: 1),
+              SwitchListTile(
+                secondary: const Icon(Icons.vibration_rounded),
+                value: _hapticsEnabled,
+                onChanged: (value) => _setOption(_hapticsEnabledKey, value),
+                title: Text(l.keyboardHaptics),
+                subtitle: Text(l.keyboardHapticsDescription),
               ),
               const Divider(height: 1),
               SwitchListTile(

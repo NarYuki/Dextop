@@ -626,7 +626,7 @@ abstract class AppLocalizations {
   /// No description provided for @setupSystemDescription.
   ///
   /// In ja, this message translates to:
-  /// **'DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIなどの挙動を制御します。'**
+  /// **'DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIを制御します。また、AccessibilityService API（ユーザー補助）をデスクトップオーバーレイの表示と操作、ユーザーが行ったタッチ・ポインター・ナビゲーション入力の転送、セッション終了時の端末UI復元に使用します。ユーザー補助のデータを収集、保存、共有することはありません。'**
   String get setupSystemDescription;
 
   /// No description provided for @setupDisclaimer.
@@ -2738,7 +2738,7 @@ abstract class AppLocalizations {
   /// No description provided for @keyboardSwipeLanguagesDescription.
   ///
   /// In ja, this message translates to:
-  /// **'MENUを長押しした時に表示する言語を選択します。初期状態では英語のみ有効です。'**
+  /// **'MENUを長押しした時に表示する言語を選択します。'**
   String get keyboardSwipeLanguagesDescription;
 
   /// No description provided for @keyboardSwipeAddLanguage.
@@ -3196,6 +3196,900 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'スマートフォン向けのコンパクトな物理キーボード風配列をオーバーレイから利用できるようにします'**
   String get experimentalBlackBerryModeDescription;
+
+  /// No description provided for @blackBerryAutoStart.
+  ///
+  /// In ja, this message translates to:
+  /// **'BlackBerryモードを自動で開く'**
+  String get blackBerryAutoStart;
+
+  /// No description provided for @blackBerryAutoStartDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'縦持ちでDextopセッションを開始した時にBlackBerryキーボードを自動で表示します'**
+  String get blackBerryAutoStartDescription;
+
+  /// No description provided for @keyboardHaptics.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードのハプティック'**
+  String get keyboardHaptics;
+
+  /// No description provided for @keyboardHapticsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーやトラックパッドを操作した時に振動します'**
+  String get keyboardHapticsDescription;
+
+  /// No description provided for @nativeUnknownPermissionResult.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuから不明な権限結果が返されました'**
+  String get nativeUnknownPermissionResult;
+
+  /// No description provided for @nativeDevice.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末'**
+  String get nativeDevice;
+
+  /// No description provided for @nativeCoverDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバーディスプレイ'**
+  String get nativeCoverDisplay;
+
+  /// No description provided for @nativeCoverDisplayDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバー画面で通常のAndroidを開くか、独立したDextopセッションを作成します'**
+  String get nativeCoverDisplayDescription;
+
+  /// No description provided for @nativeCoverAndroidDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバー画面を通常のAndroidとして使用します。メイン側のDextopセッションは継続します。'**
+  String get nativeCoverAndroidDescription;
+
+  /// No description provided for @nativeCoverDextopDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバー画面にメイン側とは独立したDextopセッションを作成します。'**
+  String get nativeCoverDextopDescription;
+
+  /// No description provided for @nativeOpenCoverAndroid.
+  ///
+  /// In ja, this message translates to:
+  /// **'通常のAndroidを開く'**
+  String get nativeOpenCoverAndroid;
+
+  /// No description provided for @nativeStopCoverAndroid.
+  ///
+  /// In ja, this message translates to:
+  /// **'Androidセッションを終了'**
+  String get nativeStopCoverAndroid;
+
+  /// No description provided for @nativeStartCoverDextop.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバー側にDextopセッションを作成'**
+  String get nativeStartCoverDextop;
+
+  /// No description provided for @nativeStopCoverDextop.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバー側のセッションを終了'**
+  String get nativeStopCoverDextop;
+
+  /// No description provided for @nativeCoverDisplayFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバーディスプレイを変更できませんでした'**
+  String get nativeCoverDisplayFailed;
+
+  /// No description provided for @nativeSwitchToResolutionSuffix.
+  ///
+  /// In ja, this message translates to:
+  /// **'この解像度とDPIへ切り替えます'**
+  String get nativeSwitchToResolutionSuffix;
+
+  /// No description provided for @nativeShizukuUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuを利用できません'**
+  String get nativeShizukuUnavailable;
+
+  /// No description provided for @nativeSelectedAppCannotLaunch.
+  ///
+  /// In ja, this message translates to:
+  /// **'選択したアプリを起動できません'**
+  String get nativeSelectedAppCannotLaunch;
+
+  /// No description provided for @nativeShizukuBinderUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuへの接続を利用できません'**
+  String get nativeShizukuBinderUnavailable;
+
+  /// No description provided for @nativeMirrorSurfaceUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'ミラー表示領域を利用できません'**
+  String get nativeMirrorSurfaceUnavailable;
+
+  /// No description provided for @nativeRotationReleaseUnsupported.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面回転の固定解除に対応していません'**
+  String get nativeRotationReleaseUnsupported;
+
+  /// No description provided for @nativePerformanceHudFormat.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$.1f FPS  |  %2\$d MB\nバッテリー: %3\$d%%  |  %4\$s\nCPU温度: %6\$s  |  入力: %5\$s'**
+  String get nativePerformanceHudFormat;
+
+  /// No description provided for @nativeInputMouse.
+  ///
+  /// In ja, this message translates to:
+  /// **'マウス'**
+  String get nativeInputMouse;
+
+  /// No description provided for @nativeInputTouch.
+  ///
+  /// In ja, this message translates to:
+  /// **'タップ'**
+  String get nativeInputTouch;
+
+  /// No description provided for @nativeInputTrackpad.
+  ///
+  /// In ja, this message translates to:
+  /// **'トラックパッド'**
+  String get nativeInputTrackpad;
+
+  /// No description provided for @nativeInputIdle.
+  ///
+  /// In ja, this message translates to:
+  /// **'待機中'**
+  String get nativeInputIdle;
+
+  /// No description provided for @nativePhysicalMouse.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理マウスの入力先を切り替え'**
+  String get nativePhysicalMouse;
+
+  /// No description provided for @nativePhysicalKeyboard.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理キーボードの入力先を切り替え'**
+  String get nativePhysicalKeyboard;
+
+  /// No description provided for @nativePhysicalMouseDemo.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理マウスの入力先をAndroidとDextopの間で切り替えます。対応端末で外部ディスプレイ接続中に表示されます'**
+  String get nativePhysicalMouseDemo;
+
+  /// No description provided for @nativePhysicalKeyboardDemo.
+  ///
+  /// In ja, this message translates to:
+  /// **'物理キーボードの入力先をAndroidとDextopの間で切り替えます。対応端末で外部ディスプレイ接続中に表示されます'**
+  String get nativePhysicalKeyboardDemo;
+
+  /// No description provided for @nativeTheThreeFingerGestureIsAnEssential.
+  ///
+  /// In ja, this message translates to:
+  /// **'3本指ジェスチャーはDextop使用中に必須の操作方法です。\\n各ボタンをタップすると、ここに機能の説明が表示されます'**
+  String get nativeTheThreeFingerGestureIsAnEssential;
+
+  /// No description provided for @nativeAsusZenuiRogUiDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'ASUS ZenUI / ROG UI デスクトップ'**
+  String get nativeAsusZenuiRogUiDesktop;
+
+  /// No description provided for @nativeAndroidDesktopFreeform.
+  ///
+  /// In ja, this message translates to:
+  /// **'Android デスクトップ（Freeform）'**
+  String get nativeAndroidDesktopFreeform;
+
+  /// No description provided for @nativeColorosDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'ColorOS 系デスクトップ'**
+  String get nativeColorosDesktop;
+
+  /// No description provided for @nativeAdjustTheVolumeOfPlaybackOnDextop.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopで再生する音量を調整します'**
+  String get nativeAdjustTheVolumeOfPlaybackOnDextop;
+
+  /// No description provided for @nativeSwitchBetweenPortraitAndLandscapeOrientationOf.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopの縦向きと横向きを切り替えます'**
+  String get nativeSwitchBetweenPortraitAndLandscapeOrientationOf;
+
+  /// No description provided for @nativeSwitchDextopResolutionAndDpi.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopの解像度とDPIを切り替えます'**
+  String get nativeSwitchDextopResolutionAndDpi;
+
+  /// No description provided for @nativePauseDextopAndReturnYourAndroidTo.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopを一時停止し、Androidを通常操作できる状態へ戻します'**
+  String get nativePauseDextopAndReturnYourAndroidTo;
+
+  /// No description provided for @nativeTerminateYourDextopSession.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopセッションを終了します'**
+  String get nativeTerminateYourDextopSession;
+
+  /// No description provided for @nativeAdjustTheBrightnessOfTheDesktopDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop表示の明るさを調整します'**
+  String get nativeAdjustTheBrightnessOfTheDesktopDisplay;
+
+  /// No description provided for @nativeHonorMagicosDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'HONOR MagicOS デスクトップ'**
+  String get nativeHonorMagicosDesktop;
+
+  /// No description provided for @nativeHuaweiEmuiDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'Huawei EMUI デスクトップ'**
+  String get nativeHuaweiEmuiDesktop;
+
+  /// No description provided for @nativeHyperosMiuiDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'HyperOS / MIUI デスクトップ'**
+  String get nativeHyperosMiuiDesktop;
+
+  /// No description provided for @nativeMotorolaLenovoDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'Motorola / Lenovo デスクトップ'**
+  String get nativeMotorolaLenovoDesktop;
+
+  /// No description provided for @nativeNothingOsDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'Nothing OS デスクトップ'**
+  String get nativeNothingOsDesktop;
+
+  /// No description provided for @nativeOriginosFuntouchOsDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'OriginOS / Funtouch OS デスクトップ'**
+  String get nativeOriginosFuntouchOsDesktop;
+
+  /// No description provided for @nativePixelAndroidDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'Pixel Android デスクトップ'**
+  String get nativePixelAndroidDesktop;
+
+  /// No description provided for @nativeShizukuPermissionCheckTimedOut.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuの権限確認がタイムアウトしました'**
+  String get nativeShizukuPermissionCheckTimedOut;
+
+  /// No description provided for @nativeRequiresConnectionToShizukuAndPermissions.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuへの接続と権限許可が必要です'**
+  String get nativeRequiresConnectionToShizukuAndPermissions;
+
+  /// No description provided for @nativePermissionDeniedToShizuku.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuへの権限が拒否されました'**
+  String get nativePermissionDeniedToShizuku;
+
+  /// No description provided for @nativePleaseInstallShizuku.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuをインストールしてください'**
+  String get nativePleaseInstallShizuku;
+
+  /// No description provided for @nativePleaseStartShizuku.
+  ///
+  /// In ja, this message translates to:
+  /// **'Shizukuを起動してください'**
+  String get nativePleaseStartShizuku;
+
+  /// No description provided for @nativeRemoveThisResolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'この解像度を削除'**
+  String get nativeRemoveThisResolution;
+
+  /// No description provided for @nativeNoAppSelected.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリが選択されていません'**
+  String get nativeNoAppSelected;
+
+  /// No description provided for @nativeCouldNotStartApp.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリを起動できませんでした'**
+  String get nativeCouldNotStartApp;
+
+  /// No description provided for @nativeAddCustomResolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'カスタム解像度を追加'**
+  String get nativeAddCustomResolution;
+
+  /// No description provided for @nativeRotate180.
+  ///
+  /// In ja, this message translates to:
+  /// **'180度回転'**
+  String get nativeRotate180;
+
+  /// No description provided for @nativeCast.
+  ///
+  /// In ja, this message translates to:
+  /// **'キャスト'**
+  String get nativeCast;
+
+  /// No description provided for @nativeCastDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'キャスト先を選択'**
+  String get nativeCastDescription;
+
+  /// No description provided for @nativeNoCastDevices.
+  ///
+  /// In ja, this message translates to:
+  /// **'利用可能なGoogle Castデバイスがありません'**
+  String get nativeNoCastDevices;
+
+  /// No description provided for @nativeCastUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'Google Castを初期化できませんでした'**
+  String get nativeCastUnavailable;
+
+  /// No description provided for @nativeCasting.
+  ///
+  /// In ja, this message translates to:
+  /// **'キャスト中'**
+  String get nativeCasting;
+
+  /// No description provided for @nativeStopCasting.
+  ///
+  /// In ja, this message translates to:
+  /// **'キャストを終了'**
+  String get nativeStopCasting;
+
+  /// No description provided for @nativeScanAgain.
+  ///
+  /// In ja, this message translates to:
+  /// **'再スキャン'**
+  String get nativeScanAgain;
+
+  /// No description provided for @nativeScanning.
+  ///
+  /// In ja, this message translates to:
+  /// **'スキャン中…'**
+  String get nativeScanning;
+
+  /// No description provided for @nativeCursor.
+  ///
+  /// In ja, this message translates to:
+  /// **'カーソル'**
+  String get nativeCursor;
+
+  /// No description provided for @nativeTap.
+  ///
+  /// In ja, this message translates to:
+  /// **'タップ'**
+  String get nativeTap;
+
+  /// No description provided for @nativeTapToExit.
+  ///
+  /// In ja, this message translates to:
+  /// **'タップして終了'**
+  String get nativeTapToExit;
+
+  /// No description provided for @nativeTapToOpen.
+  ///
+  /// In ja, this message translates to:
+  /// **'タップして開く'**
+  String get nativeTapToOpen;
+
+  /// No description provided for @nativeYouCanRearrangeTheLayoutInThe.
+  ///
+  /// In ja, this message translates to:
+  /// **'ボタンを長押しして、操作パネル内の配置を並べ替えられます'**
+  String get nativeYouCanRearrangeTheLayoutInThe;
+
+  /// No description provided for @nativeWorkSpace.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワークスペース'**
+  String get nativeWorkSpace;
+
+  /// No description provided for @nativeExpandWorkspace.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワークスペースを展開'**
+  String get nativeExpandWorkspace;
+
+  /// No description provided for @nativeTemporarilyReturnToAndroid.
+  ///
+  /// In ja, this message translates to:
+  /// **'一時的にAndroidに戻る'**
+  String get nativeTemporarilyReturnToAndroid;
+
+  /// No description provided for @nativeLaptopMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'ラップトップモード'**
+  String get nativeLaptopMode;
+
+  /// No description provided for @nativeLaptopModeDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'折りたたみ端末の下半分にキーボードとトラックパッドを表示します'**
+  String get nativeLaptopModeDescription;
+
+  /// No description provided for @nativeKeyboardStyle.
+  ///
+  /// In ja, this message translates to:
+  /// **'スタイル'**
+  String get nativeKeyboardStyle;
+
+  /// No description provided for @nativeBlackBerryMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'BlackBerryモード'**
+  String get nativeBlackBerryMode;
+
+  /// No description provided for @nativeBlackBerryLayout.
+  ///
+  /// In ja, this message translates to:
+  /// **'BlackBerryレイアウト'**
+  String get nativeBlackBerryLayout;
+
+  /// No description provided for @nativeAutomaticLayout.
+  ///
+  /// In ja, this message translates to:
+  /// **'自動レイアウト'**
+  String get nativeAutomaticLayout;
+
+  /// No description provided for @nativeManualHeight.
+  ///
+  /// In ja, this message translates to:
+  /// **'高さを手動調整'**
+  String get nativeManualHeight;
+
+  /// No description provided for @nativeKeyboardHeight.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードの高さ'**
+  String get nativeKeyboardHeight;
+
+  /// No description provided for @nativeBlackBerryModeDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'スマートフォン向けのコンパクトなキーボードだけを表示します'**
+  String get nativeBlackBerryModeDescription;
+
+  /// No description provided for @nativeKeyboardSettings.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボード設定'**
+  String get nativeKeyboardSettings;
+
+  /// No description provided for @nativeKeyboardSettingsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ラップトップキーボードの外観をカスタマイズします'**
+  String get nativeKeyboardSettingsDescription;
+
+  /// No description provided for @nativeTheme.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマ'**
+  String get nativeTheme;
+
+  /// No description provided for @nativeSwipeLanguage.
+  ///
+  /// In ja, this message translates to:
+  /// **'なぞり入力の言語'**
+  String get nativeSwipeLanguage;
+
+  /// No description provided for @nativeSwipeLanguageDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'タップ入力は現在のIMEを引き続き使用します'**
+  String get nativeSwipeLanguageDescription;
+
+  /// No description provided for @nativeKeyboardThemeStandard.
+  ///
+  /// In ja, this message translates to:
+  /// **'標準'**
+  String get nativeKeyboardThemeStandard;
+
+  /// No description provided for @nativeKeyboardThemeCrimson.
+  ///
+  /// In ja, this message translates to:
+  /// **'クリムゾン'**
+  String get nativeKeyboardThemeCrimson;
+
+  /// No description provided for @nativeKeyboardThemeCloud.
+  ///
+  /// In ja, this message translates to:
+  /// **'Cloud Pop'**
+  String get nativeKeyboardThemeCloud;
+
+  /// No description provided for @nativeKeyboardThemeAmoled.
+  ///
+  /// In ja, this message translates to:
+  /// **'AMOLED'**
+  String get nativeKeyboardThemeAmoled;
+
+  /// No description provided for @nativeKeyboardThemeStandardDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'落ち着いたダークキーボード'**
+  String get nativeKeyboardThemeStandardDescription;
+
+  /// No description provided for @nativeKeyboardThemeCrimsonDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'折りたたみPCをイメージした暖色のクリムゾン'**
+  String get nativeKeyboardThemeCrimsonDescription;
+
+  /// No description provided for @nativeKeyboardThemeCloudDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'やわらかな雲色のキーボード'**
+  String get nativeKeyboardThemeCloudDescription;
+
+  /// No description provided for @nativeKeyboardThemeAmoledDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'黒を基調にした省電力キーボード'**
+  String get nativeKeyboardThemeAmoledDescription;
+
+  /// No description provided for @nativeKeyboardThemeCustomDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'カスタムキーボードテーマ'**
+  String get nativeKeyboardThemeCustomDescription;
+
+  /// No description provided for @nativeOpenDextopWithYourSavedAppPlacement.
+  ///
+  /// In ja, this message translates to:
+  /// **'保存されたアプリ配置でDextopを開きます'**
+  String get nativeOpenDextopWithYourSavedAppPlacement;
+
+  /// No description provided for @nativeSaveAndApply.
+  ///
+  /// In ja, this message translates to:
+  /// **'保存して適用'**
+  String get nativeSaveAndApply;
+
+  /// No description provided for @nativeFailedToSaveUnableToRetrieveRunning.
+  ///
+  /// In ja, this message translates to:
+  /// **'保存できませんでした：Dextop上で起動中のアプリを取得できません。'**
+  String get nativeFailedToSaveUnableToRetrieveRunning;
+
+  /// No description provided for @nativeFailedToSaveFailedToWriteTo.
+  ///
+  /// In ja, this message translates to:
+  /// **'保存できませんでした：端末ストレージへの書き込みに失敗しました。'**
+  String get nativeFailedToSaveFailedToWriteTo;
+
+  /// No description provided for @nativeViewSavedWorkspacesAndSaveCurrentArrangement.
+  ///
+  /// In ja, this message translates to:
+  /// **'保存済みワークスペースの表示と、現在の配置の保存ができます'**
+  String get nativeViewSavedWorkspacesAndSaveCurrentArrangement;
+
+  /// No description provided for @nativeNoSavedWorkspaces.
+  ///
+  /// In ja, this message translates to:
+  /// **'保存済みワークスペースはありません'**
+  String get nativeNoSavedWorkspaces;
+
+  /// No description provided for @nativePleaseStartDextopFirst.
+  ///
+  /// In ja, this message translates to:
+  /// **'先にDextopを開始してください'**
+  String get nativePleaseStartDextopFirst;
+
+  /// No description provided for @nativeReconnect.
+  ///
+  /// In ja, this message translates to:
+  /// **'再接続'**
+  String get nativeReconnect;
+
+  /// No description provided for @nativeWidth.
+  ///
+  /// In ja, this message translates to:
+  /// **'幅'**
+  String get nativeWidth;
+
+  /// No description provided for @nativeReturn.
+  ///
+  /// In ja, this message translates to:
+  /// **'戻る'**
+  String get nativeReturn;
+
+  /// No description provided for @nativePermissionRequestInProgress.
+  ///
+  /// In ja, this message translates to:
+  /// **'権限リクエストが進行中です'**
+  String get nativePermissionRequestInProgress;
+
+  /// No description provided for @nativeHorizontalHolding.
+  ///
+  /// In ja, this message translates to:
+  /// **'横持ち'**
+  String get nativeHorizontalHolding;
+
+  /// No description provided for @nativeSaveTheCurrentAppArrangementAsA.
+  ///
+  /// In ja, this message translates to:
+  /// **'現在のアプリ配置をワークスペースとして保存します'**
+  String get nativeSaveTheCurrentAppArrangementAsA;
+
+  /// No description provided for @nativeAddCurrentAppPlacement.
+  ///
+  /// In ja, this message translates to:
+  /// **'現在のアプリ配置を追加'**
+  String get nativeAddCurrentAppPlacement;
+
+  /// No description provided for @nativeScreenBrightness.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面の明るさ'**
+  String get nativeScreenBrightness;
+
+  /// No description provided for @nativeUseTheScreenAsATrackpadTo.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面をトラックパッドとして使い、カーソルを操作します'**
+  String get nativeUseTheScreenAsATrackpadTo;
+
+  /// No description provided for @nativeEnd.
+  ///
+  /// In ja, this message translates to:
+  /// **'終了'**
+  String get nativeEnd;
+
+  /// No description provided for @nativeEdit.
+  ///
+  /// In ja, this message translates to:
+  /// **'編集'**
+  String get nativeEdit;
+
+  /// No description provided for @nativeVerticalHolding.
+  ///
+  /// In ja, this message translates to:
+  /// **'縦持ち'**
+  String get nativeVerticalHolding;
+
+  /// No description provided for @nativeReconnectIfYouHaveDisplayOrConnection.
+  ///
+  /// In ja, this message translates to:
+  /// **'表示や接続に問題がある場合に再接続します'**
+  String get nativeReconnectIfYouHaveDisplayOrConnection;
+
+  /// No description provided for @nativeDisplayProfileIsOutOfRange.
+  ///
+  /// In ja, this message translates to:
+  /// **'表示プロファイルが範囲外です'**
+  String get nativeDisplayProfileIsOutOfRange;
+
+  /// No description provided for @nativeResolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'解像度'**
+  String get nativeResolution;
+
+  /// No description provided for @nativeEditResolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'解像度を編集'**
+  String get nativeEditResolution;
+
+  /// No description provided for @nativeAddResolution.
+  ///
+  /// In ja, this message translates to:
+  /// **'解像度を追加'**
+  String get nativeAddResolution;
+
+  /// No description provided for @nativeSendsTheTouchedPositionDirectlyToDextop.
+  ///
+  /// In ja, this message translates to:
+  /// **'触れた位置をDextopへ直接タップとして送ります'**
+  String get nativeSendsTheTouchedPositionDirectlyToDextop;
+
+  /// No description provided for @nativeAddAndApply.
+  ///
+  /// In ja, this message translates to:
+  /// **'追加して適用'**
+  String get nativeAddAndApply;
+
+  /// No description provided for @nativeEditPlacement.
+  ///
+  /// In ja, this message translates to:
+  /// **'配置を編集'**
+  String get nativeEditPlacement;
+
+  /// No description provided for @nativeCompletePlacementEdit.
+  ///
+  /// In ja, this message translates to:
+  /// **'配置編集を完了'**
+  String get nativeCompletePlacementEdit;
+
+  /// No description provided for @nativeVolume.
+  ///
+  /// In ja, this message translates to:
+  /// **'音量'**
+  String get nativeVolume;
+
+  /// No description provided for @nativeHeight.
+  ///
+  /// In ja, this message translates to:
+  /// **'高さ'**
+  String get nativeHeight;
+
+  /// No description provided for @multiTouchUpgradeTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリが更新され、ジェスチャーが変更されました。'**
+  String get multiTouchUpgradeTitle;
+
+  /// No description provided for @multiTouchUpgradeBody.
+  ///
+  /// In ja, this message translates to:
+  /// **''**
+  String get multiTouchUpgradeBody;
+
+  /// No description provided for @multiTouchUpgradeLandscape.
+  ///
+  /// In ja, this message translates to:
+  /// **'横向きの場合\\n画面左から右に3本指でスワイプ'**
+  String get multiTouchUpgradeLandscape;
+
+  /// No description provided for @multiTouchUpgradePortrait.
+  ///
+  /// In ja, this message translates to:
+  /// **'縦持ちの場合\\n画面上から下に3本指でスワイプ'**
+  String get multiTouchUpgradePortrait;
+
+  /// No description provided for @multiTouchUpgradeClose.
+  ///
+  /// In ja, this message translates to:
+  /// **'確認'**
+  String get multiTouchUpgradeClose;
+
+  /// No description provided for @appUpdatedTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'{version}へ更新されました！'**
+  String appUpdatedTitle(String version);
+
+  /// No description provided for @appUpdatedMessage.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopが最新バージョンになりました。'**
+  String get appUpdatedMessage;
+
+  /// No description provided for @androidSwipeImeLabel.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop なぞり入力'**
+  String get androidSwipeImeLabel;
+
+  /// No description provided for @androidAccessibilityServiceDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopの仮想ディスプレイ、入力、操作パネルを制御します'**
+  String get androidAccessibilityServiceDescription;
+
+  /// No description provided for @androidEmbeddedPairingChannel.
+  ///
+  /// In ja, this message translates to:
+  /// **'内蔵アクセスサービスの設定'**
+  String get androidEmbeddedPairingChannel;
+
+  /// No description provided for @androidEmbeddedPairingTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopをペア設定'**
+  String get androidEmbeddedPairingTitle;
+
+  /// No description provided for @androidEmbeddedPairingNotificationText.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワイヤレスデバッグに表示された6桁のコードを入力してください'**
+  String get androidEmbeddedPairingNotificationText;
+
+  /// No description provided for @androidEmbeddedPairingCode.
+  ///
+  /// In ja, this message translates to:
+  /// **'6桁のペア設定コード'**
+  String get androidEmbeddedPairingCode;
+
+  /// No description provided for @androidEmbeddedPairingEnterCode.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定コードを入力'**
+  String get androidEmbeddedPairingEnterCode;
+
+  /// No description provided for @androidEmbeddedPairingSuccess.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopの接続が完了しました'**
+  String get androidEmbeddedPairingSuccess;
+
+  /// No description provided for @androidEmbeddedPairingSuccessMessage.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定が完了しました。Dextopに戻ってください。'**
+  String get androidEmbeddedPairingSuccessMessage;
+
+  /// No description provided for @androidEmbeddedPairingFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopを接続できませんでした'**
+  String get androidEmbeddedPairingFailed;
+
+  /// No description provided for @androidEmbeddedPairingInvalidCode.
+  ///
+  /// In ja, this message translates to:
+  /// **'6桁のコードを入力してください'**
+  String get androidEmbeddedPairingInvalidCode;
+
+  /// No description provided for @androidEmbeddedPairingSearching.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定サービスを検索中'**
+  String get androidEmbeddedPairingSearching;
+
+  /// No description provided for @androidEmbeddedPairingServiceFound.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定サービスが見つかりました'**
+  String get androidEmbeddedPairingServiceFound;
+
+  /// No description provided for @androidEmbeddedPairingServiceNotFound.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定サービスが見つかりません'**
+  String get androidEmbeddedPairingServiceNotFound;
+
+  /// No description provided for @androidEmbeddedPairingRetry.
+  ///
+  /// In ja, this message translates to:
+  /// **'再試行'**
+  String get androidEmbeddedPairingRetry;
+
+  /// No description provided for @androidEmbeddedPairingInProgress.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定中'**
+  String get androidEmbeddedPairingInProgress;
 }
 
 class _AppLocalizationsDelegate

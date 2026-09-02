@@ -16,13 +16,26 @@ extension _ResolutionUi on _HomeScreenState {
 
   Widget orientationControl() {
     final l = AppLocalizations.of(context);
-    return independentSegmentSwitch<bool>(
+    return independentSegmentSwitch<_HomeOrientationMode>(
       choices: [
-        (false, l.landscape, Icons.stay_current_landscape_rounded),
-        (true, l.portrait, Icons.stay_current_portrait_rounded),
+        (
+          _HomeOrientationMode.automatic,
+          l.automaticResolution,
+          Icons.screen_rotation_rounded,
+        ),
+        (
+          _HomeOrientationMode.landscape,
+          l.landscape,
+          Icons.stay_current_landscape_rounded,
+        ),
+        (
+          _HomeOrientationMode.portrait,
+          l.portrait,
+          Icons.stay_current_portrait_rounded,
+        ),
       ],
-      selected: portrait,
-      onSelected: active ? null : setPortrait,
+      selected: orientationMode,
+      onSelected: active ? null : setHomeOrientation,
     );
   }
 
@@ -45,7 +58,7 @@ extension _ResolutionUi on _HomeScreenState {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    AppStrings.tr('resolution'),
+                    currentLocalizations().resolution,
                     style: Theme.of(context).textTheme.headlineMedium,
                   ),
                   SizedBox(height: 12),
@@ -62,7 +75,7 @@ extension _ResolutionUi on _HomeScreenState {
                               SizedBox(width: 12),
                               Expanded(
                                 child: Text(
-                                  AppStrings.tr('displayMagnification'),
+                                  currentLocalizations().displayMagnification,
                                   style: Theme.of(
                                     context,
                                   ).textTheme.titleMedium,
@@ -73,7 +86,8 @@ extension _ResolutionUi on _HomeScreenState {
                           ),
                           SizedBox(height: 6),
                           Text(
-                            AppStrings.tr('displayMagnificationDescription'),
+                            currentLocalizations()
+                                .displayMagnificationDescription,
                             style: Theme.of(context).textTheme.bodySmall,
                           ),
                           SizedBox(height: 4),
@@ -121,7 +135,7 @@ extension _ResolutionUi on _HomeScreenState {
                         children: [
                           if (profile.id == item.id) Icon(Icons.check_rounded),
                           IconButton(
-                            tooltip: AppStrings.tr('uiEdit'),
+                            tooltip: currentLocalizations().uiEdit,
                             icon: Icon(Icons.edit_rounded),
                             onPressed: () async {
                               Navigator.pop(sheetContext);
@@ -147,7 +161,7 @@ extension _ResolutionUi on _HomeScreenState {
                         Navigator.pop(sheetContext);
                         await showResolutionEditor(null);
                       },
-                      label: Text(AppStrings.tr('customAdd')),
+                      label: Text(currentLocalizations().customAdd),
                     ),
                   ),
                 ],
@@ -187,8 +201,8 @@ extension _ResolutionUi on _HomeScreenState {
             children: [
               Text(
                 existing == null
-                    ? AppStrings.tr('customAdd')
-                    : AppStrings.tr('editResolution'),
+                    ? currentLocalizations().customAdd
+                    : currentLocalizations().editResolution,
                 style: Theme.of(context).textTheme.headlineSmall,
               ),
               SizedBox(height: 20),
@@ -197,7 +211,7 @@ extension _ResolutionUi on _HomeScreenState {
                   Expanded(
                     child: numberField(
                       width,
-                      AppStrings.tr('width'),
+                      currentLocalizations().width,
                       enabled: !isDevice,
                     ),
                   ),
@@ -205,7 +219,7 @@ extension _ResolutionUi on _HomeScreenState {
                   Expanded(
                     child: numberField(
                       height,
-                      AppStrings.tr('height'),
+                      currentLocalizations().height,
                       enabled: !isDevice,
                     ),
                   ),
@@ -261,8 +275,8 @@ extension _ResolutionUi on _HomeScreenState {
                   },
                   child: Text(
                     existing == null
-                        ? AppStrings.tr('add')
-                        : AppStrings.tr('save'),
+                        ? currentLocalizations().add
+                        : currentLocalizations().save,
                   ),
                 ),
               ),
@@ -272,7 +286,7 @@ extension _ResolutionUi on _HomeScreenState {
                   width: double.infinity,
                   child: TextButton.icon(
                     icon: Icon(Icons.delete_outline_rounded),
-                    label: Text(AppStrings.tr('deleteResolution')),
+                    label: Text(currentLocalizations().deleteResolution),
                     onPressed: () async {
                       mutate(() {
                         profiles.removeWhere((item) => item.id == existing.id);

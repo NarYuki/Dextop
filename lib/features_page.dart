@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:free_dextop/analytics_service.dart';
-import 'package:free_dextop/app_strings.dart';
+import 'package:free_dextop/l10n/current_localizations.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/setup_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -50,64 +50,64 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
 
   static final workspaceLayouts = <String, Map<String, Object>>{
     'three_columns': {
-      'label': AppStrings.tr('uiLeftCenterRight'),
+      'label': currentLocalizations().uiLeftCenterRight,
       'positions': <String, String>{
-        'left': AppStrings.tr('uiLeft'),
-        'center': AppStrings.tr('uiCenter'),
-        'right': AppStrings.tr('uiRight'),
+        'left': currentLocalizations().uiLeft,
+        'center': currentLocalizations().uiCenter,
+        'right': currentLocalizations().uiRight,
       },
     },
     'two_columns': {
-      'label': AppStrings.tr('uiDividedIntoLeftAndRight'),
+      'label': currentLocalizations().uiDividedIntoLeftAndRight,
       'positions': <String, String>{
-        'half_left': AppStrings.tr('uiLeftHalf'),
-        'half_right': AppStrings.tr('uiRightHalf'),
+        'half_left': currentLocalizations().uiLeftHalf,
+        'half_right': currentLocalizations().uiRightHalf,
       },
     },
     'top_two_bottom': {
-      'label': AppStrings.tr('uiUpperLeftUpperRightLowerHalf'),
+      'label': currentLocalizations().uiUpperLeftUpperRightLowerHalf,
       'positions': <String, String>{
-        'top_left': AppStrings.tr('uiUpperLeft'),
-        'top_right': AppStrings.tr('uiUpperRight'),
-        'bottom_half': AppStrings.tr('uiLowerHalf'),
+        'top_left': currentLocalizations().uiUpperLeft,
+        'top_right': currentLocalizations().uiUpperRight,
+        'bottom_half': currentLocalizations().uiLowerHalf,
       },
     },
     'four_grid': {
-      'label': AppStrings.tr('ui4Divisions'),
+      'label': currentLocalizations().ui4Divisions,
       'positions': <String, String>{
-        'grid_top_left': AppStrings.tr('uiUpperLeft'),
-        'grid_top_right': AppStrings.tr('uiUpperRight'),
-        'grid_bottom_left': AppStrings.tr('uiLowerLeft'),
-        'grid_bottom_right': AppStrings.tr('uiLowerRight'),
+        'grid_top_left': currentLocalizations().uiUpperLeft,
+        'grid_top_right': currentLocalizations().uiUpperRight,
+        'grid_bottom_left': currentLocalizations().uiLowerLeft,
+        'grid_bottom_right': currentLocalizations().uiLowerRight,
       },
     },
     'main_left': {
-      'label': AppStrings.tr('uiLeft23Right13'),
+      'label': currentLocalizations().uiLeft23Right13,
       'positions': <String, String>{
-        'wide_left': AppStrings.tr('uiLeft23'),
-        'narrow_right': AppStrings.tr('uiRight13'),
+        'wide_left': currentLocalizations().uiLeft23,
+        'narrow_right': currentLocalizations().uiRight13,
       },
     },
     'main_right': {
-      'label': AppStrings.tr('uiLeft13Right23'),
+      'label': currentLocalizations().uiLeft13Right23,
       'positions': <String, String>{
-        'narrow_left': AppStrings.tr('uiLeft13'),
-        'wide_right': AppStrings.tr('uiRight23'),
+        'narrow_left': currentLocalizations().uiLeft13,
+        'wide_right': currentLocalizations().uiRight23,
       },
     },
     'two_rows': {
-      'label': AppStrings.tr('uiDividedIntoUpperAndLowerParts'),
+      'label': currentLocalizations().uiDividedIntoUpperAndLowerParts,
       'positions': <String, String>{
-        'top_half': AppStrings.tr('uiUpperHalf'),
-        'bottom_half': AppStrings.tr('uiLowerHalf'),
+        'top_half': currentLocalizations().uiUpperHalf,
+        'bottom_half': currentLocalizations().uiLowerHalf,
       },
     },
     'main_and_two': {
-      'label': AppStrings.tr('uiMainLarge2Sub'),
+      'label': currentLocalizations().uiMainLarge2Sub,
       'positions': <String, String>{
-        'wide_left': AppStrings.tr('uiMainLeft'),
-        'right_top': AppStrings.tr('uiUpperRight'),
-        'right_bottom': AppStrings.tr('uiLowerRight'),
+        'wide_left': currentLocalizations().uiMainLeft,
+        'right_top': currentLocalizations().uiUpperRight,
+        'right_bottom': currentLocalizations().uiLowerRight,
       },
     },
   };
@@ -225,7 +225,9 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error.message ?? AppStrings.tr('uiCouldNotStart')),
+            content: Text(
+              error.message ?? currentLocalizations().uiCouldNotStart,
+            ),
           ),
         );
       }
@@ -242,7 +244,9 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(error.message ?? AppStrings.tr('uiCouldNotStart')),
+            content: Text(
+              error.message ?? currentLocalizations().uiCouldNotStart,
+            ),
           ),
         );
       }
@@ -258,7 +262,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     if (packages.isEmpty) return;
     var workspaceName =
         workspace?['name'] as String? ??
-        '${AppStrings.tr('uiWorkSpace')} ${workspaces.length + 1}';
+        '${currentLocalizations().uiWorkSpace} ${workspaces.length + 1}';
     var layout = workspace?['layout'] as String? ?? 'three_columns';
     if (!workspaceLayouts.containsKey(layout)) layout = 'three_columns';
     final savedPositions = workspace?['positions'] is Map
@@ -285,8 +289,8 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
         builder: (context, setDialogState) => AlertDialog(
           title: Text(
             workspace == null
-                ? AppStrings.tr('uiSaveWorkspace')
-                : AppStrings.tr('uiEditWorkspace'),
+                ? currentLocalizations().uiSaveWorkspace
+                : currentLocalizations().uiEditWorkspace,
           ),
           content: SizedBox(
             width: 420,
@@ -297,7 +301,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                   initialValue: workspaceName,
                   autofocus: true,
                   decoration: InputDecoration(
-                    labelText: AppStrings.tr('uiName'),
+                    labelText: currentLocalizations().uiName,
                   ),
                   onChanged: (value) => workspaceName = value,
                 ),
@@ -305,7 +309,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                 DropdownButtonFormField<String>(
                   initialValue: layout,
                   decoration: InputDecoration(
-                    labelText: AppStrings.tr('uiLayout'),
+                    labelText: currentLocalizations().uiLayout,
                   ),
                   items: workspaceLayouts.entries
                       .map(
@@ -377,11 +381,11 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                 ),
                 onPressed: () => Navigator.pop(context, {'delete': true}),
                 icon: Icon(Icons.delete_outline_rounded),
-                label: Text(AppStrings.tr('uiDelete')),
+                label: Text(currentLocalizations().uiDelete),
               ),
             TextButton(
               onPressed: () => Navigator.pop(context),
-              child: Text(AppStrings.tr('uiCancel')),
+              child: Text(currentLocalizations().uiCancel),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(context, {
@@ -389,7 +393,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                 'layout': layout,
                 'positions': Map<String, String>.from(positions),
               }),
-              child: Text(AppStrings.tr('save')),
+              child: Text(currentLocalizations().save),
             ),
           ],
         ),
@@ -431,7 +435,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   Future<void> duplicateWorkspace(Map<String, dynamic> workspace) async {
     final copy = Map<String, dynamic>.from(workspace)
       ..['id'] = DateTime.now().millisecondsSinceEpoch.toString()
-      ..['name'] = '${workspace['name']} ${AppStrings.tr('uiCopy')}'
+      ..['name'] = '${workspace['name']} ${currentLocalizations().uiCopy}'
       ..['apps'] = List<String>.from(workspace['apps'] as List)
       ..['positions'] = Map<String, dynamic>.from(
         workspace['positions'] as Map? ?? {},
@@ -460,7 +464,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
-        content: Text(AppStrings.tr('uiCopiedWorkspaceJsonToClipboard')),
+        content: Text(currentLocalizations().uiCopiedWorkspaceJsonToClipboard),
       ),
     );
   }
@@ -473,7 +477,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     final source = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(AppStrings.tr('uiImportWorkspace')),
+        title: Text(currentLocalizations().uiImportWorkspace),
         content: SizedBox(
           width: 460,
           child: TextField(
@@ -481,7 +485,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
             minLines: 8,
             maxLines: 16,
             decoration: InputDecoration(
-              labelText: AppStrings.tr('uiDextopWorkspaceJson'),
+              labelText: currentLocalizations().uiDextopWorkspaceJson,
               alignLabelWithHint: true,
             ),
           ),
@@ -489,11 +493,11 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(AppStrings.tr('uiCancel')),
+            child: Text(currentLocalizations().uiCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, controller.text),
-            child: Text(AppStrings.tr('uiImport')),
+            child: Text(currentLocalizations().uiImport),
           ),
         ],
       ),
@@ -518,7 +522,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     } catch (_) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.tr('uiCouldNotLoadJson'))),
+        SnackBar(content: Text(currentLocalizations().uiCouldNotLoadJson)),
       );
     }
   }
@@ -540,18 +544,18 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(AppStrings.tr('uiDeleteWorkspace')),
+        title: Text(currentLocalizations().uiDeleteWorkspace),
         content: Text(
-          '${AppStrings.tr('uiOpeningQuote')}${workspace['name']}${AppStrings.tr('uiDeleteWorkspaceQuestionSuffix')}',
+          '${currentLocalizations().uiOpeningQuote}${workspace['name']}${currentLocalizations().uiDeleteWorkspaceQuestionSuffix}',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(AppStrings.tr('uiCancel')),
+            child: Text(currentLocalizations().uiCancel),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(AppStrings.tr('uiDelete')),
+            child: Text(currentLocalizations().uiDelete),
           ),
         ],
       ),
@@ -669,12 +673,12 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
       if (widget.embedded &&
           !widget.launcherOnly &&
           (widget.category == null || widget.category == 'apps'))
-        _section(AppStrings.tr('uiAppLauncher'), Icons.apps_rounded, [
+        _section(currentLocalizations().uiAppLauncher, Icons.apps_rounded, [
           ListTile(
             leading: Icon(Icons.apps_rounded),
-            title: Text(AppStrings.tr('uiAppLauncherSettings')),
+            title: Text(currentLocalizations().uiAppLauncherSettings),
             subtitle: Text(
-              AppStrings.tr('uiLaunchTheAppAndConfigureYourWorkspace'),
+              currentLocalizations().uiLaunchTheAppAndConfigureYourWorkspace,
             ),
             trailing: Icon(Icons.chevron_right_rounded),
             onTap: () => Navigator.of(context).push(
@@ -689,11 +693,11 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
           ),
         ])
       else if (widget.category == null || widget.category == 'apps')
-        _section(AppStrings.tr('uiAppLauncher'), Icons.apps_rounded, [
+        _section(currentLocalizations().uiAppLauncher, Icons.apps_rounded, [
           TextField(
             decoration: InputDecoration(
               prefixIcon: Icon(Icons.search_rounded),
-              hintText: AppStrings.tr('uiSearchApp'),
+              hintText: currentLocalizations().uiSearchApp,
             ),
             onChanged: (query) => setState(
               () => filteredApps = apps
@@ -711,7 +715,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
             child: appsLoading
                 ? Center(child: CircularProgressIndicator())
                 : filteredApps.isEmpty
-                ? Center(child: Text(AppStrings.tr('uiAppNotFound')))
+                ? Center(child: Text(currentLocalizations().uiAppNotFound))
                 : ListView.separated(
                     primary: false,
                     itemCount: filteredApps.length,
@@ -754,7 +758,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                           : launchSelection,
                       icon: Icon(Icons.launch_rounded, size: 18),
                       label: Text(
-                        AppStrings.tr('uiOpenDextop'),
+                        currentLocalizations().uiOpenDextop,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -775,7 +779,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                           : saveWorkspace,
                       icon: Icon(Icons.bookmark_add_rounded, size: 18),
                       label: Text(
-                        AppStrings.tr('uiSaveConfiguration'),
+                        currentLocalizations().uiSaveConfiguration,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
@@ -788,92 +792,96 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
         ]),
       if (!widget.launcherOnly &&
           (widget.category == null || widget.category == 'apps'))
-        _section(AppStrings.tr('uiWorkSpace'), Icons.space_dashboard_rounded, [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: workspaces.isEmpty ? null : exportWorkspaces,
-                    icon: Icon(Icons.upload_rounded),
-                    label: Text(AppStrings.tr('uiExport')),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: importWorkspaces,
-                    icon: Icon(Icons.download_rounded),
-                    label: Text(AppStrings.tr('uiImport')),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (workspaces.isEmpty)
-            ListTile(title: Text(AppStrings.tr('uiNoSavedWorkspaces'))),
-          ...workspaces.indexed.map(
-            (entry) => ListTile(
-              leading: Icon(Icons.dashboard_customize_rounded),
-              title: Text('${entry.$2['name']}'),
-              subtitle: Padding(
-                padding: EdgeInsets.only(top: 7),
-                child: Wrap(
-                  spacing: 5,
-                  runSpacing: 5,
-                  children: (entry.$2['apps'] as List)
-                      .cast<String>()
-                      .map(_workspaceAppIcon)
-                      .toList(),
-                ),
-              ),
-              trailing: Row(
-                mainAxisSize: MainAxisSize.min,
+        _section(
+          currentLocalizations().uiWorkSpace,
+          Icons.space_dashboard_rounded,
+          [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              child: Row(
                 children: [
-                  IconButton(
-                    tooltip: AppStrings.tr('uiUp'),
-                    onPressed: entry.$1 == 0
-                        ? null
-                        : () => moveWorkspace(entry.$1, -1),
-                    icon: Icon(Icons.arrow_upward_rounded),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: workspaces.isEmpty ? null : exportWorkspaces,
+                      icon: Icon(Icons.upload_rounded),
+                      label: Text(currentLocalizations().uiExport),
+                    ),
                   ),
-                  PopupMenuButton<String>(
-                    tooltip: AppStrings.tr('uiOthers'),
-                    onSelected: (value) {
-                      if (value == 'duplicate') duplicateWorkspace(entry.$2);
-                      if (value == 'down') moveWorkspace(entry.$1, 1);
-                    },
-                    itemBuilder: (_) => [
-                      PopupMenuItem(
-                        value: 'duplicate',
-                        child: ListTile(
-                          leading: Icon(Icons.copy_rounded),
-                          title: Text(AppStrings.tr('uiReproduction')),
-                        ),
-                      ),
-                      if (entry.$1 < workspaces.length - 1)
-                        PopupMenuItem(
-                          value: 'down',
-                          child: ListTile(
-                            leading: Icon(Icons.arrow_downward_rounded),
-                            title: Text(AppStrings.tr('uiMoveDown')),
-                          ),
-                        ),
-                    ],
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: importWorkspaces,
+                      icon: Icon(Icons.download_rounded),
+                      label: Text(currentLocalizations().uiImport),
+                    ),
                   ),
-                  IconButton(
-                    tooltip: AppStrings.tr('uiEdit'),
-                    onPressed: () => editWorkspace(entry.$2),
-                    icon: Icon(Icons.edit_rounded),
-                  ),
-                  Icon(Icons.play_arrow_rounded),
                 ],
               ),
-              onTap: () => launchWorkspace(entry.$2),
             ),
-          ),
-        ]),
+            if (workspaces.isEmpty)
+              ListTile(title: Text(currentLocalizations().uiNoSavedWorkspaces)),
+            ...workspaces.indexed.map(
+              (entry) => ListTile(
+                leading: Icon(Icons.dashboard_customize_rounded),
+                title: Text('${entry.$2['name']}'),
+                subtitle: Padding(
+                  padding: EdgeInsets.only(top: 7),
+                  child: Wrap(
+                    spacing: 5,
+                    runSpacing: 5,
+                    children: (entry.$2['apps'] as List)
+                        .cast<String>()
+                        .map(_workspaceAppIcon)
+                        .toList(),
+                  ),
+                ),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      tooltip: currentLocalizations().uiUp,
+                      onPressed: entry.$1 == 0
+                          ? null
+                          : () => moveWorkspace(entry.$1, -1),
+                      icon: Icon(Icons.arrow_upward_rounded),
+                    ),
+                    PopupMenuButton<String>(
+                      tooltip: currentLocalizations().uiOthers,
+                      onSelected: (value) {
+                        if (value == 'duplicate') duplicateWorkspace(entry.$2);
+                        if (value == 'down') moveWorkspace(entry.$1, 1);
+                      },
+                      itemBuilder: (_) => [
+                        PopupMenuItem(
+                          value: 'duplicate',
+                          child: ListTile(
+                            leading: Icon(Icons.copy_rounded),
+                            title: Text(currentLocalizations().uiReproduction),
+                          ),
+                        ),
+                        if (entry.$1 < workspaces.length - 1)
+                          PopupMenuItem(
+                            value: 'down',
+                            child: ListTile(
+                              leading: Icon(Icons.arrow_downward_rounded),
+                              title: Text(currentLocalizations().uiMoveDown),
+                            ),
+                          ),
+                      ],
+                    ),
+                    IconButton(
+                      tooltip: currentLocalizations().uiEdit,
+                      onPressed: () => editWorkspace(entry.$2),
+                      icon: Icon(Icons.edit_rounded),
+                    ),
+                    Icon(Icons.play_arrow_rounded),
+                  ],
+                ),
+                onTap: () => launchWorkspace(entry.$2),
+              ),
+            ),
+          ],
+        ),
       if (!widget.launcherOnly &&
           (widget.category == null || widget.category == 'display')) ...[
         _section('Foldable', Icons.devices_fold_rounded, [
@@ -882,29 +890,35 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
             onChanged: updateFoldable,
             secondary: Icon(Icons.devices_fold_rounded),
             title: Text(
-              AppStrings.tr('uiAutomaticSwitchingAccordingToOpenClosedState'),
+              currentLocalizations()
+                  .uiAutomaticSwitchingAccordingToOpenClosedState,
             ),
             subtitle: Text(
-              AppStrings.tr('uiAutomaticallyUsesMeasuredResolutionForOpenAnd'),
+              currentLocalizations()
+                  .uiAutomaticallyUsesMeasuredResolutionForOpenAnd,
             ),
           ),
           SwitchListTile(
             value: foldableLaptopMode,
             onChanged: updateFoldableLaptopMode,
             secondary: Icon(Icons.laptop_chromebook_rounded),
-            title: Text(AppStrings.tr('foldableLaptopMode')),
-            subtitle: Text(AppStrings.tr('foldableLaptopModeDescription')),
+            title: Text(currentLocalizations().foldableLaptopMode),
+            subtitle: Text(
+              currentLocalizations().foldableLaptopModeDescription,
+            ),
           ),
         ]),
       ],
       if (!widget.launcherOnly &&
           (widget.category == null || widget.category == 'interaction'))
-        _section(AppStrings.tr('uiGesture'), Icons.gesture_rounded, [
+        _section(currentLocalizations().uiGesture, Icons.gesture_rounded, [
           if (experimentalMultiTouch)
             ListTile(
               leading: Icon(Icons.swipe_right_rounded),
-              title: Text(AppStrings.tr('uiSwipeRightWithThreeFingersFromThe')),
-              subtitle: Text(AppStrings.tr('uiShowActionOverlay')),
+              title: Text(
+                currentLocalizations().uiSwipeRightWithThreeFingersFromThe,
+              ),
+              subtitle: Text(currentLocalizations().uiShowActionOverlay),
               trailing: FilledButton.tonalIcon(
                 onPressed: reviewThreeFingerGesture,
                 icon: const Icon(Icons.replay_rounded),
@@ -915,36 +929,36 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
           else
             _gestureTile(
               leading: Icon(Icons.sign_language_rounded),
-              title: AppStrings.tr('ui3FingerTap'),
+              title: currentLocalizations().ui3FingerTap,
               value: threeFingerGesture,
               options: {
-                'menu': AppStrings.tr('uiOperationOverlay'),
-                'home': AppStrings.tr('home'),
-                'rotate': AppStrings.tr('uiVerticalHorizontalSwitching'),
-                'stop': AppStrings.tr('uiStopDextop'),
+                'menu': currentLocalizations().uiOperationOverlay,
+                'home': currentLocalizations().home,
+                'rotate': currentLocalizations().uiVerticalHorizontalSwitching,
+                'stop': currentLocalizations().uiStopDextop,
               },
               onChanged: updateThreeFingerGesture,
             ),
           _gestureTile(
             leading: Icon(Icons.pinch_rounded),
-            title: AppStrings.tr('uiTwoFingerTap'),
+            title: currentLocalizations().uiTwoFingerTap,
             value: twoFingerGesture,
             options: {
-              'right_click': AppStrings.tr('uiRightClick'),
-              'home': AppStrings.tr('home'),
-              'menu': AppStrings.tr('uiOperationOverlay'),
+              'right_click': currentLocalizations().uiRightClick,
+              'home': currentLocalizations().home,
+              'menu': currentLocalizations().uiOperationOverlay,
             },
             onChanged: (value) =>
                 updateSecondaryGesture('gesture_two_finger', value),
           ),
           _gestureTile(
             leading: Icon(Icons.ads_click_rounded),
-            title: AppStrings.tr('uiLongPress'),
+            title: currentLocalizations().uiLongPress,
             value: longPressGesture,
             options: {
-              'drag': AppStrings.tr('uiDrag'),
-              'right_click': AppStrings.tr('uiRightClick'),
-              'menu': AppStrings.tr('uiOperationOverlay'),
+              'drag': currentLocalizations().uiDrag,
+              'right_click': currentLocalizations().uiRightClick,
+              'menu': currentLocalizations().uiOperationOverlay,
             },
             onChanged: (value) =>
                 updateSecondaryGesture('gesture_long_press', value),
@@ -952,45 +966,47 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
         ]),
       if (!widget.launcherOnly &&
           (widget.category == null || widget.category == 'status')) ...[
-        _section(AppStrings.tr('uiPerformance'), Icons.speed_rounded, [
+        _section(currentLocalizations().uiPerformance, Icons.speed_rounded, [
           SwitchListTile(
             value: performanceHud,
             onChanged: updatePerformanceHud,
-            title: Text(AppStrings.tr('uiPerformanceDisplayOnDextop')),
-            subtitle: Text(AppStrings.tr('uiRealTimeDisplayOfFpsMemoryPower')),
+            title: Text(currentLocalizations().uiPerformanceDisplayOnDextop),
+            subtitle: Text(
+              currentLocalizations().uiRealTimeDisplayOfFpsMemoryPower,
+            ),
           ),
-          _metric(AppStrings.tr('uiActualFps'), '${metrics['fps'] ?? 0}'),
+          _metric(currentLocalizations().uiActualFps, '${metrics['fps'] ?? 0}'),
           _metric(
-            AppStrings.tr('uiDisplayRefreshRate'),
+            currentLocalizations().uiDisplayRefreshRate,
             '${metrics['refreshRate'] ?? 0} Hz',
           ),
           _metric(
-            AppStrings.tr('uiAppMemory'),
+            currentLocalizations().uiAppMemory,
             '${metrics['memoryMb'] ?? 0} MB',
           ),
           _metric(
-            AppStrings.tr('uiAvailableMemory'),
+            currentLocalizations().uiAvailableMemory,
             '${metrics['availableMemoryMb'] ?? 0} MB',
           ),
           _metric(
-            AppStrings.tr('uiBattery'),
+            currentLocalizations().uiBattery,
             '${metrics['batteryPercent'] ?? 0}%',
           ),
           _metric(
-            AppStrings.tr('uiEstimatedPowerConsumption'),
+            currentLocalizations().uiEstimatedPowerConsumption,
             '${metrics['powerWatts'] ?? 0} W',
           ),
           _metric(
-            AppStrings.tr('uiCpuTemperature'),
+            currentLocalizations().uiCpuTemperature,
             '${metrics['cpuTemperature'] ?? '-- °C'}',
           ),
           _metric(
-            AppStrings.tr('uiInputMode'),
-            '${metrics['inputMode'] ?? AppStrings.tr('uiIdle')}',
+            currentLocalizations().uiInputMode,
+            '${metrics['inputMode'] ?? currentLocalizations().uiIdle}',
           ),
         ]),
         _section(
-          AppStrings.tr('uiCompatibilityDiagnosis'),
+          currentLocalizations().uiCompatibilityDiagnosis,
           Icons.health_and_safety_rounded,
           [
             ...diagnostics.entries.map(
@@ -1008,8 +1024,8 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                   _availabilityDiagnostics.contains(entry.key) &&
                           entry.value is bool
                       ? entry.value == true
-                            ? AppStrings.tr('uiAvailable')
-                            : AppStrings.tr('uiUnavailable')
+                            ? currentLocalizations().uiAvailable
+                            : currentLocalizations().uiUnavailable
                       : '${entry.value}',
                 ),
               ),
@@ -1017,7 +1033,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
             OutlinedButton.icon(
               onPressed: load,
               icon: Icon(Icons.refresh_rounded),
-              label: Text(AppStrings.tr('uiReDiagnosis')),
+              label: Text(currentLocalizations().uiReDiagnosis),
             ),
           ],
         ),
@@ -1034,14 +1050,14 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   }
 
   String _pageTitle() => switch (widget.category) {
-    'apps' => AppStrings.tr('uiAppsAndWorkspace'),
-    'display' => AppStrings.tr('uiDisplayOptimization'),
-    'interaction' => AppStrings.tr('uiInputAndGestures'),
-    'status' => AppStrings.tr('uiConditionAndDiagnosis'),
+    'apps' => currentLocalizations().uiAppsAndWorkspace,
+    'display' => currentLocalizations().uiDisplayOptimization,
+    'interaction' => currentLocalizations().uiInputAndGestures,
+    'status' => currentLocalizations().uiConditionAndDiagnosis,
     _ =>
       widget.launcherOnly
-          ? AppStrings.tr('uiAppLauncherSettings')
-          : AppStrings.tr('uiDesktopFeatures'),
+          ? currentLocalizations().uiAppLauncherSettings
+          : currentLocalizations().uiDesktopFeatures,
   };
 
   Widget _appIcon(Map<String, dynamic> app) {
@@ -1195,22 +1211,22 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   String _diagnosticLabel(String key) {
     final l = AppLocalizations.of(context);
     return {
-          'shizuku': AppStrings.tr('uiShizukuConnection').replaceAll(
+          'shizuku': currentLocalizations().uiShizukuConnection.replaceAll(
             'Shizuku',
             '${diagnostics['privilegeProviderName'] ?? 'Stellar'}',
           ),
-          'secureSettings': AppStrings.tr('uiSecureSettingsPermission'),
-          'accessibility': AppStrings.tr('uiAccessibilityServices'),
-          'overlayWritable': AppStrings.tr('uiAccessibilityOverlay'),
-          'mouse': AppStrings.tr('uiPhysicalMouse'),
-          'keyboard': AppStrings.tr('uiPhysicalKeyboard'),
-          'secondaryIme': AppStrings.tr('uiSecondaryIme'),
-          'desktopMode': AppStrings.tr('uiDesktopMode'),
-          'sessionActive': AppStrings.tr('uiCreateADextopSession'),
-          'virtualDisplay': AppStrings.tr('uiVirtualDisplayCreation'),
-          'appLauncher': AppStrings.tr('uiAppLaunchFunction'),
-          'quickSettingsTile': AppStrings.tr('uiQuickSettingsTile'),
-          'foldableLayout': AppStrings.tr('uiLargeScreenFoldable'),
+          'secureSettings': currentLocalizations().uiSecureSettingsPermission,
+          'accessibility': currentLocalizations().uiAccessibilityServices,
+          'overlayWritable': currentLocalizations().uiAccessibilityOverlay,
+          'mouse': currentLocalizations().uiPhysicalMouse,
+          'keyboard': currentLocalizations().uiPhysicalKeyboard,
+          'secondaryIme': currentLocalizations().uiSecondaryIme,
+          'desktopMode': currentLocalizations().uiDesktopMode,
+          'sessionActive': currentLocalizations().uiCreateADextopSession,
+          'virtualDisplay': currentLocalizations().uiVirtualDisplayCreation,
+          'appLauncher': currentLocalizations().uiAppLaunchFunction,
+          'quickSettingsTile': currentLocalizations().uiQuickSettingsTile,
+          'foldableLayout': currentLocalizations().uiLargeScreenFoldable,
           'embeddedBinderIncluded': l.appInfoEmbeddedBinder,
           'embeddedBinderSelected': l.appInfoEmbeddedBinderProvider,
           'embeddedBinderPaired': l.setupEmbeddedConfigure,

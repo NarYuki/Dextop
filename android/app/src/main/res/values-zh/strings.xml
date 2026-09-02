@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="dextop_swipe_ime_label">Dextop 滑行输入</string>
     <string name="accessibility_service_description">控制 Dextop 虚拟显示、输入和操作面板</string>
     <string name="embedded_pairing_channel">内置访问设置</string>
     <string name="embedded_pairing_title">配对 Dextop</string>

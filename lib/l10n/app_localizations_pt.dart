@@ -281,7 +281,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get setupSystemDescription =>
-      'Dextop usa Shizuku e ADB para controlar o comportamento, como displays virtuais, orientação de tela, entrada e interface de sistema.';
+      'O Dextop usa Shizuku e ADB para controlar telas virtuais, orientação, entrada e a interface do sistema. A API AccessibilityService exibe e opera a sobreposição da área de trabalho, encaminha entradas de toque, ponteiro e navegação solicitadas pelo usuário e restaura a interface do dispositivo ao encerrar a sessão. Os dados de acessibilidade não são coletados, armazenados nem compartilhados.';
 
   @override
   String get setupDisclaimer =>
@@ -1429,7 +1429,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get keyboardSwipeLanguagesDescription =>
-      'Escolha os idiomas mostrados ao manter MENU pressionado. Apenas inglês vem ativado por padrão.';
+      'Escolha os idiomas mostrados ao manter MENU pressionado.';
 
   @override
   String get keyboardSwipeAddLanguage => 'Adicionar idioma';
@@ -1688,6 +1688,517 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get experimentalBlackBerryModeDescription =>
       'Ativa no painel Dextop um teclado compacto para telemóvel inspirado em teclados físicos';
+
+  @override
+  String get blackBerryAutoStart => 'Abrir automaticamente o modo BlackBerry';
+
+  @override
+  String get blackBerryAutoStartDescription =>
+      'Mostra automaticamente o teclado BlackBerry ao iniciar uma sessão Dextop na vertical';
+
+  @override
+  String get keyboardHaptics => 'Resposta tátil do teclado';
+
+  @override
+  String get keyboardHapticsDescription =>
+      'Vibra ao premir teclas e utilizar o painel tátil';
+
+  @override
+  String get nativeUnknownPermissionResult =>
+      'O Shizuku retornou um resultado de permissão desconhecido';
+
+  @override
+  String get nativeDevice => 'Dispositivo';
+
+  @override
+  String get nativeCoverDisplay => 'Tela externa';
+
+  @override
+  String get nativeCoverDisplayDescription =>
+      'Abra o Android ou crie uma sessão Dextop independente na tela externa';
+
+  @override
+  String get nativeCoverAndroidDescription =>
+      'Use a tela externa com o Android normal enquanto a sessão principal do Dextop continua.';
+
+  @override
+  String get nativeCoverDextopDescription =>
+      'Crie uma sessão Dextop na tela externa, independente da sessão principal.';
+
+  @override
+  String get nativeOpenCoverAndroid => 'Abrir o Android na tela externa';
+
+  @override
+  String get nativeStopCoverAndroid => 'Encerrar sessão do Android';
+
+  @override
+  String get nativeStartCoverDextop => 'Criar sessão Dextop na tela externa';
+
+  @override
+  String get nativeStopCoverDextop => 'Encerrar sessão Dextop da tela externa';
+
+  @override
+  String get nativeCoverDisplayFailed =>
+      'Não foi possível atualizar a tela externa';
+
+  @override
+  String get nativeSwitchToResolutionSuffix =>
+      'Alternar para esta resolução e DPI';
+
+  @override
+  String get nativeShizukuUnavailable => 'O Shizuku não está disponível';
+
+  @override
+  String get nativeSelectedAppCannotLaunch =>
+      'O aplicativo selecionado não pode ser iniciado';
+
+  @override
+  String get nativeShizukuBinderUnavailable =>
+      'A conexão com o Shizuku não está disponível';
+
+  @override
+  String get nativeMirrorSurfaceUnavailable =>
+      'A superfície de espelhamento não está disponível';
+
+  @override
+  String get nativeRotationReleaseUnsupported =>
+      'Não há suporte para liberar o bloqueio de rotação';
+
+  @override
+  String get nativePerformanceHudFormat =>
+      '%1\$.1f FPS  |  %2\$d MB\\nBateria: %3\$d%%  |  %4\$s\\nCPU: %6\$s  |  Entrada: %5\$s';
+
+  @override
+  String get nativeInputMouse => 'Mouse';
+
+  @override
+  String get nativeInputTouch => 'Toque';
+
+  @override
+  String get nativeInputTrackpad => 'Trackpad';
+
+  @override
+  String get nativeInputIdle => 'Inativo';
+
+  @override
+  String get nativePhysicalMouse => 'Alternar destino do mouse físico';
+
+  @override
+  String get nativePhysicalKeyboard => 'Alternar destino do teclado físico';
+
+  @override
+  String get nativePhysicalMouseDemo =>
+      'Alterne o mouse físico entre o Android e o Dextop. Disponível em dispositivos compatíveis enquanto uma tela externa estiver conectada.';
+
+  @override
+  String get nativePhysicalKeyboardDemo =>
+      'Alterne o teclado físico entre o Android e o Dextop. Disponível em dispositivos compatíveis enquanto uma tela externa estiver conectada.';
+
+  @override
+  String get nativeTheThreeFingerGestureIsAnEssential =>
+      'O gesto de três dedos é essencial durante o uso do Dextop.\\nToque em um botão para ver sua função.';
+
+  @override
+  String get nativeAsusZenuiRogUiDesktop => 'Desktop ASUS ZenUI / ROG UI';
+
+  @override
+  String get nativeAndroidDesktopFreeform => 'Desktop Android (forma livre)';
+
+  @override
+  String get nativeColorosDesktop => 'Desktop ColorOS';
+
+  @override
+  String get nativeAdjustTheVolumeOfPlaybackOnDextop =>
+      'Ajustar o volume de mídia no Dextop';
+
+  @override
+  String get nativeSwitchBetweenPortraitAndLandscapeOrientationOf =>
+      'Alternar o Dextop entre retrato e paisagem';
+
+  @override
+  String get nativeSwitchDextopResolutionAndDpi =>
+      'Alterar a resolução e o DPI do Dextop';
+
+  @override
+  String get nativePauseDextopAndReturnYourAndroidTo =>
+      'Pausar o Dextop e retornar o Android ao uso normal.';
+
+  @override
+  String get nativeTerminateYourDextopSession => 'Encerrar a sessão do Dextop';
+
+  @override
+  String get nativeAdjustTheBrightnessOfTheDesktopDisplay =>
+      'Ajustar o brilho da tela do Dextop';
+
+  @override
+  String get nativeHonorMagicosDesktop => 'Desktop HONOR MagicOS';
+
+  @override
+  String get nativeHuaweiEmuiDesktop => 'Desktop Huawei EMUI';
+
+  @override
+  String get nativeHyperosMiuiDesktop => 'Desktop HyperOS / MIUI';
+
+  @override
+  String get nativeMotorolaLenovoDesktop => 'Desktop Motorola / Lenovo';
+
+  @override
+  String get nativeNothingOsDesktop => 'Desktop Nothing OS';
+
+  @override
+  String get nativeOriginosFuntouchOsDesktop =>
+      'Desktop OriginOS / Funtouch OS';
+
+  @override
+  String get nativePixelAndroidDesktop => 'Desktop Android do Pixel';
+
+  @override
+  String get nativeShizukuPermissionCheckTimedOut =>
+      'A verificação de permissão do Shizuku expirou';
+
+  @override
+  String get nativeRequiresConnectionToShizukuAndPermissions =>
+      'É necessária uma conexão com o Shizuku e a respectiva permissão';
+
+  @override
+  String get nativePermissionDeniedToShizuku =>
+      'A permissão do Shizuku foi negada';
+
+  @override
+  String get nativePleaseInstallShizuku => 'Instale o Shizuku';
+
+  @override
+  String get nativePleaseStartShizuku => 'Inicie o Shizuku';
+
+  @override
+  String get nativeRemoveThisResolution => 'Excluir esta resolução';
+
+  @override
+  String get nativeNoAppSelected => 'Nenhum aplicativo selecionado';
+
+  @override
+  String get nativeCouldNotStartApp => 'Não foi possível iniciar o aplicativo';
+
+  @override
+  String get nativeAddCustomResolution => 'Adicionar resolução personalizada';
+
+  @override
+  String get nativeRotate180 => 'Girar 180°';
+
+  @override
+  String get nativeCast => 'Transmitir';
+
+  @override
+  String get nativeCastDescription => 'Escolher um receptor de transmissão';
+
+  @override
+  String get nativeNoCastDevices =>
+      'Nenhum dispositivo Google Cast está disponível';
+
+  @override
+  String get nativeCastUnavailable =>
+      'Não foi possível inicializar o Google Cast';
+
+  @override
+  String get nativeCasting => 'Transmitindo';
+
+  @override
+  String get nativeStopCasting => 'Parar transmissão';
+
+  @override
+  String get nativeScanAgain => 'Procurar novamente';
+
+  @override
+  String get nativeScanning => 'Procurando…';
+
+  @override
+  String get nativeCursor => 'Cursor';
+
+  @override
+  String get nativeTap => 'Toque';
+
+  @override
+  String get nativeTapToExit => 'Toque para sair';
+
+  @override
+  String get nativeTapToOpen => 'Toque para abrir';
+
+  @override
+  String get nativeYouCanRearrangeTheLayoutInThe =>
+      'Mantenha um botão pressionado para reorganizar o painel de controle.';
+
+  @override
+  String get nativeWorkSpace => 'Espaço de trabalho';
+
+  @override
+  String get nativeExpandWorkspace => 'Expandir espaço de trabalho';
+
+  @override
+  String get nativeTemporarilyReturnToAndroid =>
+      'Retornar temporariamente ao Android';
+
+  @override
+  String get nativeLaptopMode => 'Modo laptop';
+
+  @override
+  String get nativeLaptopModeDescription =>
+      'Mostra um teclado e um trackpad na metade inferior de um dispositivo dobrável.';
+
+  @override
+  String get nativeKeyboardStyle => 'Estilo';
+
+  @override
+  String get nativeBlackBerryMode => 'Modo BlackBerry';
+
+  @override
+  String get nativeBlackBerryLayout => 'Layout BlackBerry';
+
+  @override
+  String get nativeAutomaticLayout => 'Layout automático';
+
+  @override
+  String get nativeManualHeight => 'Ajuste manual da altura';
+
+  @override
+  String get nativeKeyboardHeight => 'Altura do teclado';
+
+  @override
+  String get nativeBlackBerryModeDescription =>
+      'Mostra um teclado compacto para celular sem trackpad.';
+
+  @override
+  String get nativeKeyboardSettings => 'Configurações do teclado';
+
+  @override
+  String get nativeKeyboardSettingsDescription =>
+      'Personalize a aparência do teclado do modo laptop';
+
+  @override
+  String get nativeTheme => 'Tema';
+
+  @override
+  String get nativeSwipeLanguage => 'Idioma da digitação por deslize';
+
+  @override
+  String get nativeSwipeLanguageDescription =>
+      'A digitação por toque continua usando seu IME atual';
+
+  @override
+  String get nativeKeyboardThemeStandard => 'Padrão';
+
+  @override
+  String get nativeKeyboardThemeCrimson => 'Carmesim';
+
+  @override
+  String get nativeKeyboardThemeCloud => 'Cloud Pop';
+
+  @override
+  String get nativeKeyboardThemeAmoled => 'AMOLED';
+
+  @override
+  String get nativeKeyboardThemeStandardDescription => 'Teclado escuro neutro';
+
+  @override
+  String get nativeKeyboardThemeCrimsonDescription =>
+      'Carmesim quente inspirado em computadores dobráveis';
+
+  @override
+  String get nativeKeyboardThemeCloudDescription => 'Teclado azul-claro suave';
+
+  @override
+  String get nativeKeyboardThemeAmoledDescription =>
+      'Teclado preto verdadeiro com economia de energia';
+
+  @override
+  String get nativeKeyboardThemeCustomDescription =>
+      'Tema de teclado personalizado';
+
+  @override
+  String get nativeOpenDextopWithYourSavedAppPlacement =>
+      'Abrir o Dextop com a disposição de aplicativos salva';
+
+  @override
+  String get nativeSaveAndApply => 'Salvar e aplicar';
+
+  @override
+  String get nativeFailedToSaveUnableToRetrieveRunning =>
+      'Falha ao salvar: não foi possível obter os aplicativos em execução no Dextop.';
+
+  @override
+  String get nativeFailedToSaveFailedToWriteTo =>
+      'Falha ao salvar: não foi possível gravar no armazenamento do dispositivo.';
+
+  @override
+  String get nativeViewSavedWorkspacesAndSaveCurrentArrangement =>
+      'Veja os espaços de trabalho salvos e salve a disposição atual';
+
+  @override
+  String get nativeNoSavedWorkspaces => 'Nenhum espaço de trabalho salvo';
+
+  @override
+  String get nativePleaseStartDextopFirst => 'Inicie o Dextop primeiro';
+
+  @override
+  String get nativeReconnect => 'Reconectar';
+
+  @override
+  String get nativeWidth => 'Largura';
+
+  @override
+  String get nativeReturn => 'Voltar';
+
+  @override
+  String get nativePermissionRequestInProgress =>
+      'Solicitação de permissão em andamento';
+
+  @override
+  String get nativeHorizontalHolding => 'Paisagem';
+
+  @override
+  String get nativeSaveTheCurrentAppArrangementAsA =>
+      'Salvar a disposição atual dos aplicativos como espaço de trabalho';
+
+  @override
+  String get nativeAddCurrentAppPlacement =>
+      'Adicionar disposição atual dos aplicativos';
+
+  @override
+  String get nativeScreenBrightness => 'Brilho da tela';
+
+  @override
+  String get nativeUseTheScreenAsATrackpadTo =>
+      'Use a tela como trackpad para controlar o cursor';
+
+  @override
+  String get nativeEnd => 'Encerrar';
+
+  @override
+  String get nativeEdit => 'Editar';
+
+  @override
+  String get nativeVerticalHolding => 'Retrato';
+
+  @override
+  String get nativeReconnectIfYouHaveDisplayOrConnection =>
+      'Reconecte se houver problemas de exibição ou conexão';
+
+  @override
+  String get nativeDisplayProfileIsOutOfRange =>
+      'O perfil da tela está fora do intervalo';
+
+  @override
+  String get nativeResolution => 'Resolução';
+
+  @override
+  String get nativeEditResolution => 'Editar resolução';
+
+  @override
+  String get nativeAddResolution => 'Adicionar resolução';
+
+  @override
+  String get nativeSendsTheTouchedPositionDirectlyToDextop =>
+      'Envia a posição tocada diretamente ao Dextop como um toque';
+
+  @override
+  String get nativeAddAndApply => 'Adicionar e aplicar';
+
+  @override
+  String get nativeEditPlacement => 'Editar disposição';
+
+  @override
+  String get nativeCompletePlacementEdit => 'Concluir edição da disposição';
+
+  @override
+  String get nativeVolume => 'Volume';
+
+  @override
+  String get nativeHeight => 'Altura';
+
+  @override
+  String get multiTouchUpgradeTitle => 'O aplicativo foi atualizado';
+
+  @override
+  String get multiTouchUpgradeBody =>
+      'Agora há suporte a multitoque, portanto os gestos também foram atualizados.';
+
+  @override
+  String get multiTouchUpgradeLandscape =>
+      'Paisagem\\nDeslize três dedos para a direita a partir da borda esquerda';
+
+  @override
+  String get multiTouchUpgradePortrait =>
+      'Retrato\\nDeslize três dedos para baixo a partir da borda superior';
+
+  @override
+  String get multiTouchUpgradeClose => 'Entendi';
+
+  @override
+  String appUpdatedTitle(String version) {
+    return 'Atualizado para $version!';
+  }
+
+  @override
+  String get appUpdatedMessage =>
+      'O Dextop foi atualizado para a versão mais recente.';
+
+  @override
+  String get androidSwipeImeLabel => 'Entrada por deslize do Dextop';
+
+  @override
+  String get androidAccessibilityServiceDescription =>
+      'Controla a tela virtual, a entrada e o painel de controle do Dextop';
+
+  @override
+  String get androidEmbeddedPairingChannel =>
+      'Configuração de acesso integrado';
+
+  @override
+  String get androidEmbeddedPairingTitle => 'Emparelhar o Dextop';
+
+  @override
+  String get androidEmbeddedPairingNotificationText =>
+      'Digite o código de seis dígitos exibido na depuração sem fio';
+
+  @override
+  String get androidEmbeddedPairingCode =>
+      'Código de emparelhamento de seis dígitos';
+
+  @override
+  String get androidEmbeddedPairingEnterCode =>
+      'Digitar código de emparelhamento';
+
+  @override
+  String get androidEmbeddedPairingSuccess => 'O Dextop está conectado';
+
+  @override
+  String get androidEmbeddedPairingSuccessMessage =>
+      'O emparelhamento foi concluído. Volte ao Dextop.';
+
+  @override
+  String get androidEmbeddedPairingFailed =>
+      'Não foi possível conectar o Dextop';
+
+  @override
+  String get androidEmbeddedPairingInvalidCode =>
+      'Digite um código de seis dígitos';
+
+  @override
+  String get androidEmbeddedPairingSearching =>
+      'Procurando serviço de emparelhamento';
+
+  @override
+  String get androidEmbeddedPairingServiceFound =>
+      'Serviço de emparelhamento encontrado';
+
+  @override
+  String get androidEmbeddedPairingServiceNotFound =>
+      'Serviço de emparelhamento não encontrado';
+
+  @override
+  String get androidEmbeddedPairingRetry => 'Tentar novamente';
+
+  @override
+  String get androidEmbeddedPairingInProgress => 'Emparelhamento em andamento';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
@@ -1967,7 +2478,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get setupSystemDescription =>
-      'Dextop usa Shizuku e ADB para controlar o comportamento, como displays virtuais, orientação de tela, entrada e interface de sistema.';
+      'O Dextop usa Shizuku e ADB para controlar telas virtuais, orientação, entrada e a interface do sistema. A API AccessibilityService exibe e opera a sobreposição da área de trabalho, encaminha entradas de toque, ponteiro e navegação solicitadas pelo usuário e restaura a interface do dispositivo ao encerrar a sessão. Os dados de acessibilidade não são coletados, armazenados nem compartilhados.';
 
   @override
   String get setupDisclaimer =>
@@ -3115,7 +3626,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get keyboardSwipeLanguagesDescription =>
-      'Escolha os idiomas exibidos ao manter MENU pressionado. Apenas inglês vem ativado por padrão.';
+      'Escolha os idiomas exibidos ao manter MENU pressionado.';
 
   @override
   String get keyboardSwipeAddLanguage => 'Adicionar idioma';
@@ -3374,4 +3885,514 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get experimentalBlackBerryModeDescription =>
       'Ativa no painel do Dextop um teclado compacto para celular inspirado em teclados físicos';
+
+  @override
+  String get blackBerryAutoStart => 'Abrir automaticamente o modo BlackBerry';
+
+  @override
+  String get blackBerryAutoStartDescription =>
+      'Mostra automaticamente o teclado BlackBerry ao iniciar uma sessão do Dextop no modo retrato';
+
+  @override
+  String get keyboardHaptics => 'Resposta tátil do teclado';
+
+  @override
+  String get keyboardHapticsDescription =>
+      'Vibra ao pressionar teclas e usar o touchpad';
+
+  @override
+  String get nativeUnknownPermissionResult =>
+      'O Shizuku retornou um resultado de permissão desconhecido';
+
+  @override
+  String get nativeDevice => 'Dispositivo';
+
+  @override
+  String get nativeCoverDisplay => 'Tela externa';
+
+  @override
+  String get nativeCoverDisplayDescription =>
+      'Abra o Android ou crie uma sessão Dextop independente na tela externa';
+
+  @override
+  String get nativeCoverAndroidDescription =>
+      'Use a tela externa com o Android normal enquanto a sessão principal do Dextop continua.';
+
+  @override
+  String get nativeCoverDextopDescription =>
+      'Crie uma sessão Dextop na tela externa, independente da sessão principal.';
+
+  @override
+  String get nativeOpenCoverAndroid => 'Abrir o Android na tela externa';
+
+  @override
+  String get nativeStopCoverAndroid => 'Encerrar sessão do Android';
+
+  @override
+  String get nativeStartCoverDextop => 'Criar sessão Dextop na tela externa';
+
+  @override
+  String get nativeStopCoverDextop => 'Encerrar sessão Dextop da tela externa';
+
+  @override
+  String get nativeCoverDisplayFailed =>
+      'Não foi possível atualizar a tela externa';
+
+  @override
+  String get nativeSwitchToResolutionSuffix =>
+      'Alternar para esta resolução e DPI';
+
+  @override
+  String get nativeShizukuUnavailable => 'O Shizuku não está disponível';
+
+  @override
+  String get nativeSelectedAppCannotLaunch =>
+      'O aplicativo selecionado não pode ser iniciado';
+
+  @override
+  String get nativeShizukuBinderUnavailable =>
+      'A conexão com o Shizuku não está disponível';
+
+  @override
+  String get nativeMirrorSurfaceUnavailable =>
+      'A superfície de espelhamento não está disponível';
+
+  @override
+  String get nativeRotationReleaseUnsupported =>
+      'Não há suporte para liberar o bloqueio de rotação';
+
+  @override
+  String get nativePerformanceHudFormat =>
+      '%1\$.1f FPS  |  %2\$d MB\\nBateria: %3\$d%%  |  %4\$s\\nCPU: %6\$s  |  Entrada: %5\$s';
+
+  @override
+  String get nativeInputMouse => 'Mouse';
+
+  @override
+  String get nativeInputTouch => 'Toque';
+
+  @override
+  String get nativeInputTrackpad => 'Trackpad';
+
+  @override
+  String get nativeInputIdle => 'Inativo';
+
+  @override
+  String get nativePhysicalMouse => 'Alternar destino do mouse físico';
+
+  @override
+  String get nativePhysicalKeyboard => 'Alternar destino do teclado físico';
+
+  @override
+  String get nativePhysicalMouseDemo =>
+      'Alterne o mouse físico entre o Android e o Dextop. Disponível em dispositivos compatíveis enquanto uma tela externa estiver conectada.';
+
+  @override
+  String get nativePhysicalKeyboardDemo =>
+      'Alterne o teclado físico entre o Android e o Dextop. Disponível em dispositivos compatíveis enquanto uma tela externa estiver conectada.';
+
+  @override
+  String get nativeTheThreeFingerGestureIsAnEssential =>
+      'O gesto de três dedos é essencial durante o uso do Dextop.\\nToque em um botão para ver sua função.';
+
+  @override
+  String get nativeAsusZenuiRogUiDesktop => 'Desktop ASUS ZenUI / ROG UI';
+
+  @override
+  String get nativeAndroidDesktopFreeform => 'Desktop Android (forma livre)';
+
+  @override
+  String get nativeColorosDesktop => 'Desktop ColorOS';
+
+  @override
+  String get nativeAdjustTheVolumeOfPlaybackOnDextop =>
+      'Ajustar o volume de mídia no Dextop';
+
+  @override
+  String get nativeSwitchBetweenPortraitAndLandscapeOrientationOf =>
+      'Alternar o Dextop entre retrato e paisagem';
+
+  @override
+  String get nativeSwitchDextopResolutionAndDpi =>
+      'Alterar a resolução e o DPI do Dextop';
+
+  @override
+  String get nativePauseDextopAndReturnYourAndroidTo =>
+      'Pausar o Dextop e retornar o Android ao uso normal.';
+
+  @override
+  String get nativeTerminateYourDextopSession => 'Encerrar a sessão do Dextop';
+
+  @override
+  String get nativeAdjustTheBrightnessOfTheDesktopDisplay =>
+      'Ajustar o brilho da tela do Dextop';
+
+  @override
+  String get nativeHonorMagicosDesktop => 'Desktop HONOR MagicOS';
+
+  @override
+  String get nativeHuaweiEmuiDesktop => 'Desktop Huawei EMUI';
+
+  @override
+  String get nativeHyperosMiuiDesktop => 'Desktop HyperOS / MIUI';
+
+  @override
+  String get nativeMotorolaLenovoDesktop => 'Desktop Motorola / Lenovo';
+
+  @override
+  String get nativeNothingOsDesktop => 'Desktop Nothing OS';
+
+  @override
+  String get nativeOriginosFuntouchOsDesktop =>
+      'Desktop OriginOS / Funtouch OS';
+
+  @override
+  String get nativePixelAndroidDesktop => 'Desktop Android do Pixel';
+
+  @override
+  String get nativeShizukuPermissionCheckTimedOut =>
+      'A verificação de permissão do Shizuku expirou';
+
+  @override
+  String get nativeRequiresConnectionToShizukuAndPermissions =>
+      'É necessária uma conexão com o Shizuku e a respectiva permissão';
+
+  @override
+  String get nativePermissionDeniedToShizuku =>
+      'A permissão do Shizuku foi negada';
+
+  @override
+  String get nativePleaseInstallShizuku => 'Instale o Shizuku';
+
+  @override
+  String get nativePleaseStartShizuku => 'Inicie o Shizuku';
+
+  @override
+  String get nativeRemoveThisResolution => 'Excluir esta resolução';
+
+  @override
+  String get nativeNoAppSelected => 'Nenhum aplicativo selecionado';
+
+  @override
+  String get nativeCouldNotStartApp => 'Não foi possível iniciar o aplicativo';
+
+  @override
+  String get nativeAddCustomResolution => 'Adicionar resolução personalizada';
+
+  @override
+  String get nativeRotate180 => 'Girar 180°';
+
+  @override
+  String get nativeCast => 'Transmitir';
+
+  @override
+  String get nativeCastDescription => 'Escolher um receptor de transmissão';
+
+  @override
+  String get nativeNoCastDevices =>
+      'Nenhum dispositivo Google Cast está disponível';
+
+  @override
+  String get nativeCastUnavailable =>
+      'Não foi possível inicializar o Google Cast';
+
+  @override
+  String get nativeCasting => 'Transmitindo';
+
+  @override
+  String get nativeStopCasting => 'Parar transmissão';
+
+  @override
+  String get nativeScanAgain => 'Procurar novamente';
+
+  @override
+  String get nativeScanning => 'Procurando…';
+
+  @override
+  String get nativeCursor => 'Cursor';
+
+  @override
+  String get nativeTap => 'Toque';
+
+  @override
+  String get nativeTapToExit => 'Toque para sair';
+
+  @override
+  String get nativeTapToOpen => 'Toque para abrir';
+
+  @override
+  String get nativeYouCanRearrangeTheLayoutInThe =>
+      'Mantenha um botão pressionado para reorganizar o painel de controle.';
+
+  @override
+  String get nativeWorkSpace => 'Espaço de trabalho';
+
+  @override
+  String get nativeExpandWorkspace => 'Expandir espaço de trabalho';
+
+  @override
+  String get nativeTemporarilyReturnToAndroid =>
+      'Retornar temporariamente ao Android';
+
+  @override
+  String get nativeLaptopMode => 'Modo laptop';
+
+  @override
+  String get nativeLaptopModeDescription =>
+      'Mostra um teclado e um trackpad na metade inferior de um dispositivo dobrável.';
+
+  @override
+  String get nativeKeyboardStyle => 'Estilo';
+
+  @override
+  String get nativeBlackBerryMode => 'Modo BlackBerry';
+
+  @override
+  String get nativeBlackBerryLayout => 'Layout BlackBerry';
+
+  @override
+  String get nativeAutomaticLayout => 'Layout automático';
+
+  @override
+  String get nativeManualHeight => 'Ajuste manual da altura';
+
+  @override
+  String get nativeKeyboardHeight => 'Altura do teclado';
+
+  @override
+  String get nativeBlackBerryModeDescription =>
+      'Mostra um teclado compacto para celular sem trackpad.';
+
+  @override
+  String get nativeKeyboardSettings => 'Configurações do teclado';
+
+  @override
+  String get nativeKeyboardSettingsDescription =>
+      'Personalize a aparência do teclado do modo laptop';
+
+  @override
+  String get nativeTheme => 'Tema';
+
+  @override
+  String get nativeSwipeLanguage => 'Idioma da digitação por deslize';
+
+  @override
+  String get nativeSwipeLanguageDescription =>
+      'A digitação por toque continua usando seu IME atual';
+
+  @override
+  String get nativeKeyboardThemeStandard => 'Padrão';
+
+  @override
+  String get nativeKeyboardThemeCrimson => 'Carmesim';
+
+  @override
+  String get nativeKeyboardThemeCloud => 'Cloud Pop';
+
+  @override
+  String get nativeKeyboardThemeAmoled => 'AMOLED';
+
+  @override
+  String get nativeKeyboardThemeStandardDescription => 'Teclado escuro neutro';
+
+  @override
+  String get nativeKeyboardThemeCrimsonDescription =>
+      'Carmesim quente inspirado em computadores dobráveis';
+
+  @override
+  String get nativeKeyboardThemeCloudDescription => 'Teclado azul-claro suave';
+
+  @override
+  String get nativeKeyboardThemeAmoledDescription =>
+      'Teclado preto verdadeiro com economia de energia';
+
+  @override
+  String get nativeKeyboardThemeCustomDescription =>
+      'Tema de teclado personalizado';
+
+  @override
+  String get nativeOpenDextopWithYourSavedAppPlacement =>
+      'Abrir o Dextop com a disposição de aplicativos salva';
+
+  @override
+  String get nativeSaveAndApply => 'Salvar e aplicar';
+
+  @override
+  String get nativeFailedToSaveUnableToRetrieveRunning =>
+      'Falha ao salvar: não foi possível obter os aplicativos em execução no Dextop.';
+
+  @override
+  String get nativeFailedToSaveFailedToWriteTo =>
+      'Falha ao salvar: não foi possível gravar no armazenamento do dispositivo.';
+
+  @override
+  String get nativeViewSavedWorkspacesAndSaveCurrentArrangement =>
+      'Veja os espaços de trabalho salvos e salve a disposição atual';
+
+  @override
+  String get nativeNoSavedWorkspaces => 'Nenhum espaço de trabalho salvo';
+
+  @override
+  String get nativePleaseStartDextopFirst => 'Inicie o Dextop primeiro';
+
+  @override
+  String get nativeReconnect => 'Reconectar';
+
+  @override
+  String get nativeWidth => 'Largura';
+
+  @override
+  String get nativeReturn => 'Voltar';
+
+  @override
+  String get nativePermissionRequestInProgress =>
+      'Solicitação de permissão em andamento';
+
+  @override
+  String get nativeHorizontalHolding => 'Paisagem';
+
+  @override
+  String get nativeSaveTheCurrentAppArrangementAsA =>
+      'Salvar a disposição atual dos aplicativos como espaço de trabalho';
+
+  @override
+  String get nativeAddCurrentAppPlacement =>
+      'Adicionar disposição atual dos aplicativos';
+
+  @override
+  String get nativeScreenBrightness => 'Brilho da tela';
+
+  @override
+  String get nativeUseTheScreenAsATrackpadTo =>
+      'Use a tela como trackpad para controlar o cursor';
+
+  @override
+  String get nativeEnd => 'Encerrar';
+
+  @override
+  String get nativeEdit => 'Editar';
+
+  @override
+  String get nativeVerticalHolding => 'Retrato';
+
+  @override
+  String get nativeReconnectIfYouHaveDisplayOrConnection =>
+      'Reconecte se houver problemas de exibição ou conexão';
+
+  @override
+  String get nativeDisplayProfileIsOutOfRange =>
+      'O perfil da tela está fora do intervalo';
+
+  @override
+  String get nativeResolution => 'Resolução';
+
+  @override
+  String get nativeEditResolution => 'Editar resolução';
+
+  @override
+  String get nativeAddResolution => 'Adicionar resolução';
+
+  @override
+  String get nativeSendsTheTouchedPositionDirectlyToDextop =>
+      'Envia a posição tocada diretamente ao Dextop como um toque';
+
+  @override
+  String get nativeAddAndApply => 'Adicionar e aplicar';
+
+  @override
+  String get nativeEditPlacement => 'Editar disposição';
+
+  @override
+  String get nativeCompletePlacementEdit => 'Concluir edição da disposição';
+
+  @override
+  String get nativeVolume => 'Volume';
+
+  @override
+  String get nativeHeight => 'Altura';
+
+  @override
+  String get multiTouchUpgradeTitle => 'O aplicativo foi atualizado';
+
+  @override
+  String get multiTouchUpgradeBody =>
+      'Agora há suporte a multitoque, então os gestos também foram atualizados.';
+
+  @override
+  String get multiTouchUpgradeLandscape =>
+      'Paisagem\\nDeslize três dedos para a direita a partir da borda esquerda';
+
+  @override
+  String get multiTouchUpgradePortrait =>
+      'Retrato\\nDeslize três dedos para baixo a partir da borda superior';
+
+  @override
+  String get multiTouchUpgradeClose => 'Entendi';
+
+  @override
+  String appUpdatedTitle(String version) {
+    return 'Atualizado para $version!';
+  }
+
+  @override
+  String get appUpdatedMessage =>
+      'O Dextop foi atualizado para a versão mais recente.';
+
+  @override
+  String get androidSwipeImeLabel => 'Entrada por deslize do Dextop';
+
+  @override
+  String get androidAccessibilityServiceDescription =>
+      'Controla a tela virtual, a entrada e o painel de controle do Dextop';
+
+  @override
+  String get androidEmbeddedPairingChannel =>
+      'Configuração de acesso integrado';
+
+  @override
+  String get androidEmbeddedPairingTitle => 'Parear o Dextop';
+
+  @override
+  String get androidEmbeddedPairingNotificationText =>
+      'Digite o código de seis dígitos exibido na depuração sem fio';
+
+  @override
+  String get androidEmbeddedPairingCode =>
+      'Código de pareamento de seis dígitos';
+
+  @override
+  String get androidEmbeddedPairingEnterCode => 'Digitar código de pareamento';
+
+  @override
+  String get androidEmbeddedPairingSuccess => 'O Dextop está conectado';
+
+  @override
+  String get androidEmbeddedPairingSuccessMessage =>
+      'O pareamento foi concluído. Volte ao Dextop.';
+
+  @override
+  String get androidEmbeddedPairingFailed =>
+      'Não foi possível conectar o Dextop';
+
+  @override
+  String get androidEmbeddedPairingInvalidCode =>
+      'Digite um código de seis dígitos';
+
+  @override
+  String get androidEmbeddedPairingSearching =>
+      'Procurando serviço de pareamento';
+
+  @override
+  String get androidEmbeddedPairingServiceFound =>
+      'Serviço de pareamento encontrado';
+
+  @override
+  String get androidEmbeddedPairingServiceNotFound =>
+      'Serviço de pareamento não encontrado';
+
+  @override
+  String get androidEmbeddedPairingRetry => 'Tentar novamente';
+
+  @override
+  String get androidEmbeddedPairingInProgress => 'Pareamento em andamento';
 }

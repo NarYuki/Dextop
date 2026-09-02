@@ -268,7 +268,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get setupSystemDescription =>
-      'Dextop 使用 Shizuku 和 ADB 来控制虚拟显示、屏幕方向、输入和系统 UI 等行为。';
+      'Dextop 使用 Shizuku 和 ADB 控制虚拟显示、屏幕方向、输入和系统 UI。AccessibilityService API 用于显示和操作桌面悬浮层、传递用户发起的触摸、指针和导航输入，并在会话结束时恢复设备界面。无障碍数据不会被收集、存储或共享。';
 
   @override
   String get setupDisclaimer =>
@@ -1350,7 +1350,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get keyboardSwipeLanguages => '滑行输入语言';
 
   @override
-  String get keyboardSwipeLanguagesDescription => '选择长按 MENU 时显示的语言。默认仅启用英语。';
+  String get keyboardSwipeLanguagesDescription => '选择长按 MENU 时显示的语言。';
 
   @override
   String get keyboardSwipeAddLanguage => '添加语言';
@@ -1589,4 +1589,465 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get experimentalBlackBerryModeDescription =>
       '可从 Dextop 浮层使用适合手机的紧凑实体键盘风格布局';
+
+  @override
+  String get blackBerryAutoStart => '自动打开 BlackBerry 模式';
+
+  @override
+  String get blackBerryAutoStartDescription =>
+      '以竖屏启动 Dextop 会话时自动显示 BlackBerry 键盘';
+
+  @override
+  String get keyboardHaptics => '键盘触觉反馈';
+
+  @override
+  String get keyboardHapticsDescription => '按下键盘按键或触控板时振动';
+
+  @override
+  String get nativeUnknownPermissionResult => 'Shizuku 返回了未知的权限结果';
+
+  @override
+  String get nativeDevice => '设备';
+
+  @override
+  String get nativeCoverDisplay => '外屏';
+
+  @override
+  String get nativeCoverDisplayDescription => '在外屏打开 Android，或创建独立的 Dextop 会话';
+
+  @override
+  String get nativeCoverAndroidDescription =>
+      '将外屏用作普通 Android，主屏上的 Dextop 会话会继续运行。';
+
+  @override
+  String get nativeCoverDextopDescription => '在外屏创建独立于主屏会话的 Dextop 会话。';
+
+  @override
+  String get nativeOpenCoverAndroid => '在外屏打开 Android';
+
+  @override
+  String get nativeStopCoverAndroid => '结束 Android 会话';
+
+  @override
+  String get nativeStartCoverDextop => '在外屏创建 Dextop 会话';
+
+  @override
+  String get nativeStopCoverDextop => '结束外屏 Dextop 会话';
+
+  @override
+  String get nativeCoverDisplayFailed => '无法更改外屏';
+
+  @override
+  String get nativeSwitchToResolutionSuffix => '切换到此分辨率和 DPI';
+
+  @override
+  String get nativeShizukuUnavailable => 'Shizuku 不可用';
+
+  @override
+  String get nativeSelectedAppCannotLaunch => '无法启动所选应用';
+
+  @override
+  String get nativeShizukuBinderUnavailable => 'Shizuku 连接不可用';
+
+  @override
+  String get nativeMirrorSurfaceUnavailable => '镜像显示区域不可用';
+
+  @override
+  String get nativeRotationReleaseUnsupported => '不支持解除屏幕旋转锁定';
+
+  @override
+  String get nativePerformanceHudFormat =>
+      '%1\$.1f FPS  |  %2\$d MB\n电池: %3\$d%%  |  %4\$s\nCPU: %6\$s  |  输入: %5\$s';
+
+  @override
+  String get nativeInputMouse => '鼠标';
+
+  @override
+  String get nativeInputTouch => '触摸';
+
+  @override
+  String get nativeInputTrackpad => '触控板';
+
+  @override
+  String get nativeInputIdle => '空闲';
+
+  @override
+  String get nativePhysicalMouse => '切换物理鼠标输入目标';
+
+  @override
+  String get nativePhysicalKeyboard => '切换物理键盘输入目标';
+
+  @override
+  String get nativePhysicalMouseDemo =>
+      '在 Android 和 Dextop 之间切换物理鼠标。外接显示器连接到受支持的设备时可用。';
+
+  @override
+  String get nativePhysicalKeyboardDemo =>
+      '在 Android 和 Dextop 之间切换物理键盘。外接显示器连接到受支持的设备时可用。';
+
+  @override
+  String get nativeTheThreeFingerGestureIsAnEssential =>
+      '三指手势是使用Dextop时必不可少的操作方式。 \\n点击每个按钮可在此处查看功能说明';
+
+  @override
+  String get nativeAsusZenuiRogUiDesktop => '华硕 ZenUI / ROG UI 桌面';
+
+  @override
+  String get nativeAndroidDesktopFreeform => 'Android 桌面（自由格式）';
+
+  @override
+  String get nativeColorosDesktop => 'ColorOS桌面';
+
+  @override
+  String get nativeAdjustTheVolumeOfPlaybackOnDextop => '调整 Dextop 上的播放音量';
+
+  @override
+  String get nativeSwitchBetweenPortraitAndLandscapeOrientationOf =>
+      '在 Dextop 的纵向和横向之间切换';
+
+  @override
+  String get nativeSwitchDextopResolutionAndDpi => '切换 Dextop 分辨率和 DPI';
+
+  @override
+  String get nativePauseDextopAndReturnYourAndroidTo =>
+      '暂停 Dextop，并使 Android 恢复正常操作。';
+
+  @override
+  String get nativeTerminateYourDextopSession => '终止您的 Dextop 会话';
+
+  @override
+  String get nativeAdjustTheBrightnessOfTheDesktopDisplay => '调整桌面显示的亮度';
+
+  @override
+  String get nativeHonorMagicosDesktop => '荣耀MagicOS桌面';
+
+  @override
+  String get nativeHuaweiEmuiDesktop => '华为EMUI桌面';
+
+  @override
+  String get nativeHyperosMiuiDesktop => 'HyperOS / MIUI 桌面';
+
+  @override
+  String get nativeMotorolaLenovoDesktop => 'Motorola / Lenovo 桌面';
+
+  @override
+  String get nativeNothingOsDesktop => 'Nothing OS 桌面';
+
+  @override
+  String get nativeOriginosFuntouchOsDesktop => 'OriginOS / Funtouch OS 桌面';
+
+  @override
+  String get nativePixelAndroidDesktop => 'Pixel Android 桌面';
+
+  @override
+  String get nativeShizukuPermissionCheckTimedOut => 'Shizuku 权限检查超时';
+
+  @override
+  String get nativeRequiresConnectionToShizukuAndPermissions =>
+      '需要连接到 Shizuku 并获得权限';
+
+  @override
+  String get nativePermissionDeniedToShizuku => 'Shizuku 权限被拒绝';
+
+  @override
+  String get nativePleaseInstallShizuku => '请安装 Shizuku';
+
+  @override
+  String get nativePleaseStartShizuku => '请启动 Shizuku';
+
+  @override
+  String get nativeRemoveThisResolution => '删除此分辨率';
+
+  @override
+  String get nativeNoAppSelected => '未选择应用程序';
+
+  @override
+  String get nativeCouldNotStartApp => '无法启动应用程序';
+
+  @override
+  String get nativeAddCustomResolution => '添加自定义分辨率';
+
+  @override
+  String get nativeRotate180 => '旋转 180°';
+
+  @override
+  String get nativeCast => '投射';
+
+  @override
+  String get nativeCastDescription => '选择投射接收器';
+
+  @override
+  String get nativeNoCastDevices => '没有可用的 Google Cast 设备';
+
+  @override
+  String get nativeCastUnavailable => '无法初始化 Google Cast';
+
+  @override
+  String get nativeCasting => '正在投射';
+
+  @override
+  String get nativeStopCasting => '停止投射';
+
+  @override
+  String get nativeScanAgain => '重新扫描';
+
+  @override
+  String get nativeScanning => '正在扫描…';
+
+  @override
+  String get nativeCursor => '光标';
+
+  @override
+  String get nativeTap => '点击';
+
+  @override
+  String get nativeTapToExit => '点击退出';
+
+  @override
+  String get nativeTapToOpen => '点击打开';
+
+  @override
+  String get nativeYouCanRearrangeTheLayoutInThe => '您可以通过长按按钮来重新排列控制面板中的布局。';
+
+  @override
+  String get nativeWorkSpace => '工作区';
+
+  @override
+  String get nativeExpandWorkspace => '展开工作区';
+
+  @override
+  String get nativeTemporarilyReturnToAndroid => '暂时返回 Android';
+
+  @override
+  String get nativeLaptopMode => '笔记本模式';
+
+  @override
+  String get nativeLaptopModeDescription => '在折叠设备的下半屏显示键盘和触控板。';
+
+  @override
+  String get nativeKeyboardStyle => '样式';
+
+  @override
+  String get nativeBlackBerryMode => 'BlackBerry 模式';
+
+  @override
+  String get nativeBlackBerryLayout => 'BlackBerry 布局';
+
+  @override
+  String get nativeAutomaticLayout => '自动布局';
+
+  @override
+  String get nativeManualHeight => '手动调整高度';
+
+  @override
+  String get nativeKeyboardHeight => '键盘高度';
+
+  @override
+  String get nativeBlackBerryModeDescription => '显示不带触控板的紧凑型手机键盘。';
+
+  @override
+  String get nativeKeyboardSettings => '键盘设置';
+
+  @override
+  String get nativeKeyboardSettingsDescription => '自定义笔记本键盘的外观';
+
+  @override
+  String get nativeTheme => '主题';
+
+  @override
+  String get nativeSwipeLanguage => '滑行输入语言';
+
+  @override
+  String get nativeSwipeLanguageDescription => '点按输入仍使用当前输入法';
+
+  @override
+  String get nativeKeyboardThemeStandard => '标准';
+
+  @override
+  String get nativeKeyboardThemeCrimson => '深红';
+
+  @override
+  String get nativeKeyboardThemeCloud => 'Cloud Pop';
+
+  @override
+  String get nativeKeyboardThemeAmoled => 'AMOLED';
+
+  @override
+  String get nativeKeyboardThemeStandardDescription => '中性的深色键盘';
+
+  @override
+  String get nativeKeyboardThemeCrimsonDescription => '灵感来自折叠电脑的暖红色';
+
+  @override
+  String get nativeKeyboardThemeCloudDescription => '柔和的云朵蓝键盘';
+
+  @override
+  String get nativeKeyboardThemeAmoledDescription => '以纯黑为主的省电键盘';
+
+  @override
+  String get nativeKeyboardThemeCustomDescription => '自定义键盘主题';
+
+  @override
+  String get nativeOpenDextopWithYourSavedAppPlacement => '使用已保存的应用布局打开 Dextop';
+
+  @override
+  String get nativeSaveAndApply => '保存并应用';
+
+  @override
+  String get nativeFailedToSaveUnableToRetrieveRunning =>
+      '保存失败：无法检索 Dextop 上正在运行的应用程序。';
+
+  @override
+  String get nativeFailedToSaveFailedToWriteTo => '保存失败：无法写入设备存储。';
+
+  @override
+  String get nativeViewSavedWorkspacesAndSaveCurrentArrangement =>
+      '查看已保存的工作区并保存当前排列';
+
+  @override
+  String get nativeNoSavedWorkspaces => '没有保存的工作区';
+
+  @override
+  String get nativePleaseStartDextopFirst => '请先启动 Dextop';
+
+  @override
+  String get nativeReconnect => '重新连接';
+
+  @override
+  String get nativeWidth => '宽度';
+
+  @override
+  String get nativeReturn => '返回';
+
+  @override
+  String get nativePermissionRequestInProgress => '权限请求正在进行中';
+
+  @override
+  String get nativeHorizontalHolding => '横向';
+
+  @override
+  String get nativeSaveTheCurrentAppArrangementAsA => '将当前应用程序排列保存为工作区';
+
+  @override
+  String get nativeAddCurrentAppPlacement => '添加当前应用布局';
+
+  @override
+  String get nativeScreenBrightness => '屏幕亮度';
+
+  @override
+  String get nativeUseTheScreenAsATrackpadTo => '使用屏幕作为触控板来控制光标';
+
+  @override
+  String get nativeEnd => '结束';
+
+  @override
+  String get nativeEdit => '编辑';
+
+  @override
+  String get nativeVerticalHolding => '纵向';
+
+  @override
+  String get nativeReconnectIfYouHaveDisplayOrConnection => '如果出现显示或连接问题，请重新连接';
+
+  @override
+  String get nativeDisplayProfileIsOutOfRange => '显示配置文件超出范围';
+
+  @override
+  String get nativeResolution => '分辨率';
+
+  @override
+  String get nativeEditResolution => '编辑分辨率';
+
+  @override
+  String get nativeAddResolution => '添加分辨率';
+
+  @override
+  String get nativeSendsTheTouchedPositionDirectlyToDextop =>
+      '将触摸位置作为点击直接发送到 Dextop';
+
+  @override
+  String get nativeAddAndApply => '添加并应用';
+
+  @override
+  String get nativeEditPlacement => '编辑布局';
+
+  @override
+  String get nativeCompletePlacementEdit => '完成布局编辑';
+
+  @override
+  String get nativeVolume => '音量';
+
+  @override
+  String get nativeHeight => '高度';
+
+  @override
+  String get multiTouchUpgradeTitle => '应用已更新';
+
+  @override
+  String get multiTouchUpgradeBody => '现已支持多点触控，因此三指手势也已更新。';
+
+  @override
+  String get multiTouchUpgradeLandscape => '横屏时\\n用三指从屏幕左侧向右滑动';
+
+  @override
+  String get multiTouchUpgradePortrait => '竖屏时\\n用三指从屏幕顶部向下滑动';
+
+  @override
+  String get multiTouchUpgradeClose => '确定';
+
+  @override
+  String appUpdatedTitle(String version) {
+    return '已更新至 $version！';
+  }
+
+  @override
+  String get appUpdatedMessage => 'Dextop 已更新至最新版本。';
+
+  @override
+  String get androidSwipeImeLabel => 'Dextop 滑行输入';
+
+  @override
+  String get androidAccessibilityServiceDescription => '控制 Dextop 虚拟显示、输入和操作面板';
+
+  @override
+  String get androidEmbeddedPairingChannel => '内置访问设置';
+
+  @override
+  String get androidEmbeddedPairingTitle => '配对 Dextop';
+
+  @override
+  String get androidEmbeddedPairingNotificationText => '输入无线调试中显示的六位代码';
+
+  @override
+  String get androidEmbeddedPairingCode => '六位配对代码';
+
+  @override
+  String get androidEmbeddedPairingEnterCode => '输入配对代码';
+
+  @override
+  String get androidEmbeddedPairingSuccess => 'Dextop 已连接';
+
+  @override
+  String get androidEmbeddedPairingSuccessMessage => '配对已完成。请返回 Dextop。';
+
+  @override
+  String get androidEmbeddedPairingFailed => '无法连接 Dextop';
+
+  @override
+  String get androidEmbeddedPairingInvalidCode => '请输入六位代码';
+
+  @override
+  String get androidEmbeddedPairingSearching => '正在搜索配对服务';
+
+  @override
+  String get androidEmbeddedPairingServiceFound => '已找到配对服务';
+
+  @override
+  String get androidEmbeddedPairingServiceNotFound => '未找到配对服务';
+
+  @override
+  String get androidEmbeddedPairingRetry => '重试';
+
+  @override
+  String get androidEmbeddedPairingInProgress => '正在配对';
 }
