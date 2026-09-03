@@ -238,6 +238,18 @@ class AppLocalizationsJa extends AppLocalizations {
   String get setupPhaseTerms => 'ご利用にあたって';
 
   @override
+  String get setupPhaseDriver => 'Dextopを接続';
+
+  @override
+  String get setupTutorialTitle => 'セットアップの流れ';
+
+  @override
+  String get setupPhaseAccessibility => 'ユーザー補助';
+
+  @override
+  String get setupPhaseReady => '準備完了';
+
+  @override
   String get setupPhaseShizuku => 'Shizuku';
 
   @override
@@ -270,6 +282,44 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get setupSystemDescription =>
       'DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIを制御します。また、AccessibilityService API（ユーザー補助）をデスクトップオーバーレイの表示と操作、ユーザーが行ったタッチ・ポインター・ナビゲーション入力の転送、セッション終了時の端末UI復元に使用します。ユーザー補助のデータを収集、保存、共有することはありません。';
+
+  @override
+  String get setupTutorialDriverTitle => 'Dextopをドライバに接続します';
+
+  @override
+  String get setupTutorialDriverDescription => 'ペアリングが必要なのは初回のみです。必要な作業を案内します。';
+
+  @override
+  String get setupTutorialAccessibilityTitle => 'ユーザー補助をON';
+
+  @override
+  String get setupTutorialAccessibilityDescription =>
+      'デスクトップ環境の表示や操作にユーザー補助を利用します。設定画面が開きますので、「インストール済みアプリ」からDextopをオンにしてください。';
+
+  @override
+  String get setupTutorialAccessibilityButton => 'ユーザー補助設定を開く';
+
+  @override
+  String get setupTutorialAccessibilityEnabled => 'ユーザー補助権限';
+
+  @override
+  String get accessibilityDisclosureTitle => 'ユーザー補助サービスに関する開示';
+
+  @override
+  String get accessibilityDisclosureBody =>
+      'Dextopは、デスクトップ画面の表示と操作、入力先の検出、通知から開いたアプリの移動、キーボードとマウスによる操作を提供するために、ユーザー補助サービスを使用します。\n\nこのサービスにより、画面上のアプリとウィンドウ、操作イベント、フォーカス中の入力欄とその入力内容、キーボードとマウスの入力にアクセスする場合があります。これらの情報は、Dextopの機能を端末上で提供するためだけに処理されます。Dextopが収集、保存、外部送信、第三者への共有を行うことはありません。';
+
+  @override
+  String get accessibilityDisclosureAgree => '同意して設定を開く';
+
+  @override
+  String get accessibilityDisclosureDecline => '同意しない';
+
+  @override
+  String get setupTutorialReadyTitle => 'これで準備は完了です';
+
+  @override
+  String get setupTutorialReadyDescription => 'この二つが完了すれば、あとは利用を開始するだけです。';
 
   @override
   String get setupDisclaimer =>

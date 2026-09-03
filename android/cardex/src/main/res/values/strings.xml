@@ -13,8 +13,8 @@
     <string name="connection">Connection</string>
     <string name="dextop_installed">Dextop installed</string>
     <string name="dextop_missing">Dextop is required</string>
-    <string name="signature_verified">Secure relay verified</string>
-    <string name="signature_mismatch">Install Dextop Car Companion and Dextop from the same release</string>
+    <string name="signature_verified">Secure relay available</string>
+    <string name="signature_mismatch">Update Dextop to a version that supports this companion</string>
     <string name="auto_mode">Android Auto display</string>
     <string name="phone_mode">Phone companion</string>
     <string name="android_auto_connected">Android Auto connected</string>

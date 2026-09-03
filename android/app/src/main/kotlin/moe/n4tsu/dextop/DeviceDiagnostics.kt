@@ -127,6 +127,7 @@ internal class DeviceDiagnostics(private val context: Context) {
             "compatiblePrivilegeProviders" to compatibleProviders.map { it.packageName },
             "secureSettings" to secureSettings,
             "accessibility" to accessibilityCapable,
+            "accessibilityEnabled" to accessibility,
             "overlayWritable" to overlayCapable,
             "mouse" to hasMouse,
             "keyboard" to hasKeyboard,

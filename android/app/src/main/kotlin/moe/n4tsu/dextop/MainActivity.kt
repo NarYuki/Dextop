@@ -716,6 +716,16 @@ open class MainActivity : FlutterActivity() {
             ((!embeddedPairingStored && previousMode == "external") || embeddedRestoreNeedsSetup)
         val notificationGranted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+        val accessibilityComponent = ComponentName(this, MirrorService::class.java)
+        val accessibilityEnabled = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty().split(':').any { raw ->
+            ComponentName.unflattenFromString(raw)?.let { enabled ->
+                enabled.packageName == accessibilityComponent.packageName &&
+                    enabled.className == accessibilityComponent.className
+            } == true
+        }
         val carCompanionInstalled = runCatching {
             packageManager.getPackageInfo(CAR_COMPANION_PACKAGE, 0)
         }.isSuccess
@@ -749,6 +759,8 @@ open class MainActivity : FlutterActivity() {
             "externalPrivilegeAuthorizationRequired" to externalAuthorizationRequired,
             "embeddedPrivilegeSetupRequired" to embeddedSetupRequired,
             "embeddedNotificationGranted" to notificationGranted,
+            "distributionChannel" to BuildConfig.DISTRIBUTION_CHANNEL,
+            "accessibilityEnabled" to accessibilityEnabled,
             "wirelessDebuggingEnabled" to wirelessDebuggingEnabled,
             "shizukuBinderAlive" to binderAlive,
             "shizukuRunning" to running,
@@ -1515,15 +1527,40 @@ open class MainActivity : FlutterActivity() {
     }
 
     private fun grantSecureSettings() {
-        if (hasSecureSettingsPermission()) return
-        Log.i(logTag, "grantSecureSettings package=$packageName")
-        val command = PrivilegedAccess(logTag).execute(
-            "pm", "grant", packageName, Manifest.permission.WRITE_SECURE_SETTINGS
-        )
-        check(command.succeeded) {
-            command.error.ifBlank { "WRITE_SECURE_SETTINGS grant failed" }
+        if (!hasSecureSettingsPermission()) {
+            Log.i(logTag, "grantSecureSettings package=$packageName")
+            val command = PrivilegedAccess(logTag).execute(
+                "pm", "grant", packageName, Manifest.permission.WRITE_SECURE_SETTINGS
+            )
+            check(command.succeeded) {
+                command.error.ifBlank { "WRITE_SECURE_SETTINGS grant failed" }
+            }
+            Log.i(logTag, "grantSecureSettings complete")
         }
-        Log.i(logTag, "grantSecureSettings complete")
+        if (BuildConfig.DISTRIBUTION_CHANNEL == "github") {
+            enableDextopAccessibilityService()
+        }
+    }
+
+    private fun enableDextopAccessibilityService() {
+        val component = ComponentName(this, MirrorService::class.java).flattenToString()
+        val services = Settings.Secure.getString(
+            contentResolver,
+            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+        ).orEmpty().split(':').filter { it.isNotBlank() }.toMutableSet()
+        if (services.add(component)) {
+            check(Settings.Secure.putString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                services.joinToString(":")
+            )) { "Unable to enable Dextop accessibility service" }
+        }
+        check(Settings.Secure.putInt(
+            contentResolver,
+            Settings.Secure.ACCESSIBILITY_ENABLED,
+            1
+        )) { "Unable to enable Android accessibility services" }
+        Log.i(logTag, "Dextop accessibility service enabled for GitHub distribution")
     }
 
 }

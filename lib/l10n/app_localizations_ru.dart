@@ -244,6 +244,18 @@ class AppLocalizationsRu extends AppLocalizations {
   String get setupPhaseTerms => 'Перед началом работы';
 
   @override
+  String get setupPhaseDriver => 'Подключение Dextop';
+
+  @override
+  String get setupTutorialTitle => 'Этапы настройки';
+
+  @override
+  String get setupPhaseAccessibility => 'Специальные возможности';
+
+  @override
+  String get setupPhaseReady => 'Готово';
+
+  @override
   String get setupPhaseShizuku => 'Shizuku';
 
   @override
@@ -276,6 +288,50 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get setupSystemDescription =>
       'Dextop использует Shizuku и ADB для управления виртуальными дисплеями, ориентацией экрана, вводом и системным интерфейсом. API AccessibilityService используется для отображения и управления оверлеем рабочего стола, передачи запрошенных пользователем сенсорных, указательных и навигационных действий и восстановления интерфейса устройства после завершения сеанса. Данные специальных возможностей не собираются, не сохраняются и не передаются.';
+
+  @override
+  String get setupTutorialDriverTitle => 'Подключите Dextop к драйверу';
+
+  @override
+  String get setupTutorialDriverDescription =>
+      'Сопряжение требуется только при первом запуске. Мы проведём вас через необходимые действия.';
+
+  @override
+  String get setupTutorialAccessibilityTitle =>
+      'Включите специальные возможности';
+
+  @override
+  String get setupTutorialAccessibilityDescription =>
+      'Dextop использует специальные возможности для отображения рабочего стола и управления им. В настройках откройте раздел установленных приложений и включите Dextop.';
+
+  @override
+  String get setupTutorialAccessibilityButton =>
+      'Открыть настройки специальных возможностей';
+
+  @override
+  String get setupTutorialAccessibilityEnabled =>
+      'Разрешение специальных возможностей';
+
+  @override
+  String get accessibilityDisclosureTitle =>
+      'Раскрытие об использовании специальных возможностей';
+
+  @override
+  String get accessibilityDisclosureBody =>
+      'Dextop использует службу специальных возможностей для отображения рабочего стола и управления им, определения активного поля ввода, перемещения приложений, открытых из уведомлений, а также управления с клавиатуры и мыши.\n\nСлужба может получать доступ к приложениям и окнам на экране, событиям взаимодействия, активному текстовому полю и его содержимому, а также вводу с клавиатуры и мыши. Эти данные обрабатываются только на устройстве для работы функций Dextop. Dextop не собирает, не хранит, не передаёт эти данные и не предоставляет их третьим лицам.';
+
+  @override
+  String get accessibilityDisclosureAgree => 'Согласиться и открыть настройки';
+
+  @override
+  String get accessibilityDisclosureDecline => 'Не соглашаться';
+
+  @override
+  String get setupTutorialReadyTitle => 'Dextop готов к работе';
+
+  @override
+  String get setupTutorialReadyDescription =>
+      'После выполнения этих двух шагов можно приступать к работе с Dextop.';
 
   @override
   String get setupDisclaimer =>

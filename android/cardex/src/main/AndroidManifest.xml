@@ -1,5 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="moe.n4tsu.dextop.permission.CARDEX_RELAY" />
     <queries>
         <package android:name="moe.n4tsu.dextop" />
     </queries>

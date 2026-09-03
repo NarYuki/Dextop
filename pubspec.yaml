@@ -1,7 +1,7 @@
 name: free_dextop
 description: Turn an Android device into a flexible desktop workspace.
 publish_to: none
-version: 1.6.0+27
+version: 1.6.3+30
 
 environment:
   sdk: ^3.11.4
@@ -31,3 +31,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/dextop_icon.png
+    - assets/setup_tutorial/
