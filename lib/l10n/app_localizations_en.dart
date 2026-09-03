@@ -246,6 +246,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupPhaseTerms => 'Terms of use';
 
   @override
+  String get setupPhaseDriver => 'Connect Dextop';
+
+  @override
+  String get setupTutorialTitle => 'Setup overview';
+
+  @override
+  String get setupPhaseAccessibility => 'Accessibility';
+
+  @override
+  String get setupPhaseReady => 'Ready';
+
+  @override
   String get setupPhaseShizuku => 'Shizuku';
 
   @override
@@ -278,6 +290,46 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get setupSystemDescription =>
       'Dextop uses Shizuku and ADB to control virtual displays, screen orientation, input, and system UI. The AccessibilityService API displays and operates the desktop overlay, routes user-requested touch, pointer, and navigation input, and restores the device UI when a session ends. Accessibility data is not collected, stored, or shared.';
+
+  @override
+  String get setupTutorialDriverTitle => 'Connect Dextop to the driver';
+
+  @override
+  String get setupTutorialDriverDescription =>
+      'Pairing is required only the first time. We’ll guide you through the required steps.';
+
+  @override
+  String get setupTutorialAccessibilityTitle => 'Turn on Accessibility';
+
+  @override
+  String get setupTutorialAccessibilityDescription =>
+      'Dextop uses Accessibility to display and control the desktop environment. In the settings screen, open Installed apps and turn on Dextop.';
+
+  @override
+  String get setupTutorialAccessibilityButton => 'Open Accessibility settings';
+
+  @override
+  String get setupTutorialAccessibilityEnabled => 'Accessibility permission';
+
+  @override
+  String get accessibilityDisclosureTitle => 'Accessibility service disclosure';
+
+  @override
+  String get accessibilityDisclosureBody =>
+      'Dextop uses the Accessibility Service to display and control the desktop, detect the active input target, move apps opened from notifications, and provide keyboard and mouse control.\n\nThe service may access apps and windows shown on screen, interaction events, the focused text field and its text, and keyboard and mouse input. This information is processed only on your device to provide Dextop features. Dextop does not collect, store, transmit, or share this information with third parties.';
+
+  @override
+  String get accessibilityDisclosureAgree => 'Agree and open settings';
+
+  @override
+  String get accessibilityDisclosureDecline => 'Do not agree';
+
+  @override
+  String get setupTutorialReadyTitle => 'You’re ready to use Dextop';
+
+  @override
+  String get setupTutorialReadyDescription =>
+      'Once these two steps are complete, all that’s left is to start using Dextop.';
 
   @override
   String get setupDisclaimer =>

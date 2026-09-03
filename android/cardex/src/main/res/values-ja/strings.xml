@@ -13,8 +13,8 @@
     <string name="connection">接続</string>
     <string name="dextop_installed">Dextopがインストールされています</string>
     <string name="dextop_missing">Dextopが必要です</string>
-    <string name="signature_verified">セキュアリレーを確認しました</string>
-    <string name="signature_mismatch">Dextop Car CompanionとDextopを同じリリースからインストールしてください</string>
+    <string name="signature_verified">セキュアリレーを利用できます</string>
+    <string name="signature_mismatch">このCompanionに対応したバージョンへDextopを更新してください</string>
     <string name="auto_mode">Android Autoディスプレイ</string>
     <string name="phone_mode">スマートフォンコンパニオン</string>
     <string name="android_auto_connected">Android Autoに接続されています</string>

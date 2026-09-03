@@ -563,6 +563,30 @@ abstract class AppLocalizations {
   /// **'ご利用にあたって'**
   String get setupPhaseTerms;
 
+  /// No description provided for @setupPhaseDriver.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopを接続'**
+  String get setupPhaseDriver;
+
+  /// No description provided for @setupTutorialTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'セットアップの流れ'**
+  String get setupTutorialTitle;
+
+  /// No description provided for @setupPhaseAccessibility.
+  ///
+  /// In ja, this message translates to:
+  /// **'ユーザー補助'**
+  String get setupPhaseAccessibility;
+
+  /// No description provided for @setupPhaseReady.
+  ///
+  /// In ja, this message translates to:
+  /// **'準備完了'**
+  String get setupPhaseReady;
+
   /// No description provided for @setupPhaseShizuku.
   ///
   /// In ja, this message translates to:
@@ -628,6 +652,78 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'DextopはShizukuとADBを使用し、仮想ディスプレイ、画面方向、入力、システムUIを制御します。また、AccessibilityService API（ユーザー補助）をデスクトップオーバーレイの表示と操作、ユーザーが行ったタッチ・ポインター・ナビゲーション入力の転送、セッション終了時の端末UI復元に使用します。ユーザー補助のデータを収集、保存、共有することはありません。'**
   String get setupSystemDescription;
+
+  /// No description provided for @setupTutorialDriverTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopをドライバに接続します'**
+  String get setupTutorialDriverTitle;
+
+  /// No description provided for @setupTutorialDriverDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペアリングが必要なのは初回のみです。必要な作業を案内します。'**
+  String get setupTutorialDriverDescription;
+
+  /// No description provided for @setupTutorialAccessibilityTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'ユーザー補助をON'**
+  String get setupTutorialAccessibilityTitle;
+
+  /// No description provided for @setupTutorialAccessibilityDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ環境の表示や操作にユーザー補助を利用します。設定画面が開きますので、「インストール済みアプリ」からDextopをオンにしてください。'**
+  String get setupTutorialAccessibilityDescription;
+
+  /// No description provided for @setupTutorialAccessibilityButton.
+  ///
+  /// In ja, this message translates to:
+  /// **'ユーザー補助設定を開く'**
+  String get setupTutorialAccessibilityButton;
+
+  /// No description provided for @setupTutorialAccessibilityEnabled.
+  ///
+  /// In ja, this message translates to:
+  /// **'ユーザー補助権限'**
+  String get setupTutorialAccessibilityEnabled;
+
+  /// No description provided for @accessibilityDisclosureTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'ユーザー補助サービスに関する開示'**
+  String get accessibilityDisclosureTitle;
+
+  /// No description provided for @accessibilityDisclosureBody.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopは、デスクトップ画面の表示と操作、入力先の検出、通知から開いたアプリの移動、キーボードとマウスによる操作を提供するために、ユーザー補助サービスを使用します。\n\nこのサービスにより、画面上のアプリとウィンドウ、操作イベント、フォーカス中の入力欄とその入力内容、キーボードとマウスの入力にアクセスする場合があります。これらの情報は、Dextopの機能を端末上で提供するためだけに処理されます。Dextopが収集、保存、外部送信、第三者への共有を行うことはありません。'**
+  String get accessibilityDisclosureBody;
+
+  /// No description provided for @accessibilityDisclosureAgree.
+  ///
+  /// In ja, this message translates to:
+  /// **'同意して設定を開く'**
+  String get accessibilityDisclosureAgree;
+
+  /// No description provided for @accessibilityDisclosureDecline.
+  ///
+  /// In ja, this message translates to:
+  /// **'同意しない'**
+  String get accessibilityDisclosureDecline;
+
+  /// No description provided for @setupTutorialReadyTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'これで準備は完了です'**
+  String get setupTutorialReadyTitle;
+
+  /// No description provided for @setupTutorialReadyDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'この二つが完了すれば、あとは利用を開始するだけです。'**
+  String get setupTutorialReadyDescription;
 
   /// No description provided for @setupDisclaimer.
   ///

@@ -237,6 +237,18 @@ class AppLocalizationsZh extends AppLocalizations {
   String get setupPhaseTerms => '使用条款';
 
   @override
+  String get setupPhaseDriver => '连接 Dextop';
+
+  @override
+  String get setupTutorialTitle => '设置流程';
+
+  @override
+  String get setupPhaseAccessibility => '无障碍服务';
+
+  @override
+  String get setupPhaseReady => '准备完成';
+
+  @override
   String get setupPhaseShizuku => 'Shizuku';
 
   @override
@@ -269,6 +281,44 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get setupSystemDescription =>
       'Dextop 使用 Shizuku 和 ADB 控制虚拟显示、屏幕方向、输入和系统 UI。AccessibilityService API 用于显示和操作桌面悬浮层、传递用户发起的触摸、指针和导航输入，并在会话结束时恢复设备界面。无障碍数据不会被收集、存储或共享。';
+
+  @override
+  String get setupTutorialDriverTitle => '将 Dextop 连接到驱动程序';
+
+  @override
+  String get setupTutorialDriverDescription => '仅首次使用时需要配对。我们会引导你完成所需步骤。';
+
+  @override
+  String get setupTutorialAccessibilityTitle => '开启无障碍服务';
+
+  @override
+  String get setupTutorialAccessibilityDescription =>
+      'Dextop 使用无障碍服务来显示和操作桌面环境。请在设置页面打开已安装的应用，然后启用 Dextop。';
+
+  @override
+  String get setupTutorialAccessibilityButton => '打开无障碍设置';
+
+  @override
+  String get setupTutorialAccessibilityEnabled => '无障碍权限';
+
+  @override
+  String get accessibilityDisclosureTitle => '无障碍服务使用说明';
+
+  @override
+  String get accessibilityDisclosureBody =>
+      'Dextop 使用无障碍服务来显示和操作桌面、检测当前输入目标、移动从通知中打开的应用，以及提供键盘和鼠标操作。\n\n该服务可能会访问屏幕上显示的应用和窗口、交互事件、当前聚焦的文本输入框及其内容，以及键盘和鼠标输入。这些信息仅在设备上处理，用于提供 Dextop 功能。Dextop 不会收集、存储、对外传输这些信息，也不会与第三方共享这些信息。';
+
+  @override
+  String get accessibilityDisclosureAgree => '同意并打开设置';
+
+  @override
+  String get accessibilityDisclosureDecline => '不同意';
+
+  @override
+  String get setupTutorialReadyTitle => 'Dextop 已准备就绪';
+
+  @override
+  String get setupTutorialReadyDescription => '完成以上两个步骤后，即可开始使用 Dextop。';
 
   @override
   String get setupDisclaimer =>

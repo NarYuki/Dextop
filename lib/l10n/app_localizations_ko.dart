@@ -239,6 +239,18 @@ class AppLocalizationsKo extends AppLocalizations {
   String get setupPhaseTerms => '이용에 있어서';
 
   @override
+  String get setupPhaseDriver => 'Dextop 연결';
+
+  @override
+  String get setupTutorialTitle => '설정 안내';
+
+  @override
+  String get setupPhaseAccessibility => '접근성';
+
+  @override
+  String get setupPhaseReady => '준비 완료';
+
+  @override
   String get setupPhaseShizuku => 'Shizuku';
 
   @override
@@ -271,6 +283,46 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get setupSystemDescription =>
       'Dextop은 Shizuku와 ADB를 사용하여 가상 디스플레이, 화면 방향, 입력 및 시스템 UI를 제어합니다. AccessibilityService API는 데스크톱 오버레이 표시와 조작, 사용자가 요청한 터치·포인터·탐색 입력 전달, 세션 종료 시 기기 UI 복원에 사용됩니다. 접근성 데이터는 수집, 저장 또는 공유하지 않습니다.';
+
+  @override
+  String get setupTutorialDriverTitle => 'Dextop을 드라이버에 연결';
+
+  @override
+  String get setupTutorialDriverDescription =>
+      '페어링은 처음 한 번만 필요합니다. 필요한 단계를 안내해 드립니다.';
+
+  @override
+  String get setupTutorialAccessibilityTitle => '접근성 켜기';
+
+  @override
+  String get setupTutorialAccessibilityDescription =>
+      'Dextop은 데스크톱 환경을 표시하고 조작하기 위해 접근성을 사용합니다. 설정 화면에서 설치된 앱을 열고 Dextop을 켜세요.';
+
+  @override
+  String get setupTutorialAccessibilityButton => '접근성 설정 열기';
+
+  @override
+  String get setupTutorialAccessibilityEnabled => '접근성 권한';
+
+  @override
+  String get accessibilityDisclosureTitle => '접근성 서비스 공개';
+
+  @override
+  String get accessibilityDisclosureBody =>
+      'Dextop은 데스크톱 화면 표시 및 조작, 활성 입력 대상 감지, 알림에서 연 앱 이동, 키보드와 마우스 조작 제공을 위해 접근성 서비스를 사용합니다.\n\n이 서비스는 화면에 표시된 앱과 창, 상호작용 이벤트, 포커스된 입력란과 입력 내용, 키보드 및 마우스 입력에 접근할 수 있습니다. 이 정보는 Dextop 기능을 제공하기 위해 기기에서만 처리됩니다. Dextop은 이 정보를 수집, 저장, 외부 전송하거나 제3자와 공유하지 않습니다.';
+
+  @override
+  String get accessibilityDisclosureAgree => '동의하고 설정 열기';
+
+  @override
+  String get accessibilityDisclosureDecline => '동의하지 않음';
+
+  @override
+  String get setupTutorialReadyTitle => 'Dextop을 사용할 준비가 되었습니다';
+
+  @override
+  String get setupTutorialReadyDescription =>
+      '이 두 단계가 완료되면 바로 Dextop을 사용할 수 있습니다.';
 
   @override
   String get setupDisclaimer =>

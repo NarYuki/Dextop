@@ -16,7 +16,7 @@
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
     <permission
         android:name="moe.n4tsu.dextop.permission.CARDEX_RELAY"
-        android:protectionLevel="signature" />
+        android:protectionLevel="normal" />
     <application
         android:label="@string/app_name"
         android:allowBackup="false"
@@ -108,16 +108,14 @@
         <activity
             android:name=".AndroidAutoMirrorActivity"
             android:label="@string/app_name"
-            android:exported="true"
-            android:permission="moe.n4tsu.dextop.permission.CARDEX_RELAY"
+            android:exported="false"
             android:excludeFromRecents="true"
             android:resizeableActivity="true"
             android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode" />
         <service
             android:name=".CardexRelayService"
-            android:exported="true"
-            android:permission="moe.n4tsu.dextop.permission.CARDEX_RELAY" />
+            android:exported="true" />
         <service
             android:name=".MirrorService"
             android:exported="false"
@@ -161,8 +159,7 @@
             android:value="2" />
         <receiver
             android:name=".CardexRecoveryReceiver"
-            android:exported="true"
-            android:permission="moe.n4tsu.dextop.permission.CARDEX_RELAY">
+            android:exported="false">
             <intent-filter>
                 <action android:name="moe.n4tsu.dextop.action.CARDEX_INTERRUPTED" />
             </intent-filter>

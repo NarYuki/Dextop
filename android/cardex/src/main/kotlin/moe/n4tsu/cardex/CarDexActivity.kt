@@ -4,7 +4,6 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.os.Handler
 import android.os.IBinder
@@ -148,9 +147,6 @@ class CarDexActivity : ComponentActivity() {
             relay = binder?.let(::Messenger)
         }
         override fun onServiceDisconnected(name: ComponentName?) {
-            if (relayRequested || relayStatus == STATUS_RUNNING || relayStatus == STATUS_STARTING) {
-                markUnexpectedDisconnect("relay service disconnected")
-            }
             relay = null
             relayStatus = STATUS_IDLE
         }
@@ -241,11 +237,11 @@ class CarDexActivity : ComponentActivity() {
         val installed = runCatching {
             packageManager.getPackageInfo(DEXTOP_PACKAGE, 0)
         }.isSuccess
-        val signaturePermission = installed && packageManager.checkPermission(
-            RELAY_PERMISSION,
-            packageName
-        ) == PackageManager.PERMISSION_GRANTED
-        return RelayState(installed, signaturePermission)
+        val relayAvailable = installed && packageManager.resolveService(
+            Intent().setComponent(ComponentName(DEXTOP_PACKAGE, RELAY_SERVICE)),
+            0,
+        ) != null
+        return RelayState(installed, relayAvailable)
     }
 
     private fun openDextop() {
@@ -266,7 +262,7 @@ class CarDexActivity : ComponentActivity() {
         runCatching {
             startActivity(intent)
         }.onFailure {
-            relayState = inspectRelay().copy(signaturePermission = false)
+            relayState = inspectRelay().copy(relayAvailable = false)
         }
     }
 
@@ -321,14 +317,6 @@ class CarDexActivity : ComponentActivity() {
         relaySurfaceHeight = 0
     }
 
-    private fun markUnexpectedDisconnect(reason: String) {
-        sendBroadcast(
-            Intent(ACTION_CARDEX_INTERRUPTED)
-                .setComponent(ComponentName(DEXTOP_PACKAGE, CARDEX_RECOVERY_RECEIVER))
-                .putExtra("reason", reason)
-        )
-    }
-
     private fun sendAction(action: String, keepOpen: Boolean = false) {
         relay?.send(Message.obtain(null, MSG_ACTION).apply {
             data = Bundle().apply { putString(KEY_ACTION, action) }
@@ -340,9 +328,6 @@ class CarDexActivity : ComponentActivity() {
         private const val DEXTOP_PACKAGE = "moe.n4tsu.dextop"
         private const val MAIN_ACTIVITY = "moe.n4tsu.dextop.MainActivity"
         private const val RELAY_SERVICE = "moe.n4tsu.dextop.CardexRelayService"
-        private const val RELAY_PERMISSION = "moe.n4tsu.dextop.permission.CARDEX_RELAY"
-        private const val CARDEX_RECOVERY_RECEIVER = "moe.n4tsu.dextop.CardexRecoveryReceiver"
-        private const val ACTION_CARDEX_INTERRUPTED = "moe.n4tsu.dextop.action.CARDEX_INTERRUPTED"
     }
 }
 
@@ -756,9 +741,9 @@ private fun parseWorkspaces(raw: String): List<CardexWorkspace> = runCatching {
 
 private data class RelayState(
     val installed: Boolean,
-    val signaturePermission: Boolean
+    val relayAvailable: Boolean
 ) {
-    val ready: Boolean get() = installed && signaturePermission
+    val ready: Boolean get() = installed && relayAvailable
 }
 
 @Composable
@@ -879,10 +864,10 @@ private fun CarDexScreen(
                     HorizontalDivider(Modifier.padding(horizontal = 20.dp))
                     StatusRow(
                         title = stringResource(
-                            if (state.signaturePermission) R.string.signature_verified
+                            if (state.relayAvailable) R.string.signature_verified
                             else R.string.signature_mismatch
                         ),
-                        successful = state.signaturePermission
+                        successful = state.relayAvailable
                     )
                     HorizontalDivider(Modifier.padding(horizontal = 20.dp))
                     StatusRow(

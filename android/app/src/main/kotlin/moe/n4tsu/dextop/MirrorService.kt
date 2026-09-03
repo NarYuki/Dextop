@@ -241,33 +241,41 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
                 return
             }
-            pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
-            pendingStartResult = completion
-            pending = Config(width, height, density, secure, effectiveDecorations, autoOnly)
-            pendingAutoSurface = autoSurface?.takeIf { autoOnly }
             val component = ComponentName(context, MirrorService::class.java).flattenToString()
             val current = Settings.Secure.getString(
                 context.contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
             ).orEmpty()
             val services = current.split(':').filter { it.isNotBlank() }.toMutableSet()
-            val wasAlreadyEnabled = component in services
-            services.add(component)
-            if (instance == null && wasAlreadyEnabled) {
-                // Package replacement can leave AccessibilityManager showing
-                // this service as enabled and "binding" forever without ever
-                // delivering onServiceConnected to the new process. Merely
-                // writing the same enabled-service value does not trigger a
-                // rebind on Samsung. Briefly remove only Dextop, then restore
-                // it; the pending start remains queued and is consumed from
-                // onServiceConnected.
-                val withoutDextop = services.filterNot { it == component }
-                Settings.Secure.putString(
-                    context.contentResolver,
-                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                    withoutDextop.joinToString(":")
-                )
-                Handler(Looper.getMainLooper()).postDelayed({
+            val enabled = services.any {
+                ComponentName.unflattenFromString(it)?.flattenToString() == component
+            }
+            if (BuildConfig.DISTRIBUTION_CHANNEL == "github") {
+                pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
+                pendingStartResult = completion
+                pending = Config(width, height, density, secure, effectiveDecorations, autoOnly)
+                pendingAutoSurface = autoSurface?.takeIf { autoOnly }
+                services.add(component)
+                if (instance == null && enabled) {
+                    val withoutDextop = services.filterNot { it == component }
+                    Settings.Secure.putString(
+                        context.contentResolver,
+                        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                        withoutDextop.joinToString(":")
+                    )
+                    Handler(Looper.getMainLooper()).postDelayed({
+                        Settings.Secure.putString(
+                            context.contentResolver,
+                            Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                            services.joinToString(":")
+                        )
+                        Settings.Secure.putInt(
+                            context.contentResolver,
+                            Settings.Secure.ACCESSIBILITY_ENABLED,
+                            1
+                        )
+                    }, 180L)
+                } else {
                     Settings.Secure.putString(
                         context.contentResolver,
                         Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
@@ -278,20 +286,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         Settings.Secure.ACCESSIBILITY_ENABLED,
                         1
                     )
-                }, 180L)
-            } else {
-                Settings.Secure.putString(
-                    context.contentResolver,
-                    Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                    services.joinToString(":")
-                )
-                Settings.Secure.putInt(
-                    context.contentResolver,
-                    Settings.Secure.ACCESSIBILITY_ENABLED,
-                    1
-                )
-                instance?.start(pending!!)
+                    instance?.start(pending!!)
+                }
+                return
             }
+            if (!enabled) {
+                completion(Result.failure(IllegalStateException(
+                    "Enable Dextop in Android Accessibility settings before starting"
+                )))
+                return
+            }
+            val connected = instance
+            if (connected == null) {
+                completion(Result.failure(IllegalStateException(
+                    "Dextop Accessibility is enabled but not connected. Open Accessibility settings and reconnect Dextop"
+                )))
+                return
+            }
+            pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
+            pendingStartResult = completion
+            pending = Config(width, height, density, secure, effectiveDecorations, autoOnly)
+            pendingAutoSurface = autoSurface?.takeIf { autoOnly }
+            connected.start(pending!!)
         }
 
         private fun completeStart(value: Result<Map<String, Any>>) {
@@ -464,16 +480,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         fun showLaptopDemo(context: Context) {
             pendingDemo = true
             pendingLaptopDemo = true
-            val component = ComponentName(context, MirrorService::class.java).flattenToString()
-            val current = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ).orEmpty()
-            Settings.Secure.putString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                (current.split(':').filter { it.isNotBlank() } + component).distinct().joinToString(":"))
-            Settings.Secure.putInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
             instance?.showDemoWindow()
         }
 
@@ -644,19 +650,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun showOverlayDemo(context: Context) {
             pendingDemo = true
-            val component = ComponentName(context, MirrorService::class.java).flattenToString()
-            val current = Settings.Secure.getString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ).orEmpty()
-            val services = current.split(':').filter { it.isNotBlank() }.toMutableSet()
-            services.add(component)
-            Settings.Secure.putString(
-                context.contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                services.joinToString(":")
-            )
-            Settings.Secure.putInt(context.contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 1)
             instance?.showDemoWindow()
         }
 
@@ -10653,27 +10646,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 .commit()
         }
         if (wasActive) OperationLog.finishSession(this, restored)
-        if (wasActive) {
-            // Detach the input-filtering accessibility service so Android's
-            // back gesture and Circle to Search regain their normal handlers.
-            // Delay both operations until the navigation restore retries have
-            // completed; disabling the service immediately can terminate the
-            // process before SystemUI accepts the final zero-disable request.
-            val disableAfterCleanup = object : Runnable {
-                override fun run() {
-                    // A new session may have started during the grace period.
-                    // In that case the old delayed detach must not tear down
-                    // the newly active service.
-                    if (generation != stopCleanupGeneration || active || stopping || pending != null) return
-                    disableDextopAccessibilityService()
-                    disableSelf()
-                }
-            }
-            android.os.Handler(mainLooper).postDelayed(disableAfterCleanup, 4_500L)
-        }
         // All display and system restoration is complete at this point. Clear
-        // the latch before returning so a new start can reuse this service
-        // instance; the delayed detach above is guarded by active/stopping.
+        // the latch before returning so a new start can reuse this service.
         stopping = false
         autoOnlySession = false
         completeStart(Result.failure(IllegalStateException("Dextop was stopped before startup completed")))

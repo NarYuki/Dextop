@@ -19,6 +19,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     with WidgetsBindingObserver {
   static const channel = MethodChannel('app.freedextop/display');
   bool get usesEmbeddedProvider => status['privilegeProvider'] == 'embedded';
+  bool get isPlayDistribution => status['distributionChannel'] != 'github';
+  bool get accessibilityEnabled => status['accessibilityEnabled'] == true;
   var page = -1;
   var status = <String, dynamic>{};
   var loading = false;
@@ -28,6 +30,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   var providerChoiceShown = false;
   var gestureDemoOpening = false;
   var gestureDemoCompleted = false;
+  var tutorialStep = 0;
+  var accessibilityDisclosureAccepted = false;
   AppLocalizations get l => AppLocalizations.of(context);
 
   @override
@@ -40,7 +44,17 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         await refreshStatus(clearPrevious: true);
       }
     });
+    loadAccessibilityDisclosureConsent();
     refreshStatus();
+  }
+
+  Future<void> loadAccessibilityDisclosureConsent() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      accessibilityDisclosureAccepted =
+          preferences.getBool('accessibility_disclosure_accepted_v1') ?? false;
+    });
   }
 
   @override
@@ -79,7 +93,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         'shizukuGranted': installed && value['shizukuGranted'] == true,
       };
     });
-    if (page == 1 &&
+    if (page == 2 &&
         value['privilegeProviderSelectionRequired'] == true &&
         !providerChoiceShown &&
         mounted) {
@@ -141,13 +155,13 @@ class _DextopSetupPageState extends State<DextopSetupPage>
 
   void go(int target) {
     setState(() => page = target);
-    if (target == 1) {
+    if (target == 2) {
       refreshStatus(clearPrevious: true);
       statusTimer?.cancel();
     } else {
       statusTimer?.cancel();
     }
-    if (target == 2) refreshStatus(clearPrevious: true);
+    if (target == 3 || target == 4) refreshStatus(clearPrevious: true);
   }
 
   Future<void> startGestureDemo() async {
@@ -384,7 +398,9 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         Text(
           [
             l.setupPhaseTerms,
-            usesEmbeddedProvider ? l.setupEmbeddedTitle : providerName,
+            l.setupTutorialTitle,
+            l.setupPhaseDriver,
+            l.setupPhaseAccessibility,
             l.setupPhaseDevice,
             l.setupPhaseDemo,
           ][page],
@@ -402,16 +418,37 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             progressDots(),
             const Spacer(),
             if (page > 0)
-              TextButton(onPressed: () => go(page - 1), child: Text(l.back)),
+              TextButton(
+                onPressed: () {
+                  if (page == 1 && tutorialStep > 0) {
+                    setState(() => tutorialStep--);
+                  } else if (page == 4 && !isPlayDistribution) {
+                    go(2);
+                  } else {
+                    go(page - 1);
+                  }
+                },
+                child: Text(l.back),
+              ),
             const SizedBox(width: 8),
             FilledButton.icon(
               onPressed: canContinue
-                  ? () => page == 3 ? complete() : go(page + 1)
+                  ? () {
+                      if (page == 1 && tutorialStep < 2) {
+                        setState(() => tutorialStep++);
+                      } else if (page == 2 && !isPlayDistribution) {
+                        go(4);
+                      } else if (page == 5) {
+                        complete();
+                      } else {
+                        go(page + 1);
+                      }
+                    }
                   : null,
               icon: Icon(
-                page == 3 ? Icons.check_rounded : Icons.arrow_forward_rounded,
+                page == 5 ? Icons.check_rounded : Icons.arrow_forward_rounded,
               ),
-              label: Text(page == 3 ? l.done : l.continueLabel),
+              label: Text(page == 5 ? l.done : l.continueLabel),
             ),
           ],
         ),
@@ -420,12 +457,22 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   );
 
   bool get canContinue => switch (page) {
-    1 => shizukuSetupConfirmed && status['shizukuGranted'] == true,
-    3 => gestureDemoCompleted,
+    2 => shizukuSetupConfirmed && status['shizukuGranted'] == true,
+    3 =>
+      !isPlayDistribution ||
+          (accessibilityEnabled && accessibilityDisclosureAccepted),
+    5 => gestureDemoCompleted,
     _ => true,
   };
 
-  List<Widget> phases() => [disclaimer(), shizuku(), deviceInfo(), demo()];
+  List<Widget> phases() => [
+    disclaimer(),
+    setupTutorial(),
+    shizuku(),
+    accessibilitySetup(),
+    deviceInfo(),
+    demo(),
+  ];
 
   Widget disclaimer() => ListView(
     children: [
@@ -617,6 +664,147 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     );
   }
 
+  Widget setupTutorial() {
+    final slides = [
+      (
+        image: 'connect',
+        title: l.setupTutorialDriverTitle,
+        description: l.setupTutorialDriverDescription,
+      ),
+      (
+        image: 'accessibility',
+        title: l.setupTutorialAccessibilityTitle,
+        description: l.setupTutorialAccessibilityDescription,
+      ),
+      (image: 'ready', title: l.setupTutorialReadyDescription, description: ''),
+    ];
+    final slide = slides[tutorialStep];
+    return Column(
+      children: [
+        Expanded(
+          child: AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            child: ListView(
+              key: ValueKey(tutorialStep),
+              children: [
+                tutorialImage(slide.image),
+                const SizedBox(height: 20),
+                Text(
+                  slide.title,
+                  style: Theme.of(context).textTheme.headlineMedium,
+                ),
+                if (slide.description.isNotEmpty) ...[
+                  const SizedBox(height: 12),
+                  Text(slide.description),
+                ],
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: List.generate(
+            slides.length,
+            (index) => AnimatedContainer(
+              duration: const Duration(milliseconds: 180),
+              width: index == tutorialStep ? 22 : 8,
+              height: 8,
+              margin: const EdgeInsets.symmetric(horizontal: 3),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: index == tutorialStep
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget accessibilitySetup() => ListView(
+    children: [
+      const SizedBox(height: 24),
+      Icon(
+        accessibilityEnabled
+            ? Icons.check_circle_rounded
+            : Icons.accessibility_new_rounded,
+        size: 72,
+      ),
+      const SizedBox(height: 24),
+      Text(
+        l.accessibilityDisclosureTitle,
+        style: Theme.of(context).textTheme.headlineMedium,
+      ),
+      const SizedBox(height: 12),
+      Text(l.accessibilityDisclosureBody),
+      const SizedBox(height: 24),
+      _StatusTile(
+        label: l.setupTutorialAccessibilityEnabled,
+        complete: accessibilityEnabled,
+      ),
+      const SizedBox(height: 16),
+      SizedBox(
+        width: double.infinity,
+        child: FilledButton.icon(
+          onPressed: () async {
+            final preferences = await SharedPreferences.getInstance();
+            await preferences.setBool(
+              'accessibility_disclosure_accepted_v1',
+              true,
+            );
+            if (!mounted) return;
+            setState(() => accessibilityDisclosureAccepted = true);
+            await channel.invokeMethod<void>('openAccessibility');
+          },
+          icon: const Icon(Icons.accessibility_new_rounded),
+          label: Text(l.accessibilityDisclosureAgree),
+        ),
+      ),
+      const SizedBox(height: 8),
+      SizedBox(
+        width: double.infinity,
+        child: OutlinedButton(
+          onPressed: () async {
+            final preferences = await SharedPreferences.getInstance();
+            await preferences.setBool(
+              'accessibility_disclosure_accepted_v1',
+              false,
+            );
+            if (!mounted) return;
+            setState(() => accessibilityDisclosureAccepted = false);
+            go(2);
+          },
+          child: Text(l.accessibilityDisclosureDecline),
+        ),
+      ),
+    ],
+  );
+
+  Widget tutorialImage(String name) {
+    final language = Localizations.localeOf(context).languageCode == 'ja'
+        ? 'ja'
+        : 'en';
+    return Semantics(
+      image: true,
+      child: Container(
+        height: (MediaQuery.sizeOf(context).height * .44).clamp(300.0, 460.0),
+        width: double.infinity,
+        decoration: BoxDecoration(
+          color: Theme.of(context).colorScheme.surfaceContainerLow,
+          borderRadius: BorderRadius.circular(24),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: Image.asset(
+          'assets/setup_tutorial/${name}_$language.jpg',
+          fit: BoxFit.contain,
+        ),
+      ),
+    );
+  }
+
   Widget deviceInfo() => ListView(
     children: [
       const SizedBox(height: 20),
@@ -686,21 +874,22 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   );
 
   Widget progressDots() => Row(
-    children: List.generate(
-      4,
-      (index) => AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        width: index == page ? 22 : 8,
-        height: 8,
-        margin: const EdgeInsets.only(right: 6),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(8),
-          color: index == page
-              ? Theme.of(context).colorScheme.primary
-              : Theme.of(context).colorScheme.surfaceContainerHighest,
-        ),
-      ),
-    ),
+    children: (isPlayDistribution ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 4, 5])
+        .map(
+          (index) => AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            width: index == page ? 22 : 8,
+            height: 8,
+            margin: const EdgeInsets.only(right: 6),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: index == page
+                  ? Theme.of(context).colorScheme.primary
+                  : Theme.of(context).colorScheme.surfaceContainerHighest,
+            ),
+          ),
+        )
+        .toList(),
   );
 }
 

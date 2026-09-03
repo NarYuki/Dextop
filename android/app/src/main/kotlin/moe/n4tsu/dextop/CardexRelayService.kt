@@ -13,7 +13,7 @@ import android.view.MotionEvent
 import android.view.Surface
 import kotlin.math.roundToInt
 
-/** Signature-protected in-process renderer for the CARDEX parked activity. */
+/** Certificate-verified in-process renderer for the Car Companion parked activity. */
 class CardexRelayService : Service() {
     private val handler = Handler(Looper.getMainLooper(), ::handleMessage)
     private val messenger = Messenger(handler)
@@ -31,6 +31,7 @@ class CardexRelayService : Service() {
     override fun onBind(intent: Intent?): IBinder = messenger.binder
 
     override fun onUnbind(intent: Intent?): Boolean {
+        if (client == null) return false
         if (!gracefulStopRequested && (surface != null || controller != null || legacySession?.ownsSession == true)) {
             CardexRecoveryReceiver.markInterrupted(this, "relay client unbound")
         }
@@ -44,6 +45,23 @@ class CardexRelayService : Service() {
     }
 
     private fun handleMessage(message: Message): Boolean {
+        if (!CardCompanionCallerVerifier.isTrusted(this, message.sendingUid)) {
+            OperationLog.w(
+                this,
+                "CarCompanion",
+                "rejected relay caller uid=${message.sendingUid}",
+                null,
+            )
+            runCatching {
+                message.replyTo?.send(Message.obtain(null, MSG_STATUS).apply {
+                    data = Bundle().apply {
+                        putInt(KEY_STATUS, STATUS_ERROR)
+                        putString(KEY_DETAIL, "Car Companion authentication failed")
+                    }
+                })
+            }
+            return true
+        }
         when (message.what) {
             MSG_START -> {
                 client = message.replyTo
@@ -236,6 +254,7 @@ class CardexRelayService : Service() {
         surface = null
         destinationSurface = null
         sendStatus(STATUS_IDLE)
+        client = null
     }
 
     private fun reconnectSurface() {

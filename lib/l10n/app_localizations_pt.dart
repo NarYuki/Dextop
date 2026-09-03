@@ -250,6 +250,18 @@ class AppLocalizationsPt extends AppLocalizations {
   String get setupPhaseTerms => 'Condições de utilização';
 
   @override
+  String get setupPhaseDriver => 'Conectar o Dextop';
+
+  @override
+  String get setupTutorialTitle => 'Visão geral da configuração';
+
+  @override
+  String get setupPhaseAccessibility => 'Acessibilidade';
+
+  @override
+  String get setupPhaseReady => 'Pronto';
+
+  @override
   String get setupPhaseShizuku => 'Shizuku';
 
   @override
@@ -282,6 +294,48 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get setupSystemDescription =>
       'O Dextop usa Shizuku e ADB para controlar telas virtuais, orientação, entrada e a interface do sistema. A API AccessibilityService exibe e opera a sobreposição da área de trabalho, encaminha entradas de toque, ponteiro e navegação solicitadas pelo usuário e restaura a interface do dispositivo ao encerrar a sessão. Os dados de acessibilidade não são coletados, armazenados nem compartilhados.';
+
+  @override
+  String get setupTutorialDriverTitle => 'Conecte o Dextop ao controlador';
+
+  @override
+  String get setupTutorialDriverDescription =>
+      'O emparelhamento é necessário apenas na primeira vez. Vamos orientar você nas etapas necessárias.';
+
+  @override
+  String get setupTutorialAccessibilityTitle => 'Ative a acessibilidade';
+
+  @override
+  String get setupTutorialAccessibilityDescription =>
+      'O Dextop usa a acessibilidade para exibir e controlar o ambiente de desktop. Na tela de configurações, abra Aplicativos instalados e ative o Dextop.';
+
+  @override
+  String get setupTutorialAccessibilityButton =>
+      'Abrir configurações de acessibilidade';
+
+  @override
+  String get setupTutorialAccessibilityEnabled => 'Permissão de acessibilidade';
+
+  @override
+  String get accessibilityDisclosureTitle =>
+      'Divulgação do serviço de acessibilidade';
+
+  @override
+  String get accessibilityDisclosureBody =>
+      'O Dextop utiliza o Serviço de Acessibilidade para apresentar e controlar o ambiente de trabalho, detetar o campo de introdução ativo, mover aplicações abertas a partir de notificações e permitir o controlo por teclado e rato.\n\nO serviço pode aceder às aplicações e janelas apresentadas no ecrã, eventos de interação, ao campo de texto focado e respetivo conteúdo, e à entrada do teclado e rato. Estas informações são processadas apenas no dispositivo para fornecer as funcionalidades do Dextop. O Dextop não recolhe, armazena, transmite nem partilha estas informações com terceiros.';
+
+  @override
+  String get accessibilityDisclosureAgree => 'Concordar e abrir as definições';
+
+  @override
+  String get accessibilityDisclosureDecline => 'Não concordo';
+
+  @override
+  String get setupTutorialReadyTitle => 'Tudo pronto para usar o Dextop';
+
+  @override
+  String get setupTutorialReadyDescription =>
+      'Quando essas duas etapas estiverem concluídas, basta começar a usar o Dextop.';
 
   @override
   String get setupDisclaimer =>
@@ -2447,6 +2501,18 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get setupPhaseTerms => 'Condições de utilização';
 
   @override
+  String get setupPhaseDriver => 'Conectar o Dextop';
+
+  @override
+  String get setupTutorialTitle => 'Visão geral da configuração';
+
+  @override
+  String get setupPhaseAccessibility => 'Acessibilidade';
+
+  @override
+  String get setupPhaseReady => 'Pronto';
+
+  @override
   String get setupPhaseShizuku => 'Shizuku';
 
   @override
@@ -2479,6 +2545,48 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get setupSystemDescription =>
       'O Dextop usa Shizuku e ADB para controlar telas virtuais, orientação, entrada e a interface do sistema. A API AccessibilityService exibe e opera a sobreposição da área de trabalho, encaminha entradas de toque, ponteiro e navegação solicitadas pelo usuário e restaura a interface do dispositivo ao encerrar a sessão. Os dados de acessibilidade não são coletados, armazenados nem compartilhados.';
+
+  @override
+  String get setupTutorialDriverTitle => 'Conecte o Dextop ao controlador';
+
+  @override
+  String get setupTutorialDriverDescription =>
+      'O pareamento é necessário apenas na primeira vez. Vamos orientar você nas etapas necessárias.';
+
+  @override
+  String get setupTutorialAccessibilityTitle => 'Ative a acessibilidade';
+
+  @override
+  String get setupTutorialAccessibilityDescription =>
+      'O Dextop usa a acessibilidade para exibir e controlar o ambiente de desktop. Na tela de configurações, abra Apps instalados e ative o Dextop.';
+
+  @override
+  String get setupTutorialAccessibilityButton =>
+      'Abrir configurações de acessibilidade';
+
+  @override
+  String get setupTutorialAccessibilityEnabled => 'Permissão de acessibilidade';
+
+  @override
+  String get accessibilityDisclosureTitle =>
+      'Divulgação do serviço de acessibilidade';
+
+  @override
+  String get accessibilityDisclosureBody =>
+      'O Dextop usa o Serviço de Acessibilidade para exibir e controlar a área de trabalho, detectar o campo de entrada ativo, mover apps abertos por notificações e oferecer controle por teclado e mouse.\n\nO serviço pode acessar apps e janelas exibidos na tela, eventos de interação, o campo de texto em foco e seu conteúdo, além das entradas de teclado e mouse. Essas informações são processadas somente no dispositivo para fornecer os recursos do Dextop. O Dextop não coleta, armazena, transmite nem compartilha essas informações com terceiros.';
+
+  @override
+  String get accessibilityDisclosureAgree => 'Concordar e abrir configurações';
+
+  @override
+  String get accessibilityDisclosureDecline => 'Não concordo';
+
+  @override
+  String get setupTutorialReadyTitle => 'Tudo pronto para usar o Dextop';
+
+  @override
+  String get setupTutorialReadyDescription =>
+      'Quando essas duas etapas estiverem concluídas, basta começar a usar o Dextop.';
 
   @override
   String get setupDisclaimer =>
