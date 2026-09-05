@@ -4750,8 +4750,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun isBlackBerryModeAvailable(): Boolean {
-        if (!isBlackBerryModeEnabled()) return false
-        return !isFoldableDevice() || isCurrentFoldableCoverDisplay()
+        return isBlackBerryModeEnabled()
     }
 
     private fun internalDisplays(manager: DisplayManager): List<Display> =
@@ -7498,8 +7497,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                             ))
             )
 
-    private fun hasKeyboardStyleChoice(): Boolean =
-        isGamepadStyleAvailable() && (isLaptopStyleAvailable() || isBlackBerryStyleAvailable())
+    private fun hasKeyboardStyleChoice(): Boolean {
+        val availableStyleCount = listOf(
+            isLaptopStyleAvailable(),
+            isBlackBerryStyleAvailable(),
+            isGamepadStyleAvailable(),
+        ).count { it }
+        return availableStyleCount >= 2
+    }
 
     private fun showKeyboardStyleMenu(panel: LinearLayout) {
         // A style chooser is valid only when both destinations are genuinely
