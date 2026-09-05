@@ -1644,6 +1644,13 @@ class AppLocalizationsKo extends AppLocalizations {
   String get experimentalCoverDisplay => '커버 디스플레이 세션';
 
   @override
+  String get experimentalGamepad => '실험적 게임패드';
+
+  @override
+  String get experimentalGamepadDescription =>
+      '가상 게임패드와 커버 화면 L/R 후면 버튼을 활성화합니다';
+
+  @override
   String get experimentalCoverDisplayDescription =>
       '폴더블 커버 화면에서 Android 또는 독립적인 Dextop 세션을 사용합니다';
 
@@ -1712,6 +1719,25 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get nativeCoverDisplayFailed => '커버 디스플레이를 변경할 수 없습니다';
+
+  @override
+  String get nativeBackButtons => '후면 버튼';
+
+  @override
+  String get nativeBackButtonsDescription => '커버 화면을 L/R 및 L2/R2 숄더 버튼으로 사용합니다';
+
+  @override
+  String get nativeStartBackButtons => '후면 버튼 시작';
+
+  @override
+  String get nativeStopBackButtons => '후면 버튼 종료';
+
+  @override
+  String get nativeBackButtonsConfirmTitle => '커버 화면을 전환할까요?';
+
+  @override
+  String get nativeBackButtonsConfirmMessage =>
+      '후면 버튼을 표시하기 전에 현재 커버 화면 동작을 종료합니다.';
 
   @override
   String get nativeSwitchToResolutionSuffix => '이 해상도와 DPI로 전환합니다';
@@ -1924,6 +1950,29 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get nativeBlackBerryModeDescription => '트랙패드 없이 휴대전화용 소형 키보드를 표시합니다.';
+
+  @override
+  String get nativeVirtualGamepad => '가상 게임패드';
+
+  @override
+  String get nativeVirtualGamepadDescription =>
+      'ABXY, 스틱, 트리거 및 시스템 버튼이 있는 가상 게임패드를 표시합니다.';
+
+  @override
+  String get nativeGamepadLayout => '게임패드 레이아웃';
+
+  @override
+  String get nativeGameBoyStyle => '게임보이 스타일';
+
+  @override
+  String get nativeGameBoyStyleDescription =>
+      '게임보이풍 십자키, A/B 및 SELECT/START를 표시합니다.';
+
+  @override
+  String get nativeOk => '확인';
+
+  @override
+  String get nativeCancel => '취소';
 
   @override
   String get nativeKeyboardSettings => '키보드 설정';

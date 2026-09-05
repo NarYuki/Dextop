@@ -214,6 +214,8 @@ class AppInfoPage extends StatelessWidget {
           ),
         ),
         SizedBox(height: 12),
+        _GamepadExperimentalTile(isRunning: isRunning),
+        SizedBox(height: 12),
         _CoverDisplayExperimentalTile(isRunning: isRunning),
         SizedBox(height: 12),
         _ForceLaptopModeExperimentalTile(isRunning: isRunning),
@@ -231,6 +233,56 @@ class AppInfoPage extends StatelessWidget {
             appBar: AppBar(title: Text(l.appInfo)),
             body: content,
           );
+  }
+}
+
+class _GamepadExperimentalTile extends StatefulWidget {
+  const _GamepadExperimentalTile({required this.isRunning});
+
+  final bool isRunning;
+
+  @override
+  State<_GamepadExperimentalTile> createState() =>
+      _GamepadExperimentalTileState();
+}
+
+class _GamepadExperimentalTileState extends State<_GamepadExperimentalTile> {
+  bool enabled = false;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      enabled = preferences.getBool('experimental_gamepad') ?? false;
+      loading = false;
+    });
+  }
+
+  Future<void> _update(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('experimental_gamepad', value);
+    if (mounted) setState(() => enabled = value);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Card(
+      child: SwitchListTile(
+        secondary: const Icon(Icons.sports_esports_rounded),
+        value: enabled,
+        onChanged: loading || widget.isRunning ? null : _update,
+        title: Text(l.experimentalGamepad),
+        subtitle: Text(l.experimentalGamepadDescription),
+      ),
+    );
   }
 }
 

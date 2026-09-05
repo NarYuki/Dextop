@@ -1050,25 +1050,10 @@ open class MainActivity : FlutterActivity() {
                 PhoneRotationController.restoreRecorded(this, PrivilegedAccess(logTag), journal)
             }.onFailure { Log.e(logTag, "discard recovery rotation restoration failed", it) }
             journal.restoreSystemSettings()
-            val own = ComponentName(this, MirrorService::class.java)
-            val remaining = Settings.Secure.getString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ).orEmpty().split(':').filter { raw ->
-                raw.isNotBlank() && ComponentName.unflattenFromString(raw)?.let { name ->
-                    !(name.packageName == packageName && name.className == own.className)
-                } != false
-            }
-            Settings.Secure.putString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                remaining.joinToString(":")
-            )
-            Settings.Secure.putInt(
-                contentResolver,
-                Settings.Secure.ACCESSIBILITY_ENABLED,
-                if (remaining.isEmpty()) 0 else 1
-            )
+            // Recovery restores Dextop-owned display and system settings only.
+            // Accessibility is a user-managed permission; removing this app
+            // from ENABLED_ACCESSIBILITY_SERVICES is especially disruptive on
+            // Play builds, where the user must enable it again manually.
             runCatching {
                 PrivilegedAccess(logTag).execute(
                     "cmd", "statusbar", "send-disable-flag", "none"
@@ -1145,28 +1130,9 @@ open class MainActivity : FlutterActivity() {
                 PhoneRotationController.restoreRecorded(this, PrivilegedAccess(logTag), journal)
             }.onFailure { Log.e(logTag, "repair rotation restoration failed", it) }
             journal.restoreSystemSettings()
-            val own = ComponentName(this, MirrorService::class.java)
-            val remaining = Settings.Secure.getString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
-            ).orEmpty().split(':').filter { raw ->
-                raw.isNotBlank() && ComponentName.unflattenFromString(raw)?.let { name ->
-                    !(name.packageName == packageName && name.className == own.className)
-                } != false
-            }
-            Settings.Secure.putString(
-                contentResolver,
-                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
-                remaining.joinToString(":")
-            )
-            Settings.Secure.putInt(
-                contentResolver,
-                Settings.Secure.ACCESSIBILITY_ENABLED,
-                if (remaining.isEmpty()) 0 else 1
-            )
-            // Explicitly clear any disable flags associated with Dextop's
-            // previous accessibility binder token. Binder death normally does
-            // this, but vendor SystemUI implementations can retain the state.
+            // Keep the user's AccessibilityService selection intact. Restore
+            // permission must not turn off Dextop on builds that require the
+            // user to enable Accessibility manually.
             runCatching {
                 val access = PrivilegedAccess(logTag)
                 access.execute("cmd", "statusbar", "send-disable-flag", "none")

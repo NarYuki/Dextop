@@ -34,8 +34,8 @@
 namespace {
 
 constexpr const char* kTag = "DextopNativeInput";
-constexpr int kProtocolVersion = 2;
-constexpr int kConfigSize = 25;
+constexpr int kProtocolVersion = 3;
+constexpr int kConfigSize = 29;
 constexpr int kProfileDisabled = 0;
 constexpr int kProfileTouchpad = 1;
 constexpr int kProfileMouse = 2;
@@ -68,6 +68,10 @@ enum ConfigIndex {
     CFG_DOUBLE_TAP_TIMEOUT_MS = 22,
     CFG_TAP_SLOP_MILLI = 23,
     CFG_GENERATION = 24,
+    CFG_IME_LEFT = 25,
+    CFG_IME_TOP = 26,
+    CFG_IME_RIGHT = 27,
+    CFG_IME_BOTTOM = 28,
 };
 
 #define LOGD(...) __android_log_print(ANDROID_LOG_DEBUG, kTag, __VA_ARGS__)
@@ -119,6 +123,7 @@ struct Config {
     int hostHeight = 1;
     Rect fullscreen;
     Rect trackpad;
+    Rect imeTouch;
     bool directTouch = false;
     bool laptopMode = false;
     int touchpadMaxX = 1839;
@@ -149,6 +154,10 @@ Config parseConfig(const std::vector<int>& values) {
         values[CFG_TRACKPAD_LEFT], values[CFG_TRACKPAD_TOP],
         values[CFG_TRACKPAD_RIGHT], values[CFG_TRACKPAD_BOTTOM]
     };
+    config.imeTouch = {
+        values[CFG_IME_LEFT], values[CFG_IME_TOP],
+        values[CFG_IME_RIGHT], values[CFG_IME_BOTTOM]
+    };
     config.directTouch = values[CFG_DIRECT_TOUCH] != 0;
     config.laptopMode = values[CFG_LAPTOP_MODE] != 0;
     config.touchpadMaxX = std::max(1, values[CFG_TOUCHPAD_MAX_X]);
@@ -173,7 +182,8 @@ bool sameConfigSemantics(const Config& left, const Config& right) {
     return left.version == right.version && left.profile == right.profile &&
         left.rotation == right.rotation && left.hostWidth == right.hostWidth &&
         left.hostHeight == right.hostHeight && sameRect(left.fullscreen, right.fullscreen) &&
-        sameRect(left.trackpad, right.trackpad) && left.directTouch == right.directTouch &&
+        sameRect(left.trackpad, right.trackpad) && sameRect(left.imeTouch, right.imeTouch) &&
+        left.directTouch == right.directTouch &&
         left.laptopMode == right.laptopMode && left.touchpadMaxX == right.touchpadMaxX &&
         left.touchpadMaxY == right.touchpadMaxY &&
         left.touchpadResolution == right.touchpadResolution &&
@@ -353,6 +363,11 @@ public:
 
     ~Engine() {
         stop("engine_destructor");
+        // stop() tears down the pointer/keyboard worker state but intentionally
+        // keeps the independently-owned gamepad alive across pointer restarts.
+        // The process is about to exit here, so explicitly remove that device
+        // before releasing the JNI object as well.
+        destroyGamepad();
         JNIEnv* env = attach();
         if (env != nullptr && service_ != nullptr) {
             env->DeleteGlobalRef(service_);
@@ -373,7 +388,8 @@ public:
             << " fullscreen=[" << next.fullscreen.left << "," << next.fullscreen.top << ","
             << next.fullscreen.right << "," << next.fullscreen.bottom << "] trackpad=["
             << next.trackpad.left << "," << next.trackpad.top << "," << next.trackpad.right << ","
-            << next.trackpad.bottom << "] directTouch=" << next.directTouch
+            << next.trackpad.bottom << "] ime=[" << next.imeTouch.left << "," << next.imeTouch.top << ","
+            << next.imeTouch.right << "," << next.imeTouch.bottom << "] directTouch=" << next.directTouch
             << " laptop=" << next.laptopMode << " debugAll=" << next.debugAllEvents;
         state("config", out.str());
     }
@@ -395,6 +411,10 @@ public:
         if (wasRunning && worker_.joinable()) worker_.join();
         if (!wasRunning && worker_.joinable()) worker_.join();
         cleanupGesture("stop:" + reason);
+        // The virtual gamepad is a separate output from the pointer engine.
+        // Keep it registered while the pointer is stopped/recreated (for
+        // example when the laptop deck changes geometry). It is removed only
+        // by setGamepadVisible(false) or when this process exits.
         destroyKeyboard();
         destroyOutput();
         closeDevices();
@@ -502,6 +522,46 @@ public:
         keyboardRequested_.store(visible);
     }
 
+    void setGamepadVisible(bool visible) {
+        std::lock_guard<std::recursive_mutex> lock(gamepadMutex_);
+        if (visible) {
+            if (gamepadFd_ < 0) createGamepad();
+        } else if (gamepadFd_ >= 0) {
+            destroyGamepad();
+        }
+    }
+
+    bool injectGamepad(int code, int value) {
+        std::lock_guard<std::recursive_mutex> lock(gamepadMutex_);
+        if (gamepadFd_ < 0) {
+            state("gamepad_error", "gamepad uinput device is not ready");
+            return false;
+        }
+        if (isGamepadDpadKey(code)) {
+            if (value != 0 && value != 1) {
+                state("gamepad_error", "dpad value must be 0 or 1 code=" + std::to_string(code));
+                return false;
+            }
+            return writeGamepadDpadKey(code, value);
+        }
+        if (isGamepadButton(code)) {
+            if (value != 0 && value != 1) {
+                state("gamepad_error", "button value must be 0 or 1 code=" + std::to_string(code));
+                return false;
+            }
+            return writeGamepadEvent(EV_KEY, code, value, "gamepad_button");
+        }
+        if (isGamepadTriggerAxis(code)) {
+            return writeGamepadTrigger(code, normalizeGamepadAxis(code, value));
+        }
+        if (isGamepadAxis(code)) {
+            const int normalized = normalizeGamepadAxis(code, value);
+            return writeGamepadEvent(EV_ABS, code, normalized, "gamepad_axis");
+        }
+        state("gamepad_error", "unsupported gamepad code=" + std::to_string(code));
+        return false;
+    }
+
     std::string probe() const {
         const bool inputReadable = access("/dev/input", R_OK | X_OK) == 0;
         const bool uinputPresent = access("/dev/uinput", F_OK) == 0 || access("/dev/input/uinput", F_OK) == 0;
@@ -539,8 +599,10 @@ private:
     // frame writes under one lock so an fd cannot be closed or reused midway
     // through an injected frame.
     std::recursive_mutex outputMutex_;
+    std::recursive_mutex gamepadMutex_;
     std::unordered_map<int, KeyboardPress> keyboardPresses_;
     std::unordered_map<int, int> keyboardModifierRefs_;
+    std::unordered_map<int, int> gamepadValues_;
 
     int epollFd_ = -1;
     std::unordered_map<int, std::unique_ptr<Device>> devices_;
@@ -548,6 +610,7 @@ private:
     std::atomic<int> activeFd_{-1};
     int outputFd_ = -1;
     int keyboardFd_ = -1;
+    int gamepadFd_ = -1;
     int appliedGeneration_ = -1;
     Config appliedConfig_;
     bool hasAppliedConfig_ = false;
@@ -655,7 +718,11 @@ private:
         }
     }
 
-    bool writeEvents(int fd, const std::vector<input_event>& events, const std::string& reason) {
+    bool writeEvents(
+        int fd,
+        const std::vector<input_event>& events,
+        const std::string& reason,
+        const char* failureCategory = "native_error") {
         if (fd < 0 || events.empty()) return false;
         logOutputEvents(events, reason);
         const auto* bytes = reinterpret_cast<const uint8_t*>(events.data());
@@ -664,7 +731,7 @@ private:
             const ssize_t written = write(fd, bytes, remaining);
             if (written < 0 && errno == EINTR) continue;
             if (written <= 0) {
-                state("native_error", errnoText("write uinput"));
+                state(failureCategory, errnoText("write uinput"));
                 return false;
             }
             bytes += written;
@@ -883,6 +950,204 @@ private:
         state("uinput_destroyed", "virtual pointer removed");
     }
 
+    static bool isGamepadButton(int code) {
+        switch (code) {
+            case BTN_SOUTH:
+            case BTN_EAST:
+            case BTN_NORTH:
+            case BTN_WEST:
+            case BTN_TL:
+            case BTN_TR:
+            case BTN_TL2:
+            case BTN_TR2:
+            case BTN_SELECT:
+            case BTN_START:
+            case BTN_MODE:
+            case BTN_THUMBL:
+            case BTN_THUMBR:
+            case BTN_DPAD_UP:
+            case BTN_DPAD_DOWN:
+            case BTN_DPAD_LEFT:
+            case BTN_DPAD_RIGHT:
+            // Generic.kl maps these evdev arrow keys to Android DPAD keys.
+            case KEY_UP:
+            case KEY_DOWN:
+            case KEY_LEFT:
+            case KEY_RIGHT:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static bool isGamepadDpadKey(int code) {
+        switch (code) {
+            case KEY_UP:
+            case KEY_DOWN:
+            case KEY_LEFT:
+            case KEY_RIGHT:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static bool isGamepadTriggerAxis(int code) {
+        return code == ABS_Z || code == ABS_RZ;
+    }
+
+    static bool isGamepadAxis(int code) {
+        switch (code) {
+            case ABS_X:
+            case ABS_Y:
+            case ABS_Z:
+            case ABS_RX:
+            case ABS_RY:
+            case ABS_RZ:
+            case ABS_GAS:
+            case ABS_BRAKE:
+            case ABS_HAT0X:
+            case ABS_HAT0Y:
+                return true;
+            default:
+                return false;
+        }
+    }
+
+    static int normalizeGamepadAxis(int code, int value) {
+        if (isGamepadTriggerAxis(code)) {
+            return std::clamp(value, 0, 1023);
+        }
+        if (code == ABS_HAT0X || code == ABS_HAT0Y) {
+            return std::clamp(value, -1, 1);
+        }
+        return std::clamp(value, -32768, 32767);
+    }
+
+    bool dpadPressed(int code) const {
+        const auto it = gamepadValues_.find(code);
+        return it != gamepadValues_.end() && it->second != 0;
+    }
+
+    bool writeGamepadDpadKey(int code, int value) {
+        const auto pressed = [this, code, value](int key) {
+            return key == code ? value != 0 : dpadPressed(key);
+        };
+        const int hatX = (pressed(KEY_RIGHT) ? 1 : 0) - (pressed(KEY_LEFT) ? 1 : 0);
+        const int hatY = (pressed(KEY_DOWN) ? 1 : 0) - (pressed(KEY_UP) ? 1 : 0);
+        const std::vector<input_event> events{
+            makeEvent(EV_KEY, static_cast<uint16_t>(code), value),
+            makeEvent(EV_ABS, ABS_HAT0X, hatX),
+            makeEvent(EV_ABS, ABS_HAT0Y, hatY),
+            makeEvent(EV_SYN, SYN_REPORT, 0),
+        };
+        if (!writeEvents(gamepadFd_, events, "gamepad_dpad", "gamepad_error")) return false;
+        gamepadValues_[code] = value;
+        gamepadValues_[ABS_HAT0X] = hatX;
+        gamepadValues_[ABS_HAT0Y] = hatY;
+        return true;
+    }
+
+    bool writeGamepadTrigger(int code, int value) {
+        // The virtual device advertises the built-in Xbox 360 layout, where
+        // ABS_Z/ABS_RZ are Android LTRIGGER/RTRIGGER.
+        const std::vector<input_event> events{
+            makeEvent(EV_ABS, static_cast<uint16_t>(code), value),
+            makeEvent(EV_SYN, SYN_REPORT, 0),
+        };
+        if (!writeEvents(gamepadFd_, events, "gamepad_trigger", "gamepad_error")) return false;
+        gamepadValues_[code] = value;
+        return true;
+    }
+
+    bool writeGamepadEvent(uint16_t type, int code, int value, const std::string& reason) {
+        if (gamepadFd_ < 0) return false;
+        const std::vector<input_event> events{
+            makeEvent(type, static_cast<uint16_t>(code), value),
+            makeEvent(EV_SYN, SYN_REPORT, 0),
+        };
+        if (!writeEvents(gamepadFd_, events, reason, "gamepad_error")) return false;
+        gamepadValues_[code] = value;
+        return true;
+    }
+
+    void releaseAllGamepadState(const std::string& reason) {
+        if (gamepadFd_ < 0) {
+            gamepadValues_.clear();
+            return;
+        }
+        std::vector<input_event> events;
+        for (const auto& [code, value] : gamepadValues_) {
+            if (value == 0) continue;
+            if (isGamepadButton(code)) {
+                events.push_back(makeEvent(EV_KEY, static_cast<uint16_t>(code), 0));
+            } else if (isGamepadAxis(code)) {
+                events.push_back(makeEvent(EV_ABS, static_cast<uint16_t>(code), 0));
+            }
+        }
+        if (!events.empty()) {
+            events.push_back(makeEvent(EV_SYN, SYN_REPORT, 0));
+            writeEvents(gamepadFd_, events, reason, "gamepad_error");
+        }
+        gamepadValues_.clear();
+    }
+
+    void createGamepad() {
+        std::lock_guard<std::recursive_mutex> lock(gamepadMutex_);
+        gamepadFd_ = openUinput();
+        if (gamepadFd_ < 0) {
+            state("gamepad_error", errnoText("open gamepad uinput"));
+            return;
+        }
+        bool ok = ioctl(gamepadFd_, UI_SET_EVBIT, EV_SYN) >= 0 &&
+            ioctl(gamepadFd_, UI_SET_EVBIT, EV_KEY) >= 0 &&
+            ioctl(gamepadFd_, UI_SET_EVBIT, EV_ABS) >= 0;
+        for (const int button : {
+            BTN_SOUTH, BTN_EAST, BTN_NORTH, BTN_WEST,
+            BTN_TL, BTN_TR, BTN_TL2, BTN_TR2,
+            BTN_SELECT, BTN_START, BTN_MODE, BTN_THUMBL, BTN_THUMBR,
+            KEY_UP, KEY_DOWN, KEY_LEFT, KEY_RIGHT,
+        }) {
+            ok = ok && ioctl(gamepadFd_, UI_SET_KEYBIT, button) >= 0;
+        }
+        ok = ok && setupAbs(gamepadFd_, ABS_X, -32768, 32767, 0);
+        ok = ok && setupAbs(gamepadFd_, ABS_Y, -32768, 32767, 0);
+        ok = ok && setupAbs(gamepadFd_, ABS_RX, -32768, 32767, 0);
+        ok = ok && setupAbs(gamepadFd_, ABS_RY, -32768, 32767, 0);
+        ok = ok && setupAbs(gamepadFd_, ABS_Z, 0, 1023, 0);
+        ok = ok && setupAbs(gamepadFd_, ABS_RZ, 0, 1023, 0);
+        ok = ok && setupAbs(gamepadFd_, ABS_HAT0X, -1, 1, 0);
+        ok = ok && setupAbs(gamepadFd_, ABS_HAT0Y, -1, 1, 0);
+
+        uinput_setup setup{};
+        setup.id.bustype = BUS_USB;
+        // Select Android's well-tested Xbox 360 key layout. It maps the
+        // Linux gamepad axis numbers used here to LTRIGGER/RTRIGGER and the
+        // Z/RZ right-stick pair expected by most Android gamepad clients.
+        setup.id.vendor = 0x045e;
+        setup.id.product = 0x028e;
+        setup.id.version = 1;
+        std::strncpy(setup.name, "Dextop Virtual Gamepad", UINPUT_MAX_NAME_SIZE - 1);
+        ok = ok && ioctl(gamepadFd_, UI_DEV_SETUP, &setup) >= 0;
+        ok = ok && ioctl(gamepadFd_, UI_DEV_CREATE) >= 0;
+        if (!ok) {
+            state("gamepad_error", errnoText("configure gamepad uinput"));
+            destroyGamepad();
+            return;
+        }
+        state("gamepad_created", "Dextop Virtual Gamepad");
+    }
+
+    void destroyGamepad() {
+        std::lock_guard<std::recursive_mutex> lock(gamepadMutex_);
+        if (gamepadFd_ < 0) return;
+        releaseAllGamepadState("gamepad_destroy");
+        ioctl(gamepadFd_, UI_DEV_DESTROY);
+        close(gamepadFd_);
+        gamepadFd_ = -1;
+        state("gamepad_destroyed", "Dextop Virtual Gamepad");
+    }
+
     void createKeyboard() {
         std::lock_guard<std::recursive_mutex> lock(keyboardMutex_);
         keyboardFd_ = openUinput();
@@ -1058,6 +1323,11 @@ private:
 
     Target chooseTarget(float screenX, float screenY, const Config& cfg) const {
         if (cfg.laptopMode && cfg.trackpad.contains(screenX, screenY)) return Target::TRACKPAD;
+        // In cursor mode the Kotlin accessibility overlay owns contacts that
+        // begin inside the IME. Keep the EventHub side-channel alive for the
+        // rest of the surface, but do not emit a second pointer stream for
+        // this latched gesture.
+        if (!cfg.directTouch && cfg.imeTouch.contains(screenX, screenY)) return Target::IGNORED;
         if (!cfg.directTouch && cfg.fullscreen.contains(screenX, screenY)) return Target::FULLSCREEN;
         return Target::IGNORED;
     }
@@ -1639,6 +1909,18 @@ extern "C" JNIEXPORT void JNICALL
 Java_moe_n4tsu_dextop_input_PrivilegedInputService_nativeSetKeyboardVisible(
     JNIEnv* env, jobject service, jboolean visible) {
     engineFor(env, service)->setKeyboardVisible(visible == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT void JNICALL
+Java_moe_n4tsu_dextop_input_PrivilegedInputService_nativeSetGamepadVisible(
+    JNIEnv* env, jobject service, jboolean visible) {
+    engineFor(env, service)->setGamepadVisible(visible == JNI_TRUE);
+}
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_moe_n4tsu_dextop_input_PrivilegedInputService_nativeInjectGamepad(
+    JNIEnv* env, jobject service, jint code, jint value) {
+    return engineFor(env, service)->injectGamepad(code, value) ? JNI_TRUE : JNI_FALSE;
 }
 
 extern "C" JNIEXPORT void JNICALL

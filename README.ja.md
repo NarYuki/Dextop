@@ -8,7 +8,7 @@
   <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ko.md">한국어</a>
 </p>
 
-Dextopは、Android端末上に仮想ディスプレイを作成し、スマートフォンだけでデスクトップ風の作業環境を利用するためのオープンソースアプリです。StellarまたはShizukuとAndroidのシステム機能を利用して、アプリの起動、ウィンドウ配置、タッチ操作、画面方向などを制御します。
+Dextopは、Android端末上に仮想ディスプレイを作成し、スマートフォンだけでデスクトップ風の作業環境を利用するためのオープンソースアプリです。Dextop 1.5.0以降には特権アクセス機能が内蔵されており、Androidのシステム機能と連携して、アプリの起動、ウィンドウ配置、タッチ操作、画面方向などを制御します。
 
 ## コミュニティとフィードバック
 
@@ -45,6 +45,7 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 - [x] モニター配置の保存とディスプレイ間のポインタールーティングに対応したマルチディスプレイトポロジー
 - [x] デスクトップタスクバーの自動非表示と内蔵ディスプレイの120 Hz維持
 - [x] US配列キーボード、トラックパッド、手動呼び出し、ヒンジ角度の自動検知に対応した折りたたみ端末向けラップトップモード
+- [x] 「スタイル」メニューから切り替えられる仮想ゲームパッド（ABXY、L/R、トリガー、スティック、方向パッド、Start/Select/Home）
 - [x] 折りたたみ端末のメイン／サブディスプレイ切り替え
 - [x] Android 15以降の停車中Android Auto向けミラーリングActivity（車載解像度の自動適用、Dextop／端末画面の切り替え、タッチ転送）
 - [x] FPS、リフレッシュレート、メモリ、バッテリー、推定消費電力のパフォーマンス表示
@@ -154,13 +155,11 @@ _コミュニティから提出され、レビューされた動作報告_
 ## 動作要件
 
 - Android 10以降。大半の端末では実用的なデスクトップ環境にAndroid 14以降が必要です。
-- [Stellar](https://github.com/roro2239/Stellar/releases)（標準。特にAndroid 16以降で推奨）または[Shizuku](https://github.com/RikkaApps/Shizuku/releases)
-- ワイヤレスデバッグ、ADB、またはrootによる選択サービスの起動
-- DextopへのStellarまたはShizuku権限
+- Dextop 1.5.0以降（最新版を含む）
 
-Dextopの「GitHubからダウンロード」ボタンからStellarを入手できます。Android 16以降ではStellarを推奨します。Android 16以降でShizukuを使う場合はPlay Store版ではなく[GitHub Releases版](https://github.com/RikkaApps/Shizuku/releases)を使用してください。Android 15以下ではPlay Store版も使用できます。両方が入っている場合は使用するサービスを選択し、どちらかがアンインストールされるまで選択を保存します。
+Dextop 1.5.0以降には通常の動作に必要なアクセス機能が内蔵されているため、外部アプリや別の特権サービスは必須ではありません。セットアップから利用開始までDextopアプリだけで完結できます。端末によっては、Android側の権限許可やワイヤレスデバッグのペアリング画面が表示される場合があります。
 
-ワイヤレスデバッグの設定でわからない点がある場合は、[Shizuku公式セットアップガイド](https://shizuku.rikka.app/guide/setup/)の **Start via wireless debugging** を参照してください。Stellarをワイヤレス起動する場合もAndroid側のペアリング手順は共通です。
+root環境を利用している場合や、Stellar、Shizukuなどの互換性がある特権サービスをすでに利用している場合も使用できます。Dextopが利用可能な環境を自動検出し、その環境に合わせて動作するため、既存の構成を移行したり置き換えたりする必要はありません。
 
 ## インストール
 
@@ -179,7 +178,7 @@ Android Auto対応を含むGitHub Releasesには、Dextop本体APKと対応す�
 DextopはAndroid 15以降で、**Dextop Car Companion**を使用して対応する停車中のAndroid Auto画面へ専用デスクトップを表示できます。
 
 1. 同じリリースに含まれるDextopと**Dextop Car Companion**のAPKを両方インストールします。
-2. StellarまたはShizukuを起動し、Dextopへ権限を付与して端末側の初期設定を完了します。
+2. 端末側でDextopの初期設定を完了します。1.5.0以降ではDextopの内蔵アクセスが自動的に使用され、root環境やStellar、Shizukuなどの互換性がある特権サービスがすでに利用可能な場合は、Dextopが自動検出して使用します。
 3. 停車中にAndroid Autoへ接続し、車載ランチャーから**Dextop Car Companion**を開きます。
 4. **Start**を選択します。車載画面の解像度に合わせたAuto専用Dextopが作成され、タッチ操作が直接転送されます。
 5. 車載画面の左端から右へスワイプすると、ワークスペース、映像の再接続、停止を行うAuto専用操作パネルが開きます。

@@ -1,6 +1,6 @@
 # Dextop Wiki
 
-Dextop creates a controllable virtual desktop display on Android using Stellar or Shizuku and Android system services.
+Dextop creates a controllable virtual desktop display on Android using its built-in privileged access runtime and Android system services. From version 1.5.0 onward, including the latest release, no external app is required: normal setup can be completed with Dextop alone. If root, Stellar, Shizuku, or another compatible privileged service is already available, Dextop detects it and adapts automatically.
 
 ## User documentation
 

@@ -76,6 +76,7 @@ android {
         }
         create("play") {
             dimension = "distribution"
+            applicationId = "moe.n4tsu.gpdextop"
             buildConfigField("String", "DISTRIBUTION_CHANNEL", "\"play\"")
             buildConfigField("boolean", "EMBEDDED_STELLAR", "true")
         }

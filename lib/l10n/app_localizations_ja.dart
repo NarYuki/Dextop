@@ -1634,6 +1634,12 @@ class AppLocalizationsJa extends AppLocalizations {
   String get experimentalCoverDisplay => 'カバーディスプレイセッション';
 
   @override
+  String get experimentalGamepad => '実験的なゲームパッド機能';
+
+  @override
+  String get experimentalGamepadDescription => '仮想ゲームパッドとカバー画面の背面L/Rボタンを有効にします';
+
+  @override
   String get experimentalCoverDisplayDescription =>
       '折りたたみ端末のカバー画面で通常のAndroidまたは独立したDextopセッションを使用します';
 
@@ -1702,6 +1708,24 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get nativeCoverDisplayFailed => 'カバーディスプレイを変更できませんでした';
+
+  @override
+  String get nativeBackButtons => '背面ボタン';
+
+  @override
+  String get nativeBackButtonsDescription => 'カバー画面をL/R・L2/R2の背面ボタンとして使用します';
+
+  @override
+  String get nativeStartBackButtons => '背面ボタンを開始';
+
+  @override
+  String get nativeStopBackButtons => '背面ボタンを終了';
+
+  @override
+  String get nativeBackButtonsConfirmTitle => 'カバー画面を切り替えますか？';
+
+  @override
+  String get nativeBackButtonsConfirmMessage => '現在のカバー画面の動作を終了して、背面ボタンを表示します。';
 
   @override
   String get nativeSwitchToResolutionSuffix => 'この解像度とDPIへ切り替えます';
@@ -1912,6 +1936,29 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get nativeBlackBerryModeDescription => 'スマートフォン向けのコンパクトなキーボードだけを表示します';
+
+  @override
+  String get nativeVirtualGamepad => '仮想ゲームパッド';
+
+  @override
+  String get nativeVirtualGamepadDescription =>
+      'ABXY、スティック、トリガーなどを備えた仮想ゲームパッドを表示します';
+
+  @override
+  String get nativeGamepadLayout => 'ゲームパッドレイアウト';
+
+  @override
+  String get nativeGameBoyStyle => 'ゲームボーイスタイル';
+
+  @override
+  String get nativeGameBoyStyleDescription =>
+      'ゲームボーイ風の十字キー、A/B、SELECT/STARTを表示します';
+
+  @override
+  String get nativeOk => 'OK';
+
+  @override
+  String get nativeCancel => 'キャンセル';
 
   @override
   String get nativeKeyboardSettings => 'キーボード設定';

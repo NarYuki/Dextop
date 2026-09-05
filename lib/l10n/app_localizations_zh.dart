@@ -1621,6 +1621,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get experimentalCoverDisplay => '外屏会话';
 
   @override
+  String get experimentalGamepad => '实验性游戏手柄';
+
+  @override
+  String get experimentalGamepadDescription => '启用虚拟游戏手柄和外屏 L/R 背键';
+
+  @override
   String get experimentalCoverDisplayDescription =>
       '在折叠设备外屏上使用 Android 或独立的 Dextop 会话';
 
@@ -1686,6 +1692,24 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get nativeCoverDisplayFailed => '无法更改外屏';
+
+  @override
+  String get nativeBackButtons => '背部按键';
+
+  @override
+  String get nativeBackButtonsDescription => '将外屏用作 L/R 和 L2/R2 肩键';
+
+  @override
+  String get nativeStartBackButtons => '启动背部按键';
+
+  @override
+  String get nativeStopBackButtons => '结束背部按键';
+
+  @override
+  String get nativeBackButtonsConfirmTitle => '切换外屏模式？';
+
+  @override
+  String get nativeBackButtonsConfirmMessage => '显示背部按键前，将结束当前的外屏操作。';
 
   @override
   String get nativeSwitchToResolutionSuffix => '切换到此分辨率和 DPI';
@@ -1894,6 +1918,28 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get nativeBlackBerryModeDescription => '显示不带触控板的紧凑型手机键盘。';
+
+  @override
+  String get nativeVirtualGamepad => '虚拟游戏手柄';
+
+  @override
+  String get nativeVirtualGamepadDescription => '显示带有 ABXY、摇杆、扳机键和系统按键的虚拟游戏手柄。';
+
+  @override
+  String get nativeGamepadLayout => '游戏手柄布局';
+
+  @override
+  String get nativeGameBoyStyle => 'Game Boy 风格';
+
+  @override
+  String get nativeGameBoyStyleDescription =>
+      '显示 Game Boy 风格的方向键、A/B 和 SELECT/START。';
+
+  @override
+  String get nativeOk => '确定';
+
+  @override
+  String get nativeCancel => '取消';
 
   @override
   String get nativeKeyboardSettings => '键盘设置';

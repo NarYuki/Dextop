@@ -3257,6 +3257,18 @@ abstract class AppLocalizations {
   /// **'カバーディスプレイセッション'**
   String get experimentalCoverDisplay;
 
+  /// No description provided for @experimentalGamepad.
+  ///
+  /// In ja, this message translates to:
+  /// **'実験的なゲームパッド機能'**
+  String get experimentalGamepad;
+
+  /// No description provided for @experimentalGamepadDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想ゲームパッドとカバー画面の背面L/Rボタンを有効にします'**
+  String get experimentalGamepadDescription;
+
   /// No description provided for @experimentalCoverDisplayDescription.
   ///
   /// In ja, this message translates to:
@@ -3382,6 +3394,42 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'カバーディスプレイを変更できませんでした'**
   String get nativeCoverDisplayFailed;
+
+  /// No description provided for @nativeBackButtons.
+  ///
+  /// In ja, this message translates to:
+  /// **'背面ボタン'**
+  String get nativeBackButtons;
+
+  /// No description provided for @nativeBackButtonsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバー画面をL/R・L2/R2の背面ボタンとして使用します'**
+  String get nativeBackButtonsDescription;
+
+  /// No description provided for @nativeStartBackButtons.
+  ///
+  /// In ja, this message translates to:
+  /// **'背面ボタンを開始'**
+  String get nativeStartBackButtons;
+
+  /// No description provided for @nativeStopBackButtons.
+  ///
+  /// In ja, this message translates to:
+  /// **'背面ボタンを終了'**
+  String get nativeStopBackButtons;
+
+  /// No description provided for @nativeBackButtonsConfirmTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'カバー画面を切り替えますか？'**
+  String get nativeBackButtonsConfirmTitle;
+
+  /// No description provided for @nativeBackButtonsConfirmMessage.
+  ///
+  /// In ja, this message translates to:
+  /// **'現在のカバー画面の動作を終了して、背面ボタンを表示します。'**
+  String get nativeBackButtonsConfirmMessage;
 
   /// No description provided for @nativeSwitchToResolutionSuffix.
   ///
@@ -3784,6 +3832,48 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'スマートフォン向けのコンパクトなキーボードだけを表示します'**
   String get nativeBlackBerryModeDescription;
+
+  /// No description provided for @nativeVirtualGamepad.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想ゲームパッド'**
+  String get nativeVirtualGamepad;
+
+  /// No description provided for @nativeVirtualGamepadDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ABXY、スティック、トリガーなどを備えた仮想ゲームパッドを表示します'**
+  String get nativeVirtualGamepadDescription;
+
+  /// No description provided for @nativeGamepadLayout.
+  ///
+  /// In ja, this message translates to:
+  /// **'ゲームパッドレイアウト'**
+  String get nativeGamepadLayout;
+
+  /// No description provided for @nativeGameBoyStyle.
+  ///
+  /// In ja, this message translates to:
+  /// **'ゲームボーイスタイル'**
+  String get nativeGameBoyStyle;
+
+  /// No description provided for @nativeGameBoyStyleDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ゲームボーイ風の十字キー、A/B、SELECT/STARTを表示します'**
+  String get nativeGameBoyStyleDescription;
+
+  /// No description provided for @nativeOk.
+  ///
+  /// In ja, this message translates to:
+  /// **'OK'**
+  String get nativeOk;
+
+  /// No description provided for @nativeCancel.
+  ///
+  /// In ja, this message translates to:
+  /// **'キャンセル'**
+  String get nativeCancel;
 
   /// No description provided for @nativeKeyboardSettings.
   ///

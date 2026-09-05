@@ -1695,6 +1695,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get experimentalCoverDisplay => 'Cover display session';
 
   @override
+  String get experimentalGamepad => 'Experimental gamepad';
+
+  @override
+  String get experimentalGamepadDescription =>
+      'Enable the virtual gamepad and cover-display L/R back buttons';
+
+  @override
   String get experimentalCoverDisplayDescription =>
       'Use Android or an independent Dextop session on a foldable cover display';
 
@@ -1766,6 +1773,26 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nativeCoverDisplayFailed => 'Could not update the cover display';
+
+  @override
+  String get nativeBackButtons => 'Back buttons';
+
+  @override
+  String get nativeBackButtonsDescription =>
+      'Use the cover display as L/R and L2/R2 shoulder buttons';
+
+  @override
+  String get nativeStartBackButtons => 'Start back buttons';
+
+  @override
+  String get nativeStopBackButtons => 'End back buttons';
+
+  @override
+  String get nativeBackButtonsConfirmTitle => 'Switch the cover display?';
+
+  @override
+  String get nativeBackButtonsConfirmMessage =>
+      'The current cover-display activity will end before the back buttons appear.';
 
   @override
   String get nativeSwitchToResolutionSuffix =>
@@ -1988,6 +2015,29 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get nativeBlackBerryModeDescription =>
       'Show a compact phone keyboard without a trackpad.';
+
+  @override
+  String get nativeVirtualGamepad => 'Virtual Gamepad';
+
+  @override
+  String get nativeVirtualGamepadDescription =>
+      'Show a virtual gamepad with ABXY, sticks, triggers, and system buttons.';
+
+  @override
+  String get nativeGamepadLayout => 'Gamepad layout';
+
+  @override
+  String get nativeGameBoyStyle => 'Game Boy style';
+
+  @override
+  String get nativeGameBoyStyleDescription =>
+      'Show a Game Boy-inspired D-pad, A/B, and SELECT/START.';
+
+  @override
+  String get nativeOk => 'OK';
+
+  @override
+  String get nativeCancel => 'Cancel';
 
   @override
   String get nativeKeyboardSettings => 'Keyboard settings';
