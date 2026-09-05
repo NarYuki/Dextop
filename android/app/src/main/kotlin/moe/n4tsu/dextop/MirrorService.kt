@@ -102,6 +102,7 @@ import com.google.android.gms.cast.framework.CastSession
 import com.google.android.gms.cast.framework.CastContext
 import com.google.android.gms.cast.framework.SessionManagerListener
 import java.util.concurrent.Executors
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.Locale
@@ -1648,18 +1649,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (isLaptopAutoDetectionEnabled()) {
                 refreshFoldingApiState("posture_monitor", force = true)
                 updateLaptopModeFromCurrentPosture("posture monitor")
-            }
-            if (laptopModeActive && keyboardDeckStyle == KeyboardDeckStyle.BLACKBERRY &&
-                isFoldableDevice() && isFoldableMainDisplay()
-            ) {
-                OperationLog.i(
-                    this@MirrorService,
-                    "KeyboardStyle",
-                    "main foldable display became active; closing cover-only blackberry mode"
-                )
-                setLaptopMode(false)
-                hostDisplayMonitorHandler.postDelayed(this, HOST_DISPLAY_MONITOR_INTERVAL_MS)
-                return
             }
             if (laptopModeActive &&
                 !isDebugLaptopModeForced() &&
@@ -9647,30 +9636,80 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         injectLaptopKeyboardEvent(keyCode, KeyEvent.ACTION_UP, metaState, 0)
     }
 
+    private val laptopFallbackKeyDownTimes = ConcurrentHashMap<Int, Long>()
+
     private fun injectLaptopKeyboardEvent(
         keyCode: Int,
         action: Int,
         metaState: Int,
         repeatCount: Int
     ): Boolean {
+        // Once a key-down used the targeted path, keep repeats and key-up on
+        // that same virtual device even if uinput becomes ready mid-press.
+        if (laptopFallbackKeyDownTimes.containsKey(keyCode)) {
+            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
+        }
         if (!laptopKeyboardReady) {
             Log.w(
                 logTag,
-                "native laptop keyboard event rejected before publication " +
+                "native laptop keyboard unavailable; using targeted fallback " +
                         "action=$action repeat=$repeatCount deviceId=$laptopKeyboardDeviceId"
             )
             scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-            return false
+            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
         }
         val injected = privilegedInputClient.injectKeyboard(keyCode, action, metaState, repeatCount)
         if (!injected) {
+            Log.w(
+                logTag,
+                "native laptop keyboard injection failed; using targeted fallback " +
+                        "action=$action repeat=$repeatCount deviceId=$laptopKeyboardDeviceId"
+            )
+            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
+        }
+        return true
+    }
+
+    /**
+     * Keeps the on-screen keyboard usable while a foldable panel hand-off is
+     * republishing or re-associating the uinput keyboard. The event is sent
+     * directly to Dextop's display instead of depending on global focus.
+     */
+    private fun injectLaptopKeyboardFallback(
+        keyCode: Int,
+        action: Int,
+        metaState: Int,
+        repeatCount: Int,
+    ): Boolean {
+        val displayId = targetDisplayId
+        if (displayId < 0) return false
+        val eventTime = SystemClock.uptimeMillis()
+        val downTime = when (action) {
+            KeyEvent.ACTION_DOWN -> laptopFallbackKeyDownTimes.computeIfAbsent(keyCode) { eventTime }
+            KeyEvent.ACTION_UP -> laptopFallbackKeyDownTimes.remove(keyCode) ?: eventTime
+            else -> eventTime
+        }
+        val event = KeyEvent(
+            downTime,
+            eventTime,
+            action,
+            keyCode,
+            repeatCount,
+            metaState,
+            KeyCharacterMap.VIRTUAL_KEYBOARD,
+            0,
+            0,
+            InputDevice.SOURCE_KEYBOARD,
+        )
+        val accepted = inputDispatcher.send(event, displayId)
+        if (!accepted) {
             Log.e(
                 logTag,
-                "native laptop keyboard injection failed action=$action repeat=$repeatCount " +
-                        "deviceId=$laptopKeyboardDeviceId"
+                "targeted laptop keyboard fallback rejected display=$displayId " +
+                        "keyCode=$keyCode action=$action repeat=$repeatCount"
             )
         }
-        return injected
+        return accepted
     }
 
     /** Forwards physical-keyboard input while preserving modifiers and repeat state. */
