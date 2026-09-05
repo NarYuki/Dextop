@@ -17,6 +17,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
     data class State(
         val androidVisible: Boolean,
         val desktopActive: Boolean,
+        val backButtonsActive: Boolean,
         val displayId: Int,
         val busy: Boolean,
     )
@@ -28,13 +29,20 @@ internal class CoverDisplaySessionController(private val context: Context) {
     @Volatile private var androidVisible = false
     @Volatile private var coverDisplayId = Display.INVALID_DISPLAY
     @Volatile private var coverSpec: String? = null
+    @Volatile private var backButtonDisplayId = Display.INVALID_DISPLAY
+    @Volatile private var backButtonsActive = false
     @Volatile private var lifecycleToken: String? = null
     @Volatile private var busy = false
 
     fun state() = State(
         androidVisible = androidVisible,
         desktopActive = coverDisplayId != Display.INVALID_DISPLAY,
-        displayId = coverDisplayId,
+        backButtonsActive = backButtonsActive,
+        displayId = when {
+            coverDisplayId != Display.INVALID_DISPLAY -> coverDisplayId
+            backButtonDisplayId != Display.INVALID_DISPLAY -> backButtonDisplayId
+            else -> Display.INVALID_DISPLAY
+        },
         busy = busy,
     )
 
@@ -50,6 +58,11 @@ internal class CoverDisplaySessionController(private val context: Context) {
         busy = true
         Thread {
             runCatching {
+                if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY) {
+                    clearBackButtonMode()
+                    androidVisible = false
+                    resetDeviceState()
+                }
                 if (visible) {
                     requireCoverDeviceState()
                     androidVisible = true
@@ -78,6 +91,11 @@ internal class CoverDisplaySessionController(private val context: Context) {
         busy = true
         Thread {
             runCatching {
+                if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY) {
+                    clearBackButtonMode()
+                    androidVisible = false
+                    resetDeviceState()
+                }
                 requireCoverDeviceState()
                 Thread.sleep(800L)
                 val before = displayManager.displays.mapTo(mutableSetOf()) { it.displayId }
@@ -111,8 +129,72 @@ internal class CoverDisplaySessionController(private val context: Context) {
         }.start()
     }
 
+    /** Shows the four shoulder buttons on the physical foldable cover panel. */
+    fun startBackButtonMode(
+        lifecycleTokenProvider: () -> String,
+        completion: (Result<State>) -> Unit,
+    ) {
+        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        busy = true
+        Thread {
+            val result = runCatching {
+                // A previous Android/cover-Dextop session owns the device
+                // state and may still have an overlay spec in flight. Fully
+                // remove it before opening the button activity.
+                stopPreviousCoverMode()
+                requireCoverDeviceState()
+                Thread.sleep(900L)
+                val target = findCoverDisplay()
+                backButtonDisplayId = target.displayId
+                backButtonsActive = true
+                lifecycleToken = lifecycleTokenProvider()
+                launchBackButtonActivity(target.displayId)
+                OperationLog.i(
+                    context,
+                    "CoverDisplay",
+                    "back-button mode started display=${target.displayId}",
+                )
+                state()
+            }
+            if (result.isFailure) {
+                backButtonsActive = false
+                backButtonDisplayId = Display.INVALID_DISPLAY
+                lifecycleToken = null
+                runCatching { resetDeviceState() }
+            }
+            busy = false
+            handler.post { completion(result) }
+        }.start()
+    }
+
+    fun stopBackButtonMode(completion: (Result<State>) -> Unit) {
+        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (!backButtonsActive && backButtonDisplayId == Display.INVALID_DISPLAY) {
+            return completion(Result.success(state()))
+        }
+        busy = true
+        Thread {
+            val result = runCatching {
+                stopBackButtonActivity()
+                backButtonsActive = false
+                backButtonDisplayId = Display.INVALID_DISPLAY
+                lifecycleToken = null
+                if (!androidVisible && coverDisplayId == Display.INVALID_DISPLAY) {
+                    resetDeviceState()
+                }
+                OperationLog.i(context, "CoverDisplay", "back-button mode stopped")
+                state()
+            }
+            busy = false
+            handler.post { completion(result) }
+        }.start()
+    }
+
     fun stopDesktop(completion: (Result<State>) -> Unit) {
         if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY) {
+            return stopBackButtonMode(completion)
+        }
         busy = true
         Thread {
             val result = runCatching {
@@ -132,6 +214,37 @@ internal class CoverDisplaySessionController(private val context: Context) {
 
     /** Ends only this owned session when the physical display topology changes. */
     fun reconcileLifecycle(reason: String, currentLifecycleToken: String) {
+        val backDisplayId = backButtonDisplayId
+        if (backButtonsActive || backDisplayId != Display.INVALID_DISPLAY) {
+            if (busy) return
+            val displayExists = backDisplayId != Display.INVALID_DISPLAY &&
+                    displayManager.getDisplay(backDisplayId) != null
+            val physicalStateChanged = lifecycleToken?.let { it != currentLifecycleToken } == true
+            if (displayExists && !physicalStateChanged) return
+
+            busy = true
+            Thread {
+                val result = runCatching {
+                    clearBackButtonMode()
+                    lifecycleToken = null
+                    resetDeviceState()
+                }
+                if (result.isSuccess) {
+                    OperationLog.i(
+                        context,
+                        "CoverDisplay",
+                        "back-button mode cleaned up resumable=true reason=$reason " +
+                            "displayPresent=$displayExists physicalStateChanged=$physicalStateChanged",
+                    )
+                } else {
+                    result.exceptionOrNull()?.let {
+                        OperationLog.e(context, "CoverDisplay", "back-button cleanup failed", it)
+                    }
+                }
+                busy = false
+            }.start()
+            return
+        }
         val ownedId = coverDisplayId
         val ownedSpec = coverSpec ?: return
         if (ownedId == Display.INVALID_DISPLAY || busy) return
@@ -186,6 +299,75 @@ internal class CoverDisplaySessionController(private val context: Context) {
         if (result.isFailure) runCatching { removeOwnedSpec() }
         busy = false
         completion(result)
+    }
+
+    private fun stopPreviousCoverMode() {
+        clearBackButtonMode()
+        val oldDisplayId = coverDisplayId
+        if (oldDisplayId != Display.INVALID_DISPLAY || coverSpec != null) {
+            removeOwnedSpec()
+            coverDisplayId = Display.INVALID_DISPLAY
+            coverSpec = null
+            waitForDisplayGone(oldDisplayId)
+        }
+        androidVisible = false
+        lifecycleToken = null
+        resetDeviceState()
+    }
+
+    private fun clearBackButtonMode() {
+        if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY) {
+            stopBackButtonActivity()
+        }
+        backButtonsActive = false
+        backButtonDisplayId = Display.INVALID_DISPLAY
+        lifecycleToken = null
+    }
+
+    private fun stopBackButtonActivity() {
+        CoverBackButtonsActivity.finishActive()
+        // finish() is dispatched on the main looper; allow the activity to
+        // release held buttons before the next cover mode is started.
+        Thread.sleep(220L)
+    }
+
+    private fun waitForDisplayGone(displayId: Int) {
+        if (displayId == Display.INVALID_DISPLAY) return
+        repeat(30) {
+            if (displayManager.getDisplay(displayId) == null) return
+            Thread.sleep(100L)
+        }
+        OperationLog.w(
+            context,
+            "CoverDisplay",
+            "previous cover display removal timed out display=$displayId",
+        )
+    }
+
+    private fun findCoverDisplay(): Display {
+        val internal = displayManager.displays.filter { display ->
+            runCatching {
+                Display::class.java.getMethod("getType").invoke(display) as Int == 1
+            }.getOrDefault(display.displayId == Display.DEFAULT_DISPLAY)
+        }
+        fun area(display: Display): Long {
+            val metrics = android.util.DisplayMetrics()
+            @Suppress("DEPRECATION")
+            display.getRealMetrics(metrics)
+            return metrics.widthPixels.toLong() * metrics.heightPixels
+        }
+        return internal.minByOrNull(::area)
+            ?: displayManager.getDisplay(Display.DEFAULT_DISPLAY)
+            ?: error("The foldable cover display is unavailable")
+    }
+
+    private fun launchBackButtonActivity(displayId: Int) {
+        val intent = Intent(context, CoverBackButtonsActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        context.startActivity(
+            intent,
+            ActivityOptions.makeBasic().setLaunchDisplayId(displayId).toBundle(),
+        )
     }
 
     private fun overlaySpecs(): List<String> = Settings.Global.getString(

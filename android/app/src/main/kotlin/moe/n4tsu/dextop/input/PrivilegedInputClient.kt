@@ -47,6 +47,7 @@ internal class PrivilegedInputClient(
     private var released = false
     private var pendingConfig: IntArray? = null
     private var keyboardVisible = false
+    private var gamepadVisible = false
     @Volatile
     private var usingEmbeddedRuntime = false
 
@@ -99,6 +100,8 @@ internal class PrivilegedInputClient(
                 }
             }
             runCatching { service.setKeyboardVisible(keyboardVisible) }
+                .onFailure(::handleRemoteFailure)
+            runCatching { service.setGamepadVisible(gamepadVisible) }
                 .onFailure(::handleRemoteFailure)
         }
 
@@ -186,6 +189,24 @@ internal class PrivilegedInputClient(
         }
     }
 
+    fun setGamepadVisible(visible: Boolean) {
+        gamepadVisible = visible
+        val service = remote
+        if (service != null) {
+            runCatching { service.setGamepadVisible(visible) }.onFailure(::handleRemoteFailure)
+        } else if (visible) {
+            released = false
+            bind()
+        }
+    }
+
+    fun injectGamepad(code: Int, value: Int): Boolean {
+        val service = remote ?: return false
+        return runCatching {
+            service.injectGamepad(code, value)
+        }.onFailure(::handleRemoteFailure).getOrDefault(false)
+    }
+
     fun stopEngine(reason: String) {
         engineRunning = false
         remote?.let { service ->
@@ -212,6 +233,14 @@ internal class PrivilegedInputClient(
         released = true
         pendingConfig = null
         keyboardVisible = false
+        gamepadVisible = false
+        // Engine.stop() deliberately preserves the gamepad across pointer
+        // restarts. Release is the full session teardown path, so explicitly
+        // remove the independent gamepad before disconnecting the binder.
+        remote?.let { service ->
+            runCatching { service.setGamepadVisible(false) }
+                .onFailure(::handleRemoteFailure)
+        }
         stopEngine(reason)
         remote = null
         binding = false

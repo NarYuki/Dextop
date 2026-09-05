@@ -3,32 +3,29 @@
 ## Requirements
 
 - Android 10 or later
-- [Stellar](https://github.com/roro2239/Stellar/releases) or [Shizuku](https://github.com/RikkaApps/Shizuku/releases)
-- Wireless debugging, ADB, or root to start the selected service
+- Dextop 1.5.0 or later, including the latest release
 
-Stellar is Dextop's default choice and is recommended on Android 16 or later. Stellar provides a Shizuku compatibility layer, so Dextop can use its existing privileged API integration.
+Dextop 1.5.0 and later include the privileged access runtime needed for normal operation. No external app or separate privileged service is required, and setup can be completed with Dextop alone. Android may still show system permission or wireless-debugging pairing screens when required by the device.
 
-## Download rules
+## Automatic access selection
 
-- **Stellar:** use Dextop's **Download from GitHub** button, which opens [Stellar Releases](https://github.com/roro2239/Stellar/releases).
-- **Shizuku on Android 16 or later:** do not use the Play Store build; use [Shizuku GitHub Releases](https://github.com/RikkaApps/Shizuku/releases).
-- **Shizuku on Android 15 or earlier:** either the Play Store build or GitHub Releases build can be used.
+Dextop checks the available access environments when it starts and automatically chooses the compatible one:
 
-If both Stellar and Shizuku are installed, Dextop asks which service to use. The explicit choice is saved and reused to avoid provider conflicts until either manager is uninstalled. If only one is installed, Dextop uses the available manager. The Home screen and diagnostics show the currently selected provider.
+- With no existing privileged environment, Dextop uses its built-in runtime.
+- On a rooted device, or when Stellar, Shizuku, or another compatible privileged service is already running, Dextop detects and uses that environment automatically.
+- Existing root or privileged-service setups remain supported; no migration or replacement is required.
 
 ## Setup
 
 1. Install Dextop.
-2. Install and open Stellar, or Shizuku if specifically required.
-3. Follow the manager's pairing procedure and start its service.
-4. Return to Dextop and verify the selected service connection.
-5. Grant Dextop permission in the selected manager.
-6. Review the detected device, Android version, display size, and desktop environment.
-7. Complete the gesture demonstration.
+2. Open Dextop and follow its in-app setup instructions.
+3. Grant the Android permissions requested by Dextop and complete the built-in access pairing if the device requests it.
+4. Review the detected device, Android version, display size, and desktop environment.
+5. Complete the gesture demonstration.
 
-If any part of wireless-debugging setup is unclear, follow **Start via wireless debugging** in the [official Shizuku setup guide](https://shizuku.rikka.app/guide/setup/). Stellar uses the same Android wireless-debugging pairing flow.
+If root, Stellar, Shizuku, or another compatible privileged service is already available, Dextop uses it automatically. No separate provider installation or provider-specific setup is needed for the normal Dextop-only path.
 
-The Home screen displays **Dextop is ready** only when the selected provider, its permission, and required system access are available.
+The Home screen displays **Dextop is ready** when the active access environment, its permission, and required system access are available.
 
 ## Stable and Nightly builds
 

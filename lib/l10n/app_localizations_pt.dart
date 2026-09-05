@@ -1721,6 +1721,13 @@ class AppLocalizationsPt extends AppLocalizations {
   String get experimentalCoverDisplay => 'Sessão de visualização da capa';
 
   @override
+  String get experimentalGamepad => 'Gamepad experimental';
+
+  @override
+  String get experimentalGamepadDescription =>
+      'Ativa o gamepad virtual e os botões traseiros L/R no ecrã exterior';
+
+  @override
   String get experimentalCoverDisplayDescription =>
       'Use Android ou uma sessão independente Dextop em uma tela de capa dobrável';
 
@@ -1794,6 +1801,26 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get nativeCoverDisplayFailed =>
       'Não foi possível atualizar a tela externa';
+
+  @override
+  String get nativeBackButtons => 'Botões traseiros';
+
+  @override
+  String get nativeBackButtonsDescription =>
+      'Usa a tela externa como botões de ombro L/R e L2/R2';
+
+  @override
+  String get nativeStartBackButtons => 'Iniciar botões traseiros';
+
+  @override
+  String get nativeStopBackButtons => 'Encerrar botões traseiros';
+
+  @override
+  String get nativeBackButtonsConfirmTitle => 'Trocar a tela externa?';
+
+  @override
+  String get nativeBackButtonsConfirmMessage =>
+      'A atividade atual da tela externa será encerrada antes de os botões traseiros aparecerem.';
 
   @override
   String get nativeSwitchToResolutionSuffix =>
@@ -2019,6 +2046,29 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get nativeBlackBerryModeDescription =>
       'Mostra um teclado compacto para celular sem trackpad.';
+
+  @override
+  String get nativeVirtualGamepad => 'Gamepad virtual';
+
+  @override
+  String get nativeVirtualGamepadDescription =>
+      'Mostra um gamepad virtual com ABXY, analógicos, gatilhos e botões do sistema.';
+
+  @override
+  String get nativeGamepadLayout => 'Layout do gamepad';
+
+  @override
+  String get nativeGameBoyStyle => 'Estilo Game Boy';
+
+  @override
+  String get nativeGameBoyStyleDescription =>
+      'Mostra um direcional, A/B e SELECT/START inspirados no Game Boy.';
+
+  @override
+  String get nativeOk => 'OK';
+
+  @override
+  String get nativeCancel => 'Cancelar';
 
   @override
   String get nativeKeyboardSettings => 'Configurações do teclado';
@@ -3972,6 +4022,13 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get experimentalCoverDisplay => 'Sessão de visualização da capa';
 
   @override
+  String get experimentalGamepad => 'Gamepad experimental';
+
+  @override
+  String get experimentalGamepadDescription =>
+      'Ativa o gamepad virtual e os botões traseiros L/R na tela externa';
+
+  @override
   String get experimentalCoverDisplayDescription =>
       'Use Android ou uma sessão independente Dextop em uma tela de capa dobrável';
 
@@ -4045,6 +4102,26 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get nativeCoverDisplayFailed =>
       'Não foi possível atualizar a tela externa';
+
+  @override
+  String get nativeBackButtons => 'Botões traseiros';
+
+  @override
+  String get nativeBackButtonsDescription =>
+      'Usa a tela externa como botões de ombro L/R e L2/R2';
+
+  @override
+  String get nativeStartBackButtons => 'Iniciar botões traseiros';
+
+  @override
+  String get nativeStopBackButtons => 'Encerrar botões traseiros';
+
+  @override
+  String get nativeBackButtonsConfirmTitle => 'Trocar a tela externa?';
+
+  @override
+  String get nativeBackButtonsConfirmMessage =>
+      'A atividade atual da tela externa será encerrada antes de os botões traseiros aparecerem.';
 
   @override
   String get nativeSwitchToResolutionSuffix =>
@@ -4270,6 +4347,29 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get nativeBlackBerryModeDescription =>
       'Mostra um teclado compacto para celular sem trackpad.';
+
+  @override
+  String get nativeVirtualGamepad => 'Gamepad virtual';
+
+  @override
+  String get nativeVirtualGamepadDescription =>
+      'Mostra um gamepad virtual com ABXY, analógicos, gatilhos e botões do sistema.';
+
+  @override
+  String get nativeGamepadLayout => 'Layout do gamepad';
+
+  @override
+  String get nativeGameBoyStyle => 'Estilo Game Boy';
+
+  @override
+  String get nativeGameBoyStyleDescription =>
+      'Mostra um direcional, A/B e SELECT/START inspirados no Game Boy.';
+
+  @override
+  String get nativeOk => 'OK';
+
+  @override
+  String get nativeCancel => 'Cancelar';
 
   @override
   String get nativeKeyboardSettings => 'Configurações do teclado';

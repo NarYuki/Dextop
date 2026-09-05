@@ -36,6 +36,11 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
     private val callbackDeath = IBinder.DeathRecipient {
         Log.w(TAG, "client callback binder died; releasing native input engine")
         callback = null
+        // stopNative() intentionally preserves the independently-owned
+        // gamepad across pointer restarts. A dead client is a full session
+        // teardown, so remove the device explicitly before stopping the rest.
+        runCatching { nativeSetGamepadVisible(false) }
+            .onFailure { Log.w(TAG, "unable to destroy gamepad after client callback death", it) }
         stopNative("client_binder_died")
     }
 
@@ -92,12 +97,21 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
         nativeSetKeyboardVisible(visible)
     }
 
+    override fun setGamepadVisible(visible: Boolean) {
+        nativeSetGamepadVisible(visible)
+    }
+
+    override fun injectGamepad(code: Int, value: Int): Boolean =
+        nativeInjectGamepad(code, value)
+
     override fun stop(reason: String) {
         stopNative(reason)
     }
 
     override fun destroy() {
         Log.i(TAG, "destroy requested")
+        runCatching { nativeSetGamepadVisible(false) }
+            .onFailure { Log.w(TAG, "unable to destroy gamepad during service destroy", it) }
         stopNative("destroy")
         callback?.asBinder()?.let { runCatching { it.unlinkToDeath(callbackDeath, 0) } }
         callback = null
@@ -150,5 +164,7 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
         repeatCount: Int
     ): Boolean
     private external fun nativeSetKeyboardVisible(visible: Boolean)
+    private external fun nativeSetGamepadVisible(visible: Boolean)
+    private external fun nativeInjectGamepad(code: Int, value: Int): Boolean
     private external fun nativeStop(reason: String)
 }

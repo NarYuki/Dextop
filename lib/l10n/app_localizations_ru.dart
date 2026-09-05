@@ -1712,6 +1712,13 @@ class AppLocalizationsRu extends AppLocalizations {
   String get experimentalCoverDisplay => 'Сеанс на внешнем экране';
 
   @override
+  String get experimentalGamepad => 'Экспериментальный геймпад';
+
+  @override
+  String get experimentalGamepadDescription =>
+      'Включить виртуальный геймпад и задние кнопки L/R на внешнем экране';
+
+  @override
   String get experimentalCoverDisplayDescription =>
       'Используйте Android или отдельный сеанс Dextop на внешнем экране складного устройства';
 
@@ -1784,6 +1791,26 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get nativeCoverDisplayFailed => 'Не удалось изменить внешний экран';
+
+  @override
+  String get nativeBackButtons => 'Задние кнопки';
+
+  @override
+  String get nativeBackButtonsDescription =>
+      'Использовать внешний экран как кнопки L/R и L2/R2';
+
+  @override
+  String get nativeStartBackButtons => 'Запустить задние кнопки';
+
+  @override
+  String get nativeStopBackButtons => 'Завершить задние кнопки';
+
+  @override
+  String get nativeBackButtonsConfirmTitle => 'Переключить внешний экран?';
+
+  @override
+  String get nativeBackButtonsConfirmMessage =>
+      'Текущая работа внешнего экрана будет завершена перед показом задних кнопок.';
 
   @override
   String get nativeSwitchToResolutionSuffix =>
@@ -2007,6 +2034,29 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get nativeBlackBerryModeDescription =>
       'Показывает компактную клавиатуру телефона без трекпада.';
+
+  @override
+  String get nativeVirtualGamepad => 'Виртуальный геймпад';
+
+  @override
+  String get nativeVirtualGamepadDescription =>
+      'Показывает виртуальный геймпад с ABXY, стиками, триггерами и системными кнопками.';
+
+  @override
+  String get nativeGamepadLayout => 'Раскладка геймпада';
+
+  @override
+  String get nativeGameBoyStyle => 'Стиль Game Boy';
+
+  @override
+  String get nativeGameBoyStyleDescription =>
+      'Показывает D-pad, A/B и SELECT/START в стиле Game Boy.';
+
+  @override
+  String get nativeOk => 'ОК';
+
+  @override
+  String get nativeCancel => 'Отмена';
 
   @override
   String get nativeKeyboardSettings => 'Настройки клавиатуры';

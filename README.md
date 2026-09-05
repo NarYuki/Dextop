@@ -8,7 +8,7 @@
   <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ko.md">한국어</a>
 </p>
 
-Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. It uses Stellar or Shizuku and Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.
+Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. Dextop 1.5.0 and later include a built-in privileged access runtime, which works with Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.
 
 ## Community and feedback
 
@@ -45,6 +45,7 @@ You can report bugs, submit device reports, and request features there.
 - [x] Multi-display topology with saved monitor placement and cross-display pointer routing
 - [x] Automatic desktop taskbar hiding and optional built-in-display 120 Hz enforcement
 - [x] Foldable laptop mode with a US keyboard, trackpad, manual overlay control, and optional hinge-angle detection
+- [x] Switchable virtual gamepad from the Style menu with ABXY, L/R, triggers, sticks, D-pad, and Start/Select/Home controls
 - [x] Foldable main/cover-display switching
 - [x] Parked Android Auto mirror activity with automatic head-unit sizing, Dextop/phone source selection, and touch forwarding
 - [x] Performance overlay for FPS, refresh rate, memory, battery, and estimated power usage
@@ -154,13 +155,11 @@ _Community-submitted and reviewed device report_
 ## System requirements
 
 - Android 10 or later. Most devices require Android 14 or later for a usable desktop environment.
-- [Stellar](https://github.com/roro2239/Stellar/releases) (default and recommended, especially on Android 16 or later) or [Shizuku](https://github.com/RikkaApps/Shizuku/releases)
-- The selected service started through wireless debugging, ADB, or root
-- Stellar or Shizuku permission granted to Dextop
+- Dextop 1.5.0 or later, including the latest release
 
-Download Stellar with the **Download from GitHub** button in Dextop. On Android 16 or later, Stellar is recommended. If you use Shizuku on Android 16 or later, install its [GitHub Releases build](https://github.com/RikkaApps/Shizuku/releases), not the Play Store build. On Android 15 or earlier, the Play Store build can also be used. If both managers are installed, Dextop asks which one to use and preserves that selection until either manager is uninstalled.
+Dextop 1.5.0 and later include the access service needed for normal operation, so no external app or separate privileged service is required. Setup and first use can be completed with Dextop alone; Android may still show system permission or wireless-debugging pairing screens when required by the device.
 
-If any part of wireless-debugging setup is unclear, follow **Start via wireless debugging** in the [official Shizuku setup guide](https://shizuku.rikka.app/guide/setup/); the same Android pairing flow also applies when starting Stellar wirelessly.
+Root, Stellar, Shizuku, and other compatible privileged services remain supported. If one is already available, Dextop detects the environment and automatically adapts to and uses it, so an existing setup does not need to be migrated or replaced.
 
 ## Installation
 
@@ -179,7 +178,7 @@ Stable GitHub Releases include both the Dextop APK and the matching **Dextop Car
 Dextop supports a dedicated desktop on supported parked Android Auto displays through **Dextop Car Companion** on Android 15 or later.
 
 1. Install Dextop and the matching **Dextop Car Companion** APK from the same release.
-2. Start Stellar or Shizuku, grant Dextop permission, and complete Dextop's phone setup.
+2. Complete Dextop's phone setup. On version 1.5.0 and later, Dextop configures its built-in access automatically; if root or a compatible privileged service such as Stellar or Shizuku is already available, Dextop detects and uses it automatically.
 3. Connect Android Auto while parked and open **Dextop Car Companion** from the car launcher.
 4. Select **Start**. Touch input is sent directly from the head unit to the Auto-owned Dextop display.
 5. Swipe right from the left edge of the car display to open the Auto controls for workspaces, video reconnection, and stopping the session.

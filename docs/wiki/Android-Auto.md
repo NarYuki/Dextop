@@ -7,7 +7,7 @@ Dextop Car Companion connects a dedicated Dextop virtual display to a supported 
 - Android 15 or later on the connected phone
 - A head unit or Desktop Head Unit (DHU) that exposes parked apps
 - Dextop and **Dextop Car Companion** from the same Dextop release
-- Stellar or Shizuku running, with Dextop permission granted
+- Dextop 1.5.0 or later, which includes built-in privileged access; an existing root, Stellar, Shizuku, or other compatible privileged service is optional
 - The vehicle in a parked state
 
 Android Auto decides whether a sideloaded parked app appears in its launcher. Installing the APK does not guarantee that every production head unit or Android Auto release will expose it. If Dextop Car Companion is missing from the launcher, verify the Android Auto version, parked-app support, installation method, and host allowlisting first.
@@ -16,11 +16,10 @@ Android Auto decides whether a sideloaded parked app appears in its launcher. In
 
 1. Install the Dextop APK.
 2. Install the matching **Dextop Car Companion** APK from the same release. The companion verifies Dextop through a signature-protected relay, so builds signed by different keys cannot connect.
-3. Start Stellar or Shizuku and grant its permission to Dextop.
-4. Complete Dextop's initial setup on the phone.
-5. Connect the phone to Android Auto and make sure the vehicle is parked.
-6. Open **Dextop Car Companion** from the Android Auto launcher.
-7. Confirm that **Dextop installed** and **Secure relay verified** are shown, then select **Start**.
+3. Complete Dextop's initial setup on the phone. Dextop uses its built-in access on version 1.5.0 and later; if root or a compatible privileged service is already available, Dextop detects and uses it automatically.
+4. Connect the phone to Android Auto and make sure the vehicle is parked.
+5. Open **Dextop Car Companion** from the Android Auto launcher.
+6. Confirm that **Dextop installed** and **Secure relay verified** are shown, then select **Start**.
 
 Dextop creates the Auto desktop at the size supplied by the head unit. Starting an Auto session does not start a second phone-side Dextop session.
 
@@ -97,8 +96,8 @@ If Android Auto, the companion, or the relay disconnects unexpectedly, Dextop re
 
 1. Confirm Dextop is installed.
 2. Confirm Dextop and Dextop Car Companion came from the same release.
-3. Start Stellar or Shizuku again and grant Dextop permission.
-4. Open Dextop once on the phone and confirm that it reports **Dextop is ready**.
+3. Open Dextop once on the phone and complete the in-app access setup if requested. If you already use root, Stellar, Shizuku, or another compatible privileged service, make sure that environment is active so Dextop can detect it.
+4. Confirm that Dextop reports **Dextop is ready**.
 5. Reconnect Android Auto and reopen the companion.
 
 ### The car screen is black
