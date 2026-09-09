@@ -1,5 +1,21 @@
 # Changelog
 
+## 1.6.9
+
+### 日本語
+
+#### 修正
+
+- Android 16で履歴画面が小さな中央ウィンドウとして表示される問題を修正しました。
+- 履歴画面が対象のデスクトップディスプレイに全画面で表示されるようにしました。
+
+### English
+
+#### Fixes
+
+- Fixed an issue on Android 16 where Recent apps appeared in a small centered window.
+- Recent apps now opens fullscreen on the target desktop display.
+
 ## 1.6.8
 
 ### 日本語
