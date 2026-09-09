@@ -5,6 +5,8 @@
   "resolution": "Разрешение",
   "displayMagnification": "Масштаб отображения",
   "displayMagnificationDescription": "Увеличивает весь рабочий стол для удобного просмотра. При большем масштабе рабочая область уменьшается.",
+  "magnifyWindowsWithDisplay": "Применять масштаб к окнам",
+  "magnifyWindowsWithDisplayDescription": "Также увеличивает окна, текст и элементы управления в соответствии с масштабом экрана.",
   "theme": "Тема",
   "system": "Системная",
   "light": "Светлая",

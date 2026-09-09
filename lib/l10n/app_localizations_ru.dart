@@ -25,6 +25,13 @@ class AppLocalizationsRu extends AppLocalizations {
       'Увеличивает весь рабочий стол для удобного просмотра. При большем масштабе рабочая область уменьшается.';
 
   @override
+  String get magnifyWindowsWithDisplay => 'Применять масштаб к окнам';
+
+  @override
+  String get magnifyWindowsWithDisplayDescription =>
+      'Также увеличивает окна, текст и элементы управления в соответствии с масштабом экрана.';
+
+  @override
   String get theme => 'Тема';
 
   @override

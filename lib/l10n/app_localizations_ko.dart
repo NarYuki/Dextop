@@ -25,6 +25,13 @@ class AppLocalizationsKo extends AppLocalizations {
       '데스크톱 전체를 보기 쉽게 확대합니다. 배율이 높을수록 작업 공간은 줄어듭니다.';
 
   @override
+  String get magnifyWindowsWithDisplay => '창에도 배율 적용';
+
+  @override
+  String get magnifyWindowsWithDisplayDescription =>
+      '창, 텍스트 및 컨트롤도 표시 배율에 맞게 확대합니다.';
+
+  @override
   String get theme => '테마';
 
   @override

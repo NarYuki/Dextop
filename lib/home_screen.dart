@@ -331,6 +331,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   // Kept independent from saved resolution profiles: this is a workspace
   // presentation preference, applied only after a profile has been resolved.
   var workspaceMagnificationPercent = 100;
+  var magnifyWindowsWithDisplay = false;
   var orientationMode = _HomeOrientationMode.landscape;
   var secure = false;
   String mirrorBackend = 'virtual_display';
@@ -423,6 +424,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             (preferences.getInt('desktop_workspace_magnification_percent') ??
                     100)
                 .clamp(100, 200);
+        magnifyWindowsWithDisplay =
+            preferences.getBool('desktop_magnify_windows_with_display') ??
+            false;
       });
     }
   }
@@ -472,6 +476,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       'desktop_workspace_magnification_percent',
       normalized,
     );
+  }
+
+  Future<void> setMagnifyWindowsWithDisplay(bool value) async {
+    mutate(() => magnifyWindowsWithDisplay = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('desktop_magnify_windows_with_display', value);
   }
 
   bool get effectiveDecorations => manufacturer.toLowerCase() != 'samsung';
@@ -1200,6 +1210,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           secure,
           decorations: effectiveDecorations,
           workspaceMagnificationPercent: workspaceMagnificationPercent,
+          magnifyWindowsWithDisplay: magnifyWindowsWithDisplay,
         );
         await Future<void>.delayed(const Duration(milliseconds: 350));
         await refresh();
@@ -1255,6 +1266,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         secure,
         decorations: effectiveDecorations,
         workspaceMagnificationPercent: workspaceMagnificationPercent,
+        magnifyWindowsWithDisplay: magnifyWindowsWithDisplay,
       );
       await Future<void>.delayed(Duration(milliseconds: 450));
       await refresh();

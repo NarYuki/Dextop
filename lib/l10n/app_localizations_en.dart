@@ -25,6 +25,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Enlarges the whole desktop for easier viewing. Higher values leave less workspace.';
 
   @override
+  String get magnifyWindowsWithDisplay => 'Apply scale to windows';
+
+  @override
+  String get magnifyWindowsWithDisplayDescription =>
+      'Also enlarges windows, text, and controls to match the display scale.';
+
+  @override
   String get theme => 'Theme';
 
   @override

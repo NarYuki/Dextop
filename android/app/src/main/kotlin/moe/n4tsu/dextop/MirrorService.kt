@@ -870,6 +870,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     /** Dextop orientation choice, independent from the laptop pane geometry. */
     private var requestedPortrait = false
     private var laptopBaseConfig: Config? = null
+    /** Full-height host Surface measured in physical view pixels before the deck is added. */
+    private var laptopFullHostHeightPx = 0
     private var laptopKeyboardRequested = false
     private var laptopKeyboardReady = false
     private var laptopKeyboardAssociationPending = false
@@ -1557,7 +1559,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val panel = menu ?: return
         val frame = root ?: return
         frame.post {
-            if (!active || menu !== panel) return@post
+            if ((!active && !demoMode) || menu !== panel) return@post
+            val landscape = menuUsesLandscapeLayout()
+            // The outer menu is resized after rotation, but each ScrollView
+            // must also discard the width/weight selected when it was built.
+            // Keeping those old child parameters creates a blank strip beside
+            // the controls after switching between portrait and landscape.
+            if (!landscape && workspaceExpanded && panel.childCount > 1) {
+                workspaceExpanded = false
+                while (panel.childCount > 1) panel.removeViewAt(panel.childCount - 1)
+                menuPrimary?.let(::showWorkspaceMenu)
+            }
+            for (index in 0 until panel.childCount) {
+                val scroll = panel.getChildAt(index) as? ScrollView ?: continue
+                scroll.layoutParams = LinearLayout.LayoutParams(
+                    if (landscape) dp(340) else 0,
+                    -1,
+                    if (landscape) 0f else 1f
+                )
+            }
             panel.layoutParams = menuLayoutParams()
             panel.requestLayout()
             scheduleMenuHeightUpdate()
@@ -1929,6 +1949,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
+        refreshMenuGeometryAfterDisplayChange()
         if (!active || suspendedForLockScreen) return
         refreshFoldingApiState("configuration_changed", force = true)
         scheduleLaptopModeReevaluation("configuration_changed")
@@ -2065,6 +2086,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         privilegedPointerFallbackActive = false
         laptopModeActive = false
         laptopBaseConfig = null
+        laptopFullHostHeightPx = 0
         laptopManualOverride = false
         laptopAutoSuppressedByUser = false
         laptopAutoActivated = false
@@ -3081,6 +3103,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 showSystemDecorations
             )
         }
+        if (enabled && laptopFullHostHeightPx <= 0) {
+            // targetHeight/laptopBaseConfig are logical desktop pixels and can
+            // be much smaller when workspace magnification is enabled. Keep
+            // this baseline in the same physical View coordinate space as
+            // surface.height so a magnified upper pane is never mistaken for
+            // the restored full-height host.
+            laptopFullHostHeightPx = maxOf(surface.height, content.height)
+        }
         laptopModeActive = enabled
         if (!enabled) laptopAutoActivated = false
         laptopHostUniqueId = if (enabled) defaultDisplayUniqueId() else null
@@ -3172,7 +3202,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         surface.requestLayout()
         frame.requestLayout()
         applyLaptopGeometryWhenLaidOut(enabled, baseOverride = restoreConfig)
-        if (!enabled) laptopBaseConfig = null
+        if (!enabled) {
+            laptopBaseConfig = null
+            laptopFullHostHeightPx = 0
+        }
         syncCoverInputForKeyboardStyle()
     }
 
@@ -4362,7 +4395,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun laptopHostIsFullHeight(): Boolean {
-        val fullHeight = laptopBaseConfig?.height ?: return false
+        val fullHeight = laptopFullHostHeightPx
         val hostHeight = surfaceView?.height ?: return false
         if (fullHeight <= 0 || hostHeight <= 0) return false
         return hostHeight >= (fullHeight * 0.78f).toInt()
@@ -11190,7 +11223,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 density = base.density.coerceIn(72, 960)
             )
         }
-        // Outside a keyboard deck, follow the complete host panel geometry.
+        // A magnified device profile already has a matching physical overlay
+        // mode. Do not replace only its logical metrics during a Fold panel
+        // hand-off; the overlay adapter cannot resize its physical mode in
+        // place, and the two geometries would diverge again.
+        if (base.density != automaticDensity) return base
+        // An unscaled device profile can continue to follow the complete host
+        // panel geometry as before.
         val portrait = base.height > base.width
         val hostLong = maxOf(hostWidth, hostHeight)
         val hostShort = minOf(hostWidth, hostHeight)
@@ -11604,6 +11643,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         active = false
         laptopModeActive = false
         laptopBaseConfig = null
+        laptopFullHostHeightPx = 0
         laptopManualOverride = false
         laptopAutoSuppressedByUser = false
         laptopAutoActivated = false

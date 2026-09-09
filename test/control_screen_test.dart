@@ -97,4 +97,66 @@ void main() {
     expect(arguments['height'], 540);
     expect(arguments['density'], 120);
   });
+
+  test(
+    'caps magnification before the overlay density becomes invalid',
+    () async {
+      MethodCall? received;
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (call) async {
+            received = call;
+            return {'displayId': 7};
+          });
+      final bridge = NativeBridge();
+      await bridge.start(
+        DisplayProfile(
+          'Fold',
+          '223 dpi',
+          1848,
+          2448,
+          223,
+          Icons.desktop_windows_rounded,
+          id: 'device',
+        ),
+        true,
+        false,
+        decorations: false,
+        workspaceMagnificationPercent: 200,
+      );
+      final arguments = received?.arguments as Map;
+      expect(arguments['width'], 994);
+      expect(arguments['height'], 1316);
+      expect(arguments['density'], 120);
+    },
+  );
+
+  test('magnifies windows by preserving profile density', () async {
+    MethodCall? received;
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          received = call;
+          return {'displayId': 7};
+        });
+    final bridge = NativeBridge();
+    await bridge.start(
+      DisplayProfile(
+        'Custom',
+        '240 dpi',
+        1920,
+        1080,
+        240,
+        Icons.desktop_windows_rounded,
+        id: 'custom',
+      ),
+      false,
+      false,
+      decorations: false,
+      workspaceMagnificationPercent: 200,
+      magnifyWindowsWithDisplay: true,
+    );
+    final arguments = received?.arguments as Map;
+    expect(arguments['width'], 960);
+    expect(arguments['height'], 540);
+    expect(arguments['density'], 240);
+  });
 }

@@ -5,6 +5,8 @@
   "resolution": "Resolution",
   "displayMagnification": "Display magnification",
   "displayMagnificationDescription": "Enlarges the whole desktop for easier viewing. Higher values leave less workspace.",
+  "magnifyWindowsWithDisplay": "Apply scale to windows",
+  "magnifyWindowsWithDisplayDescription": "Also enlarges windows, text, and controls to match the display scale.",
   "theme": "Theme",
   "system": "System",
   "light": "Light",

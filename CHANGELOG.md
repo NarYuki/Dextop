@@ -1,5 +1,33 @@
 # Changelog
 
+## 1.6.8
+
+### 日本語
+
+#### 新機能
+
+- 表示倍率をウィンドウ、文字、操作部品にも適用できる設定を追加しました。自動解像度とカスタム解像度の両方に対応しています。
+
+#### 修正
+
+- 折りたたみ端末で表示倍率を設定してデスクトップを起動すると、表示が崩れる問題を修正しました。
+- 最大付近の表示倍率でOverlay Displayを起動できない問題を修正しました。
+- 画面の縦横切り替え後にメニューOverlayのボタンがリサイズされず、余白が生じる問題を修正しました。
+- 折りたたみ端末で高い表示倍率を使用すると、Flexモードが繰り返し切り替わり画面が点滅する問題を修正しました。
+
+### English
+
+#### New
+
+- Added an option to apply display magnification to windows, text, and controls. Both automatic and custom resolutions are supported.
+
+#### Fixes
+
+- Fixed an issue where the desktop display layout broke when launched with display magnification on foldable devices.
+- Fixed Overlay Display failing to start near the maximum display magnification.
+- Fixed menu overlay buttons retaining their previous size and leaving empty space after an orientation change.
+- Fixed the screen flickering because Flex mode repeatedly toggled when using high display magnification on foldable devices.
+
 ## 1.6.7
 
 ### 日本語
