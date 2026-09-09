@@ -41,6 +41,8 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
   var appsLoading = false;
   var foldableAuto = false;
   var foldableLaptopMode = false;
+  var foldableDevice = false;
+  var coverDisplayEnabled = false;
   var threeFingerGesture = 'menu';
   var twoFingerGesture = 'right_click';
   var longPressGesture = 'drag';
@@ -168,6 +170,15 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     if (savedLaptopMode == null && isFoldableDevice) {
       await preferences.setBool('foldable_laptop_mode', false);
     }
+    final savedCoverDisplay = preferences.getBool('cover_display_enabled');
+    final legacyCoverDisplay = preferences.getBool(
+      'experimental_cover_display',
+    );
+    final resolvedCoverDisplay =
+        savedCoverDisplay ?? legacyCoverDisplay ?? isFoldableDevice;
+    if (savedCoverDisplay == null && isFoldableDevice) {
+      await preferences.setBool('cover_display_enabled', resolvedCoverDisplay);
+    }
     final decoded = needsApps
         ? jsonDecode(preferences.getString('workspaces') ?? '[]') as List
         : <dynamic>[];
@@ -183,6 +194,8 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
           .toList();
       foldableAuto = savedFoldableAuto ?? isFoldableDevice;
       foldableLaptopMode = savedLaptopMode ?? false;
+      foldableDevice = isFoldableDevice;
+      coverDisplayEnabled = resolvedCoverDisplay;
       threeFingerGesture =
           preferences.getString('gesture_three_finger') ?? 'menu';
       twoFingerGesture =
@@ -624,6 +637,13 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
     setState(() => foldableLaptopMode = value);
   }
 
+  Future<void> updateCoverDisplay(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('cover_display_enabled', value);
+    await preferences.remove('experimental_cover_display');
+    if (mounted) setState(() => coverDisplayEnabled = value);
+  }
+
   Future<void> updateSecondaryGesture(String key, String value) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(key, value);
@@ -907,6 +927,16 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
               currentLocalizations().foldableLaptopModeDescription,
             ),
           ),
+          if (foldableDevice)
+            SwitchListTile(
+              value: coverDisplayEnabled,
+              onChanged: widget.isRunning ? null : updateCoverDisplay,
+              secondary: Icon(Icons.flip_to_back_rounded),
+              title: Text(currentLocalizations().nativeCoverDisplay),
+              subtitle: Text(
+                currentLocalizations().nativeCoverDisplayDescription,
+              ),
+            ),
         ]),
       ],
       if (!widget.launcherOnly &&

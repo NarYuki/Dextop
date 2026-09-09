@@ -4814,6 +4814,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getBoolean("flutter.experimental_blackberry_mode", false)
 
+    private fun isCoverDisplayFeatureEnabled(): Boolean {
+        val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        return if (preferences.contains("flutter.cover_display_enabled")) {
+            preferences.getBoolean("flutter.cover_display_enabled", false)
+        } else if (preferences.contains("flutter.experimental_cover_display")) {
+            // Preserve an explicit selection made before this became a formal
+            // Foldable feature.
+            preferences.getBoolean("flutter.experimental_cover_display", false)
+        } else {
+            // The feature is enabled by default on supported foldables.
+            true
+        }
+    }
+
     private fun isCurrentFoldableCoverDisplay(): Boolean {
         if (!isFoldableDevice()) return false
         val displays = internalDisplays(getSystemService(DisplayManager::class.java))
@@ -7282,11 +7296,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                                     keyboardDeckStyle == KeyboardDeckStyle.GAMEBOY
                             ))
                 // This is deliberately independent from the Fold8/Ultra laptop
-                // profile. Any concrete folding signal qualifies only this
-                // experimental cover-session control.
+                // profile. Any concrete folding signal qualifies the formal
+                // cover-display session control on foldable devices.
                 "cover" -> demoMode || (isFoldableDevice() &&
-                    getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                        .getBoolean("flutter.experimental_cover_display", false))
+                        isCoverDisplayFeatureEnabled())
                 else -> true
             }
         }
@@ -11227,7 +11240,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // mode. Do not replace only its logical metrics during a Fold panel
         // hand-off; the overlay adapter cannot resize its physical mode in
         // place, and the two geometries would diverge again.
-        if (base.density != automaticDensity) return base
+        // Do not infer magnification only from a DPI difference: when
+        // "apply scale to windows" is enabled the requested behavior is to
+        // retain the original DPI, so density can legitimately equal the
+        // automatic value even though width and height are magnified.
+        if (isWorkspaceMagnificationActive() || base.density != automaticDensity) {
+            return base
+        }
         // An unscaled device profile can continue to follow the complete host
         // panel geometry as before.
         val portrait = base.height > base.width
@@ -11240,6 +11259,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             height = if (portrait) hostLong else hostShort,
             density = automaticDensity
         )
+    }
+
+    private fun isWorkspaceMagnificationActive(): Boolean {
+        val value = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .all["flutter.desktop_workspace_magnification_percent"]
+        return (value as? Number)?.toInt()?.let { it > 100 } == true
     }
 
     private fun startHostDisplayMonitor() {
