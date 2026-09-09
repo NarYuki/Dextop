@@ -25,6 +25,13 @@ class AppLocalizationsPt extends AppLocalizations {
       'Ajusta o tamanho do conteúdo da área de trabalho';
 
   @override
+  String get magnifyWindowsWithDisplay => 'Aplicar escala às janelas';
+
+  @override
+  String get magnifyWindowsWithDisplayDescription =>
+      'Também amplia janelas, texto e controles de acordo com a escala da tela.';
+
+  @override
   String get theme => 'Tema';
 
   @override
@@ -2324,6 +2331,13 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get displayMagnificationDescription =>
       'Ajusta o tamanho do conteúdo da área de trabalho';
+
+  @override
+  String get magnifyWindowsWithDisplay => 'Aplicar escala às janelas';
+
+  @override
+  String get magnifyWindowsWithDisplayDescription =>
+      'Também amplia janelas, texto e controles de acordo com a escala da tela.';
 
   @override
   String get theme => 'Tema';

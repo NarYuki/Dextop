@@ -222,6 +222,8 @@
   "topologyUnavailable": "A topologia da exibição não está disponível neste dispositivo",
   "displayMagnification": "Ampliação da área de trabalho",
   "displayMagnificationDescription": "Ajusta o tamanho do conteúdo da área de trabalho",
+  "magnifyWindowsWithDisplay": "Aplicar escala às janelas",
+  "magnifyWindowsWithDisplayDescription": "Também amplia janelas, texto e controles de acordo com a escala da tela.",
   "displaySettingsTitle": "Configurações de exibição",
   "displaySettingsSummary": "Gerencie o posicionamento e a resolução das telas",
   "displayResolutionListTitle": "Resolução da tela",

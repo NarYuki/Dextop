@@ -24,6 +24,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get displayMagnificationDescription => '放大整个桌面以便查看。倍率越高，可用工作区越小。';
 
   @override
+  String get magnifyWindowsWithDisplay => '将缩放应用到窗口';
+
+  @override
+  String get magnifyWindowsWithDisplayDescription => '同时按照显示缩放比例放大窗口、文字和控件。';
+
+  @override
   String get theme => '主题';
 
   @override

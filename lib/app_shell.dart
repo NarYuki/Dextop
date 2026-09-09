@@ -296,15 +296,13 @@ class NativeBridge {
     required int height,
     required double refreshRate,
   }) async =>
-      await channel.invokeMapMethod<String, dynamic>(
-        'setDisplayPreferredMode',
-        {
-          'displayId': displayId,
-          'width': width,
-          'height': height,
-          'refreshRate': refreshRate,
-        },
-      ) ??
+      await channel
+          .invokeMapMethod<String, dynamic>('setDisplayPreferredMode', {
+            'displayId': displayId,
+            'width': width,
+            'height': height,
+            'refreshRate': refreshRate,
+          }) ??
       {};
   Future<Map<String, dynamic>> displayEnvironmentSettings() async =>
       await channel.invokeMapMethod<String, dynamic>(
@@ -360,6 +358,7 @@ class NativeBridge {
     bool secure, {
     required bool decorations,
     int workspaceMagnificationPercent = 100,
+    bool magnifyWindowsWithDisplay = false,
   }) async {
     var effectiveProfile = profile;
     if (profile.isDevice) {
@@ -397,6 +396,7 @@ class NativeBridge {
       baseHeight,
       effectiveProfile.density,
       workspaceMagnificationPercent,
+      magnifyWindowsWithDisplay,
     );
     AppAnalytics.event('desktop_start', {
       'orientation': portrait ? 'portrait' : 'landscape',
@@ -405,6 +405,7 @@ class NativeBridge {
       'density': workspaceDisplay.$3,
       'dynamic_resolution': profile.isDevice,
       'workspace_magnification': workspaceMagnificationPercent,
+      'magnify_windows_with_display': magnifyWindowsWithDisplay,
     });
     await channel.invokeMethod('start', {
       'width': workspaceDisplay.$1,
@@ -423,23 +424,33 @@ class NativeBridge {
     int height,
     int density,
     int percent,
+    bool magnifyWindowsWithDisplay,
   ) {
     final boundedPercent = percent.clamp(100, 200);
     if (boundedPercent == 100) return (width, height, density);
-    final factor = boundedPercent / 100;
-    var scaledWidth = (width / factor).round();
-    var scaledHeight = (height / factor).round();
-    final shortest = scaledWidth < scaledHeight ? scaledWidth : scaledHeight;
-    if (shortest < 480) {
-      final correction = 480 / shortest;
-      scaledWidth = (scaledWidth * correction).round();
-      scaledHeight = (scaledHeight * correction).round();
-    }
+    final requestedScale = 100 / boundedPercent;
+    // Android's OverlayDisplayAdapter rejects modes below 120 dpi. Fold
+    // device profiles can start around 220 dpi, so the upper end of the
+    // magnification slider would otherwise produce an invalid 117 dpi mode.
+    // Cap the effective scale as a unit so resolution and density continue to
+    // describe the same workspace magnification.
+    final shortest = width < height ? width : height;
+    final minimumDensityScale = magnifyWindowsWithDisplay ? 0.0 : 120 / density;
+    final appliedTargetScale =
+        [requestedScale, 480 / shortest, minimumDensityScale]
+            .reduce((largest, value) => value > largest ? value : largest)
+            .clamp(0.01, 1.0);
+    final scaledWidth = (width * appliedTargetScale).round();
+    final scaledHeight = (height * appliedTargetScale).round();
     // Most virtual-display implementations are more stable with even sizes.
     final evenWidth = scaledWidth.clamp(480, 7680) & ~1;
     final evenHeight = scaledHeight.clamp(480, 7680) & ~1;
     final appliedScale = evenWidth / width;
-    final scaledDensity = (density * appliedScale).round().clamp(72, 960);
+    // Keeping the profile DPI while reducing logical resolution makes
+    // Android's dp-sized windows and controls grow with the selected scale.
+    final scaledDensity = magnifyWindowsWithDisplay
+        ? density.clamp(120, 960)
+        : (density * appliedScale).round().clamp(120, 960);
     return (evenWidth, evenHeight, scaledDensity);
   }
 }

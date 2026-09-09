@@ -25,6 +25,13 @@ class AppLocalizationsJa extends AppLocalizations {
       'デスクトップ全体を見やすく拡大します。倍率を上げるほど作業領域は小さくなります。';
 
   @override
+  String get magnifyWindowsWithDisplay => 'ウィンドウにも倍率を適用';
+
+  @override
+  String get magnifyWindowsWithDisplayDescription =>
+      'ウィンドウ、文字、操作部品も表示倍率に合わせて大きくします。';
+
+  @override
   String get theme => 'テーマ';
 
   @override

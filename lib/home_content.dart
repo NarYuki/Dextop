@@ -325,6 +325,7 @@ extension _HomeContent on _HomeScreenState {
                           decorations: effectiveDecorations,
                           workspaceMagnificationPercent:
                               workspaceMagnificationPercent,
+                          magnifyWindowsWithDisplay: magnifyWindowsWithDisplay,
                         );
                         await Future<void>.delayed(Duration(milliseconds: 350));
                         await refresh();

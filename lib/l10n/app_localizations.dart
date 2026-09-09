@@ -137,6 +137,18 @@ abstract class AppLocalizations {
   /// **'デスクトップ全体を見やすく拡大します。倍率を上げるほど作業領域は小さくなります。'**
   String get displayMagnificationDescription;
 
+  /// No description provided for @magnifyWindowsWithDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'ウィンドウにも倍率を適用'**
+  String get magnifyWindowsWithDisplay;
+
+  /// No description provided for @magnifyWindowsWithDisplayDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ウィンドウ、文字、操作部品も表示倍率に合わせて大きくします。'**
+  String get magnifyWindowsWithDisplayDescription;
+
   /// No description provided for @theme.
   ///
   /// In ja, this message translates to:

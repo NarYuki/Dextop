@@ -5,6 +5,8 @@
   "resolution": "解像度",
   "displayMagnification": "表示倍率",
   "displayMagnificationDescription": "デスクトップ全体を見やすく拡大します。倍率を上げるほど作業領域は小さくなります。",
+  "magnifyWindowsWithDisplay": "ウィンドウにも倍率を適用",
+  "magnifyWindowsWithDisplayDescription": "ウィンドウ、文字、操作部品も表示倍率に合わせて大きくします。",
   "theme": "テーマ",
   "system": "システム",
   "light": "ライト",

@@ -123,6 +123,26 @@ extension _ResolutionUi on _HomeScreenState {
                               children: [Text('100%'), Text('200%')],
                             ),
                           ),
+                          SwitchListTile(
+                            contentPadding: EdgeInsets.zero,
+                            secondary: Icon(Icons.web_asset_rounded),
+                            title: Text(
+                              currentLocalizations().magnifyWindowsWithDisplay,
+                            ),
+                            subtitle: Text(
+                              currentLocalizations()
+                                  .magnifyWindowsWithDisplayDescription,
+                            ),
+                            value: magnifyWindowsWithDisplay,
+                            onChanged: active
+                                ? null
+                                : (value) async {
+                                    setSheetState(
+                                      () => magnifyWindowsWithDisplay = value,
+                                    );
+                                    await setMagnifyWindowsWithDisplay(value);
+                                  },
+                          ),
                         ],
                       ),
                     ),
