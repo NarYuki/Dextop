@@ -46,8 +46,8 @@ android {
         applicationId = "moe.n4tsu.dextop.cardex"
         minSdk = 35
         targetSdk = 36
-        versionCode = 5
-        versionName = "1.1.3"
+        versionCode = 6
+        versionName = "2.0.0"
     }
 
     buildFeatures {

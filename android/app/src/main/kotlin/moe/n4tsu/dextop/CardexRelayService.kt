@@ -1,6 +1,7 @@
 package moe.n4tsu.dextop
 
 import android.app.Service
+import android.app.ActivityOptions
 import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
@@ -11,6 +12,7 @@ import android.os.Messenger
 import android.util.Log
 import android.view.MotionEvent
 import android.view.Surface
+import android.view.Display
 import kotlin.math.roundToInt
 
 /** Certificate-verified in-process renderer for the Car Companion parked activity. */
@@ -27,16 +29,27 @@ class CardexRelayService : Service() {
     private var gracefulStopRequested = false
     private var directSessionOwned = false
     private var relayGeneration = 0L
+    private var clientGeneration = 0L
 
     override fun onBind(intent: Intent?): IBinder = messenger.binder
 
     override fun onUnbind(intent: Intent?): Boolean {
         if (client == null) return false
-        if (!gracefulStopRequested && (surface != null || controller != null || legacySession?.ownsSession == true)) {
-            CardexRecoveryReceiver.markInterrupted(this, "relay client unbound")
-        }
-        stopRelay()
-        return false
+        val disconnectedGeneration = clientGeneration
+        // Parked Activity -> driving CarAppService handoff briefly unbinds the
+        // old client. A new Surface may arrive immediately; only tear down if
+        // nobody replaces it within the transition window.
+        handler.postDelayed({
+            if (clientGeneration == disconnectedGeneration) {
+                if (!gracefulStopRequested &&
+                    (surface != null || controller != null || legacySession?.ownsSession == true)
+                ) {
+                    CardexRecoveryReceiver.markInterrupted(this, "relay client disconnected")
+                }
+                stopRelay()
+            }
+        }, CLIENT_HANDOFF_GRACE_MS)
+        return true
     }
 
     override fun onDestroy() {
@@ -64,6 +77,7 @@ class CardexRelayService : Service() {
         }
         when (message.what) {
             MSG_START -> {
+                clientGeneration += 1
                 client = message.replyTo
                 val data = message.data.apply { classLoader = Surface::class.java.classLoader }
                 val nextSurface = data.getParcelable(KEY_SURFACE, Surface::class.java) ?: return true
@@ -91,6 +105,7 @@ class CardexRelayService : Service() {
             }
             MSG_ACTION -> when (message.data.getString(KEY_ACTION)) {
                 ACTION_RECONNECT -> reconnectSurface()
+                ACTION_PHONE_CONTROL -> openPhoneControl()
                 ACTION_WORKSPACE_LIST -> sendWorkspaces()
                 ACTION_WORKSPACE_SAVE -> {
                     val error = MirrorService.saveCardexWorkspace()
@@ -266,6 +281,18 @@ class CardexRelayService : Service() {
         startRelay(activeSurface, width, height, resources.displayMetrics.densityDpi, renderScale)
     }
 
+    private fun openPhoneControl() {
+        val displayId = MirrorService.androidAutoSourceDisplayId().takeIf { it >= 0 } ?: return
+        val intent = Intent(this, CarCompanionPhoneActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(CarCompanionPhoneActivity.EXTRA_DISPLAY_ID, displayId)
+        }
+        startActivity(
+            intent,
+            ActivityOptions.makeBasic().setLaunchDisplayId(Display.DEFAULT_DISPLAY).toBundle(),
+        )
+    }
+
     private fun sendError(error: Throwable) {
         relaySessionActive = false
         OperationLog.e(this, "CarCompanion", "relay failed", error)
@@ -326,6 +353,7 @@ class CardexRelayService : Service() {
         const val KEY_WORKSPACES = "workspaces"
         const val KEY_GRACEFUL = "graceful"
         const val ACTION_RECONNECT = "reconnect"
+        const val ACTION_PHONE_CONTROL = "phone_control"
         const val ACTION_WORKSPACE_LIST = "workspace_list"
         const val ACTION_WORKSPACE_SAVE = "workspace_save"
         const val ACTION_WORKSPACE_OPEN = "workspace_open:"
@@ -335,6 +363,7 @@ class CardexRelayService : Service() {
         const val STATUS_ERROR = 3
         private const val MIN_RENDER_SCALE = 0.50f
         private const val MAX_DESKTOP_EDGE = 4096
+        private const val CLIENT_HANDOFF_GRACE_MS = 5_000L
     }
 
     private fun scaledDesktopSize(physicalWidth: Int, physicalHeight: Int): Pair<Int, Int> {

@@ -234,6 +234,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 val requested = Config(width, height, density, secure, effectiveDecorations, autoOnly)
                 Handler(Looper.getMainLooper()).post {
                     runCatching {
+                        if (autoOnly) running.replaceAutoDestinationSurface(autoSurface)
                         val next = running.effectiveConfig(requested)
                         running.resizeActiveDisplay(next, "resolution changed from Android UI")
                         mapOf(
@@ -678,10 +679,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         /** Global navigation requested by the signature-protected CARDEX relay. */
         fun performCardexAction(action: String): Boolean {
             val service = instance ?: return false
+            if (action == "recents") return service.showRecentsOnTargetDisplay()
             val globalAction = when (action) {
                 "back" -> GLOBAL_ACTION_BACK
                 "home" -> GLOBAL_ACTION_HOME
-                "recents" -> GLOBAL_ACTION_RECENTS
                 else -> return false
             }
             return service.performGlobalAction(globalAction)
@@ -954,6 +955,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         Thread(task, "Dextop-window-diagnostics").apply { isDaemon = true }
     }
     private val windowDiagnosticGeneration = AtomicInteger()
+    private val recentsExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "Dextop-recents-task").apply { isDaemon = true }
+    }
+    private val recentsGeneration = AtomicInteger()
     /** WindowManager/Accessibility window enumeration never runs on the input thread. */
     private val imeRegionProbeExecutor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "Dextop-ime-region").apply { isDaemon = true }
@@ -1825,6 +1830,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // than by every MotionEvent.
             requestImeRegionProbe("accessibility:${event.eventType}")
         }
+        if (event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val windowClass = event.className?.toString().orEmpty()
+            if (windowClass.contains("RecentsActivity", ignoreCase = true) ||
+                windowClass.contains("recents", ignoreCase = true)
+            ) {
+                scheduleRecentsFullscreenCorrection()
+            }
+        }
         event.source?.let { source ->
             if (event.displayId == targetDisplayId && source.isEditable && !source.isPassword) {
                 val bounds = Rect().also(source::getBoundsInScreen)
@@ -1855,6 +1868,97 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 routeNotificationTask(eventPackage, generation, 0)
             }
         }
+    }
+
+    private fun showRecentsOnTargetDisplay(): Boolean {
+        val displayId = targetDisplayId
+        if (!active || displayId < 0) return false
+        recentsExecutor.execute {
+            val result = privilegedAccess.execute(
+                "input", "-d", displayId.toString(), "keyevent", "KEYCODE_APP_SWITCH"
+            )
+            if (!result.succeeded) {
+                Log.w(logTag, "display-specific recents key failed display=$displayId error=${result.error}")
+            }
+        }
+        scheduleRecentsFullscreenCorrection()
+        return true
+    }
+
+    /** Uses ActivityTaskManager Binder data; no dumpsys parsing or shell resize command. */
+    private fun scheduleRecentsFullscreenCorrection() {
+        val generation = recentsGeneration.incrementAndGet()
+        val displayId = targetDisplayId
+        val wanted = Rect(0, 0, targetWidth, targetHeight)
+        if (displayId < 0 || wanted.isEmpty) return
+        recentsExecutor.execute {
+            val deadline = SystemClock.uptimeMillis() + 700L
+            while (active && targetDisplayId == displayId && generation == recentsGeneration.get()) {
+                if (resizeRecentsTaskThroughBinder(displayId, wanted)) return@execute
+                if (SystemClock.uptimeMillis() >= deadline) return@execute
+                try {
+                    Thread.sleep(50L)
+                } catch (_: InterruptedException) {
+                    Thread.currentThread().interrupt()
+                    return@execute
+                }
+            }
+        }
+    }
+
+    private fun resizeRecentsTaskThroughBinder(displayId: Int, wanted: Rect): Boolean = runCatching {
+        val service = privilegedAccess.service("activity_task", "android.app.IActivityTaskManager")
+        val taskManagerInterface = Class.forName("android.app.IActivityTaskManager")
+        val getTasks = taskManagerInterface.methods.firstOrNull {
+            it.name == "getTasks" && it.parameterTypes.contentEquals(
+                arrayOf(Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
+                    Boolean::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            )
+        } ?: error("IActivityTaskManager.getTasks(int,boolean,boolean,int) unavailable")
+        val tasks = getTasks.invoke(service, 64, true, false, displayId)
+            as? List<*> ?: return@runCatching false
+        val recents = tasks.firstOrNull { task ->
+            task != null && intField(task, "displayId") == displayId && activityTypeOf(task) == 3
+        } ?: return@runCatching false
+        val current = taskBoundsOf(recents)
+        if (current == wanted) return@runCatching true
+        val resizeTask = taskManagerInterface.methods.firstOrNull {
+            it.name == "resizeTask" && it.parameterTypes.size == 3
+        } ?: error("IActivityTaskManager.resizeTask unavailable")
+        val taskId = intField(recents, "taskId")
+        resizeTask.invoke(service, taskId, Rect(wanted), 0)
+        OperationLog.i(
+            this,
+            "Recents",
+            "binder fullscreen task=$taskId display=$displayId " +
+                    "from=$current to=$wanted"
+        )
+        true
+    }.onFailure {
+        Log.w(logTag, "ActivityTaskManager recents correction failed", it)
+    }.getOrDefault(false)
+
+    private fun intField(instance: Any, name: String): Int =
+        instance.javaClass.getField(name).getInt(instance)
+
+    private fun taskConfiguration(task: Any): Any =
+        task.javaClass.getField("configuration").get(task)
+            ?: error("RunningTaskInfo.configuration unavailable")
+
+    private fun activityTypeOf(task: Any): Int {
+        val configuration = taskConfiguration(task)
+        val windowConfiguration = configuration.javaClass
+            .getDeclaredField("windowConfiguration").apply { isAccessible = true }
+            .get(configuration)
+        return windowConfiguration.javaClass.getMethod("getActivityType").invoke(windowConfiguration) as Int
+    }
+
+    private fun taskBoundsOf(task: Any): Rect {
+        val configuration = taskConfiguration(task)
+        val windowConfiguration = configuration.javaClass
+            .getDeclaredField("windowConfiguration").apply { isAccessible = true }
+            .get(configuration)
+        return Rect(windowConfiguration.javaClass.getMethod("getBounds").invoke(windowConfiguration) as Rect)
     }
 
     private fun requestImeRegionProbe(reason: String, force: Boolean = false) {
@@ -2029,6 +2133,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         windowDiagnosticGeneration.incrementAndGet()
         windowDiagnosticExecutor.shutdownNow()
+        recentsGeneration.incrementAndGet()
+        recentsExecutor.shutdownNow()
         imeRegionSessionGeneration += 1
         imeRegionProbeFollowUp.set(false)
         imeRegionProbeExecutor.shutdownNow()
@@ -10345,6 +10451,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             this,
             "AndroidAuto",
             "hidden direct Auto display ready display=$targetDisplayId ${targetWidth}x$targetHeight/$density"
+        )
+    }
+
+    private fun replaceAutoDestinationSurface(nextSurface: Surface?) {
+        if (!autoOnlySession || nextSurface == null || !nextSurface.isValid) return
+        if (autoDestinationSurface === nextSurface) return
+        autoDestinationSurface = nextSurface
+        val updated = autoOwnedDisplay?.resize(
+            nextSurface,
+            targetWidth,
+            targetHeight,
+            density,
+        ) == true
+        check(updated) { "Unable to move the Android Auto desktop to the new host surface" }
+        OperationLog.i(
+            this,
+            "CarCompanion",
+            "Auto-owned display moved to replacement host surface display=$targetDisplayId",
         )
     }
 

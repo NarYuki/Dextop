@@ -209,13 +209,10 @@ class CarDexActivity : ComponentActivity() {
     }
 
     override fun onDestroy() {
-        if (isCarDisplay() && relayRequested) {
-            stopRelay(
-                graceful = CarCompanionLifecyclePolicy.isGracefulActivityDestruction(
-                    isChangingConfigurations
-                )
-            )
-        }
+        // Android Auto destroys the parked activity when the vehicle starts
+        // moving. Keep the relay display alive during that host transition;
+        // DrivingCarAppService supplies the replacement Surface. Explicit Stop
+        // still sends MSG_STOP from the visible controls.
         runCatching { unbindService(connection) }
         super.onDestroy()
     }
@@ -450,7 +447,6 @@ private fun RelaySurface(
                         override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
                             relaySurface?.release()
                             relaySurface = null
-                            onStop()
                             return true
                         }
 
