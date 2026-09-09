@@ -216,8 +216,6 @@ class AppInfoPage extends StatelessWidget {
         SizedBox(height: 12),
         _GamepadExperimentalTile(isRunning: isRunning),
         SizedBox(height: 12),
-        _CoverDisplayExperimentalTile(isRunning: isRunning),
-        SizedBox(height: 12),
         _ForceLaptopModeExperimentalTile(isRunning: isRunning),
         SizedBox(height: 12),
         _SamsungExperimentalSettingsTile(
@@ -332,69 +330,6 @@ class _ForceLaptopModeExperimentalTileState
         onChanged: loading || widget.isRunning ? null : _update,
         title: Text(l.experimentalForceLaptopMode),
         subtitle: Text(l.experimentalForceLaptopModeDescription),
-      ),
-    );
-  }
-}
-
-class _CoverDisplayExperimentalTile extends StatefulWidget {
-  const _CoverDisplayExperimentalTile({required this.isRunning});
-
-  final bool isRunning;
-
-  @override
-  State<_CoverDisplayExperimentalTile> createState() =>
-      _CoverDisplayExperimentalTileState();
-}
-
-class _CoverDisplayExperimentalTileState
-    extends State<_CoverDisplayExperimentalTile> {
-  bool enabled = false;
-  bool supported = false;
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final preferences = await SharedPreferences.getInstance();
-    var foldable = false;
-    try {
-      foldable =
-          await NativeBridge.channel.invokeMethod<bool>('isFoldableDevice') ??
-          false;
-    } catch (_) {}
-    if (!mounted) return;
-    setState(() {
-      enabled = preferences.getBool('experimental_cover_display') ?? false;
-      supported = foldable;
-      loading = false;
-    });
-  }
-
-  Future<void> _update(bool value) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool('experimental_cover_display', value);
-    if (mounted) setState(() => enabled = value);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return Card(
-      child: SwitchListTile(
-        secondary: const Icon(Icons.flip_to_back_rounded),
-        value: enabled && supported,
-        onChanged: loading || !supported || widget.isRunning ? null : _update,
-        title: Text(l.experimentalCoverDisplay),
-        subtitle: Text(
-          supported || loading
-              ? l.experimentalCoverDisplayDescription
-              : l.experimentalCoverDisplayUnavailable,
-        ),
       ),
     );
   }
