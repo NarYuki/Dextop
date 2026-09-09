@@ -14,6 +14,8 @@ import android.os.SystemClock
 import android.provider.Settings
 import android.util.Log
 import android.util.DisplayMetrics
+import android.view.WindowInsets
+import android.view.WindowInsetsController
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
@@ -79,6 +81,13 @@ open class MainActivity : FlutterActivity() {
         fun phoneTaskId(): Int = phoneTaskId
 
         fun currentActivity(): MainActivity? = instance
+
+        /** Keeps the phone-side control task fullscreen while Dextop owns it. */
+        fun setSessionSystemBarsHidden(hidden: Boolean) {
+            instance?.runOnUiThread {
+                instance?.setSessionSystemBarsHiddenInternal(hidden)
+            }
+        }
     }
 
     private val channelName = "app.freedextop/display"
@@ -111,6 +120,40 @@ open class MainActivity : FlutterActivity() {
     private val embeddedPrivilegeScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var embeddedRestoreInProgress = false
     @Volatile private var embeddedRestoreNeedsSetup = false
+    private var sessionSystemBarsHidden = false
+    private val legacyImmersiveFlags = 5894
+
+    private fun setSessionSystemBarsHiddenInternal(hidden: Boolean) {
+        sessionSystemBarsHidden = hidden
+        applySessionSystemBars()
+    }
+
+    private fun applySessionSystemBars() {
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility = if (sessionSystemBarsHidden) {
+            legacyImmersiveFlags
+        } else {
+            window.decorView.systemUiVisibility and legacyImmersiveFlags.inv()
+        }
+        val controller = window.insetsController ?: return
+        if (sessionSystemBarsHidden) {
+            controller.systemBarsBehavior =
+                WindowInsetsController.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsets.Type.systemBars())
+        } else {
+            controller.show(WindowInsets.Type.systemBars())
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        applySessionSystemBars()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) applySessionSystemBars()
+    }
 
     /** Flutter's binary messenger is main-thread only, including Binder callbacks. */
     private fun notifyFlutterPrivilegeStatus() {

@@ -647,6 +647,34 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
 
+        fun coverTrackpadActivityCreated(surface: View) {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service && active) service.attachCoverTrackpad(surface)
+            }
+        }
+
+        fun coverTrackpadActivityDestroyed(surface: View) {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service) service.detachCoverTrackpad(surface)
+            }
+        }
+
+        fun dispatchCoverTrackpadEvent(surface: View, source: MotionEvent) {
+            val service = instance ?: return
+            val event = MotionEvent.obtain(source)
+            Handler(Looper.getMainLooper()).post {
+                try {
+                    if (instance === service && active) {
+                        service.handleCoverTrackpadEvent(surface, event)
+                    }
+                } finally {
+                    event.recycle()
+                }
+            }
+        }
+
         /** Global navigation requested by the signature-protected CARDEX relay. */
         fun performCardexAction(action: String): Boolean {
             val service = instance ?: return false
@@ -875,6 +903,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var virtualMouseFractionY = 0f
     private var virtualMouseWheelFractionX = 0f
     private var virtualMouseWheelFractionY = 0f
+    private var coverTrackpadSurface: View? = null
+    private var coverTrackpadActive = false
+    private var coverTrackpadPreviousRuntimeProfile: String? = null
 
     /** Android pointer ids currently occupying Linux multitouch Type-B slots. */
     private val virtualTouchpadSlotPointerIds =
@@ -1193,6 +1224,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun currentInputMode(): String = when {
         physicalMouseActive -> "physical_mouse"
+        coverTrackpadActive && virtualPointerInputActive(true) -> "cover_virtual_touchpad"
         rawTouchscreenBridgeConsumesTouchSurface() ->
             "raw_touchscreen_${activeVirtualPointerProfile()}"
 
@@ -1224,6 +1256,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun laptopTrackpadInputActive(): Boolean =
         laptopModeActive && virtualPointerInputActive(true)
+
+    private fun dedicatedTrackpadInputActive(): Boolean =
+        (laptopModeActive || coverTrackpadActive) && virtualPointerInputActive(true)
 
     private fun virtualMouseProcessAlive(): Boolean =
         privilegedInputClient.isEngineRunning()
@@ -1603,7 +1638,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private val navigationToken = Binder()
+    private val desktopNavigationToken = Binder()
     private var navigationRestoreGeneration = 0
+    private var navigationSuppressedDisplayId = -1
     private var screenReceiverRegistered = false
     private var suspendedForLockScreen = false
     private var suspendedConfig: Config? = null
@@ -1964,6 +2001,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (coverDisplayController.state().backButtonsActive) {
             CoverBackButtonsActivity.finishActive()
             coverDisplayController.stopBackButtonMode { }
+        }
+        if (coverDisplayController.state().trackpadActive) {
+            CoverTrackpadActivity.finishActive()
+            coverDisplayController.stopTrackpadMode { }
         }
         windowDiagnosticGeneration.incrementAndGet()
         windowDiagnosticExecutor.shutdownNow()
@@ -3010,6 +3051,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
                 startVirtualMouse()
                 startRawTouchscreenReaderIfEligible()
+                syncCoverInputForKeyboardStyle()
             }
             return
         }
@@ -3131,6 +3173,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         frame.requestLayout()
         applyLaptopGeometryWhenLaidOut(enabled, baseOverride = restoreConfig)
         if (!enabled) laptopBaseConfig = null
+        syncCoverInputForKeyboardStyle()
     }
 
     private fun switchActiveKeyboardStyle(style: KeyboardDeckStyle) {
@@ -3166,6 +3209,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             .start()
         content.requestLayout()
         surfaceView?.requestLayout()
+        syncCoverInputForKeyboardStyle()
         applyLaptopGeometryWhenLaidOut(true)
         OperationLog.i(this, "KeyboardStyle", "switched to ${style.name.lowercase()}")
     }
@@ -3364,12 +3408,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // keyboard and the upper display area. Publish a host-sized absolute
         // range so the native bridge does not pin that contact to the
         // trackpad's top/side edges while it remains down.
-        val touchpadMaxX = if (laptopModeActive) {
+        val coverSurface = coverTrackpadSurface
+        val touchpadMaxX = if (coverTrackpadActive && (coverSurface?.width ?: 0) > 0) {
+            checkNotNull(coverSurface).width
+        } else if (laptopModeActive) {
             hostWidth.coerceAtLeast(1)
         } else {
             fullscreenBounds?.width()?.coerceAtLeast(1) ?: VIRTUAL_TOUCHPAD_MAX_X
         }
-        val touchpadMaxY = if (laptopModeActive) {
+        val touchpadMaxY = if (coverTrackpadActive && (coverSurface?.height ?: 0) > 0) {
+            checkNotNull(coverSurface).height
+        } else if (laptopModeActive) {
             hostHeight.coerceAtLeast(1)
         } else {
             fullscreenBounds?.height()?.coerceAtLeast(1) ?: VIRTUAL_TOUCHPAD_MAX_Y
@@ -3442,7 +3491,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // virtualMouseInputActive()) so switching modes actually removes the
         // device from InputReader/InputDispatcher.
         if (!active || demoMode || profile == "software" ||
-            (directTouch && !laptopModeActive)
+            (directTouch && !laptopModeActive && !coverTrackpadActive)
         ) {
             updateVirtualCursorVisibility()
             return
@@ -3540,7 +3589,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      */
     private fun fallbackToSoftwarePointer(reason: String) {
         if (privilegedPointerFallbackInProgress || privilegedPointerFallbackActive) return
-        if (!active || directTouch && !laptopModeActive) {
+        if (!active || directTouch && !laptopModeActive && !coverTrackpadActive) {
             privilegedInputStarting = false
             updateVirtualCursorVisibility()
             return
@@ -7412,22 +7461,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
             }
         })
-        if (isExperimentalGamepadEnabled()) {
+        if (!isGamepadDeckActive()) {
             panel.addView(actionButton(
-                R.drawable.ic_gamepad,
-                NativeStrings.text(
-                    if (state.backButtonsActive) "nativeStopBackButtons" else "nativeStartBackButtons",
-                ),
+                R.drawable.ic_mouse,
+                NativeStrings.text("nativeInputTrackpad") + if (state.trackpadActive) "  ✓" else "",
             ) {
-                if (state.backButtonsActive) {
-                    coverDisplayController.stopBackButtonMode { result ->
+                if (state.trackpadActive) {
+                    coverDisplayController.stopTrackpadMode { result ->
                         result.onFailure { showCoverDisplayFailure(it) }
                         showCoverDisplayMenu(panel)
                     }
-                } else if (state.androidVisible || state.desktopActive) {
-                    showCoverBackButtonsConfirmation(panel)
                 } else {
-                    startCoverBackButtonMode(panel)
+                    coverDisplayController.startTrackpadMode(::coverDisplayLifecycleToken) { result ->
+                        result.onSuccess { activateTopologyForIndependentDisplays("cover_trackpad_started") }
+                            .onFailure { showCoverDisplayFailure(it) }
+                        showCoverDisplayMenu(panel)
+                    }
                 }
             })
         }
@@ -7477,6 +7526,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun isExperimentalGamepadEnabled(): Boolean =
         getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getBoolean("flutter.experimental_gamepad", false)
+
+    private fun isGamepadDeckActive(): Boolean = laptopModeActive &&
+            (keyboardDeckStyle == KeyboardDeckStyle.GAMEPAD ||
+                    keyboardDeckStyle == KeyboardDeckStyle.GAMEBOY)
+
+    private fun syncCoverInputForKeyboardStyle() {
+        if (demoMode || !isFoldableDevice()) return
+        val shouldUseBackButtons = isGamepadDeckActive() && isExperimentalGamepadEnabled()
+        val state = coverDisplayController.state()
+        if (shouldUseBackButtons && !state.backButtonsActive && !state.busy) {
+            coverDisplayController.startBackButtonMode(::coverDisplayLifecycleToken) { result ->
+                result.onSuccess { activateTopologyForIndependentDisplays("cover_back_buttons_auto_started") }
+                    .onFailure { showCoverDisplayFailure(it) }
+            }
+        } else if (!shouldUseBackButtons && state.backButtonsActive && !state.busy) {
+            coverDisplayController.stopBackButtonMode { result ->
+                result.onFailure { showCoverDisplayFailure(it) }
+            }
+        }
+    }
 
     private fun isGamepadStyleAvailable(): Boolean = isExperimentalGamepadEnabled() && (
             demoMode || isLaptopStyleAvailable() || isBlackBerryModeAvailable() ||
@@ -7628,6 +7697,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun showBlackBerryLayoutEditor(panel: LinearLayout) {
         if (!demoMode && (!laptopModeActive || keyboardDeckStyle != KeyboardDeckStyle.BLACKBERRY)) {
+            // Opening the editor is also an explicit request to keep the
+            // BlackBerry deck visible. Automatic fold-posture evaluation must
+            // not replace or dismiss it while the user is editing the layout.
+            laptopManualOverride = true
+            laptopAutoActivated = false
+            pendingLaptopMode = null
+            pendingLaptopModeSince = 0L
+            laptopModeEvaluationGeneration += 1
             setLaptopMode(true, KeyboardDeckStyle.BLACKBERRY)
         }
         stopCastRouteDiscovery()
@@ -7745,8 +7822,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             return
         }
         laptopAutoSuppressedByUser = false
-        laptopManualOverride = style == KeyboardDeckStyle.LAPTOP
+        // Laptop and BlackBerry are both manually persistent keyboard modes.
+        // In particular, a subsequent fold-posture callback must not dismiss
+        // or replace a BlackBerry deck that the user explicitly selected.
+        laptopManualOverride = style == KeyboardDeckStyle.LAPTOP ||
+                style == KeyboardDeckStyle.BLACKBERRY
         laptopAutoActivated = false
+        // Invalidate a posture decision that may already be waiting for its
+        // debounce timer when the user makes the manual selection.
+        pendingLaptopMode = null
+        pendingLaptopModeSince = 0L
+        laptopModeEvaluationGeneration += 1
         setLaptopMode(true, style)
         OperationLog.i(this, "KeyboardStyle", "overlay enabled ${style.name.lowercase()}")
     }
@@ -8571,7 +8657,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 sourceView === surfaceView && imeDirectTouchHeld
         val useDirectTouch = (directTouch && !forceCursorMode) || imeDirectTouch
         val useVirtualMouse = (if (allowVirtualPointer) {
-            laptopTrackpadInputActive()
+            dedicatedTrackpadInputActive()
         } else {
             virtualMouseInputActive()
         }) && !useDirectTouch
@@ -9092,6 +9178,46 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (!directTouch && !virtualMouseInputActive()) {
             updateCursorPosition()
         }
+    }
+
+    private fun attachCoverTrackpad(surface: View) {
+        if (coverTrackpadSurface === surface && coverTrackpadActive) return
+        if (!coverTrackpadActive) {
+            coverTrackpadPreviousRuntimeProfile = virtualPointerRuntimeProfile
+        }
+        coverTrackpadSurface = surface
+        coverTrackpadActive = true
+        cancelDesktopTouchStream()
+        stopVirtualMouse()
+        virtualPointerRuntimeProfile = "touchpad"
+        startVirtualMouse("touchpad")
+        surface.post { refreshPrivilegedInputConfig("cover_trackpad_attached") }
+        OperationLog.i(this, "InputRouting", "cover display attached to uinput touchpad")
+    }
+
+    private fun handleCoverTrackpadEvent(surface: View, event: MotionEvent) {
+        if (!coverTrackpadActive || coverTrackpadSurface !== surface) return
+        trackpad(
+            event,
+            surface,
+            forceCursorMode = true,
+            allowVirtualPointer = true,
+            hapticView = surface,
+        )
+    }
+
+    private fun detachCoverTrackpad(surface: View) {
+        if (coverTrackpadSurface !== surface) return
+        if (virtualTouchpadActiveContactCount() > 0) {
+            finishVirtualTouchpadGesture("cover_trackpad_detached", allowDirectTouch = true)
+        }
+        coverTrackpadSurface = null
+        coverTrackpadActive = false
+        stopVirtualMouse()
+        virtualPointerRuntimeProfile = coverTrackpadPreviousRuntimeProfile
+        coverTrackpadPreviousRuntimeProfile = null
+        if (active && (!directTouch || laptopModeActive)) startVirtualMouse()
+        OperationLog.i(this, "InputRouting", "cover display detached from uinput touchpad")
     }
 
     private fun activatePhysicalMouse() {
@@ -10273,6 +10399,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 NativeStrings.text("nativeShizukuUnavailable")
             }
             targetDisplayId = display.displayId
+            // The session-level navigation request is made before the asynchronous
+            // overlay display exists. Apply it again now that SystemUI has created
+            // a per-display navigation bar for the actual desktop display.
+            if (active && targetDisplayId != Display.DEFAULT_DISPLAY) {
+                navigationSuppressedDisplayId = targetDisplayId
+                applyNavigationDisabled(
+                    targetDisplayId,
+                    true,
+                    desktopNavigationToken,
+                    "desktop"
+                )
+            }
             requestImeRegionProbe("display_attached", force = true)
             clearInheritedDisplayOverrides(targetDisplayId)
             configureDisplay()
@@ -10358,6 +10496,21 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     return@runCatching
                 }
                 error("The desktop HOME activity could not be launched")
+            }
+            // Some Samsung builds require the display to advertise system
+            // decorations while HOME is launched, then create both their DeX
+            // taskbar and Android's regular NavigationBar. Once HOME has been
+            // accepted, withdraw only the framework decorations so the DeX
+            // taskbar remains as the sole bottom bar.
+            if (showSystemDecorations && desktopEnvironment.platformManaged) {
+                listOf(250L, 700L, 1_500L).forEach { delay ->
+                    val decoratedDisplayId = targetDisplayId
+                    root?.postDelayed({
+                        if (active && targetDisplayId == decoratedDisplayId) {
+                            setDesktopSystemDecorationsVisible(decoratedDisplayId, false)
+                        }
+                    }, delay)
+                }
             }
             pendingPausedWorkspace?.takeUnless { autoOnlySession }?.let { workspace ->
                 pendingPausedWorkspace = null
@@ -10471,6 +10624,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         Log.i(logTag, "Dextop display configured display=$targetDisplayId rotation=$rotation")
     }
 
+    private fun setDesktopSystemDecorationsVisible(displayId: Int, visible: Boolean) {
+        runCatching {
+            val service = systemService("window", "android.view.IWindowManager")
+            Class.forName("android.view.IWindowManager").getMethod(
+                "setShouldShowSystemDecors",
+                Int::class.javaPrimitiveType,
+                Boolean::class.javaPrimitiveType
+            ).invoke(service, displayId, visible)
+        }.onSuccess {
+            OperationLog.i(
+                this,
+                "SystemDecorations",
+                "display=$displayId visible=$visible"
+            )
+            Log.i(logTag, "desktop system decorations display=$displayId visible=$visible")
+        }.onFailure {
+            OperationLog.e(
+                this,
+                "SystemDecorations",
+                "display=$displayId update failed visible=$visible",
+                it
+            )
+        }
+    }
+
     private fun applyDisplayRotation(
         rotation: Int,
         service: Any? = null,
@@ -10506,12 +10684,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun launchHome(): Boolean = runCatching {
-        val intent = Intent(Intent.ACTION_MAIN)
-            .addCategory(Intent.CATEGORY_HOME)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val intent = if (desktopEnvironment.id == "samsung_dex") {
+            Intent(Intent.ACTION_MAIN)
+                .addCategory(Intent.CATEGORY_SECONDARY_HOME)
+                .setComponent(
+                    ComponentName(
+                        "com.sec.android.app.launcher",
+                        "com.honeyspace.dexservice.SecondaryLauncher"
+                    )
+                )
+        } else {
+            Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplayId)
         startActivity(intent, options.toBundle())
-        Log.i(logTag, "home launched display=$targetDisplayId")
+        Log.i(
+            logTag,
+            "home launched display=$targetDisplayId component=${intent.component} " +
+                "decorations=$showSystemDecorations"
+        )
     }.onFailure {
         OperationLog.e(
             this,
@@ -10536,6 +10727,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun shouldUsePersistedSystemDecorations(): Boolean {
         if (!desktopEnvironment.platformManaged) return false
         val preferences = getSharedPreferences("dextop_home_launch_recovery", MODE_PRIVATE)
+        if (desktopEnvironment.id == "samsung_dex") {
+            // Samsung's SECONDARY_HOME can be launched explicitly on an
+            // undecorated display. Old builds persisted decorations after the
+            // generic HOME intent was rejected; keeping that workaround would
+            // recreate the redundant Android NavigationBar forever.
+            preferences.edit().remove("firmware_fingerprint").apply()
+            return false
+        }
         val stored = preferences.getString("firmware_fingerprint", null) ?: return false
         if (stored == firmwareIdentity()) return true
         // Firmware changed. Remove the old workaround so this build gets a
@@ -11228,7 +11427,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun setPhoneNavigationDisabled(disabled: Boolean) {
         val generation = ++navigationRestoreGeneration
-        applyPhoneNavigationDisabled(disabled)
+        MainActivity.setSessionSystemBarsHidden(disabled)
+        applyNavigationDisabled(Display.DEFAULT_DISPLAY, disabled, navigationToken, "phone")
+        val desktopDisplayId = if (disabled) {
+            targetDisplayId.takeIf { it >= 0 && it != Display.DEFAULT_DISPLAY }?.also {
+                navigationSuppressedDisplayId = it
+            }
+        } else {
+            navigationSuppressedDisplayId.takeIf { it >= 0 }
+                ?: targetDisplayId.takeIf { it >= 0 && it != Display.DEFAULT_DISPLAY }
+        }
+        desktopDisplayId?.let {
+            applyNavigationDisabled(it, disabled, desktopNavigationToken, "desktop")
+        }
+        if (!disabled) navigationSuppressedDisplayId = -1
         if (disabled) return
 
         // SystemUI can recreate its navigation bar after our overlay is
@@ -11238,40 +11450,60 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (generation != navigationRestoreGeneration || active && !suspendedForLockScreen) {
                     return@postDelayed
                 }
-                applyPhoneNavigationDisabled(false)
+                applyNavigationDisabled(Display.DEFAULT_DISPLAY, false, navigationToken, "phone")
+                desktopDisplayId?.let {
+                    applyNavigationDisabled(it, false, desktopNavigationToken, "desktop")
+                }
             }, delay)
         }
     }
 
-    private fun applyPhoneNavigationDisabled(disabled: Boolean) {
+    private fun applyNavigationDisabled(
+        displayId: Int,
+        disabled: Boolean,
+        token: Binder,
+        target: String,
+    ) {
         runCatching {
             val service = systemService("statusbar", STATUS_BAR_INTERFACE)
             val type = Class.forName(STATUS_BAR_INTERFACE)
             val flags = if (disabled) PHONE_NAVIGATION_DISABLE_FLAGS else 0
-            val method = type.methods.firstOrNull {
-                it.name == "disable" && it.parameterTypes.size == 4
-            } ?: type.methods.firstOrNull {
-                it.name == "disable" && it.parameterTypes.size == 3
-            } ?: type.methods.firstOrNull {
-                it.name == "disableForUser" && it.parameterTypes.size == 5
-            } ?: error("No compatible StatusBar disable operation")
+            val dexBar = target == "desktop"
+            val method = if (dexBar) {
+                // Samsung exposes separate phone and DeX status-bar channels.
+                // The final integer is a bar type (0 phone, 1 DeX), not a
+                // framework display ID.
+                type.methods.firstOrNull {
+                    it.name == "disableForUserToType" && it.parameterTypes.size == 5
+                } ?: type.methods.firstOrNull {
+                    it.name == "disableToType" && it.parameterTypes.size == 4
+                }
+            } else {
+                type.methods.firstOrNull {
+                    it.name == "disable" && it.parameterTypes.size == 3
+                } ?: type.methods.firstOrNull {
+                    it.name == "disableForUser" && it.parameterTypes.size == 4
+                }
+            } ?: error("No compatible StatusBar disable operation for $target")
             val integerCount = method.parameterTypes.count { it == Int::class.javaPrimitiveType }
             var integerIndex = 0
             val args: Array<Any?> = method.parameterTypes.map { parameter ->
                 when {
                     parameter == Int::class.javaPrimitiveType -> {
                         val value = when {
-                            method.name == "disableForUser" && integerIndex == integerCount - 1 ->
+                            dexBar && integerIndex == integerCount - 1 -> 1
+
+                            method.name.contains("ForUser") &&
+                                integerIndex == integerCount - if (dexBar) 2 else 1 ->
                                 android.os.Process.myUid() / 100_000
 
-                            integerCount >= 2 && integerIndex == 0 -> Display.DEFAULT_DISPLAY
                             else -> flags
                         }
                         integerIndex += 1
                         value
                     }
 
-                    android.os.IBinder::class.java.isAssignableFrom(parameter) -> navigationToken
+                    android.os.IBinder::class.java.isAssignableFrom(parameter) -> token
                     parameter == String::class.java -> packageName
                     else -> null
                 }
@@ -11287,13 +11519,19 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             OperationLog.i(
                 this,
-                "PhoneNavigation",
-                "disabled=$disabled method=${method.name}/${method.parameterTypes.size}"
+                "Navigation",
+                "target=$target display=$displayId disabled=$disabled " +
+                    "method=${method.name}/${method.parameterTypes.size}"
             )
-            Log.i(logTag, "phone navigation disabled=$disabled")
+            Log.i(logTag, "$target navigation display=$displayId disabled=$disabled")
         }.onFailure { error ->
-            OperationLog.e(this, "PhoneNavigation", "state update failed disabled=$disabled", error)
-            Log.e(logTag, "phone navigation state failed disabled=$disabled", error)
+            OperationLog.e(
+                this,
+                "Navigation",
+                "target=$target display=$displayId update failed disabled=$disabled",
+                error
+            )
+            Log.e(logTag, "$target navigation display=$displayId failed disabled=$disabled", error)
         }
     }
 
@@ -11330,6 +11568,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         stopping = true
         if (coverDisplayController.state().backButtonsActive) {
             coverDisplayController.stopBackButtonMode { }
+        }
+        if (coverDisplayController.state().trackpadActive) {
+            coverDisplayController.stopTrackpadMode { }
         }
         val cleanupGeneration = ++stopCleanupGeneration
         val wasActive = active

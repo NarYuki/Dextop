@@ -18,6 +18,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
         val androidVisible: Boolean,
         val desktopActive: Boolean,
         val backButtonsActive: Boolean,
+        val trackpadActive: Boolean,
         val displayId: Int,
         val busy: Boolean,
     )
@@ -31,6 +32,8 @@ internal class CoverDisplaySessionController(private val context: Context) {
     @Volatile private var coverSpec: String? = null
     @Volatile private var backButtonDisplayId = Display.INVALID_DISPLAY
     @Volatile private var backButtonsActive = false
+    @Volatile private var trackpadActive = false
+    @Volatile private var trackpadDisplayId = Display.INVALID_DISPLAY
     @Volatile private var lifecycleToken: String? = null
     @Volatile private var busy = false
 
@@ -38,9 +41,11 @@ internal class CoverDisplaySessionController(private val context: Context) {
         androidVisible = androidVisible,
         desktopActive = coverDisplayId != Display.INVALID_DISPLAY,
         backButtonsActive = backButtonsActive,
+        trackpadActive = trackpadActive,
         displayId = when {
             coverDisplayId != Display.INVALID_DISPLAY -> coverDisplayId
             backButtonDisplayId != Display.INVALID_DISPLAY -> backButtonDisplayId
+            trackpadDisplayId != Display.INVALID_DISPLAY -> trackpadDisplayId
             else -> Display.INVALID_DISPLAY
         },
         busy = busy,
@@ -58,7 +63,9 @@ internal class CoverDisplaySessionController(private val context: Context) {
         busy = true
         Thread {
             runCatching {
-                if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY) {
+                if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY ||
+                    trackpadActive || trackpadDisplayId != Display.INVALID_DISPLAY) {
+                    clearTrackpadMode()
                     clearBackButtonMode()
                     androidVisible = false
                     resetDeviceState()
@@ -91,7 +98,9 @@ internal class CoverDisplaySessionController(private val context: Context) {
         busy = true
         Thread {
             runCatching {
-                if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY) {
+                if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY ||
+                    trackpadActive || trackpadDisplayId != Display.INVALID_DISPLAY) {
+                    clearTrackpadMode()
                     clearBackButtonMode()
                     androidVisible = false
                     resetDeviceState()
@@ -167,6 +176,55 @@ internal class CoverDisplaySessionController(private val context: Context) {
         }.start()
     }
 
+    fun startTrackpadMode(
+        lifecycleTokenProvider: () -> String,
+        completion: (Result<State>) -> Unit,
+    ) {
+        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        busy = true
+        Thread {
+            val result = runCatching {
+                stopPreviousCoverMode()
+                requireCoverDeviceState()
+                Thread.sleep(900L)
+                val target = findCoverDisplay()
+                trackpadDisplayId = target.displayId
+                trackpadActive = true
+                lifecycleToken = lifecycleTokenProvider()
+                launchTrackpadActivity(target.displayId)
+                OperationLog.i(context, "CoverDisplay", "trackpad started display=${target.displayId}")
+                state()
+            }
+            if (result.isFailure) {
+                trackpadActive = false
+                trackpadDisplayId = Display.INVALID_DISPLAY
+                lifecycleToken = null
+                runCatching { resetDeviceState() }
+            }
+            busy = false
+            handler.post { completion(result) }
+        }.start()
+    }
+
+    fun stopTrackpadMode(completion: (Result<State>) -> Unit) {
+        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (!trackpadActive && trackpadDisplayId == Display.INVALID_DISPLAY) {
+            return completion(Result.success(state()))
+        }
+        busy = true
+        Thread {
+            val result = runCatching {
+                clearTrackpadMode()
+                lifecycleToken = null
+                if (!androidVisible && coverDisplayId == Display.INVALID_DISPLAY) resetDeviceState()
+                OperationLog.i(context, "CoverDisplay", "trackpad stopped")
+                state()
+            }
+            busy = false
+            handler.post { completion(result) }
+        }.start()
+    }
+
     fun stopBackButtonMode(completion: (Result<State>) -> Unit) {
         if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
         if (!backButtonsActive && backButtonDisplayId == Display.INVALID_DISPLAY) {
@@ -192,7 +250,11 @@ internal class CoverDisplaySessionController(private val context: Context) {
 
     fun stopDesktop(completion: (Result<State>) -> Unit) {
         if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
-        if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY) {
+        if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY ||
+            trackpadActive || trackpadDisplayId != Display.INVALID_DISPLAY) {
+            if (trackpadActive || trackpadDisplayId != Display.INVALID_DISPLAY) {
+                return stopTrackpadMode(completion)
+            }
             return stopBackButtonMode(completion)
         }
         busy = true
@@ -214,6 +276,24 @@ internal class CoverDisplaySessionController(private val context: Context) {
 
     /** Ends only this owned session when the physical display topology changes. */
     fun reconcileLifecycle(reason: String, currentLifecycleToken: String) {
+        val trackpadId = trackpadDisplayId
+        if (trackpadActive || trackpadId != Display.INVALID_DISPLAY) {
+            if (busy) return
+            val displayExists = trackpadId != Display.INVALID_DISPLAY &&
+                    displayManager.getDisplay(trackpadId) != null
+            val physicalStateChanged = lifecycleToken?.let { it != currentLifecycleToken } == true
+            if (displayExists && !physicalStateChanged) return
+            busy = true
+            Thread {
+                runCatching {
+                    clearTrackpadMode()
+                    lifecycleToken = null
+                    resetDeviceState()
+                }.onFailure { OperationLog.e(context, "CoverDisplay", "trackpad cleanup failed", it) }
+                busy = false
+            }.start()
+            return
+        }
         val backDisplayId = backButtonDisplayId
         if (backButtonsActive || backDisplayId != Display.INVALID_DISPLAY) {
             if (busy) return
@@ -303,6 +383,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
 
     private fun stopPreviousCoverMode() {
         clearBackButtonMode()
+        clearTrackpadMode()
         val oldDisplayId = coverDisplayId
         if (oldDisplayId != Display.INVALID_DISPLAY || coverSpec != null) {
             removeOwnedSpec()
@@ -322,6 +403,15 @@ internal class CoverDisplaySessionController(private val context: Context) {
         backButtonsActive = false
         backButtonDisplayId = Display.INVALID_DISPLAY
         lifecycleToken = null
+    }
+
+    private fun clearTrackpadMode() {
+        if (trackpadActive || trackpadDisplayId != Display.INVALID_DISPLAY) {
+            CoverTrackpadActivity.finishActive()
+            Thread.sleep(220L)
+        }
+        trackpadActive = false
+        trackpadDisplayId = Display.INVALID_DISPLAY
     }
 
     private fun stopBackButtonActivity() {
@@ -363,6 +453,15 @@ internal class CoverDisplaySessionController(private val context: Context) {
 
     private fun launchBackButtonActivity(displayId: Int) {
         val intent = Intent(context, CoverBackButtonsActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
+        context.startActivity(
+            intent,
+            ActivityOptions.makeBasic().setLaunchDisplayId(displayId).toBundle(),
+        )
+    }
+
+    private fun launchTrackpadActivity(displayId: Int) {
+        val intent = Intent(context, CoverTrackpadActivity::class.java)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_MULTIPLE_TASK)
         context.startActivity(
             intent,
