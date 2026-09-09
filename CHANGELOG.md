@@ -1,5 +1,39 @@
 # Changelog
 
+## 1.6.7
+
+### 日本語
+
+#### 新機能
+
+- 折りたたみ端末のカバーディスプレイを、独立したuinputトラックパッドとして使用できるようにしました。
+
+#### 改善
+
+- 手動で開いたBlackBerryモードを永続的な手動選択として扱うようにしました。
+
+#### 修正
+
+- 折りたたみ端末でBlackBerryモードが表示直後に消える問題を修正しました。
+- 自動姿勢判定が手動で選択したBlackBerryモードを上書きする問題を修正しました。
+- カバーディスプレイの入力モード切り替え後に、背面ボタンやトラックパッドの状態が残る問題を修正しました。
+
+### English
+
+#### New
+
+- Added support for using a foldable device's cover display as an independent uinput trackpad.
+
+#### Improved
+
+- Manually opened BlackBerry mode is now treated as a persistent manual selection.
+
+#### Fixes
+
+- Fixed an issue where BlackBerry mode disappeared immediately after being shown on foldable devices.
+- Fixed automatic posture detection overriding a manually selected BlackBerry mode.
+- Fixed rear-button or trackpad state remaining active after switching the cover-display input mode.
+
 ## 1.5.2 — Fold8 laptop-mode reliability
 
 ### Fixed
