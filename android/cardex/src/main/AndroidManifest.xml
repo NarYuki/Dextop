@@ -1,5 +1,4 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-    <uses-permission android:name="androidx.car.app.ACCESS_SURFACE" />
     <queries>
         <package android:name="moe.n4tsu.dextop" />
     </queries>
@@ -8,33 +7,35 @@
         android:allowBackup="false"
         android:appCategory="game"
         android:icon="@drawable/ic_cardex"
-        android:label="@string/app_name"
+        android:label="Dextop Car Companion"
         android:resizeableActivity="true"
         android:theme="@style/Theme.CarDex">
-        <meta-data
-            android:name="com.google.android.gms.car.application"
-            android:resource="@xml/automotive_app_desc" />
-        <service
-            android:name=".DrivingCarAppService"
-            android:exported="true">
-            <meta-data
-                android:name="androidx.car.app.minCarApiLevel"
-                android:value="2" />
-            <intent-filter>
-                <action android:name="androidx.car.app.CarAppService" />
-                <category android:name="androidx.car.app.category.NAVIGATION" />
-            </intent-filter>
-        </service>
         <activity
             android:name=".CarDexActivity"
             android:configChanges="orientation|keyboardHidden|screenSize|smallestScreenSize|density|uiMode"
             android:exported="true"
-            android:launchMode="singleTask">
+            android:launchMode="singleTask" />
+        <activity-alias
+            android:name=".CarDexPhoneLauncher"
+            android:exported="true"
+            android:icon="@drawable/ic_cardex"
+            android:label="Dextop Car Companion"
+            android:targetActivity=".CarDexActivity">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity-alias>
+        <activity-alias
+            android:name=".CarDexCarLauncher"
+            android:exported="true"
+            android:icon="@mipmap/ic_cardex_parking"
+            android:label="Dextop・Parking"
+            android:targetActivity=".CarDexActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.CAR_LAUNCHER" />
             </intent-filter>
-        </activity>
+        </activity-alias>
     </application>
 </manifest>

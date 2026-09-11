@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="cardex_driving_background">#B9F3BA</color>
+    <color name="cardex_parking_background">#FFB2B7</color>
+</resources>

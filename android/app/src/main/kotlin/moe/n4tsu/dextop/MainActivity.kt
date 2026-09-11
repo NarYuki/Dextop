@@ -436,6 +436,7 @@ open class MainActivity : FlutterActivity() {
                 "stop" -> stopDisplay(result)
                 "stopAuto" -> {
                     AndroidAutoMirrorActivity.stopAutoSessionFromPhone()
+                    CardexRelayService.stopFromPhone()
                     result.success(null)
                 }
                 "apps" -> Thread {

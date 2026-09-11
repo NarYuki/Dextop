@@ -676,6 +676,41 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
 
+        fun showCarCompanionCursor(displayId: Int) {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service) service.attachCarCompanionCursor(displayId)
+            }
+        }
+
+        fun updateCarCompanionCursor(displayId: Int, x: Float, y: Float, pulse: Boolean = false) {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance !== service) return@post
+                service.attachCarCompanionCursor(displayId)
+                service.carCompanionCursorView?.apply {
+                    update(x, y)
+                    if (pulse) pulse()
+                }
+            }
+        }
+
+        fun hideCarCompanionCursor() {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service) service.detachCarCompanionCursor()
+            }
+        }
+
+        fun updateAutoDestinationSurface(surface: Surface) {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service && active && service.autoOnlySession) {
+                    service.replaceAutoDestinationSurface(surface)
+                }
+            }
+        }
+
         /** Global navigation requested by the signature-protected CARDEX relay. */
         fun performCardexAction(action: String): Boolean {
             val service = instance ?: return false
@@ -782,6 +817,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var rootWindowParams: WindowManager.LayoutParams? = null
     private var surfaceView: SurfaceView? = null
     private var cursorView: CursorView? = null
+    private var carCompanionCursorView: CursorView? = null
+    private var carCompanionCursorWindowManager: WindowManager? = null
+    private var carCompanionCursorDisplayId = -1
     private var menu: LinearLayout? = null
     private var menuPrimary: LinearLayout? = null
     private var workspaceExpanded = false
@@ -1010,6 +1048,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var experimentalMultiTouch = false
     private var threeFingerEdgeSwipe = false
     private var edgeMenuTriggered = false
+    private var edgeGesturePrimaryPointerId = MotionEvent.INVALID_POINTER_ID
     private var edgeGestureLeadX = 0f
     private var edgeGestureLeadY = 0f
     private var physicalMouseActive = false
@@ -2272,12 +2311,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         secureDisplay = effectiveConfig.secure
         showSystemDecorations = effectiveConfig.decorations
         autoOnlySession = effectiveConfig.autoOnly
-        autoDestinationSurface = if (autoOnlySession) {
+        // removeWindow() below releases the previous mirror backend and clears
+        // autoDestinationSurface. Retain the newly requested host Surface in
+        // a local until that cleanup has completed, otherwise every fresh Car
+        // Companion session reaches createDirectAutoDisplay() with null.
+        val requestedAutoDestinationSurface = if (autoOnlySession) {
             pendingAutoSurface?.takeIf { it.isValid }
                 ?: CardexRelayService.activeDestinationSurface()
         } else {
             null
         }
+        autoDestinationSurface = null
         pendingAutoSurface = null
         homeDecorationRetryUsed = false
         // Dextop orientation is controlled exclusively by its overlay action.
@@ -2303,6 +2347,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_configured"))
         removeWindow()
         if (autoOnlySession) {
+            autoDestinationSurface = requestedAutoDestinationSurface?.takeIf { it.isValid }
             // There is deliberately no SurfaceView on the phone in this mode.
             // The Auto activity creates the only recording VirtualDisplay and
             // attaches it to the head-unit surface.
@@ -9141,6 +9186,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 touchStartY = event.y
                 threeFingerEdgeSwipe = false
                 edgeMenuTriggered = false
+                edgeGesturePrimaryPointerId = event.getPointerId(0)
                 edgeGestureLeadX = 0f
                 edgeGestureLeadY = 0f
             }
@@ -9166,9 +9212,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     if (minimumY > startLimit && touchStartY > startLimit) return false
                 } else if (minimumX > dp(120) && touchStartX > dp(120)) return false
                 threeFingerEdgeSwipe = true
-                edgeGestureLeadX = minimumX
-                edgeGestureLeadY = minimumY
+                // Preserve the first contact's edge position. Resetting the
+                // origin when the third finger landed discarded the travel
+                // made while placing the other contacts, so Tap mode often
+                // required an extra swipe before opening the menu.
+                edgeGestureLeadX = touchStartX
+                edgeGestureLeadY = touchStartY
                 if (directTouch) cancelInjectedDirectTouch()
+                maybeTriggerEdgeMenu(event)
                 return true
             }
 
@@ -9176,20 +9227,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 // Keep consuming the intercepted stream, but never complete a
                 // three-finger gesture after one of the fingers has lifted.
                 if (event.pointerCount < 3) return true
-                var minimumX = Float.MAX_VALUE
-                var minimumY = Float.MAX_VALUE
-                for (index in 0 until event.pointerCount) {
-                    minimumX = minOf(minimumX, event.getX(index))
-                    minimumY = minOf(minimumY, event.getY(index))
-                }
-                val distance = if (targetHeight > targetWidth) {
-                    minimumY - edgeGestureLeadY
-                } else minimumX - edgeGestureLeadX
-                val triggerDistance = if (targetHeight > targetWidth) dp(20) else dp(28)
-                if (!edgeMenuTriggered && distance >= triggerDistance) {
-                    edgeMenuTriggered = true
-                    toggleMenu()
-                }
+                maybeTriggerEdgeMenu(event)
                 return true
             }
 
@@ -9197,12 +9235,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (threeFingerEdgeSwipe) {
                 threeFingerEdgeSwipe = false
                 edgeMenuTriggered = false
+                edgeGesturePrimaryPointerId = MotionEvent.INVALID_POINTER_ID
                 edgeGestureLeadX = 0f
                 edgeGestureLeadY = 0f
                 return true
             }
         }
         return false
+    }
+
+    private fun maybeTriggerEdgeMenu(event: MotionEvent) {
+        val primaryIndex = event.findPointerIndex(edgeGesturePrimaryPointerId)
+        if (primaryIndex < 0) return
+        val portrait = targetHeight > targetWidth
+        val distance = if (portrait) {
+            event.getY(primaryIndex) - edgeGestureLeadY
+        } else {
+            event.getX(primaryIndex) - edgeGestureLeadX
+        }
+        val triggerDistance = if (portrait) dp(20) else dp(28)
+        if (!edgeMenuTriggered && distance >= triggerDistance) {
+            edgeMenuTriggered = true
+            toggleMenu()
+        }
     }
 
     private fun performTwoFingerGesture(allowVirtualPointer: Boolean = false) {
@@ -9345,6 +9400,50 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         startVirtualMouse("touchpad")
         surface.post { refreshPrivilegedInputConfig("cover_trackpad_attached") }
         OperationLog.i(this, "InputRouting", "cover display attached to uinput touchpad")
+    }
+
+    private fun attachCarCompanionCursor(displayId: Int) {
+        if (displayId < 0) return
+        if (carCompanionCursorDisplayId == displayId && carCompanionCursorView != null) return
+        detachCarCompanionCursor()
+        val display = getSystemService(DisplayManager::class.java).getDisplay(displayId) ?: return
+        val displayContext = createDisplayContext(display)
+        val manager = displayContext.getSystemService(WindowManager::class.java)
+        val cursor = CursorView(displayContext)
+        val params = WindowManager.LayoutParams(
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            PixelFormat.TRANSLUCENT,
+        ).apply {
+            gravity = Gravity.TOP or Gravity.START
+            title = "Dextop Car Companion cursor"
+            layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+            fitInsetsTypes = 0
+            setFitInsetsIgnoringVisibility(true)
+        }
+        runCatching { manager.addView(cursor, params) }
+            .onSuccess {
+                carCompanionCursorWindowManager = manager
+                carCompanionCursorView = cursor
+                carCompanionCursorDisplayId = displayId
+                OperationLog.i(this, "CarCompanion", "software cursor attached display=$displayId")
+            }
+            .onFailure { OperationLog.w(this, "CarCompanion", "software cursor attach failed display=$displayId", it) }
+    }
+
+    private fun detachCarCompanionCursor() {
+        val cursor = carCompanionCursorView
+        val manager = carCompanionCursorWindowManager
+        if (cursor != null && manager != null) runCatching { manager.removeViewImmediate(cursor) }
+        carCompanionCursorView = null
+        carCompanionCursorWindowManager = null
+        carCompanionCursorDisplayId = -1
     }
 
     private fun handleCoverTrackpadEvent(surface: View, event: MotionEvent) {
@@ -10242,6 +10341,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         longPressTriggered = false
         threeFingerEdgeSwipe = false
         edgeMenuTriggered = false
+        edgeGesturePrimaryPointerId = MotionEvent.INVALID_POINTER_ID
         edgeGestureLeadX = 0f
         edgeGestureLeadY = 0f
         injectedDownTime = 0L
@@ -10456,7 +10556,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun replaceAutoDestinationSurface(nextSurface: Surface?) {
         if (!autoOnlySession || nextSurface == null || !nextSurface.isValid) return
-        if (autoDestinationSurface === nextSurface) return
         autoDestinationSurface = nextSurface
         val updated = autoOwnedDisplay?.resize(
             nextSurface,
@@ -10789,7 +10888,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         runCatching {
             type.getMethod("setDisplayImePolicy", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
-                .invoke(service, targetDisplayId, 0)
+                // A headless Android Auto display has nowhere useful to draw
+                // its local IME. Route it to the phone so Gboard (or the
+                // selected phone IME) appears there while the focused editor
+                // remains on the Dextop display.
+                .invoke(service, targetDisplayId, if (autoOnlySession) 1 else 0)
         }
         Log.i(logTag, "Dextop display configured display=$targetDisplayId rotation=$rotation")
     }
@@ -10853,7 +10956,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
-    private fun launchHome(): Boolean = runCatching {
+    private fun launchHome(): Boolean {
         val intent = if (desktopEnvironment.id == "samsung_dex") {
             Intent(Intent.ACTION_MAIN)
                 .addCategory(Intent.CATEGORY_SECONDARY_HOME)
@@ -10867,21 +10970,54 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         }.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(targetDisplayId)
-        startActivity(intent, options.toBundle())
-        Log.i(
-            logTag,
-            "home launched display=$targetDisplayId component=${intent.component} " +
-                "decorations=$showSystemDecorations"
-        )
-    }.onFailure {
-        OperationLog.e(
-            this,
-            "DesktopHome",
-            "HOME launch failed display=$targetDisplayId decorations=$showSystemDecorations",
-            it
-        )
-        Log.e(logTag, "home launch failed", it)
-    }.isSuccess
+        val direct = runCatching { startActivity(intent, options.toBundle()) }
+        if (direct.isFailure && intent.component != null && privilegedAccess.isAvailable()) {
+            val component = intent.component!!.flattenToShortString()
+            val category = if (desktopEnvironment.id == "samsung_dex") {
+                Intent.CATEGORY_SECONDARY_HOME
+            } else {
+                Intent.CATEGORY_HOME
+            }
+            val result = privilegedAccess.execute(
+                "am", "start",
+                "--display", targetDisplayId.toString(),
+                "-a", Intent.ACTION_MAIN,
+                "-c", category,
+                "-n", component,
+            )
+            if (result.succeeded) {
+                OperationLog.i(
+                    this,
+                    "DesktopHome",
+                    "HOME launched through privileged fallback display=$targetDisplayId component=$component"
+                )
+                Log.i(logTag, "home launched through privileged fallback display=$targetDisplayId")
+                return true
+            }
+            val failure = IllegalStateException(
+                "Privileged HOME launch failed: ${result.error.ifBlank { result.output }}",
+                direct.exceptionOrNull(),
+            )
+            OperationLog.e(this, "DesktopHome", "HOME launch failed display=$targetDisplayId", failure)
+            Log.e(logTag, "home launch failed", failure)
+            return false
+        }
+        return direct.onSuccess {
+            Log.i(
+                logTag,
+                "home launched display=$targetDisplayId component=${intent.component} " +
+                    "decorations=$showSystemDecorations"
+            )
+        }.onFailure {
+            OperationLog.e(
+                this,
+                "DesktopHome",
+                "HOME launch failed display=$targetDisplayId decorations=$showSystemDecorations",
+                it
+            )
+            Log.e(logTag, "home launch failed", it)
+        }.isSuccess
+    }
 
     /**
      * Samsung records whether a firmware needed system decorations for HOME
