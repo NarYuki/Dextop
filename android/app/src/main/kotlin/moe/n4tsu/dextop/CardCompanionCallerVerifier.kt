@@ -6,7 +6,10 @@ import java.security.MessageDigest
 
 /** Verifies official Car Companion callers without requiring both apps to share one signer. */
 internal object CardCompanionCallerVerifier {
-    private const val COMPANION_PACKAGE = "moe.n4tsu.dextop.cardex"
+    private val companionPackages = setOf(
+        "moe.n4tsu.dextop.cardex",
+        "moe.n4tsu.dextop.cardex.driving",
+    )
 
     // Dextop GitHub release certificate and Google Play Car Companion certificate.
     private val trustedCertificateSha256 = setOf(
@@ -17,12 +20,12 @@ internal object CardCompanionCallerVerifier {
     fun isTrusted(context: Context, uid: Int): Boolean {
         if (uid < 0) return false
         val packages = context.packageManager.getPackagesForUid(uid)?.toSet().orEmpty()
-        if (COMPANION_PACKAGE !in packages) return false
+        val companionPackage = companionPackages.firstOrNull { it in packages } ?: return false
         if (BuildConfig.DEBUG) return true
 
         val info = runCatching {
             context.packageManager.getPackageInfo(
-                COMPANION_PACKAGE,
+                companionPackage,
                 PackageManager.GET_SIGNING_CERTIFICATES,
             )
         }.getOrNull() ?: return false
@@ -43,7 +46,7 @@ internal object CardCompanionCallerVerifier {
     internal fun matchesOfficialIdentity(
         packages: Set<String>,
         certificateSha256: Set<String>,
-    ): Boolean = COMPANION_PACKAGE in packages &&
+    ): Boolean = packages.any { it in companionPackages } &&
         certificateSha256.any { it.lowercase() in trustedCertificateSha256 }
 
     private fun ByteArray.sha256(): String =

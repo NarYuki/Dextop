@@ -107,12 +107,14 @@ private const val KEY_DENSITY = "density"
 private const val KEY_RENDER_SCALE = "render_scale"
 private const val KEY_EVENT = "event"
 private const val KEY_STATUS = "status"
+private const val KEY_DETAIL = "detail"
 private const val KEY_ACTION = "action"
 private const val KEY_WORKSPACES = "workspaces"
 private const val KEY_GRACEFUL = "graceful"
 private const val STATUS_IDLE = 0
 private const val STATUS_STARTING = 1
 private const val STATUS_RUNNING = 2
+private const val STATUS_ERROR = 3
 private val CAR_UI_SCALES = setOf(1f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f)
 
 class CarDexActivity : ComponentActivity() {
@@ -121,6 +123,7 @@ class CarDexActivity : ComponentActivity() {
     private var relayState by mutableStateOf(RelayState(false, false))
     private var relayRequested by mutableStateOf(false)
     private var relayStatus by mutableStateOf(STATUS_IDLE)
+    private var relayError by mutableStateOf("")
     private var carConnectionType by mutableStateOf(CarConnection.CONNECTION_TYPE_NOT_CONNECTED)
     private var controlsVisible by mutableStateOf(false)
     private var workspaces by mutableStateOf(emptyList<CardexWorkspace>())
@@ -131,9 +134,13 @@ class CarDexActivity : ComponentActivity() {
     private var relaySurfaceWidth = 0
     private var relaySurfaceHeight = 0
     private var relay: Messenger? = null
+    private var relayBound = false
     private val incoming = Messenger(Handler(Looper.getMainLooper()) { message ->
         when (message.what) {
-            MSG_STATUS -> relayStatus = message.data.getInt(KEY_STATUS, STATUS_IDLE)
+            MSG_STATUS -> {
+                relayStatus = message.data.getInt(KEY_STATUS, STATUS_IDLE)
+                relayError = message.data.getString(KEY_DETAIL).orEmpty()
+            }
             MSG_WORKSPACES -> {
                 workspaces = parseWorkspaces(message.data.getString(KEY_WORKSPACES).orEmpty())
                 workspaceError = message.data.getString("detail").orEmpty()
@@ -148,6 +155,7 @@ class CarDexActivity : ComponentActivity() {
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             relay = null
+            relayBound = false
             relayStatus = STATUS_IDLE
         }
     }
@@ -172,9 +180,11 @@ class CarDexActivity : ComponentActivity() {
                 } else if (isCarDisplay() && relayRequested) {
                     RelaySurface(
                         status = relayStatus,
+                        errorDetail = relayError,
                         onSurface = ::startRelay,
                         onTouch = ::sendTouch,
                         onStop = ::stopRelay,
+                        onRecover = { sendAction("recover", keepOpen = true) },
                         controlsVisible = controlsVisible,
                         onShowControls = {
                             controlsVisible = true
@@ -213,7 +223,8 @@ class CarDexActivity : ComponentActivity() {
         // moving. Keep the relay display alive during that host transition;
         // DrivingCarAppService supplies the replacement Surface. Explicit Stop
         // still sends MSG_STOP from the visible controls.
-        runCatching { unbindService(connection) }
+        if (relayBound) runCatching { unbindService(connection) }
+        relayBound = false
         super.onDestroy()
     }
 
@@ -264,9 +275,9 @@ class CarDexActivity : ComponentActivity() {
     }
 
     private fun bindRelayIfNeeded() {
-        if (!isCarDisplay() || !relayState.ready || relay != null) return
+        if (!isCarDisplay() || !relayState.ready || relay != null || relayBound) return
         val intent = Intent().setComponent(ComponentName(DEXTOP_PACKAGE, RELAY_SERVICE))
-        bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        relayBound = bindService(intent, connection, Context.BIND_AUTO_CREATE)
     }
 
     private fun startRelay(surface: Surface, width: Int, height: Int) {
@@ -400,9 +411,11 @@ private class LoopingGifView(context: Context, resourceId: Int) : View(context) 
 @Composable
 private fun RelaySurface(
     status: Int,
+    errorDetail: String,
     onSurface: (Surface, Int, Int) -> Unit,
     onTouch: (MotionEvent) -> Unit,
     onStop: () -> Unit,
+    onRecover: () -> Unit,
     controlsVisible: Boolean,
     onShowControls: () -> Unit,
     onHideControls: () -> Unit,
@@ -483,11 +496,18 @@ private fun RelaySurface(
                 modifier = Modifier.align(Alignment.Center).padding(24.dp),
                 shape = RoundedCornerShape(24.dp)
             ) {
-                Text(
-                    stringResource(if (status == STATUS_STARTING) R.string.starting else R.string.not_ready),
-                    modifier = Modifier.padding(28.dp),
-                    style = MaterialTheme.typography.titleLarge
-                )
+                Column(Modifier.padding(28.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        stringResource(if (status == STATUS_STARTING) R.string.starting else R.string.not_ready),
+                        style = MaterialTheme.typography.titleLarge
+                    )
+                    if (errorDetail.isNotBlank()) {
+                        Text(errorDetail, style = MaterialTheme.typography.bodyLarge)
+                    }
+                    if (status == STATUS_ERROR) {
+                        Button(onClick = onRecover) { Text("Recover and retry") }
+                    }
+                }
             }
         }
         AnimatedVisibility(
@@ -545,7 +565,7 @@ private fun AutoControlPanel(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Dextop",
+                            "Dextop・Parking",
                             modifier = Modifier.weight(1f),
                             color = Color(0xFFE6E1E5),
                             style = MaterialTheme.typography.headlineSmall,
@@ -792,7 +812,12 @@ private fun CarDexScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("Dextop Car Companion", fontWeight = FontWeight.SemiBold) },
+                title = {
+                    Text(
+                        if (isCarDisplay) "Dextop・Parking" else "Dextop Car Companion",
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )

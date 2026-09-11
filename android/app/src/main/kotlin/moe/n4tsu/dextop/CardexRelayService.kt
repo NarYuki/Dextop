@@ -30,6 +30,12 @@ class CardexRelayService : Service() {
     private var directSessionOwned = false
     private var relayGeneration = 0L
     private var clientGeneration = 0L
+    private var launchInFlight = false
+
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
 
     override fun onBind(intent: Intent?): IBinder = messenger.binder
 
@@ -54,6 +60,7 @@ class CardexRelayService : Service() {
 
     override fun onDestroy() {
         stopRelay()
+        if (instance === this) instance = null
         super.onDestroy()
     }
 
@@ -90,6 +97,7 @@ class CardexRelayService : Service() {
                 )
             }
             MSG_TOUCH -> {
+                MirrorService.hideCarCompanionCursor()
                 message.data.classLoader = MotionEvent::class.java.classLoader
                 message.data.getParcelable(KEY_EVENT, MotionEvent::class.java)?.let { event ->
                     controller?.dispatchTouch(event, width, height)
@@ -105,6 +113,7 @@ class CardexRelayService : Service() {
             }
             MSG_ACTION -> when (message.data.getString(KEY_ACTION)) {
                 ACTION_RECONNECT -> reconnectSurface()
+                ACTION_RECOVER -> recoverAndRestart()
                 ACTION_PHONE_CONTROL -> openPhoneControl()
                 ACTION_WORKSPACE_LIST -> sendWorkspaces()
                 ACTION_WORKSPACE_SAVE -> {
@@ -128,6 +137,43 @@ class CardexRelayService : Service() {
         requestedScale: Float,
     ) {
         if (!nextSurface.isValid || nextWidth <= 0 || nextHeight <= 0) return
+        val requestedDirect = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getBoolean("flutter.android_auto_hidden_display", false)
+        val normalizedScale = requestedScale.coerceIn(MIN_RENDER_SCALE, 1f)
+        val reusable = controller != null &&
+                (requestedDirect && directSessionOwned || !requestedDirect && legacySession?.isActive == true) &&
+                kotlin.math.abs(renderScale - normalizedScale) < 0.001f
+        if (reusable) {
+            val (desktopWidth, desktopHeight) = scaledDesktopSize(nextWidth, nextHeight)
+            val previousSurface = surface
+            surface = nextSurface
+            destinationSurface = nextSurface
+            width = nextWidth
+            height = nextHeight
+            if (requestedDirect) {
+                MirrorService.launch(
+                    this, desktopWidth, desktopHeight, density.coerceIn(80, 640),
+                    secure = false, decorations = false, autoOnly = true, autoSurface = nextSurface,
+                ) { result ->
+                    result.onSuccess { session ->
+                        controller?.bindInputSource(
+                            (session["displayId"] as Number).toInt(),
+                            (session["width"] as Number).toInt(),
+                            (session["height"] as Number).toInt(),
+                            (session["density"] as Number).toInt(),
+                        )
+                        sendStatus(STATUS_RUNNING)
+                    }.onFailure(::sendError)
+                }
+            } else {
+                legacySession?.resizeLogical(desktopWidth, desktopHeight, density.coerceIn(80, 640))
+                controller?.reattachDestination(nextSurface, nextWidth, nextHeight)
+                sendStatus(STATUS_RUNNING)
+            }
+            if (previousSurface !== nextSurface) previousSurface?.release()
+            OperationLog.i(this, "CarCompanion", "viewport resized ${nextWidth}x$nextHeight; desktop retained")
+            return
+        }
         controller?.stop()
         if (surface !== nextSurface) surface?.release()
         surface = nextSurface
@@ -153,39 +199,56 @@ class CardexRelayService : Service() {
     ) {
         if (generation != relayGeneration || surface !== nextSurface || !nextSurface.isValid) return
         if (!PrivilegedAccess("CardexRelayService").isAvailable()) {
-            if (attempt < 20) {
+            if (attempt < PRIVILEGED_ACCESS_MAX_ATTEMPTS) {
+                if (attempt % 10 == 0) requestPrivilegedBinder()
                 handler.postDelayed({
                     waitForPrivilegedAccess(nextSurface, nextWidth, nextHeight, density, attempt + 1, generation)
-                }, 150L)
+                }, PRIVILEGED_ACCESS_RETRY_MS)
             } else {
                 sendError(IllegalStateException(NativeStrings.text("nativeShizukuUnavailable")))
             }
             return
         }
-        val hiddenDisplay = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .getBoolean("flutter.android_auto_hidden_display", false)
         val (desktopWidth, desktopHeight) = scaledDesktopSize(nextWidth, nextHeight)
         OperationLog.i(
             this,
             "CarCompanion",
             "relay display physical=${nextWidth}x$nextHeight scale=$renderScale desktop=${desktopWidth}x$desktopHeight/$density"
         )
-        if (!hiddenDisplay) {
-            startLegacyOverlay(nextSurface, nextWidth, nextHeight, desktopWidth, desktopHeight, density, generation)
-            return
+        val directDisplay = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getBoolean("flutter.android_auto_hidden_display", false)
+        if (directDisplay) {
+            startDirectDisplay(nextSurface, desktopWidth, desktopHeight, density, generation)
+        } else {
+            startLegacyOverlay(
+                nextSurface, nextWidth, nextHeight,
+                desktopWidth, desktopHeight, density, generation,
+            )
         }
+    }
+
+    private fun startDirectDisplay(
+        nextSurface: Surface,
+        desktopWidth: Int,
+        desktopHeight: Int,
+        density: Int,
+        generation: Long,
+    ) {
+        if (launchInFlight) return
+        launchInFlight = true
         MirrorService.launch(
             this, desktopWidth, desktopHeight, density.coerceIn(80, 640),
-            secure = false, decorations = false, autoOnly = true, autoSurface = nextSurface
+            secure = false, decorations = false, autoOnly = true, autoSurface = nextSurface,
         ) { result ->
-            result.onSuccess { session ->
-                if (generation != relayGeneration) return@onSuccess
-                directSessionOwned = true
-                val activeSurface = surface
-                if (activeSurface == null || !activeSurface.isValid) {
-                    stopRelay()
-                    return@onSuccess
+            launchInFlight = false
+            if (generation != relayGeneration) {
+                surface?.takeIf { it.isValid }?.let {
+                    startRelay(it, width, height, resources.displayMetrics.densityDpi, renderScale)
                 }
+                return@launch
+            }
+            result.onSuccess { session ->
+                directSessionOwned = true
                 runCatching {
                     AndroidAutoMirrorController(this, AndroidAutoMirrorActivity.SOURCE_DEXTOP).also {
                         controller = it
@@ -193,11 +256,11 @@ class CardexRelayService : Service() {
                             (session["displayId"] as Number).toInt(),
                             (session["width"] as Number).toInt(),
                             (session["height"] as Number).toInt(),
-                            (session["density"] as Number).toInt()
+                            (session["density"] as Number).toInt(),
                         )
                     }
                 }.onSuccess { sendStatus(STATUS_RUNNING) }
-                    .onFailure { sendError(it) }
+                    .onFailure(::sendError)
             }.onFailure(::sendError)
         }
     }
@@ -281,8 +344,49 @@ class CardexRelayService : Service() {
         startRelay(activeSurface, width, height, resources.displayMetrics.densityDpi, renderScale)
     }
 
+    private fun recoverAndRestart() {
+        val activeSurface = surface
+        if (activeSurface == null || !activeSurface.isValid || width <= 0 || height <= 0) {
+            sendError(IllegalStateException("The Android Auto display surface is no longer available. Close and reopen Car Companion."))
+            return
+        }
+        val restartWidth = width
+        val restartHeight = height
+        val restartDensity = resources.displayMetrics.densityDpi
+        val restartScale = renderScale
+        sendStatus(STATUS_STARTING, "Stopping the remaining Dextop session…")
+        MirrorService.stopActive()
+        waitForRecoveryStop(activeSurface, restartWidth, restartHeight, restartDensity, restartScale, 0)
+    }
+
+    private fun waitForRecoveryStop(
+        restartSurface: Surface,
+        restartWidth: Int,
+        restartHeight: Int,
+        restartDensity: Int,
+        restartScale: Float,
+        attempt: Int,
+    ) {
+        if (!restartSurface.isValid || surface !== restartSurface) return
+        if (!MirrorService.isActive() && !MirrorService.isStopping()) {
+            getSharedPreferences(CardexRecoveryReceiver.PREFERENCES, MODE_PRIVATE).edit()
+                .remove(CardexRecoveryReceiver.KEY_REPAIR_REQUIRED)
+                .remove("cleanup_pending")
+                .remove("cardex_interruption_reason")
+                .apply()
+            startRelay(restartSurface, restartWidth, restartHeight, restartDensity, restartScale)
+        } else if (attempt < 50) {
+            handler.postDelayed({
+                waitForRecoveryStop(restartSurface, restartWidth, restartHeight, restartDensity, restartScale, attempt + 1)
+            }, 100L)
+        } else {
+            sendError(IllegalStateException("The previous Dextop session could not be stopped. Open Dextop and tap Stop, then try again."))
+        }
+    }
+
     private fun openPhoneControl() {
-        val displayId = MirrorService.androidAutoSourceDisplayId().takeIf { it >= 0 } ?: return
+        val displayId = controller?.sourceDisplayId?.takeIf { it >= 0 } ?: return
+        MirrorService.showCarCompanionCursor(displayId)
         val intent = Intent(this, CarCompanionPhoneActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
             putExtra(CarCompanionPhoneActivity.EXTRA_DISPLAY_ID, displayId)
@@ -297,7 +401,13 @@ class CardexRelayService : Service() {
         relaySessionActive = false
         OperationLog.e(this, "CarCompanion", "relay failed", error)
         Log.e("DextopCarCompanion", "relay failed: ${error.message}", error)
-        sendStatus(STATUS_ERROR, error.message.orEmpty())
+        val reason = error.message?.takeIf { it.isNotBlank() } ?: "Unknown startup error"
+        val action = when {
+            MirrorService.isStopping() -> "Wait a few seconds, then select Recover and retry."
+            MirrorService.isActive() -> "A Dextop session is still running. Select Recover and retry to stop it and start again."
+            else -> "Select Recover and retry. If it fails again, open Dextop and check its operation log."
+        }
+        sendStatus(STATUS_ERROR, "Reason: $reason\nAction: $action")
     }
 
     private fun sendStatus(status: Int, detail: String = "") {
@@ -324,6 +434,8 @@ class CardexRelayService : Service() {
 
     companion object {
         @Volatile
+        private var instance: CardexRelayService? = null
+        @Volatile
         private var destinationSurface: Surface? = null
         @Volatile
         private var relaySessionActive = false
@@ -334,6 +446,42 @@ class CardexRelayService : Service() {
 
         /** True while Car Companion owns a relay display or is preparing one. */
         fun isRelaySessionActive(): Boolean = relaySessionActive
+
+        /** Stops both parked and driving relay ownership from the Dextop UI. */
+        fun stopFromPhone() {
+            val service = instance
+            if (service != null) {
+                service.handler.post {
+                    if (instance === service) {
+                        service.gracefulStopRequested = true
+                        service.stopRelay()
+                    }
+                }
+            } else if (MirrorService.isAutoOnlySessionActive()) {
+                MirrorService.stopActive()
+            }
+        }
+
+        /** Routes phone gestures to the controller owning the active Car Companion display. */
+        fun dispatchPhoneTrackpadEvent(source: MotionEvent, viewWidth: Int, viewHeight: Int) {
+            val service = instance ?: return
+            val event = MotionEvent.obtain(source)
+            service.handler.post {
+                try {
+                    if (instance === service) service.controller?.dispatchTrackpad(event, viewWidth, viewHeight)
+                } finally {
+                    event.recycle()
+                }
+            }
+        }
+
+        fun resetPhoneTrackpad() {
+            val service = instance ?: return
+            service.handler.post {
+                if (instance === service) service.controller?.resetTrackpad()
+                MirrorService.hideCarCompanionCursor()
+            }
+        }
 
         const val MSG_START = 1
         const val MSG_TOUCH = 2
@@ -353,6 +501,7 @@ class CardexRelayService : Service() {
         const val KEY_WORKSPACES = "workspaces"
         const val KEY_GRACEFUL = "graceful"
         const val ACTION_RECONNECT = "reconnect"
+        const val ACTION_RECOVER = "recover"
         const val ACTION_PHONE_CONTROL = "phone_control"
         const val ACTION_WORKSPACE_LIST = "workspace_list"
         const val ACTION_WORKSPACE_SAVE = "workspace_save"
@@ -364,6 +513,8 @@ class CardexRelayService : Service() {
         private const val MIN_RENDER_SCALE = 0.50f
         private const val MAX_DESKTOP_EDGE = 4096
         private const val CLIENT_HANDOFF_GRACE_MS = 5_000L
+        private const val PRIVILEGED_ACCESS_RETRY_MS = 150L
+        private const val PRIVILEGED_ACCESS_MAX_ATTEMPTS = 100
     }
 
     private fun scaledDesktopSize(physicalWidth: Int, physicalHeight: Int): Pair<Int, Int> {

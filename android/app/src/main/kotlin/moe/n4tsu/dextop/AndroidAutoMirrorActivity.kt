@@ -15,7 +15,9 @@ import android.util.DisplayMetrics
 import android.util.TypedValue
 import android.util.Log
 import android.view.Display
+import android.view.InputDevice
 import android.view.MotionEvent
+import android.view.Surface
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import android.view.View
@@ -27,6 +29,7 @@ import android.widget.TextView
 import android.graphics.drawable.GradientDrawable
 import android.graphics.Matrix
 import kotlin.math.roundToInt
+import kotlin.math.hypot
 
 /**
  * Host used by Android Auto's parked-app activity projection.
@@ -685,6 +688,27 @@ internal class AutoDisplaySession(private val activity: Context) {
         reapplyTopologyForRemainingDisplays()
     }
 
+    /** Changes this overlay display's logical metrics without replacing its display id or tasks. */
+    fun resizeLogical(width: Int, height: Int, density: Int) {
+        if (!isActive || displayId < 0) return
+        val service = privilegedAccess.service("window", "android.view.IWindowManager")
+        val type = Class.forName("android.view.IWindowManager")
+        type.getMethod(
+            "setForcedDisplaySize",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+        ).invoke(service, displayId, width, height)
+        val userId = android.os.UserHandle::class.java.getMethod("myUserId").invoke(null) as Int
+        type.getMethod(
+            "setForcedDisplayDensityForUser",
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType,
+        ).invoke(service, displayId, density, userId)
+        OperationLog.i(activity, "CarCompanion", "legacy display resized in place display=$displayId ${width}x$height/$density")
+    }
+
     private fun finishStop() {
         if (!stopping) return
         val phoneStillOwnsEnvironment = MirrorService.ownsPhoneSession()
@@ -1018,6 +1042,15 @@ internal class AndroidAutoMirrorController(
     private var attachedSurface: SurfaceView? = null
     private var requestedSource: String? = initialSource
     private var explicitSourceDisplayId: Int? = null
+    private var trackpadX = 0f
+    private var trackpadY = 0f
+    private var trackpadLastX = 0f
+    private var trackpadLastY = 0f
+    private var trackpadDownX = 0f
+    private var trackpadDownY = 0f
+    private var trackpadDownTime = 0L
+    private var trackpadMoved = false
+    private var trackpadPointers = 0
 
     fun selectSource(source: String) {
         requestedSource = source
@@ -1048,6 +1081,15 @@ internal class AndroidAutoMirrorController(
             "AndroidAuto",
             "input bound to direct Auto display=$displayId ${sourceWidth}x$sourceHeight/$sourceDensity"
         )
+    }
+
+    fun resizeInputHost(width: Int, height: Int) {
+        hostWidth = width.coerceAtLeast(1)
+        hostHeight = height.coerceAtLeast(1)
+    }
+
+    fun reattachDestination(surface: Surface, width: Int, height: Int) {
+        attach(null, surface, width, height, "Car Companion viewport resized")
     }
 
     fun attach(host: SurfaceView, width: Int, height: Int, reason: String) {
@@ -1141,6 +1183,140 @@ internal class AndroidAutoMirrorController(
         } finally {
             copy.recycle()
         }
+    }
+
+    /** Relative mouse input used by the phone controller in both relay modes. */
+    fun dispatchTrackpad(event: MotionEvent, viewWidth: Int, viewHeight: Int): Boolean {
+        if (sourceDisplayId < 0 || sourceWidth <= 0 || sourceHeight <= 0 ||
+            viewWidth <= 0 || viewHeight <= 0 || event.pointerCount == 0) return true
+        val centroidX = (0 until event.pointerCount).sumOf { event.getX(it).toDouble() }.toFloat() / event.pointerCount
+        val centroidY = (0 until event.pointerCount).sumOf { event.getY(it).toDouble() }.toFloat() / event.pointerCount
+        when (event.actionMasked) {
+            MotionEvent.ACTION_DOWN -> {
+                if (trackpadX == 0f && trackpadY == 0f) {
+                    trackpadX = sourceWidth / 2f
+                    trackpadY = sourceHeight / 2f
+                }
+                trackpadLastX = centroidX
+                trackpadLastY = centroidY
+                trackpadDownX = centroidX
+                trackpadDownY = centroidY
+                trackpadDownTime = event.eventTime
+                trackpadMoved = false
+                trackpadPointers = 1
+                MirrorService.updateCarCompanionCursor(
+                    sourceDisplayId,
+                    trackpadX / sourceWidth,
+                    trackpadY / sourceHeight,
+                )
+            }
+            MotionEvent.ACTION_POINTER_DOWN -> {
+                trackpadLastX = centroidX
+                trackpadLastY = centroidY
+                trackpadPointers = event.pointerCount
+                trackpadMoved = true
+            }
+            MotionEvent.ACTION_MOVE -> {
+                val dx = centroidX - trackpadLastX
+                val dy = centroidY - trackpadLastY
+                if (event.pointerCount >= 2 || trackpadPointers >= 2) {
+                    if (kotlin.math.abs(dx) >= 0.5f || kotlin.math.abs(dy) >= 0.5f) {
+                        sendTrackpadMouse(
+                            MotionEvent.ACTION_SCROLL,
+                            verticalScroll = -dy / 36f,
+                            horizontalScroll = -dx / 36f,
+                        )
+                    }
+                } else {
+                    trackpadX = (trackpadX + dx * 1.35f).coerceIn(0f, sourceWidth - 1f)
+                    trackpadY = (trackpadY + dy * 1.35f).coerceIn(0f, sourceHeight - 1f)
+                    MirrorService.updateCarCompanionCursor(
+                        sourceDisplayId,
+                        trackpadX / sourceWidth,
+                        trackpadY / sourceHeight,
+                    )
+                    sendTrackpadMouse(MotionEvent.ACTION_HOVER_MOVE)
+                    if (hypot(centroidX - trackpadDownX, centroidY - trackpadDownY) > 12f) {
+                        trackpadMoved = true
+                    }
+                }
+                trackpadLastX = centroidX
+                trackpadLastY = centroidY
+                trackpadPointers = maxOf(trackpadPointers, event.pointerCount)
+            }
+            MotionEvent.ACTION_POINTER_UP -> {
+                trackpadPointers = event.pointerCount
+                trackpadMoved = true
+            }
+            MotionEvent.ACTION_UP -> {
+                if (!trackpadMoved && event.eventTime - trackpadDownTime <= 350L) sendTrackpadClick()
+                resetTrackpad()
+            }
+            MotionEvent.ACTION_CANCEL -> resetTrackpad()
+        }
+        return true
+    }
+
+    fun resetTrackpad() {
+        trackpadPointers = 0
+        trackpadMoved = false
+        trackpadDownTime = 0L
+    }
+
+    private fun sendTrackpadClick() {
+        MirrorService.updateCarCompanionCursor(
+            sourceDisplayId,
+            trackpadX / sourceWidth,
+            trackpadY / sourceHeight,
+            pulse = true,
+        )
+        MirrorService.updateCarCompanionCursor(
+            sourceDisplayId,
+            trackpadX / sourceWidth,
+            trackpadY / sourceHeight,
+            pulse = true,
+        )
+        val downTime = android.os.SystemClock.uptimeMillis()
+        listOf(
+            MotionEvent.ACTION_DOWN to MotionEvent.BUTTON_PRIMARY,
+            MotionEvent.ACTION_BUTTON_PRESS to MotionEvent.BUTTON_PRIMARY,
+            MotionEvent.ACTION_BUTTON_RELEASE to 0,
+            MotionEvent.ACTION_UP to 0,
+        ).forEach { (action, buttons) -> sendTrackpadMouse(action, buttons, downTime) }
+    }
+
+    private fun sendTrackpadMouse(
+        action: Int,
+        buttons: Int = 0,
+        downTime: Long = android.os.SystemClock.uptimeMillis(),
+        verticalScroll: Float = 0f,
+        horizontalScroll: Float = 0f,
+    ) {
+        val properties = MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = MotionEvent.TOOL_TYPE_MOUSE
+        }
+        val coordinates = MotionEvent.PointerCoords().apply {
+            x = trackpadX
+            y = trackpadY
+            pressure = if (buttons == 0) 0f else 1f
+            size = 1f
+            setAxisValue(MotionEvent.AXIS_VSCROLL, verticalScroll)
+            setAxisValue(MotionEvent.AXIS_HSCROLL, horizontalScroll)
+        }
+        val mouseEvent = MotionEvent.obtain(
+            downTime, android.os.SystemClock.uptimeMillis(), action, 1,
+            arrayOf(properties), arrayOf(coordinates), 0, buttons,
+            1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0,
+        )
+        if (action == MotionEvent.ACTION_BUTTON_PRESS || action == MotionEvent.ACTION_BUTTON_RELEASE) {
+            runCatching {
+                MotionEvent::class.java.getMethod("setActionButton", Int::class.javaPrimitiveType)
+                    .invoke(mouseEvent, MotionEvent.BUTTON_PRIMARY)
+            }
+        }
+        inputDispatcher.send(mouseEvent, sourceDisplayId)
+        mouseEvent.recycle()
     }
 
     private fun resolveSourceDisplay(): Display? {

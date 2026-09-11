@@ -1121,6 +1121,7 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final japanese = Localizations.localeOf(context).languageCode == 'ja';
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
@@ -1139,13 +1140,33 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
             subtitle: Text(l.autoDisplayModeDescription),
           ),
         ]),
-        _settingsSection(l.autoExperimentalFeatures, [
-          SwitchListTile(
-            secondary: const Icon(Icons.visibility_off_outlined),
-            title: Text(l.autoHiddenDisplay),
-            subtitle: Text(l.autoHiddenDisplayDescription),
-            value: hiddenAutoDisplay,
-            onChanged: loading ? null : _setHiddenAutoDisplay,
+        _settingsSection(
+          japanese ? 'Car Companion方式' : 'Car Companion mode',
+          [
+          RadioListTile<bool>(
+            secondary: const Icon(Icons.layers_outlined),
+            title: Text(japanese
+                ? 'Car Companion 1.1.3（安定版）'
+                : 'Car Companion 1.1.3 (stable)'),
+            subtitle: Text(japanese
+                ? '従来のOverlayDisplayを作成し、Android Autoへミラーリングします。'
+                : 'Uses the original OverlayDisplay and mirrors it to Android Auto.'),
+            value: false,
+            groupValue: hiddenAutoDisplay,
+            onChanged: loading ? null : (value) => _setHiddenAutoDisplay(value!),
+          ),
+          const Divider(height: 1),
+          RadioListTile<bool>(
+            secondary: const Icon(Icons.science_outlined),
+            title: Text(japanese
+                ? 'Car Companion 2.0（不安定版）'
+                : 'Car Companion 2.0 (unstable)'),
+            subtitle: Text(japanese
+                ? 'Android AutoのSurfaceへ直結する実験的なVirtualDisplay方式です。'
+                : 'Experimental VirtualDisplay connected directly to the Android Auto surface.'),
+            value: true,
+            groupValue: hiddenAutoDisplay,
+            onChanged: loading ? null : (value) => _setHiddenAutoDisplay(value!),
           ),
         ]),
       ],
