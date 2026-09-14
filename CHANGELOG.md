@@ -1,5 +1,47 @@
 # Changelog
 
+## 1.7.0
+
+### 日本語
+
+#### 新機能
+
+- Android Autoで走行中の使用にも対応しました。
+
+#### 修正
+
+- Play版でGitHub版の更新情報が表示される問題を修正しました。
+
+#### Car Companion 2.0.0
+
+##### 改善
+
+- Android AutoのSurfaceサイズ変更時に、セッションを作り直さず同じ仮想ディスプレイをリサイズするようにしました。
+
+##### 修正
+
+- Car Companionの切断や異常終了後にセッションが残り、再接続できない問題を修正しました。
+
+### English
+
+#### New
+
+- Added support for using Dextop with Android Auto while driving.
+
+#### Fixes
+
+- Fixed Play builds showing GitHub release update information.
+
+#### Car Companion 2.0.0
+
+##### Improvements
+
+- Android Auto surface-size changes now resize the same virtual display without recreating the session.
+
+##### Fixes
+
+- Fixed Car Companion sessions remaining after a disconnect or abnormal termination and preventing reconnection.
+
 ## 1.6.9
 
 ### 日本語

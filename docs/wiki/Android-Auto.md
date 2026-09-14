@@ -1,29 +1,36 @@
-# Android Auto and Dextop Car Companion
+# Android Auto: Parking and Driving
 
-Dextop Car Companion connects a dedicated Dextop virtual display to a supported parked Android Auto screen. The car session owns its own display, uses the head unit's available surface size, and forwards touch input from the head unit to the desktop.
+Current companion release: **2.0.0**. It is designed for **Dextop 1.7.0**.
+
+Dextop connects a dedicated virtual display to Android Auto through two separately installed companion apps:
+
+- **Dextop・Parking** (`moe.n4tsu.dextop.cardex`) is a parked full-screen activity with unrestricted head-unit touch gestures while the vehicle is parked.
+- **Dextop・Driving** (`moe.n4tsu.dextop.cardex.driving`) uses an Android for Cars App Library navigation surface. Android Auto supplies only its allowed head-unit input events; use the automatically opened phone controller for trackpad gestures and keyboard input.
+
+Both modes size the same Dextop session for the current host surface. Surface-size changes are handled by resizing the existing display instead of deliberately replacing the desktop session.
 
 ## Requirements
 
-- Android 15 or later on the connected phone
-- A head unit or Desktop Head Unit (DHU) that exposes parked apps
-- Dextop and **Dextop Car Companion** from the same Dextop release
+- Android 15 or later for Parking, or Android 13 or later for Driving
+- A head unit or Desktop Head Unit (DHU) that exposes the selected app category
+- Dextop and one or both supported companion packages
 - Dextop 1.5.0 or later, which includes built-in privileged access; an existing root, Stellar, Shizuku, or other compatible privileged service is optional
-- The vehicle in a parked state
+- A parked vehicle when using **Dextop・Parking**
 
-Android Auto decides whether a sideloaded parked app appears in its launcher. Installing the APK does not guarantee that every production head unit or Android Auto release will expose it. If Dextop Car Companion is missing from the launcher, verify the Android Auto version, parked-app support, installation method, and host allowlisting first.
+Parking declares `minSdk 35` and requires Android 15 or later. Driving declares `minSdk 33` and supports Android 13 or later because it uses the Android for Cars App Library instead of the Android 15 parked-app launcher. Android Auto still decides whether either app appears in its launcher based on app category, host version, installation method, and allowlisting.
 
 ## Install and connect
 
-1. Install the Dextop APK.
-2. Install the matching **Dextop Car Companion** APK from the same release. The companion verifies Dextop through a signature-protected relay, so builds signed by different keys cannot connect.
+1. Install Dextop from [Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop), or install the signed Dextop APK from GitHub Releases.
+2. Install **Dextop・Parking**, **Dextop・Driving**, or both. Dextop verifies each package and signing certificate through its protected relay.
 3. Complete Dextop's initial setup on the phone. Dextop uses its built-in access on version 1.5.0 and later; if root or a compatible privileged service is already available, Dextop detects and uses it automatically.
-4. Connect the phone to Android Auto and make sure the vehicle is parked.
-5. Open **Dextop Car Companion** from the Android Auto launcher.
+4. Connect the phone to Android Auto. Make sure the vehicle is parked before opening Parking.
+5. Open **Dextop・Parking** or **Dextop・Driving** from the Android Auto launcher.
 6. Confirm that **Dextop installed** and **Secure relay verified** are shown, then select **Start**.
 
-Dextop creates the Auto desktop at the size supplied by the head unit. Starting an Auto session does not start a second phone-side Dextop session.
+Dextop creates the Auto desktop at the size supplied by the head unit. Driving opens the phone-side trackpad and keyboard controller after the relay starts. Starting an Auto session does not start a second independent phone-side Dextop session.
 
-Stable releases provide both APKs together under [GitHub Releases](https://github.com/NarYuki/Dextop/releases). Development builds can be downloaded from [GitHub Actions](https://github.com/NarYuki/Dextop/actions), but Nightly artifacts are beta builds and the Dextop and companion packages must still be a matching pair.
+Dextop itself is available from [Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop). Car Companion packages and signed APK releases are provided under [GitHub Releases](https://github.com/NarYuki/Dextop/releases). Development builds can be downloaded from [GitHub Actions](https://github.com/NarYuki/Dextop/actions), but Nightly artifacts are beta builds and their Dextop and companion packages must still be used together.
 
 ## Display modes
 
@@ -45,13 +52,19 @@ This path depends on hidden Android and OEM display APIs. If the car screen stay
 
 ## Touch and gestures
 
-The Android Auto desktop uses direct head-unit touch input.
+### Parking
+
+Parking uses direct head-unit touch input while the vehicle is parked.
 
 - **Tap:** activates the item at that desktop position.
 - **Drag:** drags or scrolls according to the application receiving the input.
 - **Swipe right from the left edge:** opens the Auto control panel. Start inside the left-edge activation area and continue toward the center of the screen.
 
 The Auto edge gesture is separate from Dextop's phone-side three-finger gesture. Three-finger phone gestures are not required to open the Auto controls.
+
+### Driving
+
+Driving accepts the cooked click events supplied by Android Auto. Gestures that the host does not forward, such as arbitrary drag, swipe, and continuous scrolling, are performed from the phone controller instead. The phone controller provides a software cursor, a normal trackpad area, and the system keyboard.
 
 ## Auto control panel
 
@@ -83,9 +96,9 @@ If Android Auto, the companion, or the relay disconnects unexpectedly, Dextop re
 
 ## Current limitations
 
-- Android Auto support is for parked use.
-- Android Auto controls whether the companion is visible and accessible.
-- Dextop and Dextop Car Companion must come from the same signed release.
+- Parking requires the parked state; Driving uses the driving-compatible Car App host flow.
+- Android Auto controls whether each companion is visible and which head-unit input events are delivered.
+- The installed companion package and signing certificate must be supported by the installed Dextop version.
 - A phone-side Dextop session cannot currently be started while the independently owned Auto session is active. Stop Auto first.
 - The hidden-display option is experimental; compatibility mode remains the default.
 - Window behavior still depends on Samsung DeX, Android desktop mode, and each application's secondary-display and resize support.
@@ -95,7 +108,7 @@ If Android Auto, the companion, or the relay disconnects unexpectedly, Dextop re
 ### Dextop connection is unavailable
 
 1. Confirm Dextop is installed.
-2. Confirm Dextop and Dextop Car Companion came from the same release.
+2. Confirm the companion version and Play/GitHub signing identity are supported by the installed Dextop version.
 3. Open Dextop once on the phone and complete the in-app access setup if requested. If you already use root, Stellar, Shizuku, or another compatible privileged service, make sure that environment is active so Dextop can detect it.
 4. Confirm that Dextop reports **Dextop is ready**.
 5. Reconnect Android Auto and reopen the companion.

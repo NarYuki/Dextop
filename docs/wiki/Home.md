@@ -2,6 +2,10 @@
 
 Dextop creates a controllable virtual desktop display on Android using its built-in privileged access runtime and Android system services. From version 1.5.0 onward, including the latest release, no external app is required: normal setup can be completed with Dextop alone. If root, Stellar, Shizuku, or another compatible privileged service is already available, Dextop detects it and adapts automatically.
 
+The production release is available from [Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop). Signed APKs and release assets remain available from [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest).
+
+Current versions: **Dextop 1.7.0**, **Dextop・Parking 2.0.0**, and **Dextop・Driving 2.0.0**.
+
 ## User documentation
 
 - [Installation and initial setup](Installation-and-Setup)

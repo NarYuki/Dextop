@@ -3,7 +3,9 @@
 ## Requirements
 
 - Android 10 or later
-- Dextop 1.5.0 or later, including the latest release
+- Current release: Dextop 1.7.0
+- Dextop・Parking 2.0.0 requires Android 15 or later
+- Dextop・Driving 2.0.0 requires Android 13 or later
 
 Dextop 1.5.0 and later include the privileged access runtime needed for normal operation. No external app or separate privileged service is required, and setup can be completed with Dextop alone. Android may still show system permission or wireless-debugging pairing screens when required by the device.
 
@@ -29,9 +31,10 @@ The Home screen displays **Dextop is ready** when the active access environment,
 
 ## Stable and Nightly builds
 
-- **Stable:** download the latest signed APK from [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest).
-- **Nightly / beta:** open [GitHub Actions](https://github.com/NarYuki/Dextop/actions), select the newest successful **Debug APK** workflow run, and download its Nightly artifact. It contains matching Dextop and Dextop Car Companion debug APKs from that run.
+- **Google Play:** install the production release from [Dextop on Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop).
+- **Stable APK:** download the latest signed APK from [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest).
+- **Nightly / beta:** open [GitHub Actions](https://github.com/NarYuki/Dextop/actions), select the newest successful **Debug APK** workflow run, and download its Nightly artifact. It contains Dextop plus the separate Parking and Driving companion debug APKs from that run.
 
 Nightly builds contain the latest committed changes before the next stable release. They may also include unfinished behavior, temporary diagnostics, or regressions, so use the stable release when reliability is more important than early access.
 
-When a release includes Android Auto support, its assets contain both the Dextop APK and the matching **Dextop Car Companion** APK. Install the pair from the same release; a companion signed or built separately cannot use Dextop's signature-protected relay.
+Google Play distributes Dextop itself. Android Auto support uses two separately installed packages: **Dextop・Parking** (`moe.n4tsu.dextop.cardex`) and **Dextop・Driving** (`moe.n4tsu.dextop.cardex.driving`). Install either or both as needed. Dextop validates their package names and signing certificates before enabling the relay. Parking requires Android 15 or later; Driving supports Android 13 or later.

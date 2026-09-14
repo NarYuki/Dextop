@@ -107,9 +107,9 @@ Dextop 1.5.0 及更高版本内置正常运行所需的访问功能，因此不�
 
 ## 安装
 
-Google Play 版本目前正在审核中。
+可以从 [Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop) 安装 Dextop。
 
-从 [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest) 下载最新 APK 并安装。
+也可以从 [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest) 下载最新的签名 APK。
 
 ## 开发
 

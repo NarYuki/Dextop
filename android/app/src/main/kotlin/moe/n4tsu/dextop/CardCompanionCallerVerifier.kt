@@ -15,6 +15,7 @@ internal object CardCompanionCallerVerifier {
     private val trustedCertificateSha256 = setOf(
         "847833703f59daa31c28705ae694f1ceb11b6d0d4d1e93a5997c01a5303c34c5",
         "44b5a3b12a4245869c67f79a65a3b01bceb48e89f89886e754d137276262e6d5",
+        "8f232a21b091ac6ddc64298f845116a0ef8fe862f2911f970964d31387a1cbea",
     )
 
     fun isTrusted(context: Context, uid: Int): Boolean {

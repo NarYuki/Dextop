@@ -163,9 +163,9 @@ Dextop 1.5.0 이상에는 일반적인 사용에 필요한 액세스 기능이 �
 
 ## 설치
 
-Google Play 출시는 현재 검토 중입니다.
+[Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop)에서 Dextop을 설치할 수 있습니다.
 
-[GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest)에서 최신 APK를 다운로드하여 설치하세요.
+또는 [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest)에서 최신 서명 APK를 다운로드할 수 있습니다.
 
 ### Nightly 빌드
 

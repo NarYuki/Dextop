@@ -47,7 +47,7 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 - [x] US配列キーボード、トラックパッド、手動呼び出し、ヒンジ角度の自動検知に対応した折りたたみ端末向けラップトップモード
 - [x] 「スタイル」メニューから切り替えられる仮想ゲームパッド（ABXY、L/R、トリガー、スティック、方向パッド、Start/Select/Home）
 - [x] 折りたたみ端末のメイン／サブディスプレイ切り替え
-- [x] Android 15以降の停車中Android Auto向けミラーリングActivity（車載解像度の自動適用、Dextop／端末画面の切り替え、タッチ転送）
+- [x] Android Auto向けParking／Driving Companion（車載解像度の自動適用、停車中の完全なタッチ操作、走行用のスマホ操作UI）
 - [x] FPS、リフレッシュレート、メモリ、バッテリー、推定消費電力のパフォーマンス表示
 - [x] クイック設定タイルからの起動
 - [x] 中断されたセッションとAndroid設定の復元
@@ -66,7 +66,7 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 | HyperOS以降を実行しているXiaomi端末 | 無効 | MIUIおよびHyperOSはサポート対象外です。 |
 | その他のAndroid端末 | 実験的 | メーカー、機種、OS更新によって仮想ディスプレイ、ミラーリング、freeformの対応状況が異なります。 |
 
-Android Auto向けはAndroid 15以降の停車中アプリ用`CAR_LAUNCHER` Activityとして公開しています。実際に車載ランチャーへ表示するかはAndroid Auto側が決定し、現在の公開仕様では対象カテゴリが限定されています。
+Android Auto向けには、Android 15以降で停車中用`CAR_LAUNCHER` Activityと、Android for Cars App Libraryを使用する別のDrivingサービスを提供します。各エントリーを表示するか、どの入力イベントを渡すかはAndroid Autoホスト側が決定します。
 
 Dextopは実行時に端末の能力を検査し、複数のバックエンドを順番に試します。ただし、Androidの非公開APIやOEM実装を利用するため、同じメーカーでも機種やOSバージョンによって結果が異なります。
 
@@ -155,7 +155,8 @@ _コミュニティから提出され、レビューされた動作報告_
 ## 動作要件
 
 - Android 10以降。大半の端末では実用的なデスクトップ環境にAndroid 14以降が必要です。
-- Dextop 1.5.0以降（最新版を含む）
+- 現行リリース：**Dextop 1.7.0**
+- Android Auto Companion：**Dextop・Parking 2.0.0**／**Dextop・Driving 2.0.0**
 
 Dextop 1.5.0以降には通常の動作に必要なアクセス機能が内蔵されているため、外部アプリや別の特権サービスは必須ではありません。セットアップから利用開始までDextopアプリだけで完結できます。端末によっては、Android側の権限許可やワイヤレスデバッグのペアリング画面が表示される場合があります。
 
@@ -163,25 +164,30 @@ root環境を利用している場合や、Stellar、Shizukuなどの互換性�
 
 ## インストール
 
-Google Play版は現在審査中です。
+[Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop)からDextopをインストールできます。
 
-[GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest)から最新のAPKをダウンロードし、インストールしてください。
+または、[GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest)から最新の署名済みAPKをダウンロードできます。
 
 ### Nightlyビルド
 
 [GitHub Actions](https://github.com/NarYuki/Dextop/actions)から、最新の変更が適用された開発版を利用できます。最新の成功した**Debug APK**ワークフローを開き、NightlyのArtifactをダウンロードしてください。Artifactには同じビルドのDextop本体とDextop Car CompanionのデバッグAPKが含まれます。Nightlyは最新ソースから自動生成されるベータ版であり、未完成の機能や安定版にはない不具合を含む場合があります。
 
-Android Auto対応を含むGitHub Releasesには、Dextop本体APKと対応する**Dextop Car Companion** APKを両方掲載します。署名とリレー仕様を一致させるため、必ず同じリリースに含まれる2つのAPKを使用してください。
+Android Auto対応は、**Dextop・Parking**（`moe.n4tsu.dextop.cardex`）と**Dextop・Driving**（`moe.n4tsu.dextop.cardex.driving`）の2つのCompanionアプリに分かれています。必要なCompanionを対応するDextopと一緒にインストールしてください。Dextopはリレーを有効にする前に、各Companionのパッケージ名と署名証明書を検証します。
 
 ## Android Autoの簡単な使い方
 
-DextopはAndroid 15以降で、**Dextop Car Companion**を使用して対応する停車中のAndroid Auto画面へ専用デスクトップを表示できます。
+Dextopは対応Androidバージョンの異なる2種類のAndroid Autoエントリーを提供します。
 
-1. 同じリリースに含まれるDextopと**Dextop Car Companion**のAPKを両方インストールします。
+- **Dextop・Parking**：停車中用の全画面Activityを使用します。停車中は車載画面からタップ、ドラッグ、スクロール、スワイプを含む完全なタッチ操作ができます。
+- **Dextop・Driving**：Android for Cars App LibraryのSurfaceを使用します。走行対応のホストフローで表示を継続でき、車載画面側の入力はAndroid Autoの制限を受けます。スマホ側のトラックパッドとキーボードから、カーソル、スクロール、スワイプ、文字入力を操作できます。
+
+**Dextop・Parking**にはAndroid 15（API 35）以降が必要です。**Dextop・Driving**はAndroid 15の停車中アプリ用ランチャーを使用しないため、Android 13（API 33）以降に対応します。
+
+1. Dextopと、**Dextop・Parking**、**Dextop・Driving**、またはその両方をインストールします。
 2. 端末側でDextopの初期設定を完了します。1.5.0以降ではDextopの内蔵アクセスが自動的に使用され、root環境やStellar、Shizukuなどの互換性がある特権サービスがすでに利用可能な場合は、Dextopが自動検出して使用します。
-3. 停車中にAndroid Autoへ接続し、車載ランチャーから**Dextop Car Companion**を開きます。
-4. **Start**を選択します。車載画面の解像度に合わせたAuto専用Dextopが作成され、タッチ操作が直接転送されます。
-5. 車載画面の左端から右へスワイプすると、ワークスペース、映像の再接続、停止を行うAuto専用操作パネルが開きます。
+3. Android Autoへ接続し、用途に応じて車載ランチャーから**Dextop・Parking**または**Dextop・Driving**を開きます。
+4. **Start**を選択します。Parkingでは車載画面の完全なタッチ操作を転送します。DrivingではAndroid Autoが許可するクリック入力に加え、スマホ側のトラックパッドとキーボードを使用します。
+5. Parkingでは車載画面の左端から右へスワイプしてAuto専用操作パネルを開きます。Drivingの操作項目はCar Appの画面から開きます。
 
 Android Auto側が、サイドロードされた停車中アプリを車載ランチャーへ表示するかを決定します。標準の互換表示方式では端末側にAuto用仮想ディスプレイのオーバーレイが表示される場合があります。実験的な非表示方式は**Dextop → 設定 → Auto**から変更できます。インストール条件、表示方式、ジェスチャー、各操作、制限事項、DHU検証、問題の対処方法は[Android Auto Wiki](https://github.com/NarYuki/Dextop/wiki/Android-Auto)を参照してください。
 
