@@ -33,7 +33,7 @@ android {
     kotlinOptions { jvmTarget = JavaVersion.VERSION_17.toString() }
     defaultConfig {
         applicationId = "moe.n4tsu.dextop.cardex.driving"
-        minSdk = 35
+        minSdk = 33
         targetSdk = 36
         versionCode = 6
         versionName = "2.0.0"

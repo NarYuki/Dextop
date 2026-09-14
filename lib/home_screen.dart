@@ -358,10 +358,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? releaseCheckError;
   DateTime? releaseCheckedAt;
   AppUpdateInfo? playUpdateInfo;
-  static const distributionChannel = String.fromEnvironment(
-    'DISTRIBUTION_CHANNEL',
-    defaultValue: 'github',
-  );
+  // Product flavors live on the Android side. A Gradle BuildConfig field is
+  // not a Dart --define, so String.fromEnvironment would always fall back to
+  // GitHub in normal Play builds. Populate this from the native status map.
+  String distributionChannel = 'github';
   bool get isPlayDistribution => distributionChannel == 'play';
   bool get updateAvailable => latestReleaseVersion != null;
   var secureSettingsGranted = false;
@@ -950,6 +950,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         privilegeProvider = '${value['privilegeProvider'] ?? 'stellar'}';
         privilegeProviderName =
             '${value['privilegeProviderName'] ?? 'Stellar'}';
+        distributionChannel =
+            '${value['distributionChannel'] ?? 'github'}';
         secureSettingsGranted = value['privileged'] == true;
         manufacturer = '${value['manufacturer'] ?? ''}';
         model = '${value['model'] ?? ''}';
