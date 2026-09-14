@@ -8,11 +8,12 @@
   <a href="README.md">English</a> | <a href="README.ja.md">日本語</a> | <a href="README.zh-CN.md">简体中文</a> | <a href="README.ko.md">한국어</a>
 </p>
 
-Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. Dextop 1.5.0 and later include a built-in privileged access runtime, which works with Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.
-
 <p align="center">
-  <a href="https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop"><img src="https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png" alt="Get it on Google Play" height="64"></a>
+  <a href="https://github.com/NarYuki/Dextop/releases/latest"><img src="docs/media/get-it-on-github.png" alt="Get it on GitHub" height="56"></a>
+  <a href="https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop"><img src="docs/media/get-it-on-google-play.png" alt="Get it on Google Play" height="56"></a>
 </p>
+
+Dextop is an open-source Android app that creates a virtual display and provides a desktop-like workspace using only a smartphone. Dextop 1.5.0 and later include a built-in privileged access runtime, which works with Android system services to control app launching, window placement, touch input, orientation, and related desktop behavior.
 
 ## Community and feedback
 
