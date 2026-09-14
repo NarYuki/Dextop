@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/NarYuki/Dextop/releases/latest"><img src="docs/media/get-it-on-github.png" alt="GitHubから入手" width="188" height="56"></a>
-  <a href="https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop"><img src="docs/media/get-it-on-google-play.png" alt="Google Playで手に入れよう" width="188" height="56"></a>
+  <a href="https://github.com/NarYuki/Dextop/releases/latest"><img src="docs/media/get-it-on-github.png" alt="GitHubから入手" height="56"></a>
+  <a href="https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop"><img src="docs/media/get-it-on-google-play.png" alt="Google Playで手に入れよう" height="56"></a>
 </p>
 
 Dextopは、Android端末上に仮想ディスプレイを作成し、スマートフォンだけでデスクトップ風の作業環境を利用するためのオープンソースアプリです。Dextop 1.5.0以降には特権アクセス機能が内蔵されており、Androidのシステム機能と連携して、アプリの起動、ウィンドウ配置、タッチ操作、画面方向などを制御します。
