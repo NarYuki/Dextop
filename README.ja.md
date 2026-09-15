@@ -177,11 +177,11 @@ root環境を利用している場合や、Stellar、Shizukuなどの互換性�
 
 [GitHub Actions](https://github.com/NarYuki/Dextop/actions)から、最新の変更が適用された開発版を利用できます。最新の成功した**Debug APK**ワークフローを開き、NightlyのArtifactをダウンロードしてください。Artifactには同じビルドのDextop本体とDextop Car CompanionのデバッグAPKが含まれます。Nightlyは最新ソースから自動生成されるベータ版であり、未完成の機能や安定版にはない不具合を含む場合があります。
 
+## Android Autoの簡単な使い方
+
 Android Auto対応は、**Dextop・Parking**（`moe.n4tsu.dextop.cardex`）と**Dextop・Driving**（`moe.n4tsu.dextop.cardex.driving`）の2つのCompanionアプリに分かれています。必要なCompanionを対応するDextopと一緒にインストールしてください。Dextopはリレーを有効にする前に、各Companionのパッケージ名と署名証明書を検証します。
 
 **Dextop・Driving**は、[AAEnabler](https://github.com/malebuffy/AAEnabler)を通してインストールします。対応するDextopリリースからDrivingのAPKをダウンロードし、AAEnablerを開いて**Select local APK**からAPKを選択した後、**Install app**をタップしてAndroidのインストール画面を完了してください。**Dextop・Parking**は通常どおりインストールできますが、Android AutoにParkingが表示されない場合は、ParkingのAPKについても同じ手順でAAEnablerを通してインストールまたは再インストールしてください。AAEnablerは元のAPKや署名を変更せずにインストールします。
-
-## Android Autoの簡単な使い方
 
 Dextopは対応Androidバージョンの異なる2種類のAndroid Autoエントリーを提供します。
 

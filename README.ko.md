@@ -176,11 +176,11 @@ Dextop 1.5.0 이상에는 일반적인 사용에 필요한 액세스 기능이 �
 
 [GitHub Actions](https://github.com/NarYuki/Dextop/actions)에서 최신 개발 빌드를 받을 수 있습니다. 아직 안정 버전에 포함되지 않은 변경 사항을 사용하려면 가장 최근에 성공한 **Debug APK** 워크플로 실행을 열고 Nightly 아티팩트를 다운로드하세요. 아티팩트에는 서로 일치하는 Dextop 및 Dextop Car Companion 디버그 APK가 포함됩니다. Nightly 빌드는 최신 소스에서 생성되는 베타 빌드이므로 미완성 기능이나 회귀 문제가 포함될 수 있습니다.
 
+## Android Auto 빠른 시작
+
 Android Auto 지원은 **Dextop・Parking**(`moe.n4tsu.dextop.cardex`)과 **Dextop・Driving**(`moe.n4tsu.dextop.cardex.driving`)의 두 Companion 앱으로 제공됩니다. Dextop은 릴레이를 활성화하기 전에 각 Companion의 패키지 이름과 서명 인증서를 확인합니다.
 
 **Dextop・Driving**은 [AAEnabler](https://github.com/malebuffy/AAEnabler)를 통해 설치하세요. 동일한 Dextop 릴리스에서 Driving APK를 다운로드하고 AAEnabler를 연 다음, **Select local APK**로 APK를 선택하고 **Install app**을 눌러 Android 설치 과정을 완료합니다. **Dextop・Parking**은 일반적인 방법으로 설치할 수 있지만 Android Auto에 Parking이 표시되지 않으면 Parking APK도 같은 절차로 AAEnabler를 통해 설치하거나 다시 설치하세요. AAEnabler는 원본 APK나 서명을 변경하지 않고 설치합니다.
-
-## Android Auto 빠른 시작
 
 Dextop은 주차 중 전체 터치 조작을 제공하는 **Dextop・Parking**과 주행 호스트 흐름을 사용하는 **Dextop・Driving**을 제공합니다. Parking은 Android 15(API 35) 이상이 필요하며, Driving은 Android 13(API 33) 이상을 지원합니다.
 

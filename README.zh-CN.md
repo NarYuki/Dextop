@@ -116,11 +116,11 @@ Dextop 1.5.0 及更高版本内置正常运行所需的访问功能，因此不�
 
 也可以从 [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest) 下载最新的签名 APK。
 
+## Android Auto 快速开始
+
 Android Auto 支持由两个 Companion 应用提供：**Dextop・Parking**（`moe.n4tsu.dextop.cardex`）和 **Dextop・Driving**（`moe.n4tsu.dextop.cardex.driving`）。Dextop 会在启用中继前验证各 Companion 的包名和签名证书。
 
 请通过 [AAEnabler](https://github.com/malebuffy/AAEnabler) 安装 **Dextop・Driving**。从对应的 Dextop Release 下载 Driving APK，打开 AAEnabler，通过 **Select local APK** 选择该 APK，然后点击 **Install app** 并完成 Android 安装流程。**Dextop・Parking** 可以正常安装；如果 Parking 未显示在 Android Auto 中，请对 Parking APK 使用相同步骤，通过 AAEnabler 安装或重新安装。AAEnabler 在安装时不会修改原始 APK 或其签名。
-
-## Android Auto 快速开始
 
 - **Dextop・Parking** 提供停车状态下的全屏界面和完整触摸操作，需要 Android 15（API 35）或更高版本。
 - **Dextop・Driving** 使用 Android for Cars App Library 的 Surface，支持 Android 13（API 33）或更高版本。
