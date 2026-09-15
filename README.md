@@ -179,6 +179,8 @@ The latest development build is available from [GitHub Actions](https://github.c
 
 Android Auto support is split into two companion apps: **Dextop・Parking** (`moe.n4tsu.dextop.cardex`) and **Dextop・Driving** (`moe.n4tsu.dextop.cardex.driving`). Install the companion you need alongside a compatible Dextop build. Dextop verifies each companion's package and signing certificate before enabling the relay.
 
+Install **Dextop・Driving** through [AAEnabler](https://github.com/malebuffy/AAEnabler): download its APK from the matching Dextop release, open AAEnabler, select it with **Select local APK**, then tap **Install app** and complete Android's installation prompt. **Dextop・Parking** can be installed normally; if Parking does not appear in Android Auto, install or reinstall its APK through AAEnabler using the same steps. AAEnabler installs the original APK without modifying it or changing its signature.
+
 ## Android Auto quick start
 
 Dextop provides two Android Auto entries with different platform requirements:
@@ -188,7 +190,7 @@ Dextop provides two Android Auto entries with different platform requirements:
 
 **Dextop・Parking** requires Android 15 (API 35) or later. **Dextop・Driving** supports Android 13 (API 33) or later because it uses the Android for Cars App Library rather than the Android 15 parked-app launcher.
 
-1. Install Dextop and **Dextop・Parking**, **Dextop・Driving**, or both.
+1. Install Dextop and **Dextop・Parking** normally, and install **Dextop・Driving** through AAEnabler as described above. If Parking does not appear in Android Auto, install it through AAEnabler as well.
 2. Complete Dextop's phone setup. On version 1.5.0 and later, Dextop configures its built-in access automatically; if root or a compatible privileged service such as Stellar or Shizuku is already available, Dextop detects and uses it automatically.
 3. Connect Android Auto and open the appropriate **Dextop・Parking** or **Dextop・Driving** entry from the car launcher.
 4. Select **Start**. Parking forwards full head-unit touch; Driving accepts Android Auto's allowed click input and uses the phone controller for trackpad gestures and keyboard input.
