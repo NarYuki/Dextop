@@ -179,6 +179,8 @@ root環境を利用している場合や、Stellar、Shizukuなどの互換性�
 
 Android Auto対応は、**Dextop・Parking**（`moe.n4tsu.dextop.cardex`）と**Dextop・Driving**（`moe.n4tsu.dextop.cardex.driving`）の2つのCompanionアプリに分かれています。必要なCompanionを対応するDextopと一緒にインストールしてください。Dextopはリレーを有効にする前に、各Companionのパッケージ名と署名証明書を検証します。
 
+**Dextop・Driving**は、[AAEnabler](https://github.com/malebuffy/AAEnabler)を通してインストールします。対応するDextopリリースからDrivingのAPKをダウンロードし、AAEnablerを開いて**Select local APK**からAPKを選択した後、**Install app**をタップしてAndroidのインストール画面を完了してください。**Dextop・Parking**は通常どおりインストールできますが、Android AutoにParkingが表示されない場合は、ParkingのAPKについても同じ手順でAAEnablerを通してインストールまたは再インストールしてください。AAEnablerは元のAPKや署名を変更せずにインストールします。
+
 ## Android Autoの簡単な使い方
 
 Dextopは対応Androidバージョンの異なる2種類のAndroid Autoエントリーを提供します。
@@ -188,7 +190,7 @@ Dextopは対応Androidバージョンの異なる2種類のAndroid Autoエント
 
 **Dextop・Parking**にはAndroid 15（API 35）以降が必要です。**Dextop・Driving**はAndroid 15の停車中アプリ用ランチャーを使用しないため、Android 13（API 33）以降に対応します。
 
-1. Dextopと、**Dextop・Parking**、**Dextop・Driving**、またはその両方をインストールします。
+1. Dextop本体と**Dextop・Parking**は通常どおりインストールし、**Dextop・Driving**は上記の手順でAAEnablerを通してインストールします。ParkingがAndroid Autoに表示されない場合は、ParkingもAAEnablerを通してインストールしてください。
 2. 端末側でDextopの初期設定を完了します。1.5.0以降ではDextopの内蔵アクセスが自動的に使用され、root環境やStellar、Shizukuなどの互換性がある特権サービスがすでに利用可能な場合は、Dextopが自動検出して使用します。
 3. Android Autoへ接続し、用途に応じて車載ランチャーから**Dextop・Parking**または**Dextop・Driving**を開きます。
 4. **Start**を選択します。Parkingでは車載画面の完全なタッチ操作を転送します。DrivingではAndroid Autoが許可するクリック入力に加え、スマホ側のトラックパッドとキーボードを使用します。

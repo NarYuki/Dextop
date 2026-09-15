@@ -116,6 +116,22 @@ Dextop 1.5.0 及更高版本内置正常运行所需的访问功能，因此不�
 
 也可以从 [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest) 下载最新的签名 APK。
 
+Android Auto 支持由两个 Companion 应用提供：**Dextop・Parking**（`moe.n4tsu.dextop.cardex`）和 **Dextop・Driving**（`moe.n4tsu.dextop.cardex.driving`）。Dextop 会在启用中继前验证各 Companion 的包名和签名证书。
+
+请通过 [AAEnabler](https://github.com/malebuffy/AAEnabler) 安装 **Dextop・Driving**。从对应的 Dextop Release 下载 Driving APK，打开 AAEnabler，通过 **Select local APK** 选择该 APK，然后点击 **Install app** 并完成 Android 安装流程。**Dextop・Parking** 可以正常安装；如果 Parking 未显示在 Android Auto 中，请对 Parking APK 使用相同步骤，通过 AAEnabler 安装或重新安装。AAEnabler 在安装时不会修改原始 APK 或其签名。
+
+## Android Auto 快速开始
+
+- **Dextop・Parking** 提供停车状态下的全屏界面和完整触摸操作，需要 Android 15（API 35）或更高版本。
+- **Dextop・Driving** 使用 Android for Cars App Library 的 Surface，支持 Android 13（API 33）或更高版本。
+
+1. 正常安装 Dextop 和 **Dextop・Parking**，并按照上述步骤通过 AAEnabler 安装 **Dextop・Driving**。如果 Parking 未显示在 Android Auto 中，也请通过 AAEnabler 安装 Parking。
+2. 在手机上完成 Dextop 的初始设置。
+3. 连接 Android Auto，并从车载启动器中打开所需的 **Dextop・Parking** 或 **Dextop・Driving**。
+4. 选择 **Start**。Parking 从车载屏幕转发完整触摸操作；Driving 使用 Android Auto 允许的点击输入，并通过手机端控制器提供触控板和键盘输入。
+
+Android Auto 仍会根据 Android 版本、车辆、主机及其配置决定应用是否显示。连接后未立即出现时，请重新连接或重启 Android Auto。
+
 ## 开发
 
 ```sh

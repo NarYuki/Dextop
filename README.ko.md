@@ -176,15 +176,17 @@ Dextop 1.5.0 이상에는 일반적인 사용에 필요한 액세스 기능이 �
 
 [GitHub Actions](https://github.com/NarYuki/Dextop/actions)에서 최신 개발 빌드를 받을 수 있습니다. 아직 안정 버전에 포함되지 않은 변경 사항을 사용하려면 가장 최근에 성공한 **Debug APK** 워크플로 실행을 열고 Nightly 아티팩트를 다운로드하세요. 아티팩트에는 서로 일치하는 Dextop 및 Dextop Car Companion 디버그 APK가 포함됩니다. Nightly 빌드는 최신 소스에서 생성되는 베타 빌드이므로 미완성 기능이나 회귀 문제가 포함될 수 있습니다.
 
-Android Auto 지원이 포함된 안정적인 GitHub Release에는 Dextop APK와 이에 맞는 **Dextop Car Companion** APK가 함께 제공됩니다. 서명과 릴레이 프로토콜이 일치하도록 두 APK를 동일한 릴리스에서 설치하세요.
+Android Auto 지원은 **Dextop・Parking**(`moe.n4tsu.dextop.cardex`)과 **Dextop・Driving**(`moe.n4tsu.dextop.cardex.driving`)의 두 Companion 앱으로 제공됩니다. Dextop은 릴레이를 활성화하기 전에 각 Companion의 패키지 이름과 서명 인증서를 확인합니다.
+
+**Dextop・Driving**은 [AAEnabler](https://github.com/malebuffy/AAEnabler)를 통해 설치하세요. 동일한 Dextop 릴리스에서 Driving APK를 다운로드하고 AAEnabler를 연 다음, **Select local APK**로 APK를 선택하고 **Install app**을 눌러 Android 설치 과정을 완료합니다. **Dextop・Parking**은 일반적인 방법으로 설치할 수 있지만 Android Auto에 Parking이 표시되지 않으면 Parking APK도 같은 절차로 AAEnabler를 통해 설치하거나 다시 설치하세요. AAEnabler는 원본 APK나 서명을 변경하지 않고 설치합니다.
 
 ## Android Auto 빠른 시작
 
-Dextop은 Android 15 이상에서 **Dextop Car Companion**을 통해 지원되는 주차 상태의 Android Auto 디스플레이에 전용 데스크톱을 제공합니다.
+Dextop은 주차 중 전체 터치 조작을 제공하는 **Dextop・Parking**과 주행 호스트 흐름을 사용하는 **Dextop・Driving**을 제공합니다. Parking은 Android 15(API 35) 이상이 필요하며, Driving은 Android 13(API 33) 이상을 지원합니다.
 
-1. 동일한 릴리스에서 Dextop과 이에 맞는 **Dextop Car Companion** APK를 설치합니다.
+1. Dextop과 **Dextop・Parking**은 일반적인 방법으로 설치하고, **Dextop・Driving**은 위 절차에 따라 AAEnabler를 통해 설치합니다. Parking이 Android Auto에 표시되지 않으면 Parking도 AAEnabler를 통해 설치하세요.
 2. 스마트폰에서 Dextop 초기 설정을 완료합니다. 1.5.0 이상에서는 Dextop의 내장 액세스가 자동으로 사용되며, 루트 환경이나 Stellar, Shizuku와 같은 호환 특권 서비스가 이미 있으면 Dextop이 자동으로 감지해 사용합니다.
-3. 주차 중 Android Auto를 연결하고 차량 런처에서 **Dextop Car Companion**을 엽니다.
+3. Android Auto를 연결하고 차량 런처에서 용도에 맞는 **Dextop・Parking** 또는 **Dextop・Driving**을 엽니다.
 4. **시작**을 선택합니다. 터치 입력은 헤드 유닛에서 Android Auto 전용 Dextop 디스플레이로 직접 전달됩니다.
 5. 차량 디스플레이의 왼쪽 가장자리에서 오른쪽으로 스와이프하면 작업 공간, 영상 재연결 및 세션 종료를 위한 Android Auto 제어 메뉴가 열립니다.
 
