@@ -177,11 +177,11 @@ Alternatively, download the latest signed APK from [GitHub Releases](https://git
 
 The latest development build is available from [GitHub Actions](https://github.com/NarYuki/Dextop/actions). Open the newest successful **Debug APK** workflow run and download its Nightly artifact to try changes that have not reached a stable release yet. The artifact contains matching Dextop and Dextop Car Companion debug APKs. Nightly builds are beta builds generated from the latest source and may contain unfinished features or regressions.
 
+## Android Auto quick start
+
 Android Auto support is split into two companion apps: **Dextop・Parking** (`moe.n4tsu.dextop.cardex`) and **Dextop・Driving** (`moe.n4tsu.dextop.cardex.driving`). Install the companion you need alongside a compatible Dextop build. Dextop verifies each companion's package and signing certificate before enabling the relay.
 
 Install **Dextop・Driving** through [AAEnabler](https://github.com/malebuffy/AAEnabler): download its APK from the matching Dextop release, open AAEnabler, select it with **Select local APK**, then tap **Install app** and complete Android's installation prompt. **Dextop・Parking** can be installed normally; if Parking does not appear in Android Auto, install or reinstall its APK through AAEnabler using the same steps. AAEnabler installs the original APK without modifying it or changing its signature.
-
-## Android Auto quick start
 
 Dextop provides two Android Auto entries with different platform requirements:
 
