@@ -1703,6 +1703,18 @@ private:
         const int64_t duration = gestureStartedAt_ > 0 ? nowMs() - gestureStartedAt_ : 0;
         if (cfg.profile == kProfileTouchpad && gestureStartedAt_ > 0) {
             const bool tap = gestureMaxContacts_ == 1 && !gestureMoved_ && duration <= cfg.tapTimeoutMs;
+            // A tap that never turned into a hold-to-drag (BTN_LEFT already
+            // down, handled by forwardTouchpad()'s BTN_LEFT_UP path instead)
+            // always resolves to a click. This covers both a lone tap and a
+            // second tap that was released before the 180ms drag-arm
+            // threshold in forwardTouchpad() elapsed. Previously neither
+            // case ever emitted BTN_LEFT here -- this branch only armed or
+            // cleared the double-tap bookkeeping below -- so plain taps in
+            // touchpad mode silently did nothing. See #17.
+            if (tap && !leftButtonDown_) {
+                emitClick(BTN_LEFT, "touchpad_tap");
+                callbackHaptic(false);
+            }
             if (tap && !touchpadSecondTap_) {
                 lastTapValid_ = true;
                 lastTapAt_ = nowMs();
