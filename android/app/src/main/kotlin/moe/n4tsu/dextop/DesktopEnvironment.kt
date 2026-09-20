@@ -135,8 +135,26 @@ internal object DesktopEnvironmentRegistry {
         val platformNative = identity.sdk >= 36
         val settings: Map<String, String?> = if (platformNative) {
             // Let the current Android desktop stack choose its own windowing
-            // configuration. SessionJournal preserves every displaced value.
-            AndroidDesktopOverrides.modernKeys.associateWithTo(linkedMapOf()) { null }
+            // configuration for the newer, purely cosmetic toggles.
+            // SessionJournal preserves every displaced value.
+            //
+            // force_resizable_activities and force_desktop_mode_on_external_displays
+            // are the exception: Dextop's default mirror strategy targets a
+            // DisplayManager *virtual* display (see DesktopEnvironment.mirrorStrategies),
+            // not a genuine connected external display, and ActivityTaskManager still
+            // silently rejects launching non-resizable phone activities onto it on
+            // SDK 36+ unless these two are forced. Leaving them null let them sit at
+            // their OS default of disabled, so the app drawer closed without ever
+            // launching anything. See #17.
+            AndroidDesktopOverrides.modernKeys.associateWithTo(linkedMapOf()) { key ->
+                if (key == "force_resizable_activities" ||
+                    key == "force_desktop_mode_on_external_displays"
+                ) {
+                    "1"
+                } else {
+                    null
+                }
+            }
         } else {
             AndroidDesktopOverrides.compatibilityValues
         }
