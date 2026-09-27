@@ -38,6 +38,20 @@ class DeviceMatchTest {
         assertEquals("window_manager", environment.mirrorStrategies.first())
     }
 
+    @Test fun modernPixelProfileForcesWindowingFlagsOnVirtualDisplay() {
+        val environment = DesktopEnvironmentRegistry.resolve(pixel.copy(sdk = 37))
+        assertEquals(DesktopStartupMode.SYSTEM_MANAGED, environment.startupMode)
+        assertFalse(environment.configureFreeformWindowing)
+        assertEquals("virtual_display", environment.mirrorStrategies.first())
+        assertEquals("1", environment.temporaryGlobalSettings["force_resizable_activities"])
+        assertEquals("1", environment.temporaryGlobalSettings["force_desktop_mode_on_external_displays"])
+        assertEquals(null, environment.temporaryGlobalSettings["override_desktop_experience_features"])
+        assertEquals(null, environment.temporaryGlobalSettings["override_desktop_mode_features"])
+        assertEquals(null, environment.temporaryGlobalSettings["enable_non_resizable_multi_window"])
+        assertEquals(null, environment.temporaryGlobalSettings["force_desktop_mode_on_secondary_displays"])
+        assertEquals(null, environment.temporaryGlobalSettings["enable_freeform_support"])
+    }
+
     @Test fun galaxyTriFoldUsesNarrowAutoResizeProfile() {
         val triFold = DeviceIdentity(
             "samsung", "samsung", "SM-F968N", "q7mq", "q7mqksx",
