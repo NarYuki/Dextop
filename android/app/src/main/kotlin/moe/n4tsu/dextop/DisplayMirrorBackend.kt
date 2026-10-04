@@ -439,8 +439,29 @@ internal class VirtualDisplayPlatform private constructor(
         properties.forEach { property ->
             builderType.getMethod(property.name, property.type).invoke(builder, property.value)
         }
+        // Without this the mirror runs at the 60 Hz default even when the
+        // host panel and the overlay display run faster.  The setter is
+        // optional: if it is missing or fails, keep the stock behaviour.
+        hostRefreshRate(request.host)?.let { rate ->
+            runCatching {
+                builderType.getMethod("setRequestedRefreshRate", Float::class.javaPrimitiveType)
+                    .invoke(builder, rate)
+            }
+        }
         return builderType.getMethod("build").invoke(builder)
     }
+
+    private fun hostRefreshRate(host: SurfaceView?): Float? = runCatching {
+        val display = host?.display ?: return null
+        // Only compare modes at the current resolution, so a high-rate mode
+        // the panel cannot use at this size is not requested.
+        val current = display.mode
+        chooseMirrorRefreshRate(
+            display.supportedModes
+                .filter { it.physicalWidth == current.physicalWidth && it.physicalHeight == current.physicalHeight }
+                .map { it.refreshRate }
+        )
+    }.getOrNull()
 
     private fun createCallback(): Any {
         val handler = DisplayLifecycleCallback(Binder())
@@ -581,3 +602,7 @@ private class ManagedVirtualDisplay(
         releaseOperation.invoke(service, callback)
     }
 }
+
+/** Highest usable refresh rate in Hz, or null if the list has no finite positive value. */
+internal fun chooseMirrorRefreshRate(rates: List<Float>): Float? =
+    rates.filter { it.isFinite() && it > 0f }.maxOrNull()
