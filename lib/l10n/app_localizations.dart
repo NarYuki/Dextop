@@ -1322,13 +1322,13 @@ abstract class AppLocalizations {
   /// No description provided for @displayForceInternal120Hz.
   ///
   /// In ja, this message translates to:
-  /// **'内蔵ディスプレイを120Hzで動作'**
+  /// **'最高リフレッシュレートで出力'**
   String get displayForceInternal120Hz;
 
   /// No description provided for @displayForceInternal120HzSummary.
   ///
   /// In ja, this message translates to:
-  /// **'Dextop実行中は対応する内蔵画面を120Hzに固定します'**
+  /// **'OSが提供する最高のリフレッシュレートでミラーを作成します'**
   String get displayForceInternal120HzSummary;
 
   /// No description provided for @displaySoftwareCursorFallback.

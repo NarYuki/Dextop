@@ -634,11 +634,11 @@ class AppLocalizationsKo extends AppLocalizations {
       '사용하지 않을 때 데스크톱 작업 표시줄을 자동으로 숨깁니다';
 
   @override
-  String get displayForceInternal120Hz => '내장 디스플레이를 120Hz로 실행';
+  String get displayForceInternal120Hz => '최대 화면 재생률로 출력';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Dextop 실행 중 지원되는 내장 화면을 120Hz로 고정합니다';
+      'OS가 제공하는 최대 화면 재생률로 미러를 생성합니다';
 
   @override
   String get displaySoftwareCursorFallback => '소프트웨어 커서 사용';

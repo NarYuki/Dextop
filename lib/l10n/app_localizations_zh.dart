@@ -622,10 +622,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get displayAutoHideTaskbarSummary => '不使用时自动隐藏桌面任务栏';
 
   @override
-  String get displayForceInternal120Hz => '内置屏幕以 120 Hz 运行';
+  String get displayForceInternal120Hz => '以最高刷新率输出';
 
   @override
-  String get displayForceInternal120HzSummary => 'Dextop 运行时将支持的内置屏幕固定为 120 Hz';
+  String get displayForceInternal120HzSummary => '使用操作系统提供的最高刷新率创建镜像';
 
   @override
   String get displaySoftwareCursorFallback => '使用软件光标';

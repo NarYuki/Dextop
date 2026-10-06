@@ -656,11 +656,11 @@ class AppLocalizationsRu extends AppLocalizations {
       'Автоматически скрывает панель задач рабочего стола, когда она не используется';
 
   @override
-  String get displayForceInternal120Hz => 'Частота встроенного экрана 120 Гц';
+  String get displayForceInternal120Hz => 'Максимальная частота обновления';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Фиксирует частоту поддерживаемого встроенного экрана на 120 Гц во время работы Dextop';
+      'Создаёт зеркало с максимальной частотой обновления, предоставляемой ОС';
 
   @override
   String get displaySoftwareCursorFallback => 'Использовать программный курсор';

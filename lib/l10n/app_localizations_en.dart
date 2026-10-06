@@ -653,11 +653,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Automatically hide the desktop taskbar when it is not in use';
 
   @override
-  String get displayForceInternal120Hz => 'Run built-in display at 120 Hz';
+  String get displayForceInternal120Hz => 'Output at maximum refresh rate';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Pin a supported built-in screen to 120 Hz while Dextop is running';
+      'Creates the mirror at the highest refresh rate provided by the OS';
 
   @override
   String get displaySoftwareCursorFallback => 'Use software cursor';

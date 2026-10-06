@@ -629,11 +629,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get displayAutoHideTaskbarSummary => '未使用時にデスクトップのタスクバーを自動的に隠します';
 
   @override
-  String get displayForceInternal120Hz => '内蔵ディスプレイを120Hzで動作';
+  String get displayForceInternal120Hz => '最高リフレッシュレートで出力';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Dextop実行中は対応する内蔵画面を120Hzに固定します';
+      'OSが提供する最高のリフレッシュレートでミラーを作成します';
 
   @override
   String get displaySoftwareCursorFallback => 'ソフトウェアカーソルに戻す';

@@ -22,7 +22,7 @@ class DisplayEnvironmentSettings(private val context: Context) {
                 0
             ),
             "supportsInternal120Hz" to supportsInternal120Hz(),
-            "forceInternal120Hz" to preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false),
+            "forceInternal120Hz" to preferences.getBoolean(KEY_EXPERIMENTAL_MAX_REFRESH_RATE, false),
             "softwareCursorFallback" to preferences.getBoolean(KEY_SOFTWARE_CURSOR_FALLBACK, false),
             // Shizuku/Stellar is the capability gate for the platform uinput
             // command. Runtime registration may still fail on a vendor build;
@@ -46,8 +46,8 @@ class DisplayEnvironmentSettings(private val context: Context) {
             return read()
         }
         if (id == "forceInternal120Hz") {
-            preferences.edit().putBoolean(KEY_FORCE_INTERNAL_120_HZ, enabled).apply()
-            OperationLog.i(context, "DisplayEnvironmentSettings", "$KEY_FORCE_INTERNAL_120_HZ=$enabled")
+            preferences.edit().putBoolean(KEY_EXPERIMENTAL_MAX_REFRESH_RATE, enabled).apply()
+            OperationLog.i(context, "DisplayEnvironmentSettings", "$KEY_EXPERIMENTAL_MAX_REFRESH_RATE=$enabled")
             return read()
         }
         if (id == "softwareCursorFallback") {
@@ -95,7 +95,9 @@ class DisplayEnvironmentSettings(private val context: Context) {
     }
 
     fun forceInternal120HzEnabled(): Boolean =
-        preferences.getBoolean(KEY_FORCE_INTERNAL_120_HZ, false)
+        preferences.getBoolean(KEY_EXPERIMENTAL_MAX_REFRESH_RATE, false)
+
+    fun maximumMirrorRefreshRateEnabled(): Boolean = forceInternal120HzEnabled()
 
     fun activateTopologyIfEnabled(overlayDisplayId: Int) {
         if (overlayDisplayId < 0) return
@@ -135,7 +137,10 @@ class DisplayEnvironmentSettings(private val context: Context) {
         private const val PREFERENCES = "dextop_display_environment"
         private const val ANDROID_TASKBAR_FORCE_HIDE_KEY =
             "desktop_windowing_force_hide_taskbar"
-        private const val KEY_FORCE_INTERNAL_120_HZ = "force_internal_120_hz"
+        // Use a new key so users of the former phone-panel override are not
+        // opted into this experimental mirror setting during an upgrade.
+        private const val KEY_EXPERIMENTAL_MAX_REFRESH_RATE =
+            "experimental_maximum_mirror_refresh_rate"
         private const val KEY_SOFTWARE_CURSOR_FALLBACK = "software_cursor_fallback"
         private const val KEY_DEXTOP_TOPOLOGY = "include_dextop_topology"
         private const val KEY_LEGACY_TOPOLOGY_MIGRATED = "legacy_topology_migrated"
