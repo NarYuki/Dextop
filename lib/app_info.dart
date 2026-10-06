@@ -214,6 +214,8 @@ class AppInfoPage extends StatelessWidget {
           ),
         ),
         SizedBox(height: 12),
+        DisplayEnvironmentSettingsCard(bridge: bridge, showConvenience: false),
+        SizedBox(height: 12),
         _GamepadExperimentalTile(isRunning: isRunning),
         SizedBox(height: 12),
         _ForceLaptopModeExperimentalTile(isRunning: isRunning),

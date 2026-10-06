@@ -58,7 +58,7 @@ internal class DisplayMirrorBackend(
         listOf(
             WindowManagerMirrorBackend(privilegedAccess),
             SurfaceControlMirrorBackend(),
-            VirtualDisplayMirrorBackend(privilegedAccess)
+            VirtualDisplayMirrorBackend(context, privilegedAccess)
         )
             .associateBy { it.id }
     }
@@ -285,7 +285,10 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
  * deliberately independent from the SurfaceControl implementations above so a
  * vendor can select it without changing working devices.
  */
-private class VirtualDisplayMirrorBackend(private val privilegedAccess: PrivilegedAccess) : MirrorAttachBackend {
+private class VirtualDisplayMirrorBackend(
+    private val context: Context,
+    private val privilegedAccess: PrivilegedAccess
+) : MirrorAttachBackend {
     override val id = "virtual_display"
 
     private val platform by lazy { VirtualDisplayPlatform.inspect() }
@@ -296,7 +299,12 @@ private class VirtualDisplayMirrorBackend(private val privilegedAccess: Privileg
         val surface = request.destinationSurface
         check(surface.isValid) { "The destination surface is unavailable" }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
-        return platform.open(service, request, surface)
+        return platform.open(
+            service,
+            request,
+            surface,
+            DisplayEnvironmentSettings(context).maximumMirrorRefreshRateEnabled()
+        )
     }
 }
 
@@ -334,8 +342,13 @@ internal class VirtualDisplayPlatform private constructor(
     private val resizeOperation: Method?,
     private val surfaceOperation: Method?
 ) {
-    fun open(service: Any, request: MirrorAttachRequest, surface: Surface): MirrorAttachment {
-        val descriptor = createDescriptor(request, surface)
+    fun open(
+        service: Any,
+        request: MirrorAttachRequest,
+        surface: Surface,
+        requestMaximumRefreshRate: Boolean = false
+    ): MirrorAttachment {
+        val descriptor = createDescriptor(request, surface, requestMaximumRefreshRate)
         val callback = createCallback()
         val bindings = mapOf<Class<*>, Any>(
             configurationType to descriptor,
@@ -409,7 +422,11 @@ internal class VirtualDisplayPlatform private constructor(
         )
     }
 
-    private fun createDescriptor(request: MirrorAttachRequest, surface: Surface): Any {
+    private fun createDescriptor(
+        request: MirrorAttachRequest,
+        surface: Surface,
+        requestMaximumRefreshRate: Boolean
+    ): Any {
         val constructor = builderType.constructors.singleOrNull { candidate ->
             candidate.parameterTypes.contentEquals(
                 arrayOf(String::class.java, Int::class.javaPrimitiveType,
@@ -442,10 +459,12 @@ internal class VirtualDisplayPlatform private constructor(
         // Without this the mirror runs at the 60 Hz default even when the
         // host panel and the overlay display run faster.  The setter is
         // optional: if it is missing or fails, keep the stock behaviour.
-        hostRefreshRate(request.host)?.let { rate ->
-            runCatching {
-                builderType.getMethod("setRequestedRefreshRate", Float::class.javaPrimitiveType)
-                    .invoke(builder, rate)
+        if (requestMaximumRefreshRate) {
+            hostRefreshRate(request.host)?.let { rate ->
+                runCatching {
+                    builderType.getMethod("setRequestedRefreshRate", Float::class.javaPrimitiveType)
+                        .invoke(builder, rate)
+                }
             }
         }
         return builderType.getMethod("build").invoke(builder)

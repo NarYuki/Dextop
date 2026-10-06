@@ -661,12 +661,11 @@ class AppLocalizationsPt extends AppLocalizations {
       'Esconder automaticamente a barra de tarefas da área de trabalho quando não estiver em uso';
 
   @override
-  String get displayForceInternal120Hz =>
-      'Execute o display incorporado em 120 Hz';
+  String get displayForceInternal120Hz => 'Saída na taxa de atualização máxima';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Pin uma tela integrada suportada para 120 Hz enquanto Dextop está em execução';
+      'Cria o espelho na taxa de atualização máxima fornecida pelo sistema operativo';
 
   @override
   String get displaySoftwareCursorFallback => 'Usar o cursor de software';
@@ -2969,12 +2968,11 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
       'Esconder automaticamente a barra de tarefas da área de trabalho quando não estiver em uso';
 
   @override
-  String get displayForceInternal120Hz =>
-      'Execute o display incorporado em 120 Hz';
+  String get displayForceInternal120Hz => 'Saída na taxa de atualização máxima';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Pin uma tela integrada suportada para 120 Hz enquanto Dextop está em execução';
+      'Cria o espelho na taxa de atualização máxima fornecida pelo sistema operacional';
 
   @override
   String get displaySoftwareCursorFallback => 'Usar o cursor de software';

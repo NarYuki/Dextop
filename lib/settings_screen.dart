@@ -534,6 +534,7 @@ extension _SettingsContent on _HomeScreenState {
             ),
             DisplayEnvironmentSettingsCard(
               bridge: bridge,
+              showDisplay: false,
               showConvenience: false,
               displayLeadingDivider: true,
               wrapInCard: false,
