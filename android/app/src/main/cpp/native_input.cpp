@@ -634,6 +634,9 @@ private:
     float lastTapX_ = 0;
     float lastTapY_ = 0;
     bool touchpadSecondTap_ = false;
+    // Keep this true after BTN_LEFT_UP so the gesture finalizer can
+    // distinguish a completed hold-to-drag from a short second tap.
+    bool touchpadDragStarted_ = false;
     int64_t touchpadSecondTapStartedAt_ = 0;
     bool leftButtonDown_ = false;
 
@@ -1589,6 +1592,7 @@ private:
             nowMs() - touchpadSecondTapStartedAt_ >= 180) {
             events.push_back(makeEvent(EV_KEY, BTN_LEFT, 1));
             leftButtonDown_ = true;
+            touchpadDragStarted_ = true;
             state("drag", "touchpad second tap hold complete BTN_LEFT_DOWN");
             callbackHaptic(false);
         }
@@ -1711,7 +1715,7 @@ private:
             // case ever emitted BTN_LEFT here -- this branch only armed or
             // cleared the double-tap bookkeeping below -- so plain taps in
             // touchpad mode silently did nothing. See #17.
-            if (tap && !leftButtonDown_) {
+            if (tap && !leftButtonDown_ && !touchpadDragStarted_) {
                 emitClick(BTN_LEFT, "touchpad_tap");
                 callbackHaptic(false);
             }
@@ -1746,6 +1750,7 @@ private:
         gestureMoved_ = false;
         gestureTwoFinger_ = false;
         touchpadSecondTap_ = false;
+        touchpadDragStarted_ = false;
         touchpadSecondTapStartedAt_ = 0;
         mouseLongPressTriggered_ = false;
         wheelFractionX_ = 0;

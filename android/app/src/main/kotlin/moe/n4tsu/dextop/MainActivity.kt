@@ -413,6 +413,15 @@ open class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "isFoldableDevice" -> result.success(MirrorService.isFoldableDevice(this))
+                "setWindowManager" -> {
+                    MirrorService.updateWindowManager()
+                    result.success(null)
+                }
+                "plasmaSettingsChanged" -> {
+                    MirrorService.reloadPlasmaSettings()
+                    result.success(null)
+                }
+                "activeWindowManager" -> result.success(MirrorService.activeWindowManager())
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
                 "currentDeviceDisplayProfile" -> {
                     val builtIn = getSystemService(DisplayManager::class.java)
@@ -452,6 +461,13 @@ open class MainActivity : FlutterActivity() {
                     runOnUiThread { result.success(icons) }
                 }.start()
                 "launchApp" -> launchApp(call.arguments as? Map<*, *>, result)
+                "launchAutoWorkspace" -> {
+                    val id = call.argument<String>("id").orEmpty()
+                    result.success(
+                        CardexRelayService.isDecoratedDirectSessionActive() &&
+                            id.isNotBlank() && MirrorService.launchCardexWorkspace(id)
+                    )
+                }
                 "diagnostics" -> result.success(DeviceDiagnostics(this).report())
                 "samsungDesktopSettings" -> runCatching {
                     SamsungDesktopSettings(this).read()

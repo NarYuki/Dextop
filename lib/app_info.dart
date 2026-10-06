@@ -14,6 +14,7 @@ class AppInfoPage extends StatelessWidget {
     this.isRunning = false,
     this.onOpenSamsungSettings,
     this.onOpenDiagnosticLog,
+    this.onExperimentalFeaturesChanged,
     super.key,
   });
 
@@ -29,6 +30,7 @@ class AppInfoPage extends StatelessWidget {
   final bool isRunning;
   final VoidCallback? onOpenSamsungSettings;
   final VoidCallback? onOpenDiagnosticLog;
+  final VoidCallback? onExperimentalFeaturesChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -214,14 +216,22 @@ class AppInfoPage extends StatelessWidget {
           ),
         ),
         SizedBox(height: 12),
-        _GamepadExperimentalTile(isRunning: isRunning),
-        SizedBox(height: 12),
-        _ForceLaptopModeExperimentalTile(isRunning: isRunning),
-        SizedBox(height: 12),
-        _SamsungExperimentalSettingsTile(
-          bridge: bridge,
-          isRunning: isRunning,
-          onOpenSettings: onOpenSamsungSettings,
+        Card(
+          child: ListTile(
+            leading: const Icon(Icons.science_outlined),
+            title: Text(currentLocalizations().uiExperimentalFeatures),
+            trailing: const Icon(Icons.chevron_right_rounded),
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(
+                builder: (_) => _ExperimentalFeaturesPage(
+                  bridge: bridge,
+                  isRunning: isRunning,
+                  onOpenSamsungSettings: onOpenSamsungSettings,
+                  onChanged: onExperimentalFeaturesChanged,
+                ),
+              ),
+            ),
+          ),
         ),
       ],
     );
@@ -231,6 +241,110 @@ class AppInfoPage extends StatelessWidget {
             appBar: AppBar(title: Text(l.appInfo)),
             body: content,
           );
+  }
+}
+
+class _ExperimentalFeaturesPage extends StatelessWidget {
+  const _ExperimentalFeaturesPage({
+    required this.bridge,
+    required this.isRunning,
+    this.onOpenSamsungSettings,
+    this.onChanged,
+  });
+
+  final NativeBridge bridge;
+  final bool isRunning;
+  final VoidCallback? onOpenSamsungSettings;
+  final VoidCallback? onChanged;
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: Text(currentLocalizations().uiExperimentalFeatures)),
+    body: ListView(
+      padding: const EdgeInsets.all(16),
+      children: [
+        DisplayEnvironmentSettingsCard(bridge: bridge, showConvenience: false),
+        const SizedBox(height: 12),
+        _ExperimentalWindowManagerTile(
+          bridge: bridge,
+          isRunning: isRunning,
+          onChanged: onChanged,
+        ),
+        const SizedBox(height: 12),
+        _GamepadExperimentalTile(isRunning: isRunning),
+        const SizedBox(height: 12),
+        _ForceLaptopModeExperimentalTile(isRunning: isRunning),
+        const SizedBox(height: 12),
+        _SamsungExperimentalSettingsTile(
+          bridge: bridge,
+          isRunning: isRunning,
+          onOpenSettings: onOpenSamsungSettings,
+        ),
+      ],
+    ),
+  );
+}
+
+class _ExperimentalWindowManagerTile extends StatefulWidget {
+  const _ExperimentalWindowManagerTile({
+    required this.bridge,
+    required this.isRunning,
+    this.onChanged,
+  });
+
+  final NativeBridge bridge;
+  final bool isRunning;
+  final VoidCallback? onChanged;
+
+  @override
+  State<_ExperimentalWindowManagerTile> createState() =>
+      _ExperimentalWindowManagerTileState();
+}
+
+class _ExperimentalWindowManagerTileState
+    extends State<_ExperimentalWindowManagerTile> {
+  bool enabled = false;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      enabled =
+          preferences.getBool('experimental_dextop_window_manager') ?? false;
+      loading = false;
+    });
+  }
+
+  Future<void> _update(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('experimental_dextop_window_manager', value);
+    if (!value) {
+      await preferences.setString('window_manager', 'system');
+      await widget.bridge.setWindowManager();
+    }
+    if (mounted) setState(() => enabled = value);
+    widget.onChanged?.call();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final l = AppLocalizations.of(context);
+    return Card(
+      child: SwitchListTile(
+        secondary: const Icon(Icons.space_dashboard_outlined),
+        value: enabled,
+        onChanged: loading ? null : _update,
+        title: Text(l.windowManagerPlasma),
+        subtitle: Text(l.windowManagerPlasmaDescription),
+      ),
+    );
   }
 }
 

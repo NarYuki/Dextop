@@ -54,37 +54,80 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
     private var errorDetail = ""
     private var connected = false
     private var relayBound = false
-    private val incoming = Messenger(Handler(Looper.getMainLooper()) { message ->
+    private val relayHandler = Handler(Looper.getMainLooper())
+    private val startupTimeout = Runnable {
+        if (desktopRequested && relayStatus != STATUS_RUNNING && relayStatus != STATUS_ERROR) {
+            showError(
+                when {
+                    !connected -> "Dextop Car Companion could not connect to the Dextop relay service. Open Dextop and confirm that Stellar or Shizuku is available."
+                    container == null -> "Android Auto did not provide a destination surface. Return to the launcher and open Dextop・Driving again."
+                    else -> "Dextop did not finish starting within ${STARTUP_TIMEOUT_MS / 1_000} seconds. Open Dextop and check its operation log."
+                }
+            )
+        }
+    }
+    private val statusHandler = Handler(Looper.getMainLooper()) { message ->
         if (message.what == MSG_STATUS) {
             relayStatus = message.data.getInt(KEY_STATUS, STATUS_IDLE)
             errorDetail = message.data.getString(KEY_DETAIL).orEmpty()
+            if (relayStatus == STATUS_RUNNING || relayStatus == STATUS_ERROR) {
+                relayHandler.removeCallbacks(startupTimeout)
+            }
             invalidate()
             if (relayStatus == STATUS_RUNNING) sendAction("phone_control")
         }
         true
-    })
+    }
+    private val incoming = Messenger(statusHandler)
+    private val heartbeat = object : Runnable {
+        override fun run() {
+            relay?.takeIf { desktopRequested }?.let { target ->
+                runCatching { target.send(Message.obtain(null, MSG_HEARTBEAT).apply { replyTo = incoming }) }
+            }
+            if (relayBound) relayHandler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+        }
+    }
     private val connection = object : ServiceConnection {
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            relay = binder?.let(::Messenger)
+            if (binder == null) {
+                showError("Dextop returned an empty relay connection. Reopen Dextop and try again.")
+                return
+            }
+            relay = Messenger(binder)
             connected = true
+            relayHandler.removeCallbacks(heartbeat)
+            heartbeat.run()
             if (desktopRequested) container?.let(::startRelay)
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             relay = null
             connected = false
             relayBound = false
+            if (desktopRequested) showError("The connection to Dextop was lost. The Dextop process may have stopped or crashed.")
+        }
+
+        override fun onBindingDied(name: ComponentName?) {
+            relay = null
+            connected = false
+            relayBound = false
+            if (desktopRequested) showError("The Dextop relay connection died and must be reconnected.")
+        }
+
+        override fun onNullBinding(name: ComponentName?) {
+            relay = null
+            connected = false
+            relayBound = false
+            if (desktopRequested) showError("The installed Dextop build does not provide a usable Car Companion relay service.")
         }
     }
 
     init {
         carContext.getCarService(AppManager::class.java).setSurfaceCallback(this)
-        relayBound = carContext.bindService(
-            Intent().setComponent(ComponentName(DEXTOP_PACKAGE, RELAY_SERVICE)),
-            connection,
-            Context.BIND_AUTO_CREATE,
-        )
+        bindRelay()
         lifecycle.addObserver(LifecycleEventObserver { _, event ->
             if (event == androidx.lifecycle.Lifecycle.Event.ON_DESTROY && relayBound) {
+                relayHandler.removeCallbacks(heartbeat)
+                relayHandler.removeCallbacks(startupTimeout)
                 runCatching { carContext.unbindService(connection) }
                 relayBound = false
                 relay = null
@@ -99,9 +142,19 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
                 .addAction(Action.Builder().setTitle("Recover and retry").setOnClickListener {
                     relayStatus = STATUS_STARTING
                     errorDetail = "Stopping the remaining session…"
+                    scheduleStartupTimeout()
                     invalidate()
                     sendAction("recover")
                 }.build())
+                .addAction(Action.Builder().setTitle("Stop").setOnClickListener { stopDextop() }.build())
+                .build()
+        }
+        if (desktopRequested && relayStatus != STATUS_RUNNING) {
+            return MessageTemplate.Builder(errorDetail.ifBlank {
+                if (connected) "Waiting for the Android Auto display and Dextop service…"
+                else "Connecting to Dextop Car Companion…"
+            })
+                .setTitle("Starting Dextop・Driving")
                 .addAction(Action.Builder().setTitle("Stop").setOnClickListener { stopDextop() }.build())
                 .build()
         }
@@ -110,6 +163,10 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
                 .setTitle("Start Dextop")
                 .setOnClickListener {
                     desktopRequested = true
+                    relayStatus = STATUS_STARTING
+                    errorDetail = if (relayBound) "Waiting for the Android Auto destination surface…" else "Connecting to the Dextop relay service…"
+                    scheduleStartupTimeout()
+                    if (!relayBound) bindRelay()
                     invalidate()
                     container?.let(::startRelay)
                 }
@@ -147,22 +204,41 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
             startedWidth = 0
             startedHeight = 0
             startedDpi = 0
+            if (desktopRequested) relayHandler.postDelayed({
+                if (desktopRequested && container == null) {
+                    showError("The Android Auto destination surface was disconnected. Reopen Dextop・Driving or select Recover and retry.")
+                }
+            }, SURFACE_LOSS_GRACE_MS)
         }
     }
 
     override fun onClick(x: Float, y: Float) = sendCookedTouch(x, y)
 
     private fun startRelay(value: SurfaceContainer) {
-        val target = relay ?: return
-        val surface = value.surface ?: return
-        if (!surface.isValid || value.width <= 0 || value.height <= 0) return
+        val target = relay ?: run {
+            errorDetail = "Waiting for the Dextop relay service…"
+            scheduleStartupTimeout()
+            invalidate()
+            return
+        }
+        val surface = value.surface ?: run {
+            showError("Android Auto provided no destination surface.")
+            return
+        }
+        if (!surface.isValid || value.width <= 0 || value.height <= 0) {
+            showError("Android Auto provided an invalid destination surface (${value.width} × ${value.height}).")
+            return
+        }
         if (startedSurface === surface && startedWidth == value.width &&
             startedHeight == value.height && startedDpi == value.dpi) return
         startedSurface = surface
         startedWidth = value.width
         startedHeight = value.height
         startedDpi = value.dpi
-        target.send(Message.obtain(null, MSG_START).apply {
+        relayStatus = STATUS_STARTING
+        errorDetail = "Starting the Dextop session…"
+        scheduleStartupTimeout()
+        runCatching { target.send(Message.obtain(null, MSG_START).apply {
             replyTo = incoming
             data = Bundle().apply {
                 putParcelable(KEY_SURFACE, surface)
@@ -171,7 +247,42 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
                 putInt(KEY_DENSITY, value.dpi)
                 putFloat(KEY_RENDER_SCALE, renderScale)
             }
-        })
+        }) }.onFailure { showError("The start request could not be sent to Dextop: ${it.message ?: it.javaClass.simpleName}") }
+    }
+
+    private fun bindRelay() {
+        if (relayBound || relay != null) return
+        val installed = runCatching { carContext.packageManager.getPackageInfo(DEXTOP_PACKAGE, 0) }.isSuccess
+        if (!installed) {
+            if (desktopRequested) showError("Dextop is not installed on this phone.")
+            return
+        }
+        val intent = Intent().setComponent(ComponentName(DEXTOP_PACKAGE, RELAY_SERVICE))
+        val available = carContext.packageManager.resolveService(intent, 0) != null
+        if (!available) {
+            if (desktopRequested) showError("This Dextop build does not include the Car Companion relay service. Update Dextop and try again.")
+            return
+        }
+        relayBound = runCatching {
+            carContext.bindService(intent, connection, Context.BIND_AUTO_CREATE)
+        }.getOrElse {
+            if (desktopRequested) showError("Dextop could not be bound: ${it.message ?: it.javaClass.simpleName}")
+            false
+        }
+        if (!relayBound && desktopRequested) showError("Android refused the connection to the Dextop relay service.")
+    }
+
+    private fun scheduleStartupTimeout() {
+        relayHandler.removeCallbacks(startupTimeout)
+        relayHandler.postDelayed(startupTimeout, STARTUP_TIMEOUT_MS)
+    }
+
+    private fun showError(detail: String) {
+        if (!desktopRequested) return
+        relayHandler.removeCallbacks(startupTimeout)
+        relayStatus = STATUS_ERROR
+        errorDetail = "Reason: $detail\nAction: Select Recover and retry. If it fails again, open Dextop and check its operation log."
+        invalidate()
     }
 
     private fun openQuickMenu() {
@@ -187,6 +298,7 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
                     startedSurface = null
                     container?.let(::startRelay)
                 },
+                onRestart = { sendAction("recover") },
                 onScale = {
                     val scales = floatArrayOf(1f, .9f, .8f, .7f, .6f, .5f)
                     val index = scales.indexOfFirst { kotlin.math.abs(it - renderScale) < .001f }
@@ -211,13 +323,18 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
         relayStatus = STATUS_IDLE
         errorDetail = ""
         startedSurface = null
+        relayHandler.removeCallbacks(startupTimeout)
         invalidate()
     }
 
     private fun sendAction(action: String) {
-        relay?.send(Message.obtain(null, MSG_ACTION).apply {
+        val target = relay ?: run {
+            if (desktopRequested) showError("The Dextop relay is disconnected.")
+            return
+        }
+        runCatching { target.send(Message.obtain(null, MSG_ACTION).apply {
             data = Bundle().apply { putString(KEY_ACTION, action) }
-        })
+        }) }.onFailure { if (desktopRequested) showError("The request to Dextop failed: ${it.message ?: it.javaClass.simpleName}") }
     }
 
     private fun sendCookedTouch(x: Float, y: Float) {
@@ -239,6 +356,7 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
         private const val MSG_STOP = 3
         private const val MSG_STATUS = 4
         private const val MSG_ACTION = 5
+        private const val MSG_HEARTBEAT = 7
         private const val KEY_SURFACE = "surface"
         private const val KEY_WIDTH = "width"
         private const val KEY_HEIGHT = "height"
@@ -253,6 +371,9 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
         private const val STATUS_STARTING = 1
         private const val STATUS_RUNNING = 2
         private const val STATUS_ERROR = 3
+        private const val HEARTBEAT_INTERVAL_MS = 2_000L
+        private const val STARTUP_TIMEOUT_MS = 12_000L
+        private const val SURFACE_LOSS_GRACE_MS = 2_500L
     }
 }
 
@@ -260,6 +381,7 @@ private class DrivingQuickMenu(
     context: androidx.car.app.CarContext,
     private val surfaceInfo: () -> String,
     private val onReconnect: () -> Unit,
+    private val onRestart: () -> Unit,
     private val onScale: () -> Unit,
     private val onPhoneControl: () -> Unit,
     private val onStop: () -> Unit,
@@ -276,6 +398,7 @@ private class DrivingQuickMenu(
         val items = ItemList.Builder()
             .addItem(row("Resolution / scale", surfaceInfo(), onScale))
             .addItem(row("Reconnect", "Reconnect the current display surface", onReconnect))
+            .addItem(row("Restart desktop", "Recreate the display if it is black or unresponsive", onRestart))
             .addItem(row("Phone controls", "Open trackpad and keyboard", onPhoneControl))
             .addItem(row("Stop Dextop", "End the Android Auto session", onStop))
             .build()

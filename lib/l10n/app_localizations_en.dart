@@ -653,11 +653,11 @@ class AppLocalizationsEn extends AppLocalizations {
       'Automatically hide the desktop taskbar when it is not in use';
 
   @override
-  String get displayForceInternal120Hz => 'Run built-in display at 120 Hz';
+  String get displayForceInternal120Hz => 'Output at maximum refresh rate';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Pin a supported built-in screen to 120 Hz while Dextop is running';
+      'Creates the mirror at the highest refresh rate provided by the OS';
 
   @override
   String get displaySoftwareCursorFallback => 'Use software cursor';
@@ -1742,7 +1742,17 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get keyboardHapticsDescription =>
-      'Vibrate when pressing keyboard keys and the trackpad';
+      'Vibrate when pressing keyboard keys';
+
+  @override
+  String get pointerHaptics => 'Pointer haptics';
+
+  @override
+  String get pointerHapticsDescription =>
+      'Vibrate for trackpad clicks and gestures';
+
+  @override
+  String get hapticsStrength => 'Haptic strength';
 
   @override
   String get nativeUnknownPermissionResult =>
@@ -2270,4 +2280,308 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get androidEmbeddedPairingInProgress => 'Pairing in progress';
+
+  @override
+  String get windowManager => 'Window manager';
+
+  @override
+  String get windowManagerSystem => 'Built-in system desktop';
+
+  @override
+  String get windowManagerSystemDescription =>
+      'Uses Samsung DeX or Android desktop windowing as provided by the system';
+
+  @override
+  String get windowManagerPlasma => 'Dextop Plasma (own WM)';
+
+  @override
+  String get windowManagerPlasmaDescription =>
+      'Dextop draws a KDE Plasma 6 style desktop with its own panel, window decorations, tiling and virtual desktops';
+
+  @override
+  String get windowManagerAppliedLive => 'Applied to the running desktop';
+
+  @override
+  String get plasmaSettingsTitle => 'Dextop Plasma settings';
+
+  @override
+  String get plasmaSettingsSummary =>
+      'Appearance, panel, virtual desktops and animations';
+
+  @override
+  String get plasmaHotCorner => 'Top-left hot corner';
+
+  @override
+  String get plasmaHotCornerDescription =>
+      'Moving the pointer into the top-left corner opens Overview';
+
+  @override
+  String get plasmaShortcutsTitle => 'Keyboard shortcuts';
+
+  @override
+  String get plasmaShortcutsBody =>
+      'Meta: Kickoff\nAlt+Space / Alt+F2: KRunner\nMeta+W: Overview\nAlt+Tab: Switch windows\nMeta+Arrows: Quick tile\nMeta+PgUp / PgDn: Maximize / Minimize\nMeta+D: Peek at desktop\nCtrl+F1–F4 / Meta+Ctrl+←→: Virtual desktops\nAlt+F3: Window operations menu\nAlt+F4: Close';
+
+  @override
+  String get nativePlasmaAccentColor => 'Accent color';
+
+  @override
+  String get nativePlasmaAddToFavorites => 'Add to Favorites';
+
+  @override
+  String get nativePlasmaAllApplications => 'All Applications';
+
+  @override
+  String get nativePlasmaAllDesktops => 'All Desktops';
+
+  @override
+  String get nativePlasmaAnimationSpeed => 'Animation speed';
+
+  @override
+  String get nativePlasmaAppInfo => 'App Info';
+
+  @override
+  String get nativePlasmaApplication => 'Application';
+
+  @override
+  String get nativePlasmaApplications => 'Applications';
+
+  @override
+  String get nativePlasmaAudioVolume => 'Audio Volume';
+
+  @override
+  String get nativePlasmaCalculatorCopy => 'Calculator — click to copy';
+
+  @override
+  String get nativePlasmaCategoryGames => 'Games';
+
+  @override
+  String get nativePlasmaCategoryGraphics => 'Graphics';
+
+  @override
+  String get nativePlasmaCategoryInternet => 'Internet';
+
+  @override
+  String get nativePlasmaCategoryLost => 'Lost & Found';
+
+  @override
+  String get nativePlasmaCategoryMultimedia => 'Multimedia';
+
+  @override
+  String get nativePlasmaCategoryNews => 'News';
+
+  @override
+  String get nativePlasmaCategoryOffice => 'Office';
+
+  @override
+  String get nativePlasmaCategorySystem => 'System';
+
+  @override
+  String get nativePlasmaCategoryTravel => 'Maps & Travel';
+
+  @override
+  String get nativePlasmaCategoryVideo => 'Video';
+
+  @override
+  String get nativePlasmaCharging => 'Charging';
+
+  @override
+  String get nativePlasmaClose => 'Close';
+
+  @override
+  String get nativePlasmaCloseAll => 'Close All';
+
+  @override
+  String get nativePlasmaColorScheme => 'Color scheme';
+
+  @override
+  String get nativePlasmaComputer => 'Computer';
+
+  @override
+  String get nativePlasmaConfigureAudio => 'Configure Audio Devices…';
+
+  @override
+  String get nativePlasmaConfigureDesktop => 'Configure Desktop and Wallpaper…';
+
+  @override
+  String get nativePlasmaConfigureNetwork => 'Configure Network Connections…';
+
+  @override
+  String get nativePlasmaConfigurePower => 'Configure Power Management…';
+
+  @override
+  String get nativePlasmaConnected => 'Connected';
+
+  @override
+  String get nativePlasmaDesktop => 'Desktop';
+
+  @override
+  String get nativePlasmaDesktopN => 'Desktop %1\$d';
+
+  @override
+  String get nativePlasmaDeviceSpeaker => 'Device speaker';
+
+  @override
+  String get nativePlasmaDextopSettings => 'Dextop Settings';
+
+  @override
+  String get nativePlasmaDischarging => 'Discharging';
+
+  @override
+  String get nativePlasmaDisconnected => 'Disconnected';
+
+  @override
+  String get nativePlasmaDocked => 'Docked';
+
+  @override
+  String get nativePlasmaFavorites => 'Favorites';
+
+  @override
+  String get nativePlasmaFloating => 'Floating';
+
+  @override
+  String get nativePlasmaFollowSystem => 'Follow system';
+
+  @override
+  String get nativePlasmaInstant => 'Instant';
+
+  @override
+  String get nativePlasmaKrunnerHint => 'Search…';
+
+  @override
+  String get nativePlasmaLeave => 'Leave…';
+
+  @override
+  String get nativePlasmaLogOut => 'Log Out';
+
+  @override
+  String get nativePlasmaLoggingOutIn => 'Logging out in %1\$d seconds';
+
+  @override
+  String get nativePlasmaMaximize => 'Maximize';
+
+  @override
+  String get nativePlasmaMinimize => 'Minimize';
+
+  @override
+  String get nativePlasmaMobileData => 'Mobile data';
+
+  @override
+  String get nativePlasmaMoveToDesktopN => 'Move to Desktop %1\$d';
+
+  @override
+  String get nativePlasmaNetworks => 'Networks';
+
+  @override
+  String get nativePlasmaNewInstance => 'Start New Instance';
+
+  @override
+  String get nativePlasmaNoActiveNetwork => 'No active network';
+
+  @override
+  String get nativePlasmaNoFavorites =>
+      'No favorites yet. Right-click an application to add one.';
+
+  @override
+  String get nativePlasmaNoMatches => 'No matches';
+
+  @override
+  String get nativePlasmaNoWindows => 'No windows on this desktop';
+
+  @override
+  String get nativePlasmaNothingHere => 'Nothing here';
+
+  @override
+  String get nativePlasmaOpen => 'Open';
+
+  @override
+  String get nativePlasmaOverview => 'Overview';
+
+  @override
+  String get nativePlasmaOverviewSearch => 'Type to search…';
+
+  @override
+  String get nativePlasmaPanel => 'Panel';
+
+  @override
+  String get nativePlasmaPeekAtDesktop => 'Peek at Desktop';
+
+  @override
+  String get nativePlasmaPinToTaskManager => 'Pin to Task Manager';
+
+  @override
+  String get nativePlasmaPlaces => 'Places';
+
+  @override
+  String get nativePlasmaPowerAndBattery => 'Power and Battery';
+
+  @override
+  String get nativePlasmaRecentApplications => 'Recent Applications';
+
+  @override
+  String get nativePlasmaRemoveFromFavorites => 'Remove from Favorites';
+
+  @override
+  String get nativePlasmaRestart => 'Restart';
+
+  @override
+  String get nativePlasmaRestartingIn => 'Restarting in %1\$d seconds';
+
+  @override
+  String get nativePlasmaRestore => 'Restore';
+
+  @override
+  String get nativePlasmaRunCommand => 'Run Command (KRunner)';
+
+  @override
+  String get nativePlasmaSearch => 'Search…';
+
+  @override
+  String get nativePlasmaShutDown => 'Shut Down';
+
+  @override
+  String get nativePlasmaShuttingDownIn =>
+      'Shutting down Dextop in %1\$d seconds';
+
+  @override
+  String get nativePlasmaSleep => 'Sleep';
+
+  @override
+  String get nativePlasmaSleepingIn => 'Sleeping in %1\$d seconds';
+
+  @override
+  String get nativePlasmaStatusAndNotifications => 'Status and Notifications';
+
+  @override
+  String get nativePlasmaStopPeeking => 'Stop Peeking at Desktop';
+
+  @override
+  String get nativePlasmaSystemSettings => 'System Settings';
+
+  @override
+  String get nativePlasmaTileLeft => 'Quick Tile Left';
+
+  @override
+  String get nativePlasmaTileRight => 'Quick Tile Right';
+
+  @override
+  String get nativePlasmaUnpinFromTaskManager => 'Unpin from Task Manager';
+
+  @override
+  String get nativePlasmaVirtualDesktops => 'Virtual desktops';
+
+  @override
+  String get nativePlasmaWallpaper => 'Wallpaper';
+
+  @override
+  String get nativePlasmaWallpaperAndroid => 'Android wallpaper';
+
+  @override
+  String get nativePlasmaWallpaperPlasma => 'Plasma';
+
+  @override
+  String get nativePlasmaBreezeDark => 'Breeze Dark';
+
+  @override
+  String get nativePlasmaBreezeLight => 'Breeze Light';
 }

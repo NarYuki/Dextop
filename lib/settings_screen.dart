@@ -103,6 +103,7 @@ extension _SettingsContent on _HomeScreenState {
                         onCheck: () => _checkForUpdates(manual: true),
                         onShowUpdate: _showUpdateDialog,
                         isRunning: active,
+                        onExperimentalFeaturesChanged: _loadHomeSelections,
                       ),
                     ),
                   ),
@@ -415,6 +416,7 @@ extension _SettingsContent on _HomeScreenState {
               mutate(() => desktopSettingsSection = 'samsung'),
           onOpenDiagnosticLog: () =>
               mutate(() => desktopSettingsSection = 'diagnostics'),
+          onExperimentalFeaturesChanged: _loadHomeSelections,
         ),
         'samsung' => SamsungDesktopSettingsPage(
           bridge: bridge,
@@ -520,6 +522,30 @@ extension _SettingsContent on _HomeScreenState {
                   ? null
                   : () => _selectMirrorBackend(context, l, updateRoute),
             ),
+            if (experimentalWindowManagerEnabled) ...[
+              Divider(height: 1),
+              ListTile(
+                leading: const Icon(Icons.space_dashboard_outlined),
+                title: Text(l.windowManager),
+                subtitle: Text(_windowManagerLabel(l, windowManager)),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => _selectWindowManager(context, l, updateRoute),
+              ),
+              if (windowManager == 'dextop_plasma') ...[
+                Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.palette_outlined),
+                  title: Text(l.plasmaSettingsTitle),
+                  subtitle: Text(l.plasmaSettingsSummary),
+                  trailing: const Icon(Icons.chevron_right_rounded),
+                  onTap: () => Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => PlasmaSettingsPage(bridge: bridge),
+                    ),
+                  ),
+                ),
+              ],
+            ],
             Divider(height: 1),
             ListTile(
               leading: Icon(Icons.cast_rounded),
@@ -534,6 +560,7 @@ extension _SettingsContent on _HomeScreenState {
             ),
             DisplayEnvironmentSettingsCard(
               bridge: bridge,
+              showDisplay: false,
               showConvenience: false,
               displayLeadingDivider: true,
               wrapInCard: false,
@@ -572,6 +599,51 @@ extension _SettingsContent on _HomeScreenState {
           ]),
         ],
       );
+
+  String _windowManagerLabel(AppLocalizations l, String value) =>
+      value == 'dextop_plasma' ? l.windowManagerPlasma : l.windowManagerSystem;
+
+  Future<void> _selectWindowManager(
+    BuildContext routeContext,
+    AppLocalizations l,
+    StateSetter updateRoute,
+  ) async {
+    final selected = await showDialog<String>(
+      context: routeContext,
+      builder: (dialogContext) => SimpleDialog(
+        title: Text(l.windowManager),
+        children: [
+          RadioGroup<String>(
+            groupValue: windowManager,
+            onChanged: (choice) => Navigator.pop(dialogContext, choice),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                RadioListTile<String>(
+                  value: 'system',
+                  title: Text(l.windowManagerSystem),
+                  subtitle: Text(l.windowManagerSystemDescription),
+                ),
+                RadioListTile<String>(
+                  value: 'dextop_plasma',
+                  title: Text(l.windowManagerPlasma),
+                  subtitle: Text(l.windowManagerPlasmaDescription),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+    if (selected == null || selected == windowManager) return;
+    updateRoute(() => windowManager = selected);
+    await setWindowManager(selected);
+    if (active && routeContext.mounted) {
+      ScaffoldMessenger.of(
+        routeContext,
+      ).showSnackBar(SnackBar(content: Text(l.windowManagerAppliedLive)));
+    }
+  }
 
   Future<void> _selectCastMode(
     BuildContext routeContext,
@@ -929,6 +1001,8 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
   var loading = true;
   var pointerProfile = 'touchpad';
   var naturalScroll = true;
+  var pointerHapticsEnabled = true;
+  var pointerHapticsStrength = 70;
 
   @override
   void initState() {
@@ -958,6 +1032,9 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
           ? savedProfile!
           : fallbackProfile;
       naturalScroll = store.getBool('virtual_mouse_natural_scroll') ?? true;
+      pointerHapticsEnabled = store.getBool('pointer_haptics_enabled') ?? true;
+      pointerHapticsStrength = (store.getInt('pointer_haptics_strength') ?? 70)
+          .clamp(1, 100);
       loading = false;
     });
   }
@@ -980,6 +1057,17 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
   void _setNaturalScroll(bool value) {
     setState(() => naturalScroll = value);
     unawaited(prefs?.setBool('virtual_mouse_natural_scroll', value));
+  }
+
+  void _setPointerHapticsEnabled(bool value) {
+    setState(() => pointerHapticsEnabled = value);
+    unawaited(prefs?.setBool('pointer_haptics_enabled', value));
+  }
+
+  void _setPointerHapticsStrength(double value) {
+    final strength = value.round().clamp(1, 100);
+    setState(() => pointerHapticsStrength = strength);
+    unawaited(prefs?.setInt('pointer_haptics_strength', strength));
   }
 
   @override
@@ -1028,6 +1116,35 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
                   },
                   onChanged: _setNaturalScroll,
                 ),
+                const Divider(height: 1),
+                SwitchListTile(
+                  secondary: const Icon(Icons.vibration_rounded),
+                  value: pointerHapticsEnabled,
+                  onChanged: loading ? null : _setPointerHapticsEnabled,
+                  title: Text(l.pointerHaptics),
+                  subtitle: Text(l.pointerHapticsDescription),
+                ),
+                if (pointerHapticsEnabled) ...[
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.tune_rounded),
+                    title: Text(l.hapticsStrength),
+                    subtitle: Slider(
+                      value: pointerHapticsStrength.toDouble(),
+                      min: 1,
+                      max: 100,
+                      divisions: 99,
+                      label: '$pointerHapticsStrength%',
+                      onChanged: loading
+                          ? null
+                          : (value) => setState(
+                              () => pointerHapticsStrength = value.round(),
+                            ),
+                      onChangeEnd: _setPointerHapticsStrength,
+                    ),
+                    trailing: Text('$pointerHapticsStrength%'),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1087,6 +1204,7 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
   var loading = true;
   var matchPhoneOrientation = true;
   var hiddenAutoDisplay = false;
+  var scrcpyStreaming = false;
 
   @override
   void initState() {
@@ -1096,20 +1214,41 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
 
   Future<void> _load() async {
     final preferences = await SharedPreferences.getInstance();
+    var savedHiddenDisplay =
+        preferences.getBool('android_auto_hidden_display') ?? false;
+    var savedDecoratedDisplay =
+        preferences.getBool('android_auto_scrcpy_streaming') ?? false;
+    final migratedTo21 =
+        preferences.getBool('android_auto_21_default_migrated') ?? false;
+    // 2.1 is the new stable default. Upgrade both the old 1.1.3 selection
+    // (false/false) and the former 2.0 selection to it exactly once. After
+    // this marker is written, an explicit user choice of legacy is retained.
+    if (!migratedTo21) {
+      savedHiddenDisplay = true;
+      savedDecoratedDisplay = true;
+      await preferences.setBool('android_auto_hidden_display', true);
+      await preferences.setBool('android_auto_scrcpy_streaming', true);
+      await preferences.setBool('android_auto_21_default_migrated', true);
+    }
     if (!mounted) return;
     setState(() {
       matchPhoneOrientation =
           preferences.getBool('android_auto_match_phone_orientation') ?? true;
-      hiddenAutoDisplay =
-          preferences.getBool('android_auto_hidden_display') ?? false;
+      hiddenAutoDisplay = savedHiddenDisplay;
+      scrcpyStreaming = savedDecoratedDisplay;
       loading = false;
     });
   }
 
-  Future<void> _setHiddenAutoDisplay(bool value) async {
-    setState(() => hiddenAutoDisplay = value);
+  Future<void> _setCarCompanionMode(int value) async {
+    setState(() {
+      hiddenAutoDisplay = value != 0;
+      scrcpyStreaming = value == 2;
+    });
     final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool('android_auto_hidden_display', value);
+    await preferences.setBool('android_auto_hidden_display', value != 0);
+    await preferences.setBool('android_auto_scrcpy_streaming', value == 2);
+    await preferences.setBool('android_auto_21_default_migrated', true);
   }
 
   Future<void> _setMatchPhoneOrientation(bool value) async {
@@ -1140,33 +1279,47 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
             subtitle: Text(l.autoDisplayModeDescription),
           ),
         ]),
-        _settingsSection(
-          japanese ? 'Car Companion方式' : 'Car Companion mode',
-          [
-          RadioListTile<bool>(
-            secondary: const Icon(Icons.layers_outlined),
-            title: Text(japanese
-                ? 'Car Companion 1.1.3（安定版）'
-                : 'Car Companion 1.1.3 (stable)'),
-            subtitle: Text(japanese
-                ? '従来のOverlayDisplayを作成し、Android Autoへミラーリングします。'
-                : 'Uses the original OverlayDisplay and mirrors it to Android Auto.'),
-            value: false,
-            groupValue: hiddenAutoDisplay,
-            onChanged: loading ? null : (value) => _setHiddenAutoDisplay(value!),
-          ),
-          const Divider(height: 1),
-          RadioListTile<bool>(
-            secondary: const Icon(Icons.science_outlined),
-            title: Text(japanese
-                ? 'Car Companion 2.0（不安定版）'
-                : 'Car Companion 2.0 (unstable)'),
-            subtitle: Text(japanese
-                ? 'Android AutoのSurfaceへ直結する実験的なVirtualDisplay方式です。'
-                : 'Experimental VirtualDisplay connected directly to the Android Auto surface.'),
-            value: true,
-            groupValue: hiddenAutoDisplay,
-            onChanged: loading ? null : (value) => _setHiddenAutoDisplay(value!),
+        _settingsSection(japanese ? 'Car Companion方式' : 'Car Companion mode', [
+          RadioGroup<int>(
+            groupValue: scrcpyStreaming ? 2 : (hiddenAutoDisplay ? 1 : 0),
+            onChanged: (value) {
+              if (!loading && value != null) _setCarCompanionMode(value);
+            },
+            child: Column(
+              children: [
+                RadioListTile<int>(
+                  secondary: const Icon(Icons.layers_outlined),
+                  title: Text(
+                    japanese
+                        ? 'Car Companion 1.1.3（レガシー）'
+                        : 'Car Companion 1.1.3 (legacy)',
+                  ),
+                  subtitle: Text(
+                    japanese
+                        ? '従来のOverlayDisplayを作成し、Android Autoへミラーリングします。'
+                        : 'Uses the original OverlayDisplay and mirrors it to Android Auto.',
+                  ),
+                  value: 0,
+                  enabled: !loading,
+                ),
+                const Divider(height: 1),
+                RadioListTile<int>(
+                  secondary: const Icon(Icons.stream_rounded),
+                  title: Text(
+                    japanese
+                        ? 'Car Companion 2.1（安定版）'
+                        : 'Car Companion 2.1 (stable)',
+                  ),
+                  subtitle: Text(
+                    japanese
+                        ? '装飾付きVirtualDisplayをAndroid AutoのSurfaceへ直接接続します。'
+                        : 'Connects a decorated VirtualDisplay directly to the Android Auto surface.',
+                  ),
+                  value: 2,
+                  enabled: !loading,
+                ),
+              ],
+            ),
           ),
         ]),
       ],

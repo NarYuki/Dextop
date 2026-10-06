@@ -58,7 +58,7 @@ internal class DisplayMirrorBackend(
         listOf(
             WindowManagerMirrorBackend(privilegedAccess),
             SurfaceControlMirrorBackend(),
-            VirtualDisplayMirrorBackend(privilegedAccess)
+            VirtualDisplayMirrorBackend(context, privilegedAccess)
         )
             .associateBy { it.id }
     }
@@ -74,7 +74,7 @@ internal class DisplayMirrorBackend(
         .mapTo(mutableSetOf()) { it.displayId }
 
     override fun requestDisplay(width: Int, height: Int, density: Int, secure: Boolean, decorations: Boolean) {
-        requestDisplay(width, height, density, secure, decorations, emptySet())
+        requestDisplay(width, height, density, secure, decorations, emptySet(), false)
     }
 
     fun requestDisplay(
@@ -83,12 +83,17 @@ internal class DisplayMirrorBackend(
         density: Int,
         secure: Boolean,
         decorations: Boolean,
-        preserveSpecs: Set<String>
+        preserveSpecs: Set<String>,
+        ownContentOnly: Boolean = false,
     ) {
         val flags = buildList {
             if (secure) add("secure")
             if (decorations) add("should_show_system_decorations")
-        }.joinToString(separator = ",", prefix = if (secure || decorations) "," else "")
+            // Plasma supplies its own shell and must not ask the framework or
+            // Samsung launcher to populate the display.  This is the overlay
+            // display equivalent of YoukiDEX's independently-owned UI layer.
+            if (ownContentOnly) add("own_content_only")
+        }.joinToString(separator = ",", prefix = if (secure || decorations || ownContentOnly) "," else "")
         val spec = "${width}x$height/$density$flags"
         val current = Settings.Global.getString(resolver, DISPLAY_SPECIFICATION).orEmpty()
         // A phone and Auto session can legitimately request the same logical
@@ -254,14 +259,23 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
     val host = checkNotNull(request.host) { "A SurfaceView host is required for layer mirroring" }
     val parent = SurfaceView::class.java.getMethod("getSurfaceControl").invoke(host) as SurfaceControl
     val transaction = SurfaceControl.Transaction().reparent(layer, parent).setLayer(layer, 1)
+    // Preserve the Auto desktop aspect ratio and keep every edge visible.
+    // The Auto tile can be nearly square while the phone is ultrawide, so
+    // center-cropping would cut away a large part of the desktop.
+    val scale = minOf(
+        request.hostWidth.toFloat() / request.contentWidth,
+        request.hostHeight.toFloat() / request.contentHeight,
+    )
+    val offsetX = (request.hostWidth - request.contentWidth * scale) / 2f
+    val offsetY = (request.hostHeight - request.contentHeight * scale) / 2f
     SurfaceControl.Transaction::class.java.getMethod(
         "setMatrix", SurfaceControl::class.java, Float::class.javaPrimitiveType,
         Float::class.javaPrimitiveType, Float::class.javaPrimitiveType, Float::class.javaPrimitiveType
     ).invoke(
         transaction, layer,
-        request.hostWidth.toFloat() / request.contentWidth, 0f,
-        0f, request.hostHeight.toFloat() / request.contentHeight
+        scale, 0f, 0f, scale
     )
+    transaction.setPosition(layer, offsetX, offsetY)
     SurfaceControl.Transaction::class.java.getMethod(
         "setWindowCrop", SurfaceControl::class.java, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
     ).invoke(transaction, layer, request.contentWidth, request.contentHeight)
@@ -285,7 +299,10 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
  * deliberately independent from the SurfaceControl implementations above so a
  * vendor can select it without changing working devices.
  */
-private class VirtualDisplayMirrorBackend(private val privilegedAccess: PrivilegedAccess) : MirrorAttachBackend {
+private class VirtualDisplayMirrorBackend(
+    private val context: Context,
+    private val privilegedAccess: PrivilegedAccess,
+) : MirrorAttachBackend {
     override val id = "virtual_display"
 
     private val platform by lazy { VirtualDisplayPlatform.inspect() }
@@ -296,7 +313,13 @@ private class VirtualDisplayMirrorBackend(private val privilegedAccess: Privileg
         val surface = request.destinationSurface
         check(surface.isValid) { "The destination surface is unavailable" }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
-        return platform.open(service, request, surface)
+        return platform.open(
+            service,
+            request,
+            surface,
+            requestMaximumRefreshRate = DisplayEnvironmentSettings(context)
+                .maximumMirrorRefreshRateEnabled(),
+        )
     }
 }
 
@@ -334,8 +357,13 @@ internal class VirtualDisplayPlatform private constructor(
     private val resizeOperation: Method?,
     private val surfaceOperation: Method?
 ) {
-    fun open(service: Any, request: MirrorAttachRequest, surface: Surface): MirrorAttachment {
-        val descriptor = createDescriptor(request, surface)
+    fun open(
+        service: Any,
+        request: MirrorAttachRequest,
+        surface: Surface,
+        requestMaximumRefreshRate: Boolean = false,
+    ): MirrorAttachment {
+        val descriptor = createDescriptor(request, surface, requestMaximumRefreshRate)
         val callback = createCallback()
         val bindings = mapOf<Class<*>, Any>(
             configurationType to descriptor,
@@ -367,12 +395,14 @@ internal class VirtualDisplayPlatform private constructor(
      * not create a draggable "Overlay #" window on the phone display.
      */
     fun openOwned(
+        context: Context,
         service: Any,
         surface: Surface,
         width: Int,
         height: Int,
         density: Int,
-        decorations: Boolean
+        decorations: Boolean,
+        configureBeforePublish: (Int) -> Unit = {},
     ): OwnedVirtualDisplay {
         check(surface.isValid) { "The Dextop Car Companion destination surface is unavailable" }
         val constructor = builderType.constructors.single { candidate ->
@@ -383,33 +413,66 @@ internal class VirtualDisplayPlatform private constructor(
         }
         val builder = constructor.newInstance("Dextop Auto", width, height, density)
         builderType.getMethod("setSurface", Surface::class.java).invoke(builder, surface)
-        // Keep the Auto-owned display private. Samsung turns PUBLIC virtual
-        // displays into AUTO_MIRROR displays, which conflicts with
-        // OWN_CONTENT_ONLY and makes createVirtualDisplay reject the request.
-        // PRESENTATION | OWN_CONTENT_ONLY | SUPPORTS_TOUCH | TRUSTED keeps the
-        // display launchable while its buffers are sent only to CARDEX.
-        // Decorations remain opt-in for the existing HOME-launch fallback.
-        val flags = 2 or 8 or 64 or 1024 or (if (decorations) 512 else 0)
-        builderType.getMethod("setFlags", Int::class.javaPrimitiveType).invoke(builder, flags)
-        val descriptor = builderType.getMethod("build").invoke(builder)
-        val callback = createCallback()
-        val bindings = mapOf<Class<*>, Any>(configurationType to descriptor, callbackType to callback)
-        val arguments = createOperation.parameterTypes.map { parameter ->
-            bindings.entries.firstOrNull { parameter.isAssignableFrom(it.key) }?.value
-                ?: defaultArgument(parameter)
-        }.toTypedArray()
-        val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
-        check(displayId >= 0) { "The hidden Auto display request was declined" }
-        return OwnedVirtualDisplay(
-            displayId,
-            ManagedVirtualDisplay(
-                service, releaseOperation, resizeOperation, surfaceOperation, callback,
-                width, height, width, height, density
+        // Electron-style direct display. Prefer the fully capable public,
+        // trusted and decorated configuration, then progressively remove
+        // optional capabilities for vendor firmware that rejects a flag.
+        val flagLadder = if (decorations) {
+            intArrayOf(
+                FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY or
+                    FLAG_SUPPORTS_TOUCH or FLAG_SHOW_SYSTEM_DECORATIONS or FLAG_TRUSTED,
+                FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY or
+                    FLAG_SHOW_SYSTEM_DECORATIONS or FLAG_TRUSTED,
+                FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
+                FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY,
             )
-        )
+        } else {
+            intArrayOf(2 or 8 or 64 or 1024)
+        }
+        var lastFailure: Throwable? = null
+        flagLadder.forEach { flags ->
+            val callback = createCallback()
+            try {
+                builderType.getMethod("setFlags", Int::class.javaPrimitiveType).invoke(builder, flags)
+                val descriptor = builderType.getMethod("build").invoke(builder)
+                val bindings = mapOf<Class<*>, Any>(configurationType to descriptor, callbackType to callback)
+                val arguments = createOperation.parameterTypes.map { parameter ->
+                    bindings.entries.firstOrNull { parameter.isAssignableFrom(it.key) }?.value
+                        ?: defaultArgument(parameter)
+                }.toTypedArray()
+                val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
+                if (displayId >= 0) {
+                    try {
+                        // This deliberately happens before openOwned returns.
+                        // DeX observes a new display immediately; configuring
+                        // freeform later leaves a race where its first task is
+                        // permanently attached as fullscreen.
+                        configureBeforePublish(displayId)
+                    } catch (error: Throwable) {
+                        runCatching { releaseOperation.invoke(service, callback) }
+                        throw error
+                    }
+                    OperationLog.i(context, "CarCompanion", "direct display created flags=0x${flags.toString(16)}")
+                    return OwnedVirtualDisplay(
+                        displayId,
+                        ManagedVirtualDisplay(
+                            service, releaseOperation, resizeOperation, surfaceOperation, callback,
+                            width, height, width, height, density
+                        )
+                    )
+                }
+            } catch (error: Throwable) {
+                lastFailure = error
+                OperationLog.w(context, "CarCompanion", "direct display flags rejected 0x${flags.toString(16)}", error)
+            }
+        }
+        throw IllegalStateException("The direct Auto display request was declined", lastFailure)
     }
 
-    private fun createDescriptor(request: MirrorAttachRequest, surface: Surface): Any {
+    private fun createDescriptor(
+        request: MirrorAttachRequest,
+        surface: Surface,
+        requestMaximumRefreshRate: Boolean,
+    ): Any {
         val constructor = builderType.constructors.singleOrNull { candidate ->
             candidate.parameterTypes.contentEquals(
                 arrayOf(String::class.java, Int::class.javaPrimitiveType,
@@ -439,8 +502,33 @@ internal class VirtualDisplayPlatform private constructor(
         properties.forEach { property ->
             builderType.getMethod(property.name, property.type).invoke(builder, property.value)
         }
+        if (requestMaximumRefreshRate) {
+            hostRefreshRate(request.host)?.let { refreshRate ->
+                // Added in Android 14. Reflection preserves the existing
+                // automatic-rate behaviour on older or vendor-modified builds.
+                runCatching {
+                    builderType.getMethod(
+                        "setRequestedRefreshRate",
+                        Float::class.javaPrimitiveType,
+                    ).invoke(builder, refreshRate)
+                }
+            }
+        }
         return builderType.getMethod("build").invoke(builder)
     }
+
+    private fun hostRefreshRate(host: SurfaceView?): Float? = runCatching {
+        val display = host?.display ?: return null
+        val mode = display.mode
+        chooseMirrorRefreshRate(
+            display.supportedModes
+            .filter {
+                it.physicalWidth == mode.physicalWidth &&
+                    it.physicalHeight == mode.physicalHeight
+            }
+            .map { it.refreshRate }
+        )
+    }.getOrNull()
 
     private fun createCallback(): Any {
         val handler = DisplayLifecycleCallback(Binder())
@@ -466,6 +554,12 @@ internal class VirtualDisplayPlatform private constructor(
 
     companion object {
         const val MANAGER_INTERFACE = "android.hardware.display.IDisplayManager"
+        private const val FLAG_PUBLIC = 1
+        private const val FLAG_PRESENTATION = 1 shl 1
+        private const val FLAG_OWN_CONTENT_ONLY = 1 shl 3
+        private const val FLAG_SUPPORTS_TOUCH = 1 shl 6
+        private const val FLAG_SHOW_SYSTEM_DECORATIONS = 1 shl 9
+        private const val FLAG_TRUSTED = 1 shl 10
 
         fun inspect(): VirtualDisplayPlatform {
             val manager = Class.forName(MANAGER_INTERFACE)
@@ -498,6 +592,10 @@ internal class VirtualDisplayPlatform private constructor(
         }
     }
 }
+
+/** Highest finite positive refresh rate offered by Android for the host mode. */
+internal fun chooseMirrorRefreshRate(rates: List<Float>): Float? =
+    rates.filter { it.isFinite() && it > 0f }.maxOrNull()
 
 private class DisplayLifecycleCallback(private val binder: Binder) : InvocationHandler {
     override fun invoke(proxy: Any, method: Method, arguments: Array<out Any?>?): Any? = when {
@@ -533,6 +631,7 @@ private class ManagedVirtualDisplay(
 
     override fun update(request: MirrorAttachRequest): Boolean = runCatching {
         val resize = resizeOperation ?: return false
+        val setSurface = surfaceOperation ?: return false
         val nextWidth = request.hostWidth.takeIf { it > 0 } ?: request.contentWidth
         val nextHeight = request.hostHeight.takeIf { it > 0 } ?: request.contentHeight
         val logicalSizeChanged = request.contentWidth != contentWidth ||
@@ -562,7 +661,7 @@ private class ManagedVirtualDisplay(
         contentWidth = request.contentWidth
         contentHeight = request.contentHeight
         if (densityChanged) contentDensity = request.contentDensity
-        surfaceOperation?.let { operation ->
+        setSurface.let { operation ->
             val args = operation.parameterTypes.mapIndexed { index, type ->
                 when {
                     index == 0 -> callback

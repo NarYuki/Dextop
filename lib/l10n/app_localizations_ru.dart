@@ -656,11 +656,12 @@ class AppLocalizationsRu extends AppLocalizations {
       'Автоматически скрывает панель задач рабочего стола, когда она не используется';
 
   @override
-  String get displayForceInternal120Hz => 'Частота встроенного экрана 120 Гц';
+  String get displayForceInternal120Hz =>
+      'Вывод с максимальной частотой обновления';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Фиксирует частоту поддерживаемого встроенного экрана на 120 Гц во время работы Dextop';
+      'Создаёт зеркало с максимальной частотой обновления, предоставляемой ОС';
 
   @override
   String get displaySoftwareCursorFallback => 'Использовать программный курсор';
@@ -1760,7 +1761,17 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get keyboardHapticsDescription =>
-      'Вибрация при нажатии клавиш и использовании сенсорной панели';
+      'Вибрация при нажатии клавиш клавиатуры';
+
+  @override
+  String get pointerHaptics => 'Тактильная отдача указателя';
+
+  @override
+  String get pointerHapticsDescription =>
+      'Вибрация при щелчках и жестах на сенсорной панели';
+
+  @override
+  String get hapticsStrength => 'Сила вибрации';
 
   @override
   String get nativeUnknownPermissionResult =>
@@ -2294,4 +2305,309 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get androidEmbeddedPairingInProgress => 'Выполняется сопряжение';
+
+  @override
+  String get windowManager => 'Оконный менеджер';
+
+  @override
+  String get windowManagerSystem => 'Встроенный системный рабочий стол';
+
+  @override
+  String get windowManagerSystemDescription =>
+      'Использует Samsung DeX или оконный режим Android без изменений';
+
+  @override
+  String get windowManagerPlasma => 'Dextop Plasma (собственный WM)';
+
+  @override
+  String get windowManagerPlasmaDescription =>
+      'Dextop рисует рабочий стол в стиле KDE Plasma 6: панель, оформление окон, мозаику и виртуальные рабочие столы';
+
+  @override
+  String get windowManagerAppliedLive =>
+      'Применено к запущенному рабочему столу';
+
+  @override
+  String get plasmaSettingsTitle => 'Настройки Dextop Plasma';
+
+  @override
+  String get plasmaSettingsSummary =>
+      'Внешний вид, панель, рабочие столы и анимации';
+
+  @override
+  String get plasmaHotCorner => 'Активный левый верхний угол';
+
+  @override
+  String get plasmaHotCornerDescription =>
+      'Перемещение указателя в левый верхний угол открывает обзор';
+
+  @override
+  String get plasmaShortcutsTitle => 'Сочетания клавиш';
+
+  @override
+  String get plasmaShortcutsBody =>
+      'Meta: Kickoff\nAlt+Space / Alt+F2: KRunner\nMeta+W: Обзор\nAlt+Tab: Переключение окон\nMeta+стрелки: Быстрая мозаика\nMeta+PgUp / PgDn: Развернуть / Свернуть\nMeta+D: Показать рабочий стол\nCtrl+F1–F4 / Meta+Ctrl+←→: Рабочие столы\nAlt+F3: Меню действий окна\nAlt+F4: Закрыть';
+
+  @override
+  String get nativePlasmaAccentColor => 'Цвет выделения';
+
+  @override
+  String get nativePlasmaAddToFavorites => 'Добавить в избранное';
+
+  @override
+  String get nativePlasmaAllApplications => 'Все приложения';
+
+  @override
+  String get nativePlasmaAllDesktops => 'На всех рабочих столах';
+
+  @override
+  String get nativePlasmaAnimationSpeed => 'Скорость анимации';
+
+  @override
+  String get nativePlasmaAppInfo => 'О приложении';
+
+  @override
+  String get nativePlasmaApplication => 'Приложение';
+
+  @override
+  String get nativePlasmaApplications => 'Приложения';
+
+  @override
+  String get nativePlasmaAudioVolume => 'Громкость';
+
+  @override
+  String get nativePlasmaCalculatorCopy =>
+      'Калькулятор — нажмите, чтобы скопировать';
+
+  @override
+  String get nativePlasmaCategoryGames => 'Игры';
+
+  @override
+  String get nativePlasmaCategoryGraphics => 'Графика';
+
+  @override
+  String get nativePlasmaCategoryInternet => 'Интернет';
+
+  @override
+  String get nativePlasmaCategoryLost => 'Прочие';
+
+  @override
+  String get nativePlasmaCategoryMultimedia => 'Мультимедиа';
+
+  @override
+  String get nativePlasmaCategoryNews => 'Новости';
+
+  @override
+  String get nativePlasmaCategoryOffice => 'Офис';
+
+  @override
+  String get nativePlasmaCategorySystem => 'Система';
+
+  @override
+  String get nativePlasmaCategoryTravel => 'Карты и путешествия';
+
+  @override
+  String get nativePlasmaCategoryVideo => 'Видео';
+
+  @override
+  String get nativePlasmaCharging => 'Заряжается';
+
+  @override
+  String get nativePlasmaClose => 'Закрыть';
+
+  @override
+  String get nativePlasmaCloseAll => 'Закрыть все';
+
+  @override
+  String get nativePlasmaColorScheme => 'Цветовая схема';
+
+  @override
+  String get nativePlasmaComputer => 'Компьютер';
+
+  @override
+  String get nativePlasmaConfigureAudio => 'Настроить звуковые устройства…';
+
+  @override
+  String get nativePlasmaConfigureDesktop => 'Настроить рабочий стол и обои…';
+
+  @override
+  String get nativePlasmaConfigureNetwork => 'Настроить сетевые подключения…';
+
+  @override
+  String get nativePlasmaConfigurePower => 'Настроить управление питанием…';
+
+  @override
+  String get nativePlasmaConnected => 'Подключено';
+
+  @override
+  String get nativePlasmaDesktop => 'Рабочий стол';
+
+  @override
+  String get nativePlasmaDesktopN => 'Рабочий стол %1\$d';
+
+  @override
+  String get nativePlasmaDeviceSpeaker => 'Динамик устройства';
+
+  @override
+  String get nativePlasmaDextopSettings => 'Настройки Dextop';
+
+  @override
+  String get nativePlasmaDischarging => 'Разряжается';
+
+  @override
+  String get nativePlasmaDisconnected => 'Нет подключения';
+
+  @override
+  String get nativePlasmaDocked => 'Прикреплённая';
+
+  @override
+  String get nativePlasmaFavorites => 'Избранное';
+
+  @override
+  String get nativePlasmaFloating => 'Плавающая';
+
+  @override
+  String get nativePlasmaFollowSystem => 'Как в системе';
+
+  @override
+  String get nativePlasmaInstant => 'Мгновенно';
+
+  @override
+  String get nativePlasmaKrunnerHint => 'Поиск…';
+
+  @override
+  String get nativePlasmaLeave => 'Завершение работы…';
+
+  @override
+  String get nativePlasmaLogOut => 'Выйти';
+
+  @override
+  String get nativePlasmaLoggingOutIn => 'Выход через %1\$d с';
+
+  @override
+  String get nativePlasmaMaximize => 'Развернуть';
+
+  @override
+  String get nativePlasmaMinimize => 'Свернуть';
+
+  @override
+  String get nativePlasmaMobileData => 'Мобильные данные';
+
+  @override
+  String get nativePlasmaMoveToDesktopN => 'На рабочий стол %1\$d';
+
+  @override
+  String get nativePlasmaNetworks => 'Сети';
+
+  @override
+  String get nativePlasmaNewInstance => 'Запустить ещё один экземпляр';
+
+  @override
+  String get nativePlasmaNoActiveNetwork => 'Нет активной сети';
+
+  @override
+  String get nativePlasmaNoFavorites =>
+      'Избранного пока нет. Щёлкните приложение правой кнопкой, чтобы добавить.';
+
+  @override
+  String get nativePlasmaNoMatches => 'Ничего не найдено';
+
+  @override
+  String get nativePlasmaNoWindows => 'На этом рабочем столе нет окон';
+
+  @override
+  String get nativePlasmaNothingHere => 'Здесь пусто';
+
+  @override
+  String get nativePlasmaOpen => 'Открыть';
+
+  @override
+  String get nativePlasmaOverview => 'Обзор';
+
+  @override
+  String get nativePlasmaOverviewSearch => 'Введите для поиска…';
+
+  @override
+  String get nativePlasmaPanel => 'Панель';
+
+  @override
+  String get nativePlasmaPeekAtDesktop => 'Показать рабочий стол';
+
+  @override
+  String get nativePlasmaPinToTaskManager => 'Закрепить на панели задач';
+
+  @override
+  String get nativePlasmaPlaces => 'Места';
+
+  @override
+  String get nativePlasmaPowerAndBattery => 'Питание и батарея';
+
+  @override
+  String get nativePlasmaRecentApplications => 'Недавние приложения';
+
+  @override
+  String get nativePlasmaRemoveFromFavorites => 'Удалить из избранного';
+
+  @override
+  String get nativePlasmaRestart => 'Перезапустить';
+
+  @override
+  String get nativePlasmaRestartingIn => 'Перезапуск через %1\$d с';
+
+  @override
+  String get nativePlasmaRestore => 'Восстановить';
+
+  @override
+  String get nativePlasmaRunCommand => 'Выполнить команду (KRunner)';
+
+  @override
+  String get nativePlasmaSearch => 'Поиск…';
+
+  @override
+  String get nativePlasmaShutDown => 'Выключить';
+
+  @override
+  String get nativePlasmaShuttingDownIn => 'Dextop завершится через %1\$d с';
+
+  @override
+  String get nativePlasmaSleep => 'Сон';
+
+  @override
+  String get nativePlasmaSleepingIn => 'Сон через %1\$d с';
+
+  @override
+  String get nativePlasmaStatusAndNotifications => 'Состояние и уведомления';
+
+  @override
+  String get nativePlasmaStopPeeking => 'Вернуть окна';
+
+  @override
+  String get nativePlasmaSystemSettings => 'Параметры системы';
+
+  @override
+  String get nativePlasmaTileLeft => 'Прикрепить слева';
+
+  @override
+  String get nativePlasmaTileRight => 'Прикрепить справа';
+
+  @override
+  String get nativePlasmaUnpinFromTaskManager => 'Открепить от панели задач';
+
+  @override
+  String get nativePlasmaVirtualDesktops => 'Виртуальные рабочие столы';
+
+  @override
+  String get nativePlasmaWallpaper => 'Обои';
+
+  @override
+  String get nativePlasmaWallpaperAndroid => 'Обои Android';
+
+  @override
+  String get nativePlasmaWallpaperPlasma => 'Plasma';
+
+  @override
+  String get nativePlasmaBreezeDark => 'Breeze Dark';
+
+  @override
+  String get nativePlasmaBreezeLight => 'Breeze Light';
 }

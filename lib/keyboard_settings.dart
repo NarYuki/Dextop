@@ -19,6 +19,7 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
   static const _swipeEnabledKey = 'laptop_swipe_enabled';
   static const _candidatesEnabledKey = 'laptop_swipe_candidates_enabled';
   static const _hapticsEnabledKey = 'laptop_keyboard_haptics_enabled';
+  static const _hapticsStrengthKey = 'laptop_keyboard_haptics_strength';
   static const _blackBerryEnabledKey = 'experimental_blackberry_mode';
   static const _blackBerryAutoStartKey = 'blackberry_auto_start';
   static const _channel = MethodChannel('app.freedextop/display');
@@ -40,6 +41,7 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
   bool _swipeEnabled = false;
   bool _candidatesEnabled = false;
   bool _hapticsEnabled = true;
+  int _hapticsStrength = 70;
   bool _blackBerryEnabled = false;
   bool _blackBerryAutoStart = false;
   bool _foldableDevice = true;
@@ -72,6 +74,10 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
         _swipeEnabled = prefs.getBool(_swipeEnabledKey) ?? false;
         _candidatesEnabled = prefs.getBool(_candidatesEnabledKey) ?? false;
         _hapticsEnabled = prefs.getBool(_hapticsEnabledKey) ?? true;
+        _hapticsStrength = (prefs.getInt(_hapticsStrengthKey) ?? 70).clamp(
+          1,
+          100,
+        );
         _blackBerryEnabled = prefs.getBool(_blackBerryEnabledKey) ?? false;
         _blackBerryAutoStart = prefs.getBool(_blackBerryAutoStartKey) ?? false;
         _foldableDevice = foldableDevice;
@@ -117,6 +123,13 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
     await _channel.invokeMethod<void>('laptopSwipeLanguagesChanged', {
       'enabled': _swipeEnabled,
     });
+  }
+
+  Future<void> _setHapticsStrength(double value) async {
+    final strength = value.round().clamp(1, 100);
+    setState(() => _hapticsStrength = strength);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_hapticsStrengthKey, strength);
   }
 
   Future<void> _addLanguage() async {
@@ -208,6 +221,24 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
                 title: Text(l.keyboardHaptics),
                 subtitle: Text(l.keyboardHapticsDescription),
               ),
+              if (_hapticsEnabled) ...[
+                const Divider(height: 1),
+                ListTile(
+                  leading: const Icon(Icons.tune_rounded),
+                  title: Text(l.hapticsStrength),
+                  subtitle: Slider(
+                    value: _hapticsStrength.toDouble(),
+                    min: 1,
+                    max: 100,
+                    divisions: 99,
+                    label: '$_hapticsStrength%',
+                    onChanged: (value) =>
+                        setState(() => _hapticsStrength = value.round()),
+                    onChangeEnd: _setHapticsStrength,
+                  ),
+                  trailing: Text('$_hapticsStrength%'),
+                ),
+              ],
               const Divider(height: 1),
               SwitchListTile(
                 secondary: const Icon(Icons.gesture_rounded),

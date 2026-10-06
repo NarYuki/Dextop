@@ -336,6 +336,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var secure = false;
   String mirrorBackend = 'virtual_display';
   String castMode = 'simple';
+  String windowManager = 'system';
+  bool experimentalWindowManagerEnabled = false;
   var loading = true;
   var active = false;
   var autoConnected = false;
@@ -420,6 +422,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         mirrorBackend =
             preferences.getString('mirror_backend') ?? 'virtual_display';
         castMode = preferences.getString('cast_mode') ?? 'simple';
+        experimentalWindowManagerEnabled =
+            preferences.getBool('experimental_dextop_window_manager') ?? false;
+        windowManager = experimentalWindowManagerEnabled
+            ? preferences.getString('window_manager') ?? 'system'
+            : 'system';
         workspaceMagnificationPercent =
             (preferences.getInt('desktop_workspace_magnification_percent') ??
                     100)
@@ -460,6 +467,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     mutate(() => mirrorBackend = value);
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString('mirror_backend', value);
+  }
+
+  Future<void> setWindowManager(String value) async {
+    final preferences = await SharedPreferences.getInstance();
+    final experimentalEnabled =
+        preferences.getBool('experimental_dextop_window_manager') ?? false;
+    final effectiveValue = experimentalEnabled ? value : 'system';
+    mutate(() {
+      experimentalWindowManagerEnabled = experimentalEnabled;
+      windowManager = effectiveValue;
+    });
+    await preferences.setString('window_manager', effectiveValue);
+    // The running desktop switches immediately; otherwise the choice is
+    // picked up when the next session attaches its display.
+    await bridge.setWindowManager();
   }
 
   Future<void> setCastMode(String value) async {
@@ -950,8 +972,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         privilegeProvider = '${value['privilegeProvider'] ?? 'stellar'}';
         privilegeProviderName =
             '${value['privilegeProviderName'] ?? 'Stellar'}';
-        distributionChannel =
-            '${value['distributionChannel'] ?? 'github'}';
+        distributionChannel = '${value['distributionChannel'] ?? 'github'}';
         secureSettingsGranted = value['privileged'] == true;
         manufacturer = '${value['manufacturer'] ?? ''}';
         model = '${value['model'] ?? ''}';
@@ -1136,6 +1157,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString('last_workspace_id', '${workspace['id']}');
     if (!await ensureDesktopRunning()) return;
+    // The decorated Android Auto mode owns a real freeform display. Let the
+    // native workspace engine launch and resize the complete layout there;
+    // launching packages one by one from Flutter only supplies ActivityOptions
+    // bounds and cannot reliably reposition an existing DeX task.
+    if (await bridge.launchAutoWorkspace('${workspace['id']}')) return;
     for (var index = 0; index < packages.length; index++) {
       final position = positions[packages[index]] as String?;
       final exactBounds = savedBounds[packages[index]];

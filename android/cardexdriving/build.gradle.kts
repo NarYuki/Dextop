@@ -35,8 +35,8 @@ android {
         applicationId = "moe.n4tsu.dextop.cardex.driving"
         minSdk = 33
         targetSdk = 36
-        versionCode = 6
-        versionName = "2.0.0"
+        versionCode = 8
+        versionName = "2.1.0"
     }
     sourceSets["main"].java.srcDir("../cardex/src/main/kotlin")
     sourceSets["main"].res.srcDir("../cardex/src/main/res")

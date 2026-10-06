@@ -629,11 +629,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get displayAutoHideTaskbarSummary => '未使用時にデスクトップのタスクバーを自動的に隠します';
 
   @override
-  String get displayForceInternal120Hz => '内蔵ディスプレイを120Hzで動作';
+  String get displayForceInternal120Hz => '最高リフレッシュレートで出力';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Dextop実行中は対応する内蔵画面を120Hzに固定します';
+      'OSが提供する最高のリフレッシュレートでミラーを作成します';
 
   @override
   String get displaySoftwareCursorFallback => 'ソフトウェアカーソルに戻す';
@@ -1678,7 +1678,16 @@ class AppLocalizationsJa extends AppLocalizations {
   String get keyboardHaptics => 'キーボードのハプティック';
 
   @override
-  String get keyboardHapticsDescription => 'キーやトラックパッドを操作した時に振動します';
+  String get keyboardHapticsDescription => 'キーボードのキーを操作した時に振動します';
+
+  @override
+  String get pointerHaptics => 'カーソル操作のハプティック';
+
+  @override
+  String get pointerHapticsDescription => 'トラックパッドでクリックやジェスチャーを操作した時に振動します';
+
+  @override
+  String get hapticsStrength => 'ハプティックの強さ';
 
   @override
   String get nativeUnknownPermissionResult => 'Shizukuから不明な権限結果が返されました';
@@ -2179,4 +2188,304 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get androidEmbeddedPairingInProgress => 'ペア設定中';
+
+  @override
+  String get windowManager => '使用WM';
+
+  @override
+  String get windowManagerSystem => 'システム内蔵デスクトップモード';
+
+  @override
+  String get windowManagerSystemDescription =>
+      'Samsung DeXやAndroidのデスクトップウィンドウ機能をそのまま使用します';
+
+  @override
+  String get windowManagerPlasma => 'Dextop Plasma（独自WM）';
+
+  @override
+  String get windowManagerPlasmaDescription =>
+      'DextopがKDE Plasma 6風のデスクトップ、パネル、ウィンドウ装飾、タイル配置、仮想デスクトップを描画します';
+
+  @override
+  String get windowManagerAppliedLive => '実行中のデスクトップへ適用しました';
+
+  @override
+  String get plasmaSettingsTitle => 'Dextop Plasmaの設定';
+
+  @override
+  String get plasmaSettingsSummary => '外観、パネル、仮想デスクトップ、アニメーション';
+
+  @override
+  String get plasmaHotCorner => '左上のホットコーナー';
+
+  @override
+  String get plasmaHotCornerDescription => 'ポインターを左上の角へ動かすとOverviewを開きます';
+
+  @override
+  String get plasmaShortcutsTitle => 'キーボードショートカット';
+
+  @override
+  String get plasmaShortcutsBody =>
+      'Meta: Kickoff\nAlt+Space / Alt+F2: KRunner\nMeta+W: Overview\nAlt+Tab: ウィンドウ切替\nMeta+矢印: クイックタイル\nMeta+PgUp / PgDn: 最大化 / 最小化\nMeta+D: デスクトップを表示\nCtrl+F1〜F4 / Meta+Ctrl+←→: 仮想デスクトップ\nAlt+F3: ウィンドウ操作メニュー\nAlt+F4: 閉じる';
+
+  @override
+  String get nativePlasmaAccentColor => 'アクセントカラー';
+
+  @override
+  String get nativePlasmaAddToFavorites => 'お気に入りに追加';
+
+  @override
+  String get nativePlasmaAllApplications => 'すべてのアプリケーション';
+
+  @override
+  String get nativePlasmaAllDesktops => 'すべてのデスクトップ';
+
+  @override
+  String get nativePlasmaAnimationSpeed => 'アニメーション速度';
+
+  @override
+  String get nativePlasmaAppInfo => 'アプリ情報';
+
+  @override
+  String get nativePlasmaApplication => 'アプリケーション';
+
+  @override
+  String get nativePlasmaApplications => 'アプリケーション';
+
+  @override
+  String get nativePlasmaAudioVolume => '音量';
+
+  @override
+  String get nativePlasmaCalculatorCopy => '計算結果 — クリックでコピー';
+
+  @override
+  String get nativePlasmaCategoryGames => 'ゲーム';
+
+  @override
+  String get nativePlasmaCategoryGraphics => 'グラフィック';
+
+  @override
+  String get nativePlasmaCategoryInternet => 'インターネット';
+
+  @override
+  String get nativePlasmaCategoryLost => 'その他';
+
+  @override
+  String get nativePlasmaCategoryMultimedia => 'マルチメディア';
+
+  @override
+  String get nativePlasmaCategoryNews => 'ニュース';
+
+  @override
+  String get nativePlasmaCategoryOffice => 'オフィス';
+
+  @override
+  String get nativePlasmaCategorySystem => 'システム';
+
+  @override
+  String get nativePlasmaCategoryTravel => '地図・旅行';
+
+  @override
+  String get nativePlasmaCategoryVideo => 'ビデオ';
+
+  @override
+  String get nativePlasmaCharging => '充電中';
+
+  @override
+  String get nativePlasmaClose => '閉じる';
+
+  @override
+  String get nativePlasmaCloseAll => 'すべて閉じる';
+
+  @override
+  String get nativePlasmaColorScheme => '配色';
+
+  @override
+  String get nativePlasmaComputer => 'コンピュータ';
+
+  @override
+  String get nativePlasmaConfigureAudio => 'オーディオデバイスを設定…';
+
+  @override
+  String get nativePlasmaConfigureDesktop => 'デスクトップと壁紙を設定…';
+
+  @override
+  String get nativePlasmaConfigureNetwork => 'ネットワーク接続を設定…';
+
+  @override
+  String get nativePlasmaConfigurePower => '電源管理を設定…';
+
+  @override
+  String get nativePlasmaConnected => '接続済み';
+
+  @override
+  String get nativePlasmaDesktop => 'デスクトップ';
+
+  @override
+  String get nativePlasmaDesktopN => 'デスクトップ %1\$d';
+
+  @override
+  String get nativePlasmaDeviceSpeaker => '端末のスピーカー';
+
+  @override
+  String get nativePlasmaDextopSettings => 'Dextopの設定';
+
+  @override
+  String get nativePlasmaDischarging => '放電中';
+
+  @override
+  String get nativePlasmaDisconnected => '未接続';
+
+  @override
+  String get nativePlasmaDocked => '画面端に固定';
+
+  @override
+  String get nativePlasmaFavorites => 'お気に入り';
+
+  @override
+  String get nativePlasmaFloating => 'フローティング';
+
+  @override
+  String get nativePlasmaFollowSystem => 'システムに合わせる';
+
+  @override
+  String get nativePlasmaInstant => 'なし';
+
+  @override
+  String get nativePlasmaKrunnerHint => '検索…';
+
+  @override
+  String get nativePlasmaLeave => '終了…';
+
+  @override
+  String get nativePlasmaLogOut => 'ログアウト';
+
+  @override
+  String get nativePlasmaLoggingOutIn => '%1\$d 秒後にシステムデスクトップへ戻ります';
+
+  @override
+  String get nativePlasmaMaximize => '最大化';
+
+  @override
+  String get nativePlasmaMinimize => '最小化';
+
+  @override
+  String get nativePlasmaMobileData => 'モバイルデータ';
+
+  @override
+  String get nativePlasmaMoveToDesktopN => 'デスクトップ %1\$d へ移動';
+
+  @override
+  String get nativePlasmaNetworks => 'ネットワーク';
+
+  @override
+  String get nativePlasmaNewInstance => '新しいインスタンスを開始';
+
+  @override
+  String get nativePlasmaNoActiveNetwork => '有効なネットワークがありません';
+
+  @override
+  String get nativePlasmaNoFavorites => 'お気に入りはまだありません。アプリを右クリックして追加できます。';
+
+  @override
+  String get nativePlasmaNoMatches => '一致する項目はありません';
+
+  @override
+  String get nativePlasmaNoWindows => 'このデスクトップにウィンドウはありません';
+
+  @override
+  String get nativePlasmaNothingHere => '項目はありません';
+
+  @override
+  String get nativePlasmaOpen => '開く';
+
+  @override
+  String get nativePlasmaOverview => 'Overview';
+
+  @override
+  String get nativePlasmaOverviewSearch => '入力して検索…';
+
+  @override
+  String get nativePlasmaPanel => 'パネル';
+
+  @override
+  String get nativePlasmaPeekAtDesktop => 'デスクトップを表示';
+
+  @override
+  String get nativePlasmaPinToTaskManager => 'タスクマネージャーに固定';
+
+  @override
+  String get nativePlasmaPlaces => '場所';
+
+  @override
+  String get nativePlasmaPowerAndBattery => '電源とバッテリー';
+
+  @override
+  String get nativePlasmaRecentApplications => '最近使ったアプリケーション';
+
+  @override
+  String get nativePlasmaRemoveFromFavorites => 'お気に入りから削除';
+
+  @override
+  String get nativePlasmaRestart => '再起動';
+
+  @override
+  String get nativePlasmaRestartingIn => '%1\$d 秒後にデスクトップを再起動します';
+
+  @override
+  String get nativePlasmaRestore => '元に戻す';
+
+  @override
+  String get nativePlasmaRunCommand => 'コマンドを実行 (KRunner)';
+
+  @override
+  String get nativePlasmaSearch => '検索…';
+
+  @override
+  String get nativePlasmaShutDown => 'シャットダウン';
+
+  @override
+  String get nativePlasmaShuttingDownIn => '%1\$d 秒後にDextopを終了します';
+
+  @override
+  String get nativePlasmaSleep => 'スリープ';
+
+  @override
+  String get nativePlasmaSleepingIn => '%1\$d 秒後にスリープします';
+
+  @override
+  String get nativePlasmaStatusAndNotifications => 'ステータスと通知';
+
+  @override
+  String get nativePlasmaStopPeeking => 'デスクトップ表示を終了';
+
+  @override
+  String get nativePlasmaSystemSettings => 'システム設定';
+
+  @override
+  String get nativePlasmaTileLeft => '左半分にタイル';
+
+  @override
+  String get nativePlasmaTileRight => '右半分にタイル';
+
+  @override
+  String get nativePlasmaUnpinFromTaskManager => 'タスクマネージャーから固定解除';
+
+  @override
+  String get nativePlasmaVirtualDesktops => '仮想デスクトップ';
+
+  @override
+  String get nativePlasmaWallpaper => '壁紙';
+
+  @override
+  String get nativePlasmaWallpaperAndroid => 'Androidの壁紙';
+
+  @override
+  String get nativePlasmaWallpaperPlasma => 'Plasma';
+
+  @override
+  String get nativePlasmaBreezeDark => 'Breeze Dark';
+
+  @override
+  String get nativePlasmaBreezeLight => 'Breeze Light';
 }
