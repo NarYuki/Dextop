@@ -19,6 +19,7 @@ internal class DesktopModeConfigurator(
     private data class SavedGlobal(val key: String, val value: String?)
     private val savedGlobals = mutableListOf<SavedGlobal>()
     private var applied = false
+    private var forcedFreeformGlobalsApplied = false
 
     fun applyForCurrentDevice(): List<StrategyAttempt> {
         if (applied) return emptyList()
@@ -42,9 +43,25 @@ internal class DesktopModeConfigurator(
     }
 
     /** Optional configuration: failure is isolated to this display and never aborts startup. */
-    fun configureDisplay(displayId: Int): List<StrategyAttempt> {
-        if (!environment.configureFreeformWindowing) return emptyList()
+    fun configureDisplay(displayId: Int, forceFreeform: Boolean = false): List<StrategyAttempt> {
+        if (!environment.configureFreeformWindowing && !forceFreeform) return emptyList()
         val attempts = mutableListOf<StrategyAttempt>()
+        if (forceFreeform && !forcedFreeformGlobalsApplied) {
+            forcedFreeformGlobalsApplied = true
+            listOf("enable_freeform_support", "force_resizable_activities").forEach { key ->
+                val previous = Settings.Global.getString(resolver, key)
+                savedGlobals += SavedGlobal(key, previous)
+                sessionJournal.rememberGlobal(key, previous)
+                val result = privilegedAccess.execute(
+                    "cmd", "settings", "put", "global", key, "1"
+                )
+                attempts += StrategyAttempt(
+                    "global:$key",
+                    result.succeeded,
+                    result.error.ifBlank { result.output }
+                )
+            }
+        }
         if (Build.VERSION.SDK_INT >= 35) {
             val engagement = privilegedAccess.execute(
                 "wm", "set-display-engagement-mode", "-d", displayId.toString(), "3"
@@ -55,8 +72,20 @@ internal class DesktopModeConfigurator(
                 engagement.error.ifBlank { engagement.output }
             )
         }
-        for (strategy in environment.windowingStrategies) {
+        val windowingStrategies = if (forceFreeform) {
+            // Electron DEX applies this synchronously, before the display is
+            // published back to the app. Keep its exact command order: on
+            // several Samsung releases `cmd window` works while the older
+            // activity_task command either exits successfully without taking
+            // effect or races DeX's initial task creation.
+            listOf("cmd_window", "wm")
+        } else environment.windowingStrategies
+        for (strategy in windowingStrategies) {
             val args = when (strategy) {
+                "cmd_window" -> arrayOf(
+                    "cmd", "window", "set-display-windowing-mode", "-d",
+                    displayId.toString(), "5"
+                )
                 "wm" -> arrayOf("wm", "set-display-windowing-mode", "-d", displayId.toString(), "5")
                 "activity_task_manager" -> arrayOf(
                     "cmd", "activity_task", "set-display-windowing-mode", displayId.toString(), "5"
@@ -100,5 +129,6 @@ internal class DesktopModeConfigurator(
         OperationLog.i(context, "DesktopMode", "restored settings count=${savedGlobals.size}")
         savedGlobals.clear()
         applied = false
+        forcedFreeformGlobalsApplied = false
     }
 }

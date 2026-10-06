@@ -20,7 +20,7 @@ object EmbeddedPrivilegeServer {
             System.setProperty("moe.n4tsu.dextop.embedded_input_library", nativeInputLibrary)
         }
         Looper.prepareMainLooper()
-        HiddenApiBypass.addHiddenApiExemptions("Landroid/app/", "Landroid/content/", "Landroid/os/")
+        HiddenApiBypass.addHiddenApiExemptions("Landroid/app/", "Landroid/content/", "Landroid/os/", "Landroid/window/")
         val server = RuntimeBinder()
         val handler = Handler(Looper.getMainLooper())
         lateinit var publishAndWatch: () -> Unit
@@ -87,10 +87,23 @@ object EmbeddedPrivilegeServer {
         return call.invoke(provider, *callArguments) as? Bundle
     }
 
-    private fun systemService(name: String): android.os.IBinder? =
-        Class.forName("android.os.ServiceManager")
+    private fun systemService(name: String): android.os.IBinder? {
+        if (name == WINDOW_ORGANIZER_SERVICE) return windowOrganizerController()
+        return Class.forName("android.os.ServiceManager")
             .getDeclaredMethod("getService", String::class.java)
             .invoke(null, name) as? android.os.IBinder
+    }
+
+    /** Dextop's window manager reorders tasks through the shell-owned organizer controller. */
+    private const val WINDOW_ORGANIZER_SERVICE = "dextop.window_organizer"
+
+    private fun windowOrganizerController(): android.os.IBinder? = runCatching {
+        val taskManager = Class.forName("android.app.IActivityTaskManager\$Stub")
+            .getMethod("asInterface", android.os.IBinder::class.java)
+            .invoke(null, systemService("activity_task"))
+        val controller = taskManager.javaClass.getMethod("getWindowOrganizerController").invoke(taskManager)
+        controller.javaClass.getMethod("asBinder").invoke(controller) as android.os.IBinder
+    }.getOrNull()
 
     private class RuntimeBinder : Binder() {
         private val inputService by lazy(LazyThreadSafetyMode.SYNCHRONIZED) { PrivilegedInputService() }

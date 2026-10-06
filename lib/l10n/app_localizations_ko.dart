@@ -634,11 +634,11 @@ class AppLocalizationsKo extends AppLocalizations {
       '사용하지 않을 때 데스크톱 작업 표시줄을 자동으로 숨깁니다';
 
   @override
-  String get displayForceInternal120Hz => '내장 디스플레이를 120Hz로 실행';
+  String get displayForceInternal120Hz => '최대 화면 주사율로 출력';
 
   @override
   String get displayForceInternal120HzSummary =>
-      'Dextop 실행 중 지원되는 내장 화면을 120Hz로 고정합니다';
+      'OS가 제공하는 최대 화면 주사율로 미러를 생성합니다';
 
   @override
   String get displaySoftwareCursorFallback => '소프트웨어 커서 사용';
@@ -1689,7 +1689,16 @@ class AppLocalizationsKo extends AppLocalizations {
   String get keyboardHaptics => '키보드 햅틱';
 
   @override
-  String get keyboardHapticsDescription => '키보드 키와 트랙패드를 누를 때 진동합니다';
+  String get keyboardHapticsDescription => '키보드 키를 누를 때 진동합니다';
+
+  @override
+  String get pointerHaptics => '포인터 햅틱';
+
+  @override
+  String get pointerHapticsDescription => '트랙패드 클릭 및 제스처 시 진동합니다';
+
+  @override
+  String get hapticsStrength => '햅틱 강도';
 
   @override
   String get nativeUnknownPermissionResult => 'Shizuku에서 알 수 없는 권한 결과를 반환했습니다';
@@ -2192,4 +2201,305 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get androidEmbeddedPairingInProgress => '페어링 중';
+
+  @override
+  String get windowManager => '창 관리자';
+
+  @override
+  String get windowManagerSystem => '시스템 내장 데스크톱 모드';
+
+  @override
+  String get windowManagerSystemDescription =>
+      'Samsung DeX 또는 Android 데스크톱 창 기능을 그대로 사용합니다';
+
+  @override
+  String get windowManagerPlasma => 'Dextop Plasma (자체 WM)';
+
+  @override
+  String get windowManagerPlasmaDescription =>
+      'Dextop이 KDE Plasma 6 스타일의 데스크톱, 패널, 창 장식, 타일링, 가상 데스크톱을 직접 그립니다';
+
+  @override
+  String get windowManagerAppliedLive => '실행 중인 데스크톱에 적용했습니다';
+
+  @override
+  String get plasmaSettingsTitle => 'Dextop Plasma 설정';
+
+  @override
+  String get plasmaSettingsSummary => '모양, 패널, 가상 데스크톱, 애니메이션';
+
+  @override
+  String get plasmaHotCorner => '왼쪽 위 핫 코너';
+
+  @override
+  String get plasmaHotCornerDescription => '포인터를 왼쪽 위 모서리로 옮기면 Overview를 엽니다';
+
+  @override
+  String get plasmaShortcutsTitle => '키보드 단축키';
+
+  @override
+  String get plasmaShortcutsBody =>
+      'Meta: Kickoff\nAlt+Space / Alt+F2: KRunner\nMeta+W: Overview\nAlt+Tab: 창 전환\nMeta+화살표: 빠른 타일\nMeta+PgUp / PgDn: 최대화 / 최소화\nMeta+D: 데스크톱 보기\nCtrl+F1–F4 / Meta+Ctrl+←→: 가상 데스크톱\nAlt+F3: 창 작업 메뉴\nAlt+F4: 닫기';
+
+  @override
+  String get nativePlasmaAccentColor => '강조 색상';
+
+  @override
+  String get nativePlasmaAddToFavorites => '즐겨찾기에 추가';
+
+  @override
+  String get nativePlasmaAllApplications => '모든 프로그램';
+
+  @override
+  String get nativePlasmaAllDesktops => '모든 데스크톱';
+
+  @override
+  String get nativePlasmaAnimationSpeed => '애니메이션 속도';
+
+  @override
+  String get nativePlasmaAppInfo => '앱 정보';
+
+  @override
+  String get nativePlasmaApplication => '프로그램';
+
+  @override
+  String get nativePlasmaApplications => '프로그램';
+
+  @override
+  String get nativePlasmaAudioVolume => '오디오 음량';
+
+  @override
+  String get nativePlasmaCalculatorCopy => '계산 결과 — 클릭하여 복사';
+
+  @override
+  String get nativePlasmaCategoryGames => '게임';
+
+  @override
+  String get nativePlasmaCategoryGraphics => '그래픽';
+
+  @override
+  String get nativePlasmaCategoryInternet => '인터넷';
+
+  @override
+  String get nativePlasmaCategoryLost => '기타';
+
+  @override
+  String get nativePlasmaCategoryMultimedia => '멀티미디어';
+
+  @override
+  String get nativePlasmaCategoryNews => '뉴스';
+
+  @override
+  String get nativePlasmaCategoryOffice => '오피스';
+
+  @override
+  String get nativePlasmaCategorySystem => '시스템';
+
+  @override
+  String get nativePlasmaCategoryTravel => '지도 및 여행';
+
+  @override
+  String get nativePlasmaCategoryVideo => '비디오';
+
+  @override
+  String get nativePlasmaCharging => '충전 중';
+
+  @override
+  String get nativePlasmaClose => '닫기';
+
+  @override
+  String get nativePlasmaCloseAll => '모두 닫기';
+
+  @override
+  String get nativePlasmaColorScheme => '색 구성표';
+
+  @override
+  String get nativePlasmaComputer => '컴퓨터';
+
+  @override
+  String get nativePlasmaConfigureAudio => '오디오 장치 설정…';
+
+  @override
+  String get nativePlasmaConfigureDesktop => '데스크톱 및 배경 화면 설정…';
+
+  @override
+  String get nativePlasmaConfigureNetwork => '네트워크 연결 설정…';
+
+  @override
+  String get nativePlasmaConfigurePower => '전원 관리 설정…';
+
+  @override
+  String get nativePlasmaConnected => '연결됨';
+
+  @override
+  String get nativePlasmaDesktop => '데스크톱';
+
+  @override
+  String get nativePlasmaDesktopN => '데스크톱 %1\$d';
+
+  @override
+  String get nativePlasmaDeviceSpeaker => '기기 스피커';
+
+  @override
+  String get nativePlasmaDextopSettings => 'Dextop 설정';
+
+  @override
+  String get nativePlasmaDischarging => '방전 중';
+
+  @override
+  String get nativePlasmaDisconnected => '연결 끊김';
+
+  @override
+  String get nativePlasmaDocked => '가장자리에 고정';
+
+  @override
+  String get nativePlasmaFavorites => '즐겨찾기';
+
+  @override
+  String get nativePlasmaFloating => '플로팅';
+
+  @override
+  String get nativePlasmaFollowSystem => '시스템 설정 따름';
+
+  @override
+  String get nativePlasmaInstant => '즉시';
+
+  @override
+  String get nativePlasmaKrunnerHint => '검색…';
+
+  @override
+  String get nativePlasmaLeave => '나가기…';
+
+  @override
+  String get nativePlasmaLogOut => '로그아웃';
+
+  @override
+  String get nativePlasmaLoggingOutIn => '%1\$d초 후 로그아웃합니다';
+
+  @override
+  String get nativePlasmaMaximize => '최대화';
+
+  @override
+  String get nativePlasmaMinimize => '최소화';
+
+  @override
+  String get nativePlasmaMobileData => '모바일 데이터';
+
+  @override
+  String get nativePlasmaMoveToDesktopN => '데스크톱 %1\$d(으)로 이동';
+
+  @override
+  String get nativePlasmaNetworks => '네트워크';
+
+  @override
+  String get nativePlasmaNewInstance => '새 인스턴스 시작';
+
+  @override
+  String get nativePlasmaNoActiveNetwork => '활성 네트워크 없음';
+
+  @override
+  String get nativePlasmaNoFavorites =>
+      '아직 즐겨찾기가 없습니다. 앱을 마우스 오른쪽 버튼으로 클릭해 추가하세요.';
+
+  @override
+  String get nativePlasmaNoMatches => '일치하는 항목 없음';
+
+  @override
+  String get nativePlasmaNoWindows => '이 데스크톱에 창이 없습니다';
+
+  @override
+  String get nativePlasmaNothingHere => '항목 없음';
+
+  @override
+  String get nativePlasmaOpen => '열기';
+
+  @override
+  String get nativePlasmaOverview => 'Overview';
+
+  @override
+  String get nativePlasmaOverviewSearch => '입력하여 검색…';
+
+  @override
+  String get nativePlasmaPanel => '패널';
+
+  @override
+  String get nativePlasmaPeekAtDesktop => '데스크톱 보기';
+
+  @override
+  String get nativePlasmaPinToTaskManager => '작업 관리자에 고정';
+
+  @override
+  String get nativePlasmaPlaces => '위치';
+
+  @override
+  String get nativePlasmaPowerAndBattery => '전원 및 배터리';
+
+  @override
+  String get nativePlasmaRecentApplications => '최근 프로그램';
+
+  @override
+  String get nativePlasmaRemoveFromFavorites => '즐겨찾기에서 제거';
+
+  @override
+  String get nativePlasmaRestart => '다시 시작';
+
+  @override
+  String get nativePlasmaRestartingIn => '%1\$d초 후 다시 시작합니다';
+
+  @override
+  String get nativePlasmaRestore => '복원';
+
+  @override
+  String get nativePlasmaRunCommand => '명령 실행 (KRunner)';
+
+  @override
+  String get nativePlasmaSearch => '검색…';
+
+  @override
+  String get nativePlasmaShutDown => '시스템 종료';
+
+  @override
+  String get nativePlasmaShuttingDownIn => '%1\$d초 후 Dextop을 종료합니다';
+
+  @override
+  String get nativePlasmaSleep => '절전';
+
+  @override
+  String get nativePlasmaSleepingIn => '%1\$d초 후 절전합니다';
+
+  @override
+  String get nativePlasmaStatusAndNotifications => '상태 및 알림';
+
+  @override
+  String get nativePlasmaStopPeeking => '데스크톱 보기 종료';
+
+  @override
+  String get nativePlasmaSystemSettings => '시스템 설정';
+
+  @override
+  String get nativePlasmaTileLeft => '왼쪽으로 빠른 타일';
+
+  @override
+  String get nativePlasmaTileRight => '오른쪽으로 빠른 타일';
+
+  @override
+  String get nativePlasmaUnpinFromTaskManager => '작업 관리자에서 고정 해제';
+
+  @override
+  String get nativePlasmaVirtualDesktops => '가상 데스크톱';
+
+  @override
+  String get nativePlasmaWallpaper => '배경 화면';
+
+  @override
+  String get nativePlasmaWallpaperAndroid => 'Android 배경 화면';
+
+  @override
+  String get nativePlasmaWallpaperPlasma => 'Plasma';
+
+  @override
+  String get nativePlasmaBreezeDark => 'Breeze Dark';
+
+  @override
+  String get nativePlasmaBreezeLight => 'Breeze Light';
 }

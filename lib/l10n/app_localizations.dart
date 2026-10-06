@@ -1322,13 +1322,13 @@ abstract class AppLocalizations {
   /// No description provided for @displayForceInternal120Hz.
   ///
   /// In ja, this message translates to:
-  /// **'内蔵ディスプレイを120Hzで動作'**
+  /// **'最高リフレッシュレートで出力'**
   String get displayForceInternal120Hz;
 
   /// No description provided for @displayForceInternal120HzSummary.
   ///
   /// In ja, this message translates to:
-  /// **'Dextop実行中は対応する内蔵画面を120Hzに固定します'**
+  /// **'OSが提供する最高のリフレッシュレートでミラーを作成します'**
   String get displayForceInternal120HzSummary;
 
   /// No description provided for @displaySoftwareCursorFallback.
@@ -3338,8 +3338,26 @@ abstract class AppLocalizations {
   /// No description provided for @keyboardHapticsDescription.
   ///
   /// In ja, this message translates to:
-  /// **'キーやトラックパッドを操作した時に振動します'**
+  /// **'キーボードのキーを操作した時に振動します'**
   String get keyboardHapticsDescription;
+
+  /// No description provided for @pointerHaptics.
+  ///
+  /// In ja, this message translates to:
+  /// **'カーソル操作のハプティック'**
+  String get pointerHaptics;
+
+  /// No description provided for @pointerHapticsDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'トラックパッドでクリックやジェスチャーを操作した時に振動します'**
+  String get pointerHapticsDescription;
+
+  /// No description provided for @hapticsStrength.
+  ///
+  /// In ja, this message translates to:
+  /// **'ハプティックの強さ'**
+  String get hapticsStrength;
 
   /// No description provided for @nativeUnknownPermissionResult.
   ///
@@ -4288,6 +4306,600 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'ペア設定中'**
   String get androidEmbeddedPairingInProgress;
+
+  /// No description provided for @windowManager.
+  ///
+  /// In ja, this message translates to:
+  /// **'使用WM'**
+  String get windowManager;
+
+  /// No description provided for @windowManagerSystem.
+  ///
+  /// In ja, this message translates to:
+  /// **'システム内蔵デスクトップモード'**
+  String get windowManagerSystem;
+
+  /// No description provided for @windowManagerSystemDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Samsung DeXやAndroidのデスクトップウィンドウ機能をそのまま使用します'**
+  String get windowManagerSystemDescription;
+
+  /// No description provided for @windowManagerPlasma.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop Plasma（独自WM）'**
+  String get windowManagerPlasma;
+
+  /// No description provided for @windowManagerPlasmaDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'DextopがKDE Plasma 6風のデスクトップ、パネル、ウィンドウ装飾、タイル配置、仮想デスクトップを描画します'**
+  String get windowManagerPlasmaDescription;
+
+  /// No description provided for @windowManagerAppliedLive.
+  ///
+  /// In ja, this message translates to:
+  /// **'実行中のデスクトップへ適用しました'**
+  String get windowManagerAppliedLive;
+
+  /// No description provided for @plasmaSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop Plasmaの設定'**
+  String get plasmaSettingsTitle;
+
+  /// No description provided for @plasmaSettingsSummary.
+  ///
+  /// In ja, this message translates to:
+  /// **'外観、パネル、仮想デスクトップ、アニメーション'**
+  String get plasmaSettingsSummary;
+
+  /// No description provided for @plasmaHotCorner.
+  ///
+  /// In ja, this message translates to:
+  /// **'左上のホットコーナー'**
+  String get plasmaHotCorner;
+
+  /// No description provided for @plasmaHotCornerDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'ポインターを左上の角へ動かすとOverviewを開きます'**
+  String get plasmaHotCornerDescription;
+
+  /// No description provided for @plasmaShortcutsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードショートカット'**
+  String get plasmaShortcutsTitle;
+
+  /// No description provided for @plasmaShortcutsBody.
+  ///
+  /// In ja, this message translates to:
+  /// **'Meta: Kickoff\nAlt+Space / Alt+F2: KRunner\nMeta+W: Overview\nAlt+Tab: ウィンドウ切替\nMeta+矢印: クイックタイル\nMeta+PgUp / PgDn: 最大化 / 最小化\nMeta+D: デスクトップを表示\nCtrl+F1〜F4 / Meta+Ctrl+←→: 仮想デスクトップ\nAlt+F3: ウィンドウ操作メニュー\nAlt+F4: 閉じる'**
+  String get plasmaShortcutsBody;
+
+  /// No description provided for @nativePlasmaAccentColor.
+  ///
+  /// In ja, this message translates to:
+  /// **'アクセントカラー'**
+  String get nativePlasmaAccentColor;
+
+  /// No description provided for @nativePlasmaAddToFavorites.
+  ///
+  /// In ja, this message translates to:
+  /// **'お気に入りに追加'**
+  String get nativePlasmaAddToFavorites;
+
+  /// No description provided for @nativePlasmaAllApplications.
+  ///
+  /// In ja, this message translates to:
+  /// **'すべてのアプリケーション'**
+  String get nativePlasmaAllApplications;
+
+  /// No description provided for @nativePlasmaAllDesktops.
+  ///
+  /// In ja, this message translates to:
+  /// **'すべてのデスクトップ'**
+  String get nativePlasmaAllDesktops;
+
+  /// No description provided for @nativePlasmaAnimationSpeed.
+  ///
+  /// In ja, this message translates to:
+  /// **'アニメーション速度'**
+  String get nativePlasmaAnimationSpeed;
+
+  /// No description provided for @nativePlasmaAppInfo.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリ情報'**
+  String get nativePlasmaAppInfo;
+
+  /// No description provided for @nativePlasmaApplication.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリケーション'**
+  String get nativePlasmaApplication;
+
+  /// No description provided for @nativePlasmaApplications.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリケーション'**
+  String get nativePlasmaApplications;
+
+  /// No description provided for @nativePlasmaAudioVolume.
+  ///
+  /// In ja, this message translates to:
+  /// **'音量'**
+  String get nativePlasmaAudioVolume;
+
+  /// No description provided for @nativePlasmaCalculatorCopy.
+  ///
+  /// In ja, this message translates to:
+  /// **'計算結果 — クリックでコピー'**
+  String get nativePlasmaCalculatorCopy;
+
+  /// No description provided for @nativePlasmaCategoryGames.
+  ///
+  /// In ja, this message translates to:
+  /// **'ゲーム'**
+  String get nativePlasmaCategoryGames;
+
+  /// No description provided for @nativePlasmaCategoryGraphics.
+  ///
+  /// In ja, this message translates to:
+  /// **'グラフィック'**
+  String get nativePlasmaCategoryGraphics;
+
+  /// No description provided for @nativePlasmaCategoryInternet.
+  ///
+  /// In ja, this message translates to:
+  /// **'インターネット'**
+  String get nativePlasmaCategoryInternet;
+
+  /// No description provided for @nativePlasmaCategoryLost.
+  ///
+  /// In ja, this message translates to:
+  /// **'その他'**
+  String get nativePlasmaCategoryLost;
+
+  /// No description provided for @nativePlasmaCategoryMultimedia.
+  ///
+  /// In ja, this message translates to:
+  /// **'マルチメディア'**
+  String get nativePlasmaCategoryMultimedia;
+
+  /// No description provided for @nativePlasmaCategoryNews.
+  ///
+  /// In ja, this message translates to:
+  /// **'ニュース'**
+  String get nativePlasmaCategoryNews;
+
+  /// No description provided for @nativePlasmaCategoryOffice.
+  ///
+  /// In ja, this message translates to:
+  /// **'オフィス'**
+  String get nativePlasmaCategoryOffice;
+
+  /// No description provided for @nativePlasmaCategorySystem.
+  ///
+  /// In ja, this message translates to:
+  /// **'システム'**
+  String get nativePlasmaCategorySystem;
+
+  /// No description provided for @nativePlasmaCategoryTravel.
+  ///
+  /// In ja, this message translates to:
+  /// **'地図・旅行'**
+  String get nativePlasmaCategoryTravel;
+
+  /// No description provided for @nativePlasmaCategoryVideo.
+  ///
+  /// In ja, this message translates to:
+  /// **'ビデオ'**
+  String get nativePlasmaCategoryVideo;
+
+  /// No description provided for @nativePlasmaCharging.
+  ///
+  /// In ja, this message translates to:
+  /// **'充電中'**
+  String get nativePlasmaCharging;
+
+  /// No description provided for @nativePlasmaClose.
+  ///
+  /// In ja, this message translates to:
+  /// **'閉じる'**
+  String get nativePlasmaClose;
+
+  /// No description provided for @nativePlasmaCloseAll.
+  ///
+  /// In ja, this message translates to:
+  /// **'すべて閉じる'**
+  String get nativePlasmaCloseAll;
+
+  /// No description provided for @nativePlasmaColorScheme.
+  ///
+  /// In ja, this message translates to:
+  /// **'配色'**
+  String get nativePlasmaColorScheme;
+
+  /// No description provided for @nativePlasmaComputer.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンピュータ'**
+  String get nativePlasmaComputer;
+
+  /// No description provided for @nativePlasmaConfigureAudio.
+  ///
+  /// In ja, this message translates to:
+  /// **'オーディオデバイスを設定…'**
+  String get nativePlasmaConfigureAudio;
+
+  /// No description provided for @nativePlasmaConfigureDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップと壁紙を設定…'**
+  String get nativePlasmaConfigureDesktop;
+
+  /// No description provided for @nativePlasmaConfigureNetwork.
+  ///
+  /// In ja, this message translates to:
+  /// **'ネットワーク接続を設定…'**
+  String get nativePlasmaConfigureNetwork;
+
+  /// No description provided for @nativePlasmaConfigurePower.
+  ///
+  /// In ja, this message translates to:
+  /// **'電源管理を設定…'**
+  String get nativePlasmaConfigurePower;
+
+  /// No description provided for @nativePlasmaConnected.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続済み'**
+  String get nativePlasmaConnected;
+
+  /// No description provided for @nativePlasmaDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ'**
+  String get nativePlasmaDesktop;
+
+  /// No description provided for @nativePlasmaDesktopN.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ %1\$d'**
+  String get nativePlasmaDesktopN;
+
+  /// No description provided for @nativePlasmaDeviceSpeaker.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末のスピーカー'**
+  String get nativePlasmaDeviceSpeaker;
+
+  /// No description provided for @nativePlasmaDextopSettings.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopの設定'**
+  String get nativePlasmaDextopSettings;
+
+  /// No description provided for @nativePlasmaDischarging.
+  ///
+  /// In ja, this message translates to:
+  /// **'放電中'**
+  String get nativePlasmaDischarging;
+
+  /// No description provided for @nativePlasmaDisconnected.
+  ///
+  /// In ja, this message translates to:
+  /// **'未接続'**
+  String get nativePlasmaDisconnected;
+
+  /// No description provided for @nativePlasmaDocked.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面端に固定'**
+  String get nativePlasmaDocked;
+
+  /// No description provided for @nativePlasmaFavorites.
+  ///
+  /// In ja, this message translates to:
+  /// **'お気に入り'**
+  String get nativePlasmaFavorites;
+
+  /// No description provided for @nativePlasmaFloating.
+  ///
+  /// In ja, this message translates to:
+  /// **'フローティング'**
+  String get nativePlasmaFloating;
+
+  /// No description provided for @nativePlasmaFollowSystem.
+  ///
+  /// In ja, this message translates to:
+  /// **'システムに合わせる'**
+  String get nativePlasmaFollowSystem;
+
+  /// No description provided for @nativePlasmaInstant.
+  ///
+  /// In ja, this message translates to:
+  /// **'なし'**
+  String get nativePlasmaInstant;
+
+  /// No description provided for @nativePlasmaKrunnerHint.
+  ///
+  /// In ja, this message translates to:
+  /// **'検索…'**
+  String get nativePlasmaKrunnerHint;
+
+  /// No description provided for @nativePlasmaLeave.
+  ///
+  /// In ja, this message translates to:
+  /// **'終了…'**
+  String get nativePlasmaLeave;
+
+  /// No description provided for @nativePlasmaLogOut.
+  ///
+  /// In ja, this message translates to:
+  /// **'ログアウト'**
+  String get nativePlasmaLogOut;
+
+  /// No description provided for @nativePlasmaLoggingOutIn.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$d 秒後にシステムデスクトップへ戻ります'**
+  String get nativePlasmaLoggingOutIn;
+
+  /// No description provided for @nativePlasmaMaximize.
+  ///
+  /// In ja, this message translates to:
+  /// **'最大化'**
+  String get nativePlasmaMaximize;
+
+  /// No description provided for @nativePlasmaMinimize.
+  ///
+  /// In ja, this message translates to:
+  /// **'最小化'**
+  String get nativePlasmaMinimize;
+
+  /// No description provided for @nativePlasmaMobileData.
+  ///
+  /// In ja, this message translates to:
+  /// **'モバイルデータ'**
+  String get nativePlasmaMobileData;
+
+  /// No description provided for @nativePlasmaMoveToDesktopN.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ %1\$d へ移動'**
+  String get nativePlasmaMoveToDesktopN;
+
+  /// No description provided for @nativePlasmaNetworks.
+  ///
+  /// In ja, this message translates to:
+  /// **'ネットワーク'**
+  String get nativePlasmaNetworks;
+
+  /// No description provided for @nativePlasmaNewInstance.
+  ///
+  /// In ja, this message translates to:
+  /// **'新しいインスタンスを開始'**
+  String get nativePlasmaNewInstance;
+
+  /// No description provided for @nativePlasmaNoActiveNetwork.
+  ///
+  /// In ja, this message translates to:
+  /// **'有効なネットワークがありません'**
+  String get nativePlasmaNoActiveNetwork;
+
+  /// No description provided for @nativePlasmaNoFavorites.
+  ///
+  /// In ja, this message translates to:
+  /// **'お気に入りはまだありません。アプリを右クリックして追加できます。'**
+  String get nativePlasmaNoFavorites;
+
+  /// No description provided for @nativePlasmaNoMatches.
+  ///
+  /// In ja, this message translates to:
+  /// **'一致する項目はありません'**
+  String get nativePlasmaNoMatches;
+
+  /// No description provided for @nativePlasmaNoWindows.
+  ///
+  /// In ja, this message translates to:
+  /// **'このデスクトップにウィンドウはありません'**
+  String get nativePlasmaNoWindows;
+
+  /// No description provided for @nativePlasmaNothingHere.
+  ///
+  /// In ja, this message translates to:
+  /// **'項目はありません'**
+  String get nativePlasmaNothingHere;
+
+  /// No description provided for @nativePlasmaOpen.
+  ///
+  /// In ja, this message translates to:
+  /// **'開く'**
+  String get nativePlasmaOpen;
+
+  /// No description provided for @nativePlasmaOverview.
+  ///
+  /// In ja, this message translates to:
+  /// **'Overview'**
+  String get nativePlasmaOverview;
+
+  /// No description provided for @nativePlasmaOverviewSearch.
+  ///
+  /// In ja, this message translates to:
+  /// **'入力して検索…'**
+  String get nativePlasmaOverviewSearch;
+
+  /// No description provided for @nativePlasmaPanel.
+  ///
+  /// In ja, this message translates to:
+  /// **'パネル'**
+  String get nativePlasmaPanel;
+
+  /// No description provided for @nativePlasmaPeekAtDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップを表示'**
+  String get nativePlasmaPeekAtDesktop;
+
+  /// No description provided for @nativePlasmaPinToTaskManager.
+  ///
+  /// In ja, this message translates to:
+  /// **'タスクマネージャーに固定'**
+  String get nativePlasmaPinToTaskManager;
+
+  /// No description provided for @nativePlasmaPlaces.
+  ///
+  /// In ja, this message translates to:
+  /// **'場所'**
+  String get nativePlasmaPlaces;
+
+  /// No description provided for @nativePlasmaPowerAndBattery.
+  ///
+  /// In ja, this message translates to:
+  /// **'電源とバッテリー'**
+  String get nativePlasmaPowerAndBattery;
+
+  /// No description provided for @nativePlasmaRecentApplications.
+  ///
+  /// In ja, this message translates to:
+  /// **'最近使ったアプリケーション'**
+  String get nativePlasmaRecentApplications;
+
+  /// No description provided for @nativePlasmaRemoveFromFavorites.
+  ///
+  /// In ja, this message translates to:
+  /// **'お気に入りから削除'**
+  String get nativePlasmaRemoveFromFavorites;
+
+  /// No description provided for @nativePlasmaRestart.
+  ///
+  /// In ja, this message translates to:
+  /// **'再起動'**
+  String get nativePlasmaRestart;
+
+  /// No description provided for @nativePlasmaRestartingIn.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$d 秒後にデスクトップを再起動します'**
+  String get nativePlasmaRestartingIn;
+
+  /// No description provided for @nativePlasmaRestore.
+  ///
+  /// In ja, this message translates to:
+  /// **'元に戻す'**
+  String get nativePlasmaRestore;
+
+  /// No description provided for @nativePlasmaRunCommand.
+  ///
+  /// In ja, this message translates to:
+  /// **'コマンドを実行 (KRunner)'**
+  String get nativePlasmaRunCommand;
+
+  /// No description provided for @nativePlasmaSearch.
+  ///
+  /// In ja, this message translates to:
+  /// **'検索…'**
+  String get nativePlasmaSearch;
+
+  /// No description provided for @nativePlasmaShutDown.
+  ///
+  /// In ja, this message translates to:
+  /// **'シャットダウン'**
+  String get nativePlasmaShutDown;
+
+  /// No description provided for @nativePlasmaShuttingDownIn.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$d 秒後にDextopを終了します'**
+  String get nativePlasmaShuttingDownIn;
+
+  /// No description provided for @nativePlasmaSleep.
+  ///
+  /// In ja, this message translates to:
+  /// **'スリープ'**
+  String get nativePlasmaSleep;
+
+  /// No description provided for @nativePlasmaSleepingIn.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$d 秒後にスリープします'**
+  String get nativePlasmaSleepingIn;
+
+  /// No description provided for @nativePlasmaStatusAndNotifications.
+  ///
+  /// In ja, this message translates to:
+  /// **'ステータスと通知'**
+  String get nativePlasmaStatusAndNotifications;
+
+  /// No description provided for @nativePlasmaStopPeeking.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップ表示を終了'**
+  String get nativePlasmaStopPeeking;
+
+  /// No description provided for @nativePlasmaSystemSettings.
+  ///
+  /// In ja, this message translates to:
+  /// **'システム設定'**
+  String get nativePlasmaSystemSettings;
+
+  /// No description provided for @nativePlasmaTileLeft.
+  ///
+  /// In ja, this message translates to:
+  /// **'左半分にタイル'**
+  String get nativePlasmaTileLeft;
+
+  /// No description provided for @nativePlasmaTileRight.
+  ///
+  /// In ja, this message translates to:
+  /// **'右半分にタイル'**
+  String get nativePlasmaTileRight;
+
+  /// No description provided for @nativePlasmaUnpinFromTaskManager.
+  ///
+  /// In ja, this message translates to:
+  /// **'タスクマネージャーから固定解除'**
+  String get nativePlasmaUnpinFromTaskManager;
+
+  /// No description provided for @nativePlasmaVirtualDesktops.
+  ///
+  /// In ja, this message translates to:
+  /// **'仮想デスクトップ'**
+  String get nativePlasmaVirtualDesktops;
+
+  /// No description provided for @nativePlasmaWallpaper.
+  ///
+  /// In ja, this message translates to:
+  /// **'壁紙'**
+  String get nativePlasmaWallpaper;
+
+  /// No description provided for @nativePlasmaWallpaperAndroid.
+  ///
+  /// In ja, this message translates to:
+  /// **'Androidの壁紙'**
+  String get nativePlasmaWallpaperAndroid;
+
+  /// No description provided for @nativePlasmaWallpaperPlasma.
+  ///
+  /// In ja, this message translates to:
+  /// **'Plasma'**
+  String get nativePlasmaWallpaperPlasma;
+
+  /// No description provided for @nativePlasmaBreezeDark.
+  ///
+  /// In ja, this message translates to:
+  /// **'Breeze Dark'**
+  String get nativePlasmaBreezeDark;
+
+  /// No description provided for @nativePlasmaBreezeLight.
+  ///
+  /// In ja, this message translates to:
+  /// **'Breeze Light'**
+  String get nativePlasmaBreezeLight;
 }
 
 class _AppLocalizationsDelegate

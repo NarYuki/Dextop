@@ -622,10 +622,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get displayAutoHideTaskbarSummary => '不使用时自动隐藏桌面任务栏';
 
   @override
-  String get displayForceInternal120Hz => '内置屏幕以 120 Hz 运行';
+  String get displayForceInternal120Hz => '以最高刷新率输出';
 
   @override
-  String get displayForceInternal120HzSummary => 'Dextop 运行时将支持的内置屏幕固定为 120 Hz';
+  String get displayForceInternal120HzSummary => '使用操作系统提供的最高刷新率创建镜像';
 
   @override
   String get displaySoftwareCursorFallback => '使用软件光标';
@@ -1663,7 +1663,16 @@ class AppLocalizationsZh extends AppLocalizations {
   String get keyboardHaptics => '键盘触觉反馈';
 
   @override
-  String get keyboardHapticsDescription => '按下键盘按键或触控板时振动';
+  String get keyboardHapticsDescription => '按下键盘按键时振动';
+
+  @override
+  String get pointerHaptics => '指针触觉反馈';
+
+  @override
+  String get pointerHapticsDescription => '触控板点击和手势操作时振动';
+
+  @override
+  String get hapticsStrength => '触觉反馈强度';
 
   @override
   String get nativeUnknownPermissionResult => 'Shizuku 返回了未知的权限结果';
@@ -2152,4 +2161,304 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get androidEmbeddedPairingInProgress => '正在配对';
+
+  @override
+  String get windowManager => '窗口管理器';
+
+  @override
+  String get windowManagerSystem => '系统内置桌面模式';
+
+  @override
+  String get windowManagerSystemDescription =>
+      '直接使用 Samsung DeX 或 Android 桌面窗口功能';
+
+  @override
+  String get windowManagerPlasma => 'Dextop Plasma（自有窗口管理器）';
+
+  @override
+  String get windowManagerPlasmaDescription =>
+      '由 Dextop 绘制 KDE Plasma 6 风格的桌面、面板、窗口装饰、平铺和虚拟桌面';
+
+  @override
+  String get windowManagerAppliedLive => '已应用到正在运行的桌面';
+
+  @override
+  String get plasmaSettingsTitle => 'Dextop Plasma 设置';
+
+  @override
+  String get plasmaSettingsSummary => '外观、面板、虚拟桌面和动画';
+
+  @override
+  String get plasmaHotCorner => '左上角触发角';
+
+  @override
+  String get plasmaHotCornerDescription => '将指针移到左上角即可打开概览';
+
+  @override
+  String get plasmaShortcutsTitle => '键盘快捷键';
+
+  @override
+  String get plasmaShortcutsBody =>
+      'Meta：Kickoff\nAlt+Space / Alt+F2：KRunner\nMeta+W：概览\nAlt+Tab：切换窗口\nMeta+方向键：快速平铺\nMeta+PgUp / PgDn：最大化 / 最小化\nMeta+D：显示桌面\nCtrl+F1–F4 / Meta+Ctrl+←→：虚拟桌面\nAlt+F3：窗口操作菜单\nAlt+F4：关闭';
+
+  @override
+  String get nativePlasmaAccentColor => '强调色';
+
+  @override
+  String get nativePlasmaAddToFavorites => '添加到收藏';
+
+  @override
+  String get nativePlasmaAllApplications => '所有应用程序';
+
+  @override
+  String get nativePlasmaAllDesktops => '所有桌面';
+
+  @override
+  String get nativePlasmaAnimationSpeed => '动画速度';
+
+  @override
+  String get nativePlasmaAppInfo => '应用信息';
+
+  @override
+  String get nativePlasmaApplication => '应用程序';
+
+  @override
+  String get nativePlasmaApplications => '应用程序';
+
+  @override
+  String get nativePlasmaAudioVolume => '音量';
+
+  @override
+  String get nativePlasmaCalculatorCopy => '计算结果 — 点击复制';
+
+  @override
+  String get nativePlasmaCategoryGames => '游戏';
+
+  @override
+  String get nativePlasmaCategoryGraphics => '图形';
+
+  @override
+  String get nativePlasmaCategoryInternet => '互联网';
+
+  @override
+  String get nativePlasmaCategoryLost => '其他';
+
+  @override
+  String get nativePlasmaCategoryMultimedia => '多媒体';
+
+  @override
+  String get nativePlasmaCategoryNews => '新闻';
+
+  @override
+  String get nativePlasmaCategoryOffice => '办公';
+
+  @override
+  String get nativePlasmaCategorySystem => '系统';
+
+  @override
+  String get nativePlasmaCategoryTravel => '地图与出行';
+
+  @override
+  String get nativePlasmaCategoryVideo => '视频';
+
+  @override
+  String get nativePlasmaCharging => '正在充电';
+
+  @override
+  String get nativePlasmaClose => '关闭';
+
+  @override
+  String get nativePlasmaCloseAll => '全部关闭';
+
+  @override
+  String get nativePlasmaColorScheme => '配色方案';
+
+  @override
+  String get nativePlasmaComputer => '计算机';
+
+  @override
+  String get nativePlasmaConfigureAudio => '配置音频设备…';
+
+  @override
+  String get nativePlasmaConfigureDesktop => '配置桌面和壁纸…';
+
+  @override
+  String get nativePlasmaConfigureNetwork => '配置网络连接…';
+
+  @override
+  String get nativePlasmaConfigurePower => '配置电源管理…';
+
+  @override
+  String get nativePlasmaConnected => '已连接';
+
+  @override
+  String get nativePlasmaDesktop => '桌面';
+
+  @override
+  String get nativePlasmaDesktopN => '桌面 %1\$d';
+
+  @override
+  String get nativePlasmaDeviceSpeaker => '设备扬声器';
+
+  @override
+  String get nativePlasmaDextopSettings => 'Dextop 设置';
+
+  @override
+  String get nativePlasmaDischarging => '正在放电';
+
+  @override
+  String get nativePlasmaDisconnected => '未连接';
+
+  @override
+  String get nativePlasmaDocked => '贴靠边缘';
+
+  @override
+  String get nativePlasmaFavorites => '收藏';
+
+  @override
+  String get nativePlasmaFloating => '浮动';
+
+  @override
+  String get nativePlasmaFollowSystem => '跟随系统';
+
+  @override
+  String get nativePlasmaInstant => '无';
+
+  @override
+  String get nativePlasmaKrunnerHint => '搜索…';
+
+  @override
+  String get nativePlasmaLeave => '离开…';
+
+  @override
+  String get nativePlasmaLogOut => '注销';
+
+  @override
+  String get nativePlasmaLoggingOutIn => '%1\$d 秒后注销';
+
+  @override
+  String get nativePlasmaMaximize => '最大化';
+
+  @override
+  String get nativePlasmaMinimize => '最小化';
+
+  @override
+  String get nativePlasmaMobileData => '移动数据';
+
+  @override
+  String get nativePlasmaMoveToDesktopN => '移动到桌面 %1\$d';
+
+  @override
+  String get nativePlasmaNetworks => '网络';
+
+  @override
+  String get nativePlasmaNewInstance => '启动新实例';
+
+  @override
+  String get nativePlasmaNoActiveNetwork => '没有可用网络';
+
+  @override
+  String get nativePlasmaNoFavorites => '还没有收藏。右键单击应用即可添加。';
+
+  @override
+  String get nativePlasmaNoMatches => '没有匹配项';
+
+  @override
+  String get nativePlasmaNoWindows => '此桌面上没有窗口';
+
+  @override
+  String get nativePlasmaNothingHere => '这里什么都没有';
+
+  @override
+  String get nativePlasmaOpen => '打开';
+
+  @override
+  String get nativePlasmaOverview => '概览';
+
+  @override
+  String get nativePlasmaOverviewSearch => '键入以搜索…';
+
+  @override
+  String get nativePlasmaPanel => '面板';
+
+  @override
+  String get nativePlasmaPeekAtDesktop => '显示桌面';
+
+  @override
+  String get nativePlasmaPinToTaskManager => '固定到任务管理器';
+
+  @override
+  String get nativePlasmaPlaces => '位置';
+
+  @override
+  String get nativePlasmaPowerAndBattery => '电源和电池';
+
+  @override
+  String get nativePlasmaRecentApplications => '最近使用的应用程序';
+
+  @override
+  String get nativePlasmaRemoveFromFavorites => '从收藏中移除';
+
+  @override
+  String get nativePlasmaRestart => '重新启动';
+
+  @override
+  String get nativePlasmaRestartingIn => '%1\$d 秒后重新启动';
+
+  @override
+  String get nativePlasmaRestore => '还原';
+
+  @override
+  String get nativePlasmaRunCommand => '运行命令 (KRunner)';
+
+  @override
+  String get nativePlasmaSearch => '搜索…';
+
+  @override
+  String get nativePlasmaShutDown => '关机';
+
+  @override
+  String get nativePlasmaShuttingDownIn => '%1\$d 秒后关闭 Dextop';
+
+  @override
+  String get nativePlasmaSleep => '睡眠';
+
+  @override
+  String get nativePlasmaSleepingIn => '%1\$d 秒后进入睡眠';
+
+  @override
+  String get nativePlasmaStatusAndNotifications => '状态和通知';
+
+  @override
+  String get nativePlasmaStopPeeking => '停止显示桌面';
+
+  @override
+  String get nativePlasmaSystemSettings => '系统设置';
+
+  @override
+  String get nativePlasmaTileLeft => '向左平铺';
+
+  @override
+  String get nativePlasmaTileRight => '向右平铺';
+
+  @override
+  String get nativePlasmaUnpinFromTaskManager => '从任务管理器取消固定';
+
+  @override
+  String get nativePlasmaVirtualDesktops => '虚拟桌面';
+
+  @override
+  String get nativePlasmaWallpaper => '壁纸';
+
+  @override
+  String get nativePlasmaWallpaperAndroid => 'Android 壁纸';
+
+  @override
+  String get nativePlasmaWallpaperPlasma => 'Plasma';
+
+  @override
+  String get nativePlasmaBreezeDark => 'Breeze Dark';
+
+  @override
+  String get nativePlasmaBreezeLight => 'Breeze Light';
 }

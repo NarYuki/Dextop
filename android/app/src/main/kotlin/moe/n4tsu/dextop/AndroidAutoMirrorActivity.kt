@@ -1064,6 +1064,23 @@ internal class AndroidAutoMirrorController(
         OperationLog.i(context, "AndroidAuto", "explicit Auto source selected display=$displayId")
     }
 
+    fun selectSourceDisplay(displayId: Int, width: Int, height: Int, density: Int) {
+        selectSourceDisplay(displayId)
+        sourceDisplayId = displayId
+        sourceWidth = width.coerceAtLeast(1)
+        sourceHeight = height.coerceAtLeast(1)
+        sourceDensity = density.coerceAtLeast(1)
+        OperationLog.i(
+            context,
+            "AndroidAuto",
+            "explicit Auto source geometry=${sourceWidth}x$sourceHeight/$sourceDensity",
+        )
+    }
+
+    fun sourceGeometry(): IntArray = intArrayOf(sourceWidth, sourceHeight, sourceDensity)
+
+    fun privilegedAccessAvailable(): Boolean = privilegedAccess.isAvailable()
+
     fun selectedSource(): String = requestedSource ?: AndroidAutoMirrorActivity.SOURCE_AUTO
 
     /** Uses an already-rendering direct CARDEX display for input only. */
@@ -1107,16 +1124,30 @@ internal class AndroidAutoMirrorController(
         height: Int,
         reason: String
     ) {
-        val source = resolveSourceDisplay() ?: run {
+        val source = resolveSourceDisplay()
+        if (source != null) {
+            val metrics = DisplayMetrics()
+            source.getRealMetrics(metrics)
+            sourceDisplayId = source.displayId
+            sourceWidth = metrics.widthPixels.takeIf { it > 0 } ?: source.width
+            sourceHeight = metrics.heightPixels.takeIf { it > 0 } ?: source.height
+            sourceDensity = metrics.densityDpi.takeIf { it > 0 } ?: 160
+        } else if (explicitSourceDisplayId != sourceDisplayId ||
+            sourceDisplayId < 0 || sourceWidth <= 0 || sourceHeight <= 0
+        ) {
             OperationLog.w(context, "AndroidAuto", "no source display available reason=$reason", null)
             return
+        } else {
+            // A shell-owned trusted VirtualDisplay can be hidden from this
+            // process's DisplayManager while remaining mirrorable through the
+            // privileged SurfaceControl backend. Geometry is supplied by the
+            // relay that owns the display.
+            OperationLog.i(
+                context,
+                "AndroidAuto",
+                "using relay geometry for hidden source display=$sourceDisplayId",
+            )
         }
-        val metrics = DisplayMetrics()
-        source.getRealMetrics(metrics)
-        sourceDisplayId = source.displayId
-        sourceWidth = metrics.widthPixels.takeIf { it > 0 } ?: source.width
-        sourceHeight = metrics.heightPixels.takeIf { it > 0 } ?: source.height
-        sourceDensity = metrics.densityDpi.takeIf { it > 0 } ?: 160
         hostWidth = width
         hostHeight = height
         attachedSurface = host
@@ -1129,7 +1160,12 @@ internal class AndroidAutoMirrorController(
                 backend.attach(
                     sourceDisplayId, host, width, height,
                     sourceWidth.coerceAtLeast(1), sourceHeight.coerceAtLeast(1),
-                    sourceDensity, strategyOverride = "virtual_display"
+                    sourceDensity,
+                    // A recording VirtualDisplay creates another display and
+                    // produces a black/recursive frame when the source is the
+                    // shell-owned Dextop VirtualDisplay. Mirror its compositor
+                    // layer directly into the phone SurfaceView instead.
+                    strategyOverride = "window_manager",
                 )
             } else {
                 backend.attachSurface(
@@ -1352,7 +1388,10 @@ internal class AndroidAutoMirrorController(
             val type = runCatching {
                 Display::class.java.getMethod("getType").invoke(display) as Int
             }.getOrDefault(-1)
-            if (type != 4) {
+            // Dextop can be backed by either the legacy overlay display (4)
+            // or the direct trusted VirtualDisplay (5). Both are valid Auto
+            // sources; rejecting type 5 made the phone mirror button a no-op.
+            if (type != 4 && type != 5) {
                 OperationLog.w(
                     context,
                     "AndroidAuto",

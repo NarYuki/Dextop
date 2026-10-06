@@ -318,6 +318,13 @@ class NativeBridge {
         {'id': id, 'enabled': enabled},
       ) ??
       {};
+  /// Applies the saved `window_manager` preference to a running session.
+  Future<void> setWindowManager() => channel.invokeMethod('setWindowManager');
+
+  /// Re-reads Dextop Plasma appearance preferences on the running desktop.
+  Future<void> plasmaSettingsChanged() =>
+      channel.invokeMethod('plasmaSettingsChanged');
+
   Future<Map<String, dynamic>> setVirtualPointerProfile(String profile) async =>
       await channel.invokeMapMethod<String, dynamic>(
         'setVirtualPointerProfile',
@@ -337,6 +344,11 @@ class NativeBridge {
     'bounds': ?bounds,
     'position': ?position,
   });
+  /// Routes a saved workspace directly to the active decorated Car Companion
+  /// display. Returns false when that third display mode is not active.
+  Future<bool> launchAutoWorkspace(String id) async =>
+      await channel.invokeMethod<bool>('launchAutoWorkspace', {'id': id}) ??
+      false;
   Future<Map<String, dynamic>> recovery() async =>
       await channel.invokeMapMethod<String, dynamic>('recovery') ?? {};
   Future<Map<String, dynamic>> repairState() async =>

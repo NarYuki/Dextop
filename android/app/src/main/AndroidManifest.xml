@@ -100,6 +100,25 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Desktop layer of the Dextop window manager. Started as a
+             secondary HOME on the Dextop display so it always stays below
+             application windows; never offered as a default launcher. -->
+        <activity
+            android:name=".plasma.PlasmaDesktopActivity"
+            android:label="@string/app_name"
+            android:exported="false"
+            android:launchMode="singleTask"
+            android:taskAffinity="${applicationId}.plasmadesktop"
+            android:excludeFromRecents="true"
+            android:resizeableActivity="true"
+            android:theme="@android:style/Theme.Wallpaper.NoTitleBar.Fullscreen"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.SECONDARY_HOME" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
         <activity
             android:name=".DextopCastRouteActivity"
             android:exported="false"
@@ -118,7 +137,7 @@
             android:exported="false"
             android:launchMode="singleTask"
             android:taskAffinity="${applicationId}.carcontrol"
-            android:theme="@android:style/Theme.Black.NoTitleBar.Fullscreen"
+            android:theme="@android:style/Theme.Black.NoTitleBar"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|density|uiMode" />
         <activity
             android:name=".CoverBackButtonsActivity"
