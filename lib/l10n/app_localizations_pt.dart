@@ -2635,6 +2635,32 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get uiShortcutAdd => 'Adicionar atalho ao ecrã inicial';
+
+  @override
+  String get uiShortcutAdded =>
+      'Adicionado ao ecrã inicial. Toque para iniciar ou parar o ecrã virtual do Dextop.';
+
+  @override
+  String get uiShortcutDismissed => 'Atalho não adicionado';
+
+  @override
+  String get uiShortcutUnsupported =>
+      'Este launcher não suporta atalhos fixados. Mantenha premido o ícone do Dextop e escolha “Iniciar Dextop”.';
+
+  @override
+  String uiShortcutFailed(String error) {
+    return 'Não foi possível adicionar o atalho: \$error';
+  }
+
+  @override
+  String get nativeShortcutStartDisplay => 'Iniciar Dextop';
+
+  @override
+  String get nativeShortcutStartDisplayLong =>
+      'Iniciar ou parar o ecrã virtual do Dextop';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
@@ -5268,4 +5294,30 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get uiShortcutAdd => 'Adicionar atalho à tela inicial';
+
+  @override
+  String get uiShortcutAdded =>
+      'Adicionado à tela inicial. Toque para iniciar ou parar a tela virtual do Dextop.';
+
+  @override
+  String get uiShortcutDismissed => 'Atalho não adicionado';
+
+  @override
+  String get uiShortcutUnsupported =>
+      'Este launcher não suporta atalhos fixados. Mantenha pressionado o ícone do Dextop e escolha “Iniciar Dextop”.';
+
+  @override
+  String uiShortcutFailed(String error) {
+    return 'Não foi possível adicionar o atalho: \$error';
+  }
+
+  @override
+  String get nativeShortcutStartDisplay => 'Iniciar Dextop';
+
+  @override
+  String get nativeShortcutStartDisplayLong =>
+      'Iniciar ou parar a tela virtual do Dextop';
 }

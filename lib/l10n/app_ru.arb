@@ -814,5 +814,19 @@
   "nativePlasmaWallpaperAndroid": "Обои Android",
   "nativePlasmaWallpaperPlasma": "Plasma",
   "nativePlasmaBreezeDark": "Breeze Dark",
-  "nativePlasmaBreezeLight": "Breeze Light"
+  "nativePlasmaBreezeLight": "Breeze Light",
+  "uiShortcutAdd": "Добавить ярлык на главный экран",
+  "uiShortcutAdded": "Ярлык добавлен на главный экран. Нажмите на него, чтобы запустить или остановить виртуальный дисплей Dextop.",
+  "uiShortcutDismissed": "Ярлык не добавлен",
+  "uiShortcutUnsupported": "Этот лаунчер не поддерживает закреплённые ярлыки. Нажмите и удерживайте значок Dextop и выберите «Запустить Dextop».",
+  "uiShortcutFailed": "Не удалось добавить ярлык: $error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "Запустить Dextop",
+  "nativeShortcutStartDisplayLong": "Запустить или остановить виртуальный дисплей Dextop"
 }

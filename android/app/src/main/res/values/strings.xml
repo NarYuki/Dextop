@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name" translatable="false">Dextop</string>
     <string name="quick_settings_tile_label" translatable="false">Dextop</string>
+    <string name="quick_settings_display_tile_label" translatable="false">Dextop Display</string>
     <string name="dextop_swipe_ime_label">Dextop なぞり入力</string>
     <string name="accessibility_service_description">Dextopの仮想ディスプレイ、入力、操作パネルを制御します</string>
     <string name="embedded_pairing_channel">内蔵アクセスサービスの設定</string>
@@ -18,4 +19,6 @@
     <string name="embedded_pairing_service_not_found">ペア設定サービスが見つかりません</string>
     <string name="embedded_pairing_retry">再試行</string>
     <string name="embedded_pairing_in_progress">ペア設定中</string>
+    <string name="dextop_shortcut_start_display">Dextop を起動</string>
+    <string name="dextop_shortcut_start_display_long">Dextop の仮想ディスプレイを起動または停止します</string>
 </resources>

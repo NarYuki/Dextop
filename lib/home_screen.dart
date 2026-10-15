@@ -383,6 +383,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var homeApps = <String, Map<String, dynamic>>{};
   var homeAppsLoading = false;
   String desktopSettingsSection = 'display';
+  StreamSubscription<bool?>? pinResultSubscription;
+  StreamSubscription<void>? shortcutActionSubscription;
 
   @override
   void initState() {
@@ -400,6 +402,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       (_) => _refreshSessionState(),
     );
     _loadHomeSelections();
+    pinResultSubscription = NativeBridge.pinResults.listen(_showPinResult);
+    shortcutActionSubscription = NativeBridge.shortcutActions.listen(
+      (_) => _consumeShortcutAction(),
+    );
     AppAnalytics.screen('home');
   }
 
@@ -520,6 +526,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       WidgetsBinding.instance.addPostFrameCallback((_) => loadHomeAppIcons());
     }
     if (mounted) await _consumeTileAction();
+    if (mounted) await _consumeShortcutAction();
     if (mounted) await _showMultiTouchUpgradeNoticeIfNeeded();
   }
 
@@ -808,6 +815,47 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
+  /// Applies a launcher shortcut or display tile tap. Both toggle the
+  /// session: start the display with the saved settings, or stop a running one.
+  Future<void> _consumeShortcutAction() async {
+    if (!mounted) return;
+    final request = await bridge.consumeShortcutAction();
+    if (!mounted || request == null) return;
+    await toggleDisplay();
+    if (request['closeAfterStart'] == true && active && !widget.desktopWindow) {
+      // The Dextop overlay owns the screen while the session runs, so a
+      // control-center tap must not leave the app in the foreground. A start
+      // that did not succeed keeps the app open and shows why.
+      await bridge.finishActivity();
+    }
+  }
+
+  void _showPinResult(bool? pinned) {
+    if (!mounted || pinned == null) return;
+    final l = AppLocalizations.of(context);
+    _showShortcutMessage(pinned ? l.uiShortcutAdded : l.uiShortcutDismissed);
+  }
+
+  Future<void> addHomeScreenShortcut() async {
+    final l = AppLocalizations.of(context);
+    try {
+      await bridge.pinShortcut();
+    } on PlatformException catch (e) {
+      if (!mounted) return;
+      _showShortcutMessage(
+        e.code == 'shortcut_unsupported'
+            ? l.uiShortcutUnsupported
+            : l.uiShortcutFailed(e.message ?? e.code),
+      );
+    }
+  }
+
+  void _showShortcutMessage(String message) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
@@ -907,6 +955,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void dispose() {
     sessionStateTimer?.cancel();
+    pinResultSubscription?.cancel();
+    shortcutActionSubscription?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -916,6 +966,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (state == AppLifecycleState.resumed) {
       refresh();
       _consumeTileAction();
+      _consumeShortcutAction();
       if (profiles.isNotEmpty) {
         _loadProfiles(profiles.first, profiles.first.density);
       }

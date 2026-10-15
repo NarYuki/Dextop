@@ -814,5 +814,19 @@
   "nativePlasmaWallpaperAndroid": "Papel de parede do Android",
   "nativePlasmaWallpaperPlasma": "Plasma",
   "nativePlasmaBreezeDark": "Breeze Dark",
-  "nativePlasmaBreezeLight": "Breeze Light"
+  "nativePlasmaBreezeLight": "Breeze Light",
+  "uiShortcutAdd": "Adicionar atalho à tela inicial",
+  "uiShortcutAdded": "Adicionado à tela inicial. Toque para iniciar ou parar a tela virtual do Dextop.",
+  "uiShortcutDismissed": "Atalho não adicionado",
+  "uiShortcutUnsupported": "Este launcher não suporta atalhos fixados. Mantenha pressionado o ícone do Dextop e escolha “Iniciar Dextop”.",
+  "uiShortcutFailed": "Não foi possível adicionar o atalho: $error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "Iniciar Dextop",
+  "nativeShortcutStartDisplayLong": "Iniciar ou parar a tela virtual do Dextop"
 }

@@ -2495,4 +2495,29 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get uiShortcutAdd => 'ホーム画面にショートカットを追加';
+
+  @override
+  String get uiShortcutAdded =>
+      'ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。';
+
+  @override
+  String get uiShortcutDismissed => 'ショートカットは追加されませんでした';
+
+  @override
+  String get uiShortcutUnsupported =>
+      'このホームアプリはショートカットの固定に対応していません。Dextop のアイコンを長押しして「Dextop を起動」を選んでください。';
+
+  @override
+  String uiShortcutFailed(String error) {
+    return 'ショートカットを追加できませんでした：\$error';
+  }
+
+  @override
+  String get nativeShortcutStartDisplay => 'Dextop を起動';
+
+  @override
+  String get nativeShortcutStartDisplayLong => 'Dextop の仮想ディスプレイを起動または停止します';
 }

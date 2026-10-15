@@ -814,5 +814,19 @@
   "nativePlasmaWallpaperAndroid": "Androidの壁紙",
   "nativePlasmaWallpaperPlasma": "Plasma",
   "nativePlasmaBreezeDark": "Breeze Dark",
-  "nativePlasmaBreezeLight": "Breeze Light"
+  "nativePlasmaBreezeLight": "Breeze Light",
+  "uiShortcutAdd": "ホーム画面にショートカットを追加",
+  "uiShortcutAdded": "ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。",
+  "uiShortcutDismissed": "ショートカットは追加されませんでした",
+  "uiShortcutUnsupported": "このホームアプリはショートカットの固定に対応していません。Dextop のアイコンを長押しして「Dextop を起動」を選んでください。",
+  "uiShortcutFailed": "ショートカットを追加できませんでした：$error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "Dextop を起動",
+  "nativeShortcutStartDisplayLong": "Dextop の仮想ディスプレイを起動または停止します"
 }

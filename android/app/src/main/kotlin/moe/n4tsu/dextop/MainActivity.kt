@@ -208,6 +208,7 @@ open class MainActivity : FlutterActivity() {
             }
         }
         restoreEmbeddedPrivilegeIfPossible("activity_started")
+        DextopShortcuts.publish(applicationContext)
         if (display?.displayId == android.view.Display.DEFAULT_DISPLAY) {
             instance = this
             phoneTaskId = taskId
@@ -309,6 +310,11 @@ open class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
+        if (DextopShortcuts.isStartDisplayAction(intent.action)) {
+            // A shortcut tapped while the app is already in the foreground gets
+            // no lifecycle callback, so forward the action to Flutter directly.
+            runOnUiThread { flutterChannel?.invokeMethod("shortcutAction", null) }
+        }
     }
 
     override fun onDestroy() {
@@ -629,6 +635,35 @@ open class MainActivity : FlutterActivity() {
                     if (requested) intent?.action = null
                     result.success(requested)
                 }
+                "consumeShortcutAction" -> {
+                    if (DextopShortcuts.isStartDisplayAction(intent?.action)) {
+                        // The extra survives the action reset; a later resume
+                        // must not start the session a second time.
+                        val closesAfterStart = DextopShortcuts.closesAfterStart(intent)
+                        intent?.action = null
+                        result.success(mapOf("closeAfterStart" to closesAfterStart))
+                    } else {
+                        result.success(null)
+                    }
+                }
+                "finishActivity" -> {
+                    // Control-center starts hand the screen back to the Dextop
+                    // overlay, so the activity closes itself once it answered.
+                    result.success(null)
+                    runOnUiThread { finish() }
+                }
+                "pinShortcut" -> {
+                    val channel = flutterChannel
+                    if (channel == null) {
+                        result.error(
+                            "channel_unavailable",
+                            "The Flutter channel is not ready",
+                            null,
+                        )
+                    } else {
+                        DextopShortcuts.requestPin(this, channel, result)
+                    }
+                }
                 "metrics" -> result.success(DeviceDiagnostics(this).metrics(MirrorService.inputMode(), MirrorService.measuredFps()))
                 "diagnosticReport" -> Thread {
                     OperationLog.i(this, "MainActivity", "diagnostic report requested")
@@ -684,6 +719,7 @@ open class MainActivity : FlutterActivity() {
         pendingPermissionResult = null
         pendingStartResult = null
         distributionScope.cancel()
+        DextopShortcuts.release()
         super.cleanUpFlutterEngine(flutterEngine)
     }
 

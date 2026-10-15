@@ -56,6 +56,8 @@ ANDROID_KEYS = {
     "androidEmbeddedPairingServiceNotFound": "embedded_pairing_service_not_found",
     "androidEmbeddedPairingRetry": "embedded_pairing_retry",
     "androidEmbeddedPairingInProgress": "embedded_pairing_in_progress",
+    "nativeShortcutStartDisplay": "dextop_shortcut_start_display",
+    "nativeShortcutStartDisplayLong": "dextop_shortcut_start_display_long",
 }
 
 
@@ -118,6 +120,7 @@ def render_android(arb: dict[str, str], default: bool) -> str:
         lines.extend([
             '    <string name="app_name" translatable="false">Dextop</string>',
             '    <string name="quick_settings_tile_label" translatable="false">Dextop</string>',
+            '    <string name="quick_settings_display_tile_label" translatable="false">Dextop Display</string>',
         ])
     for arb_key, resource_key in ANDROID_KEYS.items():
         lines.append(f'    <string name="{resource_key}">{escape(arb[arb_key])}</string>')

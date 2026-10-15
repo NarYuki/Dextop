@@ -2509,4 +2509,29 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get uiShortcutAdd => '홈 화면에 바로가기 추가';
+
+  @override
+  String get uiShortcutAdded =>
+      '홈 화면에 추가했습니다. 탭하면 Dextop 가상 디스플레이를 시작하거나 중지합니다.';
+
+  @override
+  String get uiShortcutDismissed => '바로가기가 추가되지 않았습니다';
+
+  @override
+  String get uiShortcutUnsupported =>
+      '이 런처는 고정 바로가기를 지원하지 않습니다. Dextop 앱 아이콘을 길게 눌러 “Dextop 시작”을 선택하세요.';
+
+  @override
+  String uiShortcutFailed(String error) {
+    return '바로가기를 추가할 수 없습니다: \$error';
+  }
+
+  @override
+  String get nativeShortcutStartDisplay => 'Dextop 시작';
+
+  @override
+  String get nativeShortcutStartDisplayLong => 'Dextop 가상 디스플레이를 시작하거나 중지합니다';
 }
