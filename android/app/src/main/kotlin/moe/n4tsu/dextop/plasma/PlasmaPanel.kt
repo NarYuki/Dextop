@@ -163,9 +163,15 @@ internal class PlasmaPanelView(
     }
 
     /** Bar rectangle inside this view for the current float animation state. */
+    /**
+     * Bar rectangle for the current float state.  It is anchored to the
+     * bottom edge with a constant thickness, so a frame drawn before the
+     * view's new height has been laid out cannot make the bar wobble.
+     */
     private fun barRect(): RectF {
         val margin = floatMargin * floatFraction
-        return RectF(margin, margin, width - margin, height - margin)
+        val bottom = height - margin
+        return RectF(margin, bottom - thickness, width - margin, bottom)
     }
 
     private fun layoutSlots(bar: RectF) {
@@ -442,4 +448,69 @@ internal class PlasmaPanelView(
         slots.firstOrNull { it is Slot.Task && it.entry.packageName == packageName }?.rect?.let(::toRaw)
 
     fun launcherRect(): RectF? = slots.firstOrNull { it is Slot.Launcher }?.rect?.let(::toRaw)
+}
+
+/** Plasma tooltip for task-manager entries: titles plus live thumbnails. */
+internal class PanelTooltipView(context: Context, private val palette: PlasmaPalette) : View(context) {
+    private var entry: PanelTask? = null
+    private val density = resources.displayMetrics.density
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+    private val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { typeface = PlasmaTheme.sans }
+
+    fun bind(value: PanelTask) { entry = value }
+
+    fun desiredSize(): Pair<Int, Int> {
+        val count = entry?.windows?.size ?: 0
+        return if (count == 0) {
+            text.textSize = 13 * density
+            ((text.measureText(entry?.label.orEmpty()) + 56 * density).toInt()) to (40 * density).toInt()
+        } else {
+            ((count.coerceAtMost(4) * 200 + 12) * density).toInt() to (166 * density).toInt()
+        }
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        val value = entry ?: return
+        val box = RectF(.5f, .5f, width - .5f, height - .5f)
+        paint.style = android.graphics.Paint.Style.FILL
+        paint.color = palette.popup
+        canvas.drawRoundRect(box, 8 * density, 8 * density, paint)
+        paint.style = android.graphics.Paint.Style.STROKE
+        paint.color = palette.frameOutline
+        canvas.drawRoundRect(box, 8 * density, 8 * density, paint)
+        paint.style = android.graphics.Paint.Style.FILL
+        text.textSize = 13 * density
+        text.color = palette.text
+        if (value.windows.isEmpty()) {
+            canvas.drawIcon(value.icon, RectF(10 * density, 10 * density, 30 * density, 30 * density))
+            canvas.drawText(value.label, 40 * density, height / 2f - (text.descent() + text.ascent()) / 2f, text)
+            return
+        }
+        value.windows.take(4).forEachIndexed { index, window ->
+            val left = (6 + index * 200) * density
+            val cell = RectF(left + 6 * density, 8 * density, left + 194 * density, height - 8 * density)
+            canvas.drawIcon(window.icon, RectF(cell.left, cell.top, cell.left + 16 * density, cell.top + 16 * density))
+            val title = TextUtilsCompat.ellipsize(window.title, text, cell.width() - 22 * density)
+            canvas.drawText(title, cell.left + 22 * density, cell.top + 13 * density, text)
+            val thumbArea = RectF(cell.left, cell.top + 24 * density, cell.right, cell.bottom)
+            val frame = window.frame
+            val scale = minOf(thumbArea.width() / frame.width().coerceAtLeast(1), thumbArea.height() / frame.height().coerceAtLeast(1))
+            val thumb = RectF(
+                thumbArea.centerX() - frame.width() * scale / 2, thumbArea.centerY() - frame.height() * scale / 2,
+                thumbArea.centerX() + frame.width() * scale / 2, thumbArea.centerY() + frame.height() * scale / 2,
+            )
+            val bitmap = window.thumbnail
+            if (bitmap != null && !bitmap.isRecycled) canvas.drawBitmap(bitmap, null, thumb, paint)
+            else {
+                paint.color = palette.windowBackground
+                canvas.drawRect(thumb, paint)
+                val s = minOf(thumb.width(), thumb.height()) * .4f
+                canvas.drawIcon(window.icon, RectF(thumb.centerX() - s / 2, thumb.centerY() - s / 2, thumb.centerX() + s / 2, thumb.centerY() + s / 2))
+            }
+            if (window.minimized) {
+                paint.color = PlasmaTheme.withAlpha(palette.popup, 0x88)
+                canvas.drawRect(thumb, paint)
+            }
+        }
+    }
 }

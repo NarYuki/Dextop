@@ -330,6 +330,7 @@ open class MainActivity : FlutterActivity() {
             when (call.method) {
                 "status" -> result.success(status())
                 "sessionState" -> result.success(mapOf(
+                    "autoMode" to CardexRelayService.activeMode(),
                     "active" to MirrorService.isActive(),
                     "stopping" to MirrorService.isStopping(),
                     "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),
@@ -790,6 +791,7 @@ open class MainActivity : FlutterActivity() {
             packageManager.getPackageInfo(CAR_COMPANION_PACKAGE, 0)
         }.isSuccess
         val status = mapOf(
+            "autoMode" to CardexRelayService.activeMode(),
             "active" to MirrorService.isActive(),
             "stopping" to MirrorService.isStopping(),
             "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),

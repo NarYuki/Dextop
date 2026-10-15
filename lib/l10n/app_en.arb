@@ -719,6 +719,8 @@
   "windowManagerSystemDescription": "Uses Samsung DeX or Android desktop windowing as provided by the system",
   "windowManagerPlasma": "Dextop Plasma (own WM)",
   "windowManagerPlasmaDescription": "Dextop draws a KDE Plasma 6 style desktop with its own panel, window decorations, tiling and virtual desktops",
+  "windowManagerPlasmaV2": "Dextop Plasma v2 (compositing WM)",
+  "windowManagerPlasmaV2Description": "Runs each app on its own virtual display and shows it inside a Breeze window drawn by Dextop, so dragging, resizing and animations happen inside Dextop. Text input (IME) and some apps may not work.",
   "windowManagerAppliedLive": "Applied to the running desktop",
   "plasmaSettingsTitle": "Dextop Plasma settings",
   "plasmaSettingsSummary": "Appearance, panel, virtual desktops and animations",

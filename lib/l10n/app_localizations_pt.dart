@@ -2337,6 +2337,13 @@ class AppLocalizationsPt extends AppLocalizations {
       'O Dextop desenha uma área de trabalho no estilo KDE Plasma 6 com painel, decorações de janela, mosaico e áreas virtuais';
 
   @override
+  String get windowManagerPlasmaV2 => 'Dextop Plasma v2 (WM com composição)';
+
+  @override
+  String get windowManagerPlasmaV2Description =>
+      'Executa cada app em sua própria tela virtual e a mostra dentro de uma janela Breeze desenhada pelo Dextop, então arrastar, redimensionar e as animações acontecem dentro do Dextop. A entrada de texto (IME) e alguns apps podem não funcionar.';
+
+  @override
   String get windowManagerAppliedLive =>
       'Aplicado à área de trabalho em execução';
 
@@ -4961,6 +4968,13 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get windowManagerPlasmaDescription =>
       'O Dextop desenha uma área de trabalho no estilo KDE Plasma 6 com painel, decorações de janela, mosaico e áreas virtuais';
+
+  @override
+  String get windowManagerPlasmaV2 => 'Dextop Plasma v2 (WM com composição)';
+
+  @override
+  String get windowManagerPlasmaV2Description =>
+      'Executa cada app em sua própria tela virtual e a mostra dentro de uma janela Breeze desenhada pelo Dextop, então arrastar, redimensionar e as animações acontecem dentro do Dextop. A entrada de texto (IME) e alguns apps podem não funcionar.';
 
   @override
   String get windowManagerAppliedLive =>

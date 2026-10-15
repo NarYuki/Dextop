@@ -342,6 +342,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var active = false;
   var autoConnected = false;
   var autoActive = false;
+  var autoMode = '';
   var stopping = false;
   Timer? sessionStateTimer;
   var stopStatusPollActive = false;
@@ -958,6 +959,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         active = value['active'] == true;
         autoConnected = value['autoConnected'] == true;
         autoActive = value['autoActive'] == true;
+        autoMode = value['autoMode'] as String? ?? '';
         carCompanionInstalled = value['carCompanionInstalled'] == true;
         if (!carCompanionInstalled && desktopSettingsSection == 'auto') {
           desktopSettingsSection = 'display';
@@ -1091,10 +1093,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final nextActive = value['active'] == true;
       final nextAutoActive = value['autoActive'] == true;
+      final nextAutoMode = value['autoMode'] as String? ?? '';
       final nextAutoConnected = value['autoConnected'] == true;
       final nextStopping = value['stopping'] == true;
       if (active == nextActive &&
           autoActive == nextAutoActive &&
+          autoMode == nextAutoMode &&
           autoConnected == nextAutoConnected &&
           stopping == nextStopping) {
         return;
@@ -1102,6 +1106,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         active = nextActive;
         autoActive = nextAutoActive;
+        autoMode = nextAutoMode;
         autoConnected = nextAutoConnected;
         stopping = nextStopping;
       });

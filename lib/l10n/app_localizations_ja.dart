@@ -2207,6 +2207,13 @@ class AppLocalizationsJa extends AppLocalizations {
       'DextopがKDE Plasma 6風のデスクトップ、パネル、ウィンドウ装飾、タイル配置、仮想デスクトップを描画します';
 
   @override
+  String get windowManagerPlasmaV2 => 'Dextop Plasma v2（合成型WM）';
+
+  @override
+  String get windowManagerPlasmaV2Description =>
+      'アプリごとに専用の仮想ディスプレイを作り、その画面をDextopが描くBreezeウィンドウの中に表示します。ドラッグ・リサイズ・アニメーションがDextop内で完結します。文字入力（IME）や一部アプリは動作しない場合があります。';
+
+  @override
   String get windowManagerAppliedLive => '実行中のデスクトップへ適用しました';
 
   @override

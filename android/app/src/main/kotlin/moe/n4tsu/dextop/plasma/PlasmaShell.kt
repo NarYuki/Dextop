@@ -40,11 +40,11 @@ import kotlin.math.roundToInt
  */
 internal class PlasmaShell(
     private val service: Context,
-    val displayId: Int,
+    override val displayId: Int,
     displayWidth: Int,
     displayHeight: Int,
     private val host: Host,
-) : PanelHost, LauncherHost, OverviewHost {
+) : DesktopShell, PanelHost, LauncherHost, OverviewHost {
 
     interface Host {
         fun privilegedService(name: String, interfaceName: String): Any
@@ -119,7 +119,7 @@ internal class PlasmaShell(
     private var popupDismissedKind: String? = null
     private var kickoff: KickoffView? = null
     private var krunner: KRunnerView? = null
-    private var tooltip: TooltipView? = null
+    private var tooltip: PanelTooltipView? = null
     private var overview: OverviewView? = null
     private var switcher: TaskSwitcherView? = null
     private var leaveScreen: LeaveScreen? = null
@@ -135,7 +135,7 @@ internal class PlasmaShell(
     // endregion
 
     // region lifecycle
-    fun start() {
+    override fun start() {
         if (running) return
         running = true
         current = this
@@ -156,7 +156,7 @@ internal class PlasmaShell(
         host.log("Plasma shell started display=$displayId ${width}x$height organizer=${bridge.supportsOrganizer}")
     }
 
-    fun stop(restoreWindows: Boolean = true) {
+    override fun stop(restoreWindows: Boolean) {
         if (!running) return
         running = false
         handler.removeCallbacksAndMessages(null)
@@ -193,7 +193,7 @@ internal class PlasmaShell(
         host.log("Plasma shell stopped display=$displayId")
     }
 
-    fun onDisplayResized(newWidth: Int, newHeight: Int) {
+    override fun onDisplayResized(newWidth: Int, newHeight: Int) {
         if (newWidth == width && newHeight == height) return
         width = newWidth
         height = newHeight
@@ -206,9 +206,9 @@ internal class PlasmaShell(
         }
     }
 
-    fun onWindowsChanged() = schedulePoll(60L)
+    override fun onWindowsChanged() = schedulePoll(60L)
 
-    fun reloadSettings() {
+    override fun reloadSettings() {
         val previousDesktops = settings.virtualDesktops
         settings = PlasmaSettings.load(service)
         palette = PlasmaTheme.resolve(service, settings)
@@ -1049,7 +1049,7 @@ internal class PlasmaShell(
 
     private fun showTooltip(entry: PanelTask, anchor: RectF) {
         if (popup != null) return
-        val view = tooltip ?: TooltipView(displayContext, palette).also { tooltip = it }
+        val view = tooltip ?: PanelTooltipView(displayContext, palette).also { tooltip = it }
         view.bind(entry)
         val (w, h) = view.desiredSize()
         val panelTop = height - panel.thickness - (panel.floatMargin * panelFloat).roundToInt() * 2
@@ -1312,7 +1312,7 @@ internal class PlasmaShell(
      * KDE Plasma default global shortcuts.  Returns true when the shell
      * consumed the key so it is not delivered to the focused application.
      */
-    fun handleKey(event: KeyEvent): Boolean {
+    override fun handleKey(event: KeyEvent): Boolean {
         if (!running) return false
         val down = event.action == KeyEvent.ACTION_DOWN
         val code = event.keyCode
@@ -1427,69 +1427,4 @@ internal class PlasmaShell(
         } else tile(window, next)
     }
     // endregion
-
-    /** Plasma tooltip for task-manager entries: titles plus live thumbnails. */
-    private class TooltipView(context: Context, private val palette: PlasmaPalette) : View(context) {
-        private var entry: PanelTask? = null
-        private val density = resources.displayMetrics.density
-        private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
-        private val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { typeface = PlasmaTheme.sans }
-
-        fun bind(value: PanelTask) { entry = value }
-
-        fun desiredSize(): Pair<Int, Int> {
-            val count = entry?.windows?.size ?: 0
-            return if (count == 0) {
-                text.textSize = 13 * density
-                ((text.measureText(entry?.label.orEmpty()) + 56 * density).toInt()) to (40 * density).toInt()
-            } else {
-                ((count.coerceAtMost(4) * 200 + 12) * density).toInt() to (166 * density).toInt()
-            }
-        }
-
-        override fun onDraw(canvas: android.graphics.Canvas) {
-            val value = entry ?: return
-            val box = RectF(.5f, .5f, width - .5f, height - .5f)
-            paint.style = android.graphics.Paint.Style.FILL
-            paint.color = palette.popup
-            canvas.drawRoundRect(box, 8 * density, 8 * density, paint)
-            paint.style = android.graphics.Paint.Style.STROKE
-            paint.color = palette.frameOutline
-            canvas.drawRoundRect(box, 8 * density, 8 * density, paint)
-            paint.style = android.graphics.Paint.Style.FILL
-            text.textSize = 13 * density
-            text.color = palette.text
-            if (value.windows.isEmpty()) {
-                canvas.drawIcon(value.icon, RectF(10 * density, 10 * density, 30 * density, 30 * density))
-                canvas.drawText(value.label, 40 * density, height / 2f - (text.descent() + text.ascent()) / 2f, text)
-                return
-            }
-            value.windows.take(4).forEachIndexed { index, window ->
-                val left = (6 + index * 200) * density
-                val cell = RectF(left + 6 * density, 8 * density, left + 194 * density, height - 8 * density)
-                canvas.drawIcon(window.icon, RectF(cell.left, cell.top, cell.left + 16 * density, cell.top + 16 * density))
-                val title = TextUtilsCompat.ellipsize(window.title, text, cell.width() - 22 * density)
-                canvas.drawText(title, cell.left + 22 * density, cell.top + 13 * density, text)
-                val thumbArea = RectF(cell.left, cell.top + 24 * density, cell.right, cell.bottom)
-                val frame = window.frame
-                val scale = minOf(thumbArea.width() / frame.width().coerceAtLeast(1), thumbArea.height() / frame.height().coerceAtLeast(1))
-                val thumb = RectF(
-                    thumbArea.centerX() - frame.width() * scale / 2, thumbArea.centerY() - frame.height() * scale / 2,
-                    thumbArea.centerX() + frame.width() * scale / 2, thumbArea.centerY() + frame.height() * scale / 2,
-                )
-                val bitmap = window.thumbnail
-                if (bitmap != null && !bitmap.isRecycled) canvas.drawBitmap(bitmap, null, thumb, paint)
-                else {
-                    paint.color = palette.windowBackground
-                    canvas.drawRect(thumb, paint)
-                    val s = minOf(thumb.width(), thumb.height()) * .4f
-                    canvas.drawIcon(window.icon, RectF(thumb.centerX() - s / 2, thumb.centerY() - s / 2, thumb.centerX() + s / 2, thumb.centerY() + s / 2))
-                }
-                if (window.minimized) {
-                    paint.color = PlasmaTheme.withAlpha(palette.popup, 0x88)
-                    canvas.drawRect(thumb, paint)
-                }
-            }
-        }
-    }
 }

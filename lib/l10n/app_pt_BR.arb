@@ -719,6 +719,8 @@
   "windowManagerSystemDescription": "Usa o Samsung DeX ou as janelas de área de trabalho do Android como fornecidos pelo sistema",
   "windowManagerPlasma": "Dextop Plasma (WM próprio)",
   "windowManagerPlasmaDescription": "O Dextop desenha uma área de trabalho no estilo KDE Plasma 6 com painel, decorações de janela, mosaico e áreas virtuais",
+  "windowManagerPlasmaV2": "Dextop Plasma v2 (WM com composição)",
+  "windowManagerPlasmaV2Description": "Executa cada app em sua própria tela virtual e a mostra dentro de uma janela Breeze desenhada pelo Dextop, então arrastar, redimensionar e as animações acontecem dentro do Dextop. A entrada de texto (IME) e alguns apps podem não funcionar.",
   "windowManagerAppliedLive": "Aplicado à área de trabalho em execução",
   "plasmaSettingsTitle": "Configurações do Dextop Plasma",
   "plasmaSettingsSummary": "Aparência, painel, áreas virtuais e animações",

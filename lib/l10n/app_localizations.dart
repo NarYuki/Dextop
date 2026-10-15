@@ -4337,6 +4337,18 @@ abstract class AppLocalizations {
   /// **'DextopがKDE Plasma 6風のデスクトップ、パネル、ウィンドウ装飾、タイル配置、仮想デスクトップを描画します'**
   String get windowManagerPlasmaDescription;
 
+  /// No description provided for @windowManagerPlasmaV2.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop Plasma v2（合成型WM）'**
+  String get windowManagerPlasmaV2;
+
+  /// No description provided for @windowManagerPlasmaV2Description.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリごとに専用の仮想ディスプレイを作り、その画面をDextopが描くBreezeウィンドウの中に表示します。ドラッグ・リサイズ・アニメーションがDextop内で完結します。文字入力（IME）や一部アプリは動作しない場合があります。'**
+  String get windowManagerPlasmaV2Description;
+
   /// No description provided for @windowManagerAppliedLive.
   ///
   /// In ja, this message translates to:

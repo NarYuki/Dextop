@@ -2299,6 +2299,13 @@ class AppLocalizationsEn extends AppLocalizations {
       'Dextop draws a KDE Plasma 6 style desktop with its own panel, window decorations, tiling and virtual desktops';
 
   @override
+  String get windowManagerPlasmaV2 => 'Dextop Plasma v2 (compositing WM)';
+
+  @override
+  String get windowManagerPlasmaV2Description =>
+      'Runs each app on its own virtual display and shows it inside a Breeze window drawn by Dextop, so dragging, resizing and animations happen inside Dextop. Text input (IME) and some apps may not work.';
+
+  @override
   String get windowManagerAppliedLive => 'Applied to the running desktop';
 
   @override

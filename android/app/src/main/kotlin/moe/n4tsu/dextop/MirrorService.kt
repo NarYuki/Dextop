@@ -538,8 +538,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
         fun activeWindowManager(): String =
-            if (instance?.plasmaShell != null) moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA
-            else moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
+            when (instance?.plasmaShell) {
+                is moe.n4tsu.dextop.plasma.PlasmaV2Shell -> moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
+                null -> moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
+                else -> moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA
+            }
 
         fun activeDisplayGeometry(): IntArray? = instance?.let { service ->
             if (!active || service.targetDisplayId < 0 ||
@@ -736,6 +739,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
 
+        fun dispatchCarPan(dx: Float, dy: Float, drag: Boolean, release: Boolean, anchorX: Float, anchorY: Float) {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service && active && service.autoOnlySession) {
+                    if (!service.carPanHeld && anchorX.isFinite() && anchorY.isFinite()) {
+                        service.cursorX = anchorX.coerceIn(0f, 1f) * (service.targetWidth - 1)
+                        service.cursorY = anchorY.coerceIn(0f, 1f) * (service.targetHeight - 1)
+                    }
+                    service.carPan(dx * service.targetWidth, dy * service.targetHeight, drag, release)
+                }
+            }
+        }
+
+        fun releaseCarPan() {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post { service.finishCarPan() }
+        }
+
         fun attachCarCompanionPhoneTrackpad(surface: View, nativeTouchpad: Boolean) {
             val service = instance ?: return
             Handler(Looper.getMainLooper()).post {
@@ -903,7 +924,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var rootWindowParams: WindowManager.LayoutParams? = null
     private var surfaceView: SurfaceView? = null
     /** Dextop's own window manager; null while the platform desktop owns the display. */
-    private var plasmaShell: moe.n4tsu.dextop.plasma.PlasmaShell? = null
+    private var plasmaShell: moe.n4tsu.dextop.plasma.DesktopShell? = null
     private var cursorView: CursorView? = null
     private var carCompanionCursorView: CursorView? = null
     private var carCompanionCursorWindowManager: WindowManager? = null
@@ -2106,6 +2127,143 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         return Rect(windowConfiguration.javaClass.getMethod("getBounds").invoke(windowConfiguration) as Rect)
     }
 
+    private var autoOverlapCorrectionGeneration = 0
+    private var carPanHeld = false
+    private var carPanNative = false
+    private var carPanDownTime = 0L
+    private val carPanHandler = Handler(Looper.getMainLooper())
+    private val carPanRelease = Runnable { finishCarPan() }
+
+    private fun carPan(dx: Float, dy: Float, drag: Boolean, release: Boolean) {
+        if (release || !dx.isFinite() || !dy.isFinite()) { finishCarPan(); return }
+        if (dx == 0f && dy == 0f) return
+        // Auto PAN has an absolute tap anchor. Relative uinput mouse movement
+        // cannot synchronize that anchor and adds pointer acceleration.
+        val native = false
+        if (carPanHeld && (!drag || native != carPanNative)) finishCarPan()
+        if (drag) {
+            if (!carPanHeld) {
+                carPanNative = native
+                carPanHeld = if (native) virtualMouseButton("BTN_LEFT", true, true)
+                    else sendCarPanMouse(MotionEvent.ACTION_DOWN, 0f, 0f, true)
+            }
+            if (!carPanHeld) return
+            if (native) virtualMouseMove(dx, dy, true)
+            else {
+                cursorX = (cursorX + dx).coerceIn(0f, targetWidth - 1f)
+                cursorY = (cursorY + dy).coerceIn(0f, targetHeight - 1f)
+                sendCarPanMouse(MotionEvent.ACTION_MOVE, 0f, 0f, true)
+            }
+            carPanHandler.removeCallbacks(carPanRelease)
+            carPanHandler.postDelayed(carPanRelease, 1_000L)
+        } else if (native) {
+            virtualMouseScroll(dy, true)
+            virtualMouseHorizontalScroll(dx, true)
+        } else sendCarPanMouse(MotionEvent.ACTION_SCROLL, dx, dy, false)
+    }
+
+    private fun finishCarPan() {
+        carPanHandler.removeCallbacks(carPanRelease)
+        if (carPanHeld) {
+            if (carPanNative) virtualMouseButton("BTN_LEFT", false, true)
+            else sendCarPanMouse(MotionEvent.ACTION_UP, 0f, 0f, false)
+        }
+        carPanHeld = false
+    }
+
+    private fun sendCarPanMouse(action: Int, dx: Float, dy: Float, held: Boolean): Boolean {
+        val now = SystemClock.uptimeMillis()
+        if (action == MotionEvent.ACTION_DOWN) carPanDownTime = now
+        val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE }
+        val coords = MotionEvent.PointerCoords().apply {
+            x = cursorX; y = cursorY
+            setAxisValue(MotionEvent.AXIS_HSCROLL, dx / 48f)
+            setAxisValue(MotionEvent.AXIS_VSCROLL, -dy / 48f)
+        }
+        val event = MotionEvent.obtain(if (action == MotionEvent.ACTION_SCROLL) now else carPanDownTime, now, action, 1, arrayOf(properties), arrayOf(coords),
+            0, if (held) MotionEvent.BUTTON_PRIMARY else 0, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0)
+        return try { inputDispatcher.send(event, targetDisplayId) } finally { event.recycle() }
+    }
+
+    private fun startAutoOverlapCorrection() {
+        val generation = ++autoOverlapCorrectionGeneration
+        val displayId = targetDisplayId
+        val handler = Handler(mainLooper)
+        val autoTasks = mutableMapOf<Int, moe.n4tsu.dextop.plasma.TaskSnapshot>()
+        var lastSplitSnapshot = ""
+        val check = object : Runnable {
+            override fun run() {
+                if (!active || !autoOnlySession || targetDisplayId != displayId ||
+                    generation != autoOverlapCorrectionGeneration) return
+                if (forceFreeformSession) {
+                    recentsExecutor.execute {
+                        runCatching {
+                            if (!active || targetDisplayId != displayId ||
+                                generation != autoOverlapCorrectionGeneration) return@runCatching
+                            val bridge = moe.n4tsu.dextop.plasma.TaskBridge(
+                                { name, type -> privilegedAccess.service(name, type) }, logTag)
+                            val current = bridge.tasks(displayId).filter { it.activityType == 1 }
+                            current.forEach { autoTasks[it.taskId] = it }
+                            val phoneTasks = bridge.tasks(0)
+                            val enabled = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                                .getBoolean("flutter.android_auto_correct_split_transfer", false)
+                            val snapshot = "enabled=$enabled display=$displayId auto=${current.map { it.taskId }} known=${autoTasks.keys} phoneSplit=${phoneTasks.filter { it.windowingMode == 6 }.map { it.taskId }}"
+                            if (snapshot != lastSplitSnapshot) {
+                                lastSplitSnapshot = snapshot
+                                OperationLog.i(this@MirrorService, "CarCompanion", "split correction monitor $snapshot")
+                            }
+                            if (!enabled) return@runCatching
+                            val transferred = phoneTasks.filter {
+                                it.taskId in autoTasks && it.visible && it.windowingMode == 6
+                            }
+                            if (transferred.isNotEmpty()) {
+                                val area = workspaceLayoutEngine.usableArea(displayId, targetWidth, targetHeight)
+                                val left = Rect(area.left, area.top, area.centerX(), area.bottom)
+                                val right = Rect(area.centerX(), area.top, area.right, area.bottom)
+                                for (task in transferred) {
+                                    AutoSplitPlacement.begin(this@MirrorService, bridge, task, displayId, area)
+                                    OperationLog.i(this@MirrorService, "CarCompanion",
+                                        "split transfer corrected task=${task.taskId} display=$displayId bounds=$left")
+                                }
+                            }
+                        }.onFailure { Log.w(logTag, "Auto split transfer correction failed", it) }
+                    }
+                }
+                if (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                        .getBoolean("flutter.android_auto_correct_fullscreen_overlap", false)) {
+                    val full = Rect(0, 0, targetWidth, targetHeight)
+                    val usable = runCatching {
+                        workspaceLayoutEngine.usableArea(displayId, targetWidth, targetHeight)
+                    }.getOrNull()
+                    if (usable != null && !usable.isEmpty && usable != full) {
+                        recentsExecutor.execute {
+                            runCatching {
+                                if (!active || targetDisplayId != displayId ||
+                                    generation != autoOverlapCorrectionGeneration) return@runCatching
+                                val bridge = moe.n4tsu.dextop.plasma.TaskBridge(
+                                    { name, type -> privilegedAccess.service(name, type) }, logTag)
+                                for (task in bridge.tasks(displayId)) {
+                                    if (task.displayId != displayId || task.activityType != 1 || !task.visible) continue
+                                    val bounds = task.bounds
+                                    // Do not constrain ordinary dragging or intentionally small windows.
+                                    if (bounds.width() < usable.width() - 2 || bounds.height() < usable.height() - 2 ||
+                                        usable.contains(bounds)) continue
+                                    val id = task.taskId
+                                    check(bridge.setWindowingMode(task, 5)) { "Unable to change task windowing mode task=$id" }
+                                    check(bridge.setBounds(task, Rect(usable))) { "Unable to resize task=$id" }
+                                    OperationLog.i(this@MirrorService, "CarCompanion",
+                                        "fullscreen overlap corrected task=$id display=$displayId from=$bounds to=$usable")
+                                }
+                            }.onFailure { Log.w(logTag, "Auto fullscreen overlap correction failed", it) }
+                        }
+                    }
+                }
+                handler.postDelayed(this, 300L)
+            }
+        }
+        handler.postDelayed(check, 1000L)
+    }
+
     private fun requestImeRegionProbe(reason: String, force: Boolean = false) {
         if (!active || autoOnlySession || targetDisplayId < 0 || imeRegionProbeExecutor.isShutdown) return
         val now = SystemClock.uptimeMillis()
@@ -2418,6 +2576,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         secureDisplay = effectiveConfig.secure
         showSystemDecorations = effectiveConfig.decorations
         autoOnlySession = effectiveConfig.autoOnly
+        AutoSplitPlacement.clear()
+        // A phone controller belongs to its Auto session, never to a later
+        // standalone session (its Activity may deliver onDestroy late).
+        if (carCompanionPhoneTrackpadSurface != null) {
+            virtualPointerRuntimeProfile = carCompanionPhonePreviousRuntimeProfile
+        }
+        carCompanionPhoneTrackpadSurface = null
+        carCompanionPhoneUsesNativeTouchpad = false
+        carCompanionPhonePreviousRuntimeProfile = null
+        lastPrivilegedInputSemanticConfig = null
         forceFreeformSession = effectiveConfig.forceFreeform
         // removeWindow() below releases the previous mirror backend and clears
         // autoDestinationSurface. Retain the newly requested host Surface in
@@ -2520,7 +2688,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // decorations. Samsung sessions withdraw them right after their
             // own HOME launch, so re-advertise them just for this launch and
             // withdraw them again exactly like the regular attach path.
-            val withdrawAgain = showSystemDecorations && desktopEnvironment.platformManaged
+            val withdrawAgain = showSystemDecorations && desktopEnvironment.platformManaged && !forceFreeformSession
             if (withdrawAgain) setDesktopSystemDecorationsVisible(displayId, true)
             val launched = runCatching {
                 startActivity(intent, ActivityOptions.makeBasic().setLaunchDisplayId(displayId).toBundle())
@@ -2564,7 +2732,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      */
     private fun applyWindowManagerSelection(reason: String): Boolean {
         if (!active || autoOnlySession || targetDisplayId < 0) return false
-        val wantPlasma = moe.n4tsu.dextop.plasma.WindowManagerSelection.isPlasma(this)
+        val selection = moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this)
+        val wantPlasma = selection != moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
+        val wantV2 = selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
         val existing = plasmaShell
         if (!wantPlasma) {
             if (existing != null) {
@@ -2574,11 +2744,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             return true
         }
-        if (existing != null && existing.displayId == targetDisplayId) return true
-        if (existing != null) stopPlasmaShell(restoreWindows = false)
+        val existingIsV2 = existing is moe.n4tsu.dextop.plasma.PlasmaV2Shell
+        if (existing != null && existing.displayId == targetDisplayId && existingIsV2 == wantV2) return true
+        // Switching between v1 and v2 hands windows back to the display first.
+        if (existing != null) stopPlasmaShell(restoreWindows = existingIsV2 != wantV2)
         return runCatching {
-            moe.n4tsu.dextop.plasma.PlasmaShell(this, targetDisplayId, targetWidth, targetHeight, plasmaHost)
-                .also {
+            (if (wantV2) {
+                moe.n4tsu.dextop.plasma.PlasmaV2Shell(this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost)
+            } else {
+                moe.n4tsu.dextop.plasma.PlasmaShell(this, targetDisplayId, targetWidth, targetHeight, plasmaHost)
+            }).also {
                     plasmaShell = it
                     it.start()
                 }
@@ -3841,7 +4016,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // range so the native bridge does not pin that contact to the
         // trackpad's top/side edges while it remains down.
         val coverSurface = coverTrackpadSurface
-        val companionSurface = carCompanionPhoneTrackpadSurface
+        val companionSurface = carCompanionPhoneTrackpadSurface?.takeIf {
+            autoOnlySession && it.isAttachedToWindow
+        }
         val touchpadMaxX = if (carCompanionPhoneUsesNativeTouchpad &&
             (companionSurface?.width ?: 0) > 0
         ) {
@@ -3851,7 +4028,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         } else if (laptopModeActive) {
             hostWidth.coerceAtLeast(1)
         } else {
-            fullscreenBounds?.width()?.coerceAtLeast(1) ?: VIRTUAL_TOUCHPAD_MAX_X
+            hostWidth.coerceAtLeast(1)
         }
         val touchpadMaxY = if (carCompanionPhoneUsesNativeTouchpad &&
             (companionSurface?.height ?: 0) > 0
@@ -3862,7 +4039,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         } else if (laptopModeActive) {
             hostHeight.coerceAtLeast(1)
         } else {
-            fullscreenBounds?.height()?.coerceAtLeast(1) ?: VIRTUAL_TOUCHPAD_MAX_Y
+            hostHeight.coerceAtLeast(1)
         }
         val candidate = PrivilegedInputProtocol.buildConfig(
             profile = nativeProfile,
@@ -4391,6 +4568,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (activeSlots.isNotEmpty()) {
             events += "EV_KEY"; events += "BTN_TOUCH"; events += 0
+            appendVirtualTouchpadTools(events, 0)
             events += "EV_SYN"; events += "SYN_REPORT"; events += 0
         }
         val sent = activeSlots.isEmpty() || !sendToDevice ||
@@ -4421,6 +4599,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             return false
         }
         return virtualMouseEvents(events, allowDirectTouch)
+    }
+
+    private fun appendVirtualTouchpadTools(events: MutableList<Any>, contacts: Int) {
+        listOf("BTN_TOOL_FINGER", "BTN_TOOL_DOUBLETAP", "BTN_TOOL_TRIPLETAP", "BTN_TOOL_QUADTAP", "BTN_TOOL_QUINTTAP")
+            .forEachIndexed { index, key ->
+                events += "EV_KEY"; events += key; events += if (contacts == index + 1) 1 else 0
+            }
     }
 
     /** Bridges an Android MotionEvent to a Linux multitouch Type-B frame. */
@@ -4557,6 +4742,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
             else -> return true
         }
+        appendVirtualTouchpadTools(events, virtualTouchpadActiveContactCount())
         events += "EV_SYN"; events += "SYN_REPORT"; events += 0
         val sent = virtualTouchpadEvents(events, allowDirectTouch)
         if (!sent) {
@@ -4639,7 +4825,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "REL_WHEEL" -> 8
                 "BTN_LEFT" -> 272
                 "BTN_RIGHT" -> 273
+                "BTN_TOOL_FINGER" -> 325
+                "BTN_TOOL_QUINTTAP" -> 328
                 "BTN_TOUCH" -> 330
+                "BTN_TOOL_DOUBLETAP" -> 333
+                "BTN_TOOL_TRIPLETAP" -> 334
+                "BTN_TOOL_QUADTAP" -> 335
                 "ABS_MT_SLOT" -> 47
                 "ABS_MT_TOUCH_MAJOR" -> 48
                 "ABS_MT_POSITION_X" -> 53
@@ -9868,6 +10059,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun attachCarCompanionPhoneTrackpad(surface: View, nativeTouchpad: Boolean) {
+        if (!autoOnlySession) return
         if (carCompanionPhoneTrackpadSurface === surface &&
             carCompanionPhoneUsesNativeTouchpad == nativeTouchpad
         ) return
@@ -11104,6 +11296,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
         clearInheritedDisplayOverrides(targetDisplayId)
         configureDisplay(skipWindowing = forceFreeformSession)
+        startAutoOverlapCorrection()
         if (!launchHome()) {
             if (!decorations) {
                 OperationLog.w(
@@ -11121,7 +11314,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             error("The desktop HOME activity could not be launched")
         }
-        if (showSystemDecorations && desktopEnvironment.platformManaged) {
+        if (showSystemDecorations && desktopEnvironment.platformManaged && !forceFreeformSession) {
             listOf(250L, 700L, 1_500L).forEach { delay ->
                 val decoratedDisplayId = targetDisplayId
                 postMainDelayed(delay) {
@@ -11373,7 +11566,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // taskbar and Android's regular NavigationBar. Once HOME has been
             // accepted, withdraw only the framework decorations so the DeX
             // taskbar remains as the sole bottom bar.
-            if (showSystemDecorations && desktopEnvironment.platformManaged) {
+            if (showSystemDecorations && desktopEnvironment.platformManaged && !forceFreeformSession) {
                 listOf(250L, 700L, 1_500L).forEach { delay ->
                     val decoratedDisplayId = targetDisplayId
                     root?.postDelayed({
@@ -11978,7 +12171,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // Samsung DeX.  Re-sending the same forced size followed by a
             // rotation/windowing reconfiguration makes One UI's taskbar tear
             // down its desktop window.  Update only the metric that changed.
-            if (sizeChanged) {
+            if (sizeChanged && !(autoOnlySession && autoOwnedDisplay != null)) {
                 type.getMethod(
                     "setForcedDisplaySize",
                     Int::class.javaPrimitiveType,
@@ -12019,6 +12212,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (!updated) {
                 throw IllegalStateException("Unable to resize the Android Auto desktop buffer")
             }
+            // Owned displays change their physical mode in place. A forced
+            // WMS size can otherwise leave the viewport at the old scale.
+            type.getMethod("clearForcedDisplaySize", Int::class.javaPrimitiveType)
+                .invoke(service, targetDisplayId)
         }
         if (sizeChanged) {
             // A live size change can cross the natural-orientation boundary.
@@ -12648,7 +12845,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // All display and system restoration is complete at this point. Clear
         // the latch before returning so a new start can reuse this service.
         stopping = false
+        finishCarPan()
         autoOnlySession = false
+        AutoSplitPlacement.clear()
         completeStart(Result.failure(IllegalStateException("Dextop was stopped before startup completed")))
         Log.i(logTag, "stopped; cleanup ready for a new session")
     }

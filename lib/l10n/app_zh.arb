@@ -719,6 +719,8 @@
   "windowManagerSystemDescription": "直接使用 Samsung DeX 或 Android 桌面窗口功能",
   "windowManagerPlasma": "Dextop Plasma（自有窗口管理器）",
   "windowManagerPlasmaDescription": "由 Dextop 绘制 KDE Plasma 6 风格的桌面、面板、窗口装饰、平铺和虚拟桌面",
+  "windowManagerPlasmaV2": "Dextop Plasma v2（合成式窗口管理器）",
+  "windowManagerPlasmaV2Description": "为每个应用创建独立的虚拟显示屏，并在 Dextop 绘制的 Breeze 窗口中显示其画面，拖动、调整大小和动画都在 Dextop 内完成。文字输入（IME）和部分应用可能无法正常工作。",
   "windowManagerAppliedLive": "已应用到正在运行的桌面",
   "plasmaSettingsTitle": "Dextop Plasma 设置",
   "plasmaSettingsSummary": "外观、面板、虚拟桌面和动画",

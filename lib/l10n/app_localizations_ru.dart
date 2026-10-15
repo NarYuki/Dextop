@@ -2324,6 +2324,13 @@ class AppLocalizationsRu extends AppLocalizations {
       'Dextop рисует рабочий стол в стиле KDE Plasma 6: панель, оформление окон, мозаику и виртуальные рабочие столы';
 
   @override
+  String get windowManagerPlasmaV2 => 'Dextop Plasma v2 (композитный WM)';
+
+  @override
+  String get windowManagerPlasmaV2Description =>
+      'Каждое приложение работает на собственном виртуальном дисплее и отображается в окне Breeze, которое рисует Dextop, поэтому перетаскивание, изменение размера и анимации выполняются внутри Dextop. Ввод текста (IME) и некоторые приложения могут не работать.';
+
+  @override
   String get windowManagerAppliedLive =>
       'Применено к запущенному рабочему столу';
 

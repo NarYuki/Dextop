@@ -28,6 +28,27 @@ class CarCompanionPhoneActivity : Activity(), SurfaceHolder.Callback {
     private var mirrorVisible = false
     private val mirrorHandler = Handler(Looper.getMainLooper())
     private var mirrorAttachGeneration = 0
+    private val splitDialog by lazy {
+        moe.n4tsu.splitui.SplitPlacementDialog(this) { AutoSplitPlacement.action(it) }
+    }
+    private val splitMonitor = object : Runnable {
+        override fun run() {
+            splitDialog.update(AutoSplitPlacement.state())
+            mirrorHandler.postDelayed(this, 300L)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        mirrorHandler.removeCallbacks(splitMonitor)
+        splitMonitor.run()
+    }
+
+    override fun onPause() {
+        mirrorHandler.removeCallbacks(splitMonitor)
+        splitDialog.close()
+        super.onPause()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)

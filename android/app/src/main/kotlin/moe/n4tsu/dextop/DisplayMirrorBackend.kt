@@ -468,6 +468,64 @@ internal class VirtualDisplayPlatform private constructor(
         throw IllegalStateException("The direct Auto display request was declined", lastFailure)
     }
 
+    /**
+     * Creates one application display for the Dextop Plasma v2 compositor.
+     * The display renders only its own tasks into [surface]; Dextop draws
+     * that surface inside its own window frame.  Public/trusted variants are
+     * tried first so ordinary activities may be launched onto it.
+     */
+    fun openApplicationDisplay(
+        context: Context,
+        service: Any,
+        name: String,
+        surface: Surface,
+        width: Int,
+        height: Int,
+        density: Int,
+    ): OwnedVirtualDisplay {
+        check(surface.isValid) { "The window surface is unavailable" }
+        val constructor = builderType.constructors.single { candidate ->
+            candidate.parameterTypes.contentEquals(
+                arrayOf(String::class.java, Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            )
+        }
+        val builder = constructor.newInstance(name, width, height, density)
+        builderType.getMethod("setSurface", Surface::class.java).invoke(builder, surface)
+        val flagLadder = intArrayOf(
+            FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
+            FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
+            FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY,
+        )
+        var lastFailure: Throwable? = null
+        flagLadder.forEach { flags ->
+            val callback = createCallback()
+            try {
+                builderType.getMethod("setFlags", Int::class.javaPrimitiveType).invoke(builder, flags)
+                val descriptor = builderType.getMethod("build").invoke(builder)
+                val bindings = mapOf<Class<*>, Any>(configurationType to descriptor, callbackType to callback)
+                val arguments = createOperation.parameterTypes.map { parameter ->
+                    bindings.entries.firstOrNull { parameter.isAssignableFrom(it.key) }?.value
+                        ?: defaultArgument(parameter)
+                }.toTypedArray()
+                val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
+                if (displayId >= 0) {
+                    return OwnedVirtualDisplay(
+                        displayId,
+                        ManagedVirtualDisplay(
+                            service, releaseOperation, resizeOperation, surfaceOperation, callback,
+                            width, height, width, height, density
+                        )
+                    )
+                }
+            } catch (error: Throwable) {
+                lastFailure = error
+                OperationLog.w(context, "PlasmaV2", "window display flags rejected 0x${flags.toString(16)}", error)
+            }
+        }
+        throw IllegalStateException("The window display request was declined", lastFailure)
+    }
+
     private fun createDescriptor(
         request: MirrorAttachRequest,
         surface: Surface,
