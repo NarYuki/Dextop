@@ -247,6 +247,16 @@ extension _HomeContent on _HomeScreenState {
                 ),
               ),
             ),
+            if (ready || active) ...[
+              const SizedBox(height: 4),
+              Center(
+                child: TextButton.icon(
+                  onPressed: addHomeScreenShortcut,
+                  icon: const Icon(Icons.add_to_home_screen_outlined, size: 18),
+                  label: Text(currentLocalizations().uiShortcutAdd),
+                ),
+              ),
+            ],
           ],
         ),
       ),

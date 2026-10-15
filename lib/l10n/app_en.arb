@@ -812,5 +812,19 @@
   "nativePlasmaWallpaperAndroid": "Android wallpaper",
   "nativePlasmaWallpaperPlasma": "Plasma",
   "nativePlasmaBreezeDark": "Breeze Dark",
-  "nativePlasmaBreezeLight": "Breeze Light"
+  "nativePlasmaBreezeLight": "Breeze Light",
+  "uiShortcutAdd": "Add home screen shortcut",
+  "uiShortcutAdded": "Added to the home screen. Tap it to start or stop the Dextop virtual display.",
+  "uiShortcutDismissed": "Shortcut not added",
+  "uiShortcutUnsupported": "This launcher does not support pinned shortcuts. Long-press the Dextop app icon and choose “Start Dextop”.",
+  "uiShortcutFailed": "Could not add the shortcut: $error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "Start Dextop",
+  "nativeShortcutStartDisplayLong": "Start or stop the Dextop virtual display"
 }

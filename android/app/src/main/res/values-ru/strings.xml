@@ -16,4 +16,6 @@
     <string name="embedded_pairing_service_not_found">Служба сопряжения не найдена</string>
     <string name="embedded_pairing_retry">Повторить</string>
     <string name="embedded_pairing_in_progress">Выполняется сопряжение</string>
+    <string name="dextop_shortcut_start_display">Запустить Dextop</string>
+    <string name="dextop_shortcut_start_display_long">Запустить или остановить виртуальный дисплей Dextop</string>
 </resources>
