@@ -42,6 +42,101 @@ void main() {
     expect(find.textContaining('Shizuku'), findsNothing);
   });
 
+  testWidgets('pins the launcher shortcut from the home screen', (tester) async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          switch (call.method) {
+            case 'status':
+              return {
+                'active': false,
+                'privileged': true,
+                'shizukuInstalled': true,
+                'shizukuRunning': true,
+                'shizukuGranted': true,
+              };
+            case 'consumeTileAction':
+              return false;
+            case 'consumeShortcutAction':
+              return null;
+            case 'pinShortcut':
+              return true;
+          }
+          return null;
+        });
+    await tester.pumpWidget(const DextopApp());
+    for (var frame = 0; frame < 12; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(find.text('Add home screen shortcut'), findsOneWidget);
+    await tester.tap(find.text('Add home screen shortcut'));
+    await tester.pump();
+    expect(calls.where((call) => call.method == 'pinShortcut'), isNotEmpty);
+  });
+
+  testWidgets('starts the display for a pending launcher shortcut', (tester) async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          switch (call.method) {
+            case 'status':
+              return {
+                'active': calls.any((call) => call.method == 'start'),
+                'privileged': true,
+                'shizukuInstalled': true,
+                'shizukuRunning': true,
+                'shizukuGranted': true,
+              };
+            case 'consumeShortcutAction':
+              return {'closeAfterStart': false};
+          }
+          return null;
+        });
+    await tester.pumpWidget(const DextopApp());
+    for (var frame = 0; frame < 30; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(calls.where((call) => call.method == 'start'), isNotEmpty);
+    expect(calls.where((call) => call.method == 'finishActivity'), isEmpty);
+  });
+
+  testWidgets('steps back after a control-center start', (tester) async {
+    final calls = <MethodCall>[];
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          calls.add(call);
+          switch (call.method) {
+            case 'status':
+              return {
+                'active': calls.any((call) => call.method == 'start'),
+                'privileged': true,
+                'shizukuInstalled': true,
+                'shizukuRunning': true,
+                'shizukuGranted': true,
+              };
+            case 'consumeShortcutAction':
+              return {'closeAfterStart': true};
+          }
+          return null;
+        });
+    await tester.pumpWidget(const DextopApp());
+    for (var frame = 0; frame < 30; frame++) {
+      await tester.pump(const Duration(milliseconds: 50));
+    }
+    expect(calls.where((call) => call.method == 'start'), isNotEmpty);
+    expect(calls.where((call) => call.method == 'finishActivity'), isNotEmpty);
+  });
+
+  test('consumes a pending quick-settings tile action', () async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          return call.method == 'consumeTileAction' ? true : null;
+        });
+    expect(await NativeBridge().consumeTileAction(), isTrue);
+  });
+
   test('passes system decorations to the native start request', () async {
     MethodCall? received;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

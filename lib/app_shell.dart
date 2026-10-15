@@ -203,6 +203,41 @@ class DisplayProfile {
 class NativeBridge {
   static const channel = MethodChannel('app.freedextop/display');
 
+  // Launcher shortcut callbacks arrive from native at unpredictable times, so
+  // both outcomes are broadcast for as long as the app listens.
+  static final _pinResults = StreamController<bool?>.broadcast();
+  static final _shortcutActions = StreamController<void>.broadcast();
+  static var _nativeCallbacksInstalled = false;
+
+  /// Outcome of a home screen shortcut request: `true` when the user confirmed
+  /// the launcher dialog, `false` when it was dismissed, and `null` when the
+  /// launcher never answered.
+  static Stream<bool?> get pinResults {
+    _installNativeCallbacks();
+    return _pinResults.stream;
+  }
+
+  /// Fired when a launcher shortcut is tapped while the app is already in the
+  /// foreground. The pending action is read back with [consumeShortcutAction].
+  static Stream<void> get shortcutActions {
+    _installNativeCallbacks();
+    return _shortcutActions.stream;
+  }
+
+  static void _installNativeCallbacks() {
+    if (_nativeCallbacksInstalled) return;
+    _nativeCallbacksInstalled = true;
+    channel.setMethodCallHandler((call) async {
+      if (call.method == 'shortcutPinResult') {
+        final pinned =
+            call.arguments is Map ? (call.arguments as Map)['pinned'] : null;
+        _pinResults.add(pinned is bool ? pinned : null);
+      } else if (call.method == 'shortcutAction') {
+        _shortcutActions.add(null);
+      }
+    });
+  }
+
   Future<Map<String, dynamic>> status() async {
     return await channel.invokeMapMethod<String, dynamic>('status') ?? {};
   }
@@ -335,6 +370,20 @@ class NativeBridge {
       await channel.invokeListMethod<dynamic>('apps') ?? [];
   Future<bool> consumeTileAction() async =>
       await channel.invokeMethod<bool>('consumeTileAction') ?? false;
+  /// Consumes the pending launcher shortcut action, if the app was started or
+  /// re-launched by one. Clears the action so a later resume cannot start the
+  /// display again. The returned map carries `closeAfterStart` when the caller
+  /// (the Quick Settings tile) expects the activity to step back.
+  Future<Map<String, dynamic>?> consumeShortcutAction() async =>
+      await channel.invokeMapMethod<String, dynamic>('consumeShortcutAction');
+  /// Closes the activity after a control-center start handed the screen to the
+  /// Dextop overlay.
+  Future<void> finishActivity() => channel.invokeMethod('finishActivity');
+  /// Asks the launcher to place the "start Dextop" shortcut on the home
+  /// screen. Completes once the launcher accepts the request; the confirmed
+  /// outcome arrives on [pinResults].
+  Future<bool> pinShortcut() async =>
+      await channel.invokeMethod<bool>('pinShortcut') ?? false;
   Future<void> launchApp(
     String packageName, {
     List<int>? bounds,
