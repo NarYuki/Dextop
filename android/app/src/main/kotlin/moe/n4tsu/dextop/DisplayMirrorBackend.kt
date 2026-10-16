@@ -492,6 +492,7 @@ internal class VirtualDisplayPlatform private constructor(
         width: Int,
         height: Int,
         density: Int,
+        requestedRefreshRate: Float? = null,
     ): OwnedVirtualDisplay {
         check(surface.isValid) { "The window surface is unavailable" }
         val constructor = builderType.constructors.single { candidate ->
@@ -502,6 +503,13 @@ internal class VirtualDisplayPlatform private constructor(
         }
         val builder = constructor.newInstance(name, width, height, density)
         builderType.getMethod("setSurface", Surface::class.java).invoke(builder, surface)
+        requestedRefreshRate?.let { refreshRate ->
+            // Added in Android 14; older builds keep the 60 Hz default.
+            runCatching {
+                builderType.getMethod("setRequestedRefreshRate", Float::class.javaPrimitiveType)
+                    .invoke(builder, refreshRate)
+            }
+        }
         val flagLadder = intArrayOf(
             FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
             FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,

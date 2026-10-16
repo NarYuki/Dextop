@@ -73,7 +73,19 @@ internal data class DesktopEnvironment(
      * forced, a public secondary display defaults to freeform and apps open
      * as phone-sized windows that are cropped inside the Plasma window.
      */
-    val fullscreenApplicationDisplays: Boolean = false
+    val fullscreenApplicationDisplays: Boolean = false,
+    /**
+     * Keep the Plasma v2 overlay unfocusable unless one of its own text fields
+     * is open. A focusable full-screen overlay takes focus on every touch, so
+     * the application display loses focus and its soft keyboard closes.
+     */
+    val passivePlasmaShellFocus: Boolean = false,
+    /**
+     * Apply the maximum-refresh-rate option to Plasma v2 application displays
+     * too. Without a requested rate they are created as 60 Hz virtual
+     * displays, so apps inside a 120 Hz Plasma window still render at 60 Hz.
+     */
+    val maxRateApplicationDisplays: Boolean = false
 )
 
 internal enum class DesktopStartupMode {

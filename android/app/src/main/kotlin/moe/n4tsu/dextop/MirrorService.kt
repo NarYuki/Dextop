@@ -2753,6 +2753,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 moe.n4tsu.dextop.plasma.PlasmaV2Shell(
                     this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
                     fullscreenAppDisplays = desktopEnvironment.fullscreenApplicationDisplays,
+                    passiveShellFocus = desktopEnvironment.passivePlasmaShellFocus,
+                    maxRateAppDisplays = desktopEnvironment.maxRateApplicationDisplays,
                 )
             } else {
                 moe.n4tsu.dextop.plasma.PlasmaShell(this, targetDisplayId, targetWidth, targetHeight, plasmaHost)
