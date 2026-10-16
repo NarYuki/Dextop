@@ -59,7 +59,21 @@ internal data class DesktopEnvironment(
     /** Ordered, device-local strategies. Never change the global order for one model. */
     val displayCreationStrategies: List<String> = listOf("overlay_settings"),
     val mirrorStrategies: List<String> = listOf("virtual_display", "window_manager", "surface_control"),
-    val windowingStrategies: List<String> = listOf("wm", "activity_task_manager")
+    val windowingStrategies: List<String> = listOf("wm", "activity_task_manager"),
+    /**
+     * Create the recording VirtualDisplay without FLAG_TRUSTED. With
+     * force_desktop_mode_on_external_displays enabled, WindowManager treats
+     * every trusted virtual display as decorated and starts SECONDARY_HOME on
+     * it; the recording display then has its own content and ContentRecorder
+     * pauses the mirror. Falls back to the trusted flags if rejected.
+     */
+    val untrustedMirrorDisplay: Boolean = false,
+    /**
+     * Force Plasma v2 application displays to fullscreen. With desktop mode
+     * forced, a public secondary display defaults to freeform and apps open
+     * as phone-sized windows that are cropped inside the Plasma window.
+     */
+    val fullscreenApplicationDisplays: Boolean = false
 )
 
 internal enum class DesktopStartupMode {

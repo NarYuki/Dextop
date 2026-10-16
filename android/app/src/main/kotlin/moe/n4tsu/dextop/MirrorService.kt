@@ -2750,7 +2750,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (existing != null) stopPlasmaShell(restoreWindows = existingIsV2 != wantV2)
         return runCatching {
             (if (wantV2) {
-                moe.n4tsu.dextop.plasma.PlasmaV2Shell(this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost)
+                moe.n4tsu.dextop.plasma.PlasmaV2Shell(
+                    this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
+                    fullscreenAppDisplays = desktopEnvironment.fullscreenApplicationDisplays,
+                )
             } else {
                 moe.n4tsu.dextop.plasma.PlasmaShell(this, targetDisplayId, targetWidth, targetHeight, plasmaHost)
             }).also {

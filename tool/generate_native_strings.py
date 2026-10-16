@@ -65,7 +65,7 @@ def kotlin_string(value: str) -> str:
 
 def catalogs() -> dict[str, dict[str, str]]:
     return {
-        locale: json.loads((ARB_DIR / filename).read_text())
+        locale: json.loads((ARB_DIR / filename).read_text(encoding="utf-8"))
         for locale, filename in LOCALES.items()
     }
 
@@ -137,16 +137,16 @@ def main() -> None:
         for locale, directory in ANDROID_RESOURCE_DIRS.items()
     }
     if args.check:
-        if not OUTPUT.exists() or OUTPUT.read_text() != generated:
+        if not OUTPUT.exists() or OUTPUT.read_text(encoding="utf-8") != generated:
             raise SystemExit("NativeStrings.kt is not synchronized with ARB files")
         for path, contents in android_outputs.items():
-            if not path.exists() or path.read_text() != contents:
+            if not path.exists() or path.read_text(encoding="utf-8") != contents:
                 raise SystemExit(f"{path} is not synchronized with ARB files")
         return
-    OUTPUT.write_text(generated)
+    OUTPUT.write_text(generated, encoding="utf-8", newline="\n")
     for path, contents in android_outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(contents)
+        path.write_text(contents, encoding="utf-8", newline="\n")
 
 
 if __name__ == "__main__":

@@ -135,7 +135,9 @@ val generateNativeStrings by tasks.registering(Exec::class) {
     group = "localization"
     description = "Generates NativeStrings.kt from the Flutter ARB catalogs"
     workingDir(rootProject.file(".."))
-    commandLine("python3", "tool/generate_native_strings.py")
+    // Windows installs Python as python.exe; python3 there is the Store stub.
+    val python = if (System.getProperty("os.name").startsWith("Windows")) "python" else "python3"
+    commandLine(python, "tool/generate_native_strings.py")
     inputs.files(
         fileTree(rootProject.file("../lib/l10n")) {
             include("app_*.arb")

@@ -57,6 +57,8 @@ internal class PlasmaV2Shell(
     displayHeight: Int,
     private val densityDpi: Int,
     private val host: PlasmaShell.Host,
+    /** See DesktopEnvironment.fullscreenApplicationDisplays. */
+    private val fullscreenAppDisplays: Boolean = false,
 ) : DesktopShell, V2WindowHost, PanelHost, LauncherHost {
 
     companion object {
@@ -365,11 +367,19 @@ internal class PlasmaV2Shell(
                 }
                 window.display = created
                 window.displayId = created.displayId
-                wmExecutor.execute { showImeInside(created.displayId) }
+                wmExecutor.execute {
+                    showImeInside(created.displayId)
+                    if (fullscreenAppDisplays) useFullscreenWindowing(created.displayId)
+                }
                 host.log("Plasma v2 window ${window.id} display=${created.displayId} ${w}x$h pkg=${window.packageName}")
                 val adopt = window.pendingAdoption
                 if (adopt != null) {
-                    wmExecutor.execute { bridge.moveTaskToDisplay(adopt, created.displayId) }
+                    wmExecutor.execute { moveTaskIntoWindow(adopt, created.displayId) }
+                } else if (fullscreenAppDisplays) {
+                    // Launch only after the display's windowing mode is set.
+                    wmExecutor.execute {
+                        handler.post { if (running && !window.closing) startOnDisplay(window, newInstance = false) }
+                    }
                 } else {
                     startOnDisplay(window, newInstance = false)
                 }
@@ -485,7 +495,7 @@ internal class PlasmaV2Shell(
                 .filter { it.displayId != display }
                 .flatMap { runCatching { bridge.tasks(it.displayId) }.getOrDefault(emptyList()).asSequence() }
                 .firstOrNull { it.packageName == pkg && it.activityType == TaskBridge.ACTIVITY_TYPE_STANDARD }
-            val moved = candidate != null && bridge.moveTaskToDisplay(candidate, display)
+            val moved = candidate != null && moveTaskIntoWindow(candidate, display)
             handler.post {
                 if (!moved && running) {
                     host.log("Plasma v2 could not place $pkg in window ${window.id}")
@@ -534,6 +544,27 @@ internal class PlasmaV2Shell(
             type.getMethod("setShouldShowIme", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
                 .invoke(windowService, appDisplay, true)
         }.onFailure { host.log("Plasma v2 IME policy failed display=$appDisplay: ${it.message}") }
+    }
+
+    /** Makes tasks on [appDisplay] fill it instead of opening as freeform windows. */
+    private fun useFullscreenWindowing(appDisplay: Int) {
+        runCatching {
+            Class.forName("android.view.IWindowManager")
+                .getMethod("setWindowingMode", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                .invoke(windowService, appDisplay, TaskBridge.WINDOWING_MODE_FULLSCREEN)
+        }.onFailure { host.log("Plasma v2 fullscreen windowing failed display=$appDisplay: ${it.message}") }
+    }
+
+    /**
+     * An adopted task keeps the freeform mode and bounds it had on the Dextop
+     * display, so it must be switched to fullscreen explicitly after the move.
+     */
+    private fun moveTaskIntoWindow(task: TaskSnapshot, appDisplay: Int): Boolean {
+        val moved = bridge.moveTaskToDisplay(task, appDisplay)
+        if (moved && fullscreenAppDisplays) {
+            bridge.setWindowingMode(task, TaskBridge.WINDOWING_MODE_FULLSCREEN)
+        }
+        return moved
     }
 
     /** Gives the window's display input focus, which the IME requires to open. */
