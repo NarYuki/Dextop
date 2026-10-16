@@ -58,7 +58,7 @@ internal class DisplayMirrorBackend(
         listOf(
             WindowManagerMirrorBackend(privilegedAccess),
             SurfaceControlMirrorBackend(),
-            VirtualDisplayMirrorBackend(context, privilegedAccess)
+            VirtualDisplayMirrorBackend(context, privilegedAccess, environment.untrustedMirrorDisplay)
         )
             .associateBy { it.id }
     }
@@ -302,6 +302,7 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
 private class VirtualDisplayMirrorBackend(
     private val context: Context,
     private val privilegedAccess: PrivilegedAccess,
+    private val preferUntrusted: Boolean = false,
 ) : MirrorAttachBackend {
     override val id = "virtual_display"
 
@@ -313,13 +314,21 @@ private class VirtualDisplayMirrorBackend(
         val surface = request.destinationSurface
         check(surface.isValid) { "The destination surface is unavailable" }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
-        return platform.open(
-            service,
-            request,
-            surface,
-            requestMaximumRefreshRate = DisplayEnvironmentSettings(context)
-                .maximumMirrorRefreshRateEnabled(),
-        )
+        val requestMaximumRefreshRate = DisplayEnvironmentSettings(context).maximumMirrorRefreshRateEnabled()
+        if (preferUntrusted) {
+            val untrusted = runCatching {
+                platform.open(service, request, surface, requestMaximumRefreshRate, trusted = false)
+            }
+            untrusted.getOrNull()?.let {
+                OperationLog.i(context, "DisplayBackend", "recording display created without FLAG_TRUSTED")
+                return it
+            }
+            OperationLog.w(
+                context, "DisplayBackend",
+                "untrusted recording display rejected; retrying trusted", untrusted.exceptionOrNull()
+            )
+        }
+        return platform.open(service, request, surface, requestMaximumRefreshRate)
     }
 }
 
@@ -362,8 +371,9 @@ internal class VirtualDisplayPlatform private constructor(
         request: MirrorAttachRequest,
         surface: Surface,
         requestMaximumRefreshRate: Boolean = false,
+        trusted: Boolean = true,
     ): MirrorAttachment {
-        val descriptor = createDescriptor(request, surface, requestMaximumRefreshRate)
+        val descriptor = createDescriptor(request, surface, requestMaximumRefreshRate, trusted)
         val callback = createCallback()
         val bindings = mapOf<Class<*>, Any>(
             configurationType to descriptor,
@@ -530,6 +540,7 @@ internal class VirtualDisplayPlatform private constructor(
         request: MirrorAttachRequest,
         surface: Surface,
         requestMaximumRefreshRate: Boolean,
+        trusted: Boolean,
     ): Any {
         val constructor = builderType.constructors.singleOrNull { candidate ->
             candidate.parameterTypes.contentEquals(
@@ -555,7 +566,11 @@ internal class VirtualDisplayPlatform private constructor(
         val properties = listOf(
             BuilderProperty("setSurface", Surface::class.java, surface),
             BuilderProperty("setDisplayIdToMirror", Int::class.javaPrimitiveType!!, request.displayId),
-            BuilderProperty("setFlags", Int::class.javaPrimitiveType!!, 1 or 16 or 1024)
+            BuilderProperty(
+                "setFlags",
+                Int::class.javaPrimitiveType!!,
+                if (trusted) FLAG_PUBLIC or FLAG_AUTO_MIRROR or FLAG_TRUSTED else FLAG_PUBLIC or FLAG_AUTO_MIRROR,
+            )
         )
         properties.forEach { property ->
             builderType.getMethod(property.name, property.type).invoke(builder, property.value)
@@ -615,6 +630,7 @@ internal class VirtualDisplayPlatform private constructor(
         private const val FLAG_PUBLIC = 1
         private const val FLAG_PRESENTATION = 1 shl 1
         private const val FLAG_OWN_CONTENT_ONLY = 1 shl 3
+        private const val FLAG_AUTO_MIRROR = 1 shl 4
         private const val FLAG_SUPPORTS_TOUCH = 1 shl 6
         private const val FLAG_SHOW_SYSTEM_DECORATIONS = 1 shl 9
         private const val FLAG_TRUSTED = 1 shl 10
