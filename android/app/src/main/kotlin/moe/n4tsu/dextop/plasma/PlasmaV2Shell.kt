@@ -34,7 +34,9 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.view.View
 import android.widget.FrameLayout
+import moe.n4tsu.dextop.DisplayEnvironmentSettings
 import moe.n4tsu.dextop.VirtualDisplayPlatform
+import moe.n4tsu.dextop.chooseMirrorRefreshRate
 import java.util.concurrent.Executors
 import kotlin.math.ceil
 import kotlin.math.roundToInt
@@ -59,6 +61,10 @@ internal class PlasmaV2Shell(
     private val host: PlasmaShell.Host,
     /** See DesktopEnvironment.fullscreenApplicationDisplays. */
     private val fullscreenAppDisplays: Boolean = false,
+    /** See DesktopEnvironment.passivePlasmaShellFocus. */
+    private val passiveShellFocus: Boolean = false,
+    /** See DesktopEnvironment.maxRateApplicationDisplays. */
+    private val maxRateAppDisplays: Boolean = false,
 ) : DesktopShell, V2WindowHost, PanelHost, LauncherHost {
 
     companion object {
@@ -126,6 +132,8 @@ internal class PlasmaV2Shell(
     private var popupKind: String? = null
     private var popupDismissedAt = 0L
     private var popupDismissedKind: String? = null
+    /** Whether the shell overlay may take input focus; see [updateShellFocus]. */
+    private var shellFocusable = !passiveShellFocus
     private var kickoff: KickoffView? = null
     private var krunner: KRunnerView? = null
     private var tooltip: PanelTooltipView? = null
@@ -207,7 +215,7 @@ internal class PlasmaV2Shell(
         if (newWidth == width && newHeight == height) return
         width = newWidth
         height = newHeight
-        layer.show(root, Rect(0, 0, width, height), focusable = true, title = "Dextop Plasma v2")
+        layer.show(root, Rect(0, 0, width, height), focusable = shellFocusable, title = "Dextop Plasma v2")
         wallpaper.refresh()
         layoutPanel()
         windows.forEach { window ->
@@ -307,7 +315,7 @@ internal class PlasmaV2Shell(
             false
         }
         root.addView(corner, FrameLayout.LayoutParams(dp(2), dp(2)))
-        layer.show(root, Rect(0, 0, width, height), focusable = true, title = "Dextop Plasma v2")
+        layer.show(root, Rect(0, 0, width, height), focusable = shellFocusable, title = "Dextop Plasma v2")
         layoutPanel()
     }
     // endregion
@@ -354,7 +362,10 @@ internal class PlasmaV2Shell(
         window.displayHeight = h
         wmExecutor.execute {
             val created = runCatching {
-                displayPlatform.openApplicationDisplay(service, displayService, "DextopWindow-${window.id}", surface, w, h, densityDpi)
+                displayPlatform.openApplicationDisplay(
+                    service, displayService, "DextopWindow-${window.id}", surface, w, h, densityDpi,
+                    requestedRefreshRate = applicationDisplayRefreshRate(),
+                )
             }.onFailure { host.log("Plasma v2 window display failed: ${it.message}") }.getOrNull()
             handler.post {
                 if (created == null) {
@@ -544,6 +555,22 @@ internal class PlasmaV2Shell(
             type.getMethod("setShouldShowIme", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
                 .invoke(windowService, appDisplay, true)
         }.onFailure { host.log("Plasma v2 IME policy failed display=$appDisplay: ${it.message}") }
+    }
+
+    /**
+     * The phone panel's highest rate for its current resolution when the
+     * maximum-refresh-rate option is on; null keeps the 60 Hz default.
+     */
+    private fun applicationDisplayRefreshRate(): Float? {
+        if (!maxRateAppDisplays || !DisplayEnvironmentSettings(service).maximumMirrorRefreshRateEnabled()) return null
+        val panel = service.getSystemService(DisplayManager::class.java)
+            .getDisplay(android.view.Display.DEFAULT_DISPLAY) ?: return null
+        val mode = panel.mode
+        return chooseMirrorRefreshRate(
+            panel.supportedModes
+                .filter { it.physicalWidth == mode.physicalWidth && it.physicalHeight == mode.physicalHeight }
+                .map { it.refreshRate }
+        )
     }
 
     /** Makes tasks on [appDisplay] fill it instead of opening as freeform windows. */
@@ -1006,6 +1033,7 @@ internal class PlasmaV2Shell(
         hideTooltip()
         val shown = windows.filter { isShown(it) }.sortedBy { it.id }
         overviewActive = true
+        updateShellFocus()
         overviewTargets.clear()
         val top = dp(170).toFloat()
         val area = RectF(dp(48).toFloat(), top, width - dp(48).toFloat(), height - dp(70).toFloat())
@@ -1107,6 +1135,7 @@ internal class PlasmaV2Shell(
             return
         }
         overviewActive = false
+        updateShellFocus()
         val duration = settings.duration(PlasmaTheme.VERY_LONG_MS - 80)
         dim.animate().alpha(0f).setDuration(duration).withEndAction { dim.visibility = View.GONE }.start()
         overviewChrome.animate().alpha(0f).setDuration(duration).withEndAction {
@@ -1400,6 +1429,7 @@ internal class PlasmaV2Shell(
         popupLayer.bringToFront()
         popup = frame
         popupKind = kind
+        updateShellFocus()
         frame.alpha = 0f
         frame.translationY = if (fromBelow) dp(12).toFloat() else -dp(12).toFloat()
         frame.animate().alpha(1f).translationY(0f).setDuration(settings.duration(PlasmaTheme.LONG_MS))
@@ -1438,6 +1468,7 @@ internal class PlasmaV2Shell(
         popupKind = null
         kickoff = null
         krunner = null
+        updateShellFocus()
         frame.animate().alpha(0f).translationY(dp(8).toFloat()).setDuration(settings.duration(PlasmaTheme.SHORT_MS + 40))
             .withEndAction { popupLayer.removeAllViews() }.start()
         // Remove the scrim immediately so the next click reaches the desktop.
@@ -1450,6 +1481,21 @@ internal class PlasmaV2Shell(
         popupKind = null
         kickoff = null
         krunner = null
+    }
+
+    /**
+     * With [passiveShellFocus], the overlay is focusable only while a Plasma
+     * text field (popup, overview search or leave screen) is open. Otherwise
+     * touches would move focus off the application display and close its
+     * keyboard; shortcuts still arrive through the accessibility service.
+     */
+    private fun updateShellFocus() {
+        if (!passiveShellFocus || !::root.isInitialized) return
+        val focusable = popup != null || overviewActive || leaveScreen != null
+        if (focusable == shellFocusable) return
+        shellFocusable = focusable
+        layer.show(root, Rect(0, 0, width, height), focusable = focusable, title = "Dextop Plasma v2")
+        if (!focusable) windows.firstOrNull { it.id == activeId && !it.minimized }?.let(::focusWindowDisplay)
     }
 
     fun toggleKickoff() {
@@ -1608,9 +1654,11 @@ internal class PlasmaV2Shell(
         val screen = LeaveScreen(displayContext, palette, LeaveAction.SHUTDOWN) { choice ->
             leaveScreen?.let(root::removeView)
             leaveScreen = null
+            updateShellFocus()
             choice?.let(::leave)
         }
         leaveScreen = screen
+        updateShellFocus()
         root.addView(screen, FrameLayout.LayoutParams(-1, -1))
         screen.requestFocus()
     }
