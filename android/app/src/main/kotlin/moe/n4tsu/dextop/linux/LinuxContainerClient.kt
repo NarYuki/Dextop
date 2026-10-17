@@ -93,8 +93,12 @@ internal object LinuxContainerClient {
             val context = appContext ?: return
             calls.execute {
                 val version = runCatching { service.protocolVersion() }.getOrNull()
-                if (version != null && version != LinuxContainerService.PROTOCOL_VERSION && protocolRestarts++ == 0) {
-                    Log.i(TAG, "restarting Linux service protocol=$version expected=${LinuxContainerService.PROTOCOL_VERSION}")
+                // A daemon kept across an APK update still runs the old code, whatever its protocol.
+                val code = runCatching { service.codePath() }.getOrNull()
+                val stale = version != null && (version != LinuxContainerService.PROTOCOL_VERSION ||
+                    code?.contains(context.applicationInfo.sourceDir) != true)
+                if (stale && protocolRestarts++ == 0) {
+                    Log.i(TAG, "restarting Linux service protocol=$version expected=${LinuxContainerService.PROTOCOL_VERSION} code=$code")
                     // Some compatible privilege servers reuse a daemon after an APK update.
                     // The old process holds the old dex; it must exit before loading the new API.
                     runCatching { service.destroy() }

@@ -83,7 +83,13 @@ internal object LinuxRootfsArchive {
             ready.forEach { (link, target) ->
                 checkCancelled()
                 Files.createDirectories(link.parent)
-                Files.createLink(link, target)
+                try {
+                    Files.createLink(link, target)
+                } catch (_: java.io.IOException) {
+                    // Samsung denies hard links to the shell user; a copy is equivalent for a fresh rootfs.
+                    Files.copy(target, link, java.nio.file.StandardCopyOption.COPY_ATTRIBUTES)
+                    Files.setPosixFilePermissions(link, Files.getPosixFilePermissions(target, NOFOLLOW_LINKS))
+                }
                 hardlinks.remove(link)
             }
         }

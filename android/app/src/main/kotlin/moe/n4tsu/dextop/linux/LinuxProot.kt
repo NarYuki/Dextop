@@ -52,6 +52,11 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         ProcessBuilder(proot.absolutePath, "--kill-on-exit", "--link2symlink", "-0", "-r", "/", "-w", "/", *arguments)
     )
 
+    private fun sharedMemory(id: String): String = File(LinuxPaths.container(id), "shm").apply {
+        mkdirs()
+        setWritable(true, false)
+    }.absolutePath
+
     /** Runs a /bin/sh script as root inside the container [id]. */
     fun guest(id: String, script: String): ProcessBuilder = environment(
         ProcessBuilder(
@@ -60,6 +65,8 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             "-r", LinuxPaths.rootfs(id).absolutePath,
             "-w", "/root",
             "-b", "/dev", "-b", "/proc", "-b", "/sys",
+            // Android has no /dev/shm; POSIX shared memory (Firefox, wlroots) needs one.
+            "-b", "${sharedMemory(id)}:/dev/shm",
             "-b", "$nativeLibraryDir:$GUEST_LIBRARY_DIR",
             "/usr/bin/env", "-i",
             "HOME=/root", "USER=root", "LOGNAME=root", "TERM=xterm-256color", "LANG=C.UTF-8",

@@ -32,7 +32,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     companion object {
         private const val TAG = "DextopLinuxService"
         // Retire pre-Wayland daemons retained by compatible privilege servers.
-        const val PROTOCOL_VERSION = 11
+        const val PROTOCOL_VERSION = 12
         private const val BUFFER = 256 * 1024
     }
 
@@ -43,6 +43,8 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     private val activeProcesses = ConcurrentHashMap<String, Process>()
 
     override fun protocolVersion(): Int = PROTOCOL_VERSION
+
+    override fun codePath(): String = javaClass.classLoader.toString()
 
     override fun probe(): String =
         "protocol=$PROTOCOL_VERSION pid=${Os.getpid()} uid=${Os.getuid()} proot=${proot?.available()}"

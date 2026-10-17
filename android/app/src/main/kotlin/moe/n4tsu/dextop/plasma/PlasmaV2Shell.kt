@@ -331,7 +331,13 @@ internal class PlasmaV2Shell(
 
     @SuppressLint("ClickableViewAccessibility")
     private fun buildRoot() {
-        root = FrameLayout(displayContext).apply {
+        root = object : FrameLayout(displayContext) {
+            // Keys normally arrive through the accessibility service. Some
+            // devices (Samsung) deliver hardware keys to this focused overlay
+            // instead; route them to the Linux window like the service does.
+            override fun dispatchKeyEvent(event: KeyEvent): Boolean =
+                (activeLinuxContainer() != null && handleKey(event)) || super.dispatchKeyEvent(event)
+        }.apply {
             clipChildren = false
             isFocusable = true
             isFocusableInTouchMode = true
@@ -1258,6 +1264,8 @@ internal class PlasmaV2Shell(
     private fun centroidX(event: MotionEvent) = (0 until event.pointerCount).map(event::getX).average().toFloat()
     private fun centroidY(event: MotionEvent) = (0 until event.pointerCount).map(event::getY).average().toFloat()
 
+    private var keyLoggedFor: String? = null
+
     private fun forwardLinuxKey(id: String, event: KeyEvent) {
         val linux = LinuxContainerClient.service() ?: return
         val down = event.action == KeyEvent.ACTION_DOWN
@@ -1265,6 +1273,10 @@ internal class PlasmaV2Shell(
             (event.isShiftPressed && event.keyCode == KeyEvent.KEYCODE_INSERT)
         if (down && paste && event.repeatCount == 0) syncClipboardToLinux(id.removeSuffix("#apps"))
         val code = LinuxKeymap.evdev(event)
+        if (down && keyLoggedFor != id) {
+            keyLoggedFor = id
+            Log.i(TAG, "Linux keys -> $id (first: keyCode=${event.keyCode} scan=${event.scanCode} evdev=$code device=${event.device?.name})")
+        }
         runCatching {
             when {
                 code != null -> linux.key(id, code, down)

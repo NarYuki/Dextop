@@ -8,13 +8,29 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LinuxSetupPlanTest {
-    @Test fun turnipBuildIncludesWaylandAndMarksOnlyCompletedInstallations() {
+    @Test fun gpuPackageIsVerifiedAndNeverBuiltOnTheDevice() {
         val script = LinuxCatalog.turnipScript()
-        assertContains(script, "-Dplatforms=x11,wayland")
-        assertContains(script, "libwayland-dev libwayland-egl-backend-dev wayland-protocols")
-        assertContains(script, "kgsl_device_get_gpu_timestamp")
-        assertContains(script, "DEXTOP_WAYLAND_KGSL")
-        assertTrue(script.indexOf("touch ${LinuxCatalog.TURNIP_WAYLAND_READY}") > script.indexOf("ninja -C build install"))
+        val gpu = LinuxCatalog.GPU_PACKAGE
+        assertContains(script, "${gpu.sha256}  package.zip\" | sha256sum -c -")
+        assertTrue(script.indexOf("sha256sum -c") < script.indexOf("unzip -q"))
+        assertContains(script, LinuxCatalog.TURNIP_ICD)
+        assertFalse(script.contains("meson") || script.contains("ninja"))
+        // Debian's Mesa 25.0 Zink cannot present to Xvfb; backports' Mesa 26 can.
+        assertContains(script, "-t \"\$VERSION_CODENAME-backports\"")
+        assertContains(script, "mesa-libgallium libgl1-mesa-dri libglx-mesa0")
+        // Without Mesa's KGSL GL/EGL in the package, Wayland GPU presentation stays off.
+        assertFalse(script.contains(LinuxCatalog.TURNIP_WAYLAND_READY))
+        val withMesa = LinuxCatalog.turnipScript(gpu.copy(mesa = "mesa"))
+        assertContains(withMesa, "cp -a mesa/. /opt/dextop-mesa/")
+        assertTrue(withMesa.indexOf("touch ${LinuxCatalog.TURNIP_WAYLAND_READY}") > withMesa.indexOf("cp ${gpu.driver}"))
+    }
+
+    @Test fun turnipCoversAdreno6To8() {
+        assertTrue(LinuxCatalog.turnipSupports("Adreno750v2"))
+        assertTrue(LinuxCatalog.turnipSupports("Adreno840v2"))
+        assertTrue(LinuxCatalog.turnipSupports("Adreno619"))
+        assertFalse(LinuxCatalog.turnipSupports("Adreno530"))
+        assertFalse(LinuxCatalog.turnipSupports(null))
     }
     @Test fun waylandLaunchOverridesLegacySessionAndKeepsX11PresentationAvailable() {
         val wayland = LinuxCatalog.launchScript(10, "wezterm start", wayland = true)

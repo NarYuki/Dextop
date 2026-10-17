@@ -187,46 +187,90 @@ internal object LinuxCatalog {
         [ ! -f /etc/dextop/start-session.sh ] || sh /etc/dextop/start-session.sh
     """.trimIndent()
 
-    /** Where the Turnip build installs its Vulkan driver manifest (see [turnipScript]). */
+    /** Where the GPU package installs its Vulkan driver manifest (see [turnipScript]). */
     const val TURNIP_ICD = "/opt/dextop-mesa/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+    /** Present when the GPU package also carries Mesa's GL/EGL for Wayland ([LinuxGpuPackage.mesa]). */
     const val TURNIP_WAYLAND_READY = "/opt/dextop-mesa/share/dextop/wayland-ready"
-    private const val TURNIP_MESA_VERSION = "25.0.7"
+    private const val GPU_PREFIX = "/opt/dextop-mesa"
+
+    /** Whether the GPU package drives [gpuModel] (KGSL's gpu_model, such as "Adreno750v2"). */
+    fun turnipSupports(gpuModel: String?) = gpuModel != null &&
+        (gpuModel.startsWith("Adreno6") || gpuModel.startsWith("Adreno7") || gpuModel.startsWith("Adreno8"))
 
     /**
-     * Builds Mesa's Turnip Vulkan driver with the KGSL backend, which talks
-     * to Android's Adreno kernel driver (/dev/kgsl-3d0) directly. Distribution
-     * builds only support the upstream DRM driver. Zink from the distribution's
-     * Mesa then runs OpenGL on it. (The msm backend stays enabled: without it
-     * Mesa drops the DRM pieces the GLX loader needs.)
+     * A prebuilt GPU package for containers, downloaded during setup and
+     * checked by SHA-256; nothing is compiled on the device. [driver] is the
+     * Turnip Vulkan driver (KGSL backend) in the zip archive, [notices] its
+     * licence files. [mesa], when set, is a directory of the archive laid out
+     * like [GPU_PREFIX] (lib/aarch64-linux-gnu, share/glvnd, ...) holding
+     * Mesa's GL/EGL built for KGSL, which enables Wayland GPU presentation;
+     * without it the distribution's Zink runs OpenGL on the driver.
      */
-    fun turnipScript(): String = """
+    internal data class LinuxGpuPackage(
+        val name: String,
+        val url: String,
+        val sha256: String,
+        val driver: String,
+        val notices: List<String>,
+        val mesa: String? = null,
+    )
+
+    /**
+     * DroidDeck's DD-Turnip: Mesa 26.3-devel with KGSL patches for Adreno
+     * 6xx to 8xx, GPL-3.0 with its source published with the release.
+     */
+    val GPU_PACKAGE = LinuxGpuPackage(
+        name = "DD-Turnip-v0.2.0",
+        url = "https://github.com/Droid-Deck/Drivers-CI/releases/download/DD-Turnip-v0.2.0/DD-Turnip-v0.2.0.zip",
+        sha256 = "fc16658953062cfaabda8a5663c498667d78bb4c9c74c819ff580753270a147d",
+        driver = "linux/libvulkan_freedreno.so",
+        notices = listOf("NOTICE", "LICENSES", "manifest.json"),
+    )
+
+    /**
+     * Installs [gpu] into [GPU_PREFIX]: Turnip talks to Android's Adreno
+     * kernel driver (/dev/kgsl-3d0) directly, which distribution builds do not.
+     */
+    fun turnipScript(gpu: LinuxGpuPackage = GPU_PACKAGE): String = """
         set -e
         export DEBIAN_FRONTEND=noninteractive
-        apt-get install -y --no-install-recommends \
-            build-essential meson ninja-build pkg-config python3-mako python3-yaml python3-packaging \
-            glslang-tools bison flex wget ca-certificates xz-utils patch \
-            libdrm-dev libexpat1-dev zlib1g-dev libzstd-dev libelf-dev \
-            libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxrandr-dev libxxf86vm-dev libxshmfence-dev \
-            libxcb1-dev libxcb-glx0-dev libxcb-shm0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev \
-            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-keysyms1-dev libvulkan-dev libglvnd-dev \
-            libwayland-dev libwayland-egl-backend-dev wayland-protocols
-        rm -rf /opt/dextop-src && mkdir -p /opt/dextop-src && cd /opt/dextop-src
-        wget -q https://archive.mesa3d.org/mesa-$TURNIP_MESA_VERSION.tar.xz
-        tar -xf mesa-$TURNIP_MESA_VERSION.tar.xz && cd mesa-$TURNIP_MESA_VERSION
-        ${LinuxMesaPatches.script}
-        meson setup build \
-            -Dprefix=/opt/dextop-mesa -Dbuildtype=release -Db_ndebug=true \
-            -Dplatforms=x11,wayland -Dgallium-drivers=zink -Dvulkan-drivers=freedreno -Dfreedreno-kmds=msm,kgsl \
-            -Dglx=dri -Degl=enabled -Dgbm=disabled -Dglvnd=enabled -Dllvm=disabled \
-            -Dgles1=disabled -Dgles2=enabled -Dvideo-codecs= -Dvalgrind=disabled -Dlibunwind=disabled \
-            -Dlmsensors=disabled -Dbuild-tests=false
-        ninja -C build
-        ninja -C build install
-        cd / && rm -rf /opt/dextop-src
-        test -f $TURNIP_ICD
-        mkdir -p /opt/dextop-mesa/share/dextop
-        touch $TURNIP_WAYLAND_READY
+        case "$(cat /sys/class/kgsl/kgsl-3d0/gpu_model 2>/dev/null)" in
+            Adreno6*|Adreno7*|Adreno8*) ;;
+            *) echo "No Turnip for this GPU; using VirGL"; exit 0 ;;
+        esac
+        apt-get install -y --no-install-recommends wget ca-certificates unzip libvulkan1 libgl1-mesa-dri \
+            libdrm2 libzstd1 zlib1g libwayland-client0 libx11-xcb1 libxshmfence1 libxcb1 libxcb-dri3-0 \
+            libxcb-present0 libxcb-xfixes0 libxcb-sync1 libxcb-randr0 libxcb-shm0 libxcb-keysyms1
+        work=/tmp/dextop-gpu-package
+        rm -rf "${'$'}work" && mkdir -p "${'$'}work" && cd "${'$'}work"
+        wget -q -O package.zip ${gpu.url}
+        echo "${gpu.sha256}  package.zip" | sha256sum -c -
+        unzip -q package.zip
+        rm -rf $GPU_PREFIX
+        mkdir -p $GPU_PREFIX/lib $GPU_PREFIX/share/doc/${gpu.name} ${'$'}(dirname $TURNIP_ICD)
+        ${gpu.mesa?.let { "cp -a $it/. $GPU_PREFIX/" }.orEmpty()}
+        cp ${gpu.driver} $GPU_PREFIX/lib/libvulkan_freedreno.so
+        cp -r ${gpu.notices.joinToString(" ")} $GPU_PREFIX/share/doc/${gpu.name}/
+        printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "$GPU_PREFIX/lib/libvulkan_freedreno.so", "api_version": "1.4.0"}}\n' > $TURNIP_ICD
+        ${if (gpu.mesa != null) "mkdir -p $GPU_PREFIX/share/dextop && touch $TURNIP_WAYLAND_READY" else ""}
+        cd / && rm -rf "${'$'}work"
+        $MESA_BACKPORTS_SCRIPT
     """.trimIndent() + "\n"
+
+    /**
+     * Debian 13's Mesa 25.0 renders through Zink but never presents to an X
+     * server without DRI3 (Xvfb): the window stays black. Mesa 26 from the
+     * distribution's backports presents through the CPU path, prebuilt.
+     */
+    private val MESA_BACKPORTS_SCRIPT = """
+        . /etc/os-release
+        if [ "${'$'}ID" = debian ] && [ -n "${'$'}VERSION_CODENAME" ]; then
+            echo "deb http://deb.debian.org/debian ${'$'}VERSION_CODENAME-backports main" > /etc/apt/sources.list.d/dextop-backports.list
+            apt-get update
+            apt-get install -y --no-install-recommends -t "${'$'}VERSION_CODENAME-backports" \
+                mesa-libgallium libgl1-mesa-dri libglx-mesa0 libegl-mesa0 libgbm1 mesa-vulkan-drivers
+        fi
+    """.trimIndent()
 
     /**
      * X DPI matching Android's scale: Android lays out 1 dp per px at 160
@@ -259,7 +303,17 @@ internal object LinuxCatalog {
                 sed -i '/^exec /i ${CHROMIUM_VIRGL_FLAGS.replace("'", "'\\''")}' "${'$'}launcher"
             }
         done
+        if [ -f /usr/local/bin/dextop-firefox ] && ! grep -q MOZ_DISABLE_GPU_SANDBOX /usr/local/bin/dextop-firefox; then
+            sed -i 's/^export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1${'$'}/$FIREFOX_SANDBOX_ENVIRONMENT/' /usr/local/bin/dextop-firefox
+        fi
     """.trimIndent()
+
+    /**
+     * Firefox's seccomp sandboxes crash its child processes under PRoot on
+     * newer kernels (Linux 6.12), so every one of them stays off.
+     */
+    const val FIREFOX_SANDBOX_ENVIRONMENT = "export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1 " +
+        "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_UTILITY_SANDBOX=1 MOZ_DISABLE_GPU_SANDBOX=1"
 
     /**
      * Toolkits prefer Dextop's Wayland compositor (GPU buffers through

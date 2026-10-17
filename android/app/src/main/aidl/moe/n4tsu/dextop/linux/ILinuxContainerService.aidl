@@ -72,4 +72,6 @@ interface ILinuxContainerService {
     oneway void setClipboard(String containerId, String text) = 36;
     /** The user clicked ("default" or an action key) or dismissed ("dismiss") a Linux notification. */
     oneway void notificationAction(String containerId, String key, String action) = 37;
+    /** The class loader the service runs from, naming its APK; null from services older than this call. */
+    String codePath() = 38;
 }

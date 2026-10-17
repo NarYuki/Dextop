@@ -55,12 +55,18 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
         private const val TAG = "DextopLinuxGpu"
         const val GUEST_SOCKET = "/tmp/.virgl_test"
         private const val START_TIMEOUT_MS = 4_000L
+
+        private fun adrenoModel(): String? =
+            runCatching { File("/sys/class/kgsl/kgsl-3d0/gpu_model").readText().trim() }.getOrNull()
     }
 
     private val servers = ConcurrentHashMap<String, Process>()
     private val server = File(nativeLibraryDir, "libvirgl_server.so")
 
     val available: Boolean get() = server.canExecute()
+
+    /** The Turnip Dextop builds (Mesa 25.0) drives Adreno 6xx and 7xx; newer GPUs such as the 840 use VirGL. */
+    val turnipSupported: Boolean by lazy { LinuxCatalog.turnipSupports(adrenoModel()) }
 
     private fun socketName(containerId: String) = "${LinuxProot.socketNamespace(containerId)}$GUEST_SOCKET"
 
@@ -70,7 +76,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
 
     fun running(containerId: String): Boolean = servers[containerId]?.isAlive == true && listening(containerId)
 
-    fun turnipInstalled(containerId: String) =
+    fun turnipInstalled(containerId: String) = turnipSupported &&
         File(LinuxPaths.rootfs(containerId), LinuxCatalog.TURNIP_ICD.removePrefix("/")).isFile
 
     fun turnipWaylandInstalled(containerId: String) = turnipInstalled(containerId) &&

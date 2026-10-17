@@ -2538,6 +2538,14 @@ int translate_syscall_enter(Tracee *tracee)
 			status = translate_path2(tracee, dirfd, path, SYSARG_2, REGULAR);
 		break;
 
+	case PR_fchmodat2:
+		/* Linux 6.6+.  Report it as missing: C libraries then
+		 * fall back to fchmodat(2), whose path is translated,
+		 * instead of the kernel resolving a guest path on the
+		 * host.  */
+		status = -ENOSYS;
+		break;
+
 	case PR_fchmodat:
 	case PR_faccessat:
 	case PR_faccessat2:

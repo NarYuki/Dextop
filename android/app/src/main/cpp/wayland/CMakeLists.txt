@@ -36,8 +36,8 @@ target_include_directories(dextop_wayland PRIVATE "${WLP}" "${CMAKE_CURRENT_LIST
 target_compile_options(dextop_wayland PRIVATE -O2 -Wall -Wno-unused-parameter)
 target_link_libraries(dextop_wayland dextop_wayland_server android log)
 
-# GPU presentation of dma-buf windows: Mesa's Turnip for Android
-# (libvulkan_dextop_turnip.so, built by tool/build_android_turnip.sh and shipped
+# GPU presentation of dma-buf windows: DroidDeck's DD-Turnip for Android
+# (libvulkan_dextop_turnip.so, prebuilt, see third_party/README.md, shipped
 # in jniLibs) loaded through adrenotools, which places it under the system
 # Vulkan loader so Android surfaces and swapchains work. Without it the
 # compositor keeps its CPU path.

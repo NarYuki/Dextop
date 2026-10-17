@@ -192,7 +192,7 @@ internal object LinuxSetupPlan {
             val launcher = "/usr/local/bin/dextop-$browser"
             appendLine("cat >$launcher <<'DEXTOP_BROWSER'")
             appendLine("#!/bin/sh")
-            if (browser == "firefox") appendLine("export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1")
+            if (browser == "firefox") appendLine(LinuxCatalog.FIREFOX_SANDBOX_ENVIRONMENT)
             else appendLine(LinuxCatalog.CHROMIUM_VIRGL_FLAGS)
             appendLine("exec $command ${if (browser != "firefox") "--no-sandbox --disable-dev-shm-usage " else ""}\"\$@\"")
             appendLine("DEXTOP_BROWSER\nchmod 755 $launcher")

@@ -12,6 +12,7 @@ import java.io.File
 object LinuxServiceHost {
     const val PUBLISH_METHOD = "publishLinuxService"
     const val LIBRARY_PROPERTY = "moe.n4tsu.dextop.linux_library"
+    private const val APK_CHECK_MS = 5_000L
 
     @JvmStatic fun main(arguments: Array<String>) {
         require(arguments.size == 3) { "Expected package, APK and native library directory" }
@@ -37,6 +38,12 @@ object LinuxServiceHost {
             }
         }
         publish()
+        // An APK update deletes the file this daemon was started from; its code is then stale.
+        lateinit var watchApk: () -> Unit
+        watchApk = {
+            if (!File(apk).exists()) service.destroy() else handler.postDelayed(watchApk, APK_CHECK_MS)
+        }
+        handler.postDelayed(watchApk, APK_CHECK_MS)
         Looper.loop()
     }
 
