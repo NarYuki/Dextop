@@ -48,7 +48,7 @@ internal data class PanelTask(
     val attention: Boolean = false,
 )
 
-internal enum class TrayItem { EXPAND, VOLUME, NETWORK, CELLULAR, BATTERY }
+internal enum class TrayItem { EXPAND, VOLUME, NETWORK, CELLULAR, BATTERY, NOTIFICATIONS }
 
 internal data class TrayState(
     val volume: Float,
@@ -208,8 +208,9 @@ internal class PlasmaPanelView(
         slots += Slot.Clock(RectF(right - clockWidth, bar.top, right, bar.bottom))
         right -= clockWidth
         val trayCell = dp(30f)
-        // Laid out right to left: [expand][volume][network][antenna][battery].
+        // Laid out right to left: [expand][volume][network][antenna][battery][notifications].
         val tray = listOfNotNull(
+            TrayItem.NOTIFICATIONS,
             TrayItem.BATTERY,
             TrayItem.CELLULAR.takeIf { host.tray().cellularVisible },
             TrayItem.NETWORK,
@@ -282,6 +283,7 @@ internal class PlasmaPanelView(
                     TrayItem.NETWORK -> tray.networkGlyph
                     TrayItem.CELLULAR -> if (tray.cellularNoService) Glyph.CELLULAR_OFF else Glyph.CELLULAR
                     TrayItem.BATTERY -> if (tray.charging) Glyph.BATTERY_CHARGING else Glyph.BATTERY
+                    TrayItem.NOTIFICATIONS -> Glyph.NOTIFICATIONS
                 }
                 val glyph = trayGlyphs.getOrPut(glyphType) { GlyphDrawable(glyphType, 0, 1.5f) }
                 glyph.color = when {
@@ -294,7 +296,7 @@ internal class PlasmaPanelView(
                     TrayItem.VOLUME -> tray.volume
                     TrayItem.NETWORK -> tray.networkLevel
                     TrayItem.CELLULAR -> tray.cellularLevel
-                    TrayItem.EXPAND -> 1f
+                    TrayItem.EXPAND, TrayItem.NOTIFICATIONS -> 1f
                 }
                 rect.set(slot.rect); rect.inset(dp(6f), (slot.rect.height() - dp(18f)) / 2f)
                 glyph.setBounds(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
@@ -302,6 +304,20 @@ internal class PlasmaPanelView(
                 if (slot.item == TrayItem.NETWORK && !tray.networkConnected) {
                     indicatorPaint.color = palette.negative
                     canvas.drawCircle(rect.right - dp(1f), rect.bottom - dp(2f), dp(3f), indicatorPaint)
+                }
+                val unread = if (slot.item == TrayItem.NOTIFICATIONS) NotificationCenter.count() else 0
+                if (unread > 0) {
+                    // Count badge on the bell, like Plasma's notification applet.
+                    val label = if (unread > 99) "99+" else unread.toString()
+                    textPaint.textSize = dp(9f)
+                    textPaint.typeface = PlasmaTheme.sans
+                    val radius = maxOf(dp(6.5f), textPaint.measureText(label) / 2f + dp(3f))
+                    val cx = rect.right - dp(1f)
+                    val cy = rect.top + dp(2f)
+                    indicatorPaint.color = palette.accent
+                    canvas.drawCircle(cx, cy, radius, indicatorPaint)
+                    textPaint.color = android.graphics.Color.WHITE
+                    canvas.drawText(label, cx, cy + dp(3f), textPaint)
                 }
             }
             is Slot.Clock -> {

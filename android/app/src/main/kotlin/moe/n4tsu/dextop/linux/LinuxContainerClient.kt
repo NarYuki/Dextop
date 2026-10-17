@@ -26,6 +26,8 @@ internal object LinuxContainerClient {
         fun onContainersChanged() {}
         fun onConnectionChanged(connected: Boolean) {}
         fun onWindowEvent(containerId: String, event: org.json.JSONObject) {}
+        fun onClipboard(containerId: String, text: String) {}
+        fun onNotification(containerId: String, event: org.json.JSONObject) {}
     }
 
     private val mainHandler = Handler(Looper.getMainLooper())
@@ -63,7 +65,17 @@ internal object LinuxContainerClient {
 
         override fun onLog(containerId: String, line: String) = dispatch { it.onLog(containerId, line) }
 
-        override fun onContainersChanged() = dispatch { it.onContainersChanged() }
+        override fun onContainersChanged() {
+            refreshAudio()
+            dispatch { it.onContainersChanged() }
+        }
+
+        override fun onClipboard(containerId: String, text: String) = dispatch { it.onClipboard(containerId, text) }
+
+        override fun onNotification(containerId: String, json: String) {
+            val event = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return
+            dispatch { it.onNotification(containerId, event) }
+        }
 
         override fun onWindowEvent(containerId: String, json: String) {
             val event = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return
@@ -98,6 +110,7 @@ internal object LinuxContainerClient {
                     binding = false
                     protocolRestarts = 0
                     remote = service
+                    refreshAudio()
                     Log.i(TAG, "connected via=${if (usingEmbedded) "embedded" else "external"}: ${runCatching { service.probe() }.getOrNull()}")
                     dispatch { it.onConnectionChanged(true) }
                     pending.toList().also { pending.clear() }.forEach { it.run(service) }
@@ -113,6 +126,27 @@ internal object LinuxContainerClient {
             remote = null
             binding = false
             dispatch { it.onConnectionChanged(false) }
+        }
+    }
+
+    /** Sound players by container, following the containers' PulseAudio ports. */
+    private val players = HashMap<String, LinuxAudioPlayer>()
+
+    private fun refreshAudio() {
+        calls.execute {
+            val service = remote ?: return@execute
+            val ports = runCatching {
+                val list = org.json.JSONArray(service.listContainers())
+                (0 until list.length()).map(list::getJSONObject)
+                    .associate { it.optString("id") to it.optInt("audioPort") }
+                    .filterValues { it > 0 }
+            }.getOrNull() ?: return@execute
+            synchronized(players) {
+                players.entries.removeAll { (id, player) ->
+                    (ports[id] != player.port).also { stale -> if (stale) player.stop() }
+                }
+                ports.forEach { (id, port) -> if (id !in players) players[id] = LinuxAudioPlayer(id, port) }
+            }
         }
     }
 

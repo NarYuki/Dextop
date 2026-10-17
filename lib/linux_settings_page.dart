@@ -61,9 +61,11 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    final current = settings?['gpu'] as String? ?? 'virgl';
+    final current = settings?['gpu'] as String? ?? 'turnip';
     final hardwareAvailable = settings?['hardwareAvailable'] as bool? ?? true;
     final running = (settings?['rendererRunning'] as List?)?.length ?? 0;
+    final turnipReady =
+        (settings?['turnipInstalled'] as List?)?.isNotEmpty ?? false;
     return Scaffold(
       appBar: AppBar(title: Text(l.linuxSettingsTitle)),
       body: settings == null && error == null
@@ -97,6 +99,16 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
                     },
                     child: Column(
                       children: [
+                        RadioListTile<String>(
+                          value: 'turnip',
+                          secondary: const Icon(Icons.bolt_rounded),
+                          title: Text(l.linuxGpuTurnip),
+                          subtitle: Text(
+                            turnipReady
+                                ? l.linuxGpuTurnipDescription
+                                : '${l.linuxGpuTurnipDescription}\n${l.linuxGpuTurnipSetup}',
+                          ),
+                        ),
                         RadioListTile<String>(
                           value: 'virgl',
                           enabled: hardwareAvailable,

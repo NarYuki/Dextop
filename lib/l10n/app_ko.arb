@@ -967,5 +967,12 @@
   "linuxGpuSoftwareDescription": "CPU로 그립니다. 느리지만 GPU에서 화면이 깨지는 앱도 올바르게 표시됩니다.",
   "linuxGpuUnavailable": "이 기기에서는 VirGL을 사용할 수 없습니다.",
   "linuxGpuApplyNote": "변경 사항은 이후에 실행하는 앱에 적용됩니다. 열려 있는 데스크톱은 다시 여세요.",
-  "linuxGpuRunning": "{count}개 컨테이너에서 VirGL 사용 중"
+  "linuxGpuRunning": "{count}개 컨테이너에서 VirGL 사용 중",
+  "nativePlasmaNotifications": "알림",
+  "nativePlasmaNoNotifications": "알림 없음",
+  "nativePlasmaClearAll": "모두 지우기",
+  "linuxGpuTurnip": "Turnip + Zink(권장)",
+  "linuxGpuTurnipDescription": "Linux 앱이 Adreno GPU를 직접 사용합니다(Vulkan, OpenGL 4.6). 가장 빠르고 게임에 적합합니다.",
+  "linuxGpuTurnipSetup": "컨테이너 설정에서 3D 그래픽을 켜면 사용할 수 있습니다(빌드에 약 30분). 그 전까지는 VirGL을 사용합니다.",
+  "linuxSetupPhaseGpu": "GPU 드라이버(Turnip) 빌드 중"
 }

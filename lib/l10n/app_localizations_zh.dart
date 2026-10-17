@@ -2961,4 +2961,27 @@ class AppLocalizationsZh extends AppLocalizations {
   String linuxGpuRunning(int count) {
     return '$count 个容器正在使用 VirGL';
   }
+
+  @override
+  String get nativePlasmaNotifications => '通知';
+
+  @override
+  String get nativePlasmaNoNotifications => '没有通知';
+
+  @override
+  String get nativePlasmaClearAll => '全部清除';
+
+  @override
+  String get linuxGpuTurnip => 'Turnip + Zink（推荐）';
+
+  @override
+  String get linuxGpuTurnipDescription =>
+      'Linux 应用直接使用 Adreno GPU（Vulkan 和 OpenGL 4.6）。最快，适合游戏。';
+
+  @override
+  String get linuxGpuTurnipSetup =>
+      '在容器设置中启用 3D 图形后可用（构建约需 30 分钟）。在此之前使用 VirGL。';
+
+  @override
+  String get linuxSetupPhaseGpu => '正在构建 GPU 驱动（Turnip）';
 }

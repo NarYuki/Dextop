@@ -148,3 +148,39 @@ Java_moe_n4tsu_dextop_linux_LinuxFrameBridge_nativeBlitPixels(
     ANativeWindow_unlockAndPost(target->window);
     return JNI_TRUE;
 }
+
+namespace {
+
+/** Copies a w x h BGRX block at [src] (rows [stride] bytes apart) to (x, y) of [target]. */
+jboolean blitBlock(Target *target, const uint8_t *src, size_t length, int32_t stride,
+                   int32_t x, int32_t y, int32_t w, int32_t h) {
+    const int32_t left = std::clamp(x, 0, target->width);
+    const int32_t top = std::clamp(y, 0, target->height);
+    const int32_t right = std::clamp(x + w, left, target->width);
+    const int32_t bottom = std::clamp(y + h, top, target->height);
+    if (right <= left || bottom <= top) return JNI_TRUE;
+    if (static_cast<size_t>(h - 1) * stride + static_cast<size_t>(w) * 4 > length) return JNI_TRUE;
+    ARect dirty{left, top, right, bottom};
+    ANativeWindow_Buffer out;
+    if (ANativeWindow_lock(target->window, &out, &dirty) != 0) return JNI_FALSE;
+    auto *dst = static_cast<uint8_t *>(out.bits);
+    const int32_t copyRight = std::min<int32_t>(right, out.width);
+    const int32_t copyBottom = std::min<int32_t>(bottom, out.height);
+    for (int32_t row = top; row < copyBottom; ++row) {
+        copyRow(src + static_cast<size_t>(row - y) * stride + static_cast<size_t>(left - x) * 4,
+                dst + (static_cast<size_t>(row) * out.stride + left) * 4, copyRight - left);
+    }
+    ANativeWindow_unlockAndPost(target->window);
+    return JNI_TRUE;
+}
+
+}  // namespace
+
+extern "C" JNIEXPORT jboolean JNICALL
+Java_moe_n4tsu_dextop_linux_LinuxFrameBridge_nativeBlitAddress(
+        JNIEnv *, jclass, jlong handle, jlong address, jlong length, jint stride,
+        jint x, jint y, jint w, jint h) {
+    auto *target = reinterpret_cast<Target *>(handle);
+    if (target == nullptr || address == 0) return JNI_FALSE;
+    return blitBlock(target, reinterpret_cast<const uint8_t *>(address), static_cast<size_t>(length), stride, x, y, w, h);
+}

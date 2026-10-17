@@ -2988,4 +2988,27 @@ class AppLocalizationsJa extends AppLocalizations {
   String linuxGpuRunning(int count) {
     return 'VirGL を $count 個のコンテナで使用中';
   }
+
+  @override
+  String get nativePlasmaNotifications => '通知';
+
+  @override
+  String get nativePlasmaNoNotifications => '通知はありません';
+
+  @override
+  String get nativePlasmaClearAll => 'すべて消去';
+
+  @override
+  String get linuxGpuTurnip => 'Turnip + Zink（推奨）';
+
+  @override
+  String get linuxGpuTurnipDescription =>
+      'Linux アプリが Adreno GPU を直接使います（Vulkan と OpenGL 4.6）。最も速く、ゲームにも向いています。';
+
+  @override
+  String get linuxGpuTurnipSetup =>
+      'コンテナのセットアップで「3D グラフィックス」を有効にすると使えます（ビルドに 30 分ほどかかります）。それまでは VirGL を使います。';
+
+  @override
+  String get linuxSetupPhaseGpu => 'GPU ドライバー（Turnip）をビルド中';
 }

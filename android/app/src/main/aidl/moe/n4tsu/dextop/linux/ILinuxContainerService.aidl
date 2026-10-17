@@ -68,4 +68,8 @@ interface ILinuxContainerService {
     String linuxSettings() = 34;
     /** Merges [json] into the settings and returns the result like linuxSettings(). */
     String setLinuxSettings(String json) = 35;
+    /** Puts Android's clipboard text on the X clipboard of the container's displays. */
+    oneway void setClipboard(String containerId, String text) = 36;
+    /** The user clicked ("default" or an action key) or dismissed ("dismiss") a Linux notification. */
+    oneway void notificationAction(String containerId, String key, String action) = 37;
 }

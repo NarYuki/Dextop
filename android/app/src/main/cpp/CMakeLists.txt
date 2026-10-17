@@ -21,6 +21,8 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     add_subdirectory(proot)
     # VirGL GPU acceleration server and the guest socket shim.
     add_subdirectory(virgl)
+    # Wayland compositor for Linux application windows.
+    add_subdirectory(wayland)
 
     # Framebuffer-to-Surface copies for Linux windows (loaded by the shell-side service).
     add_library(dextop_linux SHARED linux_bridge.cpp)

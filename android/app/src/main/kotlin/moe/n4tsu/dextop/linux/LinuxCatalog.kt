@@ -87,13 +87,13 @@ internal object LinuxCatalog {
                 dpkg --configure -a || apt-get install -f -y
             fi
             apt-get install -y --no-install-recommends \
-                xvfb x11-xserver-utils xauth icewm xterm dbus-x11 \
+                xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
                 fonts-dejavu-core xdg-utils ca-certificates
         """.trimIndent() + "\n"
         LinuxPackageFamily.PACMAN -> """
             set -e
             pacman -S --noconfirm --needed \
-                xorg-server-xvfb xorg-xrdb xorg-xauth icewm xterm dbus \
+                xorg-server-xvfb xorg-xrdb xorg-xauth icewm xterm dbus pulseaudio \
                 ttf-dejavu xdg-utils ca-certificates
         """.trimIndent() + "\n"
     }
@@ -150,11 +150,12 @@ internal object LinuxCatalog {
     """.trimIndent() + "\n"
 
     /** Runs [command] (a desktop entry's Exec line) as an application of display [display]. */
-    fun launchScript(display: Int, command: String): String = """
+    fun launchScript(display: Int, command: String, wayland: Boolean = false): String = """
         export DISPLAY=:$display XDG_RUNTIME_DIR=/tmp/runtime-root
         export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-$display
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
         $RENDERER_OVERRIDE
+        ${if (wayland) WAYLAND_ENVIRONMENT else ""}
         cd /root
         exec sh -c ${shellQuote(command)} >>/tmp/apps-$display.log 2>&1
     """.trimIndent() + "\n"
@@ -180,9 +181,52 @@ internal object LinuxCatalog {
         # xterm's default bitmap font is not installed; use the Xft fonts (CJK included).
         command -v xrdb >/dev/null && printf '%s\n' 'Xft.dpi: $dpi' \
             'XTerm*faceName: DejaVu Sans Mono' 'XTerm*faceNameDoublesize: Noto Sans Mono CJK JP' \
-            'XTerm*faceSize: 11' 'XTerm*locale: true' | xrdb -merge
+            'XTerm*faceSize: 11' 'XTerm*locale: true' \
+            'XTerm*VT100.translations: #override \n Ctrl Shift <Key>C: copy-selection(CLIPBOARD) \n Ctrl Shift <Key>V: insert-selection(CLIPBOARD)' \
+            | xrdb -nocpp -merge
         [ ! -f /etc/dextop/start-session.sh ] || sh /etc/dextop/start-session.sh
     """.trimIndent()
+
+    /** Where the Turnip build installs its Vulkan driver manifest (see [turnipScript]). */
+    const val TURNIP_ICD = "/opt/dextop-mesa/share/vulkan/icd.d/freedreno_icd.aarch64.json"
+    const val TURNIP_WAYLAND_READY = "/opt/dextop-mesa/share/dextop/wayland-ready"
+    private const val TURNIP_MESA_VERSION = "25.0.7"
+
+    /**
+     * Builds Mesa's Turnip Vulkan driver with the KGSL backend, which talks
+     * to Android's Adreno kernel driver (/dev/kgsl-3d0) directly. Distribution
+     * builds only support the upstream DRM driver. Zink from the distribution's
+     * Mesa then runs OpenGL on it. (The msm backend stays enabled: without it
+     * Mesa drops the DRM pieces the GLX loader needs.)
+     */
+    fun turnipScript(): String = """
+        set -e
+        export DEBIAN_FRONTEND=noninteractive
+        apt-get install -y --no-install-recommends \
+            build-essential meson ninja-build pkg-config python3-mako python3-yaml python3-packaging \
+            glslang-tools bison flex wget ca-certificates xz-utils patch \
+            libdrm-dev libexpat1-dev zlib1g-dev libzstd-dev libelf-dev \
+            libx11-dev libx11-xcb-dev libxext-dev libxfixes-dev libxrandr-dev libxxf86vm-dev libxshmfence-dev \
+            libxcb1-dev libxcb-glx0-dev libxcb-shm0-dev libxcb-dri2-0-dev libxcb-dri3-dev libxcb-present-dev \
+            libxcb-randr0-dev libxcb-sync-dev libxcb-xfixes0-dev libxcb-keysyms1-dev libvulkan-dev libglvnd-dev \
+            libwayland-dev libwayland-egl-backend-dev wayland-protocols
+        rm -rf /opt/dextop-src && mkdir -p /opt/dextop-src && cd /opt/dextop-src
+        wget -q https://archive.mesa3d.org/mesa-$TURNIP_MESA_VERSION.tar.xz
+        tar -xf mesa-$TURNIP_MESA_VERSION.tar.xz && cd mesa-$TURNIP_MESA_VERSION
+        ${LinuxMesaPatches.script}
+        meson setup build \
+            -Dprefix=/opt/dextop-mesa -Dbuildtype=release -Db_ndebug=true \
+            -Dplatforms=x11,wayland -Dgallium-drivers=zink -Dvulkan-drivers=freedreno -Dfreedreno-kmds=msm,kgsl \
+            -Dglx=dri -Degl=enabled -Dgbm=disabled -Dglvnd=enabled -Dllvm=disabled \
+            -Dgles1=disabled -Dgles2=enabled -Dvideo-codecs= -Dvalgrind=disabled -Dlibunwind=disabled \
+            -Dlmsensors=disabled -Dbuild-tests=false
+        ninja -C build
+        ninja -C build install
+        cd / && rm -rf /opt/dextop-src
+        test -f $TURNIP_ICD
+        mkdir -p /opt/dextop-mesa/share/dextop
+        touch $TURNIP_WAYLAND_READY
+    """.trimIndent() + "\n"
 
     /**
      * X DPI matching Android's scale: Android lays out 1 dp per px at 160
@@ -194,21 +238,41 @@ internal object LinuxCatalog {
      * Containers set up before the renderer setting existed export
      * LIBGL_ALWAYS_SOFTWARE in session.env, which would hide VirGL.
      */
-    private val RENDERER_OVERRIDE = "[ \"${'$'}GALLIUM_DRIVER\" != virpipe ] || unset LIBGL_ALWAYS_SOFTWARE"
+    private val RENDERER_OVERRIDE =
+        "case \"${'$'}GALLIUM_DRIVER\" in virpipe|zink) unset LIBGL_ALWAYS_SOFTWARE ;; esac"
 
     /**
-     * Chromium-based browsers draw no text when they rasterize on VirGL
-     * (glyph atlases); GPU compositing and WebGL keep using it.
+     * GPU flags for Chromium-based browsers by renderer. On VirGL they draw
+     * no text when they rasterize on the GPU (glyph atlases), so only
+     * compositing and WebGL use it. On Turnip, ANGLE drives Vulkan directly:
+     * through Zink the GPU process fails (calibrated timestamps).
      */
-    val CHROMIUM_VIRGL_FLAGS = "[ \"${'$'}GALLIUM_DRIVER\" != virpipe ] || set -- --disable-gpu-rasterization \"${'$'}@\""
+    val CHROMIUM_VIRGL_FLAGS = "case \"${'$'}GALLIUM_DRIVER\" in " +
+        "virpipe) set -- --disable-gpu-rasterization \"${'$'}@\" ;; " +
+        "zink) set -- --ozone-platform=x11 --use-angle=vulkan --enable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE \"${'$'}@\" ;; esac"
 
-    /** Adds [CHROMIUM_VIRGL_FLAGS] to browser launchers written before it existed. */
+    /** Puts the current [CHROMIUM_VIRGL_FLAGS] into browser launchers written by earlier versions. */
     private val BROWSER_LAUNCHER_MIGRATION = """
         for launcher in /usr/local/bin/dextop-chrome /usr/local/bin/dextop-chromium; do
-            [ -f "${'$'}launcher" ] && ! grep -q disable-gpu-rasterization "${'$'}launcher" &&
-                sed -i '/^exec /i [ "${'$'}GALLIUM_DRIVER" != virpipe ] || set -- --disable-gpu-rasterization "${'$'}@"' "${'$'}launcher"
+            [ -f "${'$'}launcher" ] && ! grep -q -- '--ozone-platform=x11' "${'$'}launcher" && {
+                sed -i '/disable-gpu-rasterization/d; /DefaultANGLEVulkan/d' "${'$'}launcher"
+                sed -i '/^exec /i ${CHROMIUM_VIRGL_FLAGS.replace("'", "'\\''")}' "${'$'}launcher"
+            }
         done
     """.trimIndent()
+
+    /**
+     * Toolkits prefer Dextop's Wayland compositor (GPU buffers through
+     * dma-buf) and fall back to X11.
+     */
+    private val WAYLAND_ENVIRONMENT = "export WAYLAND_DISPLAY=${LinuxAppSession.WAYLAND_DISPLAY} " +
+        "GDK_BACKEND=wayland,x11 GTK_CSD=0 QT_QPA_PLATFORM='wayland;xcb' SDL_VIDEODRIVER=wayland,x11 " +
+        "MOZ_ENABLE_WAYLAND=1 ELECTRON_OZONE_PLATFORM_HINT=auto\n" +
+        "export DEXTOP_WAYLAND_KGSL=1 MESA_LOADER_DRIVER_OVERRIDE=zink\n" +
+        // X11 GLX clients launched from a Wayland terminal still need XPutImage presentation.
+        "export LIBGL_KOPPER_DRI2=true MESA_VK_WSI_DEBUG=sw\n" +
+        "export __EGL_VENDOR_LIBRARY_FILENAMES=/opt/dextop-mesa/share/glvnd/egl_vendor.d/50_mesa.json\n" +
+        "export LD_LIBRARY_PATH=/opt/dextop-mesa/lib/aarch64-linux-gnu${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"
 
     private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 }

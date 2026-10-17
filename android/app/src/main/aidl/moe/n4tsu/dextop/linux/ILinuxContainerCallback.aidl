@@ -13,4 +13,8 @@ oneway interface ILinuxContainerCallback {
      * "title" | "unmap", "xid", "popup", ...}; see LinuxAppSession.
      */
     void onWindowEvent(String containerId, String json) = 4;
+    /** Text an application of the container copied to the X clipboard. */
+    void onClipboard(String containerId, String text) = 5;
+    /** A Linux notification as JSON: {"type": "notify" | "close", "key", "app", "summary", "body", "actions", "time"}. */
+    void onNotification(String containerId, String json) = 6;
 }

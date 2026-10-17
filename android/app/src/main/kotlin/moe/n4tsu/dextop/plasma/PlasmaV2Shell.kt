@@ -84,6 +84,14 @@ internal class PlasmaV2Shell(
         private const val INJECT_ASYNC = 0
         private const val DISPLAY_IME_POLICY_LOCAL = 0
         /** MotionEvent button bits to X button numbers (left, middle, right, back, forward). */
+        // MotionEvent classifications of touchpad gestures (API 34).
+        private const val CLASSIFICATION_TWO_FINGER_SWIPE = 3
+        private const val CLASSIFICATION_MULTI_FINGER_SWIPE = 4
+        private const val CLASSIFICATION_PINCH = 5
+
+        /** Finger travel per wheel step for scroll gestures. */
+        private const val LINUX_SCROLL_STEP_DP = 18
+
         private val LINUX_BUTTONS = listOf(
             MotionEvent.BUTTON_PRIMARY to 1, MotionEvent.BUTTON_TERTIARY to 2, MotionEvent.BUTTON_SECONDARY to 3,
             MotionEvent.BUTTON_BACK to 8, MotionEvent.BUTTON_FORWARD to 9,
@@ -215,6 +223,8 @@ internal class PlasmaV2Shell(
         buildRoot()
         LinuxContainerClient.addListener(linuxListener)
         refreshLinuxApps(resumeWindows = true)
+        NotificationCenter.addListener(notificationsChanged)
+        enableNotificationAccess()
         refreshTray()
         handler.postDelayed(pollRunnable, POLL_INTERVAL_MS)
         handler.postDelayed(trayTicker, 30_000L)
@@ -228,6 +238,7 @@ internal class PlasmaV2Shell(
         handler.removeCallbacksAndMessages(null)
         // Linux applications keep running; the next session shows their windows again.
         LinuxContainerClient.removeListener(linuxListener)
+        NotificationCenter.removeListener(notificationsChanged)
         val snapshot = windows.toList()
         windows.clear()
         // Applications move back to the Dextop display so the platform
@@ -651,6 +662,84 @@ internal class PlasmaV2Shell(
         override fun onContainersChanged() {
             if (running) refreshLinuxApps(resumeWindows = false)
         }
+
+        override fun onNotification(containerId: String, event: JSONObject) {
+            if (!running) return
+            val key = "linux:$containerId:${event.optString("key")}"
+            when (event.optString("type")) {
+                "notify" -> NotificationCenter.put(DextopNotification(
+                    key = key, linux = true,
+                    app = event.optString("app").ifBlank { "Linux" },
+                    title = event.optString("summary"), text = event.optString("body"),
+                    time = event.optLong("time", System.currentTimeMillis()),
+                    icon = linuxApps.firstOrNull { app ->
+                        app.packageName.startsWith("$LINUX_APP_PREFIX$containerId:") &&
+                            app.label.equals(event.optString("app"), ignoreCase = true)
+                    }?.icon,
+                    owner = containerId, clearable = true,
+                ))
+                "close" -> NotificationCenter.remove(key)
+            }
+        }
+
+        override fun onClipboard(containerId: String, text: String) {
+            if (!running) return
+            lastLinuxClipboard = text
+            runCatching {
+                service.getSystemService(ClipboardManager::class.java)
+                    .setPrimaryClip(ClipData.newPlainText("Linux", text))
+            }.onFailure { host.log("Plasma v2 Linux clipboard to Android failed: ${it.message}") }
+        }
+    }
+
+    private val notificationsChanged: () -> Unit = { panel.invalidate() }
+
+    /** Lets Dextop read Android's notifications for the tray (granted through the privileged shell). */
+    private fun enableNotificationAccess() {
+        val component = DextopNotificationListener.component(service).flattenToString()
+        systemExecutor.execute {
+            runCatching { host.privilegedCommand("cmd", "notification", "allow_listener", component) }
+        }
+    }
+
+    private fun openNotification(item: DextopNotification) {
+        dismissPopup()
+        if (item.linux) {
+            val (containerId, key) = item.key.removePrefix("linux:").split(':', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+            LinuxContainerClient.service()?.runCatching { notificationAction(containerId, key, "default") }
+            windows.filter { it.linuxContainer == containerId && !it.closing }.maxByOrNull { it.lastActivated }?.let(::activate)
+            NotificationCenter.remove(item.key)
+        } else {
+            // The app opens in (or raises) its Plasma window.
+            launch(item.owner)
+        }
+    }
+
+    private fun dismissNotification(item: DextopNotification) {
+        if (item.linux) {
+            val (containerId, key) = item.key.removePrefix("linux:").split(':', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
+            LinuxContainerClient.service()?.runCatching { notificationAction(containerId, key, "dismiss") }
+            NotificationCenter.remove(item.key)
+        } else {
+            DextopNotificationListener.cancel(item.key)
+        }
+    }
+
+    /** Clipboard text last exchanged with Linux, so it is not sent back and forth. */
+    private var lastLinuxClipboard: String? = null
+
+    /**
+     * Gives Linux the Android clipboard before a paste. Android lets Dextop
+     * read it here because a Dextop window has input focus.
+     */
+    private fun syncClipboardToLinux(containerId: String) {
+        val text = runCatching {
+            service.getSystemService(ClipboardManager::class.java).primaryClip
+                ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(service)?.toString()
+        }.getOrNull() ?: return
+        if (text.isEmpty() || text == lastLinuxClipboard) return
+        lastLinuxClipboard = text
+        LinuxContainerClient.service()?.runCatching { setClipboard(containerId, text) }
     }
 
     private fun linuxEnabled(): Boolean =
@@ -864,7 +953,7 @@ internal class PlasmaV2Shell(
      */
     private inner class LinuxPopupLayer(context: Context) : FrameLayout(context) {
         private inner class Popup(val containerId: String, val xid: Int) : android.view.TextureView(context) {
-            var buttons = 0
+            val pointer = LinuxPointerState()
             var surface: Surface? = null
 
             init {
@@ -891,10 +980,10 @@ internal class PlasmaV2Shell(
                     val linux = LinuxContainerClient.service()
                     if (linux != null) {
                         forwardLinuxPointer(
-                            event, event.x.roundToInt(), event.y.roundToInt(),
-                            buttons = { buttons }, setButtons = { buttons = it },
+                            event, event.x.roundToInt(), event.y.roundToInt(), pointer,
                             send = { action, x, y, button -> linux.windowPointer(containerId, xid, action, x, y, button) },
                             scroll = { dx, dy -> linux.scroll("$containerId#apps", dx, dy) },
+                            key = { code, down -> linux.key("$containerId#apps", code, down) },
                         )
                     }
                     true
@@ -1035,10 +1124,10 @@ internal class PlasmaV2Shell(
         if (xid != 0) {
             // Application windows are drawn 1:1 at their X size.
             forwardLinuxPointer(
-                event, event.x.roundToInt(), event.y.roundToInt(),
-                buttons = { window.linuxButtons }, setButtons = { window.linuxButtons = it },
+                event, event.x.roundToInt(), event.y.roundToInt(), window.linuxPointer,
                 send = { action, x, y, button -> linux.windowPointer(id, xid, action, x, y, button) },
                 scroll = { dx, dy -> linux.scroll("$id#apps", dx, dy) },
+                key = { code, down -> linux.key("$id#apps", code, down) },
             )
             return
         }
@@ -1047,58 +1136,134 @@ internal class PlasmaV2Shell(
             event,
             (event.x * window.linuxWidth / source.width).roundToInt(),
             (event.y * window.linuxHeight / source.height).roundToInt(),
-            buttons = { window.linuxButtons }, setButtons = { window.linuxButtons = it },
+            window.linuxPointer,
             send = { action, x, y, button -> linux.pointer(id, action, x, y, button) },
             scroll = { dx, dy -> linux.scroll(id, dx, dy) },
+            key = { code, down -> linux.key(id, code, down) },
         )
     }
 
-    /** Turns [event] (at X position [x], [y]) into X pointer, button and wheel input through [send] and [scroll]. */
+    /**
+     * Turns [event] (at X position [x], [y]) into X input: pointer and
+     * buttons through [send], wheel steps through [scroll], keys through [key].
+     *
+     * Gestures become what Linux applications expect: a touchpad's two-finger
+     * swipe and two fingers on a touch screen scroll, a touchpad pinch zooms
+     * (Ctrl + wheel), and fine-grained wheels add up to whole steps.
+     */
     private fun forwardLinuxPointer(
-        event: MotionEvent, x: Int, y: Int,
-        buttons: () -> Int, setButtons: (Int) -> Unit,
+        event: MotionEvent, x: Int, y: Int, state: LinuxPointerState,
         send: (action: Int, x: Int, y: Int, button: Int) -> Unit,
         scroll: (dx: Int, dy: Int) -> Unit,
+        key: (evdevCode: Int, down: Boolean) -> Unit,
     ) {
         runCatching {
+            val step = dp(LINUX_SCROLL_STEP_DP).toFloat()
+            fun scrollBy(fingerDx: Float, fingerDy: Float) {
+                // Content follows the fingers: moving them up scrolls down.
+                val (dx, dy) = state.addScroll(-fingerDx / step, -fingerDy / step)
+                if (dx != 0 || dy != 0) scroll(dx, dy)
+            }
+            val classification = if (android.os.Build.VERSION.SDK_INT >= 34) event.classification else 0
+            when (classification) {
+                CLASSIFICATION_TWO_FINGER_SWIPE -> {
+                    // Android reports the swipe as one pointer that moves with the fingers.
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) state.resetGesture(event.x, event.y)
+                    else if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                        scrollBy(event.x - state.lastX, event.y - state.lastY)
+                        state.lastX = event.x
+                        state.lastY = event.y
+                    }
+                    return
+                }
+                CLASSIFICATION_MULTI_FINGER_SWIPE -> return
+                CLASSIFICATION_PINCH -> {
+                    if (event.actionMasked == MotionEvent.ACTION_DOWN) state.resetGesture(event.x, event.y)
+                    if (event.actionMasked == MotionEvent.ACTION_MOVE) {
+                        val factor = event.getAxisValue(MotionEvent.AXIS_GESTURE_PINCH_SCALE_FACTOR)
+                        val steps = state.addPinch(factor)
+                        if (steps != 0) {
+                            key(29, true) // KEY_LEFTCTRL
+                            scroll(0, -steps)
+                            key(29, false)
+                        }
+                    }
+                    return
+                }
+            }
             if (event.actionMasked == MotionEvent.ACTION_SCROLL) {
-                val vertical = -event.getAxisValue(MotionEvent.AXIS_VSCROLL)
-                val horizontal = event.getAxisValue(MotionEvent.AXIS_HSCROLL)
                 send(0, x, y, 0)
-                scroll(scrollSteps(horizontal), scrollSteps(vertical))
+                val (dx, dy) = state.addScroll(
+                    event.getAxisValue(MotionEvent.AXIS_HSCROLL), -event.getAxisValue(MotionEvent.AXIS_VSCROLL),
+                    wheel = true,
+                )
+                if (dx != 0 || dy != 0) scroll(dx, dy)
                 return
             }
             if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
                 // Report every change of the button state; Android sends both
                 // ACTION_DOWN and ACTION_BUTTON_PRESS for one mouse click.
                 send(0, x, y, 0)
-                val previous = buttons()
+                val previous = state.buttons
                 val current = if (event.actionMasked == MotionEvent.ACTION_CANCEL) 0 else event.buttonState
                 for ((bit, button) in LINUX_BUTTONS) {
                     val was = previous and bit != 0
                     val now = current and bit != 0
                     if (was != now) send(if (now) 1 else 2, x, y, button)
                 }
-                setButtons(current)
+                state.buttons = current
                 return
             }
+            // Touch: the press waits until the finger moves or lifts, so a
+            // second finger can still turn the touch into a scroll.
             when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> send(1, x, y, 1)
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> send(2, x, y, 1)
-                else -> send(0, x, y, 0)
+                MotionEvent.ACTION_DOWN -> {
+                    state.startTouch(x, y)
+                    send(0, x, y, 0)
+                }
+                MotionEvent.ACTION_POINTER_DOWN -> if (!state.touchPressed) {
+                    state.touchPending = false
+                    state.touchScrolling = true
+                    state.resetGesture(centroidX(event), centroidY(event))
+                }
+                MotionEvent.ACTION_MOVE -> when {
+                    state.touchScrolling -> if (event.pointerCount >= 2) {
+                        val cx = centroidX(event)
+                        val cy = centroidY(event)
+                        scrollBy(cx - state.lastX, cy - state.lastY)
+                        state.lastX = cx
+                        state.lastY = cy
+                    }
+                    state.touchPending -> if (state.movedBeyond(x, y, dp(6))) {
+                        send(1, state.touchDownX, state.touchDownY, 1)
+                        state.touchPending = false
+                        state.touchPressed = true
+                        send(0, x, y, 0)
+                    }
+                    else -> send(0, x, y, 0)
+                }
+                MotionEvent.ACTION_UP -> {
+                    if (state.touchPending) send(1, x, y, 1)
+                    if (state.touchPending || state.touchPressed) send(2, x, y, 1)
+                    state.endTouch()
+                }
+                MotionEvent.ACTION_CANCEL -> {
+                    if (state.touchPressed) send(2, x, y, 1)
+                    state.endTouch()
+                }
             }
         }
     }
 
-    private fun scrollSteps(value: Float): Int = when {
-        value > 0f -> kotlin.math.max(1, value.roundToInt())
-        value < 0f -> kotlin.math.min(-1, value.roundToInt())
-        else -> 0
-    }
+    private fun centroidX(event: MotionEvent) = (0 until event.pointerCount).map(event::getX).average().toFloat()
+    private fun centroidY(event: MotionEvent) = (0 until event.pointerCount).map(event::getY).average().toFloat()
 
     private fun forwardLinuxKey(id: String, event: KeyEvent) {
         val linux = LinuxContainerClient.service() ?: return
         val down = event.action == KeyEvent.ACTION_DOWN
+        val paste = (event.isCtrlPressed && event.keyCode == KeyEvent.KEYCODE_V) ||
+            (event.isShiftPressed && event.keyCode == KeyEvent.KEYCODE_INSERT)
+        if (down && paste && event.repeatCount == 0) syncClipboardToLinux(id.removeSuffix("#apps"))
         val code = LinuxKeymap.evdev(event)
         runCatching {
             when {
@@ -1326,6 +1491,8 @@ internal class PlasmaV2Shell(
         if (window.linuxXid != 0) {
             window.linuxContainer?.let { id -> LinuxContainerClient.service()?.runCatching { activateWindow(id, window.linuxXid) } }
         }
+        // Menus and middle-click paste do not go through a key; offer the clipboard on focus too.
+        window.linuxContainer?.let(::syncClipboardToLinux)
         panel.invalidate()
     }
 
@@ -1928,6 +2095,8 @@ internal class PlasmaV2Shell(
             TrayItem.BATTERY -> PowerApplet(displayContext, palette, systemControls, trayWorker,
                 onChanged = { refreshTray() },
                 onOpenSettings = { dismissPopup(); launchIntentInWindow(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) })
+            TrayItem.NOTIFICATIONS -> NotificationApplet(displayContext, palette,
+                onOpen = ::openNotification, onDismiss = ::dismissNotification)
             TrayItem.EXPAND -> TrayOverflowApplet(displayContext, palette, listOf(
                 MenuItem(t("nativePlasmaOverview"), Glyph.OVERVIEW) { toggleOverview() },
                 MenuItem(t("nativePlasmaRunCommand"), Glyph.SEARCH) { showKRunner() },
@@ -2340,7 +2509,7 @@ internal class PlasmaV2Shell(
                 } else {
                     val open = metaDown && !metaCombo
                     metaDown = false
-                    if (open) toggleKickoff()
+                    if (switcher != null || switcherRequested) commitSwitcher() else if (open) toggleKickoff()
                 }
                 return true
             }
@@ -2358,8 +2527,10 @@ internal class PlasmaV2Shell(
             val shift = shiftDown || event.isShiftPressed
             if (meta) metaCombo = true
             val active = windows.firstOrNull { it.id == activeId }
+            // Every key combination goes to the active window, Linux or Android,
+            // exactly as typed. Plasma only reacts to the Meta (Dextop) key.
             val handled = when {
-                alt && code == KeyEvent.KEYCODE_TAB -> {
+                meta && code == KeyEvent.KEYCODE_TAB -> {
                     val view = switcher
                     if (view == null) {
                         if (!switcherRequested) showSwitcher(shift)
@@ -2369,10 +2540,7 @@ internal class PlasmaV2Shell(
                     }
                     true
                 }
-                alt && code == KeyEvent.KEYCODE_F4 -> { active?.let(::close); true }
-                alt && code == KeyEvent.KEYCODE_F3 -> { active?.let { showWindowMenu(it, it.frame.left.toFloat(), (it.frame.top + titleHeight).toFloat()) }; true }
-                alt && code == KeyEvent.KEYCODE_F1 -> { toggleKickoff(); true }
-                alt && (code == KeyEvent.KEYCODE_SPACE || code == KeyEvent.KEYCODE_F2) -> { showKRunner(); true }
+                meta && code == KeyEvent.KEYCODE_SPACE -> { showKRunner(); true }
                 meta && (code == KeyEvent.KEYCODE_W || code == KeyEvent.KEYCODE_G) -> { toggleOverview(); true }
                 meta && code == KeyEvent.KEYCODE_D -> { togglePeek(); true }
                 meta && code == KeyEvent.KEYCODE_PAGE_UP -> { active?.let(::toggleMaximize); true }
@@ -2387,10 +2555,6 @@ internal class PlasmaV2Shell(
                     panelEntries().getOrNull(code - KeyEvent.KEYCODE_1)?.let { onTaskClicked(it, panel.taskIconRect(it.packageName) ?: RectF()) }
                     true
                 }
-                ctrl && alt && code == KeyEvent.KEYCODE_DPAD_LEFT -> { onDesktopScroll(-1); true }
-                ctrl && alt && code == KeyEvent.KEYCODE_DPAD_RIGHT -> { onDesktopScroll(1); true }
-                ctrl && alt && code == KeyEvent.KEYCODE_DEL -> { leave(LeaveAction.SHOW_DIALOG); true }
-                ctrl && code in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F4 -> { switchDesktop(code - KeyEvent.KEYCODE_F1); true }
                 code == KeyEvent.KEYCODE_ESCAPE && overviewActive -> { exitOverview(null); true }
                 code == KeyEvent.KEYCODE_ESCAPE && switcher != null -> { switcher?.let(root::removeView); switcher = null; switcherRequested = false; true }
                 code == KeyEvent.KEYCODE_ESCAPE && popup != null && !shellTextInputActive() -> { dismissPopup(); true }

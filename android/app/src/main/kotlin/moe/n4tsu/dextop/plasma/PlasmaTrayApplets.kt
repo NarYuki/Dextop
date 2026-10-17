@@ -737,3 +737,80 @@ internal class PowerApplet(
         else t("nativePlasmaMinutes").format(minutes)
     }
 }
+
+/** "Notifications" popup: Android and Linux notifications, newest first. */
+@SuppressLint("ViewConstructor")
+internal class NotificationApplet(
+    context: Context,
+    private val palette: PlasmaPalette,
+    private val onOpen: (DextopNotification) -> Unit,
+    private val onDismiss: (DextopNotification) -> Unit,
+) : LinearLayout(context) {
+    private val list = verticalLayout(context)
+    private val refresh: () -> Unit = { rebuild() }
+
+    init {
+        orientation = VERTICAL
+        setPadding(dp(10f), dp(8f), dp(10f), dp(10f))
+        val clearAll = PlasmaButton(context, palette, Glyph.CLOSE, t("nativePlasmaClearAll"), flat = true) {
+            NotificationCenter.all().filter { it.clearable }.forEach(onDismiss)
+        }
+        addView(appletTitleRow(context, palette, t("nativePlasmaNotifications"), clearAll))
+        addView(ScrollView(context).apply {
+            isVerticalScrollBarEnabled = true
+            addView(list, LayoutParams(-1, -2))
+        }, LayoutParams(-1, dp(420f)))
+        rebuild()
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        NotificationCenter.addListener(refresh)
+    }
+
+    override fun onDetachedFromWindow() {
+        NotificationCenter.removeListener(refresh)
+        super.onDetachedFromWindow()
+    }
+
+    private fun rebuild() {
+        list.removeAllViews()
+        val items = NotificationCenter.all()
+        if (items.isEmpty()) {
+            list.addView(plasmaLabel(context, t("nativePlasmaNoNotifications"), palette.inactiveText, 13f).apply {
+                gravity = Gravity.CENTER
+                setPadding(0, dp(48f), 0, dp(48f))
+            }, LayoutParams(-1, -2))
+            return
+        }
+        for ((linux, group) in items.groupBy { it.linux }.toSortedMap()) {
+            list.addView(sectionLabel(context, palette, if (linux) "Linux" else "Android"))
+            group.forEach { list.addView(card(it), LayoutParams(-1, -2).apply { bottomMargin = dp(6f) }) }
+        }
+    }
+
+    private fun card(item: DextopNotification): View = horizontalLayout(context).apply {
+        gravity = Gravity.TOP
+        setPadding(dp(8f), dp(8f), dp(4f), dp(8f))
+        background = android.graphics.drawable.GradientDrawable().apply {
+            cornerRadius = dp(8f).toFloat()
+            setColor(PlasmaTheme.withAlpha(palette.text, 0x12))
+        }
+        val icon = item.icon ?: GlyphDrawable(if (item.linux) Glyph.COMPUTER else Glyph.NOTIFICATIONS, palette.text)
+        addView(View(context).apply { background = icon }, LayoutParams(dp(28f), dp(28f)))
+        addView(verticalLayout(context).apply {
+            setPadding(dp(10f), 0, dp(6f), 0)
+            val time = android.text.format.DateUtils.getRelativeTimeSpanString(item.time).toString()
+            addView(plasmaLabel(context, "${item.app} · $time", palette.inactiveText, 11f))
+            if (item.title.isNotBlank()) addView(plasmaLabel(context, item.title, palette.text, 13.5f, bold = true))
+            if (item.text.isNotBlank()) addView(plasmaLabel(context, item.text, palette.text, 12.5f).apply {
+                isSingleLine = false
+                maxLines = 4
+                ellipsize = android.text.TextUtils.TruncateAt.END
+            })
+        }, LayoutParams(0, -2, 1f))
+        if (item.clearable) addView(PlasmaIconButton(context, palette, Glyph.CLOSE, 28f, 16f) { onDismiss(item) })
+        isClickable = true
+        setOnClickListener { onOpen(item) }
+    }
+}

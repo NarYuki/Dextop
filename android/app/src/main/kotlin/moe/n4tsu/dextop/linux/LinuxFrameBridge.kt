@@ -25,6 +25,11 @@ internal object LinuxFrameBridge {
     /** Changes the Surface's buffer size (the X window was resized). */
     @JvmStatic external fun nativeResize(handle: Long, width: Int, height: Int): Boolean
 
+    /** Like [nativeBlitPixels], from native memory at [address] (an MIT-SHM mapping). */
+    @JvmStatic external fun nativeBlitAddress(
+        handle: Long, address: Long, length: Long, stride: Int, x: Int, y: Int, w: Int, h: Int,
+    ): Boolean
+
     /** Copies a w x h block of BGRX [pixels] (from [offset], rows [stride] bytes apart) to (x, y). */
     @JvmStatic external fun nativeBlitPixels(
         handle: Long, pixels: ByteArray, offset: Int, stride: Int, x: Int, y: Int, w: Int, h: Int,

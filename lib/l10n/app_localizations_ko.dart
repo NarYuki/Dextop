@@ -3003,4 +3003,27 @@ class AppLocalizationsKo extends AppLocalizations {
   String linuxGpuRunning(int count) {
     return '$count개 컨테이너에서 VirGL 사용 중';
   }
+
+  @override
+  String get nativePlasmaNotifications => '알림';
+
+  @override
+  String get nativePlasmaNoNotifications => '알림 없음';
+
+  @override
+  String get nativePlasmaClearAll => '모두 지우기';
+
+  @override
+  String get linuxGpuTurnip => 'Turnip + Zink(권장)';
+
+  @override
+  String get linuxGpuTurnipDescription =>
+      'Linux 앱이 Adreno GPU를 직접 사용합니다(Vulkan, OpenGL 4.6). 가장 빠르고 게임에 적합합니다.';
+
+  @override
+  String get linuxGpuTurnipSetup =>
+      '컨테이너 설정에서 3D 그래픽을 켜면 사용할 수 있습니다(빌드에 약 30분). 그 전까지는 VirGL을 사용합니다.';
+
+  @override
+  String get linuxSetupPhaseGpu => 'GPU 드라이버(Turnip) 빌드 중';
 }

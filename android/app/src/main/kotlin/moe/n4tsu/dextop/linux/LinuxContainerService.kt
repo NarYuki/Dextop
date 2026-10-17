@@ -31,7 +31,8 @@ import kotlin.system.exitProcess
 class LinuxContainerService : ILinuxContainerService.Stub() {
     companion object {
         private const val TAG = "DextopLinuxService"
-        const val PROTOCOL_VERSION = 7
+        // Retire pre-Wayland daemons retained by compatible privilege servers.
+        const val PROTOCOL_VERSION = 11
         private const val BUFFER = 256 * 1024
     }
 
@@ -47,11 +48,16 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         "protocol=$PROTOCOL_VERSION pid=${Os.getpid()} uid=${Os.getuid()} proot=${proot?.available()}"
 
     @Volatile private var graphics: LinuxGraphics? = null
+    @Volatile private var audio: LinuxAudio? = null
 
     override fun initialize(nativeLibraryDir: String, callback: ILinuxContainerCallback?) {
         val renderer = LinuxGraphics(nativeLibraryDir)
         graphics = renderer
-        proot = LinuxProot(nativeLibraryDir).apply { guestEnvironment = renderer::environment }
+        val sound = LinuxAudio({ requireProot() }, { id, line -> log(id, line) }) { notifyChanged() }
+        audio = sound
+        proot = LinuxProot(nativeLibraryDir).apply {
+            guestEnvironment = { id -> renderer.environment(id) + sound.environment(id) }
+        }
         this.callback = callback
         LinuxPaths.containers.mkdirs()
         // An install interrupted by a reboot or a killed service never completes.
@@ -67,6 +73,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
             val id = config.optString("id")
             put(config.put("running", sessions[id]?.alive == true)
                 .put("appsRunning", appSessions[id]?.alive == true)
+                .put("audioPort", audio?.port(id) ?: 0)
                 .put("runtimeState", when {
                     runtimeStates[id] == "failed" -> "failed"
                     sessions[id]?.alive == true && sessions[id]?.windowManagerReady != true -> "starting"
@@ -231,13 +238,15 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         )
         }
         sessions[containerId] = session
+        session.onClipboard = { text -> shareClipboard(containerId, text) }
+        startNotifications(containerId, display)
         monitor(containerId, { session.alive }) { sessions[containerId] === session }
         notifyChanged()
         return display
     }
 
     override fun stopDesktop(containerId: String) {
-        sessions.remove(containerId)?.stop()
+        sessions.remove(containerId)?.let { notifiers.remove(it.display)?.stop(); it.stop() }
         stopRendererIfIdle(containerId)
         notifyChanged()
     }
@@ -305,6 +314,8 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         ) { event -> callback(containerId) { it.onWindowEvent(containerId, event.toString()) } }
         }
         appSessions[containerId] = session
+        session.onClipboard = { text -> shareClipboard(containerId, text) }
+        startNotifications(containerId, display)
         monitor(containerId, { session.alive }) { appSessions[containerId] === session }
         notifyChanged()
         return display
@@ -315,7 +326,8 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         val entry = LinuxDesktopEntries.find(LinuxPaths.rootfs(containerId), desktopId) ?: error("Unknown application $desktopId")
         val command = LinuxDesktopEntries.command(entry)
         log(containerId, "launch ${entry.id}: $command")
-        val process = requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command))
+        val process = requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command,
+            wayland = session.wayland?.running == true && LinuxSettings.gpuMode == LinuxGpuMode.TURNIP && graphics?.turnipWaylandInstalled(containerId) == true))
             .redirectErrorStream(true).start()
         process.outputStream.close()
         appProcesses.getOrPut(containerId) { java.util.Collections.synchronizedList(ArrayList()) }.apply {
@@ -337,18 +349,56 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
 
     override fun stopApps(containerId: String) {
         appProcesses.remove(containerId)?.toList()?.forEach { runCatching { it.destroyForcibly() } }
-        appSessions.remove(containerId)?.stop()
+        appSessions.remove(containerId)?.let { notifiers.remove(it.display)?.stop(); it.stop() }
         stopRendererIfIdle(containerId)
     }
+
+    // region notifications
+    /** Notification servers by X display (each display has its own session bus). */
+    private val notifiers = ConcurrentHashMap<Int, LinuxNotificationServer>()
+
+    private fun startNotifications(containerId: String, display: Int) {
+        notifiers.remove(display)?.stop()
+        notifiers[display] = LinuxNotificationServer(display) { event ->
+            callback(containerId) { it.onNotification(containerId, event.toString()) }
+        }
+    }
+
+    override fun notificationAction(containerId: String, key: String, action: String) {
+        val display = key.substringBefore(':').toIntOrNull() ?: return
+        val id = key.substringAfter(':').toIntOrNull() ?: return
+        val server = notifiers[display] ?: return
+        if (action == "dismiss") server.dismiss(id) else server.invoke(id, action)
+    }
+    // endregion
+
+    // region clipboard
+    /** One clipboard per container: a copy on either display reaches the other and Android. */
+    private fun shareClipboard(containerId: String, text: String) {
+        sessions[containerId]?.runCatching { setClipboard(text) }
+        appSessions[containerId]?.runCatching { setClipboard(text) }
+        callback(containerId) { it.onClipboard(containerId, text) }
+    }
+
+    override fun setClipboard(containerId: String, text: String) {
+        sessions[containerId]?.runCatching { setClipboard(text) }
+        appSessions[containerId]?.runCatching { setClipboard(text) }
+    }
+    // endregion
 
     // region graphics
     /** Starts the container's VirGL renderer when hardware rendering is selected (falls back to llvmpipe). */
     private fun startRenderer(containerId: String) {
         graphics?.ensure(containerId) { line -> log(containerId, line) }
+        audio?.ensure(containerId, readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family)
     }
 
     private fun stopRendererIfIdle(containerId: String) {
-        if (sessions[containerId]?.alive != true && appSessions[containerId]?.alive != true) graphics?.stop(containerId)
+        if (sessions[containerId]?.alive != true && appSessions[containerId]?.alive != true) {
+            graphics?.stop(containerId)
+            audio?.stop(containerId)
+            notifyChanged()
+        }
     }
 
     override fun linuxSettings(): String = (graphics?.status() ?: LinuxSettings.read()).toString()
@@ -362,7 +412,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         LinuxSettings.write(JSONObject(json))
         if (LinuxSettings.gpuMode != before) {
             (sessions.keys + appSessions.keys).toSet().forEach { id ->
-                if (LinuxSettings.gpuMode == LinuxGpuMode.HARDWARE) startRenderer(id) else graphics?.stop(id)
+                startRenderer(id)
             }
         }
         return linuxSettings()
@@ -397,6 +447,8 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         sessions.values.forEach { runCatching { it.stop() } }
         appSessions.keys.toList().forEach { runCatching { stopApps(it) } }
         graphics?.stopAll()
+        audio?.stopAll()
+        notifiers.values.forEach { it.stop() }
         activeProcesses.values.forEach { runCatching { it.destroyForcibly() } }
         installer.shutdownNow()
         exitProcess(0)

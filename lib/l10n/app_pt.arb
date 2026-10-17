@@ -967,5 +967,12 @@
   "linuxGpuSoftwareDescription": "Desenhado pela CPU. Mais lento, mas correto para apps que falham na GPU.",
   "linuxGpuUnavailable": "O VirGL não está disponível neste dispositivo.",
   "linuxGpuApplyNote": "As alterações aplicam-se às apps iniciadas a partir de agora. Reabra o ambiente de trabalho.",
-  "linuxGpuRunning": "VirGL em uso por {count} contentor(es)"
+  "linuxGpuRunning": "VirGL em uso por {count} contentor(es)",
+  "nativePlasmaNotifications": "Notificações",
+  "nativePlasmaNoNotifications": "Sem notificações",
+  "nativePlasmaClearAll": "Limpar tudo",
+  "linuxGpuTurnip": "Turnip + Zink (recomendado)",
+  "linuxGpuTurnipDescription": "As apps Linux usam a GPU Adreno diretamente (Vulkan e OpenGL 4.6). O mais rápido, ideal para jogos.",
+  "linuxGpuTurnipSetup": "Ative os gráficos 3D na configuração do contentor (a compilação demora cerca de 30 minutos). Até lá é usado o VirGL.",
+  "linuxSetupPhaseGpu": "A compilar o controlador da GPU (Turnip)"
 }

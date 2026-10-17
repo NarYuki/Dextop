@@ -967,5 +967,12 @@
   "linuxGpuSoftwareDescription": "Отрисовка на CPU. Медленнее, но правильно для приложений с ошибками на GPU.",
   "linuxGpuUnavailable": "VirGL недоступен на этом устройстве.",
   "linuxGpuApplyNote": "Изменения применяются к приложениям, запущенным после этого. Откройте рабочий стол заново.",
-  "linuxGpuRunning": "VirGL используется контейнерами: {count}"
+  "linuxGpuRunning": "VirGL используется контейнерами: {count}",
+  "nativePlasmaNotifications": "Уведомления",
+  "nativePlasmaNoNotifications": "Нет уведомлений",
+  "nativePlasmaClearAll": "Очистить всё",
+  "linuxGpuTurnip": "Turnip + Zink (рекомендуется)",
+  "linuxGpuTurnipDescription": "Приложения Linux используют GPU Adreno напрямую (Vulkan и OpenGL 4.6). Быстрее всего, подходит для игр.",
+  "linuxGpuTurnipSetup": "Включите 3D-графику в настройке контейнера (сборка займёт около 30 минут). До этого используется VirGL.",
+  "linuxSetupPhaseGpu": "Сборка драйвера GPU (Turnip)"
 }

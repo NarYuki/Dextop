@@ -8,6 +8,25 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LinuxSetupPlanTest {
+    @Test fun turnipBuildIncludesWaylandAndMarksOnlyCompletedInstallations() {
+        val script = LinuxCatalog.turnipScript()
+        assertContains(script, "-Dplatforms=x11,wayland")
+        assertContains(script, "libwayland-dev libwayland-egl-backend-dev wayland-protocols")
+        assertContains(script, "kgsl_device_get_gpu_timestamp")
+        assertContains(script, "DEXTOP_WAYLAND_KGSL")
+        assertTrue(script.indexOf("touch ${LinuxCatalog.TURNIP_WAYLAND_READY}") > script.indexOf("ninja -C build install"))
+    }
+    @Test fun waylandLaunchOverridesLegacySessionAndKeepsX11PresentationAvailable() {
+        val wayland = LinuxCatalog.launchScript(10, "wezterm start", wayland = true)
+        assertContains(wayland, "export WAYLAND_DISPLAY=wayland-0")
+        assertContains(wayland, "LIBGL_KOPPER_DRI2=true MESA_VK_WSI_DEBUG=sw")
+        assertContains(wayland, "__EGL_VENDOR_LIBRARY_FILENAMES=/opt/dextop-mesa/")
+        assertContains(wayland, "MESA_LOADER_DRIVER_OVERRIDE=zink")
+        assertTrue(wayland.indexOf("export WAYLAND_DISPLAY") > wayland.indexOf(". /etc/dextop/session.env"))
+        val x11 = LinuxCatalog.launchScript(10, "xterm")
+        assertFalse(x11.contains("export WAYLAND_DISPLAY"))
+        assertFalse(x11.contains("unset MESA_VK_WSI_DEBUG"))
+    }
     private val debian = LinuxCatalog.find("debian")!!
     private fun scripts(distro: LinuxDistro, options: LinuxSetupOptions) =
         LinuxSetupPlan.steps(distro, options).joinToString("\n") { it.script }
@@ -58,6 +77,7 @@ class LinuxSetupPlanTest {
         assertContains(script, "MOZ_DISABLE_CONTENT_SANDBOX=1")
         assertContains(script, "Exec=/usr/local/bin/dextop-chrome %U")
         assertFalse(script.contains("snap install"))
+        assertContains(script, "--ozone-platform=x11 --use-angle=vulkan")
     }
 
     @Test fun generatesScriptsForAllSupportedDistributionsAndInputMethods() {

@@ -985,5 +985,12 @@
   "linuxGpuUnavailable": "この端末では VirGL を使えません。",
   "linuxGpuApplyNote": "変更は、これから起動するアプリに反映されます。開いているデスクトップは開き直してください。",
   "linuxGpuRunning": "VirGL を {count} 個のコンテナで使用中",
-  "@linuxGpuRunning": {"placeholders": {"count": {"type": "int"}}}
+  "@linuxGpuRunning": {"placeholders": {"count": {"type": "int"}}},
+  "nativePlasmaNotifications": "通知",
+  "nativePlasmaNoNotifications": "通知はありません",
+  "nativePlasmaClearAll": "すべて消去",
+  "linuxGpuTurnip": "Turnip + Zink（推奨）",
+  "linuxGpuTurnipDescription": "Linux アプリが Adreno GPU を直接使います（Vulkan と OpenGL 4.6）。最も速く、ゲームにも向いています。",
+  "linuxGpuTurnipSetup": "コンテナのセットアップで「3D グラフィックス」を有効にすると使えます（ビルドに 30 分ほどかかります）。それまでは VirGL を使います。",
+  "linuxSetupPhaseGpu": "GPU ドライバー（Turnip）をビルド中"
 }

@@ -36,6 +36,7 @@ String linuxSetupPhaseLabel(AppLocalizations l, String phase) =>
       'input' => l.linuxSetupPhaseInput,
       'desktop' => l.linuxSetupPhaseDesktop,
       'graphics' => l.linuxSetupPhaseGraphics,
+      'gpu' => l.linuxSetupPhaseGpu,
       'applications' => l.linuxSetupPhaseApps,
       'integration' => l.linuxSetupPhaseIntegration,
       'finish' => l.linuxPhaseFinish,

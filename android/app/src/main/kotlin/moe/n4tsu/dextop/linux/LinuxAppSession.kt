@@ -5,6 +5,7 @@ import android.os.SystemClock
 import android.util.Log
 import android.view.Surface
 import org.json.JSONObject
+import java.io.File
 import java.nio.ByteBuffer
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.LinkedBlockingQueue
@@ -57,9 +58,82 @@ internal class LinuxAppSession(
                 process.destroyForcibly()
                 "Xvfb lacks Composite or DAMAGE"
             }
-            return LinuxAppSession(containerId, display, process, client, events).also { it.begin() }
+            return LinuxAppSession(containerId, display, process, client, events).also {
+                it.begin()
+                it.startWayland(width, height, proot.nativeLibraryDir)
+            }
         }
+
+        /** Window ids of Wayland toplevels and popups, apart from X window ids (below 0x20000000). */
+        const val WAYLAND_ID = 0x60000000
+        /** WAYLAND_DISPLAY inside the container; the socket shim maps it to the abstract socket. */
+        const val WAYLAND_DISPLAY = "wayland-0"
+
+        fun isWayland(id: Int) = id and WAYLAND_ID == WAYLAND_ID
     }
+
+    // region Wayland
+    /** Dextop's Wayland compositor for this display's container, or null when it did not start. */
+    @Volatile var wayland: WaylandCompositor? = null; private set
+    /** Display positions of mapped Wayland windows, to place their popups. */
+    private val waylandBounds = ConcurrentHashMap<Int, Rect>()
+    private val waylandWindows = ConcurrentHashMap<Int, String>()
+    /** Keyboard input goes to Wayland while a Wayland window is the active one. */
+    @Volatile private var waylandFocused = false
+
+    private fun startWayland(width: Int, height: Int, nativeLibraryDir: String) {
+        val socket = LinuxProot.socketNamespace(containerId) + "/tmp/runtime-root/" + WAYLAND_DISPLAY
+        // GPU presentation: the APK's Turnip under the system Vulkan loader, through adrenotools' hooks.
+        if (File(nativeLibraryDir, WaylandCompositor.GPU_DRIVER).isFile) runCatching {
+            android.system.Os.setenv("DEXTOP_LINUX_GPU_DRIVER", "$nativeLibraryDir/", true)
+            android.system.Os.setenv("DEXTOP_LINUX_GPU_LIBRARY", WaylandCompositor.GPU_DRIVER, true)
+            android.system.Os.setenv("DEXTOP_LINUX_GPU_HOOKS", "$nativeLibraryDir/", true)
+        }
+        wayland = runCatching {
+            WaylandCompositor(socket, width, height, ::onWaylandEvent).takeIf { it.running }
+        }.onFailure { Log.w(TAG, "Wayland compositor unavailable", it) }.getOrNull()
+        Log.i(TAG, "[$display] Wayland compositor ${if (wayland != null) "listening on @$socket" else "not started"}")
+    }
+
+    private fun onWaylandEvent(event: JSONObject) {
+        if (event.optString("type") == "error") {
+            Log.e(TAG, event.optString("message"))
+            events(event)
+            return
+        }
+        val xid = WAYLAND_ID or event.optInt("id")
+        val popup = event.optBoolean("popup")
+        val type = event.optString("type")
+        if (type == "move" || type == "minimize") return
+        val parent = event.optInt("parent").takeIf { it != 0 }?.let { WAYLAND_ID or it }
+        // Popups come relative to their parent's window; Plasma places windows in display coordinates.
+        val origin = parent?.let(waylandBounds::get)
+        val left = (origin?.left ?: 0) + event.optInt("x")
+        val top = (origin?.top ?: 0) + event.optInt("y")
+        val width = event.optInt("w")
+        val height = event.optInt("h")
+        when (type) {
+            "unmap" -> waylandBounds.remove(xid)
+            else -> if (popup) waylandBounds[xid] = Rect(left, top, left + width, top + height)
+                else waylandBounds.putIfAbsent(xid, Rect(0, 0, width, height))
+        }
+        val translated = JSONObject()
+            .put("type", type).put("xid", xid).put("popup", popup)
+            .put("title", event.optString("title")).put("class", event.optString("class"))
+            .put("transientFor", parent ?: 0)
+            .put("x", left).put("y", top).put("w", width).put("h", height)
+        when (type) {
+            "map" -> waylandWindows[xid] = translated.toString()
+            "unmap" -> waylandWindows.remove(xid)
+            else -> waylandWindows.computeIfPresent(xid) { _, snapshot ->
+                val cached = JSONObject(snapshot)
+                translated.keys().forEach { key -> if (key != "type") cached.put(key, translated.get(key)) }
+                cached.toString()
+            }
+        }
+        events(translated)
+    }
+    // endregion
 
     private class Win(val id: Int, val popup: Boolean) {
         val bounds = Rect()
@@ -84,12 +158,23 @@ internal class LinuxAppSession(
 
     val alive get() = running && process.isAlive
 
+    private var clipboard: X11Clipboard? = null
+    /** Text an X client copied to CLIPBOARD. */
+    @Volatile var onClipboard: (String) -> Unit = {}
+
+    /** Puts Android's clipboard text on this display's CLIPBOARD. */
+    fun setClipboard(text: String) {
+        clipboard?.setText(text)
+    }
+
     private fun begin() {
+        clipboard = runCatching { X11Clipboard(x) { onClipboard(it) } }
+            .onFailure { Log.w(TAG, "clipboard unavailable", it) }.getOrNull()
         atomNetWmName = x.internAtom("_NET_WM_NAME")
         atomUtf8 = x.internAtom("UTF8_STRING")
         atomProtocols = x.internAtom("WM_PROTOCOLS")
         atomDelete = x.internAtom("WM_DELETE_WINDOW")
-        x.onEvent = { code, event -> queue.offer(code to event) }
+        x.onEvent = { code, event -> if (clipboard?.offer(code, event) != true) queue.offer(code to event) }
         x.onClosed = { stop() }
         x.redirectSubwindows(x.root)
         x.selectInput(x.root, X11Client.EVENT_SUBSTRUCTURE_REDIRECT or X11Client.EVENT_SUBSTRUCTURE_NOTIFY)
@@ -244,6 +329,22 @@ internal class LinuxAppSession(
         renderLock.notifyAll()
     }
 
+    /** MIT-SHM capture buffer, grown to the largest area read so far; null without MIT-SHM. */
+    private var shared: X11SharedImage? = null
+    private var sharedFailed = false
+
+    /** A shared buffer for [bytes] bytes, or null to read through the socket. */
+    private fun sharedImage(bytes: Long): X11SharedImage? {
+        if (sharedFailed) return null
+        shared?.let { if (it.size >= bytes) return it; it.close() }
+        // Room for the whole screen avoids regrowing for every larger window.
+        val size = maxOf(bytes, x.screenWidth.toLong() * x.screenHeight * 4)
+        shared = X11SharedImage.create(x, size)
+        if (shared == null) sharedFailed = true
+        Log.i(TAG, "[$display] window capture: ${if (shared != null) "MIT-SHM ($size bytes)" else "X socket (no MIT-SHM)"}")
+        return shared
+    }
+
     private fun renderLoop() {
         val area = Rect()
         while (running) {
@@ -261,6 +362,21 @@ internal class LinuxAppSession(
             }
             work.forEach { (window, dirty) ->
                 if (!dirty.intersect(0, 0, window.bounds.width(), window.bounds.height())) return@forEach
+                val bytes = dirty.width().toLong() * dirty.height() * 4
+                val shm = sharedImage(bytes)
+                if (shm != null) {
+                    if (!runCatching { x.shmGetImage(window.pixmap, dirty, shm.segment) }.getOrDefault(false)) return@forEach
+                    synchronized(renderLock) {
+                        val handle = window.surfaceHandle
+                        if (handle != 0L && !LinuxFrameBridge.nativeBlitAddress(
+                                handle, shm.address, shm.size, dirty.width() * 4, dirty.left, dirty.top, dirty.width(), dirty.height())
+                        ) {
+                            LinuxFrameBridge.nativeDetach(handle)
+                            window.surfaceHandle = 0L
+                        }
+                    }
+                    return@forEach
+                }
                 val pixels = runCatching { x.image(window.pixmap, dirty) }.getOrNull() ?: return@forEach
                 synchronized(renderLock) {
                     val handle = window.surfaceHandle
@@ -277,6 +393,10 @@ internal class LinuxAppSession(
     }
 
     fun attachSurface(id: Int, surface: Surface): Boolean {
+        if (isWayland(id)) return wayland?.takeIf { it.running }?.let {
+            it.attach(id and WAYLAND_ID.inv(), surface)
+            true
+        } ?: false
         val window = windows[id] ?: return false
         detachSurface(id)
         val handle = LinuxFrameBridge.nativeAttach(surface, window.bounds.width().coerceAtLeast(1), window.bounds.height().coerceAtLeast(1))
@@ -287,6 +407,7 @@ internal class LinuxAppSession(
     }
 
     fun detachSurface(id: Int) {
+        if (isWayland(id)) { wayland?.detach(id and WAYLAND_ID.inv()); return }
         val window = windows[id] ?: return
         synchronized(renderLock) {
             val handle = window.surfaceHandle
@@ -299,6 +420,11 @@ internal class LinuxAppSession(
     // region requests from Plasma
     /** Moves and resizes window [id] to the Plasma window's content area (display coordinates). */
     fun configure(id: Int, left: Int, top: Int, width: Int, height: Int) {
+        if (isWayland(id)) {
+            waylandBounds[id] = Rect(left, top, left + width, top + height)
+            wayland?.configure(id and WAYLAND_ID.inv(), width, height)
+            return
+        }
         if (!windows.containsKey(id)) return
         x.configureWindow(
             id, X11Client.CONFIG_X or X11Client.CONFIG_Y or X11Client.CONFIG_WIDTH or X11Client.CONFIG_HEIGHT,
@@ -307,6 +433,8 @@ internal class LinuxAppSession(
     }
 
     fun activate(id: Int) {
+        waylandFocused = isWayland(id)
+        if (isWayland(id)) { wayland?.activate(id and WAYLAND_ID.inv()); return }
         if (!windows.containsKey(id)) return
         x.raise(id)
         x.setInputFocus(id)
@@ -314,6 +442,7 @@ internal class LinuxAppSession(
 
     /** Asks the client to close [id] (WM_DELETE_WINDOW), or disconnects it when it does not support that. */
     fun close(id: Int) {
+        if (isWayland(id)) { wayland?.close(id and WAYLAND_ID.inv()); return }
         if (!windows.containsKey(id)) return
         if (atomDelete in x.propertyAtoms(id, atomProtocols)) x.clientMessage(id, atomProtocols, intArrayOf(atomDelete, 0))
         else x.killClient(id)
@@ -321,16 +450,23 @@ internal class LinuxAppSession(
 
     /** Pointer input at ([localX], [localY]) inside window [id]; [action] 0 move, 1 press, 2 release. */
     fun pointer(id: Int, action: Int, localX: Int, localY: Int, button: Int) {
+        if (isWayland(id)) {
+            if (action == 1) waylandFocused = true
+            wayland?.pointer(id and WAYLAND_ID.inv(), action, localX, localY, button)
+            return
+        }
+        if (action == 1) waylandFocused = false
         val window = windows[id] ?: return
         input.pointer(action, window.bounds.left + localX, window.bounds.top + localY, button)
     }
 
-    fun scroll(dx: Int, dy: Int) = input.scroll(dx, dy)
-    fun key(evdevCode: Int, down: Boolean) = input.key(evdevCode, down)
-    fun text(text: String) = input.text(text)
+    fun scroll(dx: Int, dy: Int) = wayland?.takeIf { waylandFocused }?.scroll(dx, dy) ?: input.scroll(dx, dy)
+    fun key(evdevCode: Int, down: Boolean) = wayland?.takeIf { waylandFocused }?.key(evdevCode, down) ?: input.key(evdevCode, down)
+    fun text(text: String) = wayland?.takeIf { waylandFocused }?.text(text) ?: input.text(text)
 
     /** Map events for every window, for a Plasma session that (re)connects. */
     fun replay() {
+        waylandWindows.values.toList().forEach { events(JSONObject(it).put("type", "map")) }
         windows.values.forEach { window ->
             val b = window.bounds
             events(JSONObject()
@@ -349,6 +485,11 @@ internal class LinuxAppSession(
             renderLock.notifyAll()
         }
         queue.offer(-1 to ByteBuffer.allocate(0))
+        wayland?.stop()
+        waylandWindows.clear()
+        waylandBounds.clear()
+        clipboard?.stop()
+        shared?.close()
         x.close()
         process.destroyForcibly()
     }

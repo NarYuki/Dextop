@@ -82,11 +82,23 @@ internal class LinuxDesktopSession(
     /** True once a window manager owns the ICCCM WM_S0 selection (or the wait timed out). */
     @Volatile var windowManagerReady = false; private set
 
+
+    private var clipboard: X11Clipboard? = null
+    /** Text an X client copied to CLIPBOARD. */
+    @Volatile var onClipboard: (String) -> Unit = {}
+
+    /** Puts Android's clipboard text on this display's CLIPBOARD. */
+    fun setClipboard(text: String) {
+        clipboard?.setText(text)
+    }
+
     private fun begin() {
-        if (x.damageOpcode >= 0) {
-            damage = x.damageCreate(x.root)
-            x.onEvent = { code, event ->
-                if (code == x.damageEventBase) {
+        clipboard = runCatching { X11Clipboard(x) { onClipboard(it) } }
+            .onFailure { Log.w(TAG, "clipboard unavailable", it) }.getOrNull()
+        if (x.damageOpcode >= 0) damage = x.damageCreate(x.root)
+        x.onEvent = { code, event ->
+            if (clipboard?.offer(code, event) != true) {
+                if (damage != 0 && code == x.damageEventBase) {
                     val area = Rect(
                         event.getShort(16).toInt(), event.getShort(18).toInt(),
                         event.getShort(16).toInt() + (event.getShort(20).toInt() and 0xffff),
@@ -200,6 +212,7 @@ internal class LinuxDesktopSession(
         running = false
         synchronized(lock) { lock.notifyAll() }
         detachSurface()
+        clipboard?.stop()
         x.close()
         process.destroyForcibly()
     }

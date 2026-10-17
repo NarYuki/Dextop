@@ -5830,6 +5830,48 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'VirGL を {count} 個のコンテナで使用中'**
   String linuxGpuRunning(int count);
+
+  /// No description provided for @nativePlasmaNotifications.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知'**
+  String get nativePlasmaNotifications;
+
+  /// No description provided for @nativePlasmaNoNotifications.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知はありません'**
+  String get nativePlasmaNoNotifications;
+
+  /// No description provided for @nativePlasmaClearAll.
+  ///
+  /// In ja, this message translates to:
+  /// **'すべて消去'**
+  String get nativePlasmaClearAll;
+
+  /// No description provided for @linuxGpuTurnip.
+  ///
+  /// In ja, this message translates to:
+  /// **'Turnip + Zink（推奨）'**
+  String get linuxGpuTurnip;
+
+  /// No description provided for @linuxGpuTurnipDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux アプリが Adreno GPU を直接使います（Vulkan と OpenGL 4.6）。最も速く、ゲームにも向いています。'**
+  String get linuxGpuTurnipDescription;
+
+  /// No description provided for @linuxGpuTurnipSetup.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンテナのセットアップで「3D グラフィックス」を有効にすると使えます（ビルドに 30 分ほどかかります）。それまでは VirGL を使います。'**
+  String get linuxGpuTurnipSetup;
+
+  /// No description provided for @linuxSetupPhaseGpu.
+  ///
+  /// In ja, this message translates to:
+  /// **'GPU ドライバー（Turnip）をビルド中'**
+  String get linuxSetupPhaseGpu;
 }
 
 class _AppLocalizationsDelegate

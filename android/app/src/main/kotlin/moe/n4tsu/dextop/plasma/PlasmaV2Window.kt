@@ -95,8 +95,8 @@ internal class V2Window(
     /** Size of the Linux X screen drawn into [view]'s content, for input scaling. */
     var linuxWidth = 0
     var linuxHeight = 0
-    /** Mouse buttons last reported to X (MotionEvent.BUTTON_* bits). */
-    var linuxButtons = 0
+    /** Pointer state of the Linux surface (buttons, gesture remainders). */
+    val linuxPointer = LinuxPointerState()
     /** X window id when this window shows one Linux application window (0: the whole desktop). */
     var linuxXid = 0
     var linuxWMClass = ""

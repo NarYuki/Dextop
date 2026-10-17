@@ -20,7 +20,7 @@ internal object LinuxPaths {
 }
 
 /** Builds proot command lines from the APK's nativeLibraryDir. */
-internal class LinuxProot(private val nativeLibraryDir: String) {
+internal class LinuxProot(val nativeLibraryDir: String) {
     companion object {
         /** Where the APK's native libraries appear inside containers. */
         const val GUEST_LIBRARY_DIR = "/opt/dextop/lib"

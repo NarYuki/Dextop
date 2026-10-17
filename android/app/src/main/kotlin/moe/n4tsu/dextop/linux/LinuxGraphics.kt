@@ -8,6 +8,9 @@ import java.util.concurrent.ConcurrentHashMap
 
 /** How Linux applications render OpenGL. */
 internal enum class LinuxGpuMode(val id: String) {
+    /** Turnip (Vulkan on the Adreno GPU through KGSL) with Zink for OpenGL; built by the container setup. */
+    TURNIP("turnip"),
+
     /** VirGL: Mesa's virpipe driver in the container, the device GPU through virgl_server. */
     HARDWARE("virgl"),
 
@@ -15,7 +18,7 @@ internal enum class LinuxGpuMode(val id: String) {
     SOFTWARE("software");
 
     companion object {
-        fun of(id: String?) = entries.firstOrNull { it.id == id } ?: HARDWARE
+        fun of(id: String?) = entries.firstOrNull { it.id == id } ?: TURNIP
     }
 }
 
@@ -25,7 +28,7 @@ internal object LinuxSettings {
 
     @Synchronized
     fun read(): JSONObject = runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject())
-        .also { if (!it.has("gpu")) it.put("gpu", LinuxGpuMode.HARDWARE.id) }
+        .also { if (!it.has("gpu")) it.put("gpu", LinuxGpuMode.TURNIP.id) }
 
     @Synchronized
     fun write(update: JSONObject): JSONObject {
@@ -67,6 +70,16 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
 
     fun running(containerId: String): Boolean = servers[containerId]?.isAlive == true && listening(containerId)
 
+    fun turnipInstalled(containerId: String) =
+        File(LinuxPaths.rootfs(containerId), LinuxCatalog.TURNIP_ICD.removePrefix("/")).isFile
+
+    fun turnipWaylandInstalled(containerId: String) = turnipInstalled(containerId) &&
+        File(LinuxPaths.rootfs(containerId), LinuxCatalog.TURNIP_WAYLAND_READY.removePrefix("/")).isFile
+
+    /** Turnip is selected and built for [containerId]. */
+    private fun usesTurnip(containerId: String) =
+        LinuxSettings.gpuMode == LinuxGpuMode.TURNIP && turnipInstalled(containerId)
+
     /**
      * Starts the renderer of [containerId] when hardware rendering is
      * selected. Returns whether VirGL is in use; on failure applications
@@ -74,7 +87,14 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
      */
     @Synchronized
     fun ensure(containerId: String, log: (String) -> Unit): Boolean {
-        if (LinuxSettings.gpuMode != LinuxGpuMode.HARDWARE) {
+        val mode = LinuxSettings.gpuMode
+        if (usesTurnip(containerId)) {
+            // Applications drive the GPU themselves; no renderer process.
+            stop(containerId)
+            return true
+        }
+        // Turnip not built for this container: VirGL is the next best.
+        if (mode == LinuxGpuMode.SOFTWARE) {
             stop(containerId)
             return false
         }
@@ -111,8 +131,14 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
 
     fun stopAll() = servers.keys.toList().forEach(::stop)
 
-    /** Environment of container processes: virpipe while the renderer runs, otherwise llvmpipe. */
-    fun environment(containerId: String): List<String> = if (running(containerId)) listOf(
+    /** Environment of container processes: Turnip + Zink, virpipe while the renderer runs, otherwise llvmpipe. */
+    fun environment(containerId: String): List<String> = if (usesTurnip(containerId)) listOf(
+        "VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD}",
+        "GALLIUM_DRIVER=zink",
+        // Xvfb has no DRI3; present through CPU-visible images (XPutImage).
+        "MESA_VK_WSI_DEBUG=sw",
+        "LIBGL_KOPPER_DRI2=true",
+    ) else if (running(containerId)) listOf(
         "GALLIUM_DRIVER=virpipe",
         // virgl on a GLES host offers a compatibility profile below what
         // desktop applications ask for; the core features are there.
@@ -125,4 +151,6 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
     fun status(): JSONObject = LinuxSettings.read()
         .put("hardwareAvailable", available)
         .put("rendererRunning", org.json.JSONArray(servers.keys.filter(::running)))
+        .put("turnipInstalled", org.json.JSONArray(
+            LinuxPaths.containers.listFiles().orEmpty().map { it.name }.filter { runCatching { turnipInstalled(it) }.getOrDefault(false) }))
 }

@@ -418,11 +418,6 @@ static struct global_renderer_state vrend_state;
 
 static inline bool has_feature(enum features_id feature_id)
 {
-#ifdef __ANDROID__
-   /* Dextop: broken on Adreno drivers (virglrenderer issue 223). */
-   if (feature_id == feat_dual_src_blend)
-      return false;
-#endif
    int slot = feature_id / 64;
    uint64_t mask = 1ull << (feature_id & 63);
    bool retval = vrend_state.features[slot] & mask ? true : false;

@@ -102,7 +102,10 @@ internal object LinuxSetupPlan {
             """.trimIndent() + "\n"))
 
             if (options.graphics) add(Step("graphics", "set -e\n" + install(if (apt)
-                listOf("libgl1-mesa-dri", "libegl-mesa0", "libglx-mesa0", "mesa-utils") else listOf("mesa", "mesa-utils"))))
+                listOf("libgl1-mesa-dri", "libegl-mesa0", "libglx-mesa0", "mesa-utils", "mesa-vulkan-drivers", "vulkan-tools")
+                else listOf("mesa", "mesa-utils"))))
+            // Turnip for the device's Adreno GPU through Android's KGSL driver; OpenGL runs on it through Zink.
+            if (options.graphics && apt) add(Step("gpu", LinuxCatalog.turnipScript()))
 
             val packages = buildList {
                 if ("firefox" in options.apps) add(if (apt) "firefox-esr" else "firefox")

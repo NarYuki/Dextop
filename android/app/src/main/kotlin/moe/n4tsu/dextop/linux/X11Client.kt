@@ -83,6 +83,11 @@ internal class X11Client private constructor(
     var damageOpcode = -1; private set
     var damageEventBase = -1; private set
     var compositeOpcode = -1; private set
+    var shmOpcode = -1; private set
+    var xfixesOpcode = -1; private set
+    var xfixesEventBase = -1; private set
+    /** Longest request the server accepts, in bytes. */
+    var maxRequestBytes = 65535 * 4; private set
 
     private var idBase = 0
     private var idMask = 0
@@ -108,6 +113,7 @@ internal class X11Client private constructor(
         idMask = body.getInt(8)
         val vendorLength = body.getShort(16).toInt() and 0xffff
         val formats = body.get(21).toInt() and 0xff
+        maxRequestBytes = (body.getShort(18).toInt() and 0xffff) * 4
         minKeycode = body.get(26).toInt() and 0xff
         maxKeycode = body.get(27).toInt() and 0xff
         val screen = 32 + vendorLength + pad(vendorLength) + formats * 8
@@ -121,6 +127,18 @@ internal class X11Client private constructor(
             damageEventBase = eventBase
             // DAMAGE requires a version handshake before any other request.
             request(le(12).put(opcode.toByte()).put(0).putShort(3).putInt(1).putInt(1), reply = true)
+        }
+        queryExtension("MIT-SHM")?.let { (opcode, _) ->
+            // AttachFd needs MIT-SHM 1.2; it shares memory through a file descriptor (no SysV IPC).
+            val version = request(le(4).put(opcode.toByte()).put(0).putShort(1), reply = true)
+            val major = version?.getShort(8)?.toInt() ?: 0
+            val minor = version?.getShort(10)?.toInt() ?: 0
+            if (major > 1 || (major == 1 && minor >= 2)) shmOpcode = opcode
+        }
+        queryExtension("XFIXES")?.let { (opcode, eventBase) ->
+            xfixesOpcode = opcode
+            xfixesEventBase = eventBase
+            request(le(12).put(opcode.toByte()).put(0).putShort(3).putInt(5).putInt(0), reply = true)
         }
         queryExtension("Composite")?.let { (opcode, _) ->
             compositeOpcode = opcode
@@ -170,15 +188,18 @@ internal class X11Client private constructor(
      * Sends [packet] (position = its length); with [reply], waits for and
      * returns the reply, or null when the server answered with an error.
      */
-    private fun request(packet: ByteBuffer, reply: Boolean = false): ByteBuffer? {
+    private fun request(packet: ByteBuffer, reply: Boolean = false, fd: java.io.FileDescriptor? = null): ByteBuffer? {
         val queue = if (reply) LinkedBlockingQueue<ByteBuffer>(1) else null
         val seq: Int
         synchronized(output) {
             sequence = (sequence + 1) and 0xffff
             seq = sequence
             if (queue != null) replies[seq] = queue
+            // The descriptor travels as SCM_RIGHTS with the first bytes of this request.
+            if (fd != null) socket.setFileDescriptorsForSend(arrayOf(fd))
             output.write(packet.array(), 0, packet.position())
             output.flush()
+            if (fd != null) socket.setFileDescriptorsForSend(null)
         }
         if (queue == null) return null
         return try {
@@ -281,9 +302,9 @@ internal class X11Client private constructor(
     }
 
     /** GetProperty: (type, format, value bytes), or null when unset. */
-    fun property(window: Int, property: Int, type: Int = 0, maxBytes: Int = 4096): Triple<Int, Int, ByteArray>? {
+    fun property(window: Int, property: Int, type: Int = 0, maxBytes: Int = 4096, delete: Boolean = false): Triple<Int, Int, ByteArray>? {
         val reply = request(
-            le(24).put(20).put(0).putShort(6).putInt(window).putInt(property).putInt(type).putInt(0).putInt((maxBytes + 3) / 4),
+            le(24).put(20).put(if (delete) 1 else 0).putShort(6).putInt(window).putInt(property).putInt(type).putInt(0).putInt((maxBytes + 3) / 4),
             reply = true,
         ) ?: return null
         val format = reply.get(1).toInt() and 0xff
@@ -316,6 +337,47 @@ internal class X11Client private constructor(
         sendEvent(window, 0, event)
     }
 
+    /** An unmapped 1x1 InputOnly window on the root, for owning and requesting selections. */
+    fun createHiddenWindow(): Int {
+        val id = allocateId()
+        // CreateWindow: depth 0 (CopyFromParent), class InputOnly (2), visual CopyFromParent, no attributes.
+        request(le(32).put(1).put(0).putShort(8).putInt(id).putInt(root)
+            .putShort(-10).putShort(-10).putShort(1).putShort(1).putShort(0).putShort(2).putInt(0).putInt(0))
+        return id
+    }
+
+    fun setSelectionOwner(owner: Int, selection: Int) {
+        request(le(16).put(22).put(0).putShort(4).putInt(owner).putInt(selection).putInt(0))
+    }
+
+    /** Asks the owner of [selection] to store it as [target] in [property] of [requestor]. */
+    fun convertSelection(requestor: Int, selection: Int, target: Int, property: Int) {
+        request(le(24).put(24).put(0).putShort(6).putInt(requestor).putInt(selection).putInt(target).putInt(property).putInt(0))
+    }
+
+    /** ChangeProperty (Replace) of [data]: bytes for format 8, little-endian 32-bit values for format 32. */
+    fun changeProperty(window: Int, property: Int, type: Int, format: Int, data: ByteArray) {
+        val padded = data.size + pad(data.size)
+        val units = if (format == 32) data.size / 4 else data.size
+        val packet = le(24 + padded).put(18).put(0).putShort(((24 + padded) / 4).toShort())
+            .putInt(window).putInt(property).putInt(type).put(format.toByte()).put(0).putShort(0).putInt(units)
+        packet.put(data).position(24 + padded)
+        request(packet)
+    }
+
+    /** Answers a SelectionRequest; [property] 0 refuses it. */
+    fun sendSelectionNotify(requestor: Int, selection: Int, target: Int, property: Int, time: Int) {
+        val event = le(32).put(31).put(0).putShort(0).putInt(time).putInt(requestor)
+            .putInt(selection).putInt(target).putInt(property)
+        sendEvent(requestor, 0, event)
+    }
+
+    /** XFIXES: report every change of [selection]'s owner to [window] (SetSelectionOwner mask). */
+    fun selectSelectionInput(window: Int, selection: Int) {
+        if (xfixesOpcode < 0) return
+        request(le(16).put(xfixesOpcode.toByte()).put(2).putShort(4).putInt(window).putInt(selection).putInt(1))
+    }
+
     fun killClient(resource: Int) {
         request(le(8).put(113).put(0).putShort(2).putInt(resource))
     }
@@ -340,6 +402,29 @@ internal class X11Client private constructor(
             .putShort(x.toShort()).putShort(y.toShort()).putInt(0).putShort(0).put(0).put(0)
         request(packet)
     }
+    // endregion
+
+    // region MIT-SHM
+    /** Attaches shared memory [fd] as segment [segment] (MIT-SHM AttachFd, read-write). */
+    fun shmAttachFd(segment: Int, fd: java.io.FileDescriptor) {
+        request(le(12).put(shmOpcode.toByte()).put(6).putShort(3).putInt(segment).put(0).put(0).putShort(0), fd = fd)
+    }
+
+    fun shmDetach(segment: Int) {
+        request(le(8).put(shmOpcode.toByte()).put(2).putShort(2).putInt(segment))
+    }
+
+    /**
+     * ShmGetImage (ZPixmap) of [area] of [drawable] into [segment] at offset 0,
+     * rows width * 4 bytes apart. Returns false when the drawable is gone.
+     */
+    fun shmGetImage(drawable: Int, area: Rect, segment: Int): Boolean = request(
+        le(32).put(shmOpcode.toByte()).put(4).putShort(8).putInt(drawable)
+            .putShort(area.left.toShort()).putShort(area.top.toShort())
+            .putShort(area.width().toShort()).putShort(area.height().toShort())
+            .putInt(-1).put(2).put(0).putShort(0).putInt(segment).putInt(0),
+        reply = true,
+    ) != null
     // endregion
 
     // region DAMAGE and Composite

@@ -967,5 +967,12 @@
   "linuxGpuSoftwareDescription": "使用 CPU 绘制。较慢，但在 GPU 上显示异常的应用也能正确显示。",
   "linuxGpuUnavailable": "此设备无法使用 VirGL。",
   "linuxGpuApplyNote": "更改将应用于此后启动的应用。请重新打开已打开的桌面。",
-  "linuxGpuRunning": "{count} 个容器正在使用 VirGL"
+  "linuxGpuRunning": "{count} 个容器正在使用 VirGL",
+  "nativePlasmaNotifications": "通知",
+  "nativePlasmaNoNotifications": "没有通知",
+  "nativePlasmaClearAll": "全部清除",
+  "linuxGpuTurnip": "Turnip + Zink（推荐）",
+  "linuxGpuTurnipDescription": "Linux 应用直接使用 Adreno GPU（Vulkan 和 OpenGL 4.6）。最快，适合游戏。",
+  "linuxGpuTurnipSetup": "在容器设置中启用 3D 图形后可用（构建约需 30 分钟）。在此之前使用 VirGL。",
+  "linuxSetupPhaseGpu": "正在构建 GPU 驱动（Turnip）"
 }

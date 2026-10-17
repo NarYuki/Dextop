@@ -3136,6 +3136,29 @@ class AppLocalizationsPt extends AppLocalizations {
   String linuxGpuRunning(int count) {
     return 'VirGL em uso por $count contentor(es)';
   }
+
+  @override
+  String get nativePlasmaNotifications => 'Notificações';
+
+  @override
+  String get nativePlasmaNoNotifications => 'Sem notificações';
+
+  @override
+  String get nativePlasmaClearAll => 'Limpar tudo';
+
+  @override
+  String get linuxGpuTurnip => 'Turnip + Zink (recomendado)';
+
+  @override
+  String get linuxGpuTurnipDescription =>
+      'As apps Linux usam a GPU Adreno diretamente (Vulkan e OpenGL 4.6). O mais rápido, ideal para jogos.';
+
+  @override
+  String get linuxGpuTurnipSetup =>
+      'Ative os gráficos 3D na configuração do contentor (a compilação demora cerca de 30 minutos). Até lá é usado o VirGL.';
+
+  @override
+  String get linuxSetupPhaseGpu => 'A compilar o controlador da GPU (Turnip)';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
@@ -6271,4 +6294,27 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String linuxGpuRunning(int count) {
     return 'VirGL em uso por $count contêiner(es)';
   }
+
+  @override
+  String get nativePlasmaNotifications => 'Notificações';
+
+  @override
+  String get nativePlasmaNoNotifications => 'Nenhuma notificação';
+
+  @override
+  String get nativePlasmaClearAll => 'Limpar tudo';
+
+  @override
+  String get linuxGpuTurnip => 'Turnip + Zink (recomendado)';
+
+  @override
+  String get linuxGpuTurnipDescription =>
+      'Os apps Linux usam a GPU Adreno diretamente (Vulkan e OpenGL 4.6). O mais rápido, ideal para jogos.';
+
+  @override
+  String get linuxGpuTurnipSetup =>
+      'Ative os gráficos 3D na configuração do contêiner (a compilação leva cerca de 30 minutos). Até lá é usado o VirGL.';
+
+  @override
+  String get linuxSetupPhaseGpu => 'Compilando o driver da GPU (Turnip)';
 }

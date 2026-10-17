@@ -812,6 +812,9 @@ internal class PlasmaShell(
         if (recentlyDismissed(kind)) return
         refreshTray()
         val view: View = when (item) {
+            TrayItem.NOTIFICATIONS -> NotificationApplet(displayContext, palette,
+                onOpen = { dismissPopup(); launch(it.owner) },
+                onDismiss = { if (it.linux) NotificationCenter.remove(it.key) else DextopNotificationListener.cancel(it.key) })
             TrayItem.VOLUME -> {
                 val audio = service.getSystemService(AudioManager::class.java)
                 val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
