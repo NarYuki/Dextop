@@ -522,7 +522,7 @@ extension _SettingsContent on _HomeScreenState {
                   ? null
                   : () => _selectMirrorBackend(context, l, updateRoute),
             ),
-            if (experimentalWindowManagerEnabled) ...[
+            ...[
               Divider(height: 1),
               ListTile(
                 leading: const Icon(Icons.space_dashboard_outlined),
@@ -629,15 +629,16 @@ extension _SettingsContent on _HomeScreenState {
                   subtitle: Text(l.windowManagerSystemDescription),
                 ),
                 RadioListTile<String>(
-                  value: 'dextop_plasma',
-                  title: Text(l.windowManagerPlasma),
-                  subtitle: Text(l.windowManagerPlasmaDescription),
-                ),
-                RadioListTile<String>(
                   value: 'dextop_plasma_v2',
                   title: Text(l.windowManagerPlasmaV2),
                   subtitle: Text(l.windowManagerPlasmaV2Description),
                 ),
+                if (experimentalWindowManagerEnabled)
+                  RadioListTile<String>(
+                    value: 'dextop_plasma',
+                    title: Text(l.windowManagerPlasma),
+                    subtitle: Text(l.windowManagerPlasmaDescription),
+                  ),
               ],
             ),
           ),
@@ -1247,8 +1248,11 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
           preferences.getBool('android_auto_match_phone_orientation') ?? true;
       hiddenAutoDisplay = savedHiddenDisplay;
       scrcpyStreaming = savedDecoratedDisplay;
-      correctFullscreenOverlap = preferences.getBool('android_auto_correct_fullscreen_overlap') ?? false;
-      correctAutoSplit = preferences.getBool('android_auto_correct_split_transfer') ?? false;
+      correctFullscreenOverlap =
+          preferences.getBool('android_auto_correct_fullscreen_overlap') ??
+          false;
+      correctAutoSplit =
+          preferences.getBool('android_auto_correct_split_transfer') ?? false;
       loading = false;
     });
   }
@@ -1280,28 +1284,52 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
         _settingsSection(l.autoSettingsOptions, [
           SwitchListTile(
             secondary: const Icon(Icons.vertical_split_outlined),
-            title: Text(japanese ? '分割操作のスマホ転送を補正' : 'Correct split-screen transfer to phone'),
-            subtitle: Text(japanese ? '2.1の分割操作でスマホへ移動したアプリをAuto画面へ戻し、左右に配置します。' : 'Returns Auto apps sent to phone split-screen to a side-by-side layout in 2.1.'),
+            title: Text(
+              japanese
+                  ? '分割操作のスマホ転送を補正'
+                  : 'Correct split-screen transfer to phone',
+            ),
+            subtitle: Text(
+              japanese
+                  ? '2.1の分割操作でスマホへ移動したアプリをAuto画面へ戻し、左右に配置します。'
+                  : 'Returns Auto apps sent to phone split-screen to a side-by-side layout in 2.1.',
+            ),
             value: correctAutoSplit,
-            onChanged: loading ? null : (value) async {
-              setState(() => correctAutoSplit = value);
-              final preferences = await SharedPreferences.getInstance();
-              await preferences.setBool('android_auto_correct_split_transfer', value);
-            },
+            onChanged: loading
+                ? null
+                : (value) async {
+                    setState(() => correctAutoSplit = value);
+                    final preferences = await SharedPreferences.getInstance();
+                    await preferences.setBool(
+                      'android_auto_correct_split_transfer',
+                      value,
+                    );
+                  },
           ),
           const Divider(height: 1),
           SwitchListTile(
             secondary: const Icon(Icons.fit_screen_outlined),
-            title: Text(japanese ? '全画面アプリのタスクバー重なり補正' : 'Correct fullscreen taskbar overlap'),
-            subtitle: Text(japanese
-                ? '全画面・最大化したアプリをタスクバーに重ならない領域へ調整します。必要に応じてウィンドウ表示に切り替えます。'
-                : 'Fits fullscreen and maximized apps above the taskbar, switching to windowed mode when needed.'),
+            title: Text(
+              japanese
+                  ? '全画面アプリのタスクバー重なり補正'
+                  : 'Correct fullscreen taskbar overlap',
+            ),
+            subtitle: Text(
+              japanese
+                  ? '全画面・最大化したアプリをタスクバーに重ならない領域へ調整します。必要に応じてウィンドウ表示に切り替えます。'
+                  : 'Fits fullscreen and maximized apps above the taskbar, switching to windowed mode when needed.',
+            ),
             value: correctFullscreenOverlap,
-            onChanged: loading ? null : (value) async {
-              setState(() => correctFullscreenOverlap = value);
-              final preferences = await SharedPreferences.getInstance();
-              await preferences.setBool('android_auto_correct_fullscreen_overlap', value);
-            },
+            onChanged: loading
+                ? null
+                : (value) async {
+                    setState(() => correctFullscreenOverlap = value);
+                    final preferences = await SharedPreferences.getInstance();
+                    await preferences.setBool(
+                      'android_auto_correct_fullscreen_overlap',
+                      value,
+                    );
+                  },
           ),
           const Divider(height: 1),
           SwitchListTile(

@@ -145,7 +145,9 @@ internal class DisplayMirrorBackend(
         contentWidth: Int,
         contentHeight: Int,
         contentDensity: Int,
-        strategyOverride: String? = null
+        strategyOverride: String? = null,
+        /** Recreate the recording display instead of updating it in place. */
+        rebuild: Boolean = false,
     ): List<StrategyAttempt> {
         val request = MirrorAttachRequest(
             displayId, host, host.holder.surface, hostWidth, hostHeight,
@@ -160,7 +162,7 @@ internal class DisplayMirrorBackend(
         // Resizing/rebinding an existing recording VirtualDisplay keeps its
         // display id stable. Releasing it on every fold or laptop-pane change
         // leaves stale AOSP desktop desks behind until Shell refuses launches.
-        if (activeStrategy == "virtual_display" && "virtual_display" in strategies &&
+        if (!rebuild && activeStrategy == "virtual_display" && "virtual_display" in strategies &&
             attachment?.update(request) == true) {
             OperationLog.i(
                 context,
@@ -413,6 +415,9 @@ internal class VirtualDisplayPlatform private constructor(
         density: Int,
         decorations: Boolean,
         configureBeforePublish: (Int) -> Unit = {},
+        /** Keep FLAG_PUBLIC without decorations, so accessibility services can add overlays. */
+        publicDisplay: Boolean = false,
+        name: String = "Dextop Auto",
     ): OwnedVirtualDisplay {
         check(surface.isValid) { "The Dextop Car Companion destination surface is unavailable" }
         val constructor = builderType.constructors.single { candidate ->
@@ -421,7 +426,7 @@ internal class VirtualDisplayPlatform private constructor(
                     Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
             )
         }
-        val builder = constructor.newInstance("Dextop Auto", width, height, density)
+        val builder = constructor.newInstance(name, width, height, density)
         builderType.getMethod("setSurface", Surface::class.java).invoke(builder, surface)
         // Electron-style direct display. Prefer the fully capable public,
         // trusted and decorated configuration, then progressively remove
@@ -436,7 +441,14 @@ internal class VirtualDisplayPlatform private constructor(
                 FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY,
             )
         } else {
-            intArrayOf(2 or 8 or 64 or 1024)
+            if (publicDisplay) {
+                intArrayOf(
+                    FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
+                    FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
+                )
+            } else {
+                intArrayOf(2 or 8 or 64 or 1024)
+            }
         }
         var lastFailure: Throwable? = null
         flagLadder.forEach { flags ->
@@ -493,6 +505,8 @@ internal class VirtualDisplayPlatform private constructor(
         height: Int,
         density: Int,
         requestedRefreshRate: Float? = null,
+        /** False creates a private display; see DesktopEnvironment.privateApplicationDisplays. */
+        publicDisplay: Boolean = true,
     ): OwnedVirtualDisplay {
         check(surface.isValid) { "The window surface is unavailable" }
         val constructor = builderType.constructors.single { candidate ->
@@ -510,10 +524,11 @@ internal class VirtualDisplayPlatform private constructor(
                     .invoke(builder, refreshRate)
             }
         }
+        val visibility = if (publicDisplay) FLAG_PUBLIC else 0
         val flagLadder = intArrayOf(
-            FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
-            FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
-            FLAG_PUBLIC or FLAG_OWN_CONTENT_ONLY,
+            visibility or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
+            visibility or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
+            visibility or FLAG_OWN_CONTENT_ONLY,
         )
         var lastFailure: Throwable? = null
         flagLadder.forEach { flags ->

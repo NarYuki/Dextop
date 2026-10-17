@@ -325,7 +325,8 @@ class _ExperimentalWindowManagerTileState
   Future<void> _update(bool value) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool('experimental_dextop_window_manager', value);
-    if (!value) {
+    // Only the experimental v1 shell depends on this switch; Plasma v2 stays selected.
+    if (!value && preferences.getString('window_manager') == 'dextop_plasma') {
       await preferences.setString('window_manager', 'system');
       await widget.bridge.setWindowManager();
     }

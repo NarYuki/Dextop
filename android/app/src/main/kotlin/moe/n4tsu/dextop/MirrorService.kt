@@ -1139,6 +1139,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     /** True after the one-time Samsung HOME/decorations recovery has been used. */
     private var homeDecorationRetryUsed = false
     private var mirrorDisplayId = -1
+    /** Phone desktop drawn directly into the host Surface; see DesktopEnvironment.directPlasmaDisplay. */
+    private var phoneOwnedDisplay: OwnedVirtualDisplay? = null
     private var displayCreationInProgress = false
     private var overlayTextInputActive = false
     private var cursorX = 960f
@@ -2649,6 +2651,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             return true
         }
 
+        override fun privilegedCommand(vararg arguments: String): String? =
+            privilegedAccess.execute(*arguments).takeIf { it.succeeded }?.output
+
         override fun captureDisplay(callback: (moe.n4tsu.dextop.plasma.DesktopFrame?) -> Unit) {
             val view = surfaceView
             val surface = view?.holder?.surface
@@ -2755,6 +2760,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     fullscreenAppDisplays = desktopEnvironment.fullscreenApplicationDisplays,
                     passiveShellFocus = desktopEnvironment.passivePlasmaShellFocus,
                     maxRateAppDisplays = desktopEnvironment.maxRateApplicationDisplays,
+                    applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
+                    privateAppDisplays = desktopEnvironment.privateApplicationDisplays,
                 )
             } else {
                 moe.n4tsu.dextop.plasma.PlasmaShell(this, targetDisplayId, targetWidth, targetHeight, plasmaHost)
@@ -7975,6 +7982,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 }
             }.onFailure { Log.e(logTag, "topology restoration failed", it) }
             releaseMirror()
+            releasePhoneOwnedDisplay("temporary_android_return")
             clearOverlayDisplayRequestTwice("temporary_android_return")
             targetDisplayId = -1
             sessionJournal.restoreWallpaperDimensions()
@@ -11206,6 +11214,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun createDisplay(surface: Surface, width: Int, height: Int) {
         if (mirrorDisplayId >= 0 || displayCreationInProgress) return
+        if (useDirectPlasmaDisplay()) {
+            createDirectPhoneDisplay(surface, width, height)
+            return
+        }
         displayCreationInProgress = true
         CapabilityProbe(this, privilegedAccess).run().forEach { (name, probe) ->
             OperationLog.i(this, "CapabilityProbe", "$name supported=${probe.supported} detail=${probe.detail}")
@@ -11229,6 +11241,62 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             displayCreationInProgress = false
             OperationLog.e(this, "MirrorService", "display creation failed", error)
             Log.e(logTag, "display creation failed", error)
+            completeStart(Result.failure(error))
+            stop()
+        }
+    }
+
+    private fun useDirectPlasmaDisplay(): Boolean =
+        desktopEnvironment.directPlasmaDisplay && !autoOnlySession && !laptopModeActive &&
+            moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this) ==
+            moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
+
+    /**
+     * Creates the phone desktop as a public VirtualDisplay that renders
+     * straight into the host Surface (no overlay display, no recording
+     * mirror). Everything after creation is shared with the overlay path.
+     */
+    private fun createDirectPhoneDisplay(surface: Surface, width: Int, height: Int) {
+        displayCreationInProgress = true
+        runCatching {
+            check(surface.isValid) { NativeStrings.text("nativeMirrorSurfaceUnavailable") }
+            CapabilityProbe(this, privilegedAccess).run().forEach { (name, probe) ->
+                OperationLog.i(this, "CapabilityProbe", "$name supported=${probe.supported} detail=${probe.detail}")
+            }
+            desktopModeConfigurator.applyForCurrentDevice()
+            clearOverlayDisplayRequestTwice("before_direct_phone_display_create")
+            val platform = VirtualDisplayPlatform.inspect()
+            val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
+            phoneOwnedDisplay?.attachment?.release()
+            val owned = platform.openOwned(
+                this,
+                service,
+                surface,
+                targetWidth,
+                targetHeight,
+                density,
+                showSystemDecorations,
+                publicDisplay = true,
+                name = "Dextop Desktop",
+            )
+            phoneOwnedDisplay = owned
+            val display = getSystemService(DisplayManager::class.java).getDisplay(owned.displayId)
+                ?: error("The direct Dextop display ${owned.displayId} is unavailable")
+            OperationLog.i(
+                this,
+                "DisplayBackend",
+                "direct Plasma display created display=${owned.displayId} ${targetWidth}x$targetHeight/$density " +
+                    "host=${width}x$height"
+            )
+            display
+        }.onSuccess { display ->
+            attachDesktopDisplay(display, width, height)
+        }.onFailure { error ->
+            displayCreationInProgress = false
+            runCatching { phoneOwnedDisplay?.attachment?.release() }
+            phoneOwnedDisplay = null
+            OperationLog.e(this, "MirrorService", "direct Plasma display creation failed", error)
+            Log.e(logTag, "direct Plasma display creation failed", error)
             completeStart(Result.failure(error))
             stop()
         }
@@ -11463,6 +11531,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             return
         }
+        attachDesktopDisplay(display, width, height)
+    }
+
+    /** Publishes [display] as the Dextop desktop: navigation, mirror/host Surface, input, HOME and menus. */
+    private fun attachDesktopDisplay(display: Display, width: Int, height: Int) {
         runCatching {
             check(privilegedAccess.isAvailable()) {
                 NativeStrings.text("nativeShizukuUnavailable")
@@ -11925,10 +11998,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }.onFailure { Log.e(logTag, "unable to pin phone control activity", it) }
     }
 
+    private fun releasePhoneOwnedDisplay(reason: String) {
+        val owned = phoneOwnedDisplay ?: return
+        phoneOwnedDisplay = null
+        runCatching { owned.attachment.release() }
+            .onFailure { Log.e(logTag, "direct Plasma display release failed", it) }
+        OperationLog.i(this, "DisplayBackend", "direct Plasma display released display=${owned.displayId} reason=$reason")
+    }
+
     private fun releaseMirror() {
         mirrorRefreshGeneration += 1
         stopRawMouseReader()
         displayBackend.releaseLayer()
+        // The direct display is the desktop: keep it (and its tasks) while
+        // the host Surface is gone; attachMirror() rebinds the next Surface.
         runCatching { autoOwnedDisplay?.attachment?.release() }
         autoOwnedDisplay = null
         autoDestinationSurface = null
@@ -11938,8 +12021,29 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         displayCreationInProgress = false
     }
 
-    private fun attachMirror(hostWidth: Int, hostHeight: Int, strategyOverride: String? = null) {
+    private fun attachMirror(
+        hostWidth: Int,
+        hostHeight: Int,
+        strategyOverride: String? = null,
+        rebuild: Boolean = false,
+    ) {
         val host = surfaceView ?: error(NativeStrings.text("nativeMirrorSurfaceUnavailable"))
+        phoneOwnedDisplay?.let { owned ->
+            val surface = host.holder.surface
+            check(surface.isValid) { NativeStrings.text("nativeMirrorSurfaceUnavailable") }
+            check(owned.resize(surface, targetWidth, targetHeight, density)) {
+                "Unable to bind the direct Dextop display to the host Surface"
+            }
+            mirrorHostWidth = hostWidth
+            mirrorHostHeight = hostHeight
+            OperationLog.i(
+                this,
+                "DisplayBackend",
+                "direct Plasma display bound host=${hostWidth}x$hostHeight " +
+                    "desktop=${targetWidth}x$targetHeight/$density"
+            )
+            return
+        }
         displayBackend.attach(
             targetDisplayId,
             host,
@@ -11948,7 +12052,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             targetWidth,
             targetHeight,
             density,
-            strategyOverride
+            strategyOverride,
+            rebuild,
         )
         mirrorHostWidth = hostWidth
         mirrorHostHeight = hostHeight
@@ -11974,7 +12079,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         reason: String,
         width: Int? = null,
         height: Int? = null,
-        forceVirtualDisplay: Boolean = false
+        forceVirtualDisplay: Boolean = false,
+        /** Recreate the recording display; see DesktopEnvironment.rebuildMirrorAfterLiveResize. */
+        rebuild: Boolean = false,
     ) {
         // A content-recording VirtualDisplay follows changes on its mirrored
         // display without being recreated. Releasing/recreating it in response
@@ -12015,7 +12122,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             val strategyOverride = configuredMirrorStrategyOverride()
             runCatching {
-                attachMirror(nextWidth, nextHeight, strategyOverride)
+                attachMirror(nextWidth, nextHeight, strategyOverride, rebuild)
                 mirrorDisplayId = targetDisplayId
             }.onSuccess {
                 OperationLog.i(
@@ -12176,7 +12283,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // Samsung DeX.  Re-sending the same forced size followed by a
             // rotation/windowing reconfiguration makes One UI's taskbar tear
             // down its desktop window.  Update only the metric that changed.
-            if (sizeChanged && !(autoOnlySession && autoOwnedDisplay != null)) {
+            if (sizeChanged && !(autoOnlySession && autoOwnedDisplay != null) && phoneOwnedDisplay == null) {
                 type.getMethod(
                     "setForcedDisplaySize",
                     Int::class.javaPrimitiveType,
@@ -12203,6 +12310,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (sizeChanged) {
             synchronizeDesktopWallpaperDimensions(targetWidth, targetHeight, reason)
             plasmaShell?.onDisplayResized(targetWidth, targetHeight)
+        }
+        phoneOwnedDisplay?.takeIf { sizeChanged }?.let { owned ->
+            val surface = surfaceView?.holder?.surface?.takeIf { it.isValid }
+            val updated = surface != null && owned.resize(surface, targetWidth, targetHeight, density)
+            OperationLog.i(
+                this,
+                "DisplayBackend",
+                "direct Plasma display resized applied=$updated desktop=${targetWidth}x$targetHeight/$density"
+            )
+            type.getMethod("clearForcedDisplaySize", Int::class.javaPrimitiveType)
+                .invoke(service, targetDisplayId)
         }
         if (autoOnlySession && sizeChanged) {
             val destination = autoDestinationSurface
@@ -12253,7 +12371,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     "$reason; live logical resize",
                     surface.width,
                     surface.height,
-                    forceVirtualDisplay = sizeChanged
+                    forceVirtualDisplay = sizeChanged,
+                    rebuild = sizeChanged && desktopEnvironment.rebuildMirrorAfterLiveResize,
                 )
             }
         }
@@ -12750,6 +12869,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Settings.Global is only a request to OverlayDisplayAdapter.  Do not
         // restore the phone/DeX environment or mark the session finished until
         // the display manager has observed the requested display disappear.
+        releasePhoneOwnedDisplay("session_stop")
         clearOverlayDisplayRequestTwice("session_stop display=$displayBeingRemoved")
         awaitStoppedDisplay(
             displayBeingRemoved,

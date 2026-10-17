@@ -2303,7 +2303,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get windowManagerPlasmaV2Description =>
-      'Runs each app on its own virtual display and shows it inside a Breeze window drawn by Dextop, so dragging, resizing and animations happen inside Dextop. Text input (IME) and some apps may not work.';
+      'Runs each app on its own virtual display and shows it inside a Breeze window drawn by Dextop, so dragging, resizing, animations and virtual desktops happen inside Dextop. The panel controls networks, audio and power.';
 
   @override
   String get windowManagerAppliedLive => 'Applied to the running desktop';
@@ -2591,4 +2591,121 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get nativePlasmaAirplaneMode => 'Airplane mode';
+
+  @override
+  String get nativePlasmaBluetooth => 'Bluetooth';
+
+  @override
+  String get nativePlasmaOn => 'On';
+
+  @override
+  String get nativePlasmaOff => 'Off';
+
+  @override
+  String get nativePlasmaCurrentConnection => 'Current connection';
+
+  @override
+  String get nativePlasmaAvailableNetworks => 'Available networks';
+
+  @override
+  String get nativePlasmaNoInternet => 'No internet access';
+
+  @override
+  String get nativePlasmaWifiIsOff => 'Wi-Fi is off';
+
+  @override
+  String get nativePlasmaScanning => 'Scanning…';
+
+  @override
+  String get nativePlasmaNoNetworksFound => 'No networks found';
+
+  @override
+  String get nativePlasmaSavedNetwork => 'Saved';
+
+  @override
+  String get nativePlasmaSecuredNetwork => 'Secured';
+
+  @override
+  String get nativePlasmaOpenNetwork => 'Open';
+
+  @override
+  String get nativePlasmaPassword => 'Password';
+
+  @override
+  String get nativePlasmaConnect => 'Connect';
+
+  @override
+  String get nativePlasmaCancel => 'Cancel';
+
+  @override
+  String get nativePlasmaConnectingTo => 'Connecting to %1\$s…';
+
+  @override
+  String get nativePlasmaConnectionFailed => 'Could not connect';
+
+  @override
+  String get nativePlasmaUnavailable => 'Not available on this device';
+
+  @override
+  String get nativePlasmaVolume => 'Volume';
+
+  @override
+  String get nativePlasmaMediaVolume => 'Media';
+
+  @override
+  String get nativePlasmaRingVolume => 'Ring';
+
+  @override
+  String get nativePlasmaNotificationVolume => 'Notifications';
+
+  @override
+  String get nativePlasmaAlarmVolume => 'Alarm';
+
+  @override
+  String get nativePlasmaNothingPlaying => 'Nothing playing';
+
+  @override
+  String get nativePlasmaOutputDevice => 'Output device';
+
+  @override
+  String get nativePlasmaHeadphones => 'Headphones';
+
+  @override
+  String get nativePlasmaExternalOutput => 'External output';
+
+  @override
+  String get nativePlasmaBatterySaver => 'Battery saver';
+
+  @override
+  String get nativePlasmaAutoBrightness => 'Auto brightness';
+
+  @override
+  String get nativePlasmaScreenBrightness => 'Screen brightness';
+
+  @override
+  String get nativePlasmaFullyCharged => 'Fully charged';
+
+  @override
+  String get nativePlasmaPowerSourceAc => 'AC power';
+
+  @override
+  String get nativePlasmaPowerSourceWireless => 'Wireless';
+
+  @override
+  String get nativePlasmaPowerSourceDock => 'Dock';
+
+  @override
+  String get nativePlasmaTimeUntilFull => '%1\$s until full';
+
+  @override
+  String get nativePlasmaHoursMinutes => '%1\$d h %2\$d min';
+
+  @override
+  String get nativePlasmaMinutes => '%1\$d min';
+
+  @override
+  String get nativePlasmaApplying => 'Applying…';
 }

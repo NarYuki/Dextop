@@ -425,9 +425,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         castMode = preferences.getString('cast_mode') ?? 'simple';
         experimentalWindowManagerEnabled =
             preferences.getBool('experimental_dextop_window_manager') ?? false;
-        windowManager = experimentalWindowManagerEnabled
-            ? preferences.getString('window_manager') ?? 'system'
-            : 'system';
+        windowManager = effectiveWindowManager(
+          preferences.getString('window_manager') ?? 'system',
+          experimentalWindowManagerEnabled,
+        );
         workspaceMagnificationPercent =
             (preferences.getInt('desktop_workspace_magnification_percent') ??
                     100)
@@ -470,11 +471,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await preferences.setString('mirror_backend', value);
   }
 
+  /// Plasma v2 is always available; the v1 shell needs the experimental switch.
+  static String effectiveWindowManager(
+    String value,
+    bool experimentalEnabled,
+  ) => switch (value) {
+    'dextop_plasma_v2' => value,
+    'dextop_plasma' => experimentalEnabled ? value : 'system',
+    _ => 'system',
+  };
+
   Future<void> setWindowManager(String value) async {
     final preferences = await SharedPreferences.getInstance();
     final experimentalEnabled =
         preferences.getBool('experimental_dextop_window_manager') ?? false;
-    final effectiveValue = experimentalEnabled ? value : 'system';
+    final effectiveValue = effectiveWindowManager(value, experimentalEnabled);
     mutate(() {
       experimentalWindowManagerEnabled = experimentalEnabled;
       windowManager = effectiveValue;

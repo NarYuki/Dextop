@@ -4346,7 +4346,7 @@ abstract class AppLocalizations {
   /// No description provided for @windowManagerPlasmaV2Description.
   ///
   /// In ja, this message translates to:
-  /// **'アプリごとに専用の仮想ディスプレイを作り、その画面をDextopが描くBreezeウィンドウの中に表示します。ドラッグ・リサイズ・アニメーションがDextop内で完結します。文字入力（IME）や一部アプリは動作しない場合があります。'**
+  /// **'アプリごとに専用の仮想ディスプレイを作り、その画面をDextopが描くBreezeウィンドウの中に表示します。ドラッグ・リサイズ・アニメーション・仮想デスクトップがDextop内で完結し、パネルからネットワーク・音量・電源を操作できます。'**
   String get windowManagerPlasmaV2Description;
 
   /// No description provided for @windowManagerAppliedLive.
@@ -4912,6 +4912,240 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'Breeze Light'**
   String get nativePlasmaBreezeLight;
+
+  /// No description provided for @nativePlasmaAirplaneMode.
+  ///
+  /// In ja, this message translates to:
+  /// **'機内モード'**
+  String get nativePlasmaAirplaneMode;
+
+  /// No description provided for @nativePlasmaBluetooth.
+  ///
+  /// In ja, this message translates to:
+  /// **'Bluetooth'**
+  String get nativePlasmaBluetooth;
+
+  /// No description provided for @nativePlasmaOn.
+  ///
+  /// In ja, this message translates to:
+  /// **'オン'**
+  String get nativePlasmaOn;
+
+  /// No description provided for @nativePlasmaOff.
+  ///
+  /// In ja, this message translates to:
+  /// **'オフ'**
+  String get nativePlasmaOff;
+
+  /// No description provided for @nativePlasmaCurrentConnection.
+  ///
+  /// In ja, this message translates to:
+  /// **'現在の接続'**
+  String get nativePlasmaCurrentConnection;
+
+  /// No description provided for @nativePlasmaAvailableNetworks.
+  ///
+  /// In ja, this message translates to:
+  /// **'利用可能なネットワーク'**
+  String get nativePlasmaAvailableNetworks;
+
+  /// No description provided for @nativePlasmaNoInternet.
+  ///
+  /// In ja, this message translates to:
+  /// **'インターネットに接続されていません'**
+  String get nativePlasmaNoInternet;
+
+  /// No description provided for @nativePlasmaWifiIsOff.
+  ///
+  /// In ja, this message translates to:
+  /// **'Wi-Fi はオフです'**
+  String get nativePlasmaWifiIsOff;
+
+  /// No description provided for @nativePlasmaScanning.
+  ///
+  /// In ja, this message translates to:
+  /// **'スキャン中…'**
+  String get nativePlasmaScanning;
+
+  /// No description provided for @nativePlasmaNoNetworksFound.
+  ///
+  /// In ja, this message translates to:
+  /// **'ネットワークが見つかりません'**
+  String get nativePlasmaNoNetworksFound;
+
+  /// No description provided for @nativePlasmaSavedNetwork.
+  ///
+  /// In ja, this message translates to:
+  /// **'保存済み'**
+  String get nativePlasmaSavedNetwork;
+
+  /// No description provided for @nativePlasmaSecuredNetwork.
+  ///
+  /// In ja, this message translates to:
+  /// **'保護'**
+  String get nativePlasmaSecuredNetwork;
+
+  /// No description provided for @nativePlasmaOpenNetwork.
+  ///
+  /// In ja, this message translates to:
+  /// **'オープン'**
+  String get nativePlasmaOpenNetwork;
+
+  /// No description provided for @nativePlasmaPassword.
+  ///
+  /// In ja, this message translates to:
+  /// **'パスワード'**
+  String get nativePlasmaPassword;
+
+  /// No description provided for @nativePlasmaConnect.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続'**
+  String get nativePlasmaConnect;
+
+  /// No description provided for @nativePlasmaCancel.
+  ///
+  /// In ja, this message translates to:
+  /// **'キャンセル'**
+  String get nativePlasmaCancel;
+
+  /// No description provided for @nativePlasmaConnectingTo.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$s に接続しています…'**
+  String get nativePlasmaConnectingTo;
+
+  /// No description provided for @nativePlasmaConnectionFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'接続できませんでした'**
+  String get nativePlasmaConnectionFailed;
+
+  /// No description provided for @nativePlasmaUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'この端末では利用できません'**
+  String get nativePlasmaUnavailable;
+
+  /// No description provided for @nativePlasmaVolume.
+  ///
+  /// In ja, this message translates to:
+  /// **'音量'**
+  String get nativePlasmaVolume;
+
+  /// No description provided for @nativePlasmaMediaVolume.
+  ///
+  /// In ja, this message translates to:
+  /// **'メディア'**
+  String get nativePlasmaMediaVolume;
+
+  /// No description provided for @nativePlasmaRingVolume.
+  ///
+  /// In ja, this message translates to:
+  /// **'着信音'**
+  String get nativePlasmaRingVolume;
+
+  /// No description provided for @nativePlasmaNotificationVolume.
+  ///
+  /// In ja, this message translates to:
+  /// **'通知'**
+  String get nativePlasmaNotificationVolume;
+
+  /// No description provided for @nativePlasmaAlarmVolume.
+  ///
+  /// In ja, this message translates to:
+  /// **'アラーム'**
+  String get nativePlasmaAlarmVolume;
+
+  /// No description provided for @nativePlasmaNothingPlaying.
+  ///
+  /// In ja, this message translates to:
+  /// **'再生中のメディアはありません'**
+  String get nativePlasmaNothingPlaying;
+
+  /// No description provided for @nativePlasmaOutputDevice.
+  ///
+  /// In ja, this message translates to:
+  /// **'出力デバイス'**
+  String get nativePlasmaOutputDevice;
+
+  /// No description provided for @nativePlasmaHeadphones.
+  ///
+  /// In ja, this message translates to:
+  /// **'ヘッドホン'**
+  String get nativePlasmaHeadphones;
+
+  /// No description provided for @nativePlasmaExternalOutput.
+  ///
+  /// In ja, this message translates to:
+  /// **'外部出力'**
+  String get nativePlasmaExternalOutput;
+
+  /// No description provided for @nativePlasmaBatterySaver.
+  ///
+  /// In ja, this message translates to:
+  /// **'バッテリーセーバー'**
+  String get nativePlasmaBatterySaver;
+
+  /// No description provided for @nativePlasmaAutoBrightness.
+  ///
+  /// In ja, this message translates to:
+  /// **'明るさの自動調節'**
+  String get nativePlasmaAutoBrightness;
+
+  /// No description provided for @nativePlasmaScreenBrightness.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面の明るさ'**
+  String get nativePlasmaScreenBrightness;
+
+  /// No description provided for @nativePlasmaFullyCharged.
+  ///
+  /// In ja, this message translates to:
+  /// **'充電完了'**
+  String get nativePlasmaFullyCharged;
+
+  /// No description provided for @nativePlasmaPowerSourceAc.
+  ///
+  /// In ja, this message translates to:
+  /// **'AC 電源'**
+  String get nativePlasmaPowerSourceAc;
+
+  /// No description provided for @nativePlasmaPowerSourceWireless.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワイヤレス充電'**
+  String get nativePlasmaPowerSourceWireless;
+
+  /// No description provided for @nativePlasmaPowerSourceDock.
+  ///
+  /// In ja, this message translates to:
+  /// **'ドック'**
+  String get nativePlasmaPowerSourceDock;
+
+  /// No description provided for @nativePlasmaTimeUntilFull.
+  ///
+  /// In ja, this message translates to:
+  /// **'満充電まで %1\$s'**
+  String get nativePlasmaTimeUntilFull;
+
+  /// No description provided for @nativePlasmaHoursMinutes.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$d 時間 %2\$d 分'**
+  String get nativePlasmaHoursMinutes;
+
+  /// No description provided for @nativePlasmaMinutes.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$d 分'**
+  String get nativePlasmaMinutes;
+
+  /// No description provided for @nativePlasmaApplying.
+  ///
+  /// In ja, this message translates to:
+  /// **'切り替え中…'**
+  String get nativePlasmaApplying;
 }
 
 class _AppLocalizationsDelegate

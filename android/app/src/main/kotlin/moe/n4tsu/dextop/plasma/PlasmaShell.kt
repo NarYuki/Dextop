@@ -49,6 +49,8 @@ internal class PlasmaShell(
     interface Host {
         fun privilegedService(name: String, interfaceName: String): Any
         fun privilegedExecute(vararg arguments: String): Boolean
+        /** Runs a privileged command and waits; returns its output, or null on failure. */
+        fun privilegedCommand(vararg arguments: String): String? = null
         fun captureDisplay(callback: (DesktopFrame?) -> Unit)
         /** Starts the desktop layer while the display still accepts HOME activities. */
         fun launchDesktopHome(intent: Intent): Boolean
@@ -827,7 +829,7 @@ internal class PlasmaShell(
                     onOpenSettings = { dismissPopup(); launchIntent(Intent(Settings.ACTION_SOUND_SETTINGS)) },
                 )
             }
-            TrayItem.NETWORK -> {
+            TrayItem.NETWORK, TrayItem.CELLULAR -> {
                 val (name, detail) = networkDescription()
                 InfoApplet(displayContext, palette, t("nativePlasmaNetworks"), Glyph.NETWORK, name, detail,
                     actionLabel = t("nativePlasmaConfigureNetwork")) {

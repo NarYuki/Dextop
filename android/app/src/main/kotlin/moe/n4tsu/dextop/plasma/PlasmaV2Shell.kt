@@ -65,6 +65,10 @@ internal class PlasmaV2Shell(
     private val passiveShellFocus: Boolean = false,
     /** See DesktopEnvironment.maxRateApplicationDisplays. */
     private val maxRateAppDisplays: Boolean = false,
+    /** See DesktopEnvironment.plasmaApplicationOverlay. */
+    private val applicationOverlay: Boolean = false,
+    /** See DesktopEnvironment.privateApplicationDisplays. */
+    private val privateAppDisplays: Boolean = false,
 ) : DesktopShell, V2WindowHost, PanelHost, LauncherHost {
 
     companion object {
@@ -83,12 +87,29 @@ internal class PlasmaV2Shell(
         service.getSystemService(DisplayManager::class.java).getDisplay(displayId)
             ?: error("Dextop display $displayId is unavailable"),
     )
-    private val layer = OverlayLayer(displayContext, TAG)
+    private val layer = OverlayLayer(
+        displayContext,
+        TAG,
+        if (applicationOverlay) {
+            android.view.WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+        } else {
+            android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY
+        },
+    )
     private val bridge = TaskBridge(host::privilegedService, TAG)
     private val appRepository = PlasmaAppRepository(service)
     private val prefs = service.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
     private val wmExecutor = Executors.newSingleThreadExecutor { Thread(it, "DextopPlasmaV2WM") }
     private val inputExecutor = Executors.newSingleThreadExecutor { Thread(it, "DextopPlasmaV2Input") }
+    private val systemExecutor = Executors.newSingleThreadExecutor { Thread(it, "DextopPlasmaV2System") }
+    private val systemControls by lazy { PlasmaSystemControls(service) { arguments -> host.privilegedCommand(*arguments) } }
+    private val trayWorker by lazy { TrayWorker(systemExecutor, handler) }
+    /** Keeps the tray icons current between popups. */
+    private val trayReceiver = object : android.content.BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            if (running) handler.post { refreshTray() }
+        }
+    }
     private val displayPlatform by lazy { VirtualDisplayPlatform.inspect() }
     private val displayService by lazy { host.privilegedService("display", VirtualDisplayPlatform.MANAGER_INTERFACE) }
     private val inputService by lazy { host.privilegedService("input", "android.hardware.input.IInputManager") }
@@ -175,12 +196,18 @@ internal class PlasmaV2Shell(
     override fun start() {
         if (running) return
         running = true
+        if (applicationOverlay && !Settings.canDrawOverlays(service)) {
+            // The privileged shell may grant Dextop's own overlay app-op.
+            host.privilegedCommand("appops", "set", service.packageName, "SYSTEM_ALERT_WINDOW", "allow")
+            host.log("Plasma v2 overlay permission granted=${Settings.canDrawOverlays(service)}")
+        }
         appRepository.refresh { panel.invalidate() }
         ensureDefaults()
         buildRoot()
         refreshTray()
         handler.postDelayed(pollRunnable, POLL_INTERVAL_MS)
         handler.postDelayed(trayTicker, 30_000L)
+        registerTrayReceiver()
         host.log("Plasma v2 compositor started display=$displayId ${width}x$height/$densityDpi")
     }
 
@@ -206,6 +233,8 @@ internal class PlasmaV2Shell(
         }
         wmExecutor.shutdown()
         inputExecutor.shutdown()
+        systemExecutor.shutdown()
+        runCatching { service.unregisterReceiver(trayReceiver) }
         layer.clear()
         appRepository.shutdown()
         host.log("Plasma v2 compositor stopped display=$displayId")
@@ -365,6 +394,7 @@ internal class PlasmaV2Shell(
                 displayPlatform.openApplicationDisplay(
                     service, displayService, "DextopWindow-${window.id}", surface, w, h, densityDpi,
                     requestedRefreshRate = applicationDisplayRefreshRate(),
+                    publicDisplay = !privateAppDisplays,
                 )
             }.onFailure { host.log("Plasma v2 window display failed: ${it.message}") }.getOrNull()
             handler.post {
@@ -1330,27 +1360,15 @@ internal class PlasmaV2Shell(
         if (recentlyDismissed(kind)) return
         refreshTray()
         val view: View = when (item) {
-            TrayItem.VOLUME -> {
-                val audio = service.getSystemService(AudioManager::class.java)
-                val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-                VolumeApplet(displayContext, palette, trayState.volume, trayState.muted,
-                    onVolume = { value -> audio.setStreamVolume(AudioManager.STREAM_MUSIC, (value * max).roundToInt(), 0); refreshTray() },
-                    onToggleMute = {
-                        audio.adjustStreamVolume(AudioManager.STREAM_MUSIC, AudioManager.ADJUST_TOGGLE_MUTE, 0)
-                        refreshTray(); dismissPopup()
-                    },
-                    onOpenSettings = { dismissPopup(); launchIntentInWindow(Intent(Settings.ACTION_SOUND_SETTINGS)) },
-                )
-            }
-            TrayItem.NETWORK -> {
-                val (name, detail) = networkDescription()
-                InfoApplet(displayContext, palette, t("nativePlasmaNetworks"), Glyph.NETWORK, name, detail,
-                    actionLabel = t("nativePlasmaConfigureNetwork")) { dismissPopup(); launchIntentInWindow(Intent(Settings.ACTION_WIRELESS_SETTINGS)) }
-            }
-            TrayItem.BATTERY -> InfoApplet(displayContext, palette, t("nativePlasmaPowerAndBattery"),
-                if (trayState.charging) Glyph.BATTERY_CHARGING else Glyph.BATTERY, percentText(trayState.battery),
-                if (trayState.charging) t("nativePlasmaCharging") else t("nativePlasmaDischarging"), level = trayState.battery,
-                actionLabel = t("nativePlasmaConfigurePower")) { dismissPopup(); launchIntentInWindow(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) }
+            TrayItem.VOLUME -> AudioApplet(displayContext, palette, systemControls, trayWorker,
+                onChanged = { refreshTray() },
+                onOpenSettings = { dismissPopup(); launchIntentInWindow(Intent(Settings.ACTION_SOUND_SETTINGS)) })
+            TrayItem.NETWORK, TrayItem.CELLULAR -> NetworkApplet(displayContext, palette, systemControls, trayWorker,
+                onChanged = { refreshTray() },
+                onOpenSettings = { dismissPopup(); launchIntentInWindow(Intent(Settings.ACTION_WIRELESS_SETTINGS)) })
+            TrayItem.BATTERY -> PowerApplet(displayContext, palette, systemControls, trayWorker,
+                onChanged = { refreshTray() },
+                onOpenSettings = { dismissPopup(); launchIntentInWindow(Intent(Intent.ACTION_POWER_USAGE_SUMMARY)) })
             TrayItem.EXPAND -> TrayOverflowApplet(displayContext, palette, listOf(
                 MenuItem(t("nativePlasmaOverview"), Glyph.OVERVIEW) { toggleOverview() },
                 MenuItem(t("nativePlasmaRunCommand"), Glyph.SEARCH) { showKRunner() },
@@ -1358,7 +1376,14 @@ internal class PlasmaV2Shell(
                 MenuItem(t("nativePlasmaLeave"), Glyph.LOGOUT) { leave(LeaveAction.SHOW_DIALOG) },
             )) { dismissPopup() }
         }
-        showAnchoredPopup(kind, view, anchor, dp(if (item == TrayItem.EXPAND) 300 else 360))
+        val popupWidth = dp(if (item == TrayItem.EXPAND) 300 else 400)
+        // The network list fills in after a scan, so its popup keeps a fixed height.
+        val fixedHeight = if (item == TrayItem.NETWORK || item == TrayItem.CELLULAR) {
+            minOf(dp(600), (height * .85f).roundToInt())
+        } else {
+            null
+        }
+        showAnchoredPopup(kind, view, anchor, popupWidth, fixedHeight)
     }
 
     override fun onClockClicked(anchor: RectF) {
@@ -1382,27 +1407,55 @@ internal class PlasmaV2Shell(
     private fun refreshTray() {
         val audio = service.getSystemService(AudioManager::class.java)
         val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        val battery = service.getSystemService(BatteryManager::class.java)
-        val capacity = battery.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY).takeIf { it in 0..100 } ?: 100
-        val connectivity = service.getSystemService(ConnectivityManager::class.java)
-        val connected = runCatching {
-            connectivity.getNetworkCapabilities(connectivity.activeNetwork)?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
-        }.getOrDefault(true)
-        trayState = TrayState(audio.getStreamVolume(AudioManager.STREAM_MUSIC) / max.toFloat(),
-            audio.isStreamMute(AudioManager.STREAM_MUSIC), capacity / 100f, battery.isCharging, connected)
+        val network = runCatching { systemControls.networkStatus() }.getOrNull()
+        val power = runCatching { systemControls.powerStatus() }.getOrNull()
+        val (networkGlyph, networkLevel) = when {
+            network == null -> Glyph.NETWORK to 1f
+            network.airplaneMode && network.transport == PlasmaSystemControls.Transport.NONE -> Glyph.AIRPLANE to 1f
+            network.transport == PlasmaSystemControls.Transport.WIFI -> Glyph.WIFI to (network.wifiLevel ?: 1f)
+            // With a SIM the antenna has its own tray icon; this one then shows the Wi-Fi state.
+            network.transport == PlasmaSystemControls.Transport.CELLULAR && network.simPresent ->
+                (if (network.wifiEnabled) Glyph.WIFI else Glyph.WIFI_OFF) to 0f
+            network.transport == PlasmaSystemControls.Transport.CELLULAR -> Glyph.CELLULAR to (network.cellularLevel ?: 1f)
+            network.transport == PlasmaSystemControls.Transport.ETHERNET -> Glyph.ETHERNET to 1f
+            network.transport == PlasmaSystemControls.Transport.OTHER -> Glyph.NETWORK to 1f
+            network.wifiEnabled -> Glyph.WIFI to 0f
+            else -> Glyph.WIFI_OFF to 1f
+        }
+        trayState = TrayState(
+            volume = audio.getStreamVolume(AudioManager.STREAM_MUSIC) / max.toFloat(),
+            muted = audio.isStreamMute(AudioManager.STREAM_MUSIC),
+            battery = power?.level ?: 1f,
+            charging = power?.charging == true,
+            networkConnected = network == null || network.transport != PlasmaSystemControls.Transport.NONE,
+            networkGlyph = networkGlyph,
+            networkLevel = networkLevel,
+            batterySaver = power?.batterySaver == true,
+            cellularVisible = network?.simPresent == true && !network.airplaneMode,
+            cellularLevel = network?.cellularLevel ?: 0f,
+            cellularNoService = network?.cellularLevel == null,
+        )
         if (::panel.isInitialized) panel.invalidate()
     }
 
-    private fun networkDescription(): Pair<String, String> {
-        val connectivity = service.getSystemService(ConnectivityManager::class.java)
-        val caps = runCatching { connectivity.getNetworkCapabilities(connectivity.activeNetwork) }.getOrNull()
-        return when {
-            caps == null -> t("nativePlasmaDisconnected") to t("nativePlasmaNoActiveNetwork")
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> "Wi-Fi" to t("nativePlasmaConnected")
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> t("nativePlasmaMobileData") to t("nativePlasmaConnected")
-            caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET) -> "Ethernet" to t("nativePlasmaConnected")
-            else -> t("nativePlasmaConnected") to ""
+    private fun registerTrayReceiver() {
+        val filter = android.content.IntentFilter().apply {
+            addAction(Intent.ACTION_BATTERY_CHANGED)
+            addAction(Intent.ACTION_AIRPLANE_MODE_CHANGED)
+            addAction(android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED)
+            addAction("android.net.conn.CONNECTIVITY_CHANGE")
+            addAction(android.net.wifi.WifiManager.RSSI_CHANGED_ACTION)
+            addAction(android.net.wifi.WifiManager.WIFI_STATE_CHANGED_ACTION)
+            addAction("android.media.VOLUME_CHANGED_ACTION")
+            addAction(AudioManager.ACTION_HEADSET_PLUG)
         }
+        runCatching {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                service.registerReceiver(trayReceiver, filter, Context.RECEIVER_EXPORTED)
+            } else {
+                service.registerReceiver(trayReceiver, filter)
+            }
+        }.onFailure { host.log("Plasma v2 tray receiver failed: ${it.message}") }
     }
     // endregion
 

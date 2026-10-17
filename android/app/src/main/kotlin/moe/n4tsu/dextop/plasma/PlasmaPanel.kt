@@ -48,7 +48,7 @@ internal data class PanelTask(
     val attention: Boolean = false,
 )
 
-internal enum class TrayItem { EXPAND, VOLUME, NETWORK, BATTERY }
+internal enum class TrayItem { EXPAND, VOLUME, NETWORK, CELLULAR, BATTERY }
 
 internal data class TrayState(
     val volume: Float,
@@ -56,6 +56,15 @@ internal data class TrayState(
     val battery: Float,
     val charging: Boolean,
     val networkConnected: Boolean,
+    /** Glyph for the network tray icon (Wi-Fi, mobile, Ethernet, airplane mode…). */
+    val networkGlyph: Glyph = Glyph.NETWORK,
+    /** Signal level for [networkGlyph], 0..1. */
+    val networkLevel: Float = 1f,
+    val batterySaver: Boolean = false,
+    /** Shows the mobile antenna next to the network icon while a SIM is inserted. */
+    val cellularVisible: Boolean = false,
+    val cellularLevel: Float = 0f,
+    val cellularNoService: Boolean = false,
 )
 
 /**
@@ -87,7 +96,7 @@ internal class PlasmaPanelView(
     private val pagerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val slots = ArrayList<Slot>()
     private val launcherGlyph = GlyphDrawable(Glyph.KDE_LAUNCHER, 0)
-    private val trayGlyphs = HashMap<TrayItem, GlyphDrawable>()
+    private val trayGlyphs = HashMap<Glyph, GlyphDrawable>()
     private val showDesktopGlyph = GlyphDrawable(Glyph.SHOW_DESKTOP, 0, 1.4f)
     private var hoveredSlot: Slot? = null
     private var pressedSlot: Slot? = null
@@ -199,7 +208,14 @@ internal class PlasmaPanelView(
         slots += Slot.Clock(RectF(right - clockWidth, bar.top, right, bar.bottom))
         right -= clockWidth
         val trayCell = dp(30f)
-        val tray = listOf(TrayItem.BATTERY, TrayItem.NETWORK, TrayItem.VOLUME, TrayItem.EXPAND)
+        // Laid out right to left: [expand][volume][network][antenna][battery].
+        val tray = listOfNotNull(
+            TrayItem.BATTERY,
+            TrayItem.CELLULAR.takeIf { host.tray().cellularVisible },
+            TrayItem.NETWORK,
+            TrayItem.VOLUME,
+            TrayItem.EXPAND,
+        )
         tray.forEach { item ->
             slots += Slot.Tray(RectF(right - trayCell, bar.top, right, bar.bottom), item)
             right -= trayCell
@@ -260,28 +276,27 @@ internal class PlasmaPanelView(
             is Slot.Tray -> {
                 drawHover(canvas, slot, palette, dp(6f))
                 val tray = host.tray()
-                val glyph = trayGlyphs.getOrPut(slot.item) {
-                    GlyphDrawable(
-                        when (slot.item) {
-                            TrayItem.EXPAND -> Glyph.CHEVRON_UP
-                            TrayItem.VOLUME -> Glyph.VOLUME
-                            TrayItem.NETWORK -> Glyph.NETWORK
-                            TrayItem.BATTERY -> Glyph.BATTERY
-                        },
-                        0,
-                        1.5f,
-                    )
+                val glyphType = when (slot.item) {
+                    TrayItem.EXPAND -> Glyph.CHEVRON_UP
+                    TrayItem.VOLUME -> if (tray.muted || tray.volume <= 0f) Glyph.VOLUME_MUTED else Glyph.VOLUME_LEVEL
+                    TrayItem.NETWORK -> tray.networkGlyph
+                    TrayItem.CELLULAR -> if (tray.cellularNoService) Glyph.CELLULAR_OFF else Glyph.CELLULAR
+                    TrayItem.BATTERY -> if (tray.charging) Glyph.BATTERY_CHARGING else Glyph.BATTERY
                 }
-                glyph.color = palette.text
+                val glyph = trayGlyphs.getOrPut(glyphType) { GlyphDrawable(glyphType, 0, 1.5f) }
+                glyph.color = when {
+                    slot.item == TrayItem.BATTERY && tray.battery < .15f && !tray.charging -> palette.negative
+                    slot.item == TrayItem.BATTERY && tray.batterySaver -> palette.neutral
+                    else -> palette.text
+                }
                 glyph.level01 = when (slot.item) {
-                    TrayItem.BATTERY -> {
-                        glyph.color = if (tray.battery < .15f && !tray.charging) palette.negative else palette.text
-                        tray.battery
-                    }
-                    TrayItem.VOLUME -> if (tray.muted) 0f else tray.volume
-                    else -> 1f
+                    TrayItem.BATTERY -> tray.battery
+                    TrayItem.VOLUME -> tray.volume
+                    TrayItem.NETWORK -> tray.networkLevel
+                    TrayItem.CELLULAR -> tray.cellularLevel
+                    TrayItem.EXPAND -> 1f
                 }
-                rect.set(slot.rect); rect.inset(dp(7f), (slot.rect.height() - dp(16f)) / 2f)
+                rect.set(slot.rect); rect.inset(dp(6f), (slot.rect.height() - dp(18f)) / 2f)
                 glyph.setBounds(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
                 glyph.draw(canvas)
                 if (slot.item == TrayItem.NETWORK && !tray.networkConnected) {

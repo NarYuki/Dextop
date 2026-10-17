@@ -2184,7 +2184,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get windowManagerPlasmaV2Description =>
-      '为每个应用创建独立的虚拟显示屏，并在 Dextop 绘制的 Breeze 窗口中显示其画面，拖动、调整大小和动画都在 Dextop 内完成。文字输入（IME）和部分应用可能无法正常工作。';
+      '为每个应用创建独立的虚拟显示屏，并在 Dextop 绘制的 Breeze 窗口中显示。拖动、调整大小、动画和虚拟桌面都在 Dextop 内完成，面板可控制网络、音量和电源。';
 
   @override
   String get windowManagerAppliedLive => '已应用到正在运行的桌面';
@@ -2468,4 +2468,121 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get nativePlasmaAirplaneMode => '飞行模式';
+
+  @override
+  String get nativePlasmaBluetooth => '蓝牙';
+
+  @override
+  String get nativePlasmaOn => '开启';
+
+  @override
+  String get nativePlasmaOff => '关闭';
+
+  @override
+  String get nativePlasmaCurrentConnection => '当前连接';
+
+  @override
+  String get nativePlasmaAvailableNetworks => '可用网络';
+
+  @override
+  String get nativePlasmaNoInternet => '无法访问互联网';
+
+  @override
+  String get nativePlasmaWifiIsOff => 'WLAN 已关闭';
+
+  @override
+  String get nativePlasmaScanning => '正在扫描…';
+
+  @override
+  String get nativePlasmaNoNetworksFound => '未找到网络';
+
+  @override
+  String get nativePlasmaSavedNetwork => '已保存';
+
+  @override
+  String get nativePlasmaSecuredNetwork => '安全';
+
+  @override
+  String get nativePlasmaOpenNetwork => '开放';
+
+  @override
+  String get nativePlasmaPassword => '密码';
+
+  @override
+  String get nativePlasmaConnect => '连接';
+
+  @override
+  String get nativePlasmaCancel => '取消';
+
+  @override
+  String get nativePlasmaConnectingTo => '正在连接到 %1\$s…';
+
+  @override
+  String get nativePlasmaConnectionFailed => '无法连接';
+
+  @override
+  String get nativePlasmaUnavailable => '此设备不支持';
+
+  @override
+  String get nativePlasmaVolume => '音量';
+
+  @override
+  String get nativePlasmaMediaVolume => '媒体';
+
+  @override
+  String get nativePlasmaRingVolume => '铃声';
+
+  @override
+  String get nativePlasmaNotificationVolume => '通知';
+
+  @override
+  String get nativePlasmaAlarmVolume => '闹钟';
+
+  @override
+  String get nativePlasmaNothingPlaying => '没有正在播放的内容';
+
+  @override
+  String get nativePlasmaOutputDevice => '输出设备';
+
+  @override
+  String get nativePlasmaHeadphones => '耳机';
+
+  @override
+  String get nativePlasmaExternalOutput => '外部输出';
+
+  @override
+  String get nativePlasmaBatterySaver => '省电模式';
+
+  @override
+  String get nativePlasmaAutoBrightness => '自动调节亮度';
+
+  @override
+  String get nativePlasmaScreenBrightness => '屏幕亮度';
+
+  @override
+  String get nativePlasmaFullyCharged => '已充满';
+
+  @override
+  String get nativePlasmaPowerSourceAc => '交流电源';
+
+  @override
+  String get nativePlasmaPowerSourceWireless => '无线充电';
+
+  @override
+  String get nativePlasmaPowerSourceDock => '底座';
+
+  @override
+  String get nativePlasmaTimeUntilFull => '%1\$s 后充满';
+
+  @override
+  String get nativePlasmaHoursMinutes => '%1\$d 小时 %2\$d 分钟';
+
+  @override
+  String get nativePlasmaMinutes => '%1\$d 分钟';
+
+  @override
+  String get nativePlasmaApplying => '正在切换…';
 }

@@ -24,11 +24,13 @@ import java.util.concurrent.Executors
  *
  * Every Plasma surface (panel, popups, decorations, effects) is a separate
  * TYPE_ACCESSIBILITY_OVERLAY window so it receives input injected into the
- * virtual display and stacks above application tasks.
+ * virtual display and stacks above application tasks. [windowType] can be
+ * TYPE_APPLICATION_OVERLAY where accessibility overlays are unavailable.
  */
 internal class OverlayLayer(
     val context: Context,
     private val tag: String,
+    private val windowType: Int = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
 ) {
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val attached = HashMap<View, WindowManager.LayoutParams>()
@@ -51,7 +53,7 @@ internal class OverlayLayer(
         val params = attached[view] ?: WindowManager.LayoutParams(
             bounds.width(),
             bounds.height(),
-            WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+            windowType,
             0,
             PixelFormat.TRANSLUCENT,
         ).apply {

@@ -175,8 +175,12 @@ internal object WindowManagerSelection {
 
     fun current(context: Context): String {
         val preferences = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        if (!preferences.getBoolean(EXPERIMENTAL_ENABLED_KEY, false)) return SYSTEM
-        return preferences.getString(KEY, SYSTEM)?.takeIf { it == DEXTOP_PLASMA || it == DEXTOP_PLASMA_V2 } ?: SYSTEM
+        // Plasma v2 is a regular option; the v1 freeform shell stays experimental.
+        return when (preferences.getString(KEY, SYSTEM)) {
+            DEXTOP_PLASMA_V2 -> DEXTOP_PLASMA_V2
+            DEXTOP_PLASMA -> if (preferences.getBoolean(EXPERIMENTAL_ENABLED_KEY, false)) DEXTOP_PLASMA else SYSTEM
+            else -> SYSTEM
+        }
     }
 
     /** True for either Dextop shell (v1 freeform or v2 compositor). */

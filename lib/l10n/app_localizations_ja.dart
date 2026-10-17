@@ -2211,7 +2211,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get windowManagerPlasmaV2Description =>
-      'アプリごとに専用の仮想ディスプレイを作り、その画面をDextopが描くBreezeウィンドウの中に表示します。ドラッグ・リサイズ・アニメーションがDextop内で完結します。文字入力（IME）や一部アプリは動作しない場合があります。';
+      'アプリごとに専用の仮想ディスプレイを作り、その画面をDextopが描くBreezeウィンドウの中に表示します。ドラッグ・リサイズ・アニメーション・仮想デスクトップがDextop内で完結し、パネルからネットワーク・音量・電源を操作できます。';
 
   @override
   String get windowManagerAppliedLive => '実行中のデスクトップへ適用しました';
@@ -2495,4 +2495,121 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get nativePlasmaAirplaneMode => '機内モード';
+
+  @override
+  String get nativePlasmaBluetooth => 'Bluetooth';
+
+  @override
+  String get nativePlasmaOn => 'オン';
+
+  @override
+  String get nativePlasmaOff => 'オフ';
+
+  @override
+  String get nativePlasmaCurrentConnection => '現在の接続';
+
+  @override
+  String get nativePlasmaAvailableNetworks => '利用可能なネットワーク';
+
+  @override
+  String get nativePlasmaNoInternet => 'インターネットに接続されていません';
+
+  @override
+  String get nativePlasmaWifiIsOff => 'Wi-Fi はオフです';
+
+  @override
+  String get nativePlasmaScanning => 'スキャン中…';
+
+  @override
+  String get nativePlasmaNoNetworksFound => 'ネットワークが見つかりません';
+
+  @override
+  String get nativePlasmaSavedNetwork => '保存済み';
+
+  @override
+  String get nativePlasmaSecuredNetwork => '保護';
+
+  @override
+  String get nativePlasmaOpenNetwork => 'オープン';
+
+  @override
+  String get nativePlasmaPassword => 'パスワード';
+
+  @override
+  String get nativePlasmaConnect => '接続';
+
+  @override
+  String get nativePlasmaCancel => 'キャンセル';
+
+  @override
+  String get nativePlasmaConnectingTo => '%1\$s に接続しています…';
+
+  @override
+  String get nativePlasmaConnectionFailed => '接続できませんでした';
+
+  @override
+  String get nativePlasmaUnavailable => 'この端末では利用できません';
+
+  @override
+  String get nativePlasmaVolume => '音量';
+
+  @override
+  String get nativePlasmaMediaVolume => 'メディア';
+
+  @override
+  String get nativePlasmaRingVolume => '着信音';
+
+  @override
+  String get nativePlasmaNotificationVolume => '通知';
+
+  @override
+  String get nativePlasmaAlarmVolume => 'アラーム';
+
+  @override
+  String get nativePlasmaNothingPlaying => '再生中のメディアはありません';
+
+  @override
+  String get nativePlasmaOutputDevice => '出力デバイス';
+
+  @override
+  String get nativePlasmaHeadphones => 'ヘッドホン';
+
+  @override
+  String get nativePlasmaExternalOutput => '外部出力';
+
+  @override
+  String get nativePlasmaBatterySaver => 'バッテリーセーバー';
+
+  @override
+  String get nativePlasmaAutoBrightness => '明るさの自動調節';
+
+  @override
+  String get nativePlasmaScreenBrightness => '画面の明るさ';
+
+  @override
+  String get nativePlasmaFullyCharged => '充電完了';
+
+  @override
+  String get nativePlasmaPowerSourceAc => 'AC 電源';
+
+  @override
+  String get nativePlasmaPowerSourceWireless => 'ワイヤレス充電';
+
+  @override
+  String get nativePlasmaPowerSourceDock => 'ドック';
+
+  @override
+  String get nativePlasmaTimeUntilFull => '満充電まで %1\$s';
+
+  @override
+  String get nativePlasmaHoursMinutes => '%1\$d 時間 %2\$d 分';
+
+  @override
+  String get nativePlasmaMinutes => '%1\$d 分';
+
+  @override
+  String get nativePlasmaApplying => '切り替え中…';
 }

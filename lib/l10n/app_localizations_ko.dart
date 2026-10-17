@@ -2224,7 +2224,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get windowManagerPlasmaV2Description =>
-      '앱마다 전용 가상 디스플레이를 만들고 그 화면을 Dextop이 그리는 Breeze 창 안에 표시합니다. 드래그, 크기 조절, 애니메이션이 Dextop 안에서 처리됩니다. 문자 입력(IME)이나 일부 앱은 작동하지 않을 수 있습니다.';
+      '앱마다 전용 가상 디스플레이를 만들어 Dextop이 그리는 Breeze 창 안에 표시합니다. 드래그, 크기 조절, 애니메이션, 가상 데스크톱이 Dextop 안에서 이루어지며 패널에서 네트워크, 볼륨, 전원을 제어할 수 있습니다.';
 
   @override
   String get windowManagerAppliedLive => '실행 중인 데스크톱에 적용했습니다';
@@ -2509,4 +2509,121 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get nativePlasmaAirplaneMode => '비행기 모드';
+
+  @override
+  String get nativePlasmaBluetooth => '블루투스';
+
+  @override
+  String get nativePlasmaOn => '켜짐';
+
+  @override
+  String get nativePlasmaOff => '꺼짐';
+
+  @override
+  String get nativePlasmaCurrentConnection => '현재 연결';
+
+  @override
+  String get nativePlasmaAvailableNetworks => '사용 가능한 네트워크';
+
+  @override
+  String get nativePlasmaNoInternet => '인터넷에 연결되지 않음';
+
+  @override
+  String get nativePlasmaWifiIsOff => 'Wi-Fi가 꺼져 있습니다';
+
+  @override
+  String get nativePlasmaScanning => '검색 중…';
+
+  @override
+  String get nativePlasmaNoNetworksFound => '네트워크를 찾을 수 없습니다';
+
+  @override
+  String get nativePlasmaSavedNetwork => '저장됨';
+
+  @override
+  String get nativePlasmaSecuredNetwork => '보안';
+
+  @override
+  String get nativePlasmaOpenNetwork => '개방';
+
+  @override
+  String get nativePlasmaPassword => '비밀번호';
+
+  @override
+  String get nativePlasmaConnect => '연결';
+
+  @override
+  String get nativePlasmaCancel => '취소';
+
+  @override
+  String get nativePlasmaConnectingTo => '%1\$s에 연결 중…';
+
+  @override
+  String get nativePlasmaConnectionFailed => '연결할 수 없습니다';
+
+  @override
+  String get nativePlasmaUnavailable => '이 기기에서 사용할 수 없음';
+
+  @override
+  String get nativePlasmaVolume => '볼륨';
+
+  @override
+  String get nativePlasmaMediaVolume => '미디어';
+
+  @override
+  String get nativePlasmaRingVolume => '벨소리';
+
+  @override
+  String get nativePlasmaNotificationVolume => '알림';
+
+  @override
+  String get nativePlasmaAlarmVolume => '알람';
+
+  @override
+  String get nativePlasmaNothingPlaying => '재생 중인 미디어 없음';
+
+  @override
+  String get nativePlasmaOutputDevice => '출력 기기';
+
+  @override
+  String get nativePlasmaHeadphones => '헤드폰';
+
+  @override
+  String get nativePlasmaExternalOutput => '외부 출력';
+
+  @override
+  String get nativePlasmaBatterySaver => '절전 모드';
+
+  @override
+  String get nativePlasmaAutoBrightness => '밝기 자동 조절';
+
+  @override
+  String get nativePlasmaScreenBrightness => '화면 밝기';
+
+  @override
+  String get nativePlasmaFullyCharged => '충전 완료';
+
+  @override
+  String get nativePlasmaPowerSourceAc => 'AC 전원';
+
+  @override
+  String get nativePlasmaPowerSourceWireless => '무선 충전';
+
+  @override
+  String get nativePlasmaPowerSourceDock => '도크';
+
+  @override
+  String get nativePlasmaTimeUntilFull => '완충까지 %1\$s';
+
+  @override
+  String get nativePlasmaHoursMinutes => '%1\$d시간 %2\$d분';
+
+  @override
+  String get nativePlasmaMinutes => '%1\$d분';
+
+  @override
+  String get nativePlasmaApplying => '전환 중…';
 }

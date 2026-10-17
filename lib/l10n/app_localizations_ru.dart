@@ -2328,7 +2328,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get windowManagerPlasmaV2Description =>
-      'Каждое приложение работает на собственном виртуальном дисплее и отображается в окне Breeze, которое рисует Dextop, поэтому перетаскивание, изменение размера и анимации выполняются внутри Dextop. Ввод текста (IME) и некоторые приложения могут не работать.';
+      'Запускает каждое приложение на отдельном виртуальном дисплее и показывает его в окне Breeze, которое рисует Dextop: перетаскивание, изменение размера, анимации и виртуальные рабочие столы работают внутри Dextop. Панель управляет сетью, звуком и питанием.';
 
   @override
   String get windowManagerAppliedLive =>
@@ -2617,4 +2617,121 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get nativePlasmaAirplaneMode => 'Режим полёта';
+
+  @override
+  String get nativePlasmaBluetooth => 'Bluetooth';
+
+  @override
+  String get nativePlasmaOn => 'Вкл.';
+
+  @override
+  String get nativePlasmaOff => 'Выкл.';
+
+  @override
+  String get nativePlasmaCurrentConnection => 'Текущее подключение';
+
+  @override
+  String get nativePlasmaAvailableNetworks => 'Доступные сети';
+
+  @override
+  String get nativePlasmaNoInternet => 'Нет доступа к интернету';
+
+  @override
+  String get nativePlasmaWifiIsOff => 'Wi-Fi выключен';
+
+  @override
+  String get nativePlasmaScanning => 'Поиск…';
+
+  @override
+  String get nativePlasmaNoNetworksFound => 'Сети не найдены';
+
+  @override
+  String get nativePlasmaSavedNetwork => 'Сохранена';
+
+  @override
+  String get nativePlasmaSecuredNetwork => 'Защищена';
+
+  @override
+  String get nativePlasmaOpenNetwork => 'Открытая';
+
+  @override
+  String get nativePlasmaPassword => 'Пароль';
+
+  @override
+  String get nativePlasmaConnect => 'Подключить';
+
+  @override
+  String get nativePlasmaCancel => 'Отмена';
+
+  @override
+  String get nativePlasmaConnectingTo => 'Подключение к %1\$s…';
+
+  @override
+  String get nativePlasmaConnectionFailed => 'Не удалось подключиться';
+
+  @override
+  String get nativePlasmaUnavailable => 'Недоступно на этом устройстве';
+
+  @override
+  String get nativePlasmaVolume => 'Громкость';
+
+  @override
+  String get nativePlasmaMediaVolume => 'Мультимедиа';
+
+  @override
+  String get nativePlasmaRingVolume => 'Звонок';
+
+  @override
+  String get nativePlasmaNotificationVolume => 'Уведомления';
+
+  @override
+  String get nativePlasmaAlarmVolume => 'Будильник';
+
+  @override
+  String get nativePlasmaNothingPlaying => 'Ничего не воспроизводится';
+
+  @override
+  String get nativePlasmaOutputDevice => 'Устройство вывода';
+
+  @override
+  String get nativePlasmaHeadphones => 'Наушники';
+
+  @override
+  String get nativePlasmaExternalOutput => 'Внешний выход';
+
+  @override
+  String get nativePlasmaBatterySaver => 'Энергосбережение';
+
+  @override
+  String get nativePlasmaAutoBrightness => 'Автояркость';
+
+  @override
+  String get nativePlasmaScreenBrightness => 'Яркость экрана';
+
+  @override
+  String get nativePlasmaFullyCharged => 'Полностью заряжено';
+
+  @override
+  String get nativePlasmaPowerSourceAc => 'Сеть';
+
+  @override
+  String get nativePlasmaPowerSourceWireless => 'Беспроводная зарядка';
+
+  @override
+  String get nativePlasmaPowerSourceDock => 'Док-станция';
+
+  @override
+  String get nativePlasmaTimeUntilFull => 'До полной зарядки %1\$s';
+
+  @override
+  String get nativePlasmaHoursMinutes => '%1\$d ч %2\$d мин';
+
+  @override
+  String get nativePlasmaMinutes => '%1\$d мин';
+
+  @override
+  String get nativePlasmaApplying => 'Применение…';
 }

@@ -85,7 +85,39 @@ internal data class DesktopEnvironment(
      * too. Without a requested rate they are created as 60 Hz virtual
      * displays, so apps inside a 120 Hz Plasma window still render at 60 Hz.
      */
-    val maxRateApplicationDisplays: Boolean = false
+    val maxRateApplicationDisplays: Boolean = false,
+    /**
+     * Draw the Plasma v2 shell as TYPE_APPLICATION_OVERLAY. Before Android 16,
+     * AccessibilityManagerService issues no overlay token for overlay displays
+     * (Display.TYPE_OVERLAY), so accessibility overlays there fail with
+     * BadTokenException and Plasma never appears.
+     */
+    val plasmaApplicationOverlay: Boolean = false,
+    /**
+     * Recreate the recording VirtualDisplay after a live logical resize.
+     * Before Android 16 ContentRecorder does not recompute its crop and scale
+     * when only the mirrored display changes size, so a rotation keeps the
+     * old portrait transform and shows the desktop as a narrow strip.
+     */
+    val rebuildMirrorAfterLiveResize: Boolean = false,
+    /**
+     * Create Plasma v2 application displays without FLAG_PUBLIC. With desktop
+     * mode forced, every public secondary display gets the launcher's
+     * SECONDARY_HOME behind its app; a private display does not. Only the
+     * owner (the privileged shell) may launch onto it, which Plasma v2
+     * already falls back to.
+     */
+    val privateApplicationDisplays: Boolean = false,
+    /**
+     * For Plasma v2, render the phone desktop on an app-owned public
+     * VirtualDisplay drawn straight into Dextop's Surface instead of an
+     * overlay display plus a recording mirror. Before Android 16 an overlay
+     * display gets no accessibility overlay token, and the application
+     * overlay used instead is hidden by any HIDE_NON_SYSTEM_OVERLAY_WINDOWS
+     * window (Settings, permission dialogs); it also shows the overlay
+     * preview window on the phone.
+     */
+    val directPlasmaDisplay: Boolean = false
 )
 
 internal enum class DesktopStartupMode {
