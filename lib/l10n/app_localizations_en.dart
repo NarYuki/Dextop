@@ -3054,4 +3054,40 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get linuxForceStopConfirm =>
       'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+
+  @override
+  String get linuxSettingsTitle => 'Linux settings';
+
+  @override
+  String get linuxSettingsEntry =>
+      'Graphics and other settings shared by all containers';
+
+  @override
+  String get linuxGpuSection => 'Graphics acceleration';
+
+  @override
+  String get linuxGpuHardware => 'Hardware (VirGL)';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      'OpenGL is drawn by the device\'s GPU. 3D apps, games and browsers run faster.';
+
+  @override
+  String get linuxGpuSoftware => 'Software (llvmpipe)';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      'Drawn by the CPU. Slower, but correct for apps that render wrongly on the GPU.';
+
+  @override
+  String get linuxGpuUnavailable => 'VirGL is not available on this device.';
+
+  @override
+  String get linuxGpuApplyNote =>
+      'Changes apply to apps started from now on. Reopen any open desktop.';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return 'VirGL in use by $count container(s)';
+  }
 }

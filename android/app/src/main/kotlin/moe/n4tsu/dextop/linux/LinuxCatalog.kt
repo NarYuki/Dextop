@@ -154,6 +154,7 @@ internal object LinuxCatalog {
         export DISPLAY=:$display XDG_RUNTIME_DIR=/tmp/runtime-root
         export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-$display
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
+        $RENDERER_OVERRIDE
         cd /root
         exec sh -c ${shellQuote(command)} >>/tmp/apps-$display.log 2>&1
     """.trimIndent() + "\n"
@@ -165,14 +166,21 @@ internal object LinuxCatalog {
      */
     private fun sessionSetup(dpi: Int): String = """
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
+        $RENDERER_OVERRIDE
+        $BROWSER_LAUNCHER_MIGRATION
         if command -v dbus-daemon >/dev/null; then
+            # Images ship "uninitialized" (13 characters), which D-Bus and Chrome reject.
+            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || dbus-uuidgen >/etc/machine-id 2>/dev/null
             dbus-uuidgen --ensure=/etc/machine-id 2>/dev/null
             mkdir -p /var/lib/dbus && cp -f /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null
             export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-${'$'}D
             dbus-daemon --session --address=${'$'}DBUS_SESSION_BUS_ADDRESS --fork --print-pid >/tmp/dbus-${'$'}D.log 2>&1
             DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
         fi
-        command -v xrdb >/dev/null && echo 'Xft.dpi: $dpi' | xrdb -merge
+        # xterm's default bitmap font is not installed; use the Xft fonts (CJK included).
+        command -v xrdb >/dev/null && printf '%s\n' 'Xft.dpi: $dpi' \
+            'XTerm*faceName: DejaVu Sans Mono' 'XTerm*faceNameDoublesize: Noto Sans Mono CJK JP' \
+            'XTerm*faceSize: 11' 'XTerm*locale: true' | xrdb -merge
         [ ! -f /etc/dextop/start-session.sh ] || sh /etc/dextop/start-session.sh
     """.trimIndent()
 
@@ -181,6 +189,26 @@ internal object LinuxCatalog {
      * dpi, X toolkits 1 pt per px at 96 dpi.
      */
     private fun xDpi(androidDpi: Int) = (androidDpi * 96 / 160).coerceAtLeast(96)
+
+    /**
+     * Containers set up before the renderer setting existed export
+     * LIBGL_ALWAYS_SOFTWARE in session.env, which would hide VirGL.
+     */
+    private val RENDERER_OVERRIDE = "[ \"${'$'}GALLIUM_DRIVER\" != virpipe ] || unset LIBGL_ALWAYS_SOFTWARE"
+
+    /**
+     * Chromium-based browsers draw no text when they rasterize on VirGL
+     * (glyph atlases); GPU compositing and WebGL keep using it.
+     */
+    val CHROMIUM_VIRGL_FLAGS = "[ \"${'$'}GALLIUM_DRIVER\" != virpipe ] || set -- --disable-gpu-rasterization \"${'$'}@\""
+
+    /** Adds [CHROMIUM_VIRGL_FLAGS] to browser launchers written before it existed. */
+    private val BROWSER_LAUNCHER_MIGRATION = """
+        for launcher in /usr/local/bin/dextop-chrome /usr/local/bin/dextop-chromium; do
+            [ -f "${'$'}launcher" ] && ! grep -q disable-gpu-rasterization "${'$'}launcher" &&
+                sed -i '/^exec /i [ "${'$'}GALLIUM_DRIVER" != virpipe ] || set -- --disable-gpu-rasterization "${'$'}@"' "${'$'}launcher"
+        done
+    """.trimIndent()
 
     private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 }

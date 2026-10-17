@@ -2953,4 +2953,39 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get linuxForceStopConfirm =>
       'この環境のLinuxプロセスをすべて強制終了します。未保存の作業は失われます。インストール済みアプリとファイルは残ります。';
+
+  @override
+  String get linuxSettingsTitle => 'Linux 設定';
+
+  @override
+  String get linuxSettingsEntry => 'グラフィックスなど、すべてのコンテナに共通する設定';
+
+  @override
+  String get linuxGpuSection => 'グラフィックスアクセラレーション';
+
+  @override
+  String get linuxGpuHardware => 'ハードウェア（VirGL）';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      '端末の GPU で OpenGL を描画します。3D アプリ、ゲーム、ブラウザが速くなります。';
+
+  @override
+  String get linuxGpuSoftware => 'ソフトウェア（llvmpipe）';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      'CPU で描画します。遅くなりますが、GPU で表示が乱れるアプリでも正しく描けます。';
+
+  @override
+  String get linuxGpuUnavailable => 'この端末では VirGL を使えません。';
+
+  @override
+  String get linuxGpuApplyNote =>
+      '変更は、これから起動するアプリに反映されます。開いているデスクトップは開き直してください。';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return 'VirGL を $count 個のコンテナで使用中';
+  }
 }

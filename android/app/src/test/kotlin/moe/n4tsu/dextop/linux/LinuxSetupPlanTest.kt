@@ -43,7 +43,8 @@ class LinuxSetupPlanTest {
         assertContains(script, "DefaultIM=mozc")
         assertContains(script, "GTK_IM_MODULE=fcitx")
         assertContains(script, "export LANG=ja_JP.UTF-8")
-        assertContains(script, "LIBGL_ALWAYS_SOFTWARE=1")
+        // The renderer follows the Linux settings (LinuxGraphics), not session.env.
+        assertFalse("LIBGL_ALWAYS_SOFTWARE" in script)
         assertContains(script, "profile.before-dextop")
         assertContains(script, "\nDEXTOP_ENV\n")
         assertContains(LinuxCatalog.desktopScript(10, 1280, 720, 160, "icewm"), ". /etc/dextop/session.env")

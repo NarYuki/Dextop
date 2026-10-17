@@ -64,4 +64,8 @@ interface ILinuxContainerService {
     boolean setup(String containerId, String optionsJson) = 31;
     String runtimeLogs(String containerId) = 32;
     boolean resetSession(String containerId, boolean force) = 33;
+    /** Global Linux settings as JSON: {"gpu": "virgl" | "software", "hardwareAvailable", "rendererRunning": [ids]}. */
+    String linuxSettings() = 34;
+    /** Merges [json] into the settings and returns the result like linuxSettings(). */
+    String setLinuxSettings(String json) = 35;
 }

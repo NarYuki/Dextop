@@ -42,6 +42,10 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 "runtimeLogs" -> remote({ it.runtimeLogs(call.argument<String>("id")!!) })
                 "resetSession" -> remote({ it.resetSession(call.argument<String>("id")!!, call.argument<Boolean>("force") == true) })
                 "catalog" -> remote({ it.catalog() }) { jsonList(it) }
+                "settings" -> remote({ it.linuxSettings() }) { jsonMap(it) }
+                "setSettings" -> remote({
+                    it.setLinuxSettings(JSONObject(call.argument<Map<String, Any?>>("settings") ?: emptyMap<String, Any?>()).toString())
+                }) { jsonMap(it) }
                 "list" -> remote({ it.listContainers() }) { jsonList(it) }
                 "install" -> remote({
                     it.installWithOptions(call.argument<String>("name").orEmpty(), call.argument<String>("distro") ?: "debian",

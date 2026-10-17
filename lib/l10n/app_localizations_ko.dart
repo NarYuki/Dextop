@@ -2968,4 +2968,39 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get linuxForceStopConfirm =>
       'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+
+  @override
+  String get linuxSettingsTitle => 'Linux 설정';
+
+  @override
+  String get linuxSettingsEntry => '그래픽 등 모든 컨테이너에 공통인 설정';
+
+  @override
+  String get linuxGpuSection => '그래픽 가속';
+
+  @override
+  String get linuxGpuHardware => '하드웨어(VirGL)';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      '기기의 GPU로 OpenGL을 그립니다. 3D 앱, 게임, 브라우저가 빨라집니다.';
+
+  @override
+  String get linuxGpuSoftware => '소프트웨어(llvmpipe)';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      'CPU로 그립니다. 느리지만 GPU에서 화면이 깨지는 앱도 올바르게 표시됩니다.';
+
+  @override
+  String get linuxGpuUnavailable => '이 기기에서는 VirGL을 사용할 수 없습니다.';
+
+  @override
+  String get linuxGpuApplyNote =>
+      '변경 사항은 이후에 실행하는 앱에 적용됩니다. 열려 있는 데스크톱은 다시 여세요.';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return '$count개 컨테이너에서 VirGL 사용 중';
+  }
 }

@@ -3080,4 +3080,40 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get linuxForceStopConfirm =>
       'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+
+  @override
+  String get linuxSettingsTitle => 'Настройки Linux';
+
+  @override
+  String get linuxSettingsEntry =>
+      'Графика и другие общие настройки контейнеров';
+
+  @override
+  String get linuxGpuSection => 'Ускорение графики';
+
+  @override
+  String get linuxGpuHardware => 'Аппаратное (VirGL)';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      'OpenGL отрисовывает GPU устройства. 3D-приложения, игры и браузеры работают быстрее.';
+
+  @override
+  String get linuxGpuSoftware => 'Программное (llvmpipe)';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      'Отрисовка на CPU. Медленнее, но правильно для приложений с ошибками на GPU.';
+
+  @override
+  String get linuxGpuUnavailable => 'VirGL недоступен на этом устройстве.';
+
+  @override
+  String get linuxGpuApplyNote =>
+      'Изменения применяются к приложениям, запущенным после этого. Откройте рабочий стол заново.';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return 'VirGL используется контейнерами: $count';
+  }
 }

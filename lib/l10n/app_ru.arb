@@ -957,5 +957,15 @@
   "linuxRuntimeStopped": "Linux is stopped",
   "linuxSessionReset": "Reset session",
   "linuxForceStop": "Force stop PRoot",
-  "linuxForceStopConfirm": "Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept."
+  "linuxForceStopConfirm": "Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.",
+  "linuxSettingsTitle": "Настройки Linux",
+  "linuxSettingsEntry": "Графика и другие общие настройки контейнеров",
+  "linuxGpuSection": "Ускорение графики",
+  "linuxGpuHardware": "Аппаратное (VirGL)",
+  "linuxGpuHardwareDescription": "OpenGL отрисовывает GPU устройства. 3D-приложения, игры и браузеры работают быстрее.",
+  "linuxGpuSoftware": "Программное (llvmpipe)",
+  "linuxGpuSoftwareDescription": "Отрисовка на CPU. Медленнее, но правильно для приложений с ошибками на GPU.",
+  "linuxGpuUnavailable": "VirGL недоступен на этом устройстве.",
+  "linuxGpuApplyNote": "Изменения применяются к приложениям, запущенным после этого. Откройте рабочий стол заново.",
+  "linuxGpuRunning": "VirGL используется контейнерами: {count}"
 }

@@ -1,3 +1,4 @@
+import 'linux_settings_page.dart';
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -460,10 +461,18 @@ class _LinuxPageState extends State<LinuxPage> {
                     color: theme.colorScheme.primary,
                   ),
                   const SizedBox(width: 12),
-                  Text(
-                    l.nativePlasmaCategoryLinux,
-                    style: theme.textTheme.headlineMedium,
+                  Expanded(
+                    child: Text(
+                      l.nativePlasmaCategoryLinux,
+                      style: theme.textTheme.headlineMedium,
+                    ),
                   ),
+                  if (usable)
+                    IconButton(
+                      tooltip: l.linuxSettingsTitle,
+                      icon: const Icon(Icons.tune_rounded),
+                      onPressed: _openSettings,
+                    ),
                 ],
               ),
               const SizedBox(height: 8),
@@ -517,6 +526,16 @@ class _LinuxPageState extends State<LinuxPage> {
                   onChanged: usable ? _setEnabled : null,
                 ),
               ),
+              if (enabled && usable)
+                Card(
+                  child: ListTile(
+                    leading: const Icon(Icons.tune_rounded),
+                    title: Text(l.linuxSettingsTitle),
+                    subtitle: Text(l.linuxSettingsEntry),
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: _openSettings,
+                  ),
+                ),
               if (error != null) _notice(Icons.error_outline_rounded, error!),
               if (enabled && usable) ...[
                 const SizedBox(height: 8),
@@ -537,6 +556,10 @@ class _LinuxPageState extends State<LinuxPage> {
       ),
     );
   }
+
+  Future<void> _openSettings() => Navigator.of(
+    context,
+  ).push(MaterialPageRoute<void>(builder: (_) => const LinuxSettingsPage()));
 
   Widget _notice(IconData icon, String text) => Card(
     child: ListTile(leading: Icon(icon), title: Text(text)),

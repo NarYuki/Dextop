@@ -3099,6 +3099,43 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get linuxForceStopConfirm =>
       'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+
+  @override
+  String get linuxSettingsTitle => 'Definições do Linux';
+
+  @override
+  String get linuxSettingsEntry =>
+      'Gráficos e outras definições comuns a todos os contentores';
+
+  @override
+  String get linuxGpuSection => 'Aceleração gráfica';
+
+  @override
+  String get linuxGpuHardware => 'Hardware (VirGL)';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      'O OpenGL é desenhado pela GPU do dispositivo. Apps 3D, jogos e browsers ficam mais rápidos.';
+
+  @override
+  String get linuxGpuSoftware => 'Software (llvmpipe)';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      'Desenhado pela CPU. Mais lento, mas correto para apps que falham na GPU.';
+
+  @override
+  String get linuxGpuUnavailable =>
+      'O VirGL não está disponível neste dispositivo.';
+
+  @override
+  String get linuxGpuApplyNote =>
+      'As alterações aplicam-se às apps iniciadas a partir de agora. Reabra o ambiente de trabalho.';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return 'VirGL em uso por $count contentor(es)';
+  }
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
@@ -6197,4 +6234,41 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get linuxForceStopConfirm =>
       'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+
+  @override
+  String get linuxSettingsTitle => 'Configurações do Linux';
+
+  @override
+  String get linuxSettingsEntry =>
+      'Gráficos e outras configurações comuns a todos os contêineres';
+
+  @override
+  String get linuxGpuSection => 'Aceleração gráfica';
+
+  @override
+  String get linuxGpuHardware => 'Hardware (VirGL)';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      'O OpenGL é desenhado pela GPU do aparelho. Apps 3D, jogos e navegadores ficam mais rápidos.';
+
+  @override
+  String get linuxGpuSoftware => 'Software (llvmpipe)';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      'Desenhado pela CPU. Mais lento, mas correto para apps que falham na GPU.';
+
+  @override
+  String get linuxGpuUnavailable =>
+      'O VirGL não está disponível neste aparelho.';
+
+  @override
+  String get linuxGpuApplyNote =>
+      'As alterações valem para apps iniciados a partir de agora. Reabra a área de trabalho.';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return 'VirGL em uso por $count contêiner(es)';
+  }
 }

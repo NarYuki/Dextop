@@ -5770,6 +5770,66 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'この環境のLinuxプロセスをすべて強制終了します。未保存の作業は失われます。インストール済みアプリとファイルは残ります。'**
   String get linuxForceStopConfirm;
+
+  /// No description provided for @linuxSettingsTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux 設定'**
+  String get linuxSettingsTitle;
+
+  /// No description provided for @linuxSettingsEntry.
+  ///
+  /// In ja, this message translates to:
+  /// **'グラフィックスなど、すべてのコンテナに共通する設定'**
+  String get linuxSettingsEntry;
+
+  /// No description provided for @linuxGpuSection.
+  ///
+  /// In ja, this message translates to:
+  /// **'グラフィックスアクセラレーション'**
+  String get linuxGpuSection;
+
+  /// No description provided for @linuxGpuHardware.
+  ///
+  /// In ja, this message translates to:
+  /// **'ハードウェア（VirGL）'**
+  String get linuxGpuHardware;
+
+  /// No description provided for @linuxGpuHardwareDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'端末の GPU で OpenGL を描画します。3D アプリ、ゲーム、ブラウザが速くなります。'**
+  String get linuxGpuHardwareDescription;
+
+  /// No description provided for @linuxGpuSoftware.
+  ///
+  /// In ja, this message translates to:
+  /// **'ソフトウェア（llvmpipe）'**
+  String get linuxGpuSoftware;
+
+  /// No description provided for @linuxGpuSoftwareDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'CPU で描画します。遅くなりますが、GPU で表示が乱れるアプリでも正しく描けます。'**
+  String get linuxGpuSoftwareDescription;
+
+  /// No description provided for @linuxGpuUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'この端末では VirGL を使えません。'**
+  String get linuxGpuUnavailable;
+
+  /// No description provided for @linuxGpuApplyNote.
+  ///
+  /// In ja, this message translates to:
+  /// **'変更は、これから起動するアプリに反映されます。開いているデスクトップは開き直してください。'**
+  String get linuxGpuApplyNote;
+
+  /// No description provided for @linuxGpuRunning.
+  ///
+  /// In ja, this message translates to:
+  /// **'VirGL を {count} 個のコンテナで使用中'**
+  String linuxGpuRunning(int count);
 }
 
 class _AppLocalizationsDelegate

@@ -19,6 +19,8 @@ target_link_libraries(
 # Linux containers run on arm64 devices only.
 if(ANDROID_ABI STREQUAL "arm64-v8a")
     add_subdirectory(proot)
+    # VirGL GPU acceleration server and the guest socket shim.
+    add_subdirectory(virgl)
 
     # Framebuffer-to-Surface copies for Linux windows (loaded by the shell-side service).
     add_library(dextop_linux SHARED linux_bridge.cpp)

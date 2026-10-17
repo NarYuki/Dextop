@@ -974,5 +974,16 @@
   "linuxRuntimeStopped": "Linux停止中",
   "linuxSessionReset": "セッションをリセット",
   "linuxForceStop": "PRootを強制終了",
-  "linuxForceStopConfirm": "この環境のLinuxプロセスをすべて強制終了します。未保存の作業は失われます。インストール済みアプリとファイルは残ります。"
+  "linuxForceStopConfirm": "この環境のLinuxプロセスをすべて強制終了します。未保存の作業は失われます。インストール済みアプリとファイルは残ります。",
+  "linuxSettingsTitle": "Linux 設定",
+  "linuxSettingsEntry": "グラフィックスなど、すべてのコンテナに共通する設定",
+  "linuxGpuSection": "グラフィックスアクセラレーション",
+  "linuxGpuHardware": "ハードウェア（VirGL）",
+  "linuxGpuHardwareDescription": "端末の GPU で OpenGL を描画します。3D アプリ、ゲーム、ブラウザが速くなります。",
+  "linuxGpuSoftware": "ソフトウェア（llvmpipe）",
+  "linuxGpuSoftwareDescription": "CPU で描画します。遅くなりますが、GPU で表示が乱れるアプリでも正しく描けます。",
+  "linuxGpuUnavailable": "この端末では VirGL を使えません。",
+  "linuxGpuApplyNote": "変更は、これから起動するアプリに反映されます。開いているデスクトップは開き直してください。",
+  "linuxGpuRunning": "VirGL を {count} 個のコンテナで使用中",
+  "@linuxGpuRunning": {"placeholders": {"count": {"type": "int"}}}
 }

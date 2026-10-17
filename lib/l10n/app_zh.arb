@@ -957,5 +957,15 @@
   "linuxRuntimeStopped": "Linux is stopped",
   "linuxSessionReset": "Reset session",
   "linuxForceStop": "Force stop PRoot",
-  "linuxForceStopConfirm": "Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept."
+  "linuxForceStopConfirm": "Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.",
+  "linuxSettingsTitle": "Linux 设置",
+  "linuxSettingsEntry": "图形等所有容器共用的设置",
+  "linuxGpuSection": "图形加速",
+  "linuxGpuHardware": "硬件（VirGL）",
+  "linuxGpuHardwareDescription": "使用设备的 GPU 绘制 OpenGL。3D 应用、游戏和浏览器更快。",
+  "linuxGpuSoftware": "软件（llvmpipe）",
+  "linuxGpuSoftwareDescription": "使用 CPU 绘制。较慢，但在 GPU 上显示异常的应用也能正确显示。",
+  "linuxGpuUnavailable": "此设备无法使用 VirGL。",
+  "linuxGpuApplyNote": "更改将应用于此后启动的应用。请重新打开已打开的桌面。",
+  "linuxGpuRunning": "{count} 个容器正在使用 VirGL"
 }

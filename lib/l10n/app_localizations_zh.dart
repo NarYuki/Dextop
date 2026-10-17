@@ -2927,4 +2927,38 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get linuxForceStopConfirm =>
       'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+
+  @override
+  String get linuxSettingsTitle => 'Linux 设置';
+
+  @override
+  String get linuxSettingsEntry => '图形等所有容器共用的设置';
+
+  @override
+  String get linuxGpuSection => '图形加速';
+
+  @override
+  String get linuxGpuHardware => '硬件（VirGL）';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      '使用设备的 GPU 绘制 OpenGL。3D 应用、游戏和浏览器更快。';
+
+  @override
+  String get linuxGpuSoftware => '软件（llvmpipe）';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      '使用 CPU 绘制。较慢，但在 GPU 上显示异常的应用也能正确显示。';
+
+  @override
+  String get linuxGpuUnavailable => '此设备无法使用 VirGL。';
+
+  @override
+  String get linuxGpuApplyNote => '更改将应用于此后启动的应用。请重新打开已打开的桌面。';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return '$count 个容器正在使用 VirGL';
+  }
 }

@@ -31,7 +31,7 @@ import kotlin.system.exitProcess
 class LinuxContainerService : ILinuxContainerService.Stub() {
     companion object {
         private const val TAG = "DextopLinuxService"
-        const val PROTOCOL_VERSION = 6
+        const val PROTOCOL_VERSION = 7
         private const val BUFFER = 256 * 1024
     }
 
@@ -46,8 +46,12 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     override fun probe(): String =
         "protocol=$PROTOCOL_VERSION pid=${Os.getpid()} uid=${Os.getuid()} proot=${proot?.available()}"
 
+    @Volatile private var graphics: LinuxGraphics? = null
+
     override fun initialize(nativeLibraryDir: String, callback: ILinuxContainerCallback?) {
-        proot = LinuxProot(nativeLibraryDir)
+        val renderer = LinuxGraphics(nativeLibraryDir)
+        graphics = renderer
+        proot = LinuxProot(nativeLibraryDir).apply { guestEnvironment = renderer::environment }
         this.callback = callback
         LinuxPaths.containers.mkdirs()
         // An install interrupted by a reboot or a killed service never completes.
@@ -220,6 +224,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         sessions.remove(containerId)?.stop()
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
         val display = LinuxRuntime.freeDisplay(usedDisplays())
+        startRenderer(containerId)
         val session = runtimeStart(containerId) { LinuxDesktopSession.start(
             requireProot(), containerId, display,
             width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 480),
@@ -233,6 +238,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
 
     override fun stopDesktop(containerId: String) {
         sessions.remove(containerId)?.stop()
+        stopRendererIfIdle(containerId)
         notifyChanged()
     }
 
@@ -292,6 +298,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         appSessions.remove(containerId)?.stop()
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
         val display = LinuxRuntime.freeDisplay(usedDisplays())
+        startRenderer(containerId)
         val session = runtimeStart(containerId) { LinuxAppSession.start(
             requireProot(), containerId, display,
             width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 640),
@@ -331,7 +338,36 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     override fun stopApps(containerId: String) {
         appProcesses.remove(containerId)?.toList()?.forEach { runCatching { it.destroyForcibly() } }
         appSessions.remove(containerId)?.stop()
+        stopRendererIfIdle(containerId)
     }
+
+    // region graphics
+    /** Starts the container's VirGL renderer when hardware rendering is selected (falls back to llvmpipe). */
+    private fun startRenderer(containerId: String) {
+        graphics?.ensure(containerId) { line -> log(containerId, line) }
+    }
+
+    private fun stopRendererIfIdle(containerId: String) {
+        if (sessions[containerId]?.alive != true && appSessions[containerId]?.alive != true) graphics?.stop(containerId)
+    }
+
+    override fun linuxSettings(): String = (graphics?.status() ?: LinuxSettings.read()).toString()
+
+    /**
+     * Saves settings. A changed renderer applies to applications started
+     * afterwards; running sessions keep theirs until restarted.
+     */
+    override fun setLinuxSettings(json: String): String {
+        val before = LinuxSettings.gpuMode
+        LinuxSettings.write(JSONObject(json))
+        if (LinuxSettings.gpuMode != before) {
+            (sessions.keys + appSessions.keys).toSet().forEach { id ->
+                if (LinuxSettings.gpuMode == LinuxGpuMode.HARDWARE) startRenderer(id) else graphics?.stop(id)
+            }
+        }
+        return linuxSettings()
+    }
+    // endregion
 
     override fun attachWindow(containerId: String, xid: Int, surface: android.view.Surface?): Boolean =
         surface != null && appSessions[containerId]?.attachSurface(xid, surface) == true
@@ -360,6 +396,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     override fun destroy() {
         sessions.values.forEach { runCatching { it.stop() } }
         appSessions.keys.toList().forEach { runCatching { stopApps(it) } }
+        graphics?.stopAll()
         activeProcesses.values.forEach { runCatching { it.destroyForcibly() } }
         installer.shutdownNow()
         exitProcess(0)

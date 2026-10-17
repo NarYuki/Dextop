@@ -36,7 +36,8 @@ internal class LinuxDesktopSession(
                 .redirectErrorStream(true).start()
             process.outputStream.close()
             Thread {
-                process.inputStream.bufferedReader().forEachLine { Log.i(TAG, "[$display] $it") }
+                // Destroying the process interrupts this read; that must not crash the service.
+                runCatching { process.inputStream.bufferedReader().forEachLine { Log.i(TAG, "[$display] $it") } }
             }.apply { isDaemon = true; start() }
             val deadline = SystemClock.uptimeMillis() + 15_000
             var client: X11Client? = null

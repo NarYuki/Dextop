@@ -130,7 +130,7 @@ internal object LinuxSetupPlan {
         val environment = buildString {
             appendLine("export LANG=${options.locale}.UTF-8")
             appendLine("export LANGUAGE=${options.locale}:${options.locale.substringBefore('_')}:en")
-            if (options.graphics) appendLine("export LIBGL_ALWAYS_SOFTWARE=1")
+            // The renderer (VirGL or llvmpipe) follows the Linux settings; see LinuxGraphics.
             if (options.ime != "none") {
                 appendLine("export GTK_IM_MODULE=fcitx QT_IM_MODULE=fcitx XMODIFIERS=@im=fcitx")
             }
@@ -190,6 +190,7 @@ internal object LinuxSetupPlan {
             appendLine("cat >$launcher <<'DEXTOP_BROWSER'")
             appendLine("#!/bin/sh")
             if (browser == "firefox") appendLine("export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1")
+            else appendLine(LinuxCatalog.CHROMIUM_VIRGL_FLAGS)
             appendLine("exec $command ${if (browser != "firefox") "--no-sandbox --disable-dev-shm-usage " else ""}\"\$@\"")
             appendLine("DEXTOP_BROWSER\nchmod 755 $launcher")
             // XDG user override shared by IceWM and Plasma, keeping the package's desktop id.
