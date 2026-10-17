@@ -2612,4 +2612,345 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get nativePlasmaApplying => '切り替え中…';
+
+  @override
+  String get linuxDescription =>
+      'root なしで Linux（Debian・Ubuntu・Arch Linux ARM）を動かし、アプリを Plasma のウィンドウとして開きます。';
+
+  @override
+  String get linuxUnsupportedDevice => 'Linux は arm64 端末でのみ使えます。';
+
+  @override
+  String get linuxRequiresPlasma => 'Linux は Dextop Plasma v2 を使っているときだけ使えます。';
+
+  @override
+  String get linuxSwitchToPlasma => 'Plasma v2 に切り替える';
+
+  @override
+  String get linuxRequiresPrivilege =>
+      'Linux は Dextop 内蔵のアクセス機能を使います。「Dextopアクセスを設定」から接続してください。外部の Stellar や Shizuku は必須ではありません。';
+
+  @override
+  String get linuxEnable => 'Linux を有効にする';
+
+  @override
+  String get linuxEnableDescription =>
+      'コンテナを作成・管理し、Plasma から Linux アプリを開けるようにします';
+
+  @override
+  String get linuxNoContainers => 'コンテナはまだありません。「新規追加」から作成してください。';
+
+  @override
+  String get linuxAddContainer => '新規追加';
+
+  @override
+  String get linuxContainerName => '名前';
+
+  @override
+  String get linuxDistribution => 'ディストリビューション';
+
+  @override
+  String get linuxStorageNote =>
+      'コンテナは /data/local/tmp/dextop/linux に保存され、Dextop をアンインストールしても残ります。不要になったらここで削除してください。';
+
+  @override
+  String get linuxInstall => 'インストール';
+
+  @override
+  String get linuxCancel => 'キャンセル';
+
+  @override
+  String get linuxDelete => '削除';
+
+  @override
+  String linuxDeleteConfirm(String name) {
+    return '「$name」とその中のファイルをすべて削除しますか？';
+  }
+
+  @override
+  String get linuxRepair => '修復';
+
+  @override
+  String get linuxShowLog => 'ログを表示';
+
+  @override
+  String get linuxRunCommand => 'コマンドを実行';
+
+  @override
+  String get linuxRun => '実行';
+
+  @override
+  String get linuxStateInstalling => 'インストール中';
+
+  @override
+  String get linuxStateInstalled => 'インストール済み';
+
+  @override
+  String get linuxStateFailed => '失敗';
+
+  @override
+  String get linuxPhaseDownload => 'ダウンロード中';
+
+  @override
+  String get linuxPhaseVerify => '検証中';
+
+  @override
+  String get linuxPhaseExtract => '展開中';
+
+  @override
+  String get linuxPhaseConfigure => '設定中';
+
+  @override
+  String get linuxPhaseProvision => '必要なパッケージをインストール中';
+
+  @override
+  String get linuxOpenDesktop => 'デスクトップを開く';
+
+  @override
+  String get linuxStartPlasmaFirst => 'Dextop を Plasma v2 で起動してから開いてください。';
+
+  @override
+  String get nativePlasmaShowKeyboard => 'キーボードを表示';
+
+  @override
+  String get nativeLinuxDesktopConnecting => 'Linux サービスに接続しています…';
+
+  @override
+  String get nativeLinuxDesktopStartingContainer => 'コンテナと画面を起動しています…';
+
+  @override
+  String get nativeLinuxDesktopStartingWm => 'ウィンドウマネージャーを起動しています…';
+
+  @override
+  String get nativePlasmaCategoryLinux => 'Linux';
+
+  @override
+  String get linuxPhasePrepare => 'イメージ情報を取得中';
+
+  @override
+  String get linuxPhaseRefresh => 'パッケージ一覧を更新中';
+
+  @override
+  String get linuxPhaseFinish => '仕上げ中';
+
+  @override
+  String linuxPhaseStep(int step, int total) {
+    return 'ステップ $step/$total';
+  }
+
+  @override
+  String get linuxSetupTitle => 'Linux のセットアップ';
+
+  @override
+  String get linuxSetupIntro =>
+      '使い方に合わせて Linux を準備します。デスクトップ、言語、入力方法、アプリを順番に選びましょう。';
+
+  @override
+  String get linuxSetupExisting =>
+      'この Linux 環境に機能を追加します。既存のファイルやアプリは保持されます。設定を反映するには、完了後にデスクトップを開き直してください。';
+
+  @override
+  String get linuxSetupSystem => 'Linux 環境を選ぶ';
+
+  @override
+  String get linuxSetupDesktop => 'デスクトップを準備';
+
+  @override
+  String get linuxSetupLanguage => '言語とフォント';
+
+  @override
+  String get linuxSetupInput => '文字入力の設定';
+
+  @override
+  String get linuxSetupApps => 'アプリを選ぶ';
+
+  @override
+  String get linuxSetupReview => 'セットアップ内容を確認';
+
+  @override
+  String get linuxSetupProgress => 'ワークスペースを準備中';
+
+  @override
+  String get linuxSetupDone => 'Linux の準備ができました';
+
+  @override
+  String get linuxSetupDoneDetail =>
+      'Linux タブからデスクトップを開くか、Plasma から Linux アプリを起動できます。Fcitx 5 の入力切り替えは Ctrl+Space です。';
+
+  @override
+  String get linuxSetupNext => '次へ';
+
+  @override
+  String get linuxSetupBack => '戻る';
+
+  @override
+  String get linuxSetupApply => 'セットアップを開始';
+
+  @override
+  String get linuxSetupCustomize => 'セットアップ・機能を追加';
+
+  @override
+  String get linuxSetupMinimal => '最小構成の IceWM';
+
+  @override
+  String get linuxSetupMinimalDetail =>
+      'Xvfb・IceWM・ターミナルの軽量な構成です。追加機能は次のステップで選べます。';
+
+  @override
+  String get linuxSetupComplete => '普段使いの IceWM';
+
+  @override
+  String get linuxSetupCompleteDetail =>
+      'テーマ・アイコン・Mesa ソフトウェア描画・ファイルマネージャー・エディターを選択した構成です。各項目は変更できます。';
+
+  @override
+  String get linuxSetupThemes => 'テーマとアイコン';
+
+  @override
+  String get linuxSetupThemesDetail =>
+      'IceWM のテーマと、GTK アプリ向けの Adwaita スタイルを用意します。';
+
+  @override
+  String get linuxSetupGraphics => 'Mesa グラフィックス対応';
+
+  @override
+  String get linuxSetupGraphicsDetail =>
+      'OpenGL・EGL ライブラリとソフトウェア描画を追加します。この Xvfb デスクトップは GPU のハードウェアアクセラレーションには対応していません。';
+
+  @override
+  String get linuxSetupLocale => 'Linux の表示言語';
+
+  @override
+  String get linuxSetupLocaleDetail =>
+      '選んだ言語の UTF-8 ロケールを生成し、対応するデスクトップやアプリに適用します。';
+
+  @override
+  String get linuxSetupFonts => '日本語・中国語・韓国語フォント';
+
+  @override
+  String get linuxSetupFontsDetail =>
+      'Noto CJK フォントを追加します。通常の Noto フォントと絵文字フォントはすべての構成に含まれます。';
+
+  @override
+  String get linuxSetupNoIme => 'Android のキーボードのみ';
+
+  @override
+  String get linuxSetupNoImeDetail =>
+      'Linux 側の IME は起動しません。Plasma では Android のキーボードを引き続き利用できます。';
+
+  @override
+  String get linuxSetupImeDetail =>
+      'Linux の起動時に Fcitx 5 を起動し、GTK・Qt アプリと連携します。IME を選ぶと CJK フォントも追加します。';
+
+  @override
+  String get linuxSetupMozc => '日本語 — Mozc';
+
+  @override
+  String get linuxSetupPinyin => '中国語 — 拼音';
+
+  @override
+  String get linuxSetupHangul => '韓国語 — ハングル';
+
+  @override
+  String get linuxSetupFirefoxDetail =>
+      'Debian では Firefox ESR、Arch では Firefox を追加します。';
+
+  @override
+  String get linuxSetupChromeDetail =>
+      'Google 公式の ARM64 版を Google から取得します。Debian・Ubuntu で利用できます。';
+
+  @override
+  String get linuxSetupChromiumDetail =>
+      'ディストリビューションの公式リポジトリから Chromium を追加します。';
+
+  @override
+  String get linuxSetupSnapUnavailable =>
+      'この Ubuntu イメージでは Snap が必要なため選択できません。Debian・Arch を選ぶか、Google Chrome を利用してください。';
+
+  @override
+  String get linuxSetupChromeUnavailable =>
+      'このセットアップでは Debian・Ubuntu 向けの公式インストーラーを利用します。';
+
+  @override
+  String get linuxSetupBrowserNote =>
+      'ブラウザーは PRoot 向けにサンドボックスを無効化したランチャーで起動します。この環境で使うものを選んでください。';
+
+  @override
+  String get linuxSetupFiles => 'ファイルマネージャー';
+
+  @override
+  String get linuxSetupFilesDetail => 'PCManFM — フォルダーの閲覧とファイル管理。';
+
+  @override
+  String get linuxSetupEditor => 'テキストエディター';
+
+  @override
+  String get linuxSetupEditorDetail => 'Mousepad — 軽量なグラフィカルエディター。';
+
+  @override
+  String get linuxSetupOffice => 'オフィススイート';
+
+  @override
+  String get linuxSetupOfficeDetail =>
+      'LibreOffice — 文書・表計算・プレゼンテーション。ダウンロード量と必要な空き容量が増えます。';
+
+  @override
+  String get linuxSetupStorage =>
+      '数 GB 以上の空き容量を確保してください。ダウンロード量と使用容量は、選んだ環境やアプリによって変わります。この画面を閉じてもインストールは続きます。';
+
+  @override
+  String get linuxSetupAdditive =>
+      '選択を外したアプリは削除しません。選んだパッケージを追加し、言語やセッション設定を更新します。';
+
+  @override
+  String get linuxSetupNothingExtra => '追加アプリなし';
+
+  @override
+  String get linuxSetupRetry => '内容を確認して再試行';
+
+  @override
+  String get linuxSetupBackground => 'バックグラウンドで続行';
+
+  @override
+  String get linuxSetupLog => 'インストールの詳細';
+
+  @override
+  String get linuxSetupFailed => 'セットアップを完了できませんでした';
+
+  @override
+  String get linuxSetupPhaseLanguage => '言語とフォントを設定中';
+
+  @override
+  String get linuxSetupPhaseInput => 'IME をインストール中';
+
+  @override
+  String get linuxSetupPhaseDesktop => 'テーマとアイコンを設定中';
+
+  @override
+  String get linuxSetupPhaseGraphics => 'グラフィックスライブラリをインストール中';
+
+  @override
+  String get linuxSetupPhaseApps => '選んだアプリをインストール中';
+
+  @override
+  String get linuxSetupPhaseIntegration => 'アプリとデスクトップを連携中';
+
+  @override
+  String get linuxRuntimeStarting => 'Linuxを起動中…';
+
+  @override
+  String get linuxRuntimeRunning => 'Linux実行中';
+
+  @override
+  String get linuxRuntimeStopped => 'Linux停止中';
+
+  @override
+  String get linuxSessionReset => 'セッションをリセット';
+
+  @override
+  String get linuxForceStop => 'PRootを強制終了';
+
+  @override
+  String get linuxForceStopConfirm =>
+      'この環境のLinuxプロセスをすべて強制終了します。未保存の作業は失われます。インストール済みアプリとファイルは残ります。';
 }

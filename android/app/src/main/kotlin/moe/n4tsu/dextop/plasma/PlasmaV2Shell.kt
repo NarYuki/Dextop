@@ -35,6 +35,10 @@ import android.view.Surface
 import android.view.View
 import android.widget.FrameLayout
 import moe.n4tsu.dextop.DisplayEnvironmentSettings
+import moe.n4tsu.dextop.linux.LinuxContainerClient
+import moe.n4tsu.dextop.linux.LinuxKeymap
+import org.json.JSONArray
+import org.json.JSONObject
 import moe.n4tsu.dextop.VirtualDisplayPlatform
 import moe.n4tsu.dextop.chooseMirrorRefreshRate
 import java.util.concurrent.Executors
@@ -79,6 +83,11 @@ internal class PlasmaV2Shell(
         private const val LAUNCH_TIMEOUT_MS = 7_000L
         private const val INJECT_ASYNC = 0
         private const val DISPLAY_IME_POLICY_LOCAL = 0
+        /** MotionEvent button bits to X button numbers (left, middle, right, back, forward). */
+        private val LINUX_BUTTONS = listOf(
+            MotionEvent.BUTTON_PRIMARY to 1, MotionEvent.BUTTON_TERTIARY to 2, MotionEvent.BUTTON_SECONDARY to 3,
+            MotionEvent.BUTTON_BACK to 8, MotionEvent.BUTTON_FORWARD to 9,
+        )
     }
 
     // region state
@@ -204,6 +213,8 @@ internal class PlasmaV2Shell(
         appRepository.refresh { panel.invalidate() }
         ensureDefaults()
         buildRoot()
+        LinuxContainerClient.addListener(linuxListener)
+        refreshLinuxApps(resumeWindows = true)
         refreshTray()
         handler.postDelayed(pollRunnable, POLL_INTERVAL_MS)
         handler.postDelayed(trayTicker, 30_000L)
@@ -215,6 +226,8 @@ internal class PlasmaV2Shell(
         if (!running) return
         running = false
         handler.removeCallbacksAndMessages(null)
+        // Linux applications keep running; the next session shows their windows again.
+        LinuxContainerClient.removeListener(linuxListener)
         val snapshot = windows.toList()
         windows.clear()
         // Applications move back to the Dextop display so the platform
@@ -333,6 +346,14 @@ internal class PlasmaV2Shell(
         root.addView(panel, FrameLayout.LayoutParams(-1, panel.thickness + panel.floatMargin * 2, Gravity.BOTTOM))
         popupLayer = FrameLayout(displayContext)
         root.addView(popupLayer, FrameLayout.LayoutParams(-1, -1))
+        linuxPopupLayer = LinuxPopupLayer(displayContext)
+        root.addView(linuxPopupLayer, FrameLayout.LayoutParams(-1, -1))
+        linuxIme = LinuxImeTarget(
+            displayContext,
+            onText = { text -> activeLinuxContainer()?.let { id -> LinuxContainerClient.service()?.text(id, text) } },
+            onKey = { event -> activeLinuxContainer()?.let { id -> forwardLinuxKey(id, event) } },
+        )
+        root.addView(linuxIme, FrameLayout.LayoutParams(1, 1))
         // Top-left hot corner: a 2px hover target above everything.
         val corner = View(displayContext)
         corner.setOnHoverListener { _, event ->
@@ -380,6 +401,15 @@ internal class PlasmaV2Shell(
     }
 
     override fun onSurfaceReady(window: V2Window, surface: Surface, width: Int, height: Int) {
+        if (window.packageName.startsWith("linux-launch:") || window.packageName.startsWith("linux-error:")) return
+        if (window.linuxXid != 0) {
+            attachLinuxWindow(window, surface)
+            return
+        }
+        window.linuxContainer?.let { id ->
+            attachLinuxDesktop(window, id, surface, width, height)
+            return
+        }
         val w = width.coerceAtLeast(1)
         val h = height.coerceAtLeast(1)
         val existing = window.display
@@ -429,6 +459,11 @@ internal class PlasmaV2Shell(
     }
 
     override fun onSurfaceDestroyed(window: V2Window) {
+        window.linuxContainer?.let { id ->
+            LinuxContainerClient.service()?.runCatching {
+                if (window.linuxXid != 0) detachWindow(id, window.linuxXid) else detachSurface(id)
+            }
+        }
         // Detaching only happens when the window is removed; the display is released there.
     }
 
@@ -603,6 +638,501 @@ internal class PlasmaV2Shell(
         )
     }
 
+    // region Linux application windows
+    /** Kickoff entries for the desktop entries of every installed container. */
+    @Volatile private var linuxApps: List<PlasmaApp> = emptyList()
+    private lateinit var linuxPopupLayer: LinuxPopupLayer
+
+    private val linuxListener = object : LinuxContainerClient.Listener {
+        override fun onWindowEvent(containerId: String, event: JSONObject) {
+            if (running) handleLinuxWindowEvent(containerId, event)
+        }
+
+        override fun onContainersChanged() {
+            if (running) refreshLinuxApps(resumeWindows = false)
+        }
+    }
+
+    private fun linuxEnabled(): Boolean =
+        service.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.linux_enabled", false)
+
+    /**
+     * Loads the applications of every installed container for Kickoff. With
+     * [resumeWindows], application displays still running from an earlier
+     * Plasma session send their windows again.
+     */
+    private fun refreshLinuxApps(resumeWindows: Boolean) {
+        if (!linuxEnabled() || !LinuxContainerClient.privilegeAvailable()) {
+            linuxApps = emptyList()
+            return
+        }
+        val locale = java.util.Locale.getDefault().toLanguageTag()
+        val resources = service.resources
+        val fallback = palette.text
+        val screenWidth = width
+        val screenHeight = height
+        val dpi = densityDpi
+        LinuxContainerClient.call(service, { linux ->
+            val containers = JSONArray(linux.listContainers())
+            val installed = (0 until containers.length()).map(containers::getJSONObject)
+                .filter { it.optString("state") == "installed" }
+            if (resumeWindows) {
+                installed.filter { it.optBoolean("appsRunning") }.forEach { container ->
+                    runCatching { linux.startApps(container.getString("id"), screenWidth, screenHeight, dpi) }
+                }
+            }
+            val multiple = installed.size > 1
+            installed.flatMap { container ->
+                val id = container.getString("id")
+                val entries = runCatching { JSONArray(linux.listApps(id, locale)) }.getOrNull() ?: return@flatMap emptyList()
+                (0 until entries.length()).map(entries::getJSONObject).map { entry ->
+                    val name = entry.optString("name")
+                    val icon = entry.optString("icon").takeIf { it.isNotEmpty() }?.let { encoded ->
+                        runCatching {
+                            val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                                ?.let { android.graphics.drawable.BitmapDrawable(resources, it) }
+                        }.getOrNull()
+                    } ?: GlyphDrawable(Glyph.WINDOW, fallback)
+                    PlasmaApp(
+                        "$LINUX_APP_PREFIX$id:${entry.optString("id")}",
+                        if (multiple) "$name (${container.optString("name")})" else name,
+                        icon, LINUX_APP_CATEGORY, entry.optString("startupWMClass"),
+                    )
+                }
+            }
+        }, { apps ->
+            linuxApps = apps
+            windows.filter { it.linuxXid != 0 }.forEach { window ->
+                window.icon = linuxIcon(window.linuxContainer ?: return@forEach, window.linuxWMClass)
+                window.view.titleBar.invalidate()
+            }
+            panel.invalidate()
+        }) { error -> host.log("Plasma v2 Linux applications unavailable: ${error.message}") }
+    }
+
+    private fun launchLinuxApp(packageName: String) {
+        val (containerId, desktopId) = packageName.removePrefix(LINUX_APP_PREFIX).split(':', limit = 2)
+            .takeIf { it.size == 2 } ?: return
+        val placeholder = createWindow("linux-launch:$containerId:$desktopId", Rect(workArea()).apply { inset(width() / 12, height() / 12) })
+        placeholder.title = linuxApps.firstOrNull { it.packageName == packageName }?.label ?: desktopId
+        placeholder.view.titleBar.invalidate()
+        placeholder.view.showStatus(t("nativeLinuxDesktopStartingContainer"))
+        root.postDelayed({
+            if (!placeholder.closing && windows.contains(placeholder)) {
+                LinuxContainerClient.call(service, { it.runtimeLogs(containerId) }, { logs ->
+                    if (!placeholder.closing) placeholder.view.showError("Application did not open a window within 30 seconds.\n$logs")
+                }) { error -> if (!placeholder.closing) placeholder.view.showError(error.message ?: error.toString()) }
+            }
+        }, 30_000)
+        val screenWidth = width
+        val screenHeight = height
+        val dpi = densityDpi
+        LinuxContainerClient.call(service, { linux ->
+            linux.startApps(containerId, screenWidth, screenHeight, dpi)
+            linux.launchApp(containerId, desktopId)
+        }, {}) { error -> showLinuxError(containerId, error.message ?: error.toString(), false) }
+    }
+
+    private fun showLinuxError(id: String, message: String, desktop: Boolean = true) {
+        root.post {
+            if (!running) return@post
+            val existing = windows.firstOrNull { (it.packageName.startsWith("linux-launch:$id:") || it.packageName == "linux-error:$id") && !it.closing }
+                ?: windows.firstOrNull { desktop && it.linuxContainer == id && it.linuxXid == 0 && !it.closing }
+            val window = existing ?: createWindow("linux-error:$id", Rect(workArea()).apply { inset(width() / 12, height() / 12) }).also {
+                it.title = "Linux"
+                it.view.titleBar.invalidate()
+            }
+            window.view.showError(message)
+        }
+    }
+
+    private fun linuxWindow(containerId: String, xid: Int) =
+        windows.firstOrNull { it.linuxContainer == containerId && it.linuxXid == xid && !it.closing }
+
+    private fun handleLinuxWindowEvent(containerId: String, event: JSONObject) {
+        val xid = event.optInt("xid")
+        val popup = event.optBoolean("popup")
+        val bounds = Rect(event.optInt("x"), event.optInt("y"), event.optInt("x") + event.optInt("w"), event.optInt("y") + event.optInt("h"))
+        when (event.optString("type")) {
+            "error" -> showLinuxError(containerId, event.optString("message"), event.optString("target") != "apps")
+            "reset" -> windows.filter { it.linuxContainer == containerId || it.packageName.startsWith("linux-launch:$containerId:") || it.packageName == "linux-error:$containerId" }.toList().forEach(::closeWindowNow)
+            "map" -> {
+                if (!popup) windows.filter { it.packageName.startsWith("linux-launch:$containerId:") }.toList().forEach(::closeWindowNow)
+                if (popup) linuxPopupLayer.show(containerId, xid, bounds) else mapLinuxWindow(containerId, xid, event, bounds)
+            }
+            "configure" -> if (popup) linuxPopupLayer.place(containerId, xid, bounds) else linuxWindow(containerId, xid)?.let { window ->
+                clientConfiguredLinuxWindow(window, bounds)
+            }
+            "title" -> linuxWindow(containerId, xid)?.let { window ->
+                window.title = event.optString("title").ifBlank { window.title }
+                window.view.titleBar.invalidate()
+                panel.invalidate()
+            }
+            "class" -> linuxWindow(containerId, xid)?.let { window ->
+                window.linuxWMClass = event.optString("class")
+                window.icon = linuxIcon(containerId, window.linuxWMClass)
+                window.view.titleBar.invalidate()
+                panel.invalidate()
+            }
+            "unmap" -> if (popup) linuxPopupLayer.remove(containerId, xid) else linuxWindow(containerId, xid)?.let(::closeWindowNow)
+        }
+    }
+
+    private fun mapLinuxWindow(containerId: String, xid: Int, event: JSONObject, bounds: Rect) {
+        if (linuxWindow(containerId, xid) != null) return
+        val area = workArea()
+        val w = bounds.width().coerceIn(dp(160), area.width())
+        val h = (bounds.height() + titleHeight).coerceIn(dp(100), area.height())
+        val parent = event.optInt("transientFor").takeIf { it != 0 }?.let { linuxWindow(containerId, it) }
+        val origin = if (parent != null) {
+            Rect(parent.frame.centerX() - w / 2, parent.frame.centerY() - h / 2, 0, 0)
+        } else {
+            smartPlacement()
+        }
+        val frame = clampFrame(Rect(origin.left, origin.top, origin.left + w, origin.top + h))
+        val wmClass = event.optString("class")
+        val window = createWindow("linuxwin:$containerId:${wmClass.lowercase()}", frame)
+        window.linuxContainer = containerId
+        window.linuxXid = xid
+        window.linuxWMClass = wmClass
+        window.title = event.optString("title").ifBlank { wmClass.ifBlank { "Linux" } }
+        window.icon = linuxIcon(containerId, wmClass)
+        window.view.titleBar.invalidate()
+        LinuxContainerClient.service()?.runCatching { activateWindow(containerId, xid) }
+        panel.invalidate()
+    }
+
+    /** The Kickoff icon of the application whose desktop entry or name matches [wmClass]. */
+    private fun linuxIcon(containerId: String, wmClass: String): android.graphics.drawable.Drawable {
+        val key = wmClass.lowercase()
+        val prefix = "$LINUX_APP_PREFIX$containerId:"
+        val matchingClass = linuxApps.firstOrNull {
+            it.packageName.startsWith(prefix) && key.isNotEmpty() && it.startupWMClass.equals(wmClass, ignoreCase = true)
+        }
+        return (matchingClass ?: linuxApps.firstOrNull { app ->
+            app.packageName.startsWith(prefix) && key.isNotEmpty() &&
+                (app.packageName.removePrefix(prefix).removeSuffix(".desktop").lowercase().let { it == key || it.endsWith(".$key") || it.endsWith("-$key") } ||
+                    app.label.lowercase().startsWith(key))
+        })?.icon ?: GlyphDrawable(Glyph.WINDOW, palette.text)
+    }
+
+    private fun attachLinuxWindow(window: V2Window, surface: Surface) {
+        val id = window.linuxContainer ?: return
+        val xid = window.linuxXid
+        syncLinuxWindow(window)
+        LinuxContainerClient.call(service, { linux -> linux.attachWindow(id, xid, surface) }, { attached ->
+            if (!attached) host.log("Plasma v2 Linux window 0x${xid.toString(16)} could not be drawn")
+        }) { error -> host.log("Plasma v2 Linux window attach failed: ${error.message}") }
+    }
+
+    /** Puts the X window exactly under the Plasma window's content. */
+    private fun syncLinuxWindow(window: V2Window) {
+        val id = window.linuxContainer ?: return
+        if (window.linuxXid == 0) return
+        val w = window.clientWidth().coerceAtLeast(1)
+        val h = window.clientHeight(titleHeight).coerceAtLeast(1)
+        window.linuxConfiguredAt = SystemClock.uptimeMillis()
+        LinuxContainerClient.service()?.runCatching {
+            configureWindow(id, window.linuxXid, window.frame.left, window.frame.top + titleHeight, w, h)
+        }
+    }
+
+    /** The client moved or resized itself: the Plasma window takes the new size and keeps its place. */
+    private fun clientConfiguredLinuxWindow(window: V2Window, bounds: Rect) {
+        if (resizing === window || moving === window) return
+        if (SystemClock.uptimeMillis() - window.linuxConfiguredAt < 700) return
+        val contentWidth = window.clientWidth()
+        val contentHeight = window.clientHeight(titleHeight)
+        if (bounds.width() != contentWidth || bounds.height() != contentHeight) {
+            val frame = clampFrame(Rect(window.frame.left, window.frame.top,
+                window.frame.left + bounds.width(), window.frame.top + bounds.height() + titleHeight))
+            window.maximized = false
+            window.tile = TileZone.NONE
+            setFrame(window, frame, resizeDisplay = false)
+        }
+        if (bounds.left != window.frame.left || bounds.top != window.frame.top + titleHeight ||
+            bounds.width() != window.clientWidth() || bounds.height() != window.clientHeight(titleHeight)) {
+            syncLinuxWindow(window)
+        }
+    }
+
+    /**
+     * Override-redirect X windows (menus, tooltips, drop-downs) drawn at
+     * their X position, which is a display position because every X window
+     * sits under its Plasma window's content.
+     */
+    private inner class LinuxPopupLayer(context: Context) : FrameLayout(context) {
+        private inner class Popup(val containerId: String, val xid: Int) : android.view.TextureView(context) {
+            var buttons = 0
+            var surface: Surface? = null
+
+            init {
+                isOpaque = true
+                surfaceTextureListener = object : SurfaceTextureListener {
+                    override fun onSurfaceTextureAvailable(texture: android.graphics.SurfaceTexture, w: Int, h: Int) {
+                        val created = Surface(texture)
+                        surface = created
+                        LinuxContainerClient.call(service, { it.attachWindow(containerId, xid, created) }, {}) {}
+                    }
+
+                    override fun onSurfaceTextureSizeChanged(texture: android.graphics.SurfaceTexture, w: Int, h: Int) = Unit
+
+                    override fun onSurfaceTextureDestroyed(texture: android.graphics.SurfaceTexture): Boolean {
+                        LinuxContainerClient.service()?.runCatching { detachWindow(containerId, xid) }
+                        surface?.release()
+                        surface = null
+                        return true
+                    }
+
+                    override fun onSurfaceTextureUpdated(texture: android.graphics.SurfaceTexture) = Unit
+                }
+                val forward = { event: MotionEvent ->
+                    val linux = LinuxContainerClient.service()
+                    if (linux != null) {
+                        forwardLinuxPointer(
+                            event, event.x.roundToInt(), event.y.roundToInt(),
+                            buttons = { buttons }, setButtons = { buttons = it },
+                            send = { action, x, y, button -> linux.windowPointer(containerId, xid, action, x, y, button) },
+                            scroll = { dx, dy -> linux.scroll("$containerId#apps", dx, dy) },
+                        )
+                    }
+                    true
+                }
+                setOnTouchListener { _, event -> forward(event) }
+                setOnHoverListener { _, event -> forward(event) }
+                setOnGenericMotionListener { _, event -> forward(event) }
+            }
+        }
+
+        private val popups = LinkedHashMap<String, Popup>()
+
+        init {
+            clipChildren = false
+        }
+
+        fun show(containerId: String, xid: Int, bounds: Rect) {
+            val key = "$containerId:$xid"
+            if (key in popups) return place(containerId, xid, bounds)
+            val popup = Popup(containerId, xid)
+            popups[key] = popup
+            addView(popup, LayoutParams(bounds.width().coerceAtLeast(1), bounds.height().coerceAtLeast(1)))
+            popup.x = bounds.left.toFloat()
+            popup.y = bounds.top.toFloat()
+        }
+
+        fun place(containerId: String, xid: Int, bounds: Rect) {
+            val popup = popups["$containerId:$xid"] ?: return
+            val params = popup.layoutParams
+            if (params.width != bounds.width() || params.height != bounds.height()) {
+                params.width = bounds.width().coerceAtLeast(1)
+                params.height = bounds.height().coerceAtLeast(1)
+                popup.layoutParams = params
+            }
+            popup.x = bounds.left.toFloat()
+            popup.y = bounds.top.toFloat()
+        }
+
+        fun remove(containerId: String, xid: Int) {
+            popups.remove("$containerId:$xid")?.let(::removeView)
+        }
+
+        /**
+         * A menu holds the X pointer grab until the next click; a click
+         * outside every Linux surface would never reach X, so it is passed
+         * on as an X click (then handled by Plasma as usual).
+         */
+        override fun onInterceptTouchEvent(event: MotionEvent): Boolean {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN && popups.isNotEmpty()) {
+                val x = event.x.roundToInt()
+                val y = event.y.roundToInt()
+                val onPopup = popups.values.any { x >= it.x && y >= it.y && x < it.x + it.width && y < it.y + it.height }
+                val anchor = popups.values.last()
+                val onLinuxWindow = windows.any { window ->
+                    window.linuxContainer == anchor.containerId && window.linuxXid != 0 && isShown(window) &&
+                        window.frame.contains(x, y) && y >= window.frame.top + titleHeight
+                }
+                if (!onPopup && !onLinuxWindow) {
+                    LinuxContainerClient.service()?.runCatching {
+                        val localX = x - anchor.x.roundToInt()
+                        val localY = y - anchor.y.roundToInt()
+                        windowPointer(anchor.containerId, anchor.xid, 1, localX, localY, 1)
+                        windowPointer(anchor.containerId, anchor.xid, 2, localX, localY, 1)
+                    }
+                }
+            }
+            return false
+        }
+    }
+    // endregion
+
+    // region Linux windows
+    private lateinit var linuxIme: LinuxImeTarget
+    private var linuxKeyboardShown = false
+
+    /** Input target of the active window: "<container>" for a desktop, "<container>#apps" for an application window. */
+    private fun activeLinuxContainer(): String? =
+        windows.firstOrNull { it.id == activeId && !it.minimized }?.let { window ->
+            window.linuxContainer?.let { if (window.linuxXid != 0) "$it#apps" else it }
+        }
+
+    /** Opens (or raises) the Linux desktop of [containerId] as a Plasma window. */
+    fun openLinuxDesktop(containerId: String, name: String) {
+        if (!running) return
+        windows.firstOrNull { it.linuxContainer == containerId && it.linuxXid == 0 && !it.closing }?.let { existing ->
+            if (existing.minimized) restoreFromMinimize(existing) else activate(existing)
+            return
+        }
+        val area = workArea()
+        val frame = Rect(area).apply { inset(area.width() / 12, area.height() / 12) }
+        val window = createWindow("linux:$containerId", frame)
+        window.linuxContainer = containerId
+        window.title = name
+        window.icon = GlyphDrawable(Glyph.COMPUTER, palette.text)
+        window.view.titleBar.invalidate()
+        panel.invalidate()
+    }
+
+    /** Starts the container's X display at the window's content size and draws it into [surface]. */
+    private fun attachLinuxDesktop(window: V2Window, id: String, surface: Surface, width: Int, height: Int) {
+        val w = width.coerceAtLeast(320)
+        val h = height.coerceAtLeast(240)
+        fun status(key: String?) = root.post { if (!window.closing) window.view.showStatus(key?.let(::t)) }
+        status(if (LinuxContainerClient.connected) "nativeLinuxDesktopStartingContainer" else "nativeLinuxDesktopConnecting")
+        LinuxContainerClient.call(service, { linux ->
+            status("nativeLinuxDesktopStartingContainer")
+            linux.startDesktop(id, w, h, densityDpi)
+            check(linux.attachSurface(id, surface)) { "Unable to draw the Linux desktop" }
+        }, {
+            window.linuxWidth = w
+            window.linuxHeight = h
+            status("nativeLinuxDesktopStartingWm")
+            // Poll off the client's call thread so other Linux calls are not held up.
+            Thread({
+                while (!window.closing) {
+                    val linux = LinuxContainerClient.service()
+                    val state = runCatching { linux?.desktopState(id) }.getOrNull() ?: 0
+                    if (state == 0) {
+                        val logs = runCatching { linux?.runtimeLogs(id) }.getOrNull().orEmpty()
+                        root.post { if (!window.closing) window.view.showError("Linux session stopped.\n$logs") }
+                        break
+                    }
+                    if (state == 2) status(null)
+                    android.os.SystemClock.sleep(500)
+                }
+            }, "DextopLinuxWmWait").apply { isDaemon = true; start() }
+        }) { error ->
+            host.log("Plasma v2 Linux desktop failed container=$id: ${error.message}")
+            window.view.showError(error.message ?: error.toString())
+        }
+    }
+
+    private fun forwardLinuxInput(window: V2Window, event: MotionEvent, source: View) {
+        val id = window.linuxContainer ?: return
+        val linux = LinuxContainerClient.service() ?: return
+        if (source.width <= 0 || source.height <= 0) return
+        val xid = window.linuxXid
+        if (xid != 0) {
+            // Application windows are drawn 1:1 at their X size.
+            forwardLinuxPointer(
+                event, event.x.roundToInt(), event.y.roundToInt(),
+                buttons = { window.linuxButtons }, setButtons = { window.linuxButtons = it },
+                send = { action, x, y, button -> linux.windowPointer(id, xid, action, x, y, button) },
+                scroll = { dx, dy -> linux.scroll("$id#apps", dx, dy) },
+            )
+            return
+        }
+        if (window.linuxWidth <= 0) return
+        forwardLinuxPointer(
+            event,
+            (event.x * window.linuxWidth / source.width).roundToInt(),
+            (event.y * window.linuxHeight / source.height).roundToInt(),
+            buttons = { window.linuxButtons }, setButtons = { window.linuxButtons = it },
+            send = { action, x, y, button -> linux.pointer(id, action, x, y, button) },
+            scroll = { dx, dy -> linux.scroll(id, dx, dy) },
+        )
+    }
+
+    /** Turns [event] (at X position [x], [y]) into X pointer, button and wheel input through [send] and [scroll]. */
+    private fun forwardLinuxPointer(
+        event: MotionEvent, x: Int, y: Int,
+        buttons: () -> Int, setButtons: (Int) -> Unit,
+        send: (action: Int, x: Int, y: Int, button: Int) -> Unit,
+        scroll: (dx: Int, dy: Int) -> Unit,
+    ) {
+        runCatching {
+            if (event.actionMasked == MotionEvent.ACTION_SCROLL) {
+                val vertical = -event.getAxisValue(MotionEvent.AXIS_VSCROLL)
+                val horizontal = event.getAxisValue(MotionEvent.AXIS_HSCROLL)
+                send(0, x, y, 0)
+                scroll(scrollSteps(horizontal), scrollSteps(vertical))
+                return
+            }
+            if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
+                // Report every change of the button state; Android sends both
+                // ACTION_DOWN and ACTION_BUTTON_PRESS for one mouse click.
+                send(0, x, y, 0)
+                val previous = buttons()
+                val current = if (event.actionMasked == MotionEvent.ACTION_CANCEL) 0 else event.buttonState
+                for ((bit, button) in LINUX_BUTTONS) {
+                    val was = previous and bit != 0
+                    val now = current and bit != 0
+                    if (was != now) send(if (now) 1 else 2, x, y, button)
+                }
+                setButtons(current)
+                return
+            }
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> send(1, x, y, 1)
+                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> send(2, x, y, 1)
+                else -> send(0, x, y, 0)
+            }
+        }
+    }
+
+    private fun scrollSteps(value: Float): Int = when {
+        value > 0f -> kotlin.math.max(1, value.roundToInt())
+        value < 0f -> kotlin.math.min(-1, value.roundToInt())
+        else -> 0
+    }
+
+    private fun forwardLinuxKey(id: String, event: KeyEvent) {
+        val linux = LinuxContainerClient.service() ?: return
+        val down = event.action == KeyEvent.ACTION_DOWN
+        val code = LinuxKeymap.evdev(event)
+        runCatching {
+            when {
+                code != null -> linux.key(id, code, down)
+                down && event.unicodeChar > 0 -> linux.text(id, String(Character.toChars(event.unicodeChar)))
+                event.action == KeyEvent.ACTION_MULTIPLE && !event.characters.isNullOrEmpty() -> linux.text(id, event.characters)
+            }
+        }
+    }
+
+    private fun showLinuxKeyboard() {
+        linuxKeyboardShown = true
+        updateShellFocus()
+        linuxIme.post {
+            linuxIme.requestFocus()
+            displayContext.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+                ?.showSoftInput(linuxIme, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+    }
+
+    private fun hideLinuxKeyboard() {
+        if (!linuxKeyboardShown) return
+        linuxKeyboardShown = false
+        displayContext.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
+            ?.hideSoftInputFromWindow(linuxIme.windowToken, 0)
+        linuxIme.clearFocus()
+        updateShellFocus()
+    }
+
+    private fun hideLinuxKeyboardIfOtherWindow(window: V2Window) {
+        if (linuxKeyboardShown && window.linuxContainer == null) hideLinuxKeyboard()
+    }
+    // endregion
+
     /** Makes tasks on [appDisplay] fill it instead of opening as freeform windows. */
     private fun useFullscreenWindowing(appDisplay: Int) {
         runCatching {
@@ -636,6 +1166,10 @@ internal class PlasmaV2Shell(
     }
 
     override fun forwardInput(window: V2Window, event: MotionEvent, source: View) {
+        if (window.linuxContainer != null) {
+            if (!overviewActive) forwardLinuxInput(window, event, source)
+            return
+        }
         val target = window.displayId
         if (target < 0 || source.width <= 0 || source.height <= 0 || overviewActive) return
         val copy = MotionEvent.obtain(event)
@@ -722,6 +1256,10 @@ internal class PlasmaV2Shell(
     }
 
     private fun resizeWindowDisplay(window: V2Window) {
+        if (window.linuxXid != 0) {
+            syncLinuxWindow(window)
+            return
+        }
         val display = window.display ?: return
         val surface = window.surface ?: return
         val w = window.clientWidth().coerceAtLeast(1)
@@ -785,6 +1323,9 @@ internal class PlasmaV2Shell(
             windows.forEach { it.view.refreshElevation(it.id == activeId) }
             focusWindowDisplay(window)
         }
+        if (window.linuxXid != 0) {
+            window.linuxContainer?.let { id -> LinuxContainerClient.service()?.runCatching { activateWindow(id, window.linuxXid) } }
+        }
         panel.invalidate()
     }
 
@@ -842,7 +1383,7 @@ internal class PlasmaV2Shell(
         snapPreview.show(null)
         val zone = snapZone
         snapZone = TileZone.NONE
-        if (zone != TileZone.NONE) tile(window, zone)
+        if (zone != TileZone.NONE) tile(window, zone) else if (window.linuxXid != 0) syncLinuxWindow(window)
         updatePanelFloat()
     }
 
@@ -962,6 +1503,15 @@ internal class PlasmaV2Shell(
     }
 
     override fun close(window: V2Window) {
+        if (window.linuxXid != 0) {
+            // The client may ask to save first; the window goes when X unmaps it.
+            window.linuxContainer?.let { id -> LinuxContainerClient.service()?.runCatching { closeWindow(id, window.linuxXid) } }
+            return
+        }
+        window.linuxContainer?.let { id ->
+            hideLinuxKeyboard()
+            LinuxContainerClient.service()?.runCatching { stopDesktop(id) }
+        }
         val display = window.displayId
         if (display >= 0) {
             wmExecutor.execute { runCatching { bridge.tasks(display).forEach(bridge::close) } }
@@ -984,6 +1534,12 @@ internal class PlasmaV2Shell(
             for (index in 0 until desktopCount()) {
                 items += MenuItem(t("nativePlasmaMoveToDesktopN").format(index + 1), Glyph.DESKTOP,
                     checked = !window.onAllDesktops && window.desktop == index) { moveWindowToDesktop(window, index) }
+            }
+        }
+        if (window.linuxContainer != null) {
+            items += MenuItem(t("nativePlasmaShowKeyboard"), Glyph.KEYBOARD, separatorBefore = true) {
+                activate(window)
+                showLinuxKeyboard()
             }
         }
         items += MenuItem(t("nativePlasmaClose"), Glyph.CLOSE, separatorBefore = true) { close(window) }
@@ -1275,7 +1831,10 @@ internal class PlasmaV2Shell(
         windows.sortedBy { it.id }.forEach { if (byPackage.containsKey(it.packageName)) order += it.packageName }
         return order.map { pkg ->
             val group = byPackage[pkg].orEmpty()
-            PanelTask(pkg, appRepository.label(pkg), appRepository.icon(pkg), group.map { it.model }, pkg in pinned,
+            val linuxWindow = group.firstOrNull { it.linuxContainer != null }
+            val linuxApp = linuxApps.firstOrNull { it.packageName == pkg }
+            PanelTask(pkg, linuxWindow?.title ?: linuxApp?.label ?: appRepository.label(pkg), linuxWindow?.icon ?: linuxApp?.icon ?: appRepository.icon(pkg),
+                group.map { it.model }, pkg in pinned,
                 group.any { it.id == activeId && !it.minimized })
         }
     }
@@ -1544,7 +2103,7 @@ internal class PlasmaV2Shell(
      */
     private fun updateShellFocus() {
         if (!passiveShellFocus || !::root.isInitialized) return
-        val focusable = popup != null || overviewActive || leaveScreen != null
+        val focusable = popup != null || overviewActive || leaveScreen != null || linuxKeyboardShown
         if (focusable == shellFocusable) return
         shellFocusable = focusable
         layer.show(root, Rect(0, 0, width, height), focusable = focusable, title = "Dextop Plasma v2")
@@ -1638,7 +2197,7 @@ internal class PlasmaV2Shell(
     // endregion
 
     // region launcher host
-    override fun apps(): List<PlasmaApp> = appRepository.apps
+    override fun apps(): List<PlasmaApp> = if (linuxApps.isEmpty()) appRepository.apps else appRepository.apps + linuxApps
     override fun favorites(): List<String> = csv("favorites")
     override fun recent(): List<String> = csv("recent")
     override fun isFavorite(packageName: String) = packageName in favorites()
@@ -1665,6 +2224,11 @@ internal class PlasmaV2Shell(
     fun launch(packageName: String, newInstance: Boolean) {
         dismissPopup()
         editCsv("recent") { list -> list.remove(packageName); list.add(0, packageName); while (list.size > 12) list.removeAt(list.lastIndex) }
+        if (packageName.startsWith(LINUX_APP_PREFIX)) {
+            launchLinuxApp(packageName)
+            return
+        }
+        if (packageName.startsWith("linux")) return
         if (!newInstance) {
             windows.filter { it.packageName == packageName && !it.closing }.maxByOrNull { it.lastActivated }?.let {
                 activate(it)
@@ -1848,6 +2412,10 @@ internal class PlasmaV2Shell(
             return false
         }
         // Everything else belongs to the active application window.
+        activeLinuxContainer()?.let { id ->
+            forwardLinuxKey(id, event)
+            return true
+        }
         val target = windows.firstOrNull { it.id == activeId && !it.minimized }?.displayId ?: return false
         if (target < 0) return false
         injectAsync(KeyEvent(event), target)

@@ -114,6 +114,7 @@ internal data class PlasmaApp(
     val label: String,
     val icon: Drawable,
     val category: Int,
+    val startupWMClass: String = "",
 )
 
 internal class PlasmaAppRepository(private val context: Context) {

@@ -649,6 +649,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun topologyOverlayDisplayId(): Int = instance?.mirrorDisplayId ?: -1
 
+        /** Opens a Linux container's desktop in the running Plasma v2 shell; false without one. */
+        fun openLinuxDesktop(containerId: String, name: String): Boolean {
+            val shell = instance?.plasmaShell as? moe.n4tsu.dextop.plasma.PlasmaV2Shell ?: return false
+            shell.openLinuxDesktop(containerId, name)
+            return true
+        }
+
         fun setPerformanceHud(enabled: Boolean) {
             instance?.performanceHud?.visibility = if (enabled) View.VISIBLE else View.GONE
         }

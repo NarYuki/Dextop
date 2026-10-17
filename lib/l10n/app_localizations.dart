@@ -5146,6 +5146,630 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'切り替え中…'**
   String get nativePlasmaApplying;
+
+  /// No description provided for @linuxDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'root なしで Linux（Debian・Ubuntu・Arch Linux ARM）を動かし、アプリを Plasma のウィンドウとして開きます。'**
+  String get linuxDescription;
+
+  /// No description provided for @linuxUnsupportedDevice.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux は arm64 端末でのみ使えます。'**
+  String get linuxUnsupportedDevice;
+
+  /// No description provided for @linuxRequiresPlasma.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux は Dextop Plasma v2 を使っているときだけ使えます。'**
+  String get linuxRequiresPlasma;
+
+  /// No description provided for @linuxSwitchToPlasma.
+  ///
+  /// In ja, this message translates to:
+  /// **'Plasma v2 に切り替える'**
+  String get linuxSwitchToPlasma;
+
+  /// No description provided for @linuxRequiresPrivilege.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux は Dextop 内蔵のアクセス機能を使います。「Dextopアクセスを設定」から接続してください。外部の Stellar や Shizuku は必須ではありません。'**
+  String get linuxRequiresPrivilege;
+
+  /// No description provided for @linuxEnable.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux を有効にする'**
+  String get linuxEnable;
+
+  /// No description provided for @linuxEnableDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンテナを作成・管理し、Plasma から Linux アプリを開けるようにします'**
+  String get linuxEnableDescription;
+
+  /// No description provided for @linuxNoContainers.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンテナはまだありません。「新規追加」から作成してください。'**
+  String get linuxNoContainers;
+
+  /// No description provided for @linuxAddContainer.
+  ///
+  /// In ja, this message translates to:
+  /// **'新規追加'**
+  String get linuxAddContainer;
+
+  /// No description provided for @linuxContainerName.
+  ///
+  /// In ja, this message translates to:
+  /// **'名前'**
+  String get linuxContainerName;
+
+  /// No description provided for @linuxDistribution.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディストリビューション'**
+  String get linuxDistribution;
+
+  /// No description provided for @linuxStorageNote.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンテナは /data/local/tmp/dextop/linux に保存され、Dextop をアンインストールしても残ります。不要になったらここで削除してください。'**
+  String get linuxStorageNote;
+
+  /// No description provided for @linuxInstall.
+  ///
+  /// In ja, this message translates to:
+  /// **'インストール'**
+  String get linuxInstall;
+
+  /// No description provided for @linuxCancel.
+  ///
+  /// In ja, this message translates to:
+  /// **'キャンセル'**
+  String get linuxCancel;
+
+  /// No description provided for @linuxDelete.
+  ///
+  /// In ja, this message translates to:
+  /// **'削除'**
+  String get linuxDelete;
+
+  /// No description provided for @linuxDeleteConfirm.
+  ///
+  /// In ja, this message translates to:
+  /// **'「{name}」とその中のファイルをすべて削除しますか？'**
+  String linuxDeleteConfirm(String name);
+
+  /// No description provided for @linuxRepair.
+  ///
+  /// In ja, this message translates to:
+  /// **'修復'**
+  String get linuxRepair;
+
+  /// No description provided for @linuxShowLog.
+  ///
+  /// In ja, this message translates to:
+  /// **'ログを表示'**
+  String get linuxShowLog;
+
+  /// No description provided for @linuxRunCommand.
+  ///
+  /// In ja, this message translates to:
+  /// **'コマンドを実行'**
+  String get linuxRunCommand;
+
+  /// No description provided for @linuxRun.
+  ///
+  /// In ja, this message translates to:
+  /// **'実行'**
+  String get linuxRun;
+
+  /// No description provided for @linuxStateInstalling.
+  ///
+  /// In ja, this message translates to:
+  /// **'インストール中'**
+  String get linuxStateInstalling;
+
+  /// No description provided for @linuxStateInstalled.
+  ///
+  /// In ja, this message translates to:
+  /// **'インストール済み'**
+  String get linuxStateInstalled;
+
+  /// No description provided for @linuxStateFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'失敗'**
+  String get linuxStateFailed;
+
+  /// No description provided for @linuxPhaseDownload.
+  ///
+  /// In ja, this message translates to:
+  /// **'ダウンロード中'**
+  String get linuxPhaseDownload;
+
+  /// No description provided for @linuxPhaseVerify.
+  ///
+  /// In ja, this message translates to:
+  /// **'検証中'**
+  String get linuxPhaseVerify;
+
+  /// No description provided for @linuxPhaseExtract.
+  ///
+  /// In ja, this message translates to:
+  /// **'展開中'**
+  String get linuxPhaseExtract;
+
+  /// No description provided for @linuxPhaseConfigure.
+  ///
+  /// In ja, this message translates to:
+  /// **'設定中'**
+  String get linuxPhaseConfigure;
+
+  /// No description provided for @linuxPhaseProvision.
+  ///
+  /// In ja, this message translates to:
+  /// **'必要なパッケージをインストール中'**
+  String get linuxPhaseProvision;
+
+  /// No description provided for @linuxOpenDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップを開く'**
+  String get linuxOpenDesktop;
+
+  /// No description provided for @linuxStartPlasmaFirst.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop を Plasma v2 で起動してから開いてください。'**
+  String get linuxStartPlasmaFirst;
+
+  /// No description provided for @nativePlasmaShowKeyboard.
+  ///
+  /// In ja, this message translates to:
+  /// **'キーボードを表示'**
+  String get nativePlasmaShowKeyboard;
+
+  /// No description provided for @nativeLinuxDesktopConnecting.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux サービスに接続しています…'**
+  String get nativeLinuxDesktopConnecting;
+
+  /// No description provided for @nativeLinuxDesktopStartingContainer.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンテナと画面を起動しています…'**
+  String get nativeLinuxDesktopStartingContainer;
+
+  /// No description provided for @nativeLinuxDesktopStartingWm.
+  ///
+  /// In ja, this message translates to:
+  /// **'ウィンドウマネージャーを起動しています…'**
+  String get nativeLinuxDesktopStartingWm;
+
+  /// No description provided for @nativePlasmaCategoryLinux.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux'**
+  String get nativePlasmaCategoryLinux;
+
+  /// No description provided for @linuxPhasePrepare.
+  ///
+  /// In ja, this message translates to:
+  /// **'イメージ情報を取得中'**
+  String get linuxPhasePrepare;
+
+  /// No description provided for @linuxPhaseRefresh.
+  ///
+  /// In ja, this message translates to:
+  /// **'パッケージ一覧を更新中'**
+  String get linuxPhaseRefresh;
+
+  /// No description provided for @linuxPhaseFinish.
+  ///
+  /// In ja, this message translates to:
+  /// **'仕上げ中'**
+  String get linuxPhaseFinish;
+
+  /// No description provided for @linuxPhaseStep.
+  ///
+  /// In ja, this message translates to:
+  /// **'ステップ {step}/{total}'**
+  String linuxPhaseStep(int step, int total);
+
+  /// No description provided for @linuxSetupTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux のセットアップ'**
+  String get linuxSetupTitle;
+
+  /// No description provided for @linuxSetupIntro.
+  ///
+  /// In ja, this message translates to:
+  /// **'使い方に合わせて Linux を準備します。デスクトップ、言語、入力方法、アプリを順番に選びましょう。'**
+  String get linuxSetupIntro;
+
+  /// No description provided for @linuxSetupExisting.
+  ///
+  /// In ja, this message translates to:
+  /// **'この Linux 環境に機能を追加します。既存のファイルやアプリは保持されます。設定を反映するには、完了後にデスクトップを開き直してください。'**
+  String get linuxSetupExisting;
+
+  /// No description provided for @linuxSetupSystem.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux 環境を選ぶ'**
+  String get linuxSetupSystem;
+
+  /// No description provided for @linuxSetupDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'デスクトップを準備'**
+  String get linuxSetupDesktop;
+
+  /// No description provided for @linuxSetupLanguage.
+  ///
+  /// In ja, this message translates to:
+  /// **'言語とフォント'**
+  String get linuxSetupLanguage;
+
+  /// No description provided for @linuxSetupInput.
+  ///
+  /// In ja, this message translates to:
+  /// **'文字入力の設定'**
+  String get linuxSetupInput;
+
+  /// No description provided for @linuxSetupApps.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリを選ぶ'**
+  String get linuxSetupApps;
+
+  /// No description provided for @linuxSetupReview.
+  ///
+  /// In ja, this message translates to:
+  /// **'セットアップ内容を確認'**
+  String get linuxSetupReview;
+
+  /// No description provided for @linuxSetupProgress.
+  ///
+  /// In ja, this message translates to:
+  /// **'ワークスペースを準備中'**
+  String get linuxSetupProgress;
+
+  /// No description provided for @linuxSetupDone.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux の準備ができました'**
+  String get linuxSetupDone;
+
+  /// No description provided for @linuxSetupDoneDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux タブからデスクトップを開くか、Plasma から Linux アプリを起動できます。Fcitx 5 の入力切り替えは Ctrl+Space です。'**
+  String get linuxSetupDoneDetail;
+
+  /// No description provided for @linuxSetupNext.
+  ///
+  /// In ja, this message translates to:
+  /// **'次へ'**
+  String get linuxSetupNext;
+
+  /// No description provided for @linuxSetupBack.
+  ///
+  /// In ja, this message translates to:
+  /// **'戻る'**
+  String get linuxSetupBack;
+
+  /// No description provided for @linuxSetupApply.
+  ///
+  /// In ja, this message translates to:
+  /// **'セットアップを開始'**
+  String get linuxSetupApply;
+
+  /// No description provided for @linuxSetupCustomize.
+  ///
+  /// In ja, this message translates to:
+  /// **'セットアップ・機能を追加'**
+  String get linuxSetupCustomize;
+
+  /// No description provided for @linuxSetupMinimal.
+  ///
+  /// In ja, this message translates to:
+  /// **'最小構成の IceWM'**
+  String get linuxSetupMinimal;
+
+  /// No description provided for @linuxSetupMinimalDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Xvfb・IceWM・ターミナルの軽量な構成です。追加機能は次のステップで選べます。'**
+  String get linuxSetupMinimalDetail;
+
+  /// No description provided for @linuxSetupComplete.
+  ///
+  /// In ja, this message translates to:
+  /// **'普段使いの IceWM'**
+  String get linuxSetupComplete;
+
+  /// No description provided for @linuxSetupCompleteDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマ・アイコン・Mesa ソフトウェア描画・ファイルマネージャー・エディターを選択した構成です。各項目は変更できます。'**
+  String get linuxSetupCompleteDetail;
+
+  /// No description provided for @linuxSetupThemes.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマとアイコン'**
+  String get linuxSetupThemes;
+
+  /// No description provided for @linuxSetupThemesDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'IceWM のテーマと、GTK アプリ向けの Adwaita スタイルを用意します。'**
+  String get linuxSetupThemesDetail;
+
+  /// No description provided for @linuxSetupGraphics.
+  ///
+  /// In ja, this message translates to:
+  /// **'Mesa グラフィックス対応'**
+  String get linuxSetupGraphics;
+
+  /// No description provided for @linuxSetupGraphicsDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'OpenGL・EGL ライブラリとソフトウェア描画を追加します。この Xvfb デスクトップは GPU のハードウェアアクセラレーションには対応していません。'**
+  String get linuxSetupGraphicsDetail;
+
+  /// No description provided for @linuxSetupLocale.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux の表示言語'**
+  String get linuxSetupLocale;
+
+  /// No description provided for @linuxSetupLocaleDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'選んだ言語の UTF-8 ロケールを生成し、対応するデスクトップやアプリに適用します。'**
+  String get linuxSetupLocaleDetail;
+
+  /// No description provided for @linuxSetupFonts.
+  ///
+  /// In ja, this message translates to:
+  /// **'日本語・中国語・韓国語フォント'**
+  String get linuxSetupFonts;
+
+  /// No description provided for @linuxSetupFontsDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Noto CJK フォントを追加します。通常の Noto フォントと絵文字フォントはすべての構成に含まれます。'**
+  String get linuxSetupFontsDetail;
+
+  /// No description provided for @linuxSetupNoIme.
+  ///
+  /// In ja, this message translates to:
+  /// **'Android のキーボードのみ'**
+  String get linuxSetupNoIme;
+
+  /// No description provided for @linuxSetupNoImeDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux 側の IME は起動しません。Plasma では Android のキーボードを引き続き利用できます。'**
+  String get linuxSetupNoImeDetail;
+
+  /// No description provided for @linuxSetupImeDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux の起動時に Fcitx 5 を起動し、GTK・Qt アプリと連携します。IME を選ぶと CJK フォントも追加します。'**
+  String get linuxSetupImeDetail;
+
+  /// No description provided for @linuxSetupMozc.
+  ///
+  /// In ja, this message translates to:
+  /// **'日本語 — Mozc'**
+  String get linuxSetupMozc;
+
+  /// No description provided for @linuxSetupPinyin.
+  ///
+  /// In ja, this message translates to:
+  /// **'中国語 — 拼音'**
+  String get linuxSetupPinyin;
+
+  /// No description provided for @linuxSetupHangul.
+  ///
+  /// In ja, this message translates to:
+  /// **'韓国語 — ハングル'**
+  String get linuxSetupHangul;
+
+  /// No description provided for @linuxSetupFirefoxDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Debian では Firefox ESR、Arch では Firefox を追加します。'**
+  String get linuxSetupFirefoxDetail;
+
+  /// No description provided for @linuxSetupChromeDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Google 公式の ARM64 版を Google から取得します。Debian・Ubuntu で利用できます。'**
+  String get linuxSetupChromeDetail;
+
+  /// No description provided for @linuxSetupChromiumDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'ディストリビューションの公式リポジトリから Chromium を追加します。'**
+  String get linuxSetupChromiumDetail;
+
+  /// No description provided for @linuxSetupSnapUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'この Ubuntu イメージでは Snap が必要なため選択できません。Debian・Arch を選ぶか、Google Chrome を利用してください。'**
+  String get linuxSetupSnapUnavailable;
+
+  /// No description provided for @linuxSetupChromeUnavailable.
+  ///
+  /// In ja, this message translates to:
+  /// **'このセットアップでは Debian・Ubuntu 向けの公式インストーラーを利用します。'**
+  String get linuxSetupChromeUnavailable;
+
+  /// No description provided for @linuxSetupBrowserNote.
+  ///
+  /// In ja, this message translates to:
+  /// **'ブラウザーは PRoot 向けにサンドボックスを無効化したランチャーで起動します。この環境で使うものを選んでください。'**
+  String get linuxSetupBrowserNote;
+
+  /// No description provided for @linuxSetupFiles.
+  ///
+  /// In ja, this message translates to:
+  /// **'ファイルマネージャー'**
+  String get linuxSetupFiles;
+
+  /// No description provided for @linuxSetupFilesDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'PCManFM — フォルダーの閲覧とファイル管理。'**
+  String get linuxSetupFilesDetail;
+
+  /// No description provided for @linuxSetupEditor.
+  ///
+  /// In ja, this message translates to:
+  /// **'テキストエディター'**
+  String get linuxSetupEditor;
+
+  /// No description provided for @linuxSetupEditorDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Mousepad — 軽量なグラフィカルエディター。'**
+  String get linuxSetupEditorDetail;
+
+  /// No description provided for @linuxSetupOffice.
+  ///
+  /// In ja, this message translates to:
+  /// **'オフィススイート'**
+  String get linuxSetupOffice;
+
+  /// No description provided for @linuxSetupOfficeDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'LibreOffice — 文書・表計算・プレゼンテーション。ダウンロード量と必要な空き容量が増えます。'**
+  String get linuxSetupOfficeDetail;
+
+  /// No description provided for @linuxSetupStorage.
+  ///
+  /// In ja, this message translates to:
+  /// **'数 GB 以上の空き容量を確保してください。ダウンロード量と使用容量は、選んだ環境やアプリによって変わります。この画面を閉じてもインストールは続きます。'**
+  String get linuxSetupStorage;
+
+  /// No description provided for @linuxSetupAdditive.
+  ///
+  /// In ja, this message translates to:
+  /// **'選択を外したアプリは削除しません。選んだパッケージを追加し、言語やセッション設定を更新します。'**
+  String get linuxSetupAdditive;
+
+  /// No description provided for @linuxSetupNothingExtra.
+  ///
+  /// In ja, this message translates to:
+  /// **'追加アプリなし'**
+  String get linuxSetupNothingExtra;
+
+  /// No description provided for @linuxSetupRetry.
+  ///
+  /// In ja, this message translates to:
+  /// **'内容を確認して再試行'**
+  String get linuxSetupRetry;
+
+  /// No description provided for @linuxSetupBackground.
+  ///
+  /// In ja, this message translates to:
+  /// **'バックグラウンドで続行'**
+  String get linuxSetupBackground;
+
+  /// No description provided for @linuxSetupLog.
+  ///
+  /// In ja, this message translates to:
+  /// **'インストールの詳細'**
+  String get linuxSetupLog;
+
+  /// No description provided for @linuxSetupFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'セットアップを完了できませんでした'**
+  String get linuxSetupFailed;
+
+  /// No description provided for @linuxSetupPhaseLanguage.
+  ///
+  /// In ja, this message translates to:
+  /// **'言語とフォントを設定中'**
+  String get linuxSetupPhaseLanguage;
+
+  /// No description provided for @linuxSetupPhaseInput.
+  ///
+  /// In ja, this message translates to:
+  /// **'IME をインストール中'**
+  String get linuxSetupPhaseInput;
+
+  /// No description provided for @linuxSetupPhaseDesktop.
+  ///
+  /// In ja, this message translates to:
+  /// **'テーマとアイコンを設定中'**
+  String get linuxSetupPhaseDesktop;
+
+  /// No description provided for @linuxSetupPhaseGraphics.
+  ///
+  /// In ja, this message translates to:
+  /// **'グラフィックスライブラリをインストール中'**
+  String get linuxSetupPhaseGraphics;
+
+  /// No description provided for @linuxSetupPhaseApps.
+  ///
+  /// In ja, this message translates to:
+  /// **'選んだアプリをインストール中'**
+  String get linuxSetupPhaseApps;
+
+  /// No description provided for @linuxSetupPhaseIntegration.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリとデスクトップを連携中'**
+  String get linuxSetupPhaseIntegration;
+
+  /// No description provided for @linuxRuntimeStarting.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linuxを起動中…'**
+  String get linuxRuntimeStarting;
+
+  /// No description provided for @linuxRuntimeRunning.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux実行中'**
+  String get linuxRuntimeRunning;
+
+  /// No description provided for @linuxRuntimeStopped.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux停止中'**
+  String get linuxRuntimeStopped;
+
+  /// No description provided for @linuxSessionReset.
+  ///
+  /// In ja, this message translates to:
+  /// **'セッションをリセット'**
+  String get linuxSessionReset;
+
+  /// No description provided for @linuxForceStop.
+  ///
+  /// In ja, this message translates to:
+  /// **'PRootを強制終了'**
+  String get linuxForceStop;
+
+  /// No description provided for @linuxForceStopConfirm.
+  ///
+  /// In ja, this message translates to:
+  /// **'この環境のLinuxプロセスをすべて強制終了します。未保存の作業は失われます。インストール済みアプリとファイルは残ります。'**
+  String get linuxForceStopConfirm;
 }
 
 class _AppLocalizationsDelegate

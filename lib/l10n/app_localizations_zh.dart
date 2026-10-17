@@ -2585,4 +2585,346 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get nativePlasmaApplying => '正在切换…';
+
+  @override
+  String get linuxDescription =>
+      '无需 root 运行 Linux（Debian、Ubuntu、Arch Linux ARM），并以 Plasma 窗口打开其应用。';
+
+  @override
+  String get linuxUnsupportedDevice => 'Linux 仅支持 arm64 设备。';
+
+  @override
+  String get linuxRequiresPlasma => '仅在使用 Dextop Plasma v2 时才能使用 Linux。';
+
+  @override
+  String get linuxSwitchToPlasma => '切换到 Plasma v2';
+
+  @override
+  String get linuxRequiresPrivilege =>
+      'Linux 使用 Dextop 内置的访问服务。请通过“设置 Dextop 访问权限”连接。无需另行安装 Stellar 或 Shizuku。';
+
+  @override
+  String get linuxEnable => '启用 Linux';
+
+  @override
+  String get linuxEnableDescription => '创建和管理容器，并从 Plasma 打开 Linux 应用';
+
+  @override
+  String get linuxNoContainers => '还没有容器。请通过“新建容器”创建。';
+
+  @override
+  String get linuxAddContainer => '新建容器';
+
+  @override
+  String get linuxContainerName => '名称';
+
+  @override
+  String get linuxDistribution => '发行版';
+
+  @override
+  String get linuxStorageNote =>
+      '容器保存在 /data/local/tmp/dextop/linux，卸载 Dextop 后仍会保留。不再需要时请在此删除。';
+
+  @override
+  String get linuxInstall => '安装';
+
+  @override
+  String get linuxCancel => '取消';
+
+  @override
+  String get linuxDelete => '删除';
+
+  @override
+  String linuxDeleteConfirm(String name) {
+    return '要删除“$name”及其所有文件吗？';
+  }
+
+  @override
+  String get linuxRepair => '修复';
+
+  @override
+  String get linuxShowLog => '查看日志';
+
+  @override
+  String get linuxRunCommand => '运行命令';
+
+  @override
+  String get linuxRun => '运行';
+
+  @override
+  String get linuxStateInstalling => '正在安装';
+
+  @override
+  String get linuxStateInstalled => '已安装';
+
+  @override
+  String get linuxStateFailed => '失败';
+
+  @override
+  String get linuxPhaseDownload => '正在下载';
+
+  @override
+  String get linuxPhaseVerify => '正在校验';
+
+  @override
+  String get linuxPhaseExtract => '正在解压';
+
+  @override
+  String get linuxPhaseConfigure => '正在配置';
+
+  @override
+  String get linuxPhaseProvision => '正在安装所需软件包';
+
+  @override
+  String get linuxOpenDesktop => '打开桌面';
+
+  @override
+  String get linuxStartPlasmaFirst => '请先以 Plasma v2 启动 Dextop。';
+
+  @override
+  String get nativePlasmaShowKeyboard => '显示键盘';
+
+  @override
+  String get nativeLinuxDesktopConnecting => '正在连接 Linux 服务…';
+
+  @override
+  String get nativeLinuxDesktopStartingContainer => '正在启动容器和显示…';
+
+  @override
+  String get nativeLinuxDesktopStartingWm => '正在启动窗口管理器…';
+
+  @override
+  String get nativePlasmaCategoryLinux => 'Linux';
+
+  @override
+  String get linuxPhasePrepare => '正在获取镜像信息';
+
+  @override
+  String get linuxPhaseRefresh => '正在更新软件包列表';
+
+  @override
+  String get linuxPhaseFinish => '正在完成';
+
+  @override
+  String linuxPhaseStep(int step, int total) {
+    return '第 $step/$total 步';
+  }
+
+  @override
+  String get linuxSetupTitle => 'Linux setup';
+
+  @override
+  String get linuxSetupIntro =>
+      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+
+  @override
+  String get linuxSetupExisting =>
+      'Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.';
+
+  @override
+  String get linuxSetupSystem => 'Your Linux environment';
+
+  @override
+  String get linuxSetupDesktop => 'Make it your desktop';
+
+  @override
+  String get linuxSetupLanguage => 'Language and fonts';
+
+  @override
+  String get linuxSetupInput => 'Typing in your language';
+
+  @override
+  String get linuxSetupApps => 'Choose your applications';
+
+  @override
+  String get linuxSetupReview => 'Ready to set up';
+
+  @override
+  String get linuxSetupProgress => 'Preparing your workspace';
+
+  @override
+  String get linuxSetupDone => 'Your Linux workspace is ready';
+
+  @override
+  String get linuxSetupDoneDetail =>
+      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+
+  @override
+  String get linuxSetupNext => 'Continue';
+
+  @override
+  String get linuxSetupBack => 'Back';
+
+  @override
+  String get linuxSetupApply => 'Start setup';
+
+  @override
+  String get linuxSetupCustomize => 'Set up / add features';
+
+  @override
+  String get linuxSetupMinimal => 'Minimal IceWM';
+
+  @override
+  String get linuxSetupMinimalDetail =>
+      'A lightweight desktop with Xvfb, IceWM and a terminal. Choose any extras in the following steps.';
+
+  @override
+  String get linuxSetupComplete => 'Everyday IceWM';
+
+  @override
+  String get linuxSetupCompleteDetail =>
+      'Starts with themes, icons, Mesa software rendering, a file manager and a text editor selected. You can adjust each choice.';
+
+  @override
+  String get linuxSetupThemes => 'Themes and icons';
+
+  @override
+  String get linuxSetupThemesDetail =>
+      'IceWM themes and Adwaita styling for GTK apps.';
+
+  @override
+  String get linuxSetupGraphics => 'Mesa graphics support';
+
+  @override
+  String get linuxSetupGraphicsDetail =>
+      'Install OpenGL / EGL libraries and software rendering. This Xvfb desktop does not provide hardware GPU acceleration.';
+
+  @override
+  String get linuxSetupLocale => 'Linux display language';
+
+  @override
+  String get linuxSetupLocaleDetail =>
+      'Generate the selected UTF-8 locale and apply it to the desktop and apps that support it.';
+
+  @override
+  String get linuxSetupFonts => 'Japanese, Chinese and Korean fonts';
+
+  @override
+  String get linuxSetupFontsDetail =>
+      'Install Noto CJK fonts. Noto general-purpose and emoji fonts are included with every setup.';
+
+  @override
+  String get linuxSetupNoIme => 'Use the Android keyboard only';
+
+  @override
+  String get linuxSetupNoImeDetail =>
+      'Do not start a Linux input method. The Android keyboard remains available in Plasma.';
+
+  @override
+  String get linuxSetupImeDetail =>
+      'Fcitx 5 starts with the Linux session, including GTK / Qt integration. Input methods with CJK text also install CJK fonts.';
+
+  @override
+  String get linuxSetupMozc => 'Japanese — Mozc';
+
+  @override
+  String get linuxSetupPinyin => 'Chinese — Pinyin';
+
+  @override
+  String get linuxSetupHangul => 'Korean — Hangul';
+
+  @override
+  String get linuxSetupFirefoxDetail =>
+      'Firefox ESR on Debian; Firefox on Arch.';
+
+  @override
+  String get linuxSetupChromeDetail =>
+      'Official Google Chrome for ARM64, downloaded from Google. Available on Debian and Ubuntu.';
+
+  @override
+  String get linuxSetupChromiumDetail =>
+      'Open-source Chromium from the distribution repository.';
+
+  @override
+  String get linuxSetupSnapUnavailable =>
+      'Unavailable on this Ubuntu image: this package requires Snap. Choose Debian / Arch, or select Google Chrome.';
+
+  @override
+  String get linuxSetupChromeUnavailable =>
+      'The official installer is available here for Debian and Ubuntu.';
+
+  @override
+  String get linuxSetupBrowserNote =>
+      'Browsers use PRoot-compatible launchers with their sandbox disabled. Install only browsers you want to use in this environment.';
+
+  @override
+  String get linuxSetupFiles => 'File manager';
+
+  @override
+  String get linuxSetupFilesDetail =>
+      'PCManFM — browse folders and manage files.';
+
+  @override
+  String get linuxSetupEditor => 'Text editor';
+
+  @override
+  String get linuxSetupEditorDetail =>
+      'Mousepad — a lightweight graphical editor.';
+
+  @override
+  String get linuxSetupOffice => 'Office suite';
+
+  @override
+  String get linuxSetupOfficeDetail =>
+      'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
+
+  @override
+  String get linuxSetupStorage =>
+      'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
+
+  @override
+  String get linuxSetupAdditive =>
+      'Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.';
+
+  @override
+  String get linuxSetupNothingExtra => 'No optional applications';
+
+  @override
+  String get linuxSetupRetry => 'Review and retry';
+
+  @override
+  String get linuxSetupBackground => 'Continue in background';
+
+  @override
+  String get linuxSetupLog => 'Installation details';
+
+  @override
+  String get linuxSetupFailed => 'Setup could not finish';
+
+  @override
+  String get linuxSetupPhaseLanguage => 'Setting up language and fonts';
+
+  @override
+  String get linuxSetupPhaseInput => 'Installing the input method';
+
+  @override
+  String get linuxSetupPhaseDesktop => 'Setting up themes and icons';
+
+  @override
+  String get linuxSetupPhaseGraphics => 'Installing graphics libraries';
+
+  @override
+  String get linuxSetupPhaseApps => 'Installing your applications';
+
+  @override
+  String get linuxSetupPhaseIntegration => 'Connecting apps to the desktop';
+
+  @override
+  String get linuxRuntimeStarting => 'Starting Linux…';
+
+  @override
+  String get linuxRuntimeRunning => 'Linux is running';
+
+  @override
+  String get linuxRuntimeStopped => 'Linux is stopped';
+
+  @override
+  String get linuxSessionReset => 'Reset session';
+
+  @override
+  String get linuxForceStop => 'Force stop PRoot';
+
+  @override
+  String get linuxForceStopConfirm =>
+      'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
 }

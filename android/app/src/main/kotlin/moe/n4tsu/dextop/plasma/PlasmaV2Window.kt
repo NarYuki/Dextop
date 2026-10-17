@@ -14,12 +14,15 @@ import android.os.SystemClock
 import android.view.MotionEvent
 import android.view.PointerIcon
 import android.view.Surface
+import android.view.Gravity
 import android.view.TextureView
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewOutlineProvider
 import android.widget.FrameLayout
 import android.widget.LinearLayout
+import android.widget.ProgressBar
+import android.widget.TextView
 import moe.n4tsu.dextop.OwnedVirtualDisplay
 
 internal enum class V2Edge { LEFT, RIGHT, TOP, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
@@ -87,6 +90,19 @@ internal class V2Window(
     var launchIntent: android.content.Intent? = null
     var adoptAttempted = false
 
+    /** Container id when this window shows a Linux desktop instead of an Android app. */
+    var linuxContainer: String? = null
+    /** Size of the Linux X screen drawn into [view]'s content, for input scaling. */
+    var linuxWidth = 0
+    var linuxHeight = 0
+    /** Mouse buttons last reported to X (MotionEvent.BUTTON_* bits). */
+    var linuxButtons = 0
+    /** X window id when this window shows one Linux application window (0: the whole desktop). */
+    var linuxXid = 0
+    var linuxWMClass = ""
+    /** When Dextop last moved or resized the X window, to tell its own ConfigureNotify from the client's. */
+    var linuxConfiguredAt = 0L
+
     val view = V2WindowView(context, host, this, titleHeight, grip)
 
     /** Model shared with the panel, tooltips and the Alt+Tab switcher. */
@@ -122,6 +138,9 @@ internal class V2WindowView(
     val chrome = LinearLayout(context)
     val titleBar = V2TitleBar(context, host, window)
     val content = TextureView(context)
+    private val contentFrame = FrameLayout(context)
+    private var status: View? = null
+    private var statusText: TextView? = null
     private var resizing = false
     private val density = resources.displayMetrics.density
 
@@ -138,7 +157,8 @@ internal class V2WindowView(
         chrome.clipToOutline = true
         chrome.setBackgroundColor(host.palette.windowBackground)
         chrome.addView(titleBar, LinearLayout.LayoutParams(-1, titleHeight))
-        chrome.addView(content, LinearLayout.LayoutParams(-1, 0, 1f))
+        contentFrame.addView(content, LayoutParams(-1, -1))
+        chrome.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         addView(chrome, LayoutParams(-1, -1))
         content.isOpaque = true
         content.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
@@ -173,6 +193,58 @@ internal class V2WindowView(
             true
         }
         refreshElevation(active = true)
+    }
+
+    /** Shows [text] with a spinner over the content (for example while a Linux desktop starts); null hides it. */
+    fun showStatus(text: String?) {
+        if (text == null) {
+            status?.let(contentFrame::removeView)
+            status = null
+            statusText = null
+            return
+        }
+        statusText?.let { it.text = text; return }
+        val label = TextView(context).apply {
+            this.text = text
+            setTextColor(host.palette.text)
+            textSize = 14f
+            gravity = Gravity.CENTER
+        }
+        val spinner = ProgressBar(context).apply {
+            isIndeterminate = true
+            indeterminateTintList = android.content.res.ColorStateList.valueOf(host.palette.accent)
+        }
+        val panel = LinearLayout(context).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+            setBackgroundColor(host.palette.windowBackground)
+            addView(spinner, LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt()))
+            addView(label, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (12 * density).toInt() })
+            // Input goes to the desktop only once it is shown.
+            isClickable = true
+        }
+        contentFrame.addView(panel, LayoutParams(-1, -1))
+        status = panel
+        statusText = label
+    }
+
+    /** Keep failures visible and allow selecting/copying diagnostics. */
+    fun showError(message: String) {
+        showStatus(null)
+        val label = TextView(context).apply {
+            text = message
+            setTextColor(host.palette.text)
+            textSize = 13f
+            setTextIsSelectable(true)
+            setPadding((16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt(), (16 * density).toInt())
+        }
+        val panel = android.widget.ScrollView(context).apply {
+            setBackgroundColor(host.palette.windowBackground)
+            addView(label)
+            isClickable = true
+        }
+        contentFrame.addView(panel, LayoutParams(-1, -1))
+        status = panel
     }
 
     fun refreshElevation(active: Boolean) {
