@@ -88,13 +88,13 @@ internal object LinuxCatalog {
             fi
             apt-get install -y --no-install-recommends \
                 xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
-                fonts-dejavu-core xdg-utils ca-certificates
+                fonts-dejavu-core xdg-utils ca-certificates fakeroot
         """.trimIndent() + "\n"
         LinuxPackageFamily.PACMAN -> """
             set -e
             pacman -S --noconfirm --needed \
                 xorg-server-xvfb xorg-xrdb xorg-xauth icewm xterm dbus pulseaudio \
-                ttf-dejavu xdg-utils ca-certificates
+                ttf-dejavu xdg-utils ca-certificates fakeroot
         """.trimIndent() + "\n"
     }
 
@@ -153,6 +153,12 @@ internal object LinuxCatalog {
     fun launchScript(display: Int, command: String, wayland: Boolean = false): String = """
         export DISPLAY=:$display XDG_RUNTIME_DIR=/tmp/runtime-root
         export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-$display
+        # An application started before the session bus misses it for good (Firefox then
+        # cannot take over URLs from later launches: "Firefox is already running").
+        i=0
+        while ! grep -q '@/tmp/dextop-dbus-$display${'$'}' /proc/net/unix 2>/dev/null && [ ${'$'}i -lt 150 ]; do
+            sleep 0.1; i=${'$'}((i + 1))
+        done
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
         $RENDERER_OVERRIDE
         ${if (wayland) WAYLAND_ENVIRONMENT else ""}
@@ -169,13 +175,24 @@ internal object LinuxCatalog {
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
         $RENDERER_OVERRIDE
         $BROWSER_LAUNCHER_MIGRATION
+        $ROOT_TOOLS
         if command -v dbus-daemon >/dev/null; then
             # Images ship "uninitialized" (13 characters), which D-Bus and Chrome reject.
             grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || dbus-uuidgen >/etc/machine-id 2>/dev/null
             dbus-uuidgen --ensure=/etc/machine-id 2>/dev/null
             mkdir -p /var/lib/dbus && cp -f /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null
             export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-${'$'}D
-            dbus-daemon --session --address=${'$'}DBUS_SESSION_BUS_ADDRESS --fork --print-pid >/tmp/dbus-${'$'}D.log 2>&1
+            # Under PRoot the daemon may see the real uid while clients claim the fake root
+            # (or the reverse), so EXTERNAL alone can refuse every client; X is as open (-ac).
+            mkdir -p /etc/dextop
+            printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
+                ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
+                '<busconfig><include>/usr/share/dbus-1/session.conf</include>' \
+                '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/></busconfig>' >/etc/dextop/dbus-session.conf
+            # A bus left by an earlier session would keep the address and serve stale settings.
+            pkill -f "^dbus-daemon .*--address=${'$'}DBUS_SESSION_BUS_ADDRESS( |${'$'})" 2>/dev/null && sleep 0.3
+            dbus-daemon --config-file=/etc/dextop/dbus-session.conf --address=${'$'}DBUS_SESSION_BUS_ADDRESS \
+                --fork --print-pid >/tmp/dbus-${'$'}D.log 2>&1
             DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
         fi
         # xterm's default bitmap font is not installed; use the Xft fonts (CJK included).
@@ -296,6 +313,35 @@ internal object LinuxCatalog {
         "zink) set -- --ozone-platform=x11 --use-angle=vulkan --enable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE \"${'$'}@\" ;; esac"
 
     /** Puts the current [CHROMIUM_VIRGL_FLAGS] into browser launchers written by earlier versions. */
+    /**
+     * Sessions run as the real uid (see LinuxProot.guest), so package managers
+     * and sudo go through fakeroot; every file already belongs to that uid.
+     * fakeroot-tcp: Android has no SysV IPC for the default faked.
+     */
+    private val ROOT_TOOLS: String get() = """
+        fakeroot=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
+        if [ -n "${'$'}fakeroot" ]; then
+            mkdir -p /usr/local/sbin
+            for tool in apt apt-get dpkg aptitude pacman; do
+                [ -x /usr/bin/${'$'}tool ] || continue
+                {
+                    echo '#!/bin/sh'
+                    echo "[ \"\${'$'}(id -u)\" = 0 ] && exec /usr/bin/${'$'}tool \"\${'$'}@\""
+                    echo "exec ${'$'}fakeroot /usr/bin/${'$'}tool \"\${'$'}@\""
+                } >/usr/local/sbin/${'$'}tool
+                chmod 755 /usr/local/sbin/${'$'}tool
+            done
+            # Real sudo cannot work: Android starts the shell with no_new_privs.
+            {
+                echo '#!/bin/sh'
+                echo 'while [ ${'$'}# -gt 0 ]; do case "${'$'}1" in -u|-g|-C|-D|-h|-p|-r|-t|-U) shift 2 ;; --) shift; break ;; -*) shift ;; *) break ;; esac; done'
+                echo '[ "${'$'}(id -u)" = 0 ] && exec "${'$'}@"'
+                echo "exec ${'$'}fakeroot \"\${'$'}@\""
+            } >/usr/local/bin/sudo
+            chmod 755 /usr/local/bin/sudo
+        fi
+    """.trimIndent()
+
     private val BROWSER_LAUNCHER_MIGRATION = """
         for launcher in /usr/local/bin/dextop-chrome /usr/local/bin/dextop-chromium; do
             [ -f "${'$'}launcher" ] && ! grep -q -- '--ozone-platform=x11' "${'$'}launcher" && {
@@ -303,9 +349,12 @@ internal object LinuxCatalog {
                 sed -i '/^exec /i ${CHROMIUM_VIRGL_FLAGS.replace("'", "'\\''")}' "${'$'}launcher"
             }
         done
-        if [ -f /usr/local/bin/dextop-firefox ] && ! grep -q MOZ_DISABLE_GPU_SANDBOX /usr/local/bin/dextop-firefox; then
-            sed -i 's/^export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1${'$'}/$FIREFOX_SANDBOX_ENVIRONMENT/' /usr/local/bin/dextop-firefox
+        if [ -f /usr/local/bin/dextop-firefox ] && ! grep -q MOZ_SHM_NO_SEALS /usr/local/bin/dextop-firefox; then
+            sed -i 's/^export MOZ_DISABLE_CONTENT_SANDBOX=1 .*${'$'}/$FIREFOX_SANDBOX_ENVIRONMENT/' /usr/local/bin/dextop-firefox
         fi
+        for prefs in /usr/lib/firefox-esr/defaults/pref /usr/lib/firefox/defaults/pref; do
+            [ -d "${'$'}prefs" ] && printf '%s\n' $FIREFOX_PREFS >"${'$'}prefs/dextop.js"
+        done
     """.trimIndent()
 
     /**
@@ -313,7 +362,24 @@ internal object LinuxCatalog {
      * newer kernels (Linux 6.12), so every one of them stays off.
      */
     const val FIREFOX_SANDBOX_ENVIRONMENT = "export MOZ_DISABLE_CONTENT_SANDBOX=1 MOZ_DISABLE_RDD_SANDBOX=1 " +
-        "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_UTILITY_SANDBOX=1 MOZ_DISABLE_GPU_SANDBOX=1"
+        "MOZ_DISABLE_SOCKET_PROCESS_SANDBOX=1 MOZ_DISABLE_GMP_SANDBOX=1 MOZ_DISABLE_UTILITY_SANDBOX=1 MOZ_DISABLE_GPU_SANDBOX=1 " +
+        "MOZ_SHM_NO_SEALS=1"
+
+    /**
+     * DroidDeck's Firefox defaults (tools/linuxfs/desktop/firefox-droiddeck.js) as
+     * shell-quoted lines, without its devPixelsPerPx: Dextop scales through Xft.dpi.
+     */
+    // A getter: BROWSER_LAUNCHER_MIGRATION, declared earlier, reads it during initialization.
+    private val FIREFOX_PREFS: String get() = listOf(
+        """pref("network.manage-offline-status", false);""",
+        """pref("browser.offline", false);""",
+        """pref("security.sandbox.content.level", 0);""",
+        """pref("media.cubeb.sandbox", false);""",
+        """pref("security.sandbox.socket.process.level", 0);""",
+        """pref("browser.shell.checkDefaultBrowser", false);""",
+        """pref("datareporting.policy.dataSubmissionEnabled", false);""",
+        """pref("browser.aboutwelcome.enabled", false);""",
+    ).joinToString(" ") { "'$it'" }
 
     /**
      * Toolkits prefer Dextop's Wayland compositor (GPU buffers through

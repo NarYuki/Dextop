@@ -65,7 +65,7 @@ internal class LinuxAudio(
             LinuxPackageFamily.PACMAN -> "pacman -S --noconfirm --needed pulseaudio\n"
         }
         val runner = proot()
-        val result = runner.run(runner.guest(containerId, script), 1_800) { line -> log(containerId, line) }
+        val result = runner.run(runner.guest(containerId, script, fakeRoot = true), 1_800) { line -> log(containerId, line) }
         if (result.exitCode != 0) log(containerId, "PulseAudio installation failed (exit ${result.exitCode})")
     }
 

@@ -113,7 +113,7 @@ end:
 	return result;
 }
 
-bool should_skip_file_access_due_to_f2fs_bug(const Tracee *tracee, const char *path) {
+bool f2fs_bug_workaround_active(const Tracee *tracee) {
 	/* On first call check if workaround should be enabled */
 	static bool f2fs_bug_probed;
 	static bool f2fs_bug_detected;
@@ -130,9 +130,12 @@ bool should_skip_file_access_due_to_f2fs_bug(const Tracee *tracee, const char *p
 		}
 		f2fs_bug_probed = true;
 	}
+	return f2fs_bug_detected;
+}
 
+bool should_skip_file_access_due_to_f2fs_bug(const Tracee *tracee, const char *path) {
 	/* If workaround is not active don't skip access to file */
-	if (!f2fs_bug_detected) {
+	if (!f2fs_bug_workaround_active(tracee)) {
 		return false;
 	}
 

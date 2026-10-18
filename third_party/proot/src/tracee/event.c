@@ -26,7 +26,6 @@
 #include <sys/types.h>  /* waitpid(2), */
 #include <sys/wait.h>   /* waitpid(2), */
 #include <sys/utsname.h> /* uname(2), */
-#include <signal.h>     /* signal(2), SIG_DFL, */
 #include <unistd.h>     /* fork(2), chdir(2), getpid(2), */
 #include <string.h>     /* strcmp(3), */
 #include <errno.h>      /* errno(3), */
@@ -39,12 +38,12 @@
 #include "tracee/event.h"
 #include "tracee/seccomp.h"
 #include "tracee/mem.h"
+#include "tracee/reg.h"
 #include "cli/note.h"
 #include "path/path.h"
 #include "path/binding.h"
 #include "syscall/syscall.h"
 #include "syscall/seccomp.h"
-#include "syscall/pipe_shadow.h"
 #include "ptrace/wait.h"
 #include "extension/extension.h"
 #include "execve/elf.h"
@@ -53,33 +52,6 @@
 #include "compat.h"
 
 static bool seccomp_after_ptrace_enter = false;
-static bool seccomp_ptrace_event_supported = false;
-
-/* Whether the kernel lets PTRACE_GETEVENTMSG read the message of the
- * last ptrace event, see handle_tracee_event().  */
-static enum {
-	EVENTMSG_UNKNOWN = 0,
-	EVENTMSG_RELIABLE,
-	EVENTMSG_LOST,
-} eventmsg_state = EVENTMSG_UNKNOWN;
-
-/**
- * Return true if the running kernel is new enough to generate
- * PTRACE_EVENT_SECCOMP stops (requires Linux >= 3.5).  Old Android
- * kernels (e.g. 3.1.x nougat) backport SECCOMP_MODE_FILTER but
- * silently accept PTRACE_O_TRACESECCOMP option bits without actually
- * implementing the event, so we can't rely on PTRACE_SETOPTIONS alone.
- */
-static bool kernel_supports_ptrace_event_seccomp(void)
-{
-	struct utsname uts;
-	int major = 0, minor = 0;
-
-	if (uname(&uts) < 0)
-		return true; /* assume supported if uname fails */
-	sscanf(uts.release, "%d.%d", &major, &minor);
-	return (major > 3) || (major == 3 && minor >= 5);
-}
 
 /**
  * Start @tracee->exe with the given @argv[].  This function
@@ -106,18 +78,6 @@ int launch_process(Tracee *tracee, char *const argv[])
 		return -errno;
 
 	case 0: /* child */
-		/* SIG_IGN survives fork(2) and execve(2), so an ignored
-		 * SIGPIPE anywhere above proot is inherited by every
-		 * process of the guest: write(2) then fails with EPIPE
-		 * instead of quietly killing the writer, and pipelines
-		 * whose reader exits early become noisy ("yes: standard
-		 * output: Broken pipe" for `yes | head -1`, "bash: echo:
-		 * write error: Broken pipe" for `echo <(echo a)`).  This
-		 * is what guests get under proot-distro on Termux.  Give
-		 * the guest the disposition it would have on a normal
-		 * system, like container runtimes do.  */
-		signal(SIGPIPE, SIG_DFL);
-
 		/* Declare myself as ptraceable before executing the
 		 * requested program. */
 		status = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
@@ -138,6 +98,15 @@ int launch_process(Tracee *tracee, char *const argv[])
 		if (getenv("PROOT_NO_SECCOMP") == NULL)
 			(void) enable_syscall_filtering(tracee);
 
+
+
+
+		if (getenv("PROOT_FASTPATH") != NULL) {
+			char host_cwd[PATH_MAX];
+			if (translate_path(tracee, host_cwd, AT_FDCWD, tracee->fs->cwd, true) >= 0)
+				(void) chdir(host_cwd);
+		}
+
 		/* Now process is ptraced, so the current rootfs is already the
 		 * guest rootfs.  Note: Valgrind can't handle execve(2) on
 		 * "foreign" binaries (ENOEXEC) but can handle execvp(3) on such
@@ -147,7 +116,7 @@ int launch_process(Tracee *tracee, char *const argv[])
 
 	default: /* parent */
 		/* We know the pid of the first tracee now.  */
-		tracee->pid = pid;
+		set_tracee_pid(tracee, pid);
 		return 0;
 	}
 
@@ -168,12 +137,6 @@ static void kill_all_tracees2(int signum, siginfo_t *siginfo UNUSED, void *ucont
 	 * the event loop.  */
 	if (signum != SIGQUIT)
 		_exit(EXIT_FAILURE);
-}
-
-/* Interrupt waitpid(2) so the event loop gets a chance to run its
- * periodic work.  Nothing else to do here.  */
-static void wakeup_event_loop(int signum UNUSED, siginfo_t *siginfo UNUSED, void *ucontext UNUSED)
-{
 }
 
 /**
@@ -367,53 +330,18 @@ int event_loop()
 			note(NULL, WARNING, SYSTEM, "sigaction(%d)", signum);
 	}
 
-	/* Shadow pipes must be released even when no tracee is running:
-	 * a writer blocked on a full pipe generates no ptrace event.
-	 * SIGALRM is the loop's own wake-up call, so -- unlike the
-	 * handlers above -- it must *not* restart waitpid(2).  Tracees
-	 * are unaffected: they are forked before this point.  */
-	bzero(&signal_action, sizeof(signal_action));
-	signal_action.sa_flags = SA_SIGINFO;
-	signal_action.sa_sigaction = wakeup_event_loop;
-	status = sigfillset(&signal_action.sa_mask);
-	if (status < 0)
-		note(NULL, WARNING, SYSTEM, "sigfillset()");
-
-	status = sigaction(SIGALRM, &signal_action, NULL);
-	if (status < 0)
-		note(NULL, WARNING, SYSTEM, "sigaction(SIGALRM)");
-
 	while (1) {
 		int tracee_status;
 		Tracee *tracee;
-		int saved_errno;
 		int signal;
 		pid_t pid;
 
 		/* This is the only safe place to free tracees.  */
 		free_terminated_tracees();
 
-		/* Release shadow pipe read ends that are of no use
-		 * anymore.  */
-		shadow_pipes_reap();
-
-		/* As long as shadows are held, wake up periodically to
-		 * re-check them; the tracees concerned may all be
-		 * blocked, in which case no event is ever coming.  The
-		 * timer is disarmed as soon as waitpid(2) returns, so
-		 * SIGALRM cannot interfere with the ptrace helpers that
-		 * do their own waitpid(2).  */
-		shadow_pipes_set_timer(shadow_pipes_held());
-
 		/* Wait for the next tracee's stop. */
 		pid = waitpid(-1, &tracee_status, __WALL);
-		saved_errno = errno;
-		shadow_pipes_set_timer(false);
-		errno = saved_errno;
-
 		if (pid < 0) {
-			if (errno == EINTR)
-				continue;
 			if (errno != ECHILD) {
 				note(NULL, ERROR, SYSTEM, "waitpid()");
 				return EXIT_FAILURE;
@@ -470,6 +398,7 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 	 * before the exit stage, eg. PTRACE_EVENT_EXEC for the exit
 	 * stage of execve(2).  */
 	sysexit_necessary = tracee->sysexit_pending
+				|| tracee->pending_clone_flags != 0
 				|| tracee->chain.syscalls != NULL
 				|| tracee->restore_original_regs_after_seccomp_event;
 	/* Don't overwrite restart_how if it is explicitly set
@@ -541,28 +470,14 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 					note(tracee, ERROR, SYSTEM, "ptrace(PTRACE_SETOPTIONS)");
 					exit(EXIT_FAILURE);
 				}
-				/* Without PTRACE_O_TRACESECCOMP, a seccomp filter
-				 * installed by the tracee that returns
-				 * SECCOMP_RET_TRACE would silently return -ENOSYS
-				 * for filtered syscalls instead of generating a
-				 * ptrace event.  Record this so the prctl handler
-				 * can refuse PR_SET_SECCOMP, SECCOMP_MODE_FILTER
-				 * from the tracee to keep proot's syscall
-				 * interception working.  */
-				seccomp_ptrace_event_supported = false;
-			} else {
-				/* PTRACE_SETOPTIONS succeeded, but some old
-				 * Android kernels (e.g. 3.1.x nougat) silently
-				 * accept unknown option bits without implementing
-				 * them.  Cross-check with the kernel version:
-				 * PTRACE_EVENT_SECCOMP requires Linux >= 3.5.  */
-				seccomp_ptrace_event_supported =
-					kernel_supports_ptrace_event_seccomp();
 			}
 		}
 			/* Fall through. */
 		case SIGTRAP | 0x80:
 			signal = 0;
+
+			if (tracee->pending_clone_flags != 0)
+				finish_pending_child(tracee);
 
 			/* This tracee got signaled then freed during the
 			   sysenter stage but the kernel reports the sysexit
@@ -594,41 +509,14 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 
 					translate_syscall(tracee);
 
-					/* The exit of a fork-like syscall whose
-					 * event didn't name the new child: its
-					 * result does (see new_child()).  */
-					if (!was_sysenter && tracee->pending_child)
-						resolve_pending_child(tracee);
-
 					/* In case we've changed on enter sysnum to PR_void,
-					 * the outer seccomp policy may check the syscall
-					 * after our change and raise SIGSYS on the avoider
-					 * syscall.  Set the tracee flag so that SIGSYS is
-					 * recognized as ours and swallowed, instead of being
-					 * dispatched by handle_seccomp_event() as if the
-					 * guest's original syscall had been blocked - that
-					 * would replay sysenter side effects (e.g. the
-					 * link2symlink emulation of link(2), whose second
-					 * run fails with EEXIST).
-					 *
-					 * This must not depend on seccomp_after_ptrace_enter:
-					 * that flag is only auto-detected on a
-					 * PTRACE_EVENT_SECCOMP stop, which never happens on
-					 * kernels lacking PTRACE_O_TRACESECCOMP even when
-					 * they do evaluate seccomp after the ptrace enter
-					 * stop (e.g. Samsung 3.4.x Android backports).
-					 *
-					 * If the avoider syscall is instead allowed to
-					 * execute, a genuine sysexit stop arrives and the
-					 * flag is cleared below, so a subsequent unrelated
-					 * SIGSYS (delivered before any sysenter stop on old
-					 * syscall-order kernels) is not wrongly swallowed.  */
+					 * seccomp check is happening after our change
+					 * and seccomp policy raises SIGSYS on -1 syscall,
+					 * set tracee flag to ignore next SIGSYS.  */
 					if (was_sysenter) {
-						tracee->skip_next_seccomp_signal =
-								(get_sysnum(tracee, CURRENT) == PR_void);
-					}
-					else {
-						tracee->skip_next_seccomp_signal = false;
+						tracee->skip_next_seccomp_signal = (
+								seccomp_after_ptrace_enter &&
+								get_sysnum(tracee, CURRENT) == PR_void);
 					}
 
 					/* Redeliver signal suppressed during
@@ -702,45 +590,20 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 			if (tracee->seccomp != ENABLED)
 				break;
 
-			status = ptrace(PTRACE_GETEVENTMSG, tracee->pid, NULL, &flags);
+			status = fetch_regs(tracee);
 			if (status < 0)
 				break;
-
-			/* Some kernels (seen on aarch64 4.14.357 builds)
-			 * clear the message of the last ptrace event on
-			 * every ptrace request, so reading it always
-			 * yields 0 and the flags of the filter are lost.
-			 * PRoot knows them anyway: the filter was built
-			 * from its own lists.  Tell such kernels apart on
-			 * the first stop of a syscall listed with
-			 * FILTER_SYSEXIT; that very stop and all the later
-			 * ones then rely on the lists, which costs one more
-			 * ptrace request per stop on those kernels only.  */
-			if (eventmsg_state != EVENTMSG_RELIABLE && fetch_regs(tracee) >= 0) {
-				int expected = filtered_sysnum_flags(tracee, get_sysnum(tracee, CURRENT));
-
-				if (eventmsg_state == EVENTMSG_UNKNOWN && (expected & FILTER_SYSEXIT) != 0) {
-					if ((flags & FILTER_SYSEXIT) != 0)
-						eventmsg_state = EVENTMSG_RELIABLE;
-					else {
-						eventmsg_state = EVENTMSG_LOST;
-						VERBOSE(tracee, 1, "this kernel loses ptrace event messages "
-							"(PTRACE_GETEVENTMSG reads 0), working around it");
-					}
-				}
-
-				if (eventmsg_state != EVENTMSG_RELIABLE)
-					flags |= expected;
-			}
+			tracee->regs_fresh = true;
+			flags = filtered_sysnum_flags(tracee, get_sysnum(tracee, CURRENT));
 
 			/* Use the common ptrace flow when
 			 * sysexit has to be handled.  */
 			if ((flags & FILTER_SYSEXIT) != 0 || sysexit_necessary) {
-				if (seccomp_after_ptrace_enter) {
-					tracee->restart_how = PTRACE_SYSCALL;
-					translate_syscall(tracee);
-				}
 				tracee->restart_how = PTRACE_SYSCALL;
+				if (seccomp_after_ptrace_enter)
+					translate_syscall(tracee);
+				else
+					tracee->regs_fresh = false;
 				break;
 			}
 
@@ -749,29 +612,13 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 			tracee->restart_how = PTRACE_CONT;
 			translate_syscall(tracee);
 
-			/* Sysenter handler may have requested sysexit
-			 * interception by setting sysexit_pending.  */
-			if (tracee->sysexit_pending)
-				tracee->restart_how = PTRACE_SYSCALL;
-
 			/* This syscall has disabled seccomp, so move
 			 * the ptrace flow back to the common path to
 			 * ensure its sysexit will be handled.  */
 			if (tracee->seccomp == DISABLING)
 				tracee->restart_how = PTRACE_SYSCALL;
 
-			/* On kernels which evaluate seccomp before the
-			 * ptrace sysenter stop, that stop is still to
-			 * come for this very syscall: PTRACE_SYSCALL
-			 * reports it and it has to be ignored since its
-			 * work was just done here.  The kernel skips it
-			 * along with the syscall itself when the enter
-			 * stage voided the syscall into a number it
-			 * cancels though; the next stop is then the
-			 * sysexit one, which must not be swallowed in
-			 * its place.  */
-			if (!seccomp_after_ptrace_enter && tracee->restart_how == PTRACE_SYSCALL
-			    && !tracee->voided_syscall_cancelled)
+			if (!seccomp_after_ptrace_enter && tracee->restart_how == PTRACE_SYSCALL)
 				tracee->seccomp_already_handled_enter = true;
 			break;
 		}
@@ -802,12 +649,6 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 			if (tracee->exe == NULL) {
 				tracee->sigstop = SIGSTOP_PENDING;
 				signal = -1;
-
-				/* Unless that notification came without
-				 * the child's PID and its parent can't go
-				 * on before the child has run (see
-				 * new_child()).  */
-				adopt_held_children();
 			}
 
 			/* For each tracee, the first SIGSTOP
@@ -822,49 +663,17 @@ int handle_tracee_event(Tracee *tracee, int tracee_status)
 			siginfo_t siginfo = {};
 			ptrace(PTRACE_GETSIGINFO, tracee->pid, NULL, &siginfo);
 			if (siginfo.si_code == SYS_SECCOMP) {
-				/* A filter that raises SIGSYS cancels the syscall
-				 * (SECCOMP_RET_TRAP skips it), so the sysenter stop
-				 * that otherwise follows a PTRACE_EVENT_SECCOMP stop
-				 * on kernels which evaluate seccomp first is never
-				 * reported: stop waiting for it, else the sysexit
-				 * stop gets swallowed in its place.  */
-				tracee->seccomp_already_handled_enter = false;
-
 				/* Signal cannot happen when we're inside syscall,
 				 * tracee would have to exit from syscall first.
 				 * Execute exit handler now if seccomp triggered sysexit skip.  */
 				if (!IS_IN_SYSENTER(tracee)) {
 					VERBOSE(tracee, 1, "Handling syscall exit from SIGSYS");
 					translate_syscall(tracee);
-					/* The synthesized sysexit above runs the regular
-					 * sysexit handlers; for fully-emulated calls (e.g.
-					 * setresgid) those poke SYSARG_RESULT.  On ARM/ARM64
-					 * SYSARG_RESULT and SYSARG_1 are the same register, so
-					 * the blocked syscall's first argument is now clobbered
-					 * with the faked result.  Tell handle_seccomp_event to
-					 * restore it from the entry snapshot.  */
-					tracee->restore_sysarg1_after_sigsys = true;
 				}
 
-				/* A SIGSYS on the avoider syscall can only be the
-				 * outer seccomp policy trapping a syscall PRoot
-				 * itself voided at sysenter (e.g. the link2symlink
-				 * emulation of link(2), or a failed path
-				 * translation).  Its result was already faked, so
-				 * the signal must be swallowed no matter which
-				 * syscall order was detected: dispatching it via
-				 * handle_seccomp_event() would replay the original
-				 * syscall's sysenter side effects (dpkg's
-				 * "status-old: File exists") or clobber the faked
-				 * result with -ENOSYS.  Do not gate this on
-				 * seccomp_after_ptrace_enter: that flag stays false
-				 * on kernels lacking PTRACE_O_TRACESECCOMP (e.g.
-				 * Samsung 3.4.x Android backports) even when they
-				 * do evaluate seccomp after the ptrace enter stop.  */
-				if (tracee->skip_next_seccomp_signal || siginfo.si_syscall == (int) SYSCALL_AVOIDER) {
+				if (tracee->skip_next_seccomp_signal || (seccomp_after_ptrace_enter && siginfo.si_syscall == SYSCALL_AVOIDER)) {
 					VERBOSE(tracee, 4, "suppressed SIGSYS after void syscall");
 					tracee->skip_next_seccomp_signal = false;
-					tracee->restore_sysarg1_after_sigsys = false;
 					signal = 0;
 				} else {
 					signal = handle_seccomp_event(tracee);
@@ -906,19 +715,6 @@ bool seccomp_event_happens_after_enter_sigtrap()
 }
 
 /**
- * Return true if PTRACE_O_TRACESECCOMP is supported by the kernel,
- * i.e. the kernel will generate PTRACE_EVENT_SECCOMP stops instead of
- * silently returning -ENOSYS when a seccomp filter returns
- * SECCOMP_RET_TRACE.  When this returns false, the prctl handler
- * blocks tracee attempts to install SECCOMP_MODE_FILTER so that
- * proot's PTRACE_SYSCALL interception path remains functional.
- */
-bool seccomp_ptrace_event_is_supported()
-{
-	return seccomp_ptrace_event_supported;
-}
-
-/**
  * Restart the given @tracee with the specified @signal.  This
  * function returns false if the tracee was not restarted (error or
  * put in the "waiting for ptracee" state), otherwise true.
@@ -940,6 +736,7 @@ bool restart_tracee(Tracee *tracee, int signal)
 
 	tracee->last_restart_how = tracee->restart_how;
 	tracee->restart_how = 0;
+	tracee->regs_fresh = false;
 	tracee->running = true;
 
 	return true;

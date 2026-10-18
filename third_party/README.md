@@ -5,7 +5,7 @@ for the Linux container feature (arm64-v8a only).
 
 | Directory | Upstream | Version | License |
 | --- | --- | --- | --- |
-| `proot/` | https://github.com/termux/proot | commit `a179d3e` (2026-10-01), `src/` and `COPYING` only | GPL-2.0-or-later |
+| `proot/` | https://github.com/termux/proot/archive/4dba3afbf3a63af89b4d9c1a59bf2bda10f4d10f.tar.gz (SHA-256 `de94f648547d1b62431073b82dc99d56ef0ddcef6da022e0dfffe2bf661cc34e`) | that commit, `src/` and `COPYING`, with DroidDeck's patches applied in order (`proot/droiddeck/`, from Droid-Deck/DroidDeck `26ca374` `tools/proot`) | GPL-2.0-or-later |
 | `talloc/` | https://www.samba.org/ftp/talloc/talloc-2.4.2.tar.gz (SHA-256 `85ecf9e465e20f98f9950a52e9a411e14320bc555fa257d87697b7e7a9b1d8a6`) | 2.4.2, `talloc.c` and `talloc.h` only | LGPL-3.0-or-later |
 | `virglrenderer/` | https://gitlab.freedesktop.org/virgl/virglrenderer/-/archive/virglrenderer-1.3.0/virglrenderer-virglrenderer-1.3.0.tar.gz (SHA-256 `56170f8caa1bb642a2624b649e3bcca095ec2834814e5c308efc8a85a709e4ce`) | 1.3.0; the sources of the vtest server only (`src/` without venus, drm renderers, proxy and video; `vtest/`) | MIT |
 | `libepoxy/` | https://github.com/anholt/libepoxy/archive/refs/tags/1.5.10.tar.gz (SHA-256 `a7ced37f4102b745ac86d6a70a9da399cc139ff168ba6b8002b4d8d43c900c15`) | 1.5.10, `src/` and `include/` | MIT |
@@ -27,7 +27,7 @@ Local changes:
   protocol code use wayland-scanner; GTK 3 uses this protocol for server decorations.
 - `talloc/replace.h` replaces Samba's `lib/replace` with the few macros `talloc.c`
   needs; Android's bionic libc provides every function it would otherwise replace.
-- proot sources are unmodified. `extension/ashmem_memfd/ashmem_memfd.c` is compiled
+- proot sources are DroidDeck's patched tree (see `proot/droiddeck/PATCHES.md`). `extension/ashmem_memfd/ashmem_memfd.c` is compiled
   with `-include string.h` because it relies on an implicit declaration that
   NDK 28 rejects. `build.h` and `loader-info.c` are generated at build time.
 

@@ -49,15 +49,6 @@ typedef enum {
 	 * as-is.  */
 	HOST_PATH,
 
-	/* A symbolic link is being dereferenced during the translation
-	 * of a guest path: "(const char *) data1" is the host path of
-	 * this link and "(const char *) data2" is its content, as read
-	 * from the host.  Several links can be dereferenced for a given
-	 * guest path; extensions are notified in the order PRoot follows
-	 * them.  If the extension returns < 0, then PRoot reports this
-	 * errno as-is.  */
-	SYMLINK_DEREFERENCED,
-
 	/* The canonicalization succeed: "(char *) data1" is the
 	 * translated path from the host point-of-view.  It can be
 	 * substituted by the extension.  If the extension returns <
@@ -156,23 +147,6 @@ typedef enum {
 	 * defined in tracee/statx.h
 	 * */
 	STATX_SYSCALL,
-
-	/* The tracee has read the content of "/proc/<PID>/fd/<FD>" and
-	 * PRoot is about to report it: "(struct readlink_proc_fd_state *)
-	 * data1" -- defined in syscall/syscall.h -- tells which descriptor
-	 * was read and holds the host path the kernel answered with.  An
-	 * extension may replace that path when the kernel names the file
-	 * differently than the tracee does, as link2symlink does for the
-	 * files it hides in the l2s directory.  */
-	READLINK_PROC_FD,
-
-	/* The tracee has executed a program and PRoot is about to remember
-	 * the value reported by "/proc/<PID>/exe": "(struct
-	 * execve_proc_exe_state *) data1" -- defined in execve/execve.h --
-	 * holds the executable's host path and the guest path PRoot will
-	 * report.  An extension may replace the guest path when the host path
-	 * names internal storage rather than the path the tracee executed.  */
-	EXECVE_PROC_EXE,
 } ExtensionEvent;
 
 #define CLONE_RECONF ((word_t) -1)
@@ -231,9 +205,7 @@ extern int hidden_files_callback(Extension *extension, ExtensionEvent event, int
 extern int port_switch_callback(Extension *extension, ExtensionEvent event, intptr_t d1, intptr_t d2);
 extern int link2symlink_callback(Extension *extension, ExtensionEvent event, intptr_t d1, intptr_t d2);
 extern int fix_symlink_size_callback(Extension *extension, ExtensionEvent event, intptr_t d1, intptr_t d2);
-#if defined(__ANDROID__) || defined(__BIONIC__)
 extern int ashmem_memfd_callback(Extension *extension, ExtensionEvent event, intptr_t d1, intptr_t d2);
-#endif /* defined(__ANDROID__) || defined(__BIONIC__) */
 extern int mountinfo_callback(Extension *extension, ExtensionEvent event, intptr_t d1, intptr_t d2);
 
 #endif /* EXTENSION_H */

@@ -79,9 +79,11 @@ typedef struct tracee {
 
 	/* Link for the list of all tracees.  */
 	LIST_ENTRY(tracee) link;
+	LIST_ENTRY(tracee) bucket_link;
 
 	/* Process identifier. */
 	pid_t pid;
+	pid_t tgid;
 
 	/* Unique tracee identifier. */
 	uint64_t vpid;
@@ -99,66 +101,10 @@ typedef struct tracee {
 
 	/* Parent of this tracee, NULL if none.  */
 	struct tracee *parent;
+	size_t nb_children;
 
 	/* Is it a "clone", i.e has the same parent as its creator.  */
 	bool clone;
-
-	/* Set when the current clone(2)/clone3(2) had CLONE_NEW* flags
-	 * stripped (see translate_syscall_enter); the new child should
-	 * get its own copy of the bindings so emulated mount(2) calls
-	 * stay scoped to the would-be namespace.  Reset once consumed.  */
-	bool clone_stripped_newns;
-
-	/* Same for CLONE_NEWNET, propagated to the new child as
-	 * "fake_netns" below.  Reset once consumed.  */
-	bool clone_stripped_newnet;
-
-	/* Set once this tracee asked for a network namespace of its own
-	 * -- clone(2) or unshare(2) with CLONE_NEWNET -- and PRoot
-	 * pretended it got one.  Inherited by children, which would
-	 * share that namespace.  */
-	bool fake_netns;
-
-	/* Emulation of AF_NETLINK / NETLINK_ROUTE sockets for
-	 * sandbox helpers like bubblewrap that try to bring up the
-	 * loopback interface inside their would-be net namespace.
-	 * fake_netlink_fds holds one entry per socket we silently
-	 * redirected from AF_NETLINK to AF_UNIX/SOCK_DGRAM; see
-	 * enter.c / exit.c for the intercepts.
-	 *
-	 * "reply" is what PRoot synthesised at send time for that socket's
-	 * latest request, waiting for the matching recvmsg / recvfrom.  It
-	 * belongs to the socket rather than to the tracee because sockets
-	 * have receive queues of their own: iproute2 walks a route dump on
-	 * one of them while a second answers the interface lookups it makes
-	 * along the way.  The buffer is allocated on demand and handed back
-	 * one datagram at a time ("reply_off" is how far the tracee has
-	 * read), since that is how the kernel delivers a dump.  */
-#define MAX_FAKE_NETLINK_FDS 8
-#define MAX_FAKE_NETLINK_REPLY 8192
-	struct fake_netlink_socket {
-		int fd;
-		uint8_t *reply;
-		size_t reply_len;
-		size_t reply_off;
-	} fake_netlink_fds[MAX_FAKE_NETLINK_FDS];
-	int fake_netlink_fds_count;
-	bool pending_fake_netlink_socket;
-
-	/* Fds of the *real* NETLINK_ROUTE sockets a tracee got when the
-	 * host didn't need the substitution above.  Such a socket lives
-	 * in the host's network namespace, where a tracee has no
-	 * CAP_NET_ADMIN, so the requests a fake_netns tracee sends to
-	 * configure "its" namespace come back as NLMSG_ERROR(-EPERM);
-	 * netlink_ack_* remembers which reply to turn into a plain ack
-	 * (see handle_netlink_reply_exit).  */
-#define MAX_NETLINK_ROUTE_FDS 8
-	int netlink_route_fds[MAX_NETLINK_ROUTE_FDS];
-	int netlink_route_fds_count;
-	bool pending_real_netlink_socket;
-	bool netlink_ack_pending;
-	int netlink_ack_fd;
-	uint32_t netlink_ack_seq;
 
 	/* Support for ptrace emulation (tracer side).  */
 	struct {
@@ -217,6 +163,8 @@ typedef struct tracee {
 	bool _regs_were_changed;
 	bool restore_original_regs;
 	bool restore_original_regs_after_seccomp_event;
+	bool regs_fresh;
+	bool sysexit_unneeded;
 
 	/* State for the special handling of SIGSTOP.  */
 	enum {
@@ -225,23 +173,12 @@ typedef struct tracee {
 		SIGSTOP_PENDING,      /* Block SIGSTOP until the parent is unknown.  */
 	} sigstop;
 
+	/* Nonzero only while resolving an ambiguous thread clone at its exit. */
+	word_t pending_clone_flags;
+
 	/* True if next SIGSYS caused by seccomp should be silently dropped
 	 * without affecting state of any registers.  */
 	bool skip_next_seccomp_signal;
-
-	/* True when the sysenter stage voided the current syscall into a
-	 * number the host kernel cancels instead of executing.  Such a
-	 * syscall reports no sysenter ptrace stop, only a sysexit one, so
-	 * the event loop must not expect the former.  Set at the end of
-	 * the sysenter stage by translate_syscall().  */
-	bool voided_syscall_cancelled;
-
-	/* True when an outer-seccomp SIGSYS was preceded by a synthesized
-	 * sysexit (translate_syscall) that may have poked SYSARG_RESULT.  On
-	 * ARM/ARM64 SYSARG_RESULT aliases SYSARG_1, so the blocked syscall's
-	 * first argument must be restored from the entry snapshot before it is
-	 * emulated or restarted.  See handle_seccomp_event().  */
-	bool restore_sysarg1_after_sigsys;
 
 	/* Context used to collect all the temporary dynamic memory
 	 * allocations.  */
@@ -286,17 +223,6 @@ typedef struct tracee {
 	 * execve sysexit.  */
 	struct load_info *load_info;
 
-	/* Address of argv[0] string in the tracee's initial stack, captured
-	 * at execve sysexit. Used to fix AT_EXECFN in prctl(PR_GET_AUXV)
-	 * responses: the kernel's saved auxv has AT_EXECFN pointing to the
-	 * loader temp file, but we want it to point to the actual program name. */
-	word_t execfn_addr;
-
-	/* fd the tracee used to open /proc/self/auxv, tracked so that read()
-	 * calls on it can have AT_EXECFN patched (fallback for kernels < 6.4
-	 * that don't support prctl(PR_GET_AUXV)). -1 when not active. */
-	int auxv_fd;
-
 #ifdef HAS_POKEDATA_WORKAROUND
 	word_t pokedata_workaround_stub_addr;
 	bool pokedata_workaround_cancelled_syscall;
@@ -321,32 +247,9 @@ typedef struct tracee {
 	/* Ensure the sysexit stage is always hit under seccomp.  */
 	bool sysexit_pending;
 
-	/* True when the kernel reported a fork event of this tracee
-	 * without the new child's PID; the child, created with
-	 * pending_clone_flags and starting with the stack pointer
-	 * pending_child_sp, is then registered later (see new_child()).  */
-	bool pending_child;
-	word_t pending_clone_flags;
-	word_t pending_child_sp;
-
 	/* If true, syscall entry was handled by seccomp and next SIGTRAP | 0x80
 	 * has to be ignored as it's same syscall entry */
 	bool seccomp_already_handled_enter;
-
-	/* Whether the tracee itself requested the "no new privileges" flag
-	 * via prctl(PR_SET_NO_NEW_PRIVS).  PRoot always sets the real kernel
-	 * flag in the child before execve (it is a precondition for installing
-	 * its seccomp filter), so prctl(PR_GET_NO_NEW_PRIVS) would otherwise
-	 * report 1 even though the guest never asked for it.  This field lets
-	 * PRoot report the guest's own intent instead, which is required by
-	 * tools like sudo-rs that refuse to run when the flag appears set. */
-	bool no_new_privs;
-
-	/* Set once the tracee has gone through its initial execve, i.e. once
-	 * the guest program is actually running.  Used to ignore the
-	 * PR_SET_NO_NEW_PRIVS that PRoot performs itself in the launch child
-	 * (before that execve) when tracking @no_new_privs. */
-	bool seen_execve;
 
 	/**********************************************************************
 	 * Shared or private resources, depending on the CLONE_FS/VM flags.   *
@@ -405,12 +308,12 @@ typedef struct tracee {
 #define TRACEE(a) talloc_get_type_abort(talloc_parent(talloc_parent(a)), Tracee)
 
 extern Tracee *get_tracee(const Tracee *tracee, pid_t pid, bool create);
+extern void set_tracee_pid(Tracee *tracee, pid_t pid);
 extern Tracee *get_stopped_ptracee(const Tracee *ptracer, pid_t pid,
 				bool only_with_pevent, word_t wait_options);
 extern bool has_ptracees(const Tracee *ptracer, pid_t pid, word_t wait_options);
 extern int new_child(Tracee *parent, word_t clone_flags);
-extern void resolve_pending_child(Tracee *parent);
-extern void adopt_held_children(void);
+extern void finish_pending_child(Tracee *parent);
 extern Tracee *new_dummy_tracee(TALLOC_CTX *context);
 extern void terminate_tracee(Tracee *tracee);
 extern void free_terminated_tracees();

@@ -2,6 +2,7 @@
 #include <sys/sysmacros.h>  /* major, minor, */
 
 #include "tracee/statx.h"
+#include "tracee/statx_mnt_id.h"
 #include "tracee/mem.h"
 
 int handle_statx_syscall(Tracee *tracee, bool from_sigsys) {
@@ -122,6 +123,11 @@ int handle_statx_syscall(Tracee *tracee, bool from_sigsys) {
 			return status;
 		}
 	}
+
+	if (droiddeck_proot_statx_fill_mnt_id(tracee->pid, (int) dirfd,
+			(int) flags, guest_path, (unsigned int) mask,
+			&state.statx_buf))
+		state.updated_stats = true;
 
 	/* Notify extensions */
 	status = notify_extensions(tracee, STATX_SYSCALL, (intptr_t) &state, 0);

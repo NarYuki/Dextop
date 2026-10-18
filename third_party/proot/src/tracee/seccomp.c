@@ -82,23 +82,8 @@ int handle_seccomp_event(Tracee* tracee)
 	ret = fetch_regs(tracee);
 	if (ret != 0) {
 		VERBOSE(tracee, 1, "Couldn't fetch regs on seccomp SIGSYS");
-		tracee->restore_sysarg1_after_sigsys = false;
 		return SIGSYS;
 	}
-
-#if defined(ARCH_ARM_EABI) || defined(ARCH_ARM64)
-	/* A synthesized sysexit ran before this SIGSYS and poked
-	 * SYSARG_RESULT, which on ARM/ARM64 aliases SYSARG_1.  The blocked
-	 * syscall's first argument (e.g. a path pointer, or the rgid of
-	 * setresgid) was thus overwritten with the faked result.  Restore it
-	 * from the entry snapshot so both the SIGSYS emulation and any *at
-	 * style restart below read the real argument.  The sysnum guard keeps
-	 * a stale ORIGINAL (from an unrelated prior syscall) from leaking in.  */
-	if (tracee->restore_sysarg1_after_sigsys
-	    && get_sysnum(tracee, ORIGINAL) == get_sysnum(tracee, CURRENT))
-		poke_reg(tracee, SYSARG_1, peek_reg(tracee, ORIGINAL, SYSARG_1));
-#endif
-	tracee->restore_sysarg1_after_sigsys = false;
 
 	/* Save regs so they can be restored at end of replaced call.  */
 	save_current_regs(tracee, ORIGINAL_SECCOMP_REWRITE);
@@ -164,33 +149,6 @@ static int handle_seccomp_event_common(Tracee *tracee)
 		restart_syscall_after_seccomp(tracee);
 		break;
 
-	case PR_openat2: {
-		/* int openat2(int dirfd, const char *pathname,
-		 *             struct open_how *how, size_t size);
-		 *
-		 * Convert to openat() so the call survives an outer seccomp
-		 * policy that rejects the newer syscall (this is what raised
-		 * the SIGSYS that brought us here), and so PRoot translates
-		 * the path when the syscall is restarted.  The how.resolve
-		 * flags (RESOLVE_BENEATH, ...) are dropped: they are not
-		 * compatible with PRoot rewriting paths to absolute host
-		 * paths, and PRoot already confines resolution to the rootfs.  */
-		struct proot_open_how how = {};
-		word_t how_size = peek_reg(tracee, CURRENT, SYSARG_4);
-		if (how_size > sizeof(how))
-			how_size = sizeof(how);
-		ret = read_data(tracee, &how, peek_reg(tracee, CURRENT, SYSARG_3), how_size);
-		if (ret < 0) {
-			set_result_after_seccomp(tracee, ret);
-			break;
-		}
-		set_sysnum(tracee, PR_openat);
-		poke_reg(tracee, SYSARG_3, how.flags);
-		poke_reg(tracee, SYSARG_4, how.mode);
-		restart_syscall_after_seccomp(tracee);
-		break;
-	}
-
 	case PR_accept:
 		set_sysnum(tracee, PR_accept4);
 		poke_reg(tracee, SYSARG_4, 0);
@@ -199,32 +157,6 @@ static int handle_seccomp_event_common(Tracee *tracee)
 
 	case PR_setgroups:
 	case PR_setgroups32:
-		set_result_after_seccomp(tracee, 0);
-		break;
-
-	/* The Android parent process commonly installs a seccomp
-	 * filter that traps mount/umount/pivot_root/unshare/setns
-	 * with SIGSYS.  Mirror what enter.c does for these: pretend
-	 * they succeeded and apply the mount/pivot_root binding
-	 * emulation so sandbox helpers like bubblewrap can proceed.  */
-	case PR_mount:
-		apply_emulated_mount(tracee);
-		set_result_after_seccomp(tracee, 0);
-		break;
-
-	case PR_pivot_root:
-		apply_emulated_pivot_root(tracee);
-		set_result_after_seccomp(tracee, 0);
-		break;
-
-	case PR_umount:
-	case PR_umount2:
-		apply_emulated_umount(tracee);
-		set_result_after_seccomp(tracee, 0);
-		break;
-
-	case PR_unshare:
-	case PR_setns:
 		set_result_after_seccomp(tracee, 0);
 		break;
 

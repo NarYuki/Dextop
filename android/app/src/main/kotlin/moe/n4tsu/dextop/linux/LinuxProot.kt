@@ -25,6 +25,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         /** Where the APK's native libraries appear inside containers. */
         const val GUEST_LIBRARY_DIR = "/opt/dextop/lib"
         private const val SOCKET_SHIM = "libdextop_unixsock.so"
+        private const val KGSL_DEVICE = "/dev/kgsl-3d0"
 
         /** Abstract socket namespace of a container (see linux_unixsock.c). */
         fun socketNamespace(id: String) = "dextop-$id"
@@ -52,24 +53,103 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         ProcessBuilder(proot.absolutePath, "--kill-on-exit", "--link2symlink", "-0", "-r", "/", "-w", "/", *arguments)
     )
 
+    private fun timeZone(id: String): String? = java.util.TimeZone.getDefault().id.takeIf { zone ->
+        zone.matches(Regex("[A-Za-z0-9_+\\-]+(/[A-Za-z0-9_+\\-]+)*")) &&
+            File(LinuxPaths.rootfs(id), "usr/share/zoneinfo/$zone").isFile
+    }
+
+    private val uid = android.system.Os.getuid()
+
     private fun sharedMemory(id: String): String = File(LinuxPaths.container(id), "shm").apply {
         mkdirs()
         setWritable(true, false)
     }.absolutePath
 
-    /** Runs a /bin/sh script as root inside the container [id]. */
-    fun guest(id: String, script: String): ProcessBuilder = environment(
+    private fun binds(id: String, fakeRoot: Boolean): List<String> = buildList {
+        val runtime = File(LinuxPaths.container(id), "runtime")
+        add("/dev"); add("/proc"); add("/sys")
+        add("/dev/urandom:/dev/random")
+        add("/proc/self/fd:/dev/fd")
+        add("/proc/self/fd/0:/dev/stdin"); add("/proc/self/fd/1:/dev/stdout"); add("/proc/self/fd/2:/dev/stderr")
+        // Android has no /dev/shm; POSIX shared memory (Firefox, wlroots) needs one.
+        add("${sharedMemory(id)}:/dev/shm")
+        File(runtime, "empty").apply { mkdirs() }.let { add("${it.absolutePath}:/sys/fs/selinux") }
+        add("$nativeLibraryDir:$GUEST_LIBRARY_DIR")
+        if (!fakeRoot) accounts(id, runtime)?.let { (passwd, group) -> add("$passwd:/etc/passwd"); add("$group:/etc/group") }
+        addAll(fakeProc(runtime))
+        addAll(gpuNode(runtime))
+    }
+
+    /** The image's accounts with root renamed to the real uid (DroidDeck's writeAccounts), for sessions only. */
+    private fun accounts(id: String, runtime: File): Pair<String, String>? = runCatching {
+        val etc = File(LinuxPaths.rootfs(id), "etc")
+        fun copy(name: String, root: String) = File(runtime, name).apply {
+            writeText(File(etc, name).readLines().joinToString("\n", postfix = "\n") { if (it.startsWith("root:")) root else it })
+        }.absolutePath
+        copy("passwd", "root:x:$uid:$uid:root:/root:/bin/bash") to copy("group", "root:x:$uid:")
+    }.getOrNull()
+
+    /** Stand-ins for /proc files the shell user may not read (DroidDeck's fake proc). */
+    private fun fakeProc(runtime: File): List<String> {
+        val dir = File(runtime, "proc").apply { mkdirs() }
+        val files = mapOf(
+            "pci_devices" to ("/proc/bus/pci/devices" to ""),
+            "cap_last_cap" to ("/proc/sys/kernel/cap_last_cap" to "40\n"),
+            "overflowuid" to ("/proc/sys/kernel/overflowuid" to "65534\n"),
+            "overflowgid" to ("/proc/sys/kernel/overflowgid" to "65534\n"),
+            "file-max" to ("/proc/sys/fs/file-max" to "9223372036854775807\n"),
+        )
+        return files.mapNotNull { (name, target) ->
+            val (path, content) = target
+            if (File(path).canRead()) return@mapNotNull null
+            val fake = File(dir, name)
+            runCatching { if (!fake.isFile) fake.writeText(content) }
+            if (fake.isFile) "${fake.absolutePath}:$path" else null
+        }
+    }
+
+    /** /dev/kgsl-3d0 presented as a DRM render node with its sysfs identity (DroidDeck's bindGpuNode). */
+    private fun gpuNode(runtime: File): List<String> = runCatching {
+        val st = android.system.Os.stat(KGSL_DEVICE)
+        val dev = st.st_rdev
+        val major = ((dev shr 8) and 0xfff) or ((dev shr 32) and 0xfffL.inv())
+        val minor = (dev and 0xff) or ((dev shr 12) and 0xffL.inv())
+        val node = "renderD$minor"
+        val base = File(runtime, "drm")
+        val dri = File(base, "dri")
+        val device = File(base, "sys/$major:$minor/device")
+        val drm = File(device, "drm/$node")
+        check((dri.isDirectory || dri.mkdirs()) && (drm.isDirectory || drm.mkdirs()))
+        File(dri, node).createNewFile()
+        File(drm, "dev").writeText("$major:$minor\n")
+        File(device, "uevent").writeText("DRIVER=kgsl-3d0\nMODALIAS=platform:kgsl-3d0\n")
+        for ((link, target) in listOf("subsystem" to "/sys/bus/platform", "driver" to "/sys/bus/platform/drivers/msm_drm")) {
+            val file = File(device, link)
+            if (!java.nio.file.Files.isSymbolicLink(file.toPath())) android.system.Os.symlink(target, file.path)
+        }
+        listOf("${File(base, "sys").absolutePath}:/sys/dev/char", "${dri.absolutePath}:/dev/dri", "$KGSL_DEVICE:/dev/dri/$node")
+    }.getOrDefault(emptyList())
+
+    /**
+     * Runs a /bin/sh script inside the container [id], laid out like
+     * DroidDeck's LinuxRuntime. Sessions run with the shell user's real ids
+     * (`-i`), named root through a bound passwd, so every process and the
+     * kernel agree on the uid (D-Bus EXTERNAL, file owners); [fakeRoot]
+     * (`-0`) is for package management, which needs root semantics.
+     */
+    fun guest(id: String, script: String, fakeRoot: Boolean = false): ProcessBuilder = environment(
         ProcessBuilder(
             proot.absolutePath,
-            "--kill-on-exit", "--link2symlink", "-0",
+            // link2symlink stays for sessions too: Xvfb locks its display with link(), which Android denies.
+            "--kill-on-exit", "--link2symlink",
+            *(if (fakeRoot) arrayOf("-0") else arrayOf("-i", "$uid:$uid")),
             "-r", LinuxPaths.rootfs(id).absolutePath,
             "-w", "/root",
-            "-b", "/dev", "-b", "/proc", "-b", "/sys",
-            // Android has no /dev/shm; POSIX shared memory (Firefox, wlroots) needs one.
-            "-b", "${sharedMemory(id)}:/dev/shm",
-            "-b", "$nativeLibraryDir:$GUEST_LIBRARY_DIR",
+            *binds(id, fakeRoot).flatMap { listOf("-b", it) }.toTypedArray(),
             "/usr/bin/env", "-i",
             "HOME=/root", "USER=root", "LOGNAME=root", "TERM=xterm-256color", "LANG=C.UTF-8",
+            // Android's time zone (images default to UTC); sites compare it with the network location.
+            *timeZone(id)?.let { arrayOf("TZ=$it") }.orEmpty(),
             "TMPDIR=/tmp", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             // Path unix sockets fall back to abstract ones (the shell user may not create them).
             *(if (shim.isFile) arrayOf("LD_PRELOAD=$GUEST_LIBRARY_DIR/$SOCKET_SHIM", "DEXTOP_SOCKET_NS=${socketNamespace(id)}") else emptyArray()),

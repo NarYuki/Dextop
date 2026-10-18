@@ -68,6 +68,12 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
             if (config.optString("state") == "installing") writeConfig(id, config.put("state", "failed"))
             if (config.optString("state") == "updating") writeConfig(id, config.put("state", "installed").put("error", "Setup was interrupted; run setup again"))
         }
+        // Sessions of an earlier service process (an APK update) keep their displays, buses and
+        // Firefox's profile lock, so a new session's Firefox reports "already running".
+        if (sessions.isEmpty() && appSessions.isEmpty()) containerIds().forEach { id ->
+            val killed = runCatching { LinuxRuntime.forceStop(id) }.getOrDefault(0)
+            if (killed > 0) log(id, "Stopped $killed processes left by an earlier Linux service")
+        }
     }
 
     override fun listContainers(): String = JSONArray().apply {
@@ -166,7 +172,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     override fun runCommand(containerId: String, command: String, timeoutSeconds: Int): String {
         val runner = requireProot()
         check(LinuxPaths.rootfs(containerId).isDirectory) { "Container $containerId is not installed" }
-        val result = runner.run(runner.guest(containerId, command), timeoutSeconds.toLong().coerceIn(1, 3_600))
+        val result = runner.run(runner.guest(containerId, command, fakeRoot = true), timeoutSeconds.toLong().coerceIn(1, 3_600))
         return JSONObject().put("exitCode", result.exitCode).put("output", result.output).toString()
     }
 
@@ -392,7 +398,23 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     /** Starts the container's VirGL renderer when hardware rendering is selected (falls back to llvmpipe). */
     private fun startRenderer(containerId: String) {
         graphics?.ensure(containerId) { line -> log(containerId, line) }
-        audio?.ensure(containerId, readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family)
+        val family = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family
+        ensureFakeroot(containerId, family)
+        audio?.ensure(containerId, family)
+    }
+
+    /** Containers set up before real-uid sessions lack fakeroot, which sessions use for apt and sudo. */
+    private fun ensureFakeroot(containerId: String, family: LinuxPackageFamily?) {
+        if (File(LinuxPaths.rootfs(containerId), "usr/bin/fakeroot").exists()) return
+        val install = when (family ?: LinuxPackageFamily.APT) {
+            LinuxPackageFamily.APT -> "export DEBIAN_FRONTEND=noninteractive\n" +
+                "apt-get install -y --no-install-recommends fakeroot || " +
+                "{ apt-get update && apt-get install -y --no-install-recommends fakeroot; }\n"
+            LinuxPackageFamily.PACMAN -> "pacman -S --noconfirm --needed fakeroot\n"
+        }
+        log(containerId, "Installing fakeroot for package management in sessions")
+        val runner = proot ?: return
+        runCatching { runner.run(runner.guest(containerId, install, fakeRoot = true), 600) { line -> log(containerId, line) } }
     }
 
     private fun stopRendererIfIdle(containerId: String) {
@@ -453,6 +475,8 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         notifiers.values.forEach { it.stop() }
         activeProcesses.values.forEach { runCatching { it.destroyForcibly() } }
         installer.shutdownNow()
+        // A killed proot cannot take its tracees (Firefox, the session bus) down with it.
+        containerIds().forEach { id -> runCatching { LinuxRuntime.forceStop(id) } }
         exitProcess(0)
     }
 
@@ -576,11 +600,11 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         checkCancelled(id)
         val options = LinuxSetupOptions.fromJson(readConfig(id)?.optJSONObject("setupOptions")).validate(distro)
         progress(id, "configure", -1, "")
-        val configured = runner.run(runner.guest(id, LinuxCatalog.configureScript(distro.family)), 600, onProcess = { activeProcesses[id] = it }) { log(id, it) }
+        val configured = runner.run(runner.guest(id, LinuxCatalog.configureScript(distro.family), fakeRoot = true), 600, onProcess = { activeProcesses[id] = it }) { log(id, it) }
         check(configured.exitCode == 0) { "Configuration failed (exit ${configured.exitCode})" }
         checkCancelled(id)
         progress(id, "refresh", -1, "")
-        val refreshed = runner.run(runner.guest(id, LinuxCatalog.refreshScript(distro.family)), 1_800, onProcess = { activeProcesses[id] = it }) { line ->
+        val refreshed = runner.run(runner.guest(id, LinuxCatalog.refreshScript(distro.family), fakeRoot = true), 1_800, onProcess = { activeProcesses[id] = it }) { line ->
             log(id, line)
             // apt: "Get:12 http://deb.debian.org/debian trixie/main arm64 Packages [9,670 kB]".
             if (line.startsWith("Get:") || line.startsWith("Hit:")) progress(id, "refresh", -1, line.substringAfter(' ').take(80))
@@ -591,7 +615,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         var total = 0
         var done = 0
         val pacmanStep = Regex("^\\((\\d+)/(\\d+)\\) installing (\\S+)")
-        val provisioned = runner.run(runner.guest(id, LinuxCatalog.provisionScript(distro.family)), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
+        val provisioned = runner.run(runner.guest(id, LinuxCatalog.provisionScript(distro.family), fakeRoot = true), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
             log(id, line)
             // apt: "0 upgraded, 312 newly installed, ..." then one "Setting up" per package
             // (each package is unpacked first, so unpacking counts as the first half).
@@ -615,7 +639,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
             checkCancelled(id)
             progress(id, step.phase, -1, "")
             val result = try {
-                runner.run(runner.guest(id, step.script), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
+                runner.run(runner.guest(id, step.script, fakeRoot = true), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
                     log(id, line)
                     if (line.startsWith("Unpacking ") || line.startsWith("Setting up ")) progress(id, step.phase, -1, line.take(100))
                 }

@@ -84,6 +84,14 @@ class LinuxSetupPlanTest {
         assertContains(script, "\nDEXTOP_ENV\n")
         assertContains(LinuxCatalog.desktopScript(10, 1280, 720, 160, "icewm"), ". /etc/dextop/session.env")
         assertContains(LinuxCatalog.appsScript(11, 1280, 720, 160), "sh /etc/dextop/start-session.sh")
+        // Fake-root clients must reach the session bus (Firefox remoting, xdg-open).
+        assertContains(LinuxCatalog.appsScript(11, 1280, 720, 160), "<auth>ANONYMOUS</auth>")
+        // Real-uid sessions reach package managers and sudo through fakeroot.
+        assertContains(LinuxCatalog.appsScript(11, 1280, 720, 160), "command -v fakeroot-tcp")
+        assertContains(LinuxCatalog.appsScript(11, 1280, 720, 160), "'pref(\"browser.shell.checkDefaultBrowser\", false);'")
+        // Applications wait for the session bus, or Firefox cannot take over later launches.
+        assertTrue(LinuxCatalog.launchScript(11, "firefox").indexOf("@/tmp/dextop-dbus-11") <
+            LinuxCatalog.launchScript(11, "firefox").indexOf("exec sh -c"))
         assertContains(LinuxCatalog.launchScript(11, "xterm"), ". /etc/dextop/session.env")
     }
 
@@ -91,6 +99,7 @@ class LinuxSetupPlanTest {
         val script = scripts(debian, LinuxSetupOptions(apps = setOf("firefox", "chromium", "chrome")))
         assertContains(script, "--no-sandbox --disable-dev-shm-usage \"\$@\"")
         assertContains(script, "MOZ_DISABLE_CONTENT_SANDBOX=1")
+        assertContains(script, "libavcodec-extra")
         assertContains(script, "Exec=/usr/local/bin/dextop-chrome %U")
         assertFalse(script.contains("snap install"))
         assertContains(script, "--ozone-platform=x11 --use-angle=vulkan")

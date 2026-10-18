@@ -109,6 +109,8 @@ internal object LinuxSetupPlan {
 
             val packages = buildList {
                 if ("firefox" in options.apps) add(if (apt) "firefox-esr" else "firefox")
+                // Firefox decodes H.264 and AAC with the system FFmpeg; without it videos do not play.
+                if ("firefox" in options.apps) add(if (apt) "libavcodec-extra" else "ffmpeg")
                 if ("chromium" in options.apps) add("chromium")
                 if ("files" in options.apps) add("pcmanfm")
                 if ("editor" in options.apps) add("mousepad")
