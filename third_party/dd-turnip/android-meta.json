@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "name": "DD-Turnip v0.2.0",
+  "description": "DroidDeck Turnip 0.2.0, Mesa 26.3.0-devel (bffd91947e)",
+  "author": "DroidDeck",
+  "packageVersion": "1",
+  "vendor": "Mesa",
+  "driverVersion": "DD-Turnip-v0.2.0",
+  "minApi": 29,
+  "libraryName": "libvulkan_freedreno.so"
+}

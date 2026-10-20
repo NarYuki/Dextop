@@ -113,6 +113,7 @@ open class MainActivity : FlutterActivity() {
         )
     }
     private var flutterChannel: MethodChannel? = null
+    private var linuxChannel: moe.n4tsu.dextop.linux.LinuxChannel? = null
     private var pendingWirelessDebuggingResult: MethodChannel.Result? = null
     private var pendingNotificationPermissionResult: MethodChannel.Result? = null
     private val distributionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -318,6 +319,8 @@ open class MainActivity : FlutterActivity() {
     }
 
     override fun onDestroy() {
+        linuxChannel?.dispose()
+        linuxChannel = null
         if (instance === this) {
             instance = null
             phoneTaskId = -1
@@ -332,10 +335,13 @@ open class MainActivity : FlutterActivity() {
         Shizuku.addBinderReceivedListenerSticky(binderReceivedListener)
         Shizuku.addBinderDeadListener(binderDeadListener)
         flutterChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
+        linuxChannel?.dispose()
+        linuxChannel = moe.n4tsu.dextop.linux.LinuxChannel(this, flutterEngine.dartExecutor.binaryMessenger)
         flutterChannel?.setMethodCallHandler { call, result ->
             when (call.method) {
                 "status" -> result.success(status())
                 "sessionState" -> result.success(mapOf(
+                    "autoMode" to CardexRelayService.activeMode(),
                     "active" to MirrorService.isActive(),
                     "stopping" to MirrorService.isStopping(),
                     "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),
@@ -826,6 +832,7 @@ open class MainActivity : FlutterActivity() {
             packageManager.getPackageInfo(CAR_COMPANION_PACKAGE, 0)
         }.isSuccess
         val status = mapOf(
+            "autoMode" to CardexRelayService.activeMode(),
             "active" to MirrorService.isActive(),
             "stopping" to MirrorService.isStopping(),
             "autoConnected" to AndroidAutoMirrorActivity.isAutoConnected(),

@@ -1,0 +1,5 @@
+#!/system/bin/sh
+apk=$(pm path moe.n4tsu.dextop); apk=${apk#package:}; lib=${apk%/base.apk}/lib/arm64
+mkdir -p /data/local/tmp/dextop/linux/containers/c8147ec8bb3fc/rootfs/tmp/dextop-gamescope-shm
+export PROOT_LOADER="$lib/libproot_loader.so" PROOT_TMP_DIR=/data/local/tmp/dextop/linux/.tmp
+"$lib/libproot.so" --kill-on-exit --link2symlink -0 -r /data/local/tmp/dextop/linux/containers/c8147ec8bb3fc/rootfs -w /tmp -b /dev -b /proc -b /sys -b /data/local/tmp/dextop/linux/containers/c8147ec8bb3fc/rootfs/tmp/dextop-gamescope-shm:/dev/shm -b "$lib:/opt/dextop/lib" /usr/bin/env -i HOME=/root LANG=C.UTF-8 PATH=/usr/bin:/bin /bin/sh -c 'unset MESA_VK_WSI_DEBUG; export DEXTOP_WAYLAND_KGSL=1 MESA_LOADER_DRIVER_OVERRIDE=zink EGL_LOG_LEVEL=warning EGL_PLATFORM=wayland GALLIUM_DRIVER=zink VK_ICD_FILENAMES=/opt/dextop-mesa-wayland-probe/share/vulkan/icd.d/freedreno_icd.aarch64.json LD_LIBRARY_PATH=/opt/dextop-mesa-wayland-probe/lib/aarch64-linux-gnu __EGL_VENDOR_LIBRARY_FILENAMES=/opt/dextop-mesa-wayland-probe/share/glvnd/egl_vendor.d/50_mesa.json; /bin/sh /tmp/gamescope-guest-probe.sh'

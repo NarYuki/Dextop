@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "package": "DD-Turnip",
+  "version": "0.2.0",
+  "tag": "DD-Turnip-v0.2.0",
+  "mesa": {
+    "version": "26.3.0-devel",
+    "commit": "bffd91947efc1932da99aca69fc540d6d4201b0c",
+    "source": "https://gitlab.freedesktop.org/mesa/mesa"
+  },
+  "drivers": {
+    "android": {
+      "path": "android",
+      "library": "android/libvulkan_freedreno.so",
+      "meta": "android/meta.json",
+      "architecture": "aarch64",
+      "libc": "bionic",
+      "sha256": "fc1197cdf6185db09fe8821e4423daf560bba40a4793a96466665d31e19420d0"
+    },
+    "linux": {
+      "path": "linux",
+      "library": "linux/libvulkan_freedreno.so",
+      "meta": "linux/meta.json",
+      "architecture": "aarch64",
+      "libc": "glibc",
+      "sha256": "12e4f787c01de0785d6ecde1689d1dcebb3724a050e64dd94e63df422881dda3"
+    }
+  }
+}

@@ -43,12 +43,12 @@ internal class LaptopSwipeImeCoordinator(
         val revision = ++generation
         if (current == null || restoreIme == null || ownSelected) {
             if (restoreIme != null && current != restoreIme) {
-                executor.execute {
+                post {
                     restoreIme(restoreIme)
                     disableTransientIme()
                 }
             } else if (!ownSelected) {
-                executor.execute(::disableTransientIme)
+                post(::disableTransientIme)
             }
             fallback()
             return
@@ -60,7 +60,7 @@ internal class LaptopSwipeImeCoordinator(
                 generation += 1
                 DextopSwipeInputMethodService.cancelPending()
                 previousIme = null
-                executor.execute {
+                post {
                     restoreIme(restoreIme)
                     disableTransientIme()
                     handler.post { if (!committed) fallback() }
@@ -74,7 +74,7 @@ internal class LaptopSwipeImeCoordinator(
             expectedDisplayId = expectedDisplayId,
             callback = finish,
         )
-        executor.execute {
+        post {
             val enabled = privilegedAccess.execute("ime", "enable", ownIme).succeeded
             val selected = enabled && privilegedAccess.execute("ime", "set", ownIme).succeeded
             if (!selected) handler.post { finish(false) }
@@ -94,13 +94,13 @@ internal class LaptopSwipeImeCoordinator(
         // user changed to another external IME during the commit, that newer
         // explicit choice wins and must not be overwritten by cleanup.
         if (ownSelected && previous != null && current != previous) {
-            executor.execute {
+            post {
                 restoreIme(previous)
                 disableTransientIme()
             }
         } else if (!ownSelected) {
             rememberExternalIme(current)
-            executor.execute(::disableTransientIme)
+            post(::disableTransientIme)
         }
     }
 
@@ -115,10 +115,16 @@ internal class LaptopSwipeImeCoordinator(
         DextopSwipeInputMethodService.cancelPending()
         val target = previousIme ?: rememberedExternalIme() ?: fallbackExternalImeId() ?: return
         previousIme = null
-        executor.execute {
+        post {
             restoreIme(target)
             disableTransientIme()
         }
+    }
+
+    /** Runs [task] on the IME thread; after [close] it is dropped instead of crashing the caller. */
+    private fun post(task: () -> Unit) {
+        if (executor.isShutdown) return
+        runCatching { executor.execute(task) }
     }
 
     fun close() {

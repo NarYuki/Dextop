@@ -168,14 +168,21 @@ internal data class PlasmaSettings(
 internal object WindowManagerSelection {
     const val SYSTEM = "system"
     const val DEXTOP_PLASMA = "dextop_plasma"
+    /** Compositing v2: every app on its own display, drawn inside Dextop's windows. */
+    const val DEXTOP_PLASMA_V2 = "dextop_plasma_v2"
     private const val KEY = "flutter.window_manager"
     private const val EXPERIMENTAL_ENABLED_KEY = "flutter.experimental_dextop_window_manager"
 
     fun current(context: Context): String {
         val preferences = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        if (!preferences.getBoolean(EXPERIMENTAL_ENABLED_KEY, false)) return SYSTEM
-        return preferences.getString(KEY, SYSTEM) ?: SYSTEM
+        // Plasma v2 is a regular option; the v1 freeform shell stays experimental.
+        return when (preferences.getString(KEY, SYSTEM)) {
+            DEXTOP_PLASMA_V2 -> DEXTOP_PLASMA_V2
+            DEXTOP_PLASMA -> if (preferences.getBoolean(EXPERIMENTAL_ENABLED_KEY, false)) DEXTOP_PLASMA else SYSTEM
+            else -> SYSTEM
+        }
     }
 
-    fun isPlasma(context: Context): Boolean = current(context) == DEXTOP_PLASMA
+    /** True for either Dextop shell (v1 freeform or v2 compositor). */
+    fun isPlasma(context: Context): Boolean = current(context) != SYSTEM
 }

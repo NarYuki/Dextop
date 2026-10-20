@@ -156,11 +156,15 @@ class CarDexActivity : ComponentActivity() {
             if (relayBound) relayHandler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
         }
     }
+    private val splitDialog by lazy {
+        moe.n4tsu.splitui.SplitPlacementDialog(this) { sendAction("split:$it", keepOpen = true) }
+    }
     private val incoming = Messenger(Handler(Looper.getMainLooper()) { message ->
         when (message.what) {
             MSG_STATUS -> {
                 relayStatus = message.data.getInt(KEY_STATUS, STATUS_IDLE)
                 relayError = message.data.getString(KEY_DETAIL).orEmpty()
+                splitDialog.update(message.data.getString("split_placement").orEmpty())
                 if (relayStatus == STATUS_RUNNING || relayStatus == STATUS_ERROR) {
                     relayHandler.removeCallbacks(startupTimeout)
                 }

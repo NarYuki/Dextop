@@ -52,7 +52,10 @@ object EmbeddedPrivilegeServer {
         Looper.loop()
     }
 
-    private fun publishBinder(authority: String, binder: Binder): Bundle? {
+    internal fun publishBinder(
+        authority: String, binder: Binder,
+        method: String = EmbeddedPrivilegeProtocol.providerMethod, argument: String? = null,
+    ): Bundle? {
         val activityManager = Class.forName("android.app.ActivityManager")
             .getDeclaredMethod("getService")
             .invoke(null)
@@ -76,8 +79,8 @@ object EmbeddedPrivilegeServer {
                     .build()
                 type == String::class.java -> when (stringIndex++) {
                     0 -> authority
-                    1 -> EmbeddedPrivilegeProtocol.providerMethod
-                    else -> null
+                    1 -> method
+                    else -> argument
                 }
                 type == Bundle::class.java -> extras
                 type == Int::class.javaPrimitiveType -> 0

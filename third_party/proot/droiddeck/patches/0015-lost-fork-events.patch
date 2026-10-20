@@ -1,0 +1,315 @@
+Subject: [PATCH] recover zero child IDs, resolving ambiguous threads at clone exit
+
+Use a unique procfs match for delivered creation events with a zero child
+PID. When concurrent thread clones are ambiguous, keep the creator's real
+flags and obtain its exact child TID from the clone syscall return value.
+Validate that TID against the traced thread group before existing child setup.
+Do not defer vfork, guess parents, or select by PID order. Missing creation
+events and ambiguous process (non-thread) clones remain unsupported.
+No timers or polling are added by this recovery patch.
+
+diff --git a/src/tracee/tracee.c b/src/tracee/tracee.c
+--- a/src/tracee/tracee.c
++++ b/src/tracee/tracee.c
+@@ -32,6 +32,10 @@
+ #include <sys/ptrace.h> /* ptrace(2), PTRACE_*, */
+ #include <errno.h>      /* E*, */
+ #include <inttypes.h>   /* PRI*, */
++#include <unistd.h>     /* getpid(2), */
++#include <stdio.h>      /* fopen(3), fgets(3), snprintf(3), */
++#include <dirent.h>     /* opendir(3), readdir(3), closedir(3), */
++#include <limits.h>     /* INT_MAX, */
+ 
+ #include "tracee/tracee.h"
+ #include "tracee/reg.h"
+@@ -402,16 +406,128 @@
+ 	}
+ }
+ 
++/* Read host process IDs, not PRoot's guest /proc view.  /proc/<tid>/status
++ * works for non-leader threads too, even though /proc lists only leaders. */
++static int read_task_ids(pid_t pid, long *tgid, long *ppid, long *tracer)
++{
++	char path[64], line[256];
++	FILE *file;
++	int status;
++
++	*tgid = *ppid = *tracer = -1;
++	snprintf(path, sizeof(path), "/proc/%d/status", (int) pid);
++	file = fopen(path, "re");
++	if (file == NULL)
++		return -errno;
++
++	while (fgets(line, sizeof(line), file) != NULL) {
++		if (strncmp(line, "Tgid:", 5) == 0)
++			*tgid = strtol(line + 5, NULL, 10);
++		else if (strncmp(line, "PPid:", 5) == 0)
++			*ppid = strtol(line + 5, NULL, 10);
++		else if (strncmp(line, "TracerPid:", 10) == 0)
++			*tracer = strtol(line + 10, NULL, 10);
++	}
++	status = ferror(file) || *tgid <= 0 || *ppid < 0 || *tracer < 0
++		? -EIO : 0;
++	fclose(file);
++	return status;
++}
++
++/* Recover only a delivered creation event whose GETEVENTMSG succeeded but
++ * returned zero.  The creator is still stopped at that event, and its real
++ * clone flags have already been read.  Require exactly one uninitialized,
++ * PRoot-traced candidate of the right kind and relationship.  Never infer
++ * clone flags from PPid, substitute a process for a thread, or choose by PID
++ * order.  Include tracees whose initial SIGSTOP was handled before this event.
++ * Missing events and ambiguous candidates need separate recovery logic. */
++static int find_event_child(Tracee *parent, word_t clone_flags, unsigned long *result)
++{
++	char path[64];
++	long parent_tgid, parent_ppid, tracer;
++	const long self = (long) getpid();
++	const bool thread = (clone_flags & CLONE_THREAD) != 0;
++	struct dirent *entry;
++	DIR *dir;
++	unsigned long found = 0;
++	int status;
++
++	status = read_task_ids(parent->pid, &parent_tgid, &parent_ppid, &tracer);
++	if (status < 0)
++		return status;
++	if (tracer != self)
++		return -ESRCH;
++
++	if (thread)
++		snprintf(path, sizeof(path), "/proc/%ld/task", parent_tgid);
++	else
++		snprintf(path, sizeof(path), "/proc");
++	dir = opendir(path);
++	if (dir == NULL)
++		return -errno;
++
++	status = 0;
++	for (;;) {
++		long pid, tgid, ppid;
++		char *end;
++		Tracee *known;
++
++		errno = 0;
++		entry = readdir(dir);
++		if (entry == NULL) {
++			if (errno != 0)
++				status = -errno;
++			break;
++		}
++		if (entry->d_name[0] < '0' || entry->d_name[0] > '9')
++			continue;
++		errno = 0;
++		pid = strtol(entry->d_name, &end, 10);
++		if (errno != 0 || *end != '\0' || pid <= 0 || pid > INT_MAX ||
++		    pid == parent->pid)
++			continue;
++		known = get_tracee(NULL, (pid_t) pid, false);
++		if (known != NULL && (known->terminated || known->exe != NULL ||
++		                     known->parent != NULL))
++			continue;
++		if (read_task_ids((pid_t) pid, &tgid, &ppid, &tracer) < 0 ||
++		    tracer != self)
++			continue;
++		if (thread) {
++			if (tgid != parent_tgid)
++				continue;
++		} else {
++			long expected_ppid = (clone_flags & CLONE_PARENT) != 0
++				? parent_ppid : parent_tgid;
++			if (tgid != pid || ppid != expected_ppid)
++				continue;
++		}
++		if (found != 0) {
++			status = -EAGAIN;
++			break;
++		}
++		found = (unsigned long) pid;
++	}
++	closedir(dir);
++	if (status < 0)
++		return status;
++	if (found == 0)
++		return -ESRCH;
++	*result = found;
++	return 0;
++}
++
+ /**
+  * Make new @parent's child inherit from it.  Depending on
+  * @clone_flags, some information are copied or shared.  This function
+  * returns -errno if an error occured, otherwise 0.
+  */
++static int new_child_setup(Tracee *parent, unsigned long pid, word_t clone_flags);
++
+ int new_child(Tracee *parent, word_t clone_flags)
+ {
+-	int ptrace_options;
++	bool flags_known;
+ 	unsigned long pid;
+-	Tracee *child;
+ 	int status;
+ 
+ 	/* If the tracee calls clone(2) with the CLONE_VFORK flag,
+@@ -425,24 +541,62 @@
+ 	 * order to get the right flags.
+ 	 */
+ 	status = fetch_regs(parent);
++	flags_known = (status >= 0);
+ 	if (status >= 0 && get_sysnum(parent, CURRENT) == PR_clone)
+ 		clone_flags = peek_reg(parent, CURRENT, SYSARG_1);
+ 	else if (status >= 0 && get_sysnum(parent, CURRENT) == PR_clone3) {
+ 		word_t args = peek_reg(parent, CURRENT, SYSARG_1);
+ 		word_t flags = peek_uint64(parent, args);
++		flags_known = false;
+ 		if (errno == 0) {
+ 			word_t exit_signal = peek_uint64(parent, args + 4 * sizeof(uint64_t));
+-			if (errno == 0)
++			if (errno == 0) {
+ 				clone_flags = (flags & ~(word_t) 0xFF) | (exit_signal & 0xFF);
++				flags_known = true;
++			}
+ 		}
+ 	}
+ 
+ 	/* Get the pid of the parent's new child.  */
+ 	status = ptrace(PTRACE_GETEVENTMSG, parent->pid, NULL, &pid);
+-	if (status < 0 || pid == 0) {
++	if (status < 0) {
+ 		note(parent, WARNING, SYSTEM, "ptrace(GETEVENTMSG)");
+ 		return status;
+ 	}
++	if (pid == 0) {
++		static bool warned;
++
++		status = flags_known ? find_event_child(parent, clone_flags, &pid) : -EIO;
++		/* A thread creator can reach clone's exit while its child is held.
++		 * vfork cannot: its creator waits for the child, so do not defer it. */
++		if (status == -EAGAIN && (clone_flags & CLONE_THREAD) != 0 &&
++		    (clone_flags & CLONE_VFORK) == 0) {
++			parent->pending_clone_flags = clone_flags;
++			parent->restart_how = PTRACE_SYSCALL;
++			return 0;
++		}
++		if (status < 0) {
++			note(parent, WARNING, USER,
++			     "zero fork-event pid for task %d: cannot safely identify child (%s); leaving it uninitialized",
++			     (int) parent->pid, strerror(-status));
++			return status;
++		}
++		if (!warned) {
++			warned = true;
++			note(parent, WARNING, USER,
++			     "kernel returned a zero fork-event pid; using procfs child discovery");
++		}
++		VERBOSE(parent, 1, "recovered child %lu for task %d from procfs",
++			pid, (int) parent->pid);
++	}
++
++	return new_child_setup(parent, pid, clone_flags);
++}
++
++static int new_child_setup(Tracee *parent, unsigned long pid, word_t clone_flags)
++{
++	int ptrace_options;
++	Tracee *child;
+ 
+ 	child = get_tracee(parent, (pid_t) pid, true);
+ 	if (child == NULL) {
+@@ -628,6 +782,52 @@
+ 	return 0;
+ }
+ 
++/* A clone event occurs before the creating thread returns from clone.  For an
++ * ambiguous thread lookup, obtain the exact TID at that syscall's exit instead
++ * of guessing from the order of /proc entries.  Called before normal syscall
++ * exit handling so the registers and inherited tracee state are still intact. */
++void finish_pending_child(Tracee *parent)
++{
++	word_t flags = parent->pending_clone_flags;
++	word_t pid;
++	long ptgid, ppid, tracer, ctgid;
++	Tracee *known;
++	int status;
++
++	parent->pending_clone_flags = 0;
++	status = fetch_regs(parent);
++	if (status < 0)
++		goto failed;
++	pid = peek_reg(parent, CURRENT, SYSARG_RESULT);
++	if (pid == 0 || pid > INT_MAX || pid == (word_t) parent->pid) {
++		status = -ESRCH;
++		goto failed;
++	}
++	/* Validate the host TID before setup.  This also rejects an unmappable
++	 * PID from a different PID namespace instead of adopting an unrelated task. */
++	status = read_task_ids(parent->pid, &ptgid, &ppid, &tracer);
++	if (status < 0)
++		goto failed;
++	status = read_task_ids((pid_t) pid, &ctgid, &ppid, &tracer);
++	if (status < 0)
++		goto failed;
++	known = get_tracee(NULL, (pid_t) pid, false);
++	if (ctgid != ptgid || tracer != (long) getpid() ||
++	    (known != NULL && (known->terminated || known->exe != NULL || known->parent != NULL))) {
++		status = -ESRCH;
++		goto failed;
++	}
++	status = new_child_setup(parent, (unsigned long) pid, flags);
++	if (status < 0)
++		goto failed;
++	VERBOSE(parent, 1, "recovered thread %lu for task %d from clone return",
++		(unsigned long) pid, (int) parent->pid);
++	return;
++failed:
++	note(parent, WARNING, USER, "cannot recover thread at clone exit for task %d (error %d)",
++		(int) parent->pid, status);
++}
++
+ /**
+  * Helper for swap_config().
+  */
+diff --git a/src/tracee/event.c b/src/tracee/event.c
+--- a/src/tracee/event.c
++++ b/src/tracee/event.c
+@@ -398,6 +398,7 @@
+ 	 * before the exit stage, eg. PTRACE_EVENT_EXEC for the exit
+ 	 * stage of execve(2).  */
+ 	sysexit_necessary = tracee->sysexit_pending
++				|| tracee->pending_clone_flags != 0
+ 				|| tracee->chain.syscalls != NULL
+ 				|| tracee->restore_original_regs_after_seccomp_event;
+ 	/* Don't overwrite restart_how if it is explicitly set
+@@ -474,6 +475,9 @@
+ 			/* Fall through. */
+ 		case SIGTRAP | 0x80:
+ 			signal = 0;
++
++			if (tracee->pending_clone_flags != 0)
++				finish_pending_child(tracee);
+ 
+ 			/* This tracee got signaled then freed during the
+ 			   sysenter stage but the kernel reports the sysexit
+diff --git a/src/tracee/tracee.h b/src/tracee/tracee.h
+--- a/src/tracee/tracee.h
++++ b/src/tracee/tracee.h
+@@ -172,6 +172,9 @@
+ 		SIGSTOP_ALLOWED,      /* Allow SIGSTOP (once the parent is known).   */
+ 		SIGSTOP_PENDING,      /* Block SIGSTOP until the parent is unknown.  */
+ 	} sigstop;
++
++	/* Nonzero only while resolving an ambiguous thread clone at its exit. */
++	word_t pending_clone_flags;
+ 
+ 	/* True if next SIGSYS caused by seccomp should be silently dropped
+ 	 * without affecting state of any registers.  */
+@@ -310,6 +313,7 @@
+ 				bool only_with_pevent, word_t wait_options);
+ extern bool has_ptracees(const Tracee *ptracer, pid_t pid, word_t wait_options);
+ extern int new_child(Tracee *parent, word_t clone_flags);
++extern void finish_pending_child(Tracee *parent);
+ extern Tracee *new_dummy_tracee(TALLOC_CTX *context);
+ extern void terminate_tracee(Tracee *tracee);
+ extern void free_terminated_tracees();

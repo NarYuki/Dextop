@@ -1,0 +1,169 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: DroidDeck <droiddeck@users.noreply.github.com>
+Date: Tue, 29 Sep 2026 00:00:00 +0000
+Subject: [PATCH] seccomp: trace ioctl by request, drop exit stops the kernel
+ does not need
+
+---
+ src/syscall/seccomp.c | 98 ++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 97 insertions(+), 1 deletion(-)
+
+diff --git a/src/syscall/seccomp.c b/src/syscall/seccomp.c
+index 0b381bb..1116ab2 100644
+--- a/src/syscall/seccomp.c
++++ b/src/syscall/seccomp.c
+@@ -39,6 +39,11 @@
+ #include <stdint.h>        /* uint*_t, UINT*_MAX, */
+ #include <stdbool.h>
+ #include <sys/resource.h>
++#include <sys/utsname.h>
++#include <stdio.h>
++#include <asm/ioctls.h>
++#include <asm/termbits.h>
++#include <linux/fs.h>
+ #include <assert.h>        /* assert(3), */
+ 
+ #include "syscall/seccomp.h"
+@@ -166,6 +171,46 @@ static int add_trace_prlimit_stack(struct sock_fprog *program, word_t syscall, i
+ 	return add_statements(program, LENGTH_TRACE_PRLIMIT_STACK, statements);
+ }
+ 
++
++
++
++
++
++
++
++
++
++
++static int add_trace_ioctl_requests(struct sock_fprog *program, word_t syscall, int flag)
++{
++	const size_t request_offset = offsetof(struct seccomp_data, args[1]);
++
++	#define LENGTH_TRACE_IOCTL 10
++	struct sock_filter statements[LENGTH_TRACE_IOCTL] = {
++
++
++		BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, syscall, 0, 9),
++
++
++		BPF_STMT(BPF_LD + BPF_W + BPF_ABS, request_offset),
++
++		BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, TCSETSF,  5, 0),
++		BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, TCGETS2,  4, 0),
++		BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, TCSETS2,  3, 0),
++		BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, TCSETSW2, 2, 0),
++		BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, TCSETSF2, 1, 0),
++		BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, (uint32_t) FICLONE, 0, 1),
++
++		BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_TRACE + flag),
++		BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW)
++	};
++
++	DEBUG_FILTER("FILTER:     trace if syscall == %ld and a termios2/TCSETSF/FICLONE request\n",
++		syscall);
++
++	return add_statements(program, LENGTH_TRACE_IOCTL, statements);
++}
++
+ static size_t trace_length(Sysnum sysnum)
+ {
+ 	switch (sysnum) {
+@@ -174,6 +219,8 @@ static size_t trace_length(Sysnum sysnum)
+ 		return LENGTH_TRACE_SYSCALL_IF_ARG;
+ 	case PR_prlimit64:
+ 		return LENGTH_TRACE_PRLIMIT_STACK;
++	case PR_ioctl:
++		return LENGTH_TRACE_IOCTL;
+ 	default:
+ 		return LENGTH_TRACE_SYSCALL;
+ 	}
+@@ -191,6 +238,8 @@ static int add_trace(struct sock_fprog *program, Sysnum sysnum, word_t syscall,
+ 		return add_trace_syscall_if_arg(program, syscall, 0, RLIMIT_STACK, flag);
+ 	case PR_prlimit64:
+ 		return add_trace_prlimit_stack(program, syscall, flag);
++	case PR_ioctl:
++		return add_trace_ioctl_requests(program, syscall, flag);
+ 	default:
+ 		return add_trace_syscall(program, syscall, flag);
+ 	}
+@@ -329,7 +378,7 @@ static int set_seccomp_filters(const FilteredSysnum *sysnums)
+ 
+ 	struct sock_fprog program = { .len = 0, .filter = NULL };
+ 	size_t section_length;
+-	size_t i, j, k;
++	size_t i, j, k, pass;
+ 	int status;
+ 
+ 	status = new_program_filter(&program);
+@@ -355,8 +404,14 @@ static int set_seccomp_filters(const FilteredSysnum *sysnums)
+ 		if (status < 0)
+ 			goto end;
+ 
++
++
++		for (pass = 0; pass < 2; pass++)
+ 		for (j = 0; j < seccomp_archs[i].nb_abis; j++) {
+ 			for (k = 0; sysnums[k].value != PR_void; k++) {
++				if ((sysnums[k].value == PR_ioctl) != (pass == 0))
++					continue;
++
+ 				/* Get the architecture specific syscall number.  */
+ 				syscall = detranslate_sysnum(seccomp_archs[i].abis[j], sysnums[k].value);
+ 				if (syscall == SYSCALL_AVOIDER)
+@@ -572,12 +627,53 @@ int enable_syscall_filtering(const Tracee *tracee)
+ 	return 0;
+ }
+ 
++
++
++
++
++
++
++
++
++
++static void drop_unneeded_exit_stops(void)
++{
++	static bool done = false;
++	struct utsname utsname;
++	int major, minor;
++	size_t i;
++
++	if (done)
++		return;
++	done = true;
++
++	if (uname(&utsname) < 0 || sscanf(utsname.release, "%d.%d", &major, &minor) != 2)
++		return;
++
++	for (i = 0; proot_sysnums[i].value != PR_void; i++) {
++		switch (proot_sysnums[i].value) {
++		case PR_faccessat2:
++			if (major > 5 || (major == 5 && minor >= 8))
++				proot_sysnums[i].flags &= ~FILTER_SYSEXIT;
++			break;
++		case PR_statx:
++			if (major > 4 || (major == 4 && minor >= 11))
++				proot_sysnums[i].flags &= ~FILTER_SYSEXIT;
++			break;
++		default:
++			break;
++		}
++	}
++}
++
+ static int collect_filtered_sysnums(TALLOC_CTX *context, const Tracee *tracee,
+ 				FilteredSysnum **filtered_sysnums)
+ {
+ 	Extension *extension;
+ 	int status;
+ 
++	drop_unneeded_exit_stops();
++
+ 	/* Add the sysnums required by PRoot to the list of filtered
+ 	 * sysnums.  TODO: only if path translation is required.  */
+ 	status = merge_filtered_sysnums(context, filtered_sysnums, proot_sysnums);

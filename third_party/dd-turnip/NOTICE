@@ -1,0 +1,11 @@
+DD-Turnip-v0.2.0
+
+Turnip, the Mesa freedreno Vulkan driver, built from Mesa 26.3.0-devel at bffd91947efc1932da99aca69fc540d6d4201b0c
+with the DD-Turnip patch set, for Android (android/) and Linux ARM64 (linux/).
+
+Source: DD-Turnip-v0.2.0-source.tar.xz, published with these drivers at https://github.com/Droid-Deck/Drivers-CI/releases/tag/DD-Turnip-v0.2.0
+It holds Mesa at that commit (mesa/) and the patches and build scripts that produced them (drivers/).
+
+Licenses: Mesa is under the MIT license, with the exceptions its files name; its license texts are in
+LICENSES/mesa/. The patch set is distributed under the GNU General Public License version 3
+(LICENSES/GPL-3.0.txt), and so are these drivers.

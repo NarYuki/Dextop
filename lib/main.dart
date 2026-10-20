@@ -10,6 +10,8 @@ import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/l10n/current_localizations.dart';
 import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/features_page.dart';
+import 'package:free_dextop/linux_page.dart';
+import 'package:free_dextop/penguin_icon.dart';
 import 'package:free_dextop/setup_page.dart';
 import 'package:free_dextop/embedded_binder_setup.dart';
 import 'package:in_app_update/in_app_update.dart';

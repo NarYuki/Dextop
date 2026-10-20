@@ -148,9 +148,10 @@ internal object DextopShortcuts {
     private fun registerPinReceiver(context: Context) {
         val receiver = object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
-                val pinned = getResultCode() == Activity.RESULT_OK
-                Log.i(TAG, "shortcut pin result pinned=$pinned")
-                reportPinResult(pinned)
+                // ShortcutManager invokes this callback only after successful pinning.
+                // Its result code is 0, not Activity.RESULT_OK; cancellation has no callback.
+                Log.i(TAG, "shortcut pinned")
+                reportPinResult(true)
             }
         }
         val filter = IntentFilter(PIN_RESULT_ACTION)

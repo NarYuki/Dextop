@@ -26,6 +26,28 @@ internal object DeviceProfiles {
         DesktopEnvironmentRule("samsung_dex", DeviceMatch(manufacturers = setOf("samsung"))) {
             DesktopEnvironmentRegistry.samsungDex()
         },
+        // Xperia Launcher starts SecondaryDisplayLauncher on the trusted
+        // recording display, which pauses the mirror (verified on A401SO,
+        // Android 16), and opens Plasma v2 apps as freeform windows on their
+        // application displays at 60 Hz, and its keyboard closes whenever the
+        // Plasma overlay takes focus. On Android 15 (verified on SO-51D) Plasma v2
+        // cannot use accessibility overlays on the overlay display, and the
+        // mirror keeps a stale transform after rotation. Otherwise the AOSP
+        // profile applies.
+        DesktopEnvironmentRule("sony_xperia", DeviceMatch(manufacturers = setOf("sony"))) { identity ->
+            DesktopEnvironmentRegistry.aospFreeform(identity)
+                .copy(
+                    id = "sony_xperia",
+                    untrustedMirrorDisplay = true,
+                    fullscreenApplicationDisplays = true,
+                    passivePlasmaShellFocus = true,
+                    maxRateApplicationDisplays = true,
+                    plasmaApplicationOverlay = identity.sdk <= 35,
+                    rebuildMirrorAfterLiveResize = identity.sdk <= 35,
+                    privateApplicationDisplays = true,
+                    directPlasmaDisplay = identity.sdk <= 35,
+                )
+        },
         vendor("hyperos_miui", setOf("xiaomi", "redmi", "poco"), "nativeHyperosMiuiDesktop"),
         vendor("coloros_family", setOf("oppo", "realme", "oneplus"), "nativeColorosDesktop"),
         vendor("vivo_family", setOf("vivo", "iqoo"), "nativeOriginosFuntouchOsDesktop"),

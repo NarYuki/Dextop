@@ -209,9 +209,8 @@ class NativeBridge {
   static final _shortcutActions = StreamController<void>.broadcast();
   static var _nativeCallbacksInstalled = false;
 
-  /// Outcome of a home screen shortcut request: `true` when the user confirmed
-  /// the launcher dialog, `false` when it was dismissed, and `null` when the
-  /// launcher never answered.
+  /// Outcome of a home screen shortcut request: `true` after successful pinning
+  /// and `null` when no callback arrives. Android does not report cancellation.
   static Stream<bool?> get pinResults {
     _installNativeCallbacks();
     return _pinResults.stream;
@@ -229,8 +228,9 @@ class NativeBridge {
     _nativeCallbacksInstalled = true;
     channel.setMethodCallHandler((call) async {
       if (call.method == 'shortcutPinResult') {
-        final pinned =
-            call.arguments is Map ? (call.arguments as Map)['pinned'] : null;
+        final pinned = call.arguments is Map
+            ? (call.arguments as Map)['pinned']
+            : null;
         _pinResults.add(pinned is bool ? pinned : null);
       } else if (call.method == 'shortcutAction') {
         _shortcutActions.add(null);
@@ -331,13 +331,15 @@ class NativeBridge {
     required int height,
     required double refreshRate,
   }) async =>
-      await channel
-          .invokeMapMethod<String, dynamic>('setDisplayPreferredMode', {
-            'displayId': displayId,
-            'width': width,
-            'height': height,
-            'refreshRate': refreshRate,
-          }) ??
+      await channel.invokeMapMethod<String, dynamic>(
+        'setDisplayPreferredMode',
+        {
+          'displayId': displayId,
+          'width': width,
+          'height': height,
+          'refreshRate': refreshRate,
+        },
+      ) ??
       {};
   Future<Map<String, dynamic>> displayEnvironmentSettings() async =>
       await channel.invokeMapMethod<String, dynamic>(
@@ -353,6 +355,7 @@ class NativeBridge {
         {'id': id, 'enabled': enabled},
       ) ??
       {};
+
   /// Applies the saved `window_manager` preference to a running session.
   Future<void> setWindowManager() => channel.invokeMethod('setWindowManager');
 
@@ -370,15 +373,18 @@ class NativeBridge {
       await channel.invokeListMethod<dynamic>('apps') ?? [];
   Future<bool> consumeTileAction() async =>
       await channel.invokeMethod<bool>('consumeTileAction') ?? false;
+
   /// Consumes the pending launcher shortcut action, if the app was started or
   /// re-launched by one. Clears the action so a later resume cannot start the
   /// display again. The returned map carries `closeAfterStart` when the caller
   /// (the Quick Settings tile) expects the activity to step back.
   Future<Map<String, dynamic>?> consumeShortcutAction() async =>
       await channel.invokeMapMethod<String, dynamic>('consumeShortcutAction');
+
   /// Closes the activity after a control-center start handed the screen to the
   /// Dextop overlay.
   Future<void> finishActivity() => channel.invokeMethod('finishActivity');
+
   /// Asks the launcher to place the "start Dextop" shortcut on the home
   /// screen. Completes once the launcher accepts the request; the confirmed
   /// outcome arrives on [pinResults].
@@ -393,6 +399,7 @@ class NativeBridge {
     'bounds': ?bounds,
     'position': ?position,
   });
+
   /// Routes a saved workspace directly to the active decorated Car Companion
   /// display. Returns false when that third display mode is not active.
   Future<bool> launchAutoWorkspace(String id) async =>

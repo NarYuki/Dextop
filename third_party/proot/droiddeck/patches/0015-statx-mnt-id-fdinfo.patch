@@ -1,0 +1,28 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: DroidDeck <droiddeck@users.noreply.github.com>
+Date: Tue, 13 Oct 2026 00:00:00 +0000
+Subject: [PATCH] statx: supply mount IDs on kernels before 5.8
+
+On kernels before 5.8, statx can succeed without STATX_MNT_ID. Recover it
+from the already-open descriptor after verifying its identity. Keep the
+compatibility exit stop only on kernels that need the missing field.
+---
+diff --git a/src/syscall/seccomp.c b/src/syscall/seccomp.c
+index ee7b8acd68660f38fd52f56e951ffb94e9061d68..ff3a79b60e9092a296bb444c919bb3861338727f 100644
+--- a/src/syscall/seccomp.c
++++ b/src/syscall/seccomp.c
+@@ -764 +764 @@ static void drop_unneeded_exit_stops(void)
+-			if (major > 4 || (major == 4 && minor >= 11))
++			if (major > 5 || (major == 5 && minor >= 8))
+diff --git a/src/tracee/statx.c b/src/tracee/statx.c
+index ca972f892e84461cb694dd13a37bfbc67527b320..824771ccf5934e1f870fc36a29fb22fdcad0a856 100644
+--- a/src/tracee/statx.c
++++ b/src/tracee/statx.c
+@@ -4,0 +5 @@
++#include "tracee/statx_mnt_id.h"
+@@ -125,0 +127,5 @@ int handle_statx_syscall(Tracee *tracee, bool from_sigsys) {
++	if (droiddeck_proot_statx_fill_mnt_id(tracee->pid, (int) dirfd,
++			(int) flags, guest_path, (unsigned int) mask,
++			&state.statx_buf))
++		state.updated_stats = true;
++

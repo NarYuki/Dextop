@@ -111,9 +111,9 @@ extension _HomeContent on _HomeScreenState {
                         : loading
                         ? currentLocalizations().uiChecking
                         : autoPlus
-                        ? currentLocalizations().uiRunningAutoPlus
+                        ? currentLocalizations().uiRunningAutoPlus.replaceFirst('Auto+', autoMode.isEmpty ? 'Auto+' : 'Auto+/$autoMode')
                         : autoOnly
-                        ? currentLocalizations().uiRunningAuto
+                        ? currentLocalizations().uiRunningAuto.replaceFirst('Auto', autoMode.isEmpty ? 'Auto' : 'Auto/$autoMode')
                         : active
                         ? currentLocalizations().running
                         : needsAndroidRepair

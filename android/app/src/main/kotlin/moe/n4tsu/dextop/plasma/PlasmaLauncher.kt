@@ -16,6 +16,12 @@ import android.widget.GridLayout
 import android.widget.LinearLayout
 import android.widget.ScrollView
 
+/** Kickoff category of Linux container applications (Android categories are >= -1). */
+internal const val LINUX_APP_CATEGORY = -1000
+
+/** Package-name prefix of Kickoff entries for Linux applications: "linuxapp:<container>:<desktop id>". */
+internal const val LINUX_APP_PREFIX = "linuxapp:"
+
 /** Launcher callbacks shared by Kickoff and KRunner. */
 internal interface LauncherHost {
     val palette: PlasmaPalette
@@ -286,6 +292,7 @@ internal class KickoffView(
                 val present = host.apps().map { it.category }.toSet()
                 PlasmaAppRepository.categories.filter { it in present || it == ApplicationInfo.CATEGORY_UNDEFINED }
                     .forEach { add(Triple("cat:$it", categoryGlyph(it), categoryName(it))) }
+                if (LINUX_APP_CATEGORY in present) add(Triple("cat:$LINUX_APP_CATEGORY", Glyph.COMPUTER, t("nativePlasmaCategoryLinux")))
             }
         }
         entries.forEach { (id, glyph, label) ->
@@ -388,6 +395,20 @@ internal class KickoffView(
 
     private fun appMenu(app: PlasmaApp, x: Float, y: Float) {
         val favorite = host.isFavorite(app.packageName)
+        if (app.packageName.startsWith(LINUX_APP_PREFIX)) {
+            host.showMenu(
+                listOf(
+                    MenuItem(app.label, header = true),
+                    MenuItem(t("nativePlasmaOpen"), Glyph.CHEVRON_RIGHT) { host.launch(app.packageName) },
+                    MenuItem(if (favorite) t("nativePlasmaRemoveFromFavorites") else t("nativePlasmaAddToFavorites"), Glyph.STAR, separatorBefore = true) {
+                        host.setFavorite(app.packageName, !favorite)
+                        if (category == "favorites") showCategory("favorites")
+                    },
+                ),
+                x, y,
+            )
+            return
+        }
         val pinned = host.isPinned(app.packageName)
         host.showMenu(
             listOf(
