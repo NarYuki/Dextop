@@ -974,5 +974,19 @@
   "linuxGpuTurnip": "Turnip + Zink（推荐）",
   "linuxGpuTurnipDescription": "Linux 应用直接使用 Adreno GPU（Vulkan 和 OpenGL 4.6）。最快，适合游戏。",
   "linuxGpuTurnipSetup": "在容器设置中启用 3D 图形后可用（构建约需 30 分钟）。在此之前使用 VirGL。",
-  "linuxSetupPhaseGpu": "正在构建 GPU 驱动（Turnip）"
+  "linuxSetupPhaseGpu": "正在构建 GPU 驱动（Turnip）",
+  "uiShortcutAdd": "添加主屏幕快捷方式",
+  "uiShortcutAdded": "已添加到主屏幕，点按即可启动或停止 Dextop 虚拟显示器。",
+  "uiShortcutDismissed": "未添加快捷方式",
+  "uiShortcutUnsupported": "当前启动器不支持主屏幕快捷方式。请长按 Dextop 应用图标，选择“启动 Dextop”。",
+  "uiShortcutFailed": "添加快捷方式失败：$error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "启动 Dextop",
+  "nativeShortcutStartDisplayLong": "启动或停止 Dextop 虚拟显示器"
 }

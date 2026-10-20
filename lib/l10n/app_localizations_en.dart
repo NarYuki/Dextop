@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3113,4 +3114,30 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linuxSetupPhaseGpu => 'Building the GPU driver (Turnip)';
+
+  @override
+  String get uiShortcutAdd => 'Add home screen shortcut';
+
+  @override
+  String get uiShortcutAdded =>
+      'Added to the home screen. Tap it to start or stop the Dextop virtual display.';
+
+  @override
+  String get uiShortcutDismissed => 'Shortcut not added';
+
+  @override
+  String get uiShortcutUnsupported =>
+      'This launcher does not support pinned shortcuts. Long-press the Dextop app icon and choose “Start Dextop”.';
+
+  @override
+  String uiShortcutFailed(String error) {
+    return 'Could not add the shortcut: \$error';
+  }
+
+  @override
+  String get nativeShortcutStartDisplay => 'Start Dextop';
+
+  @override
+  String get nativeShortcutStartDisplayLong =>
+      'Start or stop the Dextop virtual display';
 }

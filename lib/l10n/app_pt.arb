@@ -974,5 +974,19 @@
   "linuxGpuTurnip": "Turnip + Zink (recomendado)",
   "linuxGpuTurnipDescription": "As apps Linux usam a GPU Adreno diretamente (Vulkan e OpenGL 4.6). O mais rápido, ideal para jogos.",
   "linuxGpuTurnipSetup": "Ative os gráficos 3D na configuração do contentor (a compilação demora cerca de 30 minutos). Até lá é usado o VirGL.",
-  "linuxSetupPhaseGpu": "A compilar o controlador da GPU (Turnip)"
+  "linuxSetupPhaseGpu": "A compilar o controlador da GPU (Turnip)",
+  "uiShortcutAdd": "Adicionar atalho ao ecrã inicial",
+  "uiShortcutAdded": "Adicionado ao ecrã inicial. Toque para iniciar ou parar o ecrã virtual do Dextop.",
+  "uiShortcutDismissed": "Atalho não adicionado",
+  "uiShortcutUnsupported": "Este launcher não suporta atalhos fixados. Mantenha premido o ícone do Dextop e escolha “Iniciar Dextop”.",
+  "uiShortcutFailed": "Não foi possível adicionar o atalho: $error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "Iniciar Dextop",
+  "nativeShortcutStartDisplayLong": "Iniciar ou parar o ecrã virtual do Dextop"
 }

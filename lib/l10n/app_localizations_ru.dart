@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -3139,4 +3140,30 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get linuxSetupPhaseGpu => 'Сборка драйвера GPU (Turnip)';
+
+  @override
+  String get uiShortcutAdd => 'Добавить ярлык на главный экран';
+
+  @override
+  String get uiShortcutAdded =>
+      'Ярлык добавлен на главный экран. Нажмите на него, чтобы запустить или остановить виртуальный дисплей Dextop.';
+
+  @override
+  String get uiShortcutDismissed => 'Ярлык не добавлен';
+
+  @override
+  String get uiShortcutUnsupported =>
+      'Этот лаунчер не поддерживает закреплённые ярлыки. Нажмите и удерживайте значок Dextop и выберите «Запустить Dextop».';
+
+  @override
+  String uiShortcutFailed(String error) {
+    return 'Не удалось добавить ярлык: \$error';
+  }
+
+  @override
+  String get nativeShortcutStartDisplay => 'Запустить Dextop';
+
+  @override
+  String get nativeShortcutStartDisplayLong =>
+      'Запустить или остановить виртуальный дисплей Dextop';
 }

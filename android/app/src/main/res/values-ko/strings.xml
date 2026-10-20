@@ -16,4 +16,6 @@
     <string name="embedded_pairing_service_not_found">페어링 서비스를 찾을 수 없습니다</string>
     <string name="embedded_pairing_retry">다시 시도</string>
     <string name="embedded_pairing_in_progress">페어링 중</string>
+    <string name="dextop_shortcut_start_display">Dextop 시작</string>
+    <string name="dextop_shortcut_start_display_long">Dextop 가상 디스플레이를 시작하거나 중지합니다</string>
 </resources>
