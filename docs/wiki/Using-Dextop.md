@@ -31,6 +31,20 @@ A workspace stores a group of applications and their assigned positions.
 
 The device profile uses the detected physical size and a readable density. Custom profiles can specify width, height, and DPI. Profiles may be edited or deleted while a session is stopped.
 
-## Quick Settings tile
+## Quick Settings tiles
 
-Add the Dextop tile from Android Quick Settings. It opens Dextop and can return to the last workspace flow. Exact tile behavior varies with Android and OEM restrictions.
+Dextop adds two tiles to Android Quick Settings:
+
+- **Dextop** opens Dextop and returns to the last workspace flow.
+- **Dextop Display** toggles the virtual display directly, using the resolution, orientation, and secure-display settings saved in the app: while no session runs it starts the display and then steps back so the Dextop overlay owns the screen, and while a session runs it stops it.
+
+A display start that cannot complete (for example because the privileged service is unavailable) keeps the app open so the reason stays visible. Exact tile behavior varies with Android and OEM restrictions.
+
+## Home screen shortcut
+
+The Dextop launcher shortcut toggles the virtual display without opening the app first.
+
+- From Home, tap **Add home screen shortcut** below the Start button and confirm the launcher dialog.
+- Long-press the Dextop app icon and choose **Start Dextop** for the shortcut menu entry.
+
+The shortcut uses the saved resolution, orientation, and secure-display settings. Tapping it starts the display, and tapping it again stops the running session, exactly like the **Dextop Display** tile. Whether pinned shortcuts are supported varies with Android and OEM restrictions.

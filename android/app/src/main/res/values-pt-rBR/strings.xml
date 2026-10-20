@@ -16,4 +16,6 @@
     <string name="embedded_pairing_service_not_found">Serviço de pareamento não encontrado</string>
     <string name="embedded_pairing_retry">Tentar novamente</string>
     <string name="embedded_pairing_in_progress">Pareamento em andamento</string>
+    <string name="dextop_shortcut_start_display">Iniciar Dextop</string>
+    <string name="dextop_shortcut_start_display_long">Iniciar ou parar a tela virtual do Dextop</string>
 </resources>

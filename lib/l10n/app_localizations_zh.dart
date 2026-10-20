@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -2984,4 +2985,28 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get linuxSetupPhaseGpu => '正在构建 GPU 驱动（Turnip）';
+
+  @override
+  String get uiShortcutAdd => '添加主屏幕快捷方式';
+
+  @override
+  String get uiShortcutAdded => '已添加到主屏幕，点按即可启动或停止 Dextop 虚拟显示器。';
+
+  @override
+  String get uiShortcutDismissed => '未添加快捷方式';
+
+  @override
+  String get uiShortcutUnsupported =>
+      '当前启动器不支持主屏幕快捷方式。请长按 Dextop 应用图标，选择“启动 Dextop”。';
+
+  @override
+  String uiShortcutFailed(String error) {
+    return '添加快捷方式失败：\$error';
+  }
+
+  @override
+  String get nativeShortcutStartDisplay => '启动 Dextop';
+
+  @override
+  String get nativeShortcutStartDisplayLong => '启动或停止 Dextop 虚拟显示器';
 }

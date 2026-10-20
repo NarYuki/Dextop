@@ -5872,6 +5872,48 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'GPU ドライバー（Turnip）をビルド中'**
   String get linuxSetupPhaseGpu;
+
+  /// No description provided for @uiShortcutAdd.
+  ///
+  /// In ja, this message translates to:
+  /// **'ホーム画面にショートカットを追加'**
+  String get uiShortcutAdd;
+
+  /// No description provided for @uiShortcutAdded.
+  ///
+  /// In ja, this message translates to:
+  /// **'ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。'**
+  String get uiShortcutAdded;
+
+  /// No description provided for @uiShortcutDismissed.
+  ///
+  /// In ja, this message translates to:
+  /// **'ショートカットは追加されませんでした'**
+  String get uiShortcutDismissed;
+
+  /// No description provided for @uiShortcutUnsupported.
+  ///
+  /// In ja, this message translates to:
+  /// **'このホームアプリはショートカットの固定に対応していません。Dextop のアイコンを長押しして「Dextop を起動」を選んでください。'**
+  String get uiShortcutUnsupported;
+
+  /// No description provided for @uiShortcutFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'ショートカットを追加できませんでした：\$error'**
+  String uiShortcutFailed(String error);
+
+  /// No description provided for @nativeShortcutStartDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop を起動'**
+  String get nativeShortcutStartDisplay;
+
+  /// No description provided for @nativeShortcutStartDisplayLong.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop の仮想ディスプレイを起動または停止します'**
+  String get nativeShortcutStartDisplayLong;
 }
 
 class _AppLocalizationsDelegate

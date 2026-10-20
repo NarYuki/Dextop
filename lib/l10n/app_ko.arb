@@ -974,5 +974,19 @@
   "linuxGpuTurnip": "Turnip + Zink(권장)",
   "linuxGpuTurnipDescription": "Linux 앱이 Adreno GPU를 직접 사용합니다(Vulkan, OpenGL 4.6). 가장 빠르고 게임에 적합합니다.",
   "linuxGpuTurnipSetup": "컨테이너 설정에서 3D 그래픽을 켜면 사용할 수 있습니다(빌드에 약 30분). 그 전까지는 VirGL을 사용합니다.",
-  "linuxSetupPhaseGpu": "GPU 드라이버(Turnip) 빌드 중"
+  "linuxSetupPhaseGpu": "GPU 드라이버(Turnip) 빌드 중",
+  "uiShortcutAdd": "홈 화면에 바로가기 추가",
+  "uiShortcutAdded": "홈 화면에 추가했습니다. 탭하면 Dextop 가상 디스플레이를 시작하거나 중지합니다.",
+  "uiShortcutDismissed": "바로가기가 추가되지 않았습니다",
+  "uiShortcutUnsupported": "이 런처는 고정 바로가기를 지원하지 않습니다. Dextop 앱 아이콘을 길게 눌러 “Dextop 시작”을 선택하세요.",
+  "uiShortcutFailed": "바로가기를 추가할 수 없습니다: $error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "Dextop 시작",
+  "nativeShortcutStartDisplayLong": "Dextop 가상 디스플레이를 시작하거나 중지합니다"
 }

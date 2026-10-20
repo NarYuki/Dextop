@@ -16,4 +16,6 @@
     <string name="embedded_pairing_service_not_found">Pairing service not found</string>
     <string name="embedded_pairing_retry">Retry</string>
     <string name="embedded_pairing_in_progress">Pairing in progress</string>
+    <string name="dextop_shortcut_start_display">Start Dextop</string>
+    <string name="dextop_shortcut_start_display_long">Start or stop the Dextop virtual display</string>
 </resources>

@@ -16,4 +16,6 @@
     <string name="embedded_pairing_service_not_found">未找到配对服务</string>
     <string name="embedded_pairing_retry">重试</string>
     <string name="embedded_pairing_in_progress">正在配对</string>
+    <string name="dextop_shortcut_start_display">启动 Dextop</string>
+    <string name="dextop_shortcut_start_display_long">启动或停止 Dextop 虚拟显示器</string>
 </resources>

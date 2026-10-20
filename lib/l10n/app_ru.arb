@@ -974,5 +974,19 @@
   "linuxGpuTurnip": "Turnip + Zink (рекомендуется)",
   "linuxGpuTurnipDescription": "Приложения Linux используют GPU Adreno напрямую (Vulkan и OpenGL 4.6). Быстрее всего, подходит для игр.",
   "linuxGpuTurnipSetup": "Включите 3D-графику в настройке контейнера (сборка займёт около 30 минут). До этого используется VirGL.",
-  "linuxSetupPhaseGpu": "Сборка драйвера GPU (Turnip)"
+  "linuxSetupPhaseGpu": "Сборка драйвера GPU (Turnip)",
+  "uiShortcutAdd": "Добавить ярлык на главный экран",
+  "uiShortcutAdded": "Ярлык добавлен на главный экран. Нажмите на него, чтобы запустить или остановить виртуальный дисплей Dextop.",
+  "uiShortcutDismissed": "Ярлык не добавлен",
+  "uiShortcutUnsupported": "Этот лаунчер не поддерживает закреплённые ярлыки. Нажмите и удерживайте значок Dextop и выберите «Запустить Dextop».",
+  "uiShortcutFailed": "Не удалось добавить ярлык: $error",
+  "@uiShortcutFailed": {
+    "placeholders": {
+      "error": {
+        "type": "String"
+      }
+    }
+  },
+  "nativeShortcutStartDisplay": "Запустить Dextop",
+  "nativeShortcutStartDisplayLong": "Запустить или остановить виртуальный дисплей Dextop"
 }
