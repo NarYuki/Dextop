@@ -48,7 +48,7 @@ internal data class PanelTask(
     val attention: Boolean = false,
 )
 
-internal enum class TrayItem { EXPAND, VOLUME, NETWORK, BATTERY }
+internal enum class TrayItem { EXPAND, VOLUME, NETWORK, CELLULAR, BATTERY, NOTIFICATIONS }
 
 internal data class TrayState(
     val volume: Float,
@@ -56,6 +56,15 @@ internal data class TrayState(
     val battery: Float,
     val charging: Boolean,
     val networkConnected: Boolean,
+    /** Glyph for the network tray icon (Wi-Fi, mobile, Ethernet, airplane mode…). */
+    val networkGlyph: Glyph = Glyph.NETWORK,
+    /** Signal level for [networkGlyph], 0..1. */
+    val networkLevel: Float = 1f,
+    val batterySaver: Boolean = false,
+    /** Shows the mobile antenna next to the network icon while a SIM is inserted. */
+    val cellularVisible: Boolean = false,
+    val cellularLevel: Float = 0f,
+    val cellularNoService: Boolean = false,
 )
 
 /**
@@ -87,7 +96,7 @@ internal class PlasmaPanelView(
     private val pagerPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val slots = ArrayList<Slot>()
     private val launcherGlyph = GlyphDrawable(Glyph.KDE_LAUNCHER, 0)
-    private val trayGlyphs = HashMap<TrayItem, GlyphDrawable>()
+    private val trayGlyphs = HashMap<Glyph, GlyphDrawable>()
     private val showDesktopGlyph = GlyphDrawable(Glyph.SHOW_DESKTOP, 0, 1.4f)
     private var hoveredSlot: Slot? = null
     private var pressedSlot: Slot? = null
@@ -163,9 +172,15 @@ internal class PlasmaPanelView(
     }
 
     /** Bar rectangle inside this view for the current float animation state. */
+    /**
+     * Bar rectangle for the current float state.  It is anchored to the
+     * bottom edge with a constant thickness, so a frame drawn before the
+     * view's new height has been laid out cannot make the bar wobble.
+     */
     private fun barRect(): RectF {
         val margin = floatMargin * floatFraction
-        return RectF(margin, margin, width - margin, height - margin)
+        val bottom = height - margin
+        return RectF(margin, bottom - thickness, width - margin, bottom)
     }
 
     private fun layoutSlots(bar: RectF) {
@@ -193,7 +208,15 @@ internal class PlasmaPanelView(
         slots += Slot.Clock(RectF(right - clockWidth, bar.top, right, bar.bottom))
         right -= clockWidth
         val trayCell = dp(30f)
-        val tray = listOf(TrayItem.BATTERY, TrayItem.NETWORK, TrayItem.VOLUME, TrayItem.EXPAND)
+        // Laid out right to left: [expand][volume][network][antenna][battery][notifications].
+        val tray = listOfNotNull(
+            TrayItem.NOTIFICATIONS,
+            TrayItem.BATTERY,
+            TrayItem.CELLULAR.takeIf { host.tray().cellularVisible },
+            TrayItem.NETWORK,
+            TrayItem.VOLUME,
+            TrayItem.EXPAND,
+        )
         tray.forEach { item ->
             slots += Slot.Tray(RectF(right - trayCell, bar.top, right, bar.bottom), item)
             right -= trayCell
@@ -254,33 +277,47 @@ internal class PlasmaPanelView(
             is Slot.Tray -> {
                 drawHover(canvas, slot, palette, dp(6f))
                 val tray = host.tray()
-                val glyph = trayGlyphs.getOrPut(slot.item) {
-                    GlyphDrawable(
-                        when (slot.item) {
-                            TrayItem.EXPAND -> Glyph.CHEVRON_UP
-                            TrayItem.VOLUME -> Glyph.VOLUME
-                            TrayItem.NETWORK -> Glyph.NETWORK
-                            TrayItem.BATTERY -> Glyph.BATTERY
-                        },
-                        0,
-                        1.5f,
-                    )
+                val glyphType = when (slot.item) {
+                    TrayItem.EXPAND -> Glyph.CHEVRON_UP
+                    TrayItem.VOLUME -> if (tray.muted || tray.volume <= 0f) Glyph.VOLUME_MUTED else Glyph.VOLUME_LEVEL
+                    TrayItem.NETWORK -> tray.networkGlyph
+                    TrayItem.CELLULAR -> if (tray.cellularNoService) Glyph.CELLULAR_OFF else Glyph.CELLULAR
+                    TrayItem.BATTERY -> if (tray.charging) Glyph.BATTERY_CHARGING else Glyph.BATTERY
+                    TrayItem.NOTIFICATIONS -> Glyph.NOTIFICATIONS
                 }
-                glyph.color = palette.text
+                val glyph = trayGlyphs.getOrPut(glyphType) { GlyphDrawable(glyphType, 0, 1.5f) }
+                glyph.color = when {
+                    slot.item == TrayItem.BATTERY && tray.battery < .15f && !tray.charging -> palette.negative
+                    slot.item == TrayItem.BATTERY && tray.batterySaver -> palette.neutral
+                    else -> palette.text
+                }
                 glyph.level01 = when (slot.item) {
-                    TrayItem.BATTERY -> {
-                        glyph.color = if (tray.battery < .15f && !tray.charging) palette.negative else palette.text
-                        tray.battery
-                    }
-                    TrayItem.VOLUME -> if (tray.muted) 0f else tray.volume
-                    else -> 1f
+                    TrayItem.BATTERY -> tray.battery
+                    TrayItem.VOLUME -> tray.volume
+                    TrayItem.NETWORK -> tray.networkLevel
+                    TrayItem.CELLULAR -> tray.cellularLevel
+                    TrayItem.EXPAND, TrayItem.NOTIFICATIONS -> 1f
                 }
-                rect.set(slot.rect); rect.inset(dp(7f), (slot.rect.height() - dp(16f)) / 2f)
+                rect.set(slot.rect); rect.inset(dp(6f), (slot.rect.height() - dp(18f)) / 2f)
                 glyph.setBounds(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
                 glyph.draw(canvas)
                 if (slot.item == TrayItem.NETWORK && !tray.networkConnected) {
                     indicatorPaint.color = palette.negative
                     canvas.drawCircle(rect.right - dp(1f), rect.bottom - dp(2f), dp(3f), indicatorPaint)
+                }
+                val unread = if (slot.item == TrayItem.NOTIFICATIONS) NotificationCenter.count() else 0
+                if (unread > 0) {
+                    // Count badge on the bell, like Plasma's notification applet.
+                    val label = if (unread > 99) "99+" else unread.toString()
+                    textPaint.textSize = dp(9f)
+                    textPaint.typeface = PlasmaTheme.sans
+                    val radius = maxOf(dp(6.5f), textPaint.measureText(label) / 2f + dp(3f))
+                    val cx = rect.right - dp(1f)
+                    val cy = rect.top + dp(2f)
+                    indicatorPaint.color = palette.accent
+                    canvas.drawCircle(cx, cy, radius, indicatorPaint)
+                    textPaint.color = android.graphics.Color.WHITE
+                    canvas.drawText(label, cx, cy + dp(3f), textPaint)
                 }
             }
             is Slot.Clock -> {
@@ -442,4 +479,69 @@ internal class PlasmaPanelView(
         slots.firstOrNull { it is Slot.Task && it.entry.packageName == packageName }?.rect?.let(::toRaw)
 
     fun launcherRect(): RectF? = slots.firstOrNull { it is Slot.Launcher }?.rect?.let(::toRaw)
+}
+
+/** Plasma tooltip for task-manager entries: titles plus live thumbnails. */
+internal class PanelTooltipView(context: Context, private val palette: PlasmaPalette) : View(context) {
+    private var entry: PanelTask? = null
+    private val density = resources.displayMetrics.density
+    private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+    private val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { typeface = PlasmaTheme.sans }
+
+    fun bind(value: PanelTask) { entry = value }
+
+    fun desiredSize(): Pair<Int, Int> {
+        val count = entry?.windows?.size ?: 0
+        return if (count == 0) {
+            text.textSize = 13 * density
+            ((text.measureText(entry?.label.orEmpty()) + 56 * density).toInt()) to (40 * density).toInt()
+        } else {
+            ((count.coerceAtMost(4) * 200 + 12) * density).toInt() to (166 * density).toInt()
+        }
+    }
+
+    override fun onDraw(canvas: android.graphics.Canvas) {
+        val value = entry ?: return
+        val box = RectF(.5f, .5f, width - .5f, height - .5f)
+        paint.style = android.graphics.Paint.Style.FILL
+        paint.color = palette.popup
+        canvas.drawRoundRect(box, 8 * density, 8 * density, paint)
+        paint.style = android.graphics.Paint.Style.STROKE
+        paint.color = palette.frameOutline
+        canvas.drawRoundRect(box, 8 * density, 8 * density, paint)
+        paint.style = android.graphics.Paint.Style.FILL
+        text.textSize = 13 * density
+        text.color = palette.text
+        if (value.windows.isEmpty()) {
+            canvas.drawIcon(value.icon, RectF(10 * density, 10 * density, 30 * density, 30 * density))
+            canvas.drawText(value.label, 40 * density, height / 2f - (text.descent() + text.ascent()) / 2f, text)
+            return
+        }
+        value.windows.take(4).forEachIndexed { index, window ->
+            val left = (6 + index * 200) * density
+            val cell = RectF(left + 6 * density, 8 * density, left + 194 * density, height - 8 * density)
+            canvas.drawIcon(window.icon, RectF(cell.left, cell.top, cell.left + 16 * density, cell.top + 16 * density))
+            val title = TextUtilsCompat.ellipsize(window.title, text, cell.width() - 22 * density)
+            canvas.drawText(title, cell.left + 22 * density, cell.top + 13 * density, text)
+            val thumbArea = RectF(cell.left, cell.top + 24 * density, cell.right, cell.bottom)
+            val frame = window.frame
+            val scale = minOf(thumbArea.width() / frame.width().coerceAtLeast(1), thumbArea.height() / frame.height().coerceAtLeast(1))
+            val thumb = RectF(
+                thumbArea.centerX() - frame.width() * scale / 2, thumbArea.centerY() - frame.height() * scale / 2,
+                thumbArea.centerX() + frame.width() * scale / 2, thumbArea.centerY() + frame.height() * scale / 2,
+            )
+            val bitmap = window.thumbnail
+            if (bitmap != null && !bitmap.isRecycled) canvas.drawBitmap(bitmap, null, thumb, paint)
+            else {
+                paint.color = palette.windowBackground
+                canvas.drawRect(thumb, paint)
+                val s = minOf(thumb.width(), thumb.height()) * .4f
+                canvas.drawIcon(window.icon, RectF(thumb.centerX() - s / 2, thumb.centerY() - s / 2, thumb.centerX() + s / 2, thumb.centerY() + s / 2))
+            }
+            if (window.minimized) {
+                paint.color = PlasmaTheme.withAlpha(palette.popup, 0x88)
+                canvas.drawRect(thumb, paint)
+            }
+        }
+    }
 }

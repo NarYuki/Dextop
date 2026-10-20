@@ -9,6 +9,8 @@ import android.os.Binder
 import android.os.Process
 import moe.n4tsu.dextop.BuildConfig
 import moe.n4tsu.dextop.PrivilegedAccess
+import moe.n4tsu.dextop.linux.LinuxServiceHost
+import moe.n4tsu.dextop.linux.LinuxContainerClient
 
 /** Receives only the Binder created by Dextop's own shell process. */
 class EmbeddedPrivilegeProvider : ContentProvider() {
@@ -18,6 +20,18 @@ class EmbeddedPrivilegeProvider : ContentProvider() {
 
     override fun call(method: String, arg: String?, extras: Bundle?): Bundle? {
         val shellCaller = Binder.getCallingUid() == Process.SHELL_UID
+        if (shellCaller && method == LinuxServiceHost.PUBLISH_METHOD && extras != null) {
+            val currentContext = requireNotNull(context)
+            val outdated = arg != currentContext.applicationInfo.sourceDir
+            val binder = extras.getBinder(EmbeddedPrivilegeProtocol.providerBinder)
+            val accepted = !outdated && binder?.isBinderAlive == true
+            if (accepted) LinuxContainerClient.acceptEmbeddedService(currentContext, binder!!)
+            return Bundle().apply {
+                putBoolean("accepted", accepted)
+                putBoolean("outdated", outdated)
+                putBinder(EmbeddedPrivilegeProtocol.providerLifecycleBinder, lifecycleBinder)
+            }
+        }
         if (BuildConfig.DEBUG && shellCaller && method == "probeRuntime") {
             val command = DistributionPrivilegeRuntime.execute(arrayOf("id"))
             val rotation = runCatching {
@@ -37,7 +51,10 @@ class EmbeddedPrivilegeProvider : ContentProvider() {
         }
         if (!shellCaller || method != EmbeddedPrivilegeProtocol.providerMethod || extras == null) return null
         val binder = extras.getBinder(EmbeddedPrivilegeProtocol.providerBinder) ?: return null
-        if (binder.isBinderAlive) DistributionPrivilegeRuntime.accept(binder)
+        if (binder.isBinderAlive) {
+            DistributionPrivilegeRuntime.accept(binder)
+            LinuxContainerClient.onPrivilegeChanged()
+        }
         return Bundle().apply {
             putBoolean("accepted", binder.isBinderAlive)
             putBinder(EmbeddedPrivilegeProtocol.providerLifecycleBinder, lifecycleBinder)

@@ -342,6 +342,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var active = false;
   var autoConnected = false;
   var autoActive = false;
+  var autoMode = '';
   var stopping = false;
   Timer? sessionStateTimer;
   var stopStatusPollActive = false;
@@ -384,6 +385,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String desktopSettingsSection = 'display';
   StreamSubscription<bool?>? pinResultSubscription;
   StreamSubscription<void>? shortcutActionSubscription;
+  bool homeInitialized = false;
+  bool shortcutActionPending = false;
+  bool shortcutActionRunning = false;
+  Map<String, dynamic>? pendingShortcutRequest;
 
   @override
   void initState() {
@@ -430,9 +435,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         castMode = preferences.getString('cast_mode') ?? 'simple';
         experimentalWindowManagerEnabled =
             preferences.getBool('experimental_dextop_window_manager') ?? false;
-        windowManager = experimentalWindowManagerEnabled
-            ? preferences.getString('window_manager') ?? 'system'
-            : 'system';
+        windowManager = effectiveWindowManager(
+          preferences.getString('window_manager') ?? 'system',
+          experimentalWindowManagerEnabled,
+        );
         workspaceMagnificationPercent =
             (preferences.getInt('desktop_workspace_magnification_percent') ??
                     100)
@@ -475,11 +481,21 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await preferences.setString('mirror_backend', value);
   }
 
+  /// Plasma v2 is always available; the v1 shell needs the experimental switch.
+  static String effectiveWindowManager(
+    String value,
+    bool experimentalEnabled,
+  ) => switch (value) {
+    'dextop_plasma_v2' => value,
+    'dextop_plasma' => experimentalEnabled ? value : 'system',
+    _ => 'system',
+  };
+
   Future<void> setWindowManager(String value) async {
     final preferences = await SharedPreferences.getInstance();
     final experimentalEnabled =
         preferences.getBool('experimental_dextop_window_manager') ?? false;
-    final effectiveValue = experimentalEnabled ? value : 'system';
+    final effectiveValue = effectiveWindowManager(value, experimentalEnabled);
     mutate(() {
       experimentalWindowManagerEnabled = experimentalEnabled;
       windowManager = effectiveValue;
@@ -525,7 +541,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       WidgetsBinding.instance.addPostFrameCallback((_) => loadHomeAppIcons());
     }
     if (mounted) await _consumeTileAction();
-    if (mounted) await _consumeShortcutAction();
+    if (mounted) {
+      homeInitialized = true;
+      await _consumeShortcutAction();
+    }
     if (mounted) await _showMultiTouchUpgradeNoticeIfNeeded();
   }
 
@@ -817,15 +836,49 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   /// Applies a launcher shortcut or display tile tap. Both toggle the
   /// session: start the display with the saved settings, or stop a running one.
   Future<void> _consumeShortcutAction() async {
-    if (!mounted) return;
-    final request = await bridge.consumeShortcutAction();
-    if (!mounted || request == null) return;
-    await toggleDisplay();
-    if (request['closeAfterStart'] == true && active && !widget.desktopWindow) {
-      // The Dextop overlay owns the screen while the session runs, so a
-      // control-center tap must not leave the app in the foreground. A start
-      // that did not succeed keeps the app open and shows why.
-      await bridge.finishActivity();
+    shortcutActionPending = true;
+    await _drainShortcutActions();
+  }
+
+  Future<void> _drainShortcutActions() async {
+    if (!mounted ||
+        !homeInitialized ||
+        loading ||
+        stopping ||
+        shortcutActionRunning) {
+      return;
+    }
+    shortcutActionRunning = true;
+    try {
+      while (mounted && shortcutActionPending && !loading && !stopping) {
+        // A resume may race native startup or shutdown. Use fresh state before toggling.
+        await refresh();
+        if (!mounted || loading || stopping) break;
+        shortcutActionPending = false;
+        final request =
+            pendingShortcutRequest ?? await bridge.consumeShortcutAction();
+        if (!mounted) return;
+        if (request == null) continue;
+        // Another operation may begin while the native action is being consumed.
+        // Keep its payload until we can actually perform the toggle.
+        pendingShortcutRequest = request;
+        if (loading || stopping) {
+          shortcutActionPending = true;
+          break;
+        }
+        pendingShortcutRequest = null;
+        await toggleDisplay();
+        if (mounted &&
+            request['closeAfterStart'] == true &&
+            active &&
+            !widget.desktopWindow) {
+          await bridge.finishActivity();
+        }
+      }
+    } on PlatformException catch (e) {
+      if (mounted) setState(() => error = e.message ?? e.code);
+    } finally {
+      shortcutActionRunning = false;
     }
   }
 
@@ -1009,6 +1062,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         active = value['active'] == true;
         autoConnected = value['autoConnected'] == true;
         autoActive = value['autoActive'] == true;
+        autoMode = value['autoMode'] as String? ?? '';
         carCompanionInstalled = value['carCompanionInstalled'] == true;
         if (!carCompanionInstalled && desktopSettingsSection == 'auto') {
           desktopSettingsSection = 'display';
@@ -1043,6 +1097,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         loading = false;
         error = e.message;
       });
+    } finally {
+      if (shortcutActionPending) unawaited(_drainShortcutActions());
     }
   }
 
@@ -1142,10 +1198,12 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (!mounted) return;
       final nextActive = value['active'] == true;
       final nextAutoActive = value['autoActive'] == true;
+      final nextAutoMode = value['autoMode'] as String? ?? '';
       final nextAutoConnected = value['autoConnected'] == true;
       final nextStopping = value['stopping'] == true;
       if (active == nextActive &&
           autoActive == nextAutoActive &&
+          autoMode == nextAutoMode &&
           autoConnected == nextAutoConnected &&
           stopping == nextStopping) {
         return;
@@ -1153,6 +1211,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       setState(() {
         active = nextActive;
         autoActive = nextAutoActive;
+        autoMode = nextAutoMode;
         autoConnected = nextAutoConnected;
         stopping = nextStopping;
       });
@@ -1394,6 +1453,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
                     label: Text(currentLocalizations().home),
                   ),
                   NavigationRailDestination(
+                    icon: const PenguinIcon(),
+                    selectedIcon: const PenguinIcon(filled: true),
+                    label: Text(
+                      currentLocalizations().nativePlasmaCategoryLinux,
+                    ),
+                  ),
+                  NavigationRailDestination(
                     icon: _settingsNavigationIcon(Icons.tune_outlined),
                     selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
                     label: Text(currentLocalizations().settings),
@@ -1419,6 +1485,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
             label: currentLocalizations().home,
           ),
           NavigationDestination(
+            icon: const PenguinIcon(),
+            selectedIcon: const PenguinIcon(filled: true),
+            label: currentLocalizations().nativePlasmaCategoryLinux,
+          ),
+          NavigationDestination(
             icon: _settingsNavigationIcon(Icons.tune_outlined),
             selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
             label: currentLocalizations().settings,
@@ -1432,12 +1503,24 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     duration: const Duration(milliseconds: 350),
     switchInCurve: Curves.easeOutCubic,
     switchOutCurve: Curves.easeInCubic,
-    child: page == 0 ? overview() : settings(),
+    child: switch (page) {
+      0 => overview(),
+      1 => LinuxPage(
+        key: const ValueKey('linux'),
+        onSwitchToPlasmaV2: () => setWindowManager('dextop_plasma_v2'),
+        onSetupPrivilege: _showEmbeddedPrivilegeSetup,
+      ),
+      _ => settings(),
+    },
   );
 
   void selectPage(int value) {
     setState(() => page = value);
-    AppAnalytics.screen(value == 0 ? 'home' : 'settings');
+    AppAnalytics.screen(switch (value) {
+      0 => 'home',
+      1 => 'linux',
+      _ => 'settings',
+    });
   }
 
   Widget _settingsNavigationIcon(IconData icon) => Badge(

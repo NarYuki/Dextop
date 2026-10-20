@@ -64,11 +64,19 @@ internal class TaskBridge(
         val raw = if (getTasks != null) {
             getTasks.invoke(service, 64, false, false, displayId) as? List<*>
         } else {
-            method("getTasks") { it.parameterTypes.size == 3 }
-                ?.invoke(service, 64, false, false) as? List<*>
+            val alternate = method("getTasks") { it.parameterTypes.size >= 3 }
+                ?: error("getTasks unavailable: ${atmInterface.methods.filter { it.name == "getTasks" }.toList()}")
+            val arguments = alternate.parameterTypes.mapIndexed { index, type ->
+                when (type) {
+                    Int::class.javaPrimitiveType -> if (index == 0) 64 else if (index == 3) displayId else 0
+                    Boolean::class.javaPrimitiveType -> false
+                    else -> error("Unsupported getTasks signature: $alternate")
+                }
+            }.toTypedArray()
+            alternate.invoke(service, *arguments) as? List<*>
         } ?: emptyList<Any>()
         return raw.filterNotNull().mapIndexedNotNull { index, task ->
-            runCatching { snapshot(task, index) }.getOrNull()
+            runCatching { snapshot(task, index) }.onFailure { log("snapshot", it) }.getOrNull()
         }.filter { it.displayId == displayId }
     }
 
@@ -176,6 +184,27 @@ internal class TaskBridge(
         checkNotNull(method("removeTask") { it.parameterTypes.size == 1 }).invoke(atm(), task.taskId)
         true
     }.onFailure { log("close", it) }.getOrDefault(false)
+
+    /** Moves a task (with its root task) onto another display. */
+    fun moveTaskToDisplay(task: TaskSnapshot, displayId: Int): Boolean {
+        val service = atm()
+        val attempts = listOf<() -> Unit>(
+            { checkNotNull(method("moveRootTaskToDisplay") { it.parameterTypes.size == 2 }).invoke(service, task.taskId, displayId) },
+            { checkNotNull(method("moveStackToDisplay") { it.parameterTypes.size == 2 }).invoke(service, task.taskId, displayId) },
+        )
+        return attempts.any { attempt -> runCatching { attempt() }.onFailure { log("moveTaskToDisplay", it) }.isSuccess }
+    }
+
+    /** Extract only the selected leaf, never move the phone's split root. */
+    fun extractToDisplay(task: TaskSnapshot, displayId: Int): Boolean = runCatching {
+        check(applyTransaction { wct, token ->
+            wct.javaClass.getMethod("reparent", tokenClass, tokenClass, Boolean::class.javaPrimitiveType)
+                .invoke(wct, token, null, true)
+            wct.javaClass.getMethod("setWindowingMode", tokenClass, Int::class.javaPrimitiveType)
+                .invoke(wct, token, WINDOWING_MODE_FREEFORM)
+        }(task))
+        moveTaskToDisplay(task, displayId)
+    }.onFailure { log("extractToDisplay", it) }.getOrDefault(false)
 
     val supportsOrganizer: Boolean get() = runCatching { organizerController() != null }.getOrDefault(false)
 

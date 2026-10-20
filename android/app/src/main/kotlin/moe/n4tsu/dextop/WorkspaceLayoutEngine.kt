@@ -53,12 +53,12 @@ internal class WorkspaceLayoutEngine(
         }
     }
 
-    private fun usableArea(displayId: Int, width: Int, height: Int): Rect {
-        if (!environment.supportsLaunchBounds) return Rect(0, 0, width, height)
+    internal fun usableArea(displayId: Int, width: Int, height: Int): Rect {
         val display = context.getSystemService(DisplayManager::class.java).getDisplay(displayId)
             ?: return Rect(0, 0, width, height)
         val displayContext = context.createDisplayContext(display)
-        val metrics = displayContext.getSystemService(WindowManager::class.java).maximumWindowMetrics
+        val windowContext = displayContext.createWindowContext(WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY, null)
+        val metrics = windowContext.getSystemService(WindowManager::class.java).maximumWindowMetrics
         val types = WindowInsets.Type.navigationBars() or WindowInsets.Type.tappableElement()
         val insets = metrics.windowInsets.getInsetsIgnoringVisibility(types)
         val area = Rect(

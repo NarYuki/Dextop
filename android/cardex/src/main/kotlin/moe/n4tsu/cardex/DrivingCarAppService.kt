@@ -50,7 +50,10 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
     private var startedHeight = 0
     private var startedDpi = 0
     private var renderScale = 1f
+    private var splitPlacement = ""
+    private var panDrag = false
     private var relayStatus = STATUS_IDLE
+    private var phoneControlOpenedAutomatically = false
     private var errorDetail = ""
     private var connected = false
     private var relayBound = false
@@ -68,13 +71,21 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
     }
     private val statusHandler = Handler(Looper.getMainLooper()) { message ->
         if (message.what == MSG_STATUS) {
+            val previousStatus = relayStatus
+            val previousDetail = errorDetail
+            val previousPlacement = splitPlacement
             relayStatus = message.data.getInt(KEY_STATUS, STATUS_IDLE)
             errorDetail = message.data.getString(KEY_DETAIL).orEmpty()
+            splitPlacement = message.data.getString("split_placement").orEmpty()
             if (relayStatus == STATUS_RUNNING || relayStatus == STATUS_ERROR) {
                 relayHandler.removeCallbacks(startupTimeout)
             }
-            invalidate()
-            if (relayStatus == STATUS_RUNNING) sendAction("phone_control")
+            if (previousStatus != relayStatus || previousPlacement != splitPlacement ||
+                (splitPlacement.isBlank() && previousDetail != errorDetail)) invalidate()
+            if (relayStatus == STATUS_RUNNING && !phoneControlOpenedAutomatically) {
+                phoneControlOpenedAutomatically = true
+                sendAction("phone_control")
+            }
         }
         true
     }
@@ -136,9 +147,60 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
     }
 
     override fun onGetTemplate(): Template {
+        if (splitPlacement.isNotBlank()) {
+            val state = org.json.JSONObject(splitPlacement)
+            val items = ItemList.Builder()
+            fun option(label: String, action: String, icon: String = "") {
+                val row = Row.Builder().setTitle(label).setOnClickListener {
+                    sendAction("split:$action")
+                }
+                if (icon.isNotEmpty()) runCatching {
+                    val bytes = android.util.Base64.decode(icon, android.util.Base64.DEFAULT)
+                    android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)?.let {
+                        row.setImage(CarIcon.Builder(IconCompat.createWithBitmap(it)).build(), Row.IMAGE_TYPE_SMALL)
+                    }
+                }
+                items.addItem(row.build())
+            }
+            if (state.optString("side").isEmpty()) {
+                option("Left", "left")
+                option("Right", "right")
+            } else {
+                val apps = state.optJSONArray("apps") ?: org.json.JSONArray()
+                for (i in 0 until apps.length()) {
+                    val app = apps.getJSONObject(i)
+                    option(app.getString("label"), "app:${app.getString("package")}", app.optString("icon"))
+                }
+                if (state.optInt("page") > 0) option("▲ Previous page", "previous")
+                if (state.optInt("page") + 1 < state.optInt("pages")) option("▼ Next page", "next")
+            }
+            option("Cancel", "cancel")
+            return ListTemplate.Builder().setTitle(
+                if (state.optString("side").isEmpty()) "Place app: Left or Right?"
+                else "Other app (${state.optInt("page") + 1}/${state.optInt("pages")})"
+            ).setSingleList(items.build()).build()
+        }
         if (desktopRequested && relayStatus == STATUS_ERROR) {
-            return MessageTemplate.Builder(errorDetail.ifBlank { "Dextop could not be started." })
-                .setTitle("Dextop startup error")
+            // MessageTemplate is host-truncated to a few lines. Use a
+            // scrollable list of short lines so the complete diagnostic and
+            // recovery instructions remain readable on small Auto tiles.
+            val lines = ItemList.Builder()
+            errorDetail.ifBlank { "Dextop could not be started." }.lines().forEach { paragraph ->
+                var line = ""
+                paragraph.split(Regex("\\s+")).filter { it.isNotEmpty() }.forEach { word ->
+                    if (line.isNotEmpty() && line.length + word.length + 1 > 42) {
+                        lines.addItem(Row.Builder().setTitle(line).build())
+                        line = ""
+                    }
+                    if (word.length > 42) {
+                        if (line.isNotEmpty()) lines.addItem(Row.Builder().setTitle(line).build())
+                        line = ""
+                        word.chunked(42).forEach { lines.addItem(Row.Builder().setTitle(it).build()) }
+                    } else line = if (line.isEmpty()) word else "$line $word"
+                }
+                if (line.isNotEmpty()) lines.addItem(Row.Builder().setTitle(line).build())
+            }
+            val actions = ActionStrip.Builder()
                 .addAction(Action.Builder().setTitle("Recover and retry").setOnClickListener {
                     relayStatus = STATUS_STARTING
                     errorDetail = "Stopping the remaining session…"
@@ -146,7 +208,14 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
                     invalidate()
                     sendAction("recover")
                 }.build())
-                .addAction(Action.Builder().setTitle("Stop").setOnClickListener { stopDextop() }.build())
+                .addAction(Action.Builder().setIcon(CarIcon.Builder(
+                    IconCompat.createWithResource(carContext, android.R.drawable.ic_media_pause)
+                ).build()).setOnClickListener { stopDextop() }.build())
+                .build()
+            return ListTemplate.Builder()
+                .setTitle("Dextop startup error")
+                .setSingleList(lines.build())
+                .setActionStrip(actions)
                 .build()
         }
         if (desktopRequested && relayStatus != STATUS_RUNNING) {
@@ -189,6 +258,17 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
             .build()
         return NavigationTemplate.Builder()
             .setActionStrip(ActionStrip.Builder().addAction(menu).build())
+            .setMapActionStrip(ActionStrip.Builder().addAction(Action.PAN)
+                .addAction(Action.Builder().setIcon(CarIcon.Builder(
+                    IconCompat.createWithResource(carContext,
+                        if (panDrag) android.R.drawable.ic_menu_edit else android.R.drawable.ic_menu_sort_by_size)
+                ).build())
+                    .setOnClickListener {
+                        sendPan(0f, 0f, release = true)
+                        panDrag = !panDrag
+                        invalidate()
+                    }.build()).build())
+            .setPanModeListener { enabled -> if (!enabled) sendPan(0f, 0f, release = true) }
             .build()
     }
 
@@ -198,6 +278,7 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
     }
 
     override fun onSurfaceDestroyed(surfaceContainer: SurfaceContainer) {
+        sendPan(0f, 0f, release = true)
         if (container === surfaceContainer) {
             container = null
             startedSurface = null
@@ -205,14 +286,42 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
             startedHeight = 0
             startedDpi = 0
             if (desktopRequested) relayHandler.postDelayed({
-                if (desktopRequested && container == null) {
+                if (desktopRequested && container == null && splitPlacement.isBlank()) {
                     showError("The Android Auto destination surface was disconnected. Reopen Dextop・Driving or select Recover and retry.")
                 }
             }, SURFACE_LOSS_GRACE_MS)
         }
     }
 
-    override fun onClick(x: Float, y: Float) = sendCookedTouch(x, y)
+    private var panAnchorX = 0.5f
+    private var panAnchorY = 0.5f
+    override fun onClick(x: Float, y: Float) {
+        container?.let {
+            panAnchorX = (x / it.width.coerceAtLeast(1)).coerceIn(0f, 1f)
+            panAnchorY = (y / it.height.coerceAtLeast(1)).coerceIn(0f, 1f)
+        }
+        sendCookedTouch(x, y)
+    }
+
+    override fun onScroll(distanceX: Float, distanceY: Float) {
+        sendPan(-distanceX, -distanceY)
+    }
+
+    private fun sendPan(dx: Float, dy: Float, release: Boolean = false) {
+        val surface = container
+        runCatching { relay?.send(Message.obtain(null, 9).apply {
+            data = Bundle().apply {
+                putFloat("dx", dx / (surface?.width ?: 1).coerceAtLeast(1))
+                putFloat("dy", dy / (surface?.height ?: 1).coerceAtLeast(1))
+                putFloat("anchor_x", panAnchorX); putFloat("anchor_y", panAnchorY)
+                putBoolean("drag", panDrag); putBoolean("release", release)
+            }
+        }) }
+        if (panDrag && !release) {
+            panAnchorX = (panAnchorX + dx / (surface?.width ?: 1).coerceAtLeast(1)).coerceIn(0f, 1f)
+            panAnchorY = (panAnchorY + dy / (surface?.height ?: 1).coerceAtLeast(1)).coerceIn(0f, 1f)
+        }
+    }
 
     private fun startRelay(value: SurfaceContainer) {
         val target = relay ?: run {

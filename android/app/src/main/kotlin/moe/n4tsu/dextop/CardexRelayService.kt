@@ -116,6 +116,7 @@ class CardexRelayService : Service() {
         }
         when (message.what) {
             MSG_START -> {
+                updateClientMode(message.sendingUid)
                 registerClient(message.replyTo)
                 val data = message.data.apply { classLoader = Surface::class.java.classLoader }
                 val nextSurface = data.getParcelable(KEY_SURFACE, Surface::class.java) ?: return true
@@ -129,6 +130,7 @@ class CardexRelayService : Service() {
             }
             MSG_HEARTBEAT -> registerClient(message.replyTo)
             MSG_TOUCH -> {
+                MirrorService.releaseCarPan()
                 MirrorService.hideCarCompanionCursor()
                 message.data.classLoader = MotionEvent::class.java.classLoader
                 message.data.getParcelable(KEY_EVENT, MotionEvent::class.java)?.let { event ->
@@ -137,6 +139,7 @@ class CardexRelayService : Service() {
                 }
             }
             MSG_STOP -> {
+                MirrorService.releaseCarPan()
                 gracefulStopRequested = message.data.getBoolean(KEY_GRACEFUL, true)
                 if (!gracefulStopRequested) {
                     CardexRecoveryReceiver.markInterrupted(this, "Dextop Car Companion activity interrupted")
@@ -144,6 +147,10 @@ class CardexRelayService : Service() {
                 stopRelay()
             }
             MSG_ACTION -> when (message.data.getString(KEY_ACTION)) {
+                "split:left", "split:right", "split:next", "split:previous", "split:cancel" -> {
+                    AutoSplitPlacement.action(message.data.getString(KEY_ACTION).orEmpty().removePrefix("split:"))
+                    registerClient(message.replyTo ?: client)
+                }
                 ACTION_RECONNECT -> reconnectSurface()
                 ACTION_RECOVER -> recoverAndRestart()
                 ACTION_PHONE_CONTROL -> openPhoneControl()
@@ -152,11 +159,18 @@ class CardexRelayService : Service() {
                     val error = MirrorService.saveCardexWorkspace()
                     sendWorkspaces(error.orEmpty())
                 }
-                else -> message.data.getString(KEY_ACTION)?.takeIf { it.startsWith(ACTION_WORKSPACE_OPEN) }
+                else -> if (message.data.getString(KEY_ACTION).orEmpty().startsWith("split:app:")) {
+                    AutoSplitPlacement.action(message.data.getString(KEY_ACTION).orEmpty().removePrefix("split:"))
+                    registerClient(message.replyTo ?: client)
+                } else message.data.getString(KEY_ACTION)?.takeIf { it.startsWith(ACTION_WORKSPACE_OPEN) }
                     ?.removePrefix(ACTION_WORKSPACE_OPEN)?.let {
                         MirrorService.launchCardexWorkspace(it)
                     }
             }
+            9 -> MirrorService.dispatchCarPan(
+                message.data.getFloat("dx"), message.data.getFloat("dy"),
+                message.data.getBoolean("drag"), message.data.getBoolean("release"),
+                message.data.getFloat("anchor_x", 0.5f), message.data.getFloat("anchor_y", 0.5f))
         }
         return true
     }
@@ -202,10 +216,10 @@ class CardexRelayService : Service() {
         // OverlayDisplay implementation.
         val requestedDecorated = requestedCodec || requestedDirect
         val normalizedScale = requestedScale.coerceIn(MIN_RENDER_SCALE, 1f)
-        val (desktopWidth, desktopHeight) = scaledDesktopSize(nextWidth, nextHeight)
-        val reusableCodec = requestedDecorated && controller != null && directSessionOwned &&
-            kotlin.math.abs(renderScale - normalizedScale) < 0.001f
+        val (desktopWidth, desktopHeight) = scaledDesktopSize(nextWidth, nextHeight, normalizedScale)
+        val reusableCodec = requestedDecorated && controller != null && directSessionOwned
         if (reusableCodec) {
+            renderScale = normalizedScale
             val previousSurface = surface
             surface = nextSurface
             destinationSurface = nextSurface
@@ -557,6 +571,7 @@ class CardexRelayService : Service() {
     }
 
     private fun stopRelay() {
+        activeClientMode = ""
         relayGeneration += 1
         pendingStart = null
         launchInFlight = false
@@ -597,6 +612,7 @@ class CardexRelayService : Service() {
                 data = Bundle().apply {
                     putInt(KEY_STATUS, currentStatus)
                     putString(KEY_DETAIL, currentStatusDetail)
+                    putString("split_placement", AutoSplitPlacement.state())
                 }
             })
         }
@@ -742,7 +758,18 @@ class CardexRelayService : Service() {
         }
     }
 
+    private fun updateClientMode(uid: Int) {
+        val packages = packageManager.getPackagesForUid(uid).orEmpty()
+        activeClientMode = when {
+            packages.any { it.endsWith(".driving") } -> "Driving"
+            packages.any { it == "moe.n4tsu.dextop.cardex" } -> "Parking"
+            else -> activeClientMode
+        }
+    }
+
     companion object {
+        @Volatile private var activeClientMode = ""
+        fun activeMode(): String = activeClientMode
         @Volatile
         private var instance: CardexRelayService? = null
         @Volatile
@@ -844,8 +871,8 @@ class CardexRelayService : Service() {
         private const val PRIVILEGED_ACCESS_MAX_ATTEMPTS = 100
     }
 
-    private fun scaledDesktopSize(physicalWidth: Int, physicalHeight: Int): Pair<Int, Int> {
-        val inverse = 1f / renderScale
+    private fun scaledDesktopSize(physicalWidth: Int, physicalHeight: Int, scale: Float = renderScale): Pair<Int, Int> {
+        val inverse = 1f / scale
         val rawWidth = (physicalWidth * inverse).roundToInt().coerceAtLeast(1)
         val rawHeight = (physicalHeight * inverse).roundToInt().coerceAtLeast(1)
         val cap = MAX_DESKTOP_EDGE.toFloat() / maxOf(rawWidth, rawHeight).toFloat()

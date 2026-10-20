@@ -59,7 +59,65 @@ internal data class DesktopEnvironment(
     /** Ordered, device-local strategies. Never change the global order for one model. */
     val displayCreationStrategies: List<String> = listOf("overlay_settings"),
     val mirrorStrategies: List<String> = listOf("virtual_display", "window_manager", "surface_control"),
-    val windowingStrategies: List<String> = listOf("wm", "activity_task_manager")
+    val windowingStrategies: List<String> = listOf("wm", "activity_task_manager"),
+    /**
+     * Create the recording VirtualDisplay without FLAG_TRUSTED. With
+     * force_desktop_mode_on_external_displays enabled, WindowManager treats
+     * every trusted virtual display as decorated and starts SECONDARY_HOME on
+     * it; the recording display then has its own content and ContentRecorder
+     * pauses the mirror. Falls back to the trusted flags if rejected.
+     */
+    val untrustedMirrorDisplay: Boolean = false,
+    /**
+     * Force Plasma v2 application displays to fullscreen. With desktop mode
+     * forced, a public secondary display defaults to freeform and apps open
+     * as phone-sized windows that are cropped inside the Plasma window.
+     */
+    val fullscreenApplicationDisplays: Boolean = false,
+    /**
+     * Keep the Plasma v2 overlay unfocusable unless one of its own text fields
+     * is open. A focusable full-screen overlay takes focus on every touch, so
+     * the application display loses focus and its soft keyboard closes.
+     */
+    val passivePlasmaShellFocus: Boolean = false,
+    /**
+     * Apply the maximum-refresh-rate option to Plasma v2 application displays
+     * too. Without a requested rate they are created as 60 Hz virtual
+     * displays, so apps inside a 120 Hz Plasma window still render at 60 Hz.
+     */
+    val maxRateApplicationDisplays: Boolean = false,
+    /**
+     * Draw the Plasma v2 shell as TYPE_APPLICATION_OVERLAY. Before Android 16,
+     * AccessibilityManagerService issues no overlay token for overlay displays
+     * (Display.TYPE_OVERLAY), so accessibility overlays there fail with
+     * BadTokenException and Plasma never appears.
+     */
+    val plasmaApplicationOverlay: Boolean = false,
+    /**
+     * Recreate the recording VirtualDisplay after a live logical resize.
+     * Before Android 16 ContentRecorder does not recompute its crop and scale
+     * when only the mirrored display changes size, so a rotation keeps the
+     * old portrait transform and shows the desktop as a narrow strip.
+     */
+    val rebuildMirrorAfterLiveResize: Boolean = false,
+    /**
+     * Create Plasma v2 application displays without FLAG_PUBLIC. With desktop
+     * mode forced, every public secondary display gets the launcher's
+     * SECONDARY_HOME behind its app; a private display does not. Only the
+     * owner (the privileged shell) may launch onto it, which Plasma v2
+     * already falls back to.
+     */
+    val privateApplicationDisplays: Boolean = false,
+    /**
+     * For Plasma v2, render the phone desktop on an app-owned public
+     * VirtualDisplay drawn straight into Dextop's Surface instead of an
+     * overlay display plus a recording mirror. Before Android 16 an overlay
+     * display gets no accessibility overlay token, and the application
+     * overlay used instead is hidden by any HIDE_NON_SYSTEM_OVERLAY_WINDOWS
+     * window (Settings, permission dialogs); it also shows the overlay
+     * preview window on the phone.
+     */
+    val directPlasmaDisplay: Boolean = false
 )
 
 internal enum class DesktopStartupMode {

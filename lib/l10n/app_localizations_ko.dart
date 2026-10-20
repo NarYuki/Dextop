@@ -1,5 +1,6 @@
 // ignore: unused_import
 import 'package:intl/intl.dart' as intl;
+
 import 'app_localizations.dart';
 
 // ignore_for_file: type=lint
@@ -2220,6 +2221,13 @@ class AppLocalizationsKo extends AppLocalizations {
       'Dextop이 KDE Plasma 6 스타일의 데스크톱, 패널, 창 장식, 타일링, 가상 데스크톱을 직접 그립니다';
 
   @override
+  String get windowManagerPlasmaV2 => 'Dextop Plasma v2 (합성형 WM)';
+
+  @override
+  String get windowManagerPlasmaV2Description =>
+      '앱마다 전용 가상 디스플레이를 만들어 Dextop이 그리는 Breeze 창 안에 표시합니다. 드래그, 크기 조절, 애니메이션, 가상 데스크톱이 Dextop 안에서 이루어지며 패널에서 네트워크, 볼륨, 전원을 제어할 수 있습니다.';
+
+  @override
   String get windowManagerAppliedLive => '실행 중인 데스크톱에 적용했습니다';
 
   @override
@@ -2502,6 +2510,523 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get nativePlasmaBreezeLight => 'Breeze Light';
+
+  @override
+  String get nativePlasmaAirplaneMode => '비행기 모드';
+
+  @override
+  String get nativePlasmaBluetooth => '블루투스';
+
+  @override
+  String get nativePlasmaOn => '켜짐';
+
+  @override
+  String get nativePlasmaOff => '꺼짐';
+
+  @override
+  String get nativePlasmaCurrentConnection => '현재 연결';
+
+  @override
+  String get nativePlasmaAvailableNetworks => '사용 가능한 네트워크';
+
+  @override
+  String get nativePlasmaNoInternet => '인터넷에 연결되지 않음';
+
+  @override
+  String get nativePlasmaWifiIsOff => 'Wi-Fi가 꺼져 있습니다';
+
+  @override
+  String get nativePlasmaScanning => '검색 중…';
+
+  @override
+  String get nativePlasmaNoNetworksFound => '네트워크를 찾을 수 없습니다';
+
+  @override
+  String get nativePlasmaSavedNetwork => '저장됨';
+
+  @override
+  String get nativePlasmaSecuredNetwork => '보안';
+
+  @override
+  String get nativePlasmaOpenNetwork => '개방';
+
+  @override
+  String get nativePlasmaPassword => '비밀번호';
+
+  @override
+  String get nativePlasmaConnect => '연결';
+
+  @override
+  String get nativePlasmaCancel => '취소';
+
+  @override
+  String get nativePlasmaConnectingTo => '%1\$s에 연결 중…';
+
+  @override
+  String get nativePlasmaConnectionFailed => '연결할 수 없습니다';
+
+  @override
+  String get nativePlasmaUnavailable => '이 기기에서 사용할 수 없음';
+
+  @override
+  String get nativePlasmaVolume => '볼륨';
+
+  @override
+  String get nativePlasmaMediaVolume => '미디어';
+
+  @override
+  String get nativePlasmaRingVolume => '벨소리';
+
+  @override
+  String get nativePlasmaNotificationVolume => '알림';
+
+  @override
+  String get nativePlasmaAlarmVolume => '알람';
+
+  @override
+  String get nativePlasmaNothingPlaying => '재생 중인 미디어 없음';
+
+  @override
+  String get nativePlasmaOutputDevice => '출력 기기';
+
+  @override
+  String get nativePlasmaHeadphones => '헤드폰';
+
+  @override
+  String get nativePlasmaExternalOutput => '외부 출력';
+
+  @override
+  String get nativePlasmaBatterySaver => '절전 모드';
+
+  @override
+  String get nativePlasmaAutoBrightness => '밝기 자동 조절';
+
+  @override
+  String get nativePlasmaScreenBrightness => '화면 밝기';
+
+  @override
+  String get nativePlasmaFullyCharged => '충전 완료';
+
+  @override
+  String get nativePlasmaPowerSourceAc => 'AC 전원';
+
+  @override
+  String get nativePlasmaPowerSourceWireless => '무선 충전';
+
+  @override
+  String get nativePlasmaPowerSourceDock => '도크';
+
+  @override
+  String get nativePlasmaTimeUntilFull => '완충까지 %1\$s';
+
+  @override
+  String get nativePlasmaHoursMinutes => '%1\$d시간 %2\$d분';
+
+  @override
+  String get nativePlasmaMinutes => '%1\$d분';
+
+  @override
+  String get nativePlasmaApplying => '전환 중…';
+
+  @override
+  String get linuxDescription =>
+      '루트 없이 Linux(Debian, Ubuntu, Arch Linux ARM)를 실행하고 앱을 Plasma 창으로 엽니다.';
+
+  @override
+  String get linuxUnsupportedDevice => 'Linux는 arm64 기기에서만 사용할 수 있습니다.';
+
+  @override
+  String get linuxRequiresPlasma => 'Linux는 Dextop Plasma v2를 사용할 때만 쓸 수 있습니다.';
+
+  @override
+  String get linuxSwitchToPlasma => 'Plasma v2로 전환';
+
+  @override
+  String get linuxRequiresPrivilege =>
+      'Linux는 Dextop 내장 접근 서비스를 사용합니다. Dextop 접근 설정에서 연결하세요. 외부 Stellar 또는 Shizuku 앱은 필수가 아닙니다.';
+
+  @override
+  String get linuxEnable => 'Linux 사용';
+
+  @override
+  String get linuxEnableDescription => '컨테이너를 만들고 관리하며 Plasma에서 Linux 앱을 엽니다';
+
+  @override
+  String get linuxNoContainers => '아직 컨테이너가 없습니다. ‘컨테이너 추가’로 만드세요.';
+
+  @override
+  String get linuxAddContainer => '컨테이너 추가';
+
+  @override
+  String get linuxContainerName => '이름';
+
+  @override
+  String get linuxDistribution => '배포판';
+
+  @override
+  String get linuxStorageNote =>
+      '컨테이너는 /data/local/tmp/dextop/linux에 저장되며 Dextop을 제거해도 남습니다. 필요 없으면 여기서 삭제하세요.';
+
+  @override
+  String get linuxInstall => '설치';
+
+  @override
+  String get linuxCancel => '취소';
+
+  @override
+  String get linuxDelete => '삭제';
+
+  @override
+  String linuxDeleteConfirm(String name) {
+    return '‘$name’과(와) 모든 파일을 삭제할까요?';
+  }
+
+  @override
+  String get linuxRepair => '복구';
+
+  @override
+  String get linuxShowLog => '로그 보기';
+
+  @override
+  String get linuxRunCommand => '명령 실행';
+
+  @override
+  String get linuxRun => '실행';
+
+  @override
+  String get linuxStateInstalling => '설치 중';
+
+  @override
+  String get linuxStateInstalled => '설치됨';
+
+  @override
+  String get linuxStateFailed => '실패';
+
+  @override
+  String get linuxPhaseDownload => '다운로드 중';
+
+  @override
+  String get linuxPhaseVerify => '확인 중';
+
+  @override
+  String get linuxPhaseExtract => '압축 해제 중';
+
+  @override
+  String get linuxPhaseConfigure => '구성 중';
+
+  @override
+  String get linuxPhaseProvision => '필요한 패키지를 설치하는 중';
+
+  @override
+  String get linuxOpenDesktop => '데스크톱 열기';
+
+  @override
+  String get linuxStartPlasmaFirst => '먼저 Plasma v2로 Dextop을 시작하세요.';
+
+  @override
+  String get nativePlasmaShowKeyboard => '키보드 표시';
+
+  @override
+  String get nativeLinuxDesktopConnecting => 'Linux 서비스에 연결하는 중…';
+
+  @override
+  String get nativeLinuxDesktopStartingContainer => '컨테이너와 화면을 시작하는 중…';
+
+  @override
+  String get nativeLinuxDesktopStartingWm => '창 관리자를 시작하는 중…';
+
+  @override
+  String get nativePlasmaCategoryLinux => 'Linux';
+
+  @override
+  String get linuxPhasePrepare => '이미지 정보를 가져오는 중';
+
+  @override
+  String get linuxPhaseRefresh => '패키지 목록을 업데이트하는 중';
+
+  @override
+  String get linuxPhaseFinish => '마무리하는 중';
+
+  @override
+  String linuxPhaseStep(int step, int total) {
+    return '$total단계 중 $step단계';
+  }
+
+  @override
+  String get linuxSetupTitle => 'Linux setup';
+
+  @override
+  String get linuxSetupIntro =>
+      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+
+  @override
+  String get linuxSetupExisting =>
+      'Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.';
+
+  @override
+  String get linuxSetupSystem => 'Your Linux environment';
+
+  @override
+  String get linuxSetupDesktop => 'Make it your desktop';
+
+  @override
+  String get linuxSetupLanguage => 'Language and fonts';
+
+  @override
+  String get linuxSetupInput => 'Typing in your language';
+
+  @override
+  String get linuxSetupApps => 'Choose your applications';
+
+  @override
+  String get linuxSetupReview => 'Ready to set up';
+
+  @override
+  String get linuxSetupProgress => 'Preparing your workspace';
+
+  @override
+  String get linuxSetupDone => 'Your Linux workspace is ready';
+
+  @override
+  String get linuxSetupDoneDetail =>
+      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+
+  @override
+  String get linuxSetupNext => 'Continue';
+
+  @override
+  String get linuxSetupBack => 'Back';
+
+  @override
+  String get linuxSetupApply => 'Start setup';
+
+  @override
+  String get linuxSetupCustomize => 'Set up / add features';
+
+  @override
+  String get linuxSetupMinimal => 'Minimal IceWM';
+
+  @override
+  String get linuxSetupMinimalDetail =>
+      'A lightweight desktop with Xvfb, IceWM and a terminal. Choose any extras in the following steps.';
+
+  @override
+  String get linuxSetupComplete => 'Everyday IceWM';
+
+  @override
+  String get linuxSetupCompleteDetail =>
+      'Starts with themes, icons, Mesa software rendering, a file manager and a text editor selected. You can adjust each choice.';
+
+  @override
+  String get linuxSetupThemes => 'Themes and icons';
+
+  @override
+  String get linuxSetupThemesDetail =>
+      'IceWM themes and Adwaita styling for GTK apps.';
+
+  @override
+  String get linuxSetupGraphics => 'Mesa graphics support';
+
+  @override
+  String get linuxSetupGraphicsDetail =>
+      'Install OpenGL / EGL libraries and software rendering. This Xvfb desktop does not provide hardware GPU acceleration.';
+
+  @override
+  String get linuxSetupLocale => 'Linux display language';
+
+  @override
+  String get linuxSetupLocaleDetail =>
+      'Generate the selected UTF-8 locale and apply it to the desktop and apps that support it.';
+
+  @override
+  String get linuxSetupFonts => 'Japanese, Chinese and Korean fonts';
+
+  @override
+  String get linuxSetupFontsDetail =>
+      'Install Noto CJK fonts. Noto general-purpose and emoji fonts are included with every setup.';
+
+  @override
+  String get linuxSetupNoIme => 'Use the Android keyboard only';
+
+  @override
+  String get linuxSetupNoImeDetail =>
+      'Do not start a Linux input method. The Android keyboard remains available in Plasma.';
+
+  @override
+  String get linuxSetupImeDetail =>
+      'Fcitx 5 starts with the Linux session, including GTK / Qt integration. Input methods with CJK text also install CJK fonts.';
+
+  @override
+  String get linuxSetupMozc => 'Japanese — Mozc';
+
+  @override
+  String get linuxSetupPinyin => 'Chinese — Pinyin';
+
+  @override
+  String get linuxSetupHangul => 'Korean — Hangul';
+
+  @override
+  String get linuxSetupFirefoxDetail =>
+      'Firefox ESR on Debian; Firefox on Arch.';
+
+  @override
+  String get linuxSetupChromeDetail =>
+      'Official Google Chrome for ARM64, downloaded from Google. Available on Debian and Ubuntu.';
+
+  @override
+  String get linuxSetupChromiumDetail =>
+      'Open-source Chromium from the distribution repository.';
+
+  @override
+  String get linuxSetupSnapUnavailable =>
+      'Unavailable on this Ubuntu image: this package requires Snap. Choose Debian / Arch, or select Google Chrome.';
+
+  @override
+  String get linuxSetupChromeUnavailable =>
+      'The official installer is available here for Debian and Ubuntu.';
+
+  @override
+  String get linuxSetupBrowserNote =>
+      'Browsers use PRoot-compatible launchers with their sandbox disabled. Install only browsers you want to use in this environment.';
+
+  @override
+  String get linuxSetupFiles => 'File manager';
+
+  @override
+  String get linuxSetupFilesDetail =>
+      'PCManFM — browse folders and manage files.';
+
+  @override
+  String get linuxSetupEditor => 'Text editor';
+
+  @override
+  String get linuxSetupEditorDetail =>
+      'Mousepad — a lightweight graphical editor.';
+
+  @override
+  String get linuxSetupOffice => 'Office suite';
+
+  @override
+  String get linuxSetupOfficeDetail =>
+      'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
+
+  @override
+  String get linuxSetupStorage =>
+      'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
+
+  @override
+  String get linuxSetupAdditive =>
+      'Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.';
+
+  @override
+  String get linuxSetupNothingExtra => 'No optional applications';
+
+  @override
+  String get linuxSetupRetry => 'Review and retry';
+
+  @override
+  String get linuxSetupBackground => 'Continue in background';
+
+  @override
+  String get linuxSetupLog => 'Installation details';
+
+  @override
+  String get linuxSetupFailed => 'Setup could not finish';
+
+  @override
+  String get linuxSetupPhaseLanguage => 'Setting up language and fonts';
+
+  @override
+  String get linuxSetupPhaseInput => 'Installing the input method';
+
+  @override
+  String get linuxSetupPhaseDesktop => 'Setting up themes and icons';
+
+  @override
+  String get linuxSetupPhaseGraphics => 'Installing graphics libraries';
+
+  @override
+  String get linuxSetupPhaseApps => 'Installing your applications';
+
+  @override
+  String get linuxSetupPhaseIntegration => 'Connecting apps to the desktop';
+
+  @override
+  String get linuxRuntimeStarting => 'Starting Linux…';
+
+  @override
+  String get linuxRuntimeRunning => 'Linux is running';
+
+  @override
+  String get linuxRuntimeStopped => 'Linux is stopped';
+
+  @override
+  String get linuxSessionReset => 'Reset session';
+
+  @override
+  String get linuxForceStop => 'Force stop PRoot';
+
+  @override
+  String get linuxForceStopConfirm =>
+      'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+
+  @override
+  String get linuxSettingsTitle => 'Linux 설정';
+
+  @override
+  String get linuxSettingsEntry => '그래픽 등 모든 컨테이너에 공통인 설정';
+
+  @override
+  String get linuxGpuSection => '그래픽 가속';
+
+  @override
+  String get linuxGpuHardware => '하드웨어(VirGL)';
+
+  @override
+  String get linuxGpuHardwareDescription =>
+      '기기의 GPU로 OpenGL을 그립니다. 3D 앱, 게임, 브라우저가 빨라집니다.';
+
+  @override
+  String get linuxGpuSoftware => '소프트웨어(llvmpipe)';
+
+  @override
+  String get linuxGpuSoftwareDescription =>
+      'CPU로 그립니다. 느리지만 GPU에서 화면이 깨지는 앱도 올바르게 표시됩니다.';
+
+  @override
+  String get linuxGpuUnavailable => '이 기기에서는 VirGL을 사용할 수 없습니다.';
+
+  @override
+  String get linuxGpuApplyNote =>
+      '변경 사항은 이후에 실행하는 앱에 적용됩니다. 열려 있는 데스크톱은 다시 여세요.';
+
+  @override
+  String linuxGpuRunning(int count) {
+    return '$count개 컨테이너에서 VirGL 사용 중';
+  }
+
+  @override
+  String get nativePlasmaNotifications => '알림';
+
+  @override
+  String get nativePlasmaNoNotifications => '알림 없음';
+
+  @override
+  String get nativePlasmaClearAll => '모두 지우기';
+
+  @override
+  String get linuxGpuTurnip => 'Turnip + Zink(권장)';
+
+  @override
+  String get linuxGpuTurnipDescription =>
+      'Linux 앱이 Adreno GPU를 직접 사용합니다(Vulkan, OpenGL 4.6). 가장 빠르고 게임에 적합합니다.';
+
+  @override
+  String get linuxGpuTurnipSetup =>
+      '컨테이너 설정에서 3D 그래픽을 켜면 사용할 수 있습니다(빌드에 약 30분). 그 전까지는 VirGL을 사용합니다.';
+
+  @override
+  String get linuxSetupPhaseGpu => 'GPU 드라이버(Turnip) 빌드 중';
 
   @override
   String get uiShortcutAdd => '홈 화면에 바로가기 추가';

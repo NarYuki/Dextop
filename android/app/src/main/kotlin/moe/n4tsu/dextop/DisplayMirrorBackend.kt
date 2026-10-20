@@ -58,7 +58,7 @@ internal class DisplayMirrorBackend(
         listOf(
             WindowManagerMirrorBackend(privilegedAccess),
             SurfaceControlMirrorBackend(),
-            VirtualDisplayMirrorBackend(context, privilegedAccess)
+            VirtualDisplayMirrorBackend(context, privilegedAccess, environment.untrustedMirrorDisplay)
         )
             .associateBy { it.id }
     }
@@ -145,7 +145,9 @@ internal class DisplayMirrorBackend(
         contentWidth: Int,
         contentHeight: Int,
         contentDensity: Int,
-        strategyOverride: String? = null
+        strategyOverride: String? = null,
+        /** Recreate the recording display instead of updating it in place. */
+        rebuild: Boolean = false,
     ): List<StrategyAttempt> {
         val request = MirrorAttachRequest(
             displayId, host, host.holder.surface, hostWidth, hostHeight,
@@ -160,7 +162,7 @@ internal class DisplayMirrorBackend(
         // Resizing/rebinding an existing recording VirtualDisplay keeps its
         // display id stable. Releasing it on every fold or laptop-pane change
         // leaves stale AOSP desktop desks behind until Shell refuses launches.
-        if (activeStrategy == "virtual_display" && "virtual_display" in strategies &&
+        if (!rebuild && activeStrategy == "virtual_display" && "virtual_display" in strategies &&
             attachment?.update(request) == true) {
             OperationLog.i(
                 context,
@@ -302,6 +304,7 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
 private class VirtualDisplayMirrorBackend(
     private val context: Context,
     private val privilegedAccess: PrivilegedAccess,
+    private val preferUntrusted: Boolean = false,
 ) : MirrorAttachBackend {
     override val id = "virtual_display"
 
@@ -313,13 +316,21 @@ private class VirtualDisplayMirrorBackend(
         val surface = request.destinationSurface
         check(surface.isValid) { "The destination surface is unavailable" }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
-        return platform.open(
-            service,
-            request,
-            surface,
-            requestMaximumRefreshRate = DisplayEnvironmentSettings(context)
-                .maximumMirrorRefreshRateEnabled(),
-        )
+        val requestMaximumRefreshRate = DisplayEnvironmentSettings(context).maximumMirrorRefreshRateEnabled()
+        if (preferUntrusted) {
+            val untrusted = runCatching {
+                platform.open(service, request, surface, requestMaximumRefreshRate, trusted = false)
+            }
+            untrusted.getOrNull()?.let {
+                OperationLog.i(context, "DisplayBackend", "recording display created without FLAG_TRUSTED")
+                return it
+            }
+            OperationLog.w(
+                context, "DisplayBackend",
+                "untrusted recording display rejected; retrying trusted", untrusted.exceptionOrNull()
+            )
+        }
+        return platform.open(service, request, surface, requestMaximumRefreshRate)
     }
 }
 
@@ -362,8 +373,9 @@ internal class VirtualDisplayPlatform private constructor(
         request: MirrorAttachRequest,
         surface: Surface,
         requestMaximumRefreshRate: Boolean = false,
+        trusted: Boolean = true,
     ): MirrorAttachment {
-        val descriptor = createDescriptor(request, surface, requestMaximumRefreshRate)
+        val descriptor = createDescriptor(request, surface, requestMaximumRefreshRate, trusted)
         val callback = createCallback()
         val bindings = mapOf<Class<*>, Any>(
             configurationType to descriptor,
@@ -403,6 +415,9 @@ internal class VirtualDisplayPlatform private constructor(
         density: Int,
         decorations: Boolean,
         configureBeforePublish: (Int) -> Unit = {},
+        /** Keep FLAG_PUBLIC without decorations, so accessibility services can add overlays. */
+        publicDisplay: Boolean = false,
+        name: String = "Dextop Auto",
     ): OwnedVirtualDisplay {
         check(surface.isValid) { "The Dextop Car Companion destination surface is unavailable" }
         val constructor = builderType.constructors.single { candidate ->
@@ -411,7 +426,7 @@ internal class VirtualDisplayPlatform private constructor(
                     Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
             )
         }
-        val builder = constructor.newInstance("Dextop Auto", width, height, density)
+        val builder = constructor.newInstance(name, width, height, density)
         builderType.getMethod("setSurface", Surface::class.java).invoke(builder, surface)
         // Electron-style direct display. Prefer the fully capable public,
         // trusted and decorated configuration, then progressively remove
@@ -426,7 +441,14 @@ internal class VirtualDisplayPlatform private constructor(
                 FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY,
             )
         } else {
-            intArrayOf(2 or 8 or 64 or 1024)
+            if (publicDisplay) {
+                intArrayOf(
+                    FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
+                    FLAG_PUBLIC or FLAG_PRESENTATION or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
+                )
+            } else {
+                intArrayOf(2 or 8 or 64 or 1024)
+            }
         }
         var lastFailure: Throwable? = null
         flagLadder.forEach { flags ->
@@ -468,10 +490,80 @@ internal class VirtualDisplayPlatform private constructor(
         throw IllegalStateException("The direct Auto display request was declined", lastFailure)
     }
 
+    /**
+     * Creates one application display for the Dextop Plasma v2 compositor.
+     * The display renders only its own tasks into [surface]; Dextop draws
+     * that surface inside its own window frame.  Public/trusted variants are
+     * tried first so ordinary activities may be launched onto it.
+     */
+    fun openApplicationDisplay(
+        context: Context,
+        service: Any,
+        name: String,
+        surface: Surface,
+        width: Int,
+        height: Int,
+        density: Int,
+        requestedRefreshRate: Float? = null,
+        /** False creates a private display; see DesktopEnvironment.privateApplicationDisplays. */
+        publicDisplay: Boolean = true,
+    ): OwnedVirtualDisplay {
+        check(surface.isValid) { "The window surface is unavailable" }
+        val constructor = builderType.constructors.single { candidate ->
+            candidate.parameterTypes.contentEquals(
+                arrayOf(String::class.java, Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            )
+        }
+        val builder = constructor.newInstance(name, width, height, density)
+        builderType.getMethod("setSurface", Surface::class.java).invoke(builder, surface)
+        requestedRefreshRate?.let { refreshRate ->
+            // Added in Android 14; older builds keep the 60 Hz default.
+            runCatching {
+                builderType.getMethod("setRequestedRefreshRate", Float::class.javaPrimitiveType)
+                    .invoke(builder, refreshRate)
+            }
+        }
+        val visibility = if (publicDisplay) FLAG_PUBLIC else 0
+        val flagLadder = intArrayOf(
+            visibility or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
+            visibility or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
+            visibility or FLAG_OWN_CONTENT_ONLY,
+        )
+        var lastFailure: Throwable? = null
+        flagLadder.forEach { flags ->
+            val callback = createCallback()
+            try {
+                builderType.getMethod("setFlags", Int::class.javaPrimitiveType).invoke(builder, flags)
+                val descriptor = builderType.getMethod("build").invoke(builder)
+                val bindings = mapOf<Class<*>, Any>(configurationType to descriptor, callbackType to callback)
+                val arguments = createOperation.parameterTypes.map { parameter ->
+                    bindings.entries.firstOrNull { parameter.isAssignableFrom(it.key) }?.value
+                        ?: defaultArgument(parameter)
+                }.toTypedArray()
+                val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
+                if (displayId >= 0) {
+                    return OwnedVirtualDisplay(
+                        displayId,
+                        ManagedVirtualDisplay(
+                            service, releaseOperation, resizeOperation, surfaceOperation, callback,
+                            width, height, width, height, density
+                        )
+                    )
+                }
+            } catch (error: Throwable) {
+                lastFailure = error
+                OperationLog.w(context, "PlasmaV2", "window display flags rejected 0x${flags.toString(16)}", error)
+            }
+        }
+        throw IllegalStateException("The window display request was declined", lastFailure)
+    }
+
     private fun createDescriptor(
         request: MirrorAttachRequest,
         surface: Surface,
         requestMaximumRefreshRate: Boolean,
+        trusted: Boolean,
     ): Any {
         val constructor = builderType.constructors.singleOrNull { candidate ->
             candidate.parameterTypes.contentEquals(
@@ -497,7 +589,11 @@ internal class VirtualDisplayPlatform private constructor(
         val properties = listOf(
             BuilderProperty("setSurface", Surface::class.java, surface),
             BuilderProperty("setDisplayIdToMirror", Int::class.javaPrimitiveType!!, request.displayId),
-            BuilderProperty("setFlags", Int::class.javaPrimitiveType!!, 1 or 16 or 1024)
+            BuilderProperty(
+                "setFlags",
+                Int::class.javaPrimitiveType!!,
+                if (trusted) FLAG_PUBLIC or FLAG_AUTO_MIRROR or FLAG_TRUSTED else FLAG_PUBLIC or FLAG_AUTO_MIRROR,
+            )
         )
         properties.forEach { property ->
             builderType.getMethod(property.name, property.type).invoke(builder, property.value)
@@ -557,6 +653,7 @@ internal class VirtualDisplayPlatform private constructor(
         private const val FLAG_PUBLIC = 1
         private const val FLAG_PRESENTATION = 1 shl 1
         private const val FLAG_OWN_CONTENT_ONLY = 1 shl 3
+        private const val FLAG_AUTO_MIRROR = 1 shl 4
         private const val FLAG_SUPPORTS_TOUCH = 1 shl 6
         private const val FLAG_SHOW_SYSTEM_DECORATIONS = 1 shl 9
         private const val FLAG_TRUSTED = 1 shl 10
