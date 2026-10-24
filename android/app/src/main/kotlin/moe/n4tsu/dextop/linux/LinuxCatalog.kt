@@ -17,6 +17,8 @@ internal data class LinuxDistro(
     val imageDistro: String,
     val imageRelease: String,
     val family: LinuxPackageFamily,
+    /** A prebuilt root filesystem used instead of the image server's. */
+    val image: LinuxImage? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
@@ -24,7 +26,49 @@ internal data class LinuxDistro(
         .put("family", family.name.lowercase())
 }
 
+/** A root filesystem tarball (.tar.xz or .tar.zst) pinned by SHA-256. */
+internal data class LinuxImage(val url: String, val sha256: String, val size: Long) {
+    /** The GitHub release tag the image was published under (linuxfs-r9, desktop-kde-r2). */
+    fun release(): String = url.substringBeforeLast('/').substringAfterLast('/')
+}
+
 internal object LinuxCatalog {
+    /** Xvfb's default mode has no clock. Wine caches that as 0 Hz, which
+     * leaves clients polling raster status before their first visible frame.
+     * Publish timing before any desktop or application initializes Wine. */
+    internal fun virtualDisplayTiming(width: Int, height: Int, refreshRate: Float = 60f): String =
+        virtualDisplayMode(width, height, refreshRate, select = true)
+
+    private fun virtualDisplayMode(width: Int, height: Int, refreshRate: Float, select: Boolean): String {
+        require(width in 1..16384 && height in 1..16384)
+        val rate = LinuxDisplayConfiguration.create(width, height, 160, refreshRate).refreshMilliHz
+        val horizontal = width + 160
+        val vertical = height + 35
+        val clock = String.format(java.util.Locale.ROOT, "%.6f", horizontal.toLong() * vertical * rate / 1_000_000_000.0)
+        val label = if (rate % 1000 == 0) "${rate / 1000}" else "${rate / 1000}_${rate % 1000}"
+        val mode = "dextop_${width}x${height}_$label"
+        return """
+            command -v xrandr >/dev/null 2>&1 || { echo 'Xvfb timing setup requires xrandr' >&2; exit 1; }
+            xrandr --newmode $mode $clock $width ${width + 48} ${width + 128} $horizontal $height ${height + 3} ${height + 8} $vertical +hsync -vsync 2>/dev/null || true
+            xrandr --addmode screen $mode 2>/dev/null || true
+            ${if (select) "xrandr --output screen --mode $mode || { echo 'Cannot configure Xvfb display timing' >&2; exit 1; }" else ":"}
+        """.trimIndent()
+    }
+
+    internal fun applicationDisplayTiming(width: Int, height: Int, refreshRate: Float = 60f): String {
+        val modes = listOf(640 to 480, 800 to 600, 1024 to 768, 1280 to 720,
+            1600 to 900, 1920 to 1080, height to width).distinct().filterNot { it == width to height } + (width to height)
+        return modes.joinToString("\n") { (w, h) -> virtualDisplayMode(w, h, refreshRate, select = w == width && h == height) }
+    }
+
+    internal fun updateDisplayScript(display: Int, config: LinuxDisplayConfiguration, apps: Boolean) = """
+        set -e
+        export DISPLAY=:$display
+        ${if (apps) applicationDisplayTiming(config.width, config.height, config.refreshRate) else virtualDisplayTiming(config.width, config.height, config.refreshRate)}
+        xrandr --dpi ${xDpi(config.dpi)}
+        if command -v xrdb >/dev/null 2>&1; then printf '%s\n' 'Xft.dpi: ${xDpi(config.dpi)}' | xrdb -nocpp -merge; fi
+    """.trimIndent() + "\n"
+
     const val IMAGE_SERVER = "https://images.linuxcontainers.org"
     const val IMAGE_INDEX = "$IMAGE_SERVER/meta/1.0/index-system"
     const val ARCHITECTURE = "arm64"
@@ -34,25 +78,61 @@ internal object LinuxCatalog {
         LinuxDistro("debian", "Debian 13 (trixie)", "debian", "trixie", LinuxPackageFamily.APT),
         LinuxDistro("ubuntu", "Ubuntu 24.04 LTS (noble)", "ubuntu", "noble", LinuxPackageFamily.APT),
         LinuxDistro("archlinux", "Arch Linux ARM", "archlinux", "current", LinuxPackageFamily.PACMAN),
+        // DroidDeck's Linux runtime (GPL-3.0, Droid-Deck/DroidDeck tools/linuxfs): Arch Linux ARM
+        // with gamescope, Xwayland, Mesa 26.2 (Turnip for KGSL, Zink) and its Steam session
+        // scripts. It contains no Valve software; Steam is fetched from Valve at first use.
+        LinuxDistro(
+            DROIDDECK_RUNTIME, "DroidDeck runtime (Arch Linux ARM, Steam)", "archlinux", "current",
+            LinuxPackageFamily.PACMAN,
+            LinuxImage(
+                "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/linuxfs-r9/linuxfs.tar.zst",
+                "d3240c1531531615b0dd06b6ad56e92db9015a8641eb18c3a613835ae45992e7",
+                790_907_606,
+            ),
+        ),
+    )
+
+    const val DROIDDECK_RUNTIME = "droiddeck"
+
+    /**
+     * DroidDeck's desktop package (tools/desktop-kde, release.env): KDE Plasma
+     * 6 as SteamOS's desktop mode, with KWin nested in a host compositor.
+     * Extracted over the DroidDeck runtime.
+     */
+    val DROIDDECK_DESKTOP = LinuxImage(
+        "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/desktop-kde-r2/desktop-kde.tar.zst",
+        "9ba832677b498654136c69d8c8330434d17e4d53cd099acac9bde3ba429b35bf",
+        846_933_224,
     )
 
     fun find(id: String): LinuxDistro? = distros.firstOrNull { it.id == id }
 
-    fun toJson(): String = JSONArray().apply { distros.forEach { put(it.toJson()) } }.toString()
+    // Keep the legacy descriptor for installed containers; do not offer new DD containers.
+    fun toJson(): String = JSONArray().apply {
+        distros.filterNot { it.id == DROIDDECK_RUNTIME }.forEach { put(it.toJson()) }
+    }.toString()
 
     /**
      * Run once after extraction, as the container's root. Android has no
      * /etc/resolv.conf to inherit, and proot cannot switch users, so APT's
      * download sandbox and pacman's Landlock sandbox are disabled.
      */
+    private val CONFIGURE_COMMON = """
+        set -e
+        rm -f /etc/resolv.conf
+        printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > /etc/resolv.conf
+        printf '127.0.0.1 localhost\n::1 localhost ip6-localhost\n' > /etc/hosts
+        mkdir -p /tmp /root && chmod 1777 /tmp
+    """.trimIndent()
+
+    /**
+     * DroidDeck's runtime only gets name resolution: its Mesa, gamescope and
+     * other builds are not in pacman's database, so pacman stays untouched.
+     */
+    fun runtimeConfigureScript(): String = CONFIGURE_COMMON + "\n"
+
     fun configureScript(family: LinuxPackageFamily): String {
-        val common = """
-            set -e
-            rm -f /etc/resolv.conf
-            printf 'nameserver 8.8.8.8\nnameserver 1.1.1.1\n' > /etc/resolv.conf
-            printf '127.0.0.1 localhost\n::1 localhost ip6-localhost\n' > /etc/hosts
-            mkdir -p /tmp /root && chmod 1777 /tmp
-        """.trimIndent()
+        val common = CONFIGURE_COMMON
         val specific = when (family) {
             LinuxPackageFamily.APT -> """
                 mkdir -p /etc/apt/apt.conf.d
@@ -88,13 +168,19 @@ internal object LinuxCatalog {
             fi
             apt-get install -y --no-install-recommends \
                 xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
-                fonts-dejavu-core xdg-utils ca-certificates fakeroot
+                fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme
+            if apt-cache show adwaita-icon-theme-legacy >/dev/null 2>&1; then
+                apt-get install -y --no-install-recommends adwaita-icon-theme-legacy
+            fi
         """.trimIndent() + "\n"
         LinuxPackageFamily.PACMAN -> """
             set -e
             pacman -S --noconfirm --needed \
-                xorg-server-xvfb xorg-xrdb xorg-xauth icewm xterm dbus pulseaudio \
-                ttf-dejavu xdg-utils ca-certificates fakeroot
+                xorg-server-xvfb xorg-xrdb xorg-xrandr xorg-xauth icewm xterm dbus pulseaudio \
+                ttf-dejavu xdg-utils ca-certificates fakeroot adwaita-icon-theme
+            if pacman -Si adwaita-icon-theme-legacy >/dev/null 2>&1; then
+                pacman -S --noconfirm --needed adwaita-icon-theme-legacy
+            fi
         """.trimIndent() + "\n"
     }
 
@@ -103,19 +189,22 @@ internal object LinuxCatalog {
      * /tmp/dextop-fb-<display> (mmapped by the service), then the session
      * ([session] is "icewm" for desktop mode). Runs until the session ends.
      */
-    fun desktopScript(display: Int, width: Int, height: Int, dpi: Int, session: String): String = """
+    fun desktopScript(display: Int, width: Int, height: Int, dpi: Int, session: String, xwayland: Boolean = false): String = """
         D=$display
         rm -f /tmp/.X${'$'}D-lock /tmp/.X11-unix/X${'$'}D
         mkdir -p /tmp/.X11-unix /tmp/dextop-fb-${'$'}D
         chmod 1777 /tmp/.X11-unix
-        Xvfb :${'$'}D -screen 0 ${width}x${height}x24 -dpi ${xDpi(dpi)} -fbdir /tmp/dextop-fb-${'$'}D \
-            -nolisten tcp -ac +extension XTEST +extension DAMAGE >/tmp/xvfb-${'$'}D.log 2>&1 &
+        ${if (xwayland) xwaylandCommand(display, width, height, dpi) else """
+        Xvfb :${'$'}D -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1920)}x24 -dpi ${xDpi(dpi)} -fbdir /tmp/dextop-fb-${'$'}D \
+            -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE >/tmp/xvfb-${'$'}D.log 2>&1 &
+        """.trimIndent()}
         XPID=${'$'}!
         trap 'kill ${'$'}XPID ${'$'}DBPID 2>/dev/null' EXIT HUP INT TERM
         i=0
         while [ ! -e /tmp/.X11-unix/X${'$'}D ] && [ ${'$'}i -lt 100 ]; do sleep 0.1; i=${'$'}((i + 1)); done
         kill -0 ${'$'}XPID 2>/dev/null || { cat /tmp/xvfb-${'$'}D.log >&2; exit 1; }
         export DISPLAY=:${'$'}D XDG_RUNTIME_DIR=/tmp/runtime-root
+        ${if (xwayland) ":" else virtualDisplayTiming(width, height)}
         mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
         ${sessionSetup(xDpi(dpi))}
         echo dextop-x-ready
@@ -131,26 +220,63 @@ internal object LinuxCatalog {
      * the window manager, from outside), Composite for offscreen windows,
      * and the session bus. Runs until Xvfb exits.
      */
-    fun appsScript(display: Int, width: Int, height: Int, dpi: Int): String = """
+    fun appsScript(display: Int, width: Int, height: Int, dpi: Int, xwayland: Boolean = false): String = """
         D=$display
         rm -f /tmp/.X${'$'}D-lock /tmp/.X11-unix/X${'$'}D
         mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
-        Xvfb :${'$'}D -screen 0 ${width}x${height}x24 -dpi ${xDpi(dpi)} \
-            -nolisten tcp -ac +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
+        ${if (xwayland) xwaylandCommand(display, width, height, dpi) else """
+        Xvfb :${'$'}D -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1080)}x24 -dpi ${xDpi(dpi)} \
+            -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
+        """.trimIndent()}
         XPID=${'$'}!
         trap 'kill ${'$'}XPID ${'$'}DBPID 2>/dev/null' EXIT HUP INT TERM
         i=0
         while [ ! -e /tmp/.X11-unix/X${'$'}D ] && [ ${'$'}i -lt 100 ]; do sleep 0.1; i=${'$'}((i + 1)); done
         kill -0 ${'$'}XPID 2>/dev/null || { cat /tmp/xvfb-${'$'}D.log >&2; exit 1; }
         export DISPLAY=:${'$'}D XDG_RUNTIME_DIR=/tmp/runtime-root
+        ${if (xwayland) ":" else applicationDisplayTiming(width, height)}
         mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
         ${sessionSetup(xDpi(dpi))}
         echo dextop-x-ready
         wait ${'$'}XPID
     """.trimIndent() + "\n"
 
+    internal fun xwaylandCommand(display: Int, width: Int, height: Int, dpi: Int): String = """
+        export XDG_RUNTIME_DIR=/tmp/runtime-root
+        mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
+        command -v Xwayland >/dev/null || { echo 'Xwayland is missing; run container setup again' >&2; exit 1; }
+        WAYLAND_DISPLAY=${LinuxXwaylandHost.displayName(display)} Xwayland :${'$'}D -geometry ${width}x$height -dpi ${xDpi(dpi)} \
+            -shm -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
+    """.trimIndent()
+
+    /**
+     * The guest half of a Wayland-only display (DroidDeck's runtime, which
+     * has no Xvfb): the runtime directory Dextop's compositor listens in and
+     * the session bus. Runs until the session is stopped.
+     */
+    fun waylandAppsScript(display: Int): String = """
+        D=$display
+        export XDG_RUNTIME_DIR=/tmp/runtime-root
+        mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
+        trap 'kill ${'$'}DBPID 2>/dev/null' EXIT HUP INT TERM
+        if command -v dbus-daemon >/dev/null; then
+            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || dbus-uuidgen >/etc/machine-id 2>/dev/null
+            export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-${'$'}D
+            mkdir -p /etc/dextop
+            printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
+                ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
+                '<busconfig><include>/usr/share/dbus-1/session.conf</include>' \
+                '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/></busconfig>' >/etc/dextop/dbus-session.conf
+            dbus-daemon --config-file=/etc/dextop/dbus-session.conf --address=${'$'}DBUS_SESSION_BUS_ADDRESS \
+                --fork --print-pid >/tmp/dbus-${'$'}D.log 2>&1
+            DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
+        fi
+        echo dextop-wayland-ready
+        while :; do sleep 3600 || exit; done
+    """.trimIndent() + "\n"
+
     /** Runs [command] (a desktop entry's Exec line) as an application of display [display]. */
-    fun launchScript(display: Int, command: String, wayland: Boolean = false): String = """
+    fun launchScript(display: Int, command: String, wayland: Boolean = false, waylandGpu: Boolean = true): String = """
         export DISPLAY=:$display XDG_RUNTIME_DIR=/tmp/runtime-root
         export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-$display
         # An application started before the session bus misses it for good (Firefox then
@@ -161,7 +287,8 @@ internal object LinuxCatalog {
         done
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
         $RENDERER_OVERRIDE
-        ${if (wayland) WAYLAND_ENVIRONMENT else ""}
+        $GTK_FONT_SCHEMA_FIX
+        ${if (wayland) (if (waylandGpu) WAYLAND_ENVIRONMENT else WAYLAND_TOOLKIT_ENVIRONMENT) else "unset WAYLAND_DISPLAY; export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11 MOZ_ENABLE_WAYLAND=0 ELECTRON_OZONE_PLATFORM_HINT=x11"}
         cd /root
         exec sh -c ${shellQuote(command)} >>/tmp/apps-$display.log 2>&1
     """.trimIndent() + "\n"
@@ -296,6 +423,39 @@ internal object LinuxCatalog {
     private fun xDpi(androidDpi: Int) = (androidDpi * 96 / 160).coerceAtLeast(96)
 
     /**
+     * GTK 4 on Wayland reads the font keys antialiasing, hinting and rgba-order of
+     * org.gnome.settings-daemon.plugins.xsettings whenever that schema is installed.
+     * gnome-settings-daemon 48 moved them to a ".deprecated" schema, so GTK 4 apps
+     * (Transmission, …) abort with "does not contain a key named 'antialiasing'". This
+     * compiles the schema with those keys into a directory GLib searches first.
+     */
+    private val GTK_FONT_SCHEMA_FIX = """
+        S=/usr/share/glib-2.0/schemas
+        if grep -q 'plugins.xsettings.deprecated' ¤S/org.gnome.settings-daemon.plugins.xsettings.gschema.xml 2>/dev/null &&
+            command -v glib-compile-schemas >/dev/null; then
+            O=/etc/dextop/gsettings
+            if [ ! -f ¤O/gschemas.compiled ] || [ ¤S/org.gnome.settings-daemon.enums.xml -nt ¤O/gschemas.compiled ]; then
+                mkdir -p ¤O && cp -f ¤S/org.gnome.settings-daemon.enums.xml ¤O/
+                cat >¤O/org.gnome.settings-daemon.plugins.xsettings.gschema.xml <<'DEXTOP_SCHEMA'
+        <?xml version="1.0" encoding="UTF-8"?>
+        <schemalist>
+          <schema gettext-domain="gnome-settings-daemon" id="org.gnome.settings-daemon.plugins.xsettings" path="/org/gnome/settings-daemon/plugins/xsettings/">
+            <key name="disabled-gtk-modules" type="as"><default>[]</default></key>
+            <key name="enabled-gtk-modules" type="as"><default>[]</default></key>
+            <key type="a{sv}" name="overrides"><default>{}</default></key>
+            <key name="antialiasing" enum="org.gnome.settings-daemon.GsdFontAntialiasingMode"><default>'grayscale'</default></key>
+            <key name="hinting" enum="org.gnome.settings-daemon.GsdFontHinting"><default>'slight'</default></key>
+            <key name="rgba-order" enum="org.gnome.settings-daemon.GsdFontRgbaOrder"><default>'rgb'</default></key>
+          </schema>
+        </schemalist>
+        DEXTOP_SCHEMA
+                glib-compile-schemas ¤O 2>/dev/null
+            fi
+            export GSETTINGS_SCHEMA_DIR=¤O
+        fi
+    """.trimIndent().replace('¤', '$')
+
+    /**
      * Containers set up before the renderer setting existed export
      * LIBGL_ALWAYS_SOFTWARE in session.env, which would hide VirGL.
      */
@@ -385,9 +545,11 @@ internal object LinuxCatalog {
      * Toolkits prefer Dextop's Wayland compositor (GPU buffers through
      * dma-buf) and fall back to X11.
      */
-    private val WAYLAND_ENVIRONMENT = "export WAYLAND_DISPLAY=${LinuxAppSession.WAYLAND_DISPLAY} " +
+    private val WAYLAND_TOOLKIT_ENVIRONMENT = "export WAYLAND_DISPLAY=${LinuxAppSession.WAYLAND_DISPLAY} " +
         "GDK_BACKEND=wayland,x11 GTK_CSD=0 QT_QPA_PLATFORM='wayland;xcb' SDL_VIDEODRIVER=wayland,x11 " +
-        "MOZ_ENABLE_WAYLAND=1 ELECTRON_OZONE_PLATFORM_HINT=auto\n" +
+        "MOZ_ENABLE_WAYLAND=1 ELECTRON_OZONE_PLATFORM_HINT=auto\n"
+
+    private val WAYLAND_ENVIRONMENT = WAYLAND_TOOLKIT_ENVIRONMENT +
         "export DEXTOP_WAYLAND_KGSL=1 MESA_LOADER_DRIVER_OVERRIDE=zink\n" +
         // X11 GLX clients launched from a Wayland terminal still need XPutImage presentation.
         "export LIBGL_KOPPER_DRI2=true MESA_VK_WSI_DEBUG=sw\n" +

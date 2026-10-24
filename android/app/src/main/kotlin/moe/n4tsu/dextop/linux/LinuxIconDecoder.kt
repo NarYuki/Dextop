@@ -12,6 +12,11 @@ import java.io.File
 internal object LinuxIconDecoder {
     private const val SIZE = 96
 
+    fun windowPng(bytes: ByteArray): ByteArray? {
+        val image = LinuxWindowIcon.read(bytes) ?: return null
+        return png(Bitmap.createBitmap(image.argb, image.width, image.height, Bitmap.Config.ARGB_8888))
+    }
+
     fun png(file: File): ByteArray? {
         val bitmap = when (file.extension.lowercase()) {
             "svg" -> Bitmap.createBitmap(SIZE, SIZE, Bitmap.Config.ARGB_8888).also { bitmap ->
@@ -26,6 +31,16 @@ internal object LinuxIconDecoder {
                 }
             }
             "xpm" -> xpm(file.readText()) ?: return null
+            "ico" -> {
+                val bytes = embeddedIcoPng(file.readBytes()) ?: return null
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                if (options.outWidth <= 0 || options.outHeight <= 0) return null
+                options.inSampleSize = 1
+                while (maxOf(options.outWidth, options.outHeight) / options.inSampleSize > SIZE * 2) options.inSampleSize *= 2
+                options.inJustDecodeBounds = false
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options) ?: return null
+            }
             else -> {
                 val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
                 BitmapFactory.decodeFile(file.path, options)
@@ -36,6 +51,13 @@ internal object LinuxIconDecoder {
                 BitmapFactory.decodeFile(file.path, options) ?: return null
             }
         }
+        return png(bitmap)
+    }
+
+    internal fun argbPng(pixels: IntArray, width: Int, height: Int): ByteArray =
+        png(Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888))
+
+    private fun png(bitmap: Bitmap): ByteArray {
         try {
             val scale = minOf(1f, SIZE.toFloat() / maxOf(bitmap.width, bitmap.height))
             val output = if (scale < 1) Bitmap.createScaledBitmap(bitmap,
@@ -47,6 +69,31 @@ internal object LinuxIconDecoder {
                 }
             } finally { if (output !== bitmap) output.recycle() }
         } finally { bitmap.recycle() }
+    }
+
+    /** Modern ICOs contain a PNG for their larger sizes; keep its original alpha. */
+    internal fun embeddedIcoPng(bytes: ByteArray): ByteArray? {
+        if (bytes.size < 6 || bytes.size > 2 * 1024 * 1024) return null
+        val data = java.nio.ByteBuffer.wrap(bytes).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        if (data.short.toInt() != 0 || data.short.toInt() != 1) return null
+        val count = data.short.toInt() and 0xffff
+        if (count !in 1..256 || 6 + count * 16 > bytes.size) return null
+        val signature = byteArrayOf(0x89.toByte(), 0x50, 0x4e, 0x47, 13, 10, 26, 10)
+        var best: ByteArray? = null
+        var bestArea = 0
+        repeat(count) { index ->
+            val entry = 6 + index * 16
+            val width = (bytes[entry].toInt() and 0xff).takeIf { it != 0 } ?: 256
+            val height = (bytes[entry + 1].toInt() and 0xff).takeIf { it != 0 } ?: 256
+            val size = data.getInt(entry + 8).toLong() and 0xffffffffL
+            val offset = data.getInt(entry + 12).toLong() and 0xffffffffL
+            if (size >= 8 && offset >= 6 + count * 16 && offset + size <= bytes.size &&
+                width * height > bestArea && signature.indices.all { bytes[offset.toInt() + it] == signature[it] }) {
+                best = bytes.copyOfRange(offset.toInt(), (offset + size).toInt())
+                bestArea = width * height
+            }
+        }
+        return best
     }
 
     private fun xpm(text: String): Bitmap? {

@@ -159,7 +159,7 @@ _Community-submitted and reviewed device report_
 
 ## System requirements
 
-- Android 10 or later. Most devices require Android 14 or later for a usable desktop environment.
+- Android 13 or later. Most devices require Android 14 or later for a usable desktop environment.
 - Current release: **Dextop 1.7.0**
 - Android Auto companions: **Dextop・Parking 2.0.0** and **Dextop・Driving 2.0.0**
 

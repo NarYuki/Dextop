@@ -1,0 +1,5 @@
+#!/bin/sh
+case "${1:-}" in
+  --supports-duplicate-detection) exit 0 ;;
+esac
+exit 7

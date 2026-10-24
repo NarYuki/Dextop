@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter/material.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
+import 'package:free_dextop/linux/linux_widgets.dart';
 import 'package:free_dextop/penguin_icon.dart';
 
 /// One setup operation, supplied by the Linux tab so it keeps running off-route.
@@ -93,6 +95,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   final name = TextEditingController();
   late String distro;
   String profile = 'complete';
+  String displayBackend = 'xvfb';
   String locale = 'en_US';
   String ime = 'none';
   bool cjkFonts = false;
@@ -100,6 +103,12 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   bool themes = true;
   final apps = <String>{'files', 'editor'};
   int step = 0;
+  bool movingForward = true;
+
+  void moveTo(int next) => setState(() {
+    movingForward = next > step;
+    step = next;
+  });
   bool initialized = false;
   bool submitting = false;
   bool refreshing = false;
@@ -108,6 +117,12 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   Timer? timer;
   AppLocalizations get l => AppLocalizations.of(context);
   bool get updating => widget.containerId != null;
+
+  /// DroidDeck's runtime brings its own desktop, fonts and input methods,
+  /// so only the system and app choices apply.
+  bool get runtime => distro == 'droiddeck';
+  List<int> get flow => runtime ? const [0, 4, 5] : const [0, 1, 2, 3, 4, 5];
+  int get position => flow.indexOf(step);
 
   @override
   void initState() {
@@ -142,6 +157,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     final saved = widget.initialOptions;
     if (saved.isNotEmpty) {
       profile = saved['profile'] as String? ?? profile;
+      displayBackend = saved['displayBackend'] as String? ?? displayBackend;
       locale = saved['locale'] as String? ?? locale;
       ime = saved['ime'] as String? ?? ime;
       cjkFonts = saved['cjkFonts'] as bool? ?? cjkFonts;
@@ -162,6 +178,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   Map<String, Object> get options => {
     'profile': profile,
+    'displayBackend': displayBackend,
     'locale': locale,
     'cjkFonts': cjkFonts,
     'ime': ime,
@@ -174,6 +191,15 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     distro = value;
     if (value == 'ubuntu') apps.removeAll(['firefox', 'chromium']);
     if (value == 'archlinux') apps.remove('chrome');
+    if (value == 'droiddeck') {
+      apps
+        ..clear()
+        ..add('steam');
+    } else if (apps.length == 1 && apps.contains('steam')) {
+      apps
+        ..clear()
+        ..addAll(['files', 'editor']);
+    }
   });
 
   Future<void> start() async {
@@ -215,7 +241,10 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   }
 
   String get distroName =>
-      widget.catalog.firstWhere((entry) => entry['id'] == distro)['name']
+      widget.catalog.firstWhere(
+            (entry) => entry['id'] == distro,
+            orElse: () => {'name': distro},
+          )['name']
           as String;
 
   String appName(String app) => switch (app) {
@@ -225,6 +254,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     'files' => l.linuxSetupFiles,
     'editor' => l.linuxSetupEditor,
     'office' => l.linuxSetupOffice,
+    'steam' => 'Steam',
     _ => app,
   };
 
@@ -245,10 +275,15 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       l.linuxSetupApps,
       l.linuxSetupReview,
     ];
+    final theme = Theme.of(context);
     return PopScope(
       canPop: !submitting,
       child: Scaffold(
-        appBar: AppBar(title: Text(l.linuxSetupTitle)),
+        backgroundColor: theme.colorScheme.surface,
+        appBar: M3EAppBar.top(
+          automaticallyImplyLeading: true,
+          titleText: l.linuxSetupTitle,
+        ),
         body: SafeArea(
           child: Center(
             child: ConstrainedBox(
@@ -262,53 +297,85 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
                           padding: const EdgeInsets.fromLTRB(24, 16, 24, 8),
                           child: Row(
                             children: [
-                              for (var i = 0; i < titles.length; i++)
+                              for (var i = 0; i < flow.length; i++) ...[
+                                if (i > 0) const SizedBox(width: 4),
                                 Expanded(
-                                  child: Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 3,
-                                    ),
-                                    child: LinearProgressIndicator(
-                                      value: i <= step ? 1 : 0,
-                                      minHeight: 5,
-                                      borderRadius: BorderRadius.circular(8),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(milliseconds: 360),
+                                    curve: Curves.easeOutCubic,
+                                    height: 6,
+                                    decoration: BoxDecoration(
+                                      color: i <= position
+                                          ? theme.colorScheme.primary
+                                          : theme
+                                                .colorScheme
+                                                .surfaceContainerHighest,
+                                      borderRadius: BorderRadius.circular(3),
                                     ),
                                   ),
                                 ),
+                              ],
                             ],
                           ),
                         ),
                         Expanded(
-                          child: ListView(
-                            key: ValueKey(step),
-                            padding: const EdgeInsets.fromLTRB(24, 20, 24, 24),
-                            children: [
-                              Text(
-                                l.linuxPhaseStep(step + 1, titles.length),
-                                style: Theme.of(context).textTheme.labelLarge,
-                              ),
-                              const SizedBox(height: 12),
-                              Text(
-                                titles[step],
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.headlineMedium,
-                              ),
-                              const SizedBox(height: 20),
-                              ...stepContent(),
-                              if (failure != null)
-                                Padding(
-                                  padding: const EdgeInsets.only(top: 16),
-                                  child: Text(
-                                    failure!,
-                                    style: TextStyle(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.error,
+                          child: AnimatedSwitcher(
+                            duration: MediaQuery.disableAnimationsOf(context)
+                                ? Duration.zero
+                                : const Duration(milliseconds: 320),
+                            switchInCurve: Curves.easeOutCubic,
+                            switchOutCurve: Curves.easeInCubic,
+                            transitionBuilder: (child, animation) {
+                              final entering = child.key == ValueKey(step);
+                              final direction = movingForward ? 1.0 : -1.0;
+                              return FadeTransition(
+                                opacity: animation,
+                                child: SlideTransition(
+                                  position: Tween<Offset>(
+                                    begin: Offset(
+                                      (entering ? direction : -direction) * .08,
+                                      0,
                                     ),
+                                    end: Offset.zero,
+                                  ).animate(animation),
+                                  child: child,
+                                ),
+                              );
+                            },
+                            child: ListView(
+                              key: ValueKey(step),
+                              padding: const EdgeInsets.fromLTRB(
+                                24,
+                                20,
+                                24,
+                                24,
+                              ),
+                              children: [
+                                Text(
+                                  l.linuxPhaseStep(position + 1, flow.length),
+                                  style: theme.textTheme.labelLarge?.copyWith(
+                                    color: theme.colorScheme.primary,
                                   ),
                                 ),
-                            ],
+                                const SizedBox(height: 12),
+                                Text(
+                                  titles[step],
+                                  style: theme.textTheme.headlineMedium,
+                                ),
+                                const SizedBox(height: 20),
+                                ...stepContent(),
+                                if (failure != null)
+                                  Padding(
+                                    padding: const EdgeInsets.only(top: 16),
+                                    child: Text(
+                                      failure!,
+                                      style: TextStyle(
+                                        color: theme.colorScheme.error,
+                                      ),
+                                    ),
+                                  ),
+                              ],
+                            ),
                           ),
                         ),
                         Padding(
@@ -316,32 +383,31 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
                           child: Row(
                             children: [
                               if (step > 0)
-                                TextButton.icon(
+                                M3EButton.outlined(
+                                  icon: const Icon(M3EIcons.arrow_back_rounded),
                                   onPressed: submitting
                                       ? null
-                                      : () => setState(() => step--),
-                                  icon: const Icon(Icons.arrow_back_rounded),
+                                      : () => moveTo(flow[position - 1]),
                                   label: Text(l.linuxSetupBack),
                                 ),
                               const Spacer(),
-                              FilledButton.icon(
+                              M3EButton.filled(
+                                size: M3EButtonSize.md,
+                                icon: submitting
+                                    ? const SizedBox.square(
+                                        dimension: 20,
+                                        child: M3ELoadingIndicator(size: 20),
+                                      )
+                                    : Icon(
+                                        step == 5
+                                            ? M3EIcons.download_rounded
+                                            : M3EIcons.arrow_forward_rounded,
+                                      ),
                                 onPressed: submitting
                                     ? null
                                     : step == 5
                                     ? start
-                                    : () => setState(() => step++),
-                                icon: submitting
-                                    ? const SizedBox.square(
-                                        dimension: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      )
-                                    : Icon(
-                                        step == 5
-                                            ? Icons.download_rounded
-                                            : Icons.arrow_forward_rounded,
-                                      ),
+                                    : () => moveTo(flow[position + 1]),
                                 label: Text(
                                   step == 5
                                       ? l.linuxSetupApply
@@ -360,18 +426,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     );
   }
 
-  Widget optionGroup(List<Widget> children) => Card(
-    clipBehavior: Clip.antiAlias,
-    child: Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        for (var index = 0; index < children.length; index++) ...[
-          if (index > 0) const Divider(height: 1, indent: 16, endIndent: 16),
-          children[index],
-        ],
-      ],
-    ),
-  );
+  Widget optionGroup(List<Widget> children) => LinuxGroup(children: children);
 
   List<Widget> stepContent() => switch (step) {
     0 => [
@@ -382,61 +437,74 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       const SizedBox(height: 16),
       Text(updating ? l.linuxSetupExisting : l.linuxSetupIntro),
       const SizedBox(height: 24),
-      TextField(
+      M3ETextField(
+        variant: M3ETextFieldVariant.outlined,
         controller: name,
         readOnly: updating,
         maxLength: 80,
-        decoration: InputDecoration(
-          labelText: l.linuxContainerName,
-          hintText: distroName,
-          border: const OutlineInputBorder(),
-        ),
+        label: l.linuxContainerName,
+        placeholder: distroName,
       ),
       const SizedBox(height: 12),
       if (updating)
         optionGroup([
-          summary(Icons.computer_rounded, l.linuxDistribution, distroName),
+          summary(M3EIcons.computer_rounded, l.linuxDistribution, distroName),
         ])
       else
-        RadioGroup<String>(
-          groupValue: distro,
-          onChanged: (value) {
-            if (value != null) chooseDistro(value);
-          },
-          child: optionGroup([
-            for (final entry in widget.catalog)
-              RadioListTile<String>(
-                value: entry['id'] as String,
-                title: Text(entry['name'] as String),
-              ),
-          ]),
-        ),
+        optionGroup([
+          for (final entry in widget.catalog)
+            LinuxChoice<String>(
+              value: entry['id'] as String,
+              groupValue: distro,
+              onChanged: chooseDistro,
+              title: entry['name'] as String,
+            ),
+        ]),
     ],
     1 => [
-      RadioGroup<String>(
-        groupValue: profile,
-        onChanged: (value) => setState(() {
-          profile = value ?? profile;
-          themes = graphics = profile == 'complete';
-          if (profile == 'complete') {
-            apps.addAll(['files', 'editor']);
-          } else {
-            apps.clear();
-          }
-        }),
-        child: optionGroup([
-          RadioListTile<String>(
-            value: 'minimal',
-            title: Text(l.linuxSetupMinimal),
-            subtitle: Text(l.linuxSetupMinimalDetail),
-          ),
-          RadioListTile<String>(
-            value: 'complete',
-            title: Text(l.linuxSetupComplete),
-            subtitle: Text(l.linuxSetupCompleteDetail),
-          ),
-        ]),
+      Text(
+        l.linuxSetupDisplayBackend,
+        style: Theme.of(context).textTheme.titleMedium,
       ),
+      const SizedBox(height: 12),
+      optionGroup([
+        LinuxChoice<String>(
+          value: 'xvfb',
+          groupValue: displayBackend,
+          onChanged: (value) => setState(() => displayBackend = value),
+          title: 'Xvfb',
+          subtitle: l.linuxSetupXvfbDetail,
+        ),
+        LinuxChoice<String>(
+          value: 'wayland',
+          groupValue: displayBackend,
+          onChanged: (value) => setState(() => displayBackend = value),
+          title: 'Wayland',
+          subtitle: l.linuxSetupWaylandDetail,
+        ),
+      ]),
+      const SizedBox(height: 24),
+      optionGroup([
+        for (final entry in {
+          'minimal': (l.linuxSetupMinimal, l.linuxSetupMinimalDetail),
+          'complete': (l.linuxSetupComplete, l.linuxSetupCompleteDetail),
+        }.entries)
+          LinuxChoice<String>(
+            value: entry.key,
+            groupValue: profile,
+            onChanged: (value) => setState(() {
+              profile = value;
+              themes = graphics = profile == 'complete';
+              if (profile == 'complete') {
+                apps.addAll(['files', 'editor']);
+              } else {
+                apps.clear();
+              }
+            }),
+            title: entry.value.$1,
+            subtitle: entry.value.$2,
+          ),
+      ]),
       const SizedBox(height: 16),
       optionGroup([
         toggle(
@@ -455,18 +523,29 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     ],
     2 => [
       Text(l.linuxSetupLocaleDetail),
-      const SizedBox(height: 24),
-      DropdownButtonFormField<String>(
-        initialValue: locale,
-        decoration: InputDecoration(
-          labelText: l.linuxSetupLocale,
-          border: const OutlineInputBorder(),
-        ),
+      const SizedBox(height: 16),
+      LinuxSection(l.linuxSetupLocale),
+      M3EDropdownMenu<String>(
+        key: const ValueKey('locale'),
+        singleSelect: true,
+        showChipAnimation: false,
         items: [
           for (final entry in locales.entries)
-            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+            M3EDropdownItem(
+              label: entry.value,
+              value: entry.key,
+              selected: entry.key == locale,
+            ),
         ],
-        onChanged: (value) => setState(() => locale = value ?? locale),
+        fieldStyle: M3EDropdownFieldStyle(
+          hintText: l.linuxSetupLocale,
+          prefixIcon: const Icon(M3EIcons.language_rounded),
+        ),
+        onSelectionChanged: (items) {
+          if (items.isNotEmpty && items.first.value != locale) {
+            setState(() => locale = items.first.value);
+          }
+        },
       ),
       const SizedBox(height: 20),
       optionGroup([
@@ -481,25 +560,26 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     3 => [
       Text(l.linuxSetupImeDetail),
       const SizedBox(height: 16),
-      RadioGroup<String>(
-        groupValue: ime,
-        onChanged: (value) => setState(() => ime = value ?? ime),
-        child: optionGroup([
-          for (final entry in {
-            'none': l.linuxSetupNoIme,
-            'mozc': l.linuxSetupMozc,
-            'pinyin': l.linuxSetupPinyin,
-            'hangul': l.linuxSetupHangul,
-          }.entries)
-            RadioListTile<String>(
-              value: entry.key,
-              title: Text(entry.value),
-              subtitle: entry.key == 'none'
-                  ? Text(l.linuxSetupNoImeDetail)
-                  : null,
-            ),
-        ]),
-      ),
+      optionGroup([
+        for (final entry in {
+          'none': l.linuxSetupNoIme,
+          'mozc': l.linuxSetupMozc,
+          'pinyin': l.linuxSetupPinyin,
+          'hangul': l.linuxSetupHangul,
+        }.entries)
+          LinuxChoice<String>(
+            value: entry.key,
+            groupValue: ime,
+            onChanged: (value) => setState(() => ime = value),
+            title: entry.value,
+            subtitle: entry.key == 'none' ? l.linuxSetupNoImeDetail : null,
+          ),
+      ]),
+    ],
+    4 when runtime => [
+      Text(l.linuxSetupDroidDeckNote),
+      const SizedBox(height: 16),
+      optionGroup([appToggle('steam', l.linuxSetupSteamDetail)]),
     ],
     4 => [
       optionGroup([
@@ -535,33 +615,47 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         appToggle('files', l.linuxSetupFilesDetail),
         appToggle('editor', l.linuxSetupEditorDetail),
         appToggle('office', l.linuxSetupOfficeDetail),
+        appToggle('steam', l.linuxSetupSteamDetail),
       ]),
     ],
     _ => [
       optionGroup([
         summary(
-          Icons.computer_rounded,
+          M3EIcons.computer_rounded,
           name.text.trim().isEmpty ? distroName : name.text.trim(),
           distroName,
         ),
+        if (runtime)
+          summary(
+            M3EIcons.space_dashboard_outlined,
+            l.linuxSetupDesktop,
+            l.linuxSetupDroidDeckNote,
+          )
+        else ...[
+          summary(
+            M3EIcons.monitor_rounded,
+            l.linuxSetupDisplayBackend,
+            displayBackend == 'wayland' ? 'Wayland' : 'Xvfb',
+          ),
+          summary(
+            M3EIcons.space_dashboard_outlined,
+            profile == 'minimal' ? l.linuxSetupMinimal : l.linuxSetupComplete,
+            [
+              if (themes) l.linuxSetupThemes,
+              if (graphics) l.linuxSetupGraphics,
+            ].join(' · '),
+          ),
+          summary(
+            M3EIcons.language_rounded,
+            locales[locale] ?? locale,
+            [
+              if (cjkFonts || ime != 'none') l.linuxSetupFonts,
+              imeName,
+            ].join(' · '),
+          ),
+        ],
         summary(
-          Icons.space_dashboard_outlined,
-          profile == 'minimal' ? l.linuxSetupMinimal : l.linuxSetupComplete,
-          [
-            if (themes) l.linuxSetupThemes,
-            if (graphics) l.linuxSetupGraphics,
-          ].join(' · '),
-        ),
-        summary(
-          Icons.language_rounded,
-          locales[locale] ?? locale,
-          [
-            if (cjkFonts || ime != 'none') l.linuxSetupFonts,
-            imeName,
-          ].join(' · '),
-        ),
-        summary(
-          Icons.apps_rounded,
+          M3EIcons.apps_rounded,
           l.linuxSetupApps,
           apps.isEmpty
               ? l.linuxSetupNothingExtra
@@ -583,9 +677,9 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     String subtitle,
     bool value,
     ValueChanged<bool>? changed,
-  ) => SwitchListTile(
-    title: Text(title),
-    subtitle: Text(subtitle),
+  ) => LinuxToggle(
+    title: title,
+    subtitle: subtitle,
     value: value,
     onChanged: changed,
   );
@@ -595,120 +689,163 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     String subtitle, {
     bool available = true,
     String? unavailable,
-  }) => CheckboxListTile(
-    title: Text(appName(app)),
-    subtitle: Text(available ? subtitle : unavailable ?? ''),
-    value: apps.contains(app),
-    onChanged: available
-        ? (value) => setState(() {
-            if (value == true) {
-              apps.add(app);
-            } else {
-              apps.remove(app);
-            }
-          })
-        : null,
-  );
+  }) {
+    void change(bool? value) => setState(() {
+      if (value == true) {
+        apps.add(app);
+      } else {
+        apps.remove(app);
+      }
+    });
+    return M3EListItem(
+      headline: appName(app),
+      supportingText: available ? subtitle : unavailable ?? '',
+      enabled: available,
+      trailing: M3ECheckbox(
+        value: apps.contains(app),
+        onChanged: available ? change : null,
+      ),
+      onTap: available ? () => change(!apps.contains(app)) : null,
+    );
+  }
 
-  Widget summary(IconData icon, String title, String detail) => ListTile(
+  Widget summary(IconData icon, String title, String detail) => M3EListItem(
+    headline: title,
+    supportingText: detail.isEmpty ? null : detail,
     leading: Icon(icon),
-    title: Text(title),
-    subtitle: detail.isEmpty ? null : Text(detail),
   );
 
-  Widget progressPage() =>
-      ValueListenableBuilder<Map<String, LinuxSetupProgress>>(
-        valueListenable: widget.progress,
-        builder: (context, values, _) {
-          final current = values[operationId];
-          final done = current?.state == 'installed' && current?.error == null;
-          final failed =
-              current?.state == 'failed' ||
-              (current?.state == 'installed' && current?.error != null);
-          if (done || failed) timer?.cancel();
-          return ListView(
-            padding: const EdgeInsets.all(24),
-            children: [
-              const SizedBox(height: 24),
-              Icon(
-                done
-                    ? Icons.check_circle_outline_rounded
-                    : failed
-                    ? Icons.error_outline_rounded
-                    : Icons.downloading_rounded,
-                size: 72,
-                color: failed
-                    ? Theme.of(context).colorScheme.error
-                    : Theme.of(context).colorScheme.primary,
+  Widget
+  progressPage() => ValueListenableBuilder<Map<String, LinuxSetupProgress>>(
+    valueListenable: widget.progress,
+    builder: (context, values, _) {
+      final theme = Theme.of(context);
+      final current = values[operationId];
+      final done = current?.state == 'installed' && current?.error == null;
+      final failed =
+          current?.state == 'failed' ||
+          (current?.state == 'installed' && current?.error != null);
+      if (done || failed) timer?.cancel();
+      return ListView(
+        padding: const EdgeInsets.all(24),
+        children: [
+          const SizedBox(height: 24),
+          Center(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 400),
+              transitionBuilder: (child, animation) => ScaleTransition(
+                scale: CurvedAnimation(
+                  parent: animation,
+                  curve: Curves.easeOutBack,
+                ),
+                child: child,
               ),
-              const SizedBox(height: 24),
+              child: done || failed
+                  ? M3EShapeContainer(
+                      key: ValueKey(done),
+                      kind: done ? M3EShapeKind.sunny : M3EShapeKind.softBoom,
+                      width: 112,
+                      height: 112,
+                      color: failed
+                          ? theme.colorScheme.errorContainer
+                          : theme.colorScheme.primaryContainer,
+                      child: Icon(
+                        done
+                            ? M3EIcons.check_rounded
+                            : M3EIcons.error_outline_rounded,
+                        size: 56,
+                        color: failed
+                            ? theme.colorScheme.onErrorContainer
+                            : theme.colorScheme.onPrimaryContainer,
+                      ),
+                    )
+                  : const M3ELoadingIndicator(
+                      key: ValueKey('loading'),
+                      variant: M3ELoadingIndicatorVariant.contained,
+                      size: 112,
+                    ),
+            ),
+          ),
+          const SizedBox(height: 24),
+          Text(
+            done
+                ? l.linuxSetupDone
+                : failed
+                ? l.linuxSetupFailed
+                : l.linuxSetupProgress,
+            style: theme.textTheme.headlineMedium,
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
+          if (!done && !failed) ...[
+            Text(
+              linuxSetupPhaseLabel(l, current?.phase ?? ''),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            M3EProgressIndicator.linearWavy(
+              strokeWidth: 3,
+              trackStrokeWidth: 3,
+              value: (current?.percent ?? -1) >= 0
+                  ? current!.percent.clamp(0, 100) / 100
+                  : null,
+            ),
+            const SizedBox(height: 12),
+            if (current?.detail.isNotEmpty == true)
               Text(
-                done
-                    ? l.linuxSetupDone
-                    : failed
-                    ? l.linuxSetupFailed
-                    : l.linuxSetupProgress,
-                style: Theme.of(context).textTheme.headlineMedium,
-                textAlign: TextAlign.center,
+                current!.detail,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
               ),
-              const SizedBox(height: 24),
-              if (!done && !failed) ...[
-                Text(
-                  linuxSetupPhaseLabel(l, current?.phase ?? ''),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 16),
-                LinearProgressIndicator(
-                  value: (current?.percent ?? -1) >= 0
-                      ? current!.percent.clamp(0, 100) / 100
-                      : null,
-                ),
-                const SizedBox(height: 12),
-                if (current?.detail.isNotEmpty == true)
-                  Text(
-                    current!.detail,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                const SizedBox(height: 24),
-                Text(l.linuxSetupStorage),
-              ],
-              if (done) Text(l.linuxSetupDoneDetail),
-              if (failed) ...[
-                SelectableText(current?.error ?? l.linuxSetupFailed),
-                const SizedBox(height: 16),
-                FilledButton(
-                  onPressed: () => setState(() {
-                    step = 5;
-                    failure = null;
-                  }),
-                  child: Text(l.linuxSetupRetry),
-                ),
-              ],
-              const SizedBox(height: 24),
-              if (current?.logs.isNotEmpty == true)
-                ExpansionTile(
-                  title: Text(l.linuxSetupLog),
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: SelectableText(
-                        current!.logs.join('\n'),
-                        style: const TextStyle(
-                          fontFamily: 'monospace',
-                          fontSize: 12,
-                        ),
+            const SizedBox(height: 24),
+            Text(l.linuxSetupStorage),
+          ],
+          if (done) Text(l.linuxSetupDoneDetail, textAlign: TextAlign.center),
+          if (failed) ...[
+            SelectableText(current?.error ?? l.linuxSetupFailed),
+            const SizedBox(height: 16),
+            Center(
+              child: M3EButton.filled(
+                icon: const Icon(M3EIcons.refresh_rounded),
+                onPressed: () => setState(() {
+                  step = 5;
+                  failure = null;
+                }),
+                label: Text(l.linuxSetupRetry),
+              ),
+            ),
+          ],
+          const SizedBox(height: 24),
+          if (current?.logs.isNotEmpty == true)
+            M3ECard(
+              variant: M3ECardVariant.outlined,
+              padding: EdgeInsets.zero,
+              child: ExpansionTile(
+                title: Text(l.linuxSetupLog),
+                shape: const Border(),
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.all(12),
+                    child: SelectableText(
+                      current!.logs.join('\n'),
+                      style: const TextStyle(
+                        fontFamily: 'monospace',
+                        fontSize: 12,
                       ),
                     ),
-                  ],
-                ),
-              const SizedBox(height: 16),
-              FilledButton.tonal(
-                onPressed: () => Navigator.pop(context),
-                child: Text(done || failed ? l.close : l.linuxSetupBackground),
+                  ),
+                ],
               ),
-            ],
-          );
-        },
+            ),
+          const SizedBox(height: 16),
+          Center(
+            child: M3EButton.tonal(
+              onPressed: () => Navigator.pop(context),
+              child: Text(done || failed ? l.close : l.linuxSetupBackground),
+            ),
+          ),
+        ],
       );
+    },
+  );
 }

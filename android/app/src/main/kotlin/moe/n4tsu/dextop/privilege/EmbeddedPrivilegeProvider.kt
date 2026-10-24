@@ -51,12 +51,19 @@ class EmbeddedPrivilegeProvider : ContentProvider() {
         }
         if (!shellCaller || method != EmbeddedPrivilegeProtocol.providerMethod || extras == null) return null
         val binder = extras.getBinder(EmbeddedPrivilegeProtocol.providerBinder) ?: return null
-        if (binder.isBinderAlive) {
+        // Servers from an older APK, or extra servers started while one was still alive, retire
+        // instead of retrying forever; otherwise every app restart leaves one more behind.
+        val outdated = arg != null && arg != requireNotNull(context).applicationInfo.sourceDir
+        val retire = outdated || DistributionPrivilegeRuntime.servedByOther(binder)
+        val accepted = !retire && binder.isBinderAlive
+        if (accepted) {
             DistributionPrivilegeRuntime.accept(binder)
+            EmbeddedPrivilegeKeeper.onRuntimeAccepted(requireNotNull(context))
             LinuxContainerClient.onPrivilegeChanged()
         }
         return Bundle().apply {
-            putBoolean("accepted", binder.isBinderAlive)
+            putBoolean("accepted", accepted)
+            putBoolean("retire", retire)
             putBinder(EmbeddedPrivilegeProtocol.providerLifecycleBinder, lifecycleBinder)
         }
     }

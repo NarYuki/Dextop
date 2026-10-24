@@ -2,6 +2,7 @@ package moe.n4tsu.dextop.linux;
 
 import android.view.Surface;
 import moe.n4tsu.dextop.linux.ILinuxContainerCallback;
+import moe.n4tsu.dextop.linux.ILinuxFifoBridge;
 
 /**
  * Shizuku UserService running as the shell user. It owns every container
@@ -74,4 +75,25 @@ interface ILinuxContainerService {
     oneway void notificationAction(String containerId, String key, String action) = 37;
     /** The class loader the service runs from, naming its APK; null from services older than this call. */
     String codePath() = 38;
+    /** Publishes host window state back to clients drawing their own controls. */
+    oneway void setWindowState(String containerId, int xid, boolean maximized, boolean minimized) = 39;
+    /** Android's active link properties for the common network compatibility layer. */
+    void setNetworkLink(String json) = 40;
+    /** Registers the app-owned kernel FIFO endpoint; returns the shell socket name. */
+    String attachFifoBridge(ILinuxFifoBridge bridge) = 41;
+    /** Activates an application tray item; button 1 primary, 3 context menu. */
+    oneway void trayAction(String containerId, String key, int button, int x, int y) = 42;
+    /** Updates live Linux output geometry, DPI and timing from its Dextop session. */
+    oneway void updateDisplay(String containerId, boolean apps, int width, int height, int dpi, float refreshRate) = 43;
+    /** Physical mouse deltas, independent of the guest's current/warped cursor position. */
+    oneway void relativePointer(String containerId, int xid, int action, int dx, int dy, int button) = 44;
+    boolean pointerCaptureRequested(String containerId, int xid) = 45;
+    /** Tail of a log the guest writes under /tmp (at most maxBytes); truncate empties it first. */
+    String guestLog(String containerId, String name, int maxBytes, boolean truncate) = 46;
+    /** Writes a small state file the guest's helpers read under /tmp (dextop-*.conf). */
+    void setGuestState(String containerId, String name, String content) = 47;
+    /** Consumes guest NetworkManager requests for a fresh Android Wi-Fi scan. */
+    boolean consumeNetworkScanRequests() = 48;
+    /** Auto Deck SurfaceView output; never selected for ordinary Linux windows. */
+    boolean attachDeckWindow(String containerId, int xid, in Surface surface) = 49;
 }

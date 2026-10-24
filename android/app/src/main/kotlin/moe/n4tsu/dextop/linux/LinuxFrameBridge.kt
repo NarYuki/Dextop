@@ -30,6 +30,11 @@ internal object LinuxFrameBridge {
         handle: Long, address: Long, length: Long, stride: Int, x: Int, y: Int, w: Int, h: Int,
     ): Boolean
 
+    /** Stage several disjoint X11 damage regions, then post once per window/frame. */
+    @JvmStatic external fun nativeStageAddress(handle: Long, address: Long, length: Long, stride: Int, x: Int, y: Int, w: Int, h: Int): Boolean
+    @JvmStatic external fun nativeStagePixels(handle: Long, pixels: ByteArray, offset: Int, stride: Int, x: Int, y: Int, w: Int, h: Int): Boolean
+    @JvmStatic external fun nativePresent(handle: Long): Boolean
+
     /** Copies a w x h block of BGRX [pixels] (from [offset], rows [stride] bytes apart) to (x, y). */
     @JvmStatic external fun nativeBlitPixels(
         handle: Long, pixels: ByteArray, offset: Int, stride: Int, x: Int, y: Int, w: Int, h: Int,

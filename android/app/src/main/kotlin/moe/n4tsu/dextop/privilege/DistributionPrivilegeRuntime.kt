@@ -11,6 +11,9 @@ object DistributionPrivilegeRuntime {
 
     val available: Boolean get() = enabled && runtime?.isBinderAlive == true
 
+    /** A live runtime other than [binder] already serves the app. */
+    internal fun servedByOther(binder: IBinder): Boolean = runtime.let { it != null && it !== binder && it.isBinderAlive }
+
     internal fun accept(binder: IBinder) {
         runtime = binder
         runCatching {
@@ -18,6 +21,7 @@ object DistributionPrivilegeRuntime {
                 if (runtime === binder) {
                     runtime = null
                     onRuntimeDied?.invoke()
+                    EmbeddedPrivilegeKeeper.onRuntimeDied()
                 }
             }, 0)
         }

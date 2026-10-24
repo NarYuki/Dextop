@@ -1,0 +1,228 @@
+#!/usr/bin/python3
+"""Launch Valve's ARM64 Proton natively; keep the x86 FEX tool separate.
+
+The initial, unmodified Valve depot is the same verified Steam seed distributed
+by DroidDeck (DroidDeck-Components/steam-seed.json). Steam can update it normally.
+"""
+import hashlib
+import importlib.machinery
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import tarfile
+import tempfile
+import time
+import urllib.request
+
+BASE = Path('/usr/local/lib/dextop-gaming')
+STEAM = Path.home() / '.local/share/Steam'
+TOOL = 'dextop-proton-arm64'
+X86_TOOL = 'dextop-proton-fex'
+SEED_URL = 'https://github.com/Droid-Deck/DroidDeck-Components/releases/download/steam-proton-arm64-25502785/proton-experimental-arm64-25502785.tar.zst'
+SEED_SHA256 = 'd6c480a90d981801be0906a3f3418eb9bd9461c30e411140951cb0daf9d2a189'
+SOURCES = ('Proton Experimental (ARM64)', 'Proton 11.0 (ARM64)')
+
+
+def module(name):
+    path = Path('/usr/local/bin/dextop-gaming') if name == 'dextop-gaming' else BASE / name
+    return importlib.machinery.SourceFileLoader(name, str(path)).load_module()
+
+
+def libraries():
+    return module('steam-compatibility').libraries(str(STEAM))
+
+
+def find_proton():
+    for name in SOURCES:
+        candidates = [Path(lib) / 'steamapps/common' / name for lib in libraries()]
+        candidates = [p for p in candidates if (p / 'proton').is_file() and (p / 'files/bin-arm64/wine').is_file()]
+        if candidates:
+            return max(candidates, key=lambda p: module('steam-compatibility').depot_build(str(p)))
+    return None
+
+
+def install():
+    if find_proton():
+        return
+    if not shutil.which('zstd'):
+        raise RuntimeError('ARM64 Proton installation needs zstd; install the zstd package first.')
+    state = Path.home() / '.cache/dextop-proton-arm64'
+    state.mkdir(parents=True, exist_ok=True)
+    import fcntl
+    with (state / 'install.lock').open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        if find_proton():
+            return
+        print('Dextop: downloading Valve Proton Experimental (ARM64), 398 MB', file=sys.stderr, flush=True)
+        with tempfile.TemporaryDirectory(prefix='install-', dir=state) as tmp:
+            archive = Path(tmp) / 'proton.tar.zst'
+            digest = hashlib.sha256()
+            with urllib.request.urlopen(SEED_URL, timeout=90) as source, archive.open('wb') as target:
+                while True:
+                    chunk = source.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    digest.update(chunk)
+                    target.write(chunk)
+            if digest.hexdigest() != SEED_SHA256:
+                raise RuntimeError('ARM64 Proton seed SHA-256 mismatch')
+            # Extract only this depot and its manifest, never another Steam file.
+            unpacked = Path(tmp) / 'unpacked'
+            unpacked.mkdir()
+            process = subprocess.Popen(['zstd', '-dc', str(archive)], stdout=subprocess.PIPE)
+            prefix = 'root/.local/share/Steam/steamapps/'
+            try:
+                with tarfile.open(fileobj=process.stdout, mode='r|') as tar:
+                    for member in tar:
+                        name = member.name.removeprefix('./')
+                        depot = prefix + 'common/Proton Experimental (ARM64)'
+                        if name == depot or name.startswith(depot + '/') or name == prefix + 'appmanifest_4427310.acf':
+                            tar.extract(member, unpacked, filter='data')
+            finally:
+                process.stdout.close()
+                status = process.wait()
+            if status:
+                raise RuntimeError('ARM64 Proton seed decompression failed')
+            extracted = unpacked / prefix
+            destination = STEAM / 'steamapps/common/Proton Experimental (ARM64)'
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            if not (extracted / 'common/Proton Experimental (ARM64)/files/bin-arm64/wine').is_file():
+                raise RuntimeError('ARM64 Proton depot is incomplete')
+            os.replace(extracted / 'common/Proton Experimental (ARM64)', destination)
+            manifest = STEAM / 'steamapps/appmanifest_4427310.acf'
+            if not manifest.exists():
+                os.replace(extracted / 'appmanifest_4427310.acf', manifest)
+
+
+def register():
+    # Retain both the previous generator and its explicitly selectable tool.
+    legacy = module('dextop-gaming')
+    legacy.register()
+    tool = STEAM / 'compatibilitytools.d' / TOOL
+    tool.mkdir(parents=True, exist_ok=True)
+    files = {
+        'compatibilitytool.vdf': '"compatibilitytools" { "compat_tools" { "' + TOOL + '" { "install_path" "." "display_name" "Proton Experimental (ARM64 / Dextop)" "from_oslist" "windows" "to_oslist" "linux" } } }\n',
+        'toolmanifest.vdf': '"manifest" { "version" "2" "commandline" "/dextop-proton-arm64 %verb%" "use_sessions" "1" "compatmanager_layer_name" "proton" }\n',
+        'dextop-proton-arm64': '#!/bin/sh\nexec /usr/local/bin/dextop-proton-arm64 "$@"\n',
+    }
+    for name, text in files.items():
+        path = tool / name
+        if not path.is_file() or path.read_text() != text:
+            path.write_text(text)
+        path.chmod(0o755 if name == 'dextop-proton-arm64' else 0o644)
+    configured = tool / '.arm64-default-configured'
+    if configured.exists() or module('droiddeck-fex').steam_running():
+        return
+    compat = module('steam-compatibility')
+    config = STEAM / 'config/config.vdf'
+    # Installation runs before Steam has ever created its configuration. Seed
+    # only the required hierarchy so the first launch already selects ARM64.
+    existed = config.is_file()
+    original = config.read_text() if existed else '"InstallConfigStore" { "Software" { "Valve" { "Steam" { } } } }\n'
+    tokens = compat.tokenize(original)
+    mapping = compat.mapping_block(tokens)
+    if mapping is None:
+        return
+    current = compat.read_mapping(tokens, mapping)
+    current.setdefault('0', '')
+    for app, name in current.items():
+        if name in ('', X86_TOOL, 'proton_experimental', 'proton_11', 'proton_10', 'proton_9'):
+            compat.set_mapping(tokens, mapping, app, TOOL)
+    backup = config.with_name(config.name + '.before-dextop-arm64')
+    if existed and not backup.exists():
+        shutil.copyfile(config, backup)
+    config.parent.mkdir(parents=True, exist_ok=True)
+    compat.write_changed(str(config), compat.serialize(tokens))
+    configured.write_text('1\n')
+
+
+def environment(proton, source):
+    env = dict(source)
+    # The Linux host side is ARM64. Do not carry x86 FEX or Steam client library
+    # paths into it; Proton configures its own PE emulation and bundled DLLs.
+    for name in ('FEX_ROOTFS', 'FEX_THUNKHOSTLIBS', 'FEX_THUNKGUESTLIBS', 'FEX_THUNKCONFIG',
+                 'FEX_APP_CONFIG_LOCATION', 'FEX_APP_DATA_LOCATION', 'FEX_APP_CACHE_LOCATION', 'FEX_APP_CONFIG', 'FEX_PORTABLE'):
+        env.pop(name, None)
+    paths = [p for p in env.get('LD_LIBRARY_PATH', '').split(':') if p and not any(
+        part in p for part in ('steamrtarm64', 'steamrt64', 'steamrt32', 'x86_64-linux-gnu', 'i386-linux-gnu'))]
+    if paths:
+        env['LD_LIBRARY_PATH'] = ':'.join(paths)
+    else:
+        env.pop('LD_LIBRARY_PATH', None)
+    env['LD_PRELOAD'] = ':'.join(['/usr/local/lib/libblsession.so', str(BASE / 'preload/aarch64/libdextop_gamesock.so'),
+                                  str(BASE / 'preload/aarch64/libdextop_padgrab.so')])
+    # The container exports PulseAudio; it has no PipeWire daemon.
+    env.setdefault('PROTON_USE_PIPEWIRE', '0')
+    env.setdefault('PROTON_LOG', '1,-fex')
+    env.setdefault('WINEDEBUG', '-all,err+all,+timestamp,+pid,+tid,+debugstr')
+    env.setdefault('STEAM_COMPAT_CLIENT_INSTALL_PATH', str(STEAM))
+    logs = Path.home() / '.local/state/dextop/proton-arm64'
+    logs.mkdir(parents=True, exist_ok=True)
+    env.setdefault('PROTON_LOG_DIR', str(logs))
+    original = env.get('STEAM_COMPAT_DATA_PATH')
+    if original:
+        # Architecture changes must not rewrite the working x86 Wine prefix.
+        arm_data = original.rstrip('/') + '-dextop-arm64'
+        Path(arm_data).mkdir(parents=True, exist_ok=True)
+        env['STEAM_COMPAT_DATA_PATH'] = arm_data
+    return env
+
+
+def retain_previous_log(env):
+    """Preserve bounded crash evidence before Proton replaces its app log."""
+    app = env.get('SteamAppId', '')
+    if not app.isdecimal():
+        return
+    directory = Path(env['PROTON_LOG_DIR'])
+    current = directory / ('steam-' + app + '.log')
+    if not current.is_file() or not current.stat().st_size:
+        return
+    # Rename is atomic and does not truncate a mapped/open file. No log content
+    # is parsed, printed or uploaded. Keep at most three preceding launches.
+    history = directory / 'previous'
+    history.mkdir(exist_ok=True)
+    target = history / ('steam-' + app + '-' + str(time.time_ns()) + '.log')
+    current.replace(target)
+    for old in sorted(history.glob('steam-' + app + '-*.log'), key=lambda p: p.name, reverse=True)[3:]:
+        old.unlink(missing_ok=True)
+
+
+def main(args):
+    if args == ['prepare']:
+        register()
+        return 0
+    if args == ['install']:
+        install()
+        register()
+        return 0
+    verb = args.pop(0) if args else ''
+    if verb not in ('run', 'waitforexitandrun', '--exec'):
+        return 0
+    install()
+    proton = find_proton()
+    env = module('dextop-wine-sync').configure(proton, environment(proton, os.environ))
+    sdk = Path.home() / '.steam/sdk64'
+    if sdk.is_symlink():
+        temporary = sdk.with_name('sdk64.dextop-arm64')
+        temporary.unlink(missing_ok=True)
+        temporary.symlink_to(STEAM / 'linuxarm64')
+        temporary.replace(sdk)
+    if verb == '--exec':
+        os.execvpe(args[0], args, env)
+    try:
+        retain_previous_log(env)
+    except OSError as error:
+        print('Dextop: cannot retain previous Proton log: ' + str(error), file=sys.stderr)
+    # Native Python and native bin-arm64/wine, exactly as selected by Valve's
+    # Proton script on aarch64. No FEX Linux executable wraps either process.
+    os.execve('/usr/bin/python3', ['/usr/bin/python3', str(proton / 'proton'), verb] + args, env)
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as error:
+        print('Dextop ARM64 Proton: ' + str(error), file=sys.stderr)
+        sys.exit(1)

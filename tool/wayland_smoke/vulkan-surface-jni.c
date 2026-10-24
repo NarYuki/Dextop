@@ -16,8 +16,8 @@ static int test_presenter(ANativeWindow *native, ANativeWindow *second, int fd, 
         "libvulkan_freedreno.so", "/data/local/tmp/dextop-wayland-smoke/hooks/");
     if (!gpu) return 20;
     struct linux_gpu_image *image = linux_gpu_import(gpu, fd, 0x34325241, 0, 64, 64, 256, 0);
-    struct linux_gpu_window *window = linux_gpu_window_create(gpu, native);
-    struct linux_gpu_window *other = second ? linux_gpu_window_create(gpu, second) : NULL;
+    struct linux_gpu_window *window = linux_gpu_window_create(gpu, native, false);
+    struct linux_gpu_window *other = second ? linux_gpu_window_create(gpu, second, false) : NULL;
     uint32_t blue = 0x80800000u;
     struct linux_gpu_image *overlay = scene ? linux_gpu_upload_rgba(gpu, 1, 1, &blue, 4) : NULL;
     int code = 21;

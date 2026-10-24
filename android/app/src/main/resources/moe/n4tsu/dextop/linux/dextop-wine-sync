@@ -1,0 +1,1266 @@
+#!/usr/bin/python3
+"""DroidDeck sync selector, GPL-3.0; see third_party/droiddeck-fastpath/README.md.
+Dextop integration uses stock binaries and preserves already-running prefixes.
+"""
+import contextlib
+import fcntl
+import hashlib
+import json
+import os
+import re
+import resource
+import shutil
+import stat
+import struct
+import sys
+import time
+from pathlib import Path
+
+NTDLL = "files/lib/wine/aarch64-unix/ntdll.so"
+WINESERVER = "files/bin-arm64/wineserver"
+PACK_FILES = (NTDLL, WINESERVER)
+DEFAULT_COPY = ("files/bin-arm64/wine", "files/lib/wine/aarch64-unix/wine", "files/lib/wine/aarch64-unix/wine-preloader")
+REAL_DIRS = (".", "files", "files/bin-arm64", "files/lib", "files/lib/wine", "files/lib/wine/aarch64-unix")
+STOCK_LINKS = ("dist.lock", "files/steampipe_fixups_mtime")
+SKIPPED = frozenset(("toolmanifest.vdf", "compatibilitytool.vdf", "droiddeck-proton-wrap", "bannerlator-proton-wrap"))
+SKIPPED_SUFFIX = (".droiddeck-orig", ".bannerlator-orig")
+RECORD = ".droiddeck-esync.json"
+STORE = ".local/share/dextop-wine-sync"
+STORE_LOCK = "store.lock"
+BUILTIN_MARKER = b"esync: up and running"
+FSYNC_MARKER = b"fsync: up and running"
+NTSYNC_MARKER = b"/dev/ntsync"
+WINESERVER_ONLY = ("PROTON_NO_ESYNC", "PROTON_NO_FSYNC", "PROTON_NO_NTSYNC")
+NOSYNC_APPS = frozenset()
+SOURCES = ("Proton Experimental (ARM64)", "Proton 11.0 (ARM64)")
+SD_LIBRARY = "/mnt/droiddeck-sd"
+OWN_TOOL_PREFIX = "droiddeck-proton-"
+PACK_ID = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,127}")
+SHA256 = re.compile(r"[0-9a-f]{64}")
+TEMP_NAME = re.compile(r"\..+\.tmp-[0-9]+")
+MIN_NOFILE = 8192
+LOG_LINES = 200
+LIVE_FILE = "prefixes.json"
+LIVE_ROWS = 200
+LIVE_KEYS = ("WINESERVER", "BL_SYNC_PACK", "WINEESYNC", "PROTON_NO_ESYNC", "PROTON_NO_FSYNC", "BL_SYNC", "BL_FSYNC", "WINEFSYNC")
+CACHE_ROWS = 512
+TEMP_AGE = 3600
+GC_GRACE = 600
+CHUNK = 1 << 20
+
+
+def say(message):
+    with contextlib.suppress(Exception):
+        print(message, file=sys.stderr, flush=True)
+
+
+def truthy(value):
+    return bool(value) and value != "0"
+
+
+def store_root(env):
+    home = env.get("HOME") or os.path.expanduser("~")
+    root = Path(home) / STORE
+    return root if root.is_dir() else None
+
+
+def read_text(path):
+    try:
+        with open(path, encoding="utf-8", errors="surrogateescape") as source:
+            return source.read()
+    except FileNotFoundError:
+        return ""
+
+
+def write_text(path, text):
+    folder, name = os.path.split(path)
+    temp = os.path.join(folder, ".%s.tmp-%d" % (name, os.getpid()))
+    try:
+        with open(temp, "w", encoding="utf-8", errors="surrogateescape") as target:
+            target.write(text)
+        os.replace(temp, path)
+    except BaseException:
+        with contextlib.suppress(OSError):
+            os.unlink(temp)
+        raise
+
+
+def acquire(path, block=True):
+    for _ in range(64):
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_CLOEXEC, 0o644)
+        try:
+            try:
+                fcntl.flock(fd, fcntl.LOCK_EX if block else fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                os.close(fd)
+                return None
+            held = os.fstat(fd)
+            try:
+                current = os.stat(path)
+            except FileNotFoundError:
+                current = None
+            if current is not None and (held.st_dev, held.st_ino) == (current.st_dev, current.st_ino):
+                return fd
+        except BaseException:
+            os.close(fd)
+            raise
+        os.close(fd)
+    raise OSError("%s keeps being replaced" % path)
+
+
+@contextlib.contextmanager
+def locked(path, block=True):
+    fd = acquire(path, block)
+    try:
+        yield fd
+    finally:
+        if fd is not None:
+            os.close(fd)
+
+
+def update_file(root, name, change):
+    path = os.path.join(root, name)
+    with locked(os.path.join(root, STORE_LOCK)):
+        old = read_text(path)
+        new = change(old)
+        if new != old:
+            write_text(path, new)
+    return new
+
+
+def tsv(rows):
+    return "".join("\t".join(re.sub(r"[\t\r\n]", " ", str(field)) for field in row) + "\n" for row in rows)
+
+
+def parse_tsv(text, width):
+    return [line.split("\t") for line in text.split("\n") if line and line.count("\t") == width - 1]
+
+
+def exports_hash(path):
+    with open(path, "rb") as source:
+        data = source.read()
+    if data[:4] != b"\x7fELF" or data[4:6] != b"\x02\x01":
+        raise ValueError("%s is not a little-endian ELF64 file" % path)
+    names = set()
+    try:
+        offset = struct.unpack_from("<Q", data, 40)[0]
+        size, count = struct.unpack_from("<HH", data, 58)
+        if size < 64:
+            raise ValueError("%s has no usable section headers" % path)
+        sections = []
+        index = 0
+        while index < count or (index == 0 and offset):
+            sections.append(struct.unpack_from("<IIQQQQIIQQ", data, offset + index * size))
+            if index == 0 and count == 0:
+                count = sections[0][5]
+            index += 1
+        dynsym = next((section for section in sections if section[1] == 11), None)
+        if dynsym is None:
+            raise ValueError("%s has no dynamic symbol table" % path)
+        strings = sections[dynsym[6]]
+        start, end = strings[4], strings[4] + strings[5]
+        for entry in range(dynsym[4], dynsym[4] + dynsym[5] - 23, 24):
+            name, info, _, shndx, _, _ = struct.unpack_from("<IBBHQQ", data, entry)
+            if name and shndx and info >> 4 in (1, 2):
+                stop = data.index(b"\0", start + name, end)
+                if stop > start + name:
+                    names.add(data[start + name:stop])
+    except (struct.error, IndexError) as error:
+        raise ValueError("%s is a truncated ELF file (%s)" % (path, error))
+    return hashlib.sha256(b"\n".join(sorted(names))).hexdigest()
+
+
+def stat_key(info):
+    return (info.st_dev, info.st_ino, info.st_size, info.st_mtime_ns, info.st_ctime_ns)
+
+
+def digest(path):
+    sha = hashlib.sha256()
+    found = {BUILTIN_MARKER: False, FSYNC_MARKER: False, NTSYNC_MARKER: False}
+    tail = b""
+    keep = max(len(marker) for marker in found) - 1
+    with open(path, "rb") as source:
+        before = stat_key(os.fstat(source.fileno()))
+        for chunk in iter(lambda: source.read(CHUNK), b""):
+            sha.update(chunk)
+            window = tail + chunk
+            for marker in found:
+                found[marker] = found[marker] or marker in window
+            tail = window[-keep:]
+        after = stat_key(os.fstat(source.fileno()))
+    return sha.hexdigest(), found[BUILTIN_MARKER], found[FSYNC_MARKER], found[NTSYNC_MARKER], before if before == after else None
+
+
+def parse_cache(text):
+    rows = {}
+    for fields in parse_tsv(text, 11):
+        if not SHA256.fullmatch(fields[6]):
+            continue
+        try:
+            key = tuple(int(value) for value in fields[1:6])
+        except ValueError:
+            continue
+        rows.pop(fields[0], None)
+        rows[fields[0]] = {"key": key, "sha": fields[6], "builtin": fields[7] == "1", "exports": fields[8], "fsync": fields[9] == "1",
+                           "ntsync": fields[10] == "1"}
+    return rows
+
+
+def format_cache(items):
+    return tsv([real] + list(row["key"]) + [row["sha"], "1" if row["builtin"] else "0", row["exports"], "1" if row["fsync"] else "0",
+                                            "1" if row["ntsync"] else "0"]
+               for real, row in items)
+
+
+class HashCache:
+    def __init__(self, root):
+        self.root = os.fspath(root) if root is not None else None
+        self.rows = parse_cache(read_text(os.path.join(self.root, "hash-cache.tsv"))) if self.root else {}
+        self.changed = set()
+
+    def lookup(self, path, exports=False):
+        real = os.path.realpath(path)
+        key = stat_key(os.stat(real))
+        row = self.rows.get(real)
+        if row is None or row["key"] != key:
+            sha, builtin, fsync, ntsync, stable = digest(real)
+            row = {"key": stable, "sha": sha, "builtin": builtin, "exports": "", "fsync": fsync, "ntsync": ntsync}
+            if stable is not None:
+                self.rows[real] = row
+                self.changed.add(real)
+        if exports and not row["exports"]:
+            try:
+                row["exports"] = exports_hash(real)
+            except (OSError, ValueError):
+                row["exports"] = "-"
+            if row["key"] is not None:
+                self.changed.add(real)
+        return row
+
+    def save(self, prune=False):
+        if not self.root or not (self.changed or prune):
+            return
+        changed = {real: self.rows[real] for real in self.changed if real in self.rows}
+
+        def merge(text):
+            rows = parse_cache(text)
+            for real, row in changed.items():
+                rows.pop(real, None)
+                rows[real] = row
+            if prune:
+                rows = {real: row for real, row in rows.items() if os.path.exists(real)}
+            return format_cache(list(rows.items())[-CACHE_ROWS:])
+
+        try:
+            update_file(self.root, "hash-cache.tsv", merge)
+        except OSError as error:
+            say("droiddeck-esync: hash cache not saved (%s)" % error)
+        self.changed.clear()
+
+
+def version_line(tool_dir):
+    try:
+        with open(os.path.join(tool_dir, "version"), encoding="utf-8", errors="replace") as source:
+            return source.readline().strip()
+    except OSError:
+        return ""
+
+
+def version_token(line):
+    fields = line.split()
+    return fields[1] if len(fields) > 1 else ""
+
+
+class Measured(dict):
+    def __init__(self, values, exports):
+        super().__init__(values)
+        self.exports = exports
+
+    def __missing__(self, key):
+        if key != "exports":
+            raise KeyError(key)
+        value = self.exports()
+        self[key] = value
+        return value
+
+
+def measure(tool_dir, cache=None):
+    cache = cache if cache is not None else HashCache(None)
+    tool = os.fspath(tool_dir)
+    ntdll = cache.lookup(os.path.join(tool, NTDLL))
+    server = cache.lookup(os.path.join(tool, WINESERVER))
+    line = version_line(tool)
+    return Measured({"tool": tool, "stock": os.path.realpath(tool), "ntdll": ntdll["sha"], "wineserver": server["sha"],
+                     "builtin": server["builtin"], "fsync": server["fsync"], "ntsync": server["ntsync"], "version_line": line,
+                     "token": version_token(line)},
+                    lambda: cache.lookup(os.path.join(tool, NTDLL), True)["exports"])
+
+
+def has_stock(tool):
+    return all(os.path.isfile(os.path.join(tool, rel)) for rel in PACK_FILES)
+
+
+def relative(folder, name):
+    return name if folder == "." else folder + "/" + name
+
+
+def valid_copy(rel):
+    if not isinstance(rel, str) or not rel or rel.startswith("/") or "\0" in rel:
+        return False
+    if any(part in ("", ".", "..") for part in rel.split("/")):
+        return False
+    folder = os.path.dirname(rel) or "."
+    return folder in REAL_DIRS and rel not in PACK_FILES and rel not in REAL_DIRS and rel not in STOCK_LINKS and rel != RECORD
+
+
+def valid_hashes(value):
+    return isinstance(value, dict) and all(isinstance(value.get(rel), str) and SHA256.fullmatch(value[rel]) for rel in PACK_FILES)
+
+
+def is_int(value):
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def valid_pack(data, name=None):
+    if not isinstance(data, dict) or not is_int(data.get("format")) or data["format"] != 1:
+        return False
+    ident = data.get("id")
+    copy = data.get("copy", list(DEFAULT_COPY))
+    return bool(isinstance(ident, str) and PACK_ID.fullmatch(ident) and (name is None or ident == name)
+                and isinstance(data.get("flavor"), str) and data["flavor"]
+                and is_int(data.get("rev"))
+                and isinstance(data.get("version"), str) and isinstance(data.get("version_line", ""), str)
+                and valid_hashes(data.get("stock")) and valid_hashes(data.get("files"))
+                and isinstance(data.get("exports"), str) and isinstance(data.get("source_match"), bool)
+                and isinstance(copy, list) and all(valid_copy(rel) for rel in copy)
+                and not data.get("revoked") and not data.get("ignored"))
+
+
+def read_pack(pack_dir, name=None):
+    with open(os.path.join(pack_dir, "pack.json"), encoding="utf-8") as source:
+        data = json.load(source)
+    if not valid_pack(data, name) or not all(os.path.isfile(os.path.join(pack_dir, rel)) for rel in PACK_FILES):
+        raise ValueError("%s is not a usable droiddeck-esync pack" % pack_dir)
+    return data
+
+
+def load_packs(root):
+    packs = []
+    folder = os.path.join(root, "packs")
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        return packs
+    for name in names:
+        pack_dir = os.path.join(folder, name)
+        if name.startswith(".") or not os.path.isfile(os.path.join(pack_dir, ".complete")):
+            continue
+        if os.path.lexists(os.path.join(pack_dir, ".ignored")):
+            continue
+        try:
+            packs.append(read_pack(pack_dir, name))
+        except (OSError, ValueError):
+            continue
+    return packs
+
+
+def line_epoch(line):
+    fields = (line or "").split()
+    try:
+        return int(fields[0]) if fields else 0
+    except ValueError:
+        return 0
+
+
+def match_kind(pack, measured):
+    if pack.get("revoked") or pack.get("ignored") or measured["builtin"]:
+        return None
+    stock = pack["stock"]
+    if stock[NTDLL] == measured["ntdll"] and stock[WINESERVER] == measured["wineserver"]:
+        if pack.get("version") != measured["token"] and line_epoch(pack.get("version_line")) > line_epoch(measured["version_line"]) > 0:
+            return None
+        return "exact"
+    if (pack.get("source_match") is True and measured["token"] and pack.get("version") == measured["token"]
+            and pack.get("exports") == measured["exports"]):
+        return "source"
+    return None
+
+
+def find_pack(packs, measured):
+    best = None
+    best_key = None
+    for pack in packs:
+        kind = match_kind(pack, measured)
+        if kind is None:
+            continue
+        key = (kind == "exact", bool(measured["token"]) and pack.get("version") == measured["token"], pack["rev"], pack["id"])
+        if best_key is None or key > best_key:
+            best, best_key = pack, key
+    return best
+
+
+def absolute(path):
+    path = os.fspath(path).rstrip("/") or "/"
+    return path if os.path.isabs(path) else os.path.join(os.getcwd(), path)
+
+
+def dist_name(pack_id, stock):
+    return "%s~%s" % (pack_id, hashlib.sha256(os.fsencode(stock)).hexdigest()[:8])
+
+
+def read_record(dist):
+    try:
+        with open(os.path.join(dist, RECORD), encoding="utf-8") as source:
+            record = json.load(source)
+    except (FileNotFoundError, NotADirectoryError, ValueError):
+        return None
+    return record if isinstance(record, dict) else None
+
+
+def write_json(path, data):
+    text = json.dumps(data, indent=1, sort_keys=True) + "\n"
+    if read_text(path) != text:
+        write_text(path, text)
+
+
+def remove(path):
+    if os.path.islink(path) or (os.path.lexists(path) and not os.path.isdir(path)):
+        with contextlib.suppress(FileNotFoundError):
+            os.unlink(path)
+    elif os.path.isdir(path):
+        shutil.rmtree(path, ignore_errors=True)
+
+
+def age(path):
+    try:
+        return time.time() - os.lstat(path).st_mtime
+    except OSError:
+        return 0
+
+
+def put_link(target, path):
+    folder, name = os.path.split(path)
+    temp = os.path.join(folder, ".%s.tmp-%d" % (name, os.getpid()))
+    remove(temp)
+    os.symlink(target, temp)
+    try:
+        os.replace(temp, path)
+    except BaseException:
+        remove(temp)
+        raise
+
+
+class PackDamaged(ValueError):
+    pass
+
+
+def install(source, path, expected=None):
+    folder, name = os.path.split(path)
+    temp = os.path.join(folder, ".%s.tmp-%d" % (name, os.getpid()))
+    remove(temp)
+    try:
+        sha = hashlib.sha256()
+        with open(source, "rb") as reader, open(temp, "xb") as writer:
+            for chunk in iter(lambda: reader.read(CHUNK), b""):
+                sha.update(chunk)
+                writer.write(chunk)
+        result = sha.hexdigest()
+        if expected is not None and result != expected:
+            raise PackDamaged("%s does not match its pack (sha256 %s)" % (source, result[:12]))
+        os.chmod(temp, 0o755)
+        os.replace(temp, path)
+    except BaseException:
+        remove(temp)
+        raise
+    return result
+
+
+def intact(path, expected, cache):
+    try:
+        info = os.lstat(path)
+    except OSError:
+        return False
+    return (stat.S_ISREG(info.st_mode) and (info.st_mode & 0o555) == 0o555
+            and cache.lookup(path)["sha"] == expected)
+
+
+def plan(tool, base, pack):
+    real = set(PACK_FILES).union(pack.get("copy", DEFAULT_COPY))
+    links = {}
+    for folder in REAL_DIRS:
+        try:
+            names = os.listdir(os.path.join(tool, folder))
+        except OSError:
+            continue
+        for name in names:
+            rel = relative(folder, name)
+            if rel in REAL_DIRS or rel in real or rel == RECORD or name in SKIPPED or name.endswith(SKIPPED_SUFFIX):
+                continue
+            text = None
+            source = os.path.join(tool, rel)
+            if os.path.islink(source):
+                with contextlib.suppress(OSError):
+                    text = os.readlink(source)
+            links[rel] = text if text and not os.path.isabs(text) else os.path.join(base, rel)
+    for rel in STOCK_LINKS:
+        links[rel] = os.path.join(base, rel)
+    return links
+
+
+def sync(dist, tool, base, pack, pack_dir, record, cache):
+    links = plan(tool, base, pack)
+    copy = list(pack.get("copy", DEFAULT_COPY))
+    real = set(PACK_FILES).union(copy)
+    for folder in REAL_DIRS:
+        path = os.path.join(dist, folder)
+        if os.path.islink(path) or (os.path.lexists(path) and not os.path.isdir(path)):
+            os.unlink(path)
+        os.makedirs(path, exist_ok=True)
+    for folder in REAL_DIRS:
+        for name in os.listdir(os.path.join(dist, folder)):
+            rel = relative(folder, name)
+            if rel in links or rel in real or rel in REAL_DIRS or rel == RECORD:
+                continue
+            path = os.path.join(dist, rel)
+            if os.path.islink(path) or (TEMP_NAME.fullmatch(name) and os.path.isfile(path)):
+                os.unlink(path)
+    for rel, target in sorted(links.items()):
+        path = os.path.join(dist, rel)
+        try:
+            current = os.readlink(path)
+        except OSError:
+            current = None
+        if current != target and not (current is None and os.path.isdir(path)):
+            put_link(target, path)
+    for rel in PACK_FILES:
+        path = os.path.join(dist, rel)
+        if not intact(path, pack["files"][rel], cache):
+            install(os.path.join(pack_dir, rel), path, pack["files"][rel])
+    previous = record.get("copies") if isinstance(record.get("copies"), dict) else {}
+    copies = {}
+    for rel in copy:
+        source = os.path.join(tool, rel)
+        path = os.path.join(dist, rel)
+        entry = previous.get(rel)
+        try:
+            info = os.stat(source)
+        except OSError:
+            info = None
+        if info is None or not stat.S_ISREG(info.st_mode):
+            if entry is not None and os.path.lexists(path):
+                copies[rel] = entry
+            continue
+        if (isinstance(entry, list) and len(entry) == 3 and entry[:2] == [info.st_size, info.st_mtime_ns]
+                and isinstance(entry[2], str) and intact(path, entry[2], cache)):
+            copies[rel] = entry
+        else:
+            copies[rel] = [info.st_size, info.st_mtime_ns, install(source, path)]
+    write_json(os.path.join(dist, RECORD), {"pack": pack["id"], "stock": os.path.realpath(tool), "tool": base,
+                                            "version": version_line(tool), "copies": copies})
+
+
+def build_tree(tool, base, pack, pack_dir, out, cache):
+    folder, name = os.path.split(out)
+    temp = os.path.join(folder, ".%s.tmp-%d" % (name, os.getpid()))
+    remove(temp)
+    try:
+        os.makedirs(temp)
+        sync(temp, tool, base, pack, pack_dir, {}, cache)
+    except BaseException:
+        remove(temp)
+        raise
+    return temp
+
+
+def place(temp, out):
+    try:
+        os.rename(temp, out)
+    except OSError:
+        remove(temp)
+        if not os.path.isdir(out):
+            raise
+        return False
+    return True
+
+
+def build_shadow(tool_dir, pack_dir, out_dir, cache=None):
+    tool = absolute(tool_dir)
+    out = absolute(out_dir)
+    pack = read_pack(pack_dir)
+    os.makedirs(os.path.dirname(out), exist_ok=True)
+    place(build_tree(tool, tool, pack, os.fspath(pack_dir), out, cache if cache is not None else HashCache(None)), out)
+    return out
+
+
+def ensure_dist(root, tool_dir, pack, cache=None):
+    root = os.fspath(root)
+    cache = cache if cache is not None else HashCache(root)
+    tool = absolute(tool_dir)
+    stock = os.path.realpath(tool)
+    folder = os.path.join(root, "dist")
+    os.makedirs(folder, exist_ok=True)
+    name = dist_name(pack["id"], stock)
+    dist = os.path.join(folder, name)
+    pack_dir = os.path.join(root, "packs", pack["id"])
+    with locked(dist + ".lock"):
+        record = read_record(dist)
+        if record is not None and record.get("pack") == pack["id"] and record.get("stock") == stock:
+            previous = record.get("tool")
+            base = previous if (isinstance(previous, str) and os.path.isabs(previous)
+                                and os.path.realpath(previous) == stock) else tool
+            sync(dist, tool, base, pack, pack_dir, record, cache)
+        elif os.path.lexists(dist):
+            fresh = build_tree(tool, tool, pack, pack_dir, dist, cache)
+            old = os.path.join(folder, ".%s.old.tmp-%d" % (name, os.getpid()))
+            remove(old)
+            os.rename(dist, old)
+            os.rename(fresh, dist)
+            remove(old)
+        elif not place(build_tree(tool, tool, pack, pack_dir, dist, cache), dist):
+            sync(dist, tool, tool, pack, pack_dir, read_record(dist) or {}, cache)
+        os.utime(dist)
+    cache.save()
+    return dist
+
+
+def quarantine(root, pack, error):
+    if not isinstance(error, PackDamaged):
+        return
+    with contextlib.suppress(OSError):
+        os.unlink(os.path.join(root, "packs", pack["id"], ".complete"))
+        say("droiddeck-esync: pack %s is damaged; the app fetches it again" % pack["id"])
+
+
+def app_id(env):
+    value = env.get("STEAM_COMPAT_APP_ID") or env.get("SteamAppId")
+    if not value:
+        value = env.get("STEAM_COMPAT_DATA_PATH", "").rstrip("/").rsplit("/", 1)[-1]
+    return value
+
+
+def minimum_nofile(env):
+    try:
+        return int(env.get("BL_SYNC_MIN_NOFILE") or MIN_NOFILE)
+    except ValueError:
+        return MIN_NOFILE
+
+
+def limit(value):
+    return "unlimited" if value == resource.RLIM_INFINITY else str(value)
+
+
+def log_launch(root, command, env, tool, pack_id):
+    try:
+        soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+        line = tsv([[int(time.time()), app_id(env) or "-", command[1] if len(command) > 1 else "-", tool, pack_id or "-",
+                     env.get("WINEESYNC") or "-", env.get("BL_SYNC") or "-", "%s/%s" % (limit(soft), limit(hard)),
+                     env.get("BL_FSYNC") or "-"]])
+
+        def append(text):
+            lines = [entry for entry in text.split("\n") if entry]
+            lines.append(line.rstrip("\n"))
+            return "\n".join(lines[-LOG_LINES:]) + "\n"
+
+        update_file(root, "launches.log", append)
+    except Exception as error:
+        say("droiddeck-esync: launch not logged (%s)" % error)
+
+
+def wanted_row(measured):
+    return [measured["ntdll"], measured["wineserver"], measured["token"] or "-", measured["exports"] or "-",
+            measured["tool"], str(int(time.time()))]
+
+
+def merge_wanted(text, fresh, drop):
+    rows = []
+    seen = set()
+    for row in parse_tsv(text, 6):
+        key = (row[0], row[1])
+        if key in seen or key in drop:
+            continue
+        seen.add(key)
+        if key in fresh:
+            row[2:5] = fresh[key][2:5]
+        rows.append(row)
+    rows.extend(row for key, row in fresh.items() if key not in seen)
+    return tsv(rows)
+
+
+def want(root, measured):
+    try:
+        row = wanted_row(measured)
+        update_file(root, "wanted.tsv", lambda text: merge_wanted(text, {(row[0], row[1]): row}, set()))
+    except Exception as error:
+        say("droiddeck-esync: wanted.tsv not updated (%s)" % error)
+
+
+
+def configure(proton, source, arm64=True):
+    """Select capabilities for every application, without modifying its binaries."""
+    global NTDLL, WINESERVER, PACK_FILES
+    if not arm64:
+        NTDLL = "files/lib64/wine/x86_64-unix/ntdll.so"
+        WINESERVER = "files/bin/wineserver"
+        PACK_FILES = (NTDLL, WINESERVER)
+    env = dict(source)
+    # Adopt even servers started before this policy was installed. Do not change
+    # synchronization under a live prefix, including helper/--exec invocations.
+    prefix = prefix_of(env)
+    if prefix:
+        for entry in Path('/proc').iterdir():
+            if not entry.name.isdecimal():
+                continue
+            try:
+                if entry.joinpath('comm').read_text().strip() != 'wineserver':
+                    continue
+                values = dict(item.split(b'=', 1) for item in entry.joinpath('environ').read_bytes().split(b'\0') if b'=' in item)
+                active = os.fsdecode(values.get(b'WINEPREFIX', b''))
+                if not active or os.path.realpath(active) != prefix:
+                    continue
+                for key in LIVE_KEYS + ('PROTON_NO_NTSYNC',):
+                    value = values.get(key.encode())
+                    if value is None:
+                        env.pop(key, None)
+                    else:
+                        env[key] = os.fsdecode(value)
+                say('Dextop: retaining active Wine prefix synchronization')
+                return env
+            except OSError:
+                continue
+    env.setdefault('BL_FSYNC_FIRST', '1')
+    env.setdefault('BL_SYNC_FALLBACK', '1')
+    root = Path(env.get('HOME') or os.path.expanduser('~')) / STORE
+    root.mkdir(parents=True, exist_ok=True)
+    # The upstream selector supports ARM64 layout. Capability discovery and
+    # stock fsync/ntsync fallback are also applicable to x86 Proton under FEX;
+    # no architecture-specific esync binary packs are supplied by Dextop.
+    command = [str(Path(proton) / 'proton'), 'run']
+    cache = HashCache(str(root))
+    try:
+        if not has_stock(str(proton)):
+            return env
+        measured = measure(str(proton), cache)
+        if env.get('BL_SYNC_FALLBACK') != '1' and env.get('BL_FSYNC_FIRST') != '1' and env.get('BL_SYNC') != '1':
+            return wineserver_only(env)
+        if fsync_ready(env, measured) and env.get('BL_FSYNC_FIRST') == '1':
+            return with_fsync(str(root), command, env, str(proton), 'supported stock Proton')[1]
+        if measured['builtin'] and not esync_unwanted(env):
+            env.setdefault('WINEESYNC', '1')
+            return env
+        return stand_in(str(root), command, env, str(proton), 'stock Proton capabilities', measured)[1]
+    except (OSError, ValueError) as error:
+        say('Dextop: sync capability discovery failed (%s); keeping requested environment' % error)
+        return dict(source)
+    finally:
+        cache.save()
+
+
+
+def select(command, env):
+    result = (list(command), dict(env))
+    try:
+        command = list(command)
+        env = dict(env)
+        tool = os.path.dirname(command[0]) or "."
+        if env.get("PROTON_USE_ARM64", "1") != "1" or not has_stock(tool) or os.path.lexists(os.path.join(tool, RECORD)):
+            return result
+        prefix = env.get("STEAM_COMPAT_DATA_PATH", "").rstrip("/")
+        last = prefix.rsplit("/", 1)[-1]
+        if not prefix or last == "0" or last.startswith("0-"):
+            return result
+        if truthy(env.get("PROTON_NO_NTSYNC")):
+            env["BL_SYNC"] = "0"
+        result = (list(command), dict(env))
+        root = store_root(env)
+        if root is None:
+            return result
+        root = os.fspath(root)
+        kept = keep_live(root, command, env, tool)
+        if kept is not None:
+            return kept
+        chosen = choose(root, command, env, tool, result)
+        remember(root, env, tool, chosen)
+        return chosen
+    except Exception as error:
+        say("droiddeck-esync: skipped (%s); stock binaries" % error)
+        record(result[0], result[1])
+        return result
+
+
+def record(command, env):
+    try:
+        root = store_root(env)
+        if root is not None and command:
+            remember(os.fspath(root), env, os.path.dirname(command[0]) or ".", (list(command), dict(env)))
+    except Exception as error:
+        say("droiddeck-esync: sync choice not recorded (%s)" % error)
+
+
+def prefix_of(env):
+    data = env.get("STEAM_COMPAT_DATA_PATH", "").rstrip("/")
+    return os.path.realpath(os.path.join(data, "pfx")) if data else None
+
+
+def server_running(prefix):
+    for entry in os.listdir("/proc"):
+        if not entry.isdigit():
+            continue
+        try:
+            with open("/proc/%s/comm" % entry, "rb") as source:
+                if source.read().strip() != b"wineserver":
+                    continue
+            with open("/proc/%s/environ" % entry, "rb") as source:
+                items = source.read().split(b"\0")
+        except OSError:
+            continue
+        for item in items:
+            if item.startswith(b"WINEPREFIX=") and os.path.realpath(os.fsdecode(item[11:])) == prefix:
+                return True
+    return False
+
+
+def read_live(root):
+    try:
+        rows = json.loads(read_text(os.path.join(root, LIVE_FILE)) or "{}")
+    except ValueError:
+        return {}
+    return rows if isinstance(rows, dict) else {}
+
+
+def remember(root, env, tool, chosen):
+    prefix = prefix_of(env)
+    if prefix is None:
+        return
+    command, chosen_env = chosen
+    row = {"tool": os.path.realpath(tool), "command": command[0], "env": {name: chosen_env.get(name) for name in LIVE_KEYS}}
+
+    def merge(text):
+        try:
+            rows = json.loads(text or "{}")
+        except ValueError:
+            rows = {}
+        if not isinstance(rows, dict):
+            rows = {}
+        rows.pop(prefix, None)
+        rows[prefix] = row
+        return json.dumps(dict(list(rows.items())[-LIVE_ROWS:]), sort_keys=False) + "\n"
+
+    try:
+        update_file(root, LIVE_FILE, merge)
+    except OSError as error:
+        say("droiddeck-esync: sync choice not recorded (%s)" % error)
+
+
+def keep_live(root, command, env, tool):
+    prefix = prefix_of(env)
+    row = read_live(root).get(prefix) if prefix else None
+    if not isinstance(row, dict) or not isinstance(row.get("env"), dict) or row.get("tool") != os.path.realpath(tool):
+        return None
+    kept_command = row.get("command")
+    if not isinstance(kept_command, str) or os.path.basename(kept_command) != os.path.basename(command[0]):
+        return None
+    if not os.path.isfile(kept_command) or not server_running(prefix):
+        return None
+    kept_pack = row["env"].get("BL_SYNC_PACK")
+    if isinstance(kept_pack, str) and kept_pack and command[1:2] == ["waitforexitandrun"]:
+        try:
+            cache = HashCache(root)
+            try:
+                pack = find_pack(load_packs(root), measure(tool, cache))
+            finally:
+                cache.save()
+        except (OSError, ValueError):
+            pack = {"id": kept_pack}
+        if pack is None or pack["id"] != kept_pack:
+            return None
+    command, env = list(command), dict(env)
+    command[0] = kept_command
+    for name in LIVE_KEYS:
+        value = row["env"].get(name)
+        if isinstance(value, str):
+            env[name] = value
+        else:
+            env.pop(name, None)
+    say("droiddeck-esync: Wine is still running in this prefix; keeping its sync choice (%s)" % describe(env))
+    log_launch(root, command, env, tool, env.get("BL_SYNC_PACK"))
+    return command, env
+
+
+def describe(env):
+    if env.get("BL_SYNC") == "1":
+        return "droiddeck-ntsync"
+    if env.get("BL_FSYNC") == "1":
+        return "droiddeck-fsync"
+    if env.get("BL_SYNC_PACK") and truthy(env.get("WINEESYNC")):
+        return "droiddeck-esync"
+    if all(truthy(env.get(name)) for name in WINESERVER_ONLY):
+        return "wineserver"
+    return "Proton's own sync"
+
+
+def fsync_ready(env, measured):
+    listed = "PROTON_NO_FSYNC" not in env and app_id(env) in NOSYNC_APPS
+    return measured["fsync"] and env.get("WINEFSYNC") != "0" and env.get("BL_SYNC") != "1" and not truthy(env.get("PROTON_NO_FSYNC")) and not listed
+
+
+def with_fsync(root, command, env, tool, reason):
+    command, env = list(command), dict(env)
+    env["BL_FSYNC"] = "1"
+    env["BL_SYNC"] = "0"
+    env["WINEFSYNC"] = "1"
+    say("droiddeck-fsync: %s; stock binaries with Proton's fsync" % reason)
+    log_launch(root, command, env, tool, None)
+    return command, env
+
+
+def stand_in(root, command, env, tool, reason, measured=None):
+    if measured is not None and fsync_ready(env, measured):
+        return with_fsync(root, command, env, tool, reason)
+    command, env = list(command), dict(env)
+    if truthy(env.get("PROTON_NO_NTSYNC")):
+        say("droiddeck-esync: %s; stock binaries" % reason)
+    elif measured is not None and not measured["ntsync"]:
+        env["BL_SYNC"] = "0"
+        say("droiddeck-esync: %s; stock binaries (this Wine has no ntsync)" % reason)
+    else:
+        env["BL_SYNC"] = "1"
+        say("droiddeck-esync: %s; stock binaries with droiddeck-ntsync" % reason)
+    log_launch(root, command, env, tool, None)
+    return command, env
+
+
+def esync_unwanted(env):
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    starved = hard != resource.RLIM_INFINITY and hard < minimum_nofile(env)
+    listed = "PROTON_NO_ESYNC" not in env and app_id(env) in NOSYNC_APPS
+    return truthy(env.get("PROTON_NO_ESYNC")) or env.get("WINEESYNC") == "0" or listed or starved
+
+
+def wineserver_only(env):
+    env = dict(env)
+    for name in WINESERVER_ONLY:
+        env.setdefault(name, "1")
+    if truthy(env["PROTON_NO_ESYNC"]):
+        env["WINEESYNC"] = "0"
+    if truthy(env["PROTON_NO_FSYNC"]):
+        env["WINEFSYNC"] = "0"
+    if truthy(env["PROTON_NO_NTSYNC"]):
+        env["BL_SYNC"] = "0"
+    return env
+
+
+def choose(root, command, env, tool, stock):
+    name = os.path.basename(tool.rstrip("/")) or tool
+    wants_fsync = env.get("BL_FSYNC_FIRST") == "1"
+    if "BL_FSYNC" in env:
+        env["BL_FSYNC"] = "0"
+        stock = (stock[0], dict(stock[1], BL_FSYNC="0"))
+    if env.get("BL_SYNC_FALLBACK") != "1" and not wants_fsync and env.get("BL_SYNC") != "1":
+        stock = (stock[0], wineserver_only(stock[1]))
+        say("droiddeck-esync: off; wineserver sync only")
+        log_launch(root, stock[0], stock[1], tool, None)
+        return stock
+    cache = HashCache(root)
+    try:
+        measured = measure(tool, cache)
+        if env.get("BL_SYNC") == "1" and not measured["ntsync"]:
+            env["BL_SYNC"] = "0"
+            stock = (stock[0], dict(stock[1], BL_SYNC="0"))
+            wants_fsync = True
+            say("droiddeck-ntsync: %s has no ntsync; trying droiddeck-fsync" % name)
+        if wants_fsync and fsync_ready(env, measured):
+            return with_fsync(root, command, env, tool, "chosen for %s" % name)
+        if env.get("BL_SYNC_FALLBACK") != "1":
+            say("droiddeck-esync: off")
+            log_launch(root, command, env, tool, None)
+            return stock
+        if esync_unwanted(env) and fsync_ready(env, measured):
+            return with_fsync(root, command, env, tool, "esync is off for this game")
+        if measured["builtin"]:
+            if esync_unwanted(env):
+                env["PROTON_NO_ESYNC"] = "1"
+                env["WINEESYNC"] = "0"
+                return stand_in(root, command, env, tool, "esync is off for this game on %s" % name, measured)
+            say("droiddeck-esync: %s has esync built in" % name)
+            log_launch(root, command, env, tool, None)
+            return stock
+        pack = find_pack(load_packs(root), measured)
+        if pack is None:
+            want(root, measured)
+            return stand_in(root, command, env, tool, "no pack for %s (%s, ntdll %s)"
+                            % (name, measured["version_line"], measured["ntdll"][:12]), measured)
+        try:
+            dist = ensure_dist(root, tool, pack, cache)
+        except Exception as error:
+            quarantine(root, pack, error)
+            return stand_in(root, command, env, tool, "pack %s unusable for %s (%s)" % (pack["id"], name, error), measured)
+    finally:
+        cache.save()
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    if esync_unwanted(env):
+        env["WINEESYNC"] = "0"
+        env["PROTON_NO_ESYNC"] = "1"
+        if not truthy(env.get("PROTON_NO_NTSYNC")) and measured["ntsync"]:
+            env["BL_SYNC"] = "1"
+    elif not env.get("WINEESYNC"):
+        env["WINEESYNC"] = "1"
+    if truthy(env["WINEESYNC"]) and "PROTON_NO_FSYNC" not in env:
+        env["PROTON_NO_FSYNC"] = "1"
+    env["WINESERVER"] = os.path.join(dist, WINESERVER)
+    env["BL_SYNC_PACK"] = pack["id"]
+    command[0] = os.path.join(dist, os.path.basename(command[0]))
+    say("droiddeck-esync: pack %s for %s (%s, %s match); droiddeck-ntsync %s, droiddeck-esync %s, fds %s/%s"
+        % (pack["id"], name, measured["version_line"], match_kind(pack, measured), "on" if env.get("BL_SYNC") == "1" else "off",
+           "on" if truthy(env["WINEESYNC"]) else "off", limit(soft), limit(hard)))
+    log_launch(root, command, env, tool, pack["id"])
+    return command, env
+
+
+def libraries(steam_root):
+    found = [steam_root]
+    try:
+        with open(os.path.join(steam_root, "steamapps", "libraryfolders.vdf"), encoding="utf-8", errors="replace") as f:
+            found += [path.replace("\\\\", "\\") for path in re.findall(r'"path"\s+"((?:[^"\\]|\\.)*)"', f.read())]
+    except OSError:
+        pass
+    found.append(SD_LIBRARY)
+    return list(dict.fromkeys(found))
+
+
+def find_tools(steam_root):
+    candidates = [os.path.join(library, "steamapps", "common", name) for library in libraries(steam_root) for name in SOURCES]
+    folder = os.path.join(steam_root, "compatibilitytools.d")
+    try:
+        names = sorted(os.listdir(folder))
+    except OSError:
+        names = []
+    candidates += [os.path.join(folder, name) for name in names if not name.startswith((OWN_TOOL_PREFIX, "."))]
+    tools = []
+    seen = set()
+    for tool in candidates:
+        if os.path.isdir(tool) and has_stock(tool):
+            real = os.path.realpath(tool)
+            if real not in seen:
+                seen.add(real)
+                tools.append(tool)
+    return tools
+
+
+def still_wanted(row, scanned, packs, cache):
+    tool = row[4]
+    try:
+        if os.path.realpath(tool) in scanned or not has_stock(tool):
+            return False
+        measured = measure(tool, cache)
+        return ((measured["ntdll"], measured["wineserver"]) == (row[0], row[1]) and not measured["builtin"]
+                and find_pack(packs, measured) is None)
+    except Exception:
+        return True
+
+
+def update_wanted(root, fresh, scanned, packs, cache):
+    drop = set()
+    for row in parse_tsv(read_text(os.path.join(root, "wanted.tsv")), 6):
+        key = (row[0], row[1])
+        if key not in fresh and not still_wanted(row, scanned, packs, cache):
+            drop.add(key)
+    return len(parse_tsv(update_file(root, "wanted.tsv", lambda text: merge_wanted(text, fresh, drop)), 6))
+
+
+def reconcile_store(root, steam_root, env):
+    cache = HashCache(root)
+    packs = load_packs(root)
+    enabled = env.get("BL_SYNC_FALLBACK") == "1"
+    rows = []
+    fresh = {}
+    scanned = set()
+    used = 0
+    for tool in find_tools(os.fspath(steam_root)):
+        try:
+            measured = measure(tool, cache)
+            pack = None if measured["builtin"] else find_pack(packs, measured)
+            if measured["builtin"]:
+                state = "builtin"
+            elif pack is not None:
+                state = "pack"
+                used += 1
+            else:
+                state = "wanted"
+                fresh.setdefault((measured["ntdll"], measured["wineserver"]), wanted_row(measured))
+            scanned.add(measured["stock"])
+        except Exception as error:
+            say("droiddeck-esync: %s skipped (%s)" % (tool, error))
+            continue
+        rows.append([tool, measured["version_line"], measured["ntdll"], measured["wineserver"], state,
+                     pack["id"] if pack is not None else "-"])
+        if pack is not None and enabled:
+            try:
+                ensure_dist(root, tool, pack, cache)
+            except Exception as error:
+                say("droiddeck-esync: pack %s unusable for %s (%s)" % (pack["id"], tool, error))
+                quarantine(root, pack, error)
+    wanted = update_wanted(root, fresh, scanned, packs, cache)
+    update_file(root, "tools.tsv", lambda text: tsv(sorted(rows)))
+    cache.save(True)
+    gc(root)
+    return "droiddeck-esync: %d pack(s) in use, %d wanted" % (used, wanted)
+
+
+def reconcile(steam_root, env):
+    try:
+        root = store_root(env)
+        if root is None:
+            return None
+        return reconcile_store(os.fspath(root), steam_root, env)
+    except Exception as error:
+        say("droiddeck-esync: reconcile failed (%s)" % error)
+        return None
+
+
+def process_cmdlines():
+    try:
+        entries = os.listdir("/proc")
+    except OSError:
+        return None
+    lines = []
+    for entry in entries:
+        if not entry.isdigit():
+            continue
+        try:
+            with open(os.path.join("/proc", entry, "cmdline"), "rb") as source:
+                lines.append(source.read())
+        except OSError:
+            continue
+    return lines
+
+
+def in_use(path, cmdlines):
+    needles = {os.fsencode(path), os.fsencode(os.path.realpath(path))}
+    return any(needle in line for line in cmdlines for needle in needles)
+
+
+def stale(path, name, packs, cache):
+    record = read_record(path)
+    if record is None:
+        return True
+    pack = packs.get(record.get("pack"))
+    stock = record.get("stock")
+    if pack is None or not isinstance(stock, str) or name != dist_name(pack["id"], stock):
+        return True
+    if not has_stock(stock):
+        return True
+    try:
+        measured = measure(stock, cache)
+        if match_kind(pack, measured) is None:
+            return True
+        best = find_pack(list(packs.values()), measured)
+        return best is None or best["id"] != pack["id"]
+    except Exception:
+        return False
+
+
+def collect(root):
+    folder = os.path.join(root, "dist")
+    try:
+        names = sorted(os.listdir(folder))
+    except FileNotFoundError:
+        return 0
+    packs = {pack["id"]: pack for pack in load_packs(root)}
+    cache = HashCache(root)
+    candidates = []
+    for name in names:
+        path = os.path.join(folder, name)
+        if name.startswith("."):
+            if ".tmp-" in name and age(path) > TEMP_AGE:
+                remove(path)
+        elif (not name.endswith(".lock") and "~" in name and not os.path.islink(path) and os.path.isdir(path)
+              and stale(path, name, packs, cache)):
+            candidates.append(name)
+    cmdlines = process_cmdlines() if candidates else []
+    removed = 0
+    for name in candidates:
+        path = os.path.join(folder, name)
+        lock = path + ".lock"
+        with locked(lock, False) as fd:
+            if (fd is None or cmdlines is None or age(path) < GC_GRACE or in_use(path, cmdlines)
+                    or not stale(path, name, packs, cache)):
+                continue
+            doomed = os.path.join(folder, ".%s.tmp-%d" % (name, os.getpid()))
+            remove(doomed)
+            os.rename(path, doomed)
+            os.unlink(lock)
+        remove(doomed)
+        removed += 1
+    for name in sorted(os.listdir(folder)):
+        if name.startswith(".") or not name.endswith(".lock"):
+            continue
+        lock = os.path.join(folder, name)
+        dist = lock[:-len(".lock")]
+        if os.path.lexists(dist):
+            continue
+        with locked(lock, False) as fd:
+            if fd is not None and not os.path.lexists(dist):
+                os.unlink(lock)
+    cache.save()
+    return removed
+
+
+def gc(root):
+    try:
+        if root is None:
+            return 0
+        return collect(os.fspath(root))
+    except Exception as error:
+        say("droiddeck-esync: gc failed (%s)" % error)
+        return 0
+
+
+def status(root):
+    root = os.fspath(root)
+    packs = load_packs(root)
+    try:
+        dists = sorted(name for name in os.listdir(os.path.join(root, "dist"))
+                       if "~" in name and not name.startswith(".") and not name.endswith(".lock"))
+    except OSError:
+        dists = []
+    tools = parse_tsv(read_text(os.path.join(root, "tools.tsv")), 6)
+    wanted = parse_tsv(read_text(os.path.join(root, "wanted.tsv")), 6)
+    lines = ["droiddeck-esync store %s" % root, "packs: %d installed" % len(packs)]
+    lines += ["  %s (%s, rev %d)" % (pack["id"], pack["flavor"], pack["rev"]) for pack in packs]
+    lines.append("dists: %d" % len(dists))
+    lines += ["  %s" % name for name in dists]
+    lines.append("tools: %d" % len(tools))
+    lines += ["  %s %s: %s (%s)" % (row[4], row[5], row[0], row[1]) for row in tools]
+    lines.append("wanted: %d" % len(wanted))
+    lines += ["  %s %s (%s, ntdll %s)" % (row[2], row[4], row[3][:12], row[0][:12]) for row in wanted]
+    return "\n".join(lines)
+
+
+def main(argv):
+    command = argv[1:]
+    if command == ["status"]:
+        root = store_root(os.environ)
+        print(status(root) if root is not None else "droiddeck-esync: no store at %s" % (Path(os.environ.get("HOME") or os.path.expanduser("~")) / STORE))
+        return 0
+    if len(command) == 2 and command[0] == "reconcile":
+        if store_root(os.environ) is None:
+            print("droiddeck-esync: no store")
+            return 0
+        summary = reconcile(command[1], os.environ)
+        if summary is None:
+            return 1
+        print(summary)
+        return 0
+    if command == ["gc"]:
+        root = store_root(os.environ)
+        print("droiddeck-esync: %d dist(s) removed" % gc(root) if root is not None else "droiddeck-esync: no store")
+        return 0
+    if len(command) == 4 and command[0] == "build-shadow":
+        print(build_shadow(command[1], command[2], command[3]))
+        return 0
+    print("usage: droiddeck-esync status|reconcile <steam_root>|gc|build-shadow <tool_dir> <pack_dir> <out_dir>", file=sys.stderr)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv))

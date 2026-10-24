@@ -43,11 +43,22 @@ internal class LinuxAudioPlayer(private val containerId: String, val port: Int) 
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
         }.onFailure { Log.w(TAG, "AudioTrack unavailable", it) }.getOrNull() ?: return
-        val buffer = ByteArray(minimum.coerceAtLeast(4096))
+        val buffer = ByteArray((minimum.coerceAtLeast(4096) + 3) / 4 * 4)
+        var lastConnectError = 0L
         try {
             while (running) {
                 val connection = runCatching {
-                    Socket().apply { connect(InetSocketAddress("127.0.0.1", port), 1_000); tcpNoDelay = true }
+                    Socket().apply {
+                        // Socket.port is 0 before connecting; use the container's port.
+                        connect(InetSocketAddress("127.0.0.1", this@LinuxAudioPlayer.port), 1_000)
+                        tcpNoDelay = true
+                    }
+                }.onFailure {
+                    val now = SystemClock.uptimeMillis()
+                    if (now - lastConnectError >= 10_000) {
+                        Log.w(TAG, "Cannot connect audio $containerId port=$port", it)
+                        lastConnectError = now
+                    }
                 }.getOrNull()
                 if (connection == null) {
                     SystemClock.sleep(500)
@@ -55,24 +66,39 @@ internal class LinuxAudioPlayer(private val containerId: String, val port: Int) 
                 }
                 socket = connection
                 Log.i(TAG, "playing $containerId from port $port")
-                connection.use {
-                    val input = it.getInputStream()
-                    var lastSound = 0L
-                    while (running) {
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        var silent = true
-                        for (i in 0 until read) if (buffer[i] != 0.toByte()) { silent = false; break }
-                        val now = SystemClock.uptimeMillis()
-                        if (!silent) lastSound = now
-                        if (now - lastSound > IDLE_PAUSE_MS) {
-                            if (track.playState == AudioTrack.PLAYSTATE_PLAYING) { track.pause(); track.flush() }
-                            continue
+                try {
+                    connection.use {
+                        val input = java.io.DataInputStream(it.getInputStream())
+                        var lastSound = 0L
+                        while (running) {
+                            // TCP reads can split a stereo frame; feed only complete frames.
+                            input.readFully(buffer)
+                            val read = buffer.size
+                            var silent = true
+                            for (i in 0 until read) if (buffer[i] != 0.toByte()) { silent = false; break }
+                            val now = SystemClock.uptimeMillis()
+                            if (!silent) lastSound = now
+                            if (now - lastSound > IDLE_PAUSE_MS) {
+                                if (track.playState == AudioTrack.PLAYSTATE_PLAYING) { track.pause(); track.flush() }
+                                continue
+                            }
+                            if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
+                            var offset = 0
+                            while (running && offset < read) {
+                                val written = track.write(buffer, offset, read - offset)
+                                check(written > 0) { "AudioTrack write failed: $written" }
+                                offset += written
+                            }
                         }
-                        if (track.playState != AudioTrack.PLAYSTATE_PLAYING) track.play()
-                        track.write(buffer, 0, read)
                     }
+                } catch (error: java.io.IOException) {
+                    if (running) Log.w(TAG, "Audio connection lost for $containerId; reconnecting", error)
+                } finally {
+                    socket = null
+                    if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
+                    track.flush()
                 }
+                if (running) SystemClock.sleep(500)
             }
         } catch (error: Throwable) {
             if (running) Log.w(TAG, "sound of $containerId stopped", error)

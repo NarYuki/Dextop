@@ -34,7 +34,9 @@ doc/api/
 *.map.json
 
 # Android and Gradle
-android/.gradle/
+.gradle/
+.kotlin/
+.externalNativeBuild/
 android/local.properties
 android/**/build/
 android/app/debug/
@@ -69,6 +71,13 @@ Thumbs.db
 *.pyc
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+.coverage.*
+htmlcov/
 .cache/
 tmp/
 temp/

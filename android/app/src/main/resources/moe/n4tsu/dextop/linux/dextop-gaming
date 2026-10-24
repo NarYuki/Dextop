@@ -1,0 +1,383 @@
+#!/usr/bin/python3
+"""PRoot game launcher using DroidDeck's FEX runtime preparation (GPL-3.0).
+
+The adjacent upstream scripts are pinned in droiddeck/source.env. No Android
+display code is involved. Valve's downloaded game and Proton files stay intact.
+"""
+import glob
+import hashlib
+import importlib.machinery
+import json
+import os
+from pathlib import Path
+import shutil
+import signal
+import sys
+import subprocess
+import tempfile
+import tarfile
+import urllib.request
+
+BASE = '/usr/local/lib/dextop-gaming'
+STEAM = os.path.expanduser('~/.local/share/Steam')
+TOOL = 'dextop-proton-fex'
+FEX_PREFIX = '/opt/dextop-fex-2610/usr'
+FEX_URL = 'https://ppa.launchpadcontent.net/fex-emu/fex/ubuntu/pool/main/f/fex-emu-armv8.0/fex-emu-armv8.0_2610-1~n_arm64.deb'
+FEX_SHA256 = '7a7caddc1ef36809cdc7f767d3172214ae9800b6678e0e880cd50478b130f08d'
+
+RUNTIME_VERSION = '4.0.20260928.262390'
+RUNTIME_HOME = Path('/opt/dextop-runtime') / ('steamrt4-' + RUNTIME_VERSION)
+RUNTIME_URL = 'https://repo.steampowered.com/steamrt4/images/' + RUNTIME_VERSION + '/SteamLinuxRuntime_4.tar.xz'
+RUNTIME_SHA256 = '4f48ea7fb5e4bc170d9f9e1f16cf22e15af4c5b9ebef7f3ad5b87563e11a4f5a'
+RUNTIME_MARKER = Path('/etc/dextop/linux-x86')
+
+
+def install_runtime():
+    """Install an owned, verified runtime without depending on Steam URI/namespace setup."""
+    import fcntl
+    RUNTIME_HOME.parent.mkdir(parents=True, exist_ok=True)
+    with (RUNTIME_HOME.parent / 'install.lock').open('w') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        stamp = RUNTIME_HOME / '.installed'
+        if stamp.is_file() and stamp.read_text() == RUNTIME_SHA256 + '\n':
+            return
+        print('Dextop: installing the common x86 Steam runtime (157 MB)', file=sys.stderr, flush=True)
+        with tempfile.TemporaryDirectory(prefix='install-', dir=RUNTIME_HOME.parent) as tmp:
+            archive = Path(tmp) / 'runtime.tar.xz'
+            digest = hashlib.sha256()
+            with urllib.request.urlopen(RUNTIME_URL, timeout=90) as source, archive.open('wb') as out:
+                while chunk := source.read(1024 * 1024):
+                    digest.update(chunk)
+                    out.write(chunk)
+            if digest.hexdigest() != RUNTIME_SHA256:
+                raise RuntimeError('Steam x86 runtime SHA-256 mismatch')
+            unpacked = Path(tmp) / 'unpacked'
+            unpacked.mkdir()
+            with tarfile.open(archive) as tar:
+                for member in tar:
+                    name = member.name.removeprefix('./')
+                    if name != 'SteamLinuxRuntime_4' and not name.startswith('SteamLinuxRuntime_4/'):
+                        raise RuntimeError('Unexpected Steam runtime archive entry: ' + name)
+                    tar.extract(member, unpacked, filter='data')
+            staged = unpacked / 'SteamLinuxRuntime_4'
+            if not any(staged.glob('steamrt4_platform_*/usr-mtree.txt.gz')):
+                raise RuntimeError('Steam x86 runtime contains no complete platform')
+            (staged / '.installed').write_text(RUNTIME_SHA256 + '\n')
+            os.replace(staged, RUNTIME_HOME)
+
+
+def runtime_wrapper(path):
+    path = Path(path)
+    return (path.name == 'fex-compat-tool' and path.parent.name == 'FEX-Emu' or
+            path.name in ('_v2-entry-point', 'scout-on-soldier-entry-point-v2') and
+            path.parent.name.startswith('SteamLinuxRuntime'))
+
+
+def linux_command(args):
+    """Unwrap Steam's runtime protocols, preserving the executable and all its arguments."""
+    args = list(args)
+    while args and runtime_wrapper(args[0]):
+        wrapper = Path(args.pop(0)).name
+        if wrapper == 'fex-compat-tool':
+            if not args or args.pop(0) not in ('run', 'waitforexitandrun'):
+                raise RuntimeError('Unsupported FEX launch verb')
+            if args and args[0] == '--':
+                args.pop(0)
+        else:
+            while args and args[0] != '--':
+                option = args.pop(0)
+                if option == '--verb' and args:
+                    args.pop(0)
+                elif not option.startswith('--verb='):
+                    raise RuntimeError('Unsupported Steam runtime option: ' + option)
+            if not args:
+                raise RuntimeError('Steam runtime command has no executable separator')
+            args.pop(0)
+    if not args:
+        raise RuntimeError('No Linux executable specified')
+    return args
+
+
+def fex_environment(dd, fex, source):
+    env = dd.guest_environment(fex, dict(source))
+    # The fast-path preload crashes FEX at startup
+    # under a fast-path-enabled PRoot session (SIGILL, before guest entry).
+    # Keep the session fast path enabled; use normal PRoot translation in FEX.
+    env['PROOT_FP_OFF'] = '1'
+    # Use the socket transport instead of importing ARM PulseAudio memfd pools.
+    env['PULSE_CLIENTCONFIG'] = BASE + '/pulse-client.conf'
+    return env
+
+
+def linux_environment(dd, fex, source, program, wrappers=()):
+    env = fex_environment(dd, fex, source)
+    paths = [p for p in env.get('LD_LIBRARY_PATH', '').split(':')
+             if p and not any(part in p for part in ('linuxarm64', 'aarch64'))]
+    triple = 'i386-linux-gnu' if dd.elf_arch(program) == 'i386' else 'x86_64-linux-gnu'
+    # Prefer the owned runtime's current core libraries, then add the old runtime
+    # libraries Steam downloaded for the game. This replaces pressure-vessel's
+    # library overlay without requiring Android user/mount namespaces.
+    # FEX resolves guest paths inside RootFS and overlays GL/Vulkan thunks at
+    # these paths. An absolute host RootFS prefix bypasses those overlays.
+    paths += ['/lib/' + triple, '/usr/lib/' + triple]
+    directories = [Path(path).parent for path in wrappers if runtime_wrapper(path)]
+    directories += [Path(lib) / 'steamapps/common/SteamLinuxRuntime' for lib in dd.libraries()]
+    for directory in dict.fromkeys(directories):
+        legacy = directory / 'steam-runtime'
+        for relative in ('lib/' + triple, 'usr/lib/' + triple):
+            if (legacy / relative).is_dir():
+                paths.append(str(legacy / relative))
+        for platform in directory.glob('*_platform_*'):
+            if (platform / 'usr-mtree.txt.gz').is_file():
+                dd.materialize(str(platform))
+                paths.append(str(platform / 'files/lib' / triple))
+    env['LD_LIBRARY_PATH'] = ':'.join(dict.fromkeys(paths))
+    env['DEXTOP_SOCKET_MARKERS'] = '1'
+    return env
+
+
+def linux_launch(args):
+    command = linux_command(args)
+    dd, fex = prepare()
+    program = dd.resolve(command[0], os.environ)
+    if dd.elf_arch(program) not in ('i386', 'x86_64'):
+        os.execvpe(command[0], command, dict(os.environ))
+    env = linux_environment(dd, fex, os.environ, program, args)
+    print('Dextop: Linux x86 runtime ready; executing ' + program, file=sys.stderr, flush=True)
+    return run_linux(fex, program, command[1:], env)
+
+
+def run_linux(fex, program, arguments, env):
+    directory = Path.home() / '.local/state/dextop/linux-x86'
+    directory.mkdir(parents=True, exist_ok=True)
+    path = directory / ('native-' + str(os.getpid()) + '.log')
+    print('Dextop: native Linux log: ' + str(path), file=sys.stderr, flush=True)
+    with path.open('w', buffering=1) as log:
+        log.write('Executable: ' + program + '\nWorking directory: ' + os.getcwd() + '\n')
+        for key in sorted(env):
+            if key.startswith(('FEX_', 'LD_', 'LIBGL_', 'MESA_', 'GALLIUM_', 'DEXTOP_', 'VK_')) or key in ('DISPLAY', 'PROOT_FP_OFF'):
+                log.write(key + '=' + env[key] + '\n')
+        log.flush()
+        child = subprocess.Popen([fex['bin'], program] + arguments, env=env, stdout=log, stderr=log)
+        def forward(number, frame):
+            try:
+                child.send_signal(number)
+            except ProcessLookupError:
+                pass
+        previous = {number: signal.signal(number, forward)
+                    for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        try:
+            result = child.wait()
+        finally:
+            for number, handler in previous.items():
+                signal.signal(number, handler)
+        log.write('Exit status: ' + str(result) + '\n')
+    print('Dextop: native Linux exit status ' + str(result) + '; log: ' + str(path), file=sys.stderr, flush=True)
+    return result if result >= 0 else 128 - result
+
+
+def check_runtime(dd, fex):
+    for arch in ('i386', 'x86_64'):
+        program = BASE + '/runtime-check-' + arch
+        env = linux_environment(dd, fex, os.environ, program)
+        result = subprocess.run([fex['bin'], program], env=env, capture_output=True, text=True)
+        if result.returncode:
+            raise RuntimeError('Common ' + arch + ' runtime check failed (' +
+                               str(result.returncode) + '): ' + result.stderr.strip())
+        print('Dextop: ' + arch + ' runtime check passed', file=sys.stderr, flush=True)
+
+
+
+def current_fex():
+    if not os.path.isfile(FEX_PREFIX + '/bin/FEX'):
+        print('Dextop: installing FEX 2610 for Proton 11', file=sys.stderr)
+        with tempfile.TemporaryDirectory(prefix='dextop-fex-') as tmp:
+            package = tmp + '/fex.deb'
+            with urllib.request.urlopen(FEX_URL, timeout=60) as source, open(package, 'wb') as target:
+                shutil.copyfileobj(source, target)
+            if hashlib.sha256(Path(package).read_bytes()).hexdigest() != FEX_SHA256:
+                raise RuntimeError('FEX package SHA-256 mismatch')
+            extract_deb(package, tmp + '/unpacked')
+            os.makedirs(os.path.dirname(FEX_PREFIX), exist_ok=True)
+            os.replace(tmp + '/unpacked/usr', FEX_PREFIX)
+    return {
+        'bin': FEX_PREFIX + '/bin/FEX', 'server': FEX_PREFIX + '/bin/FEXServer', 'portable': True,
+        'host_thunks': FEX_PREFIX + '/lib/aarch64-linux-gnu/fex-emu/HostThunks',
+        'guest_thunks': FEX_PREFIX + '/share/fex-emu/GuestThunks',
+        'thunks_db': FEX_PREFIX + '/share/fex-emu/ThunksDB.json',
+    }
+
+
+def extract_deb(package, destination):
+    """Read Debian's ar container without requiring dpkg on Arch Linux."""
+    with open(package, 'rb') as source:
+        if source.read(8) != b'!<arch>\n':
+            raise RuntimeError('Invalid FEX Debian archive')
+        while header := source.read(60):
+            if len(header) != 60 or header[58:] != b'`\n':
+                raise RuntimeError('Invalid FEX archive header')
+            name = header[:16].decode('ascii').strip().rstrip('/')
+            size = int(header[48:58])
+            data = source.read(size)
+            if len(data) != size:
+                raise RuntimeError('Truncated FEX archive')
+            if size % 2:
+                source.read(1)
+            if name.startswith('data.tar'):
+                with tempfile.TemporaryFile() as archive:
+                    if name.endswith('.zst'):
+                        with tempfile.TemporaryFile() as compressed:
+                            compressed.write(data)
+                            compressed.seek(0)
+                            subprocess.run(['zstd', '-dc'], stdin=compressed, stdout=archive, check=True)
+                    else:
+                        archive.write(data)
+                    archive.seek(0)
+                    with tarfile.open(fileobj=archive) as tar:
+                        tar.extractall(destination, filter='data')
+                return
+    raise RuntimeError('FEX archive contains no data payload')
+
+
+def module(name):
+    return importlib.machinery.SourceFileLoader(name, BASE + '/' + name).load_module()
+
+
+def runtime(dd):
+    platforms = glob.glob(str(RUNTIME_HOME / 'steamrt4_platform_*'))
+    for library in dd.libraries():
+        platforms += glob.glob(library + '/steamapps/common/SteamLinuxRuntime_4/steamrt4_platform_*')
+    platforms = [p for p in platforms if os.path.isfile(p + '/usr-mtree.txt.gz')]
+    return max(platforms, key=dd.platform_version, default=None) or dd.original_runtime()
+
+
+def prepare():
+    dd = module('droiddeck-fex')
+    dd.original_runtime = dd.runtime_platform
+    dd.runtime_platform = lambda: runtime(dd)
+    dd.fex_install = current_fex
+    dd.CONFIG_DIR = os.path.expanduser('~/.config/dextop-fex-2610')
+    dd.data_dir = lambda env: '/tmp/runtime-root/dextop-fex-2610'
+    dd.PRELOADS = BASE + '/preload'
+    dd.PRELOAD_NAMES = ('libblsession.so', 'libdextop_unixsock.so', 'libdextop_padgrab.so')
+    # Controllers games open are taken from Android, whatever the host preloads.
+    host_preloads = dd.host_preloads
+    dd.host_preloads = lambda: host_preloads() + ['libdextop_padgrab.so']
+    fex = dd.prepare()
+    if not fex:
+        raise RuntimeError('The common x86 runtime is incomplete; run container setup/repair again.')
+    # ARM64 Steam initializes sdk64 -> linuxarm64. Proton's Linux half is
+    # x86_64 and must load the x86 steamclient, which the client also ships.
+    sdk = os.path.expanduser('~/.steam/sdk64')
+    client = STEAM + '/linux64/steamclient.so'
+    if dd.elf_arch(client) == 'x86_64' and os.path.islink(sdk) and dd.elf_arch(sdk + '/steamclient.so') != 'x86_64':
+        temporary = sdk + '.dextop'
+        if os.path.lexists(temporary):
+            os.unlink(temporary)
+        os.symlink(STEAM + '/linux64', temporary)
+        os.replace(temporary, sdk)
+    etc = fex['rootfs'] + '/etc/dextop'
+    os.makedirs(etc, exist_ok=True)
+    if os.path.isfile('/etc/dextop/socket-namespace'):
+        shutil.copyfile('/etc/dextop/socket-namespace', etc + '/socket-namespace')
+    return dd, fex
+
+
+def register():
+    tool = STEAM + '/compatibilitytools.d/' + TOOL
+    os.makedirs(tool, exist_ok=True)
+    files = {
+        'compatibilitytool.vdf': '"compatibilitytools" { "compat_tools" { "' + TOOL + '" { "install_path" "." "display_name" "Dextop Proton (FEX)" "from_oslist" "windows" "to_oslist" "linux" } } }\n',
+        'toolmanifest.vdf': '"manifest" { "version" "2" "commandline" "/dextop-proton %verb%" "use_sessions" "1" "compatmanager_layer_name" "proton" }\n',
+        'dextop-proton': '#!/bin/sh\nexec /usr/local/bin/dextop-gaming "$@"\n',
+    }
+    for name, text in files.items():
+        path = tool + '/' + name
+        if not os.path.isfile(path) or Path(path).read_text(encoding='utf-8') != text:
+            with open(path, 'w', encoding='utf-8') as out:
+                out.write(text)
+        os.chmod(path, 0o755 if name == 'dextop-proton' else 0o644)
+    configured = Path(tool + '/.default-configured')
+    if configured.exists():
+        return
+    # Steam owns config.vdf while running. Apply the default on its next start,
+    # preserving explicitly chosen third-party tools and backing up the original.
+    dd = module('droiddeck-fex')
+    if dd.steam_running():
+        return
+    compat = module('steam-compatibility')
+    path = STEAM + '/config/config.vdf'
+    if not os.path.isfile(path):
+        return
+    original = Path(path).read_text(encoding='utf-8')
+    tokens = compat.tokenize(original)
+    block = compat.mapping_block(tokens)
+    if block is None:
+        return
+    changed = False
+    current = compat.read_mapping(tokens, block)
+    for app, name in dict(current, **{'0': current.get('0', '')}).items():
+        if not name or name.lower().startswith('proton'):
+            compat.set_mapping(tokens, block, app, TOOL)
+            changed = True
+    if changed:
+        backup = path + '.before-dextop-gaming'
+        if not os.path.exists(backup):
+            shutil.copyfile(path, backup)
+        compat.write_changed(path, compat.serialize(tokens))
+    configured.write_text('1\n', encoding='utf-8')
+
+
+def main(args):
+    if args == ['install']:
+        current_fex()
+        install_runtime()
+        dd, fex = prepare()
+        check_runtime(dd, fex)
+        RUNTIME_MARKER.parent.mkdir(parents=True, exist_ok=True)
+        RUNTIME_MARKER.write_text('dextop-gaming\n')
+        return 0
+    if args and args[0] in ('--linux', '--exec'):
+        return linux_launch(args[1:])
+    if args == ['prepare']:
+        register()
+        # The Steam client can start before its FEX/runtime downloads finish.
+        dd = module('droiddeck-fex')
+        if dd.fex_install() and runtime_with(dd):
+            prepare()
+        return 0
+    verb = args.pop(0) if args else ''
+    if verb not in ('run', 'waitforexitandrun', '--exec'):
+        return 0
+    dd, fex = prepare()
+    env = fex_environment(dd, fex, os.environ)
+    env['DEXTOP_SOCKET_MARKERS'] = '1'
+    env.setdefault('PROTON_LOG', '1')
+    env.setdefault('WINEDEBUG', '-all,err+all,+timestamp,+pid,+tid,+seh,+debugstr')
+    if verb == '--exec':
+        command = args
+    else:
+        proton = next((library + '/steamapps/common/Proton - Experimental/proton'
+                       for library in dd.libraries()
+                       if os.path.isfile(library + '/steamapps/common/Proton - Experimental/proton')), None)
+        if not proton:
+            raise RuntimeError('Install Proton Experimental through Steam first.')
+        env.setdefault('STEAM_COMPAT_CLIENT_INSTALL_PATH', STEAM)
+        env = module('dextop-wine-sync').configure(os.path.dirname(proton), env, arm64=False)
+        command = [fex['rootfs'] + '/bin/python3', proton, verb] + args
+    if not command:
+        raise RuntimeError('No executable specified')
+    os.execve(fex['bin'], [fex['bin']] + command, env)
+
+
+def runtime_with(dd):
+    dd.original_runtime = dd.runtime_platform
+    return runtime(dd)
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as error:
+        print('Dextop game runtime: ' + str(error), file=sys.stderr)
+        sys.exit(1)

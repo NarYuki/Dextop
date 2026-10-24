@@ -75,8 +75,12 @@ internal class X11Client private constructor(
     var onClosed: (() -> Unit)? = null
 
     var root = 0; private set
-    var screenWidth = 0; private set
-    var screenHeight = 0; private set
+    var rootVisual = 0; private set
+    var argbVisual = 0; private set
+    private val visualDepths = HashMap<Int, Int>()
+    private val trayColormaps = ConcurrentHashMap<Int, Int>()
+    @Volatile var screenWidth = 0; private set
+    @Volatile var screenHeight = 0; private set
     var minKeycode = 8; private set
     var maxKeycode = 255; private set
     var xtestOpcode = -1; private set
@@ -93,6 +97,7 @@ internal class X11Client private constructor(
     private var idMask = 0
     private var nextId = 1
     private var sequence = 0
+    private var streamReply: ((ByteBuffer) -> Unit)? = null
     private val replies = ConcurrentHashMap<Int, LinkedBlockingQueue<ByteBuffer>>()
     @Volatile private var closed = false
 
@@ -118,6 +123,20 @@ internal class X11Client private constructor(
         maxKeycode = body.get(27).toInt() and 0xff
         val screen = 32 + vendorLength + pad(vendorLength) + formats * 8
         root = body.getInt(screen)
+        rootVisual = body.getInt(screen + 32)
+        var depthOffset = screen + 40
+        repeat(body.get(screen + 39).toInt() and 255) {
+            val depth = body.get(depthOffset).toInt() and 255
+            val count = body.getShort(depthOffset + 2).toInt() and 65535
+            repeat(count) { index ->
+                val offset = depthOffset + 8 + index * 24
+                val visual = body.getInt(offset)
+                visualDepths[visual] = depth
+                if (argbVisual == 0 && depth == 32 && body.get(offset + 4).toInt() == 4 &&
+                    body.getInt(offset + 8) == 0xff0000 && body.getInt(offset + 12) == 0xff00 && body.getInt(offset + 16) == 0xff) argbVisual = visual
+            }
+            depthOffset += 8 + count * 24
+        }
         screenWidth = body.getShort(screen + 20).toInt() and 0xffff
         screenHeight = body.getShort(screen + 22).toInt() and 0xffff
         Thread(::readLoop, "DextopX11Reader").apply { isDaemon = true; start() }
@@ -148,6 +167,8 @@ internal class X11Client private constructor(
             "keycodes=$minKeycode..$maxKeycode xtest=$xtestOpcode damage=$damageOpcode composite=$compositeOpcode")
     }
 
+    fun updateScreenSize(width: Int, height: Int) { screenWidth = width; screenHeight = height }
+
     fun allocateId(): Int = idBase or (nextId++ and idMask)
 
     // region transport
@@ -171,7 +192,8 @@ internal class X11Client private constructor(
                         val full = le(32 + extra * 4)
                         full.put(packet.array())
                         if (extra > 0) input.readFully(full.array(), 32, extra * 4)
-                        replies[packet.getShort(2).toInt() and 0xffff]?.offer(full)
+                        val seq = packet.getShort(2).toInt() and 0xffff
+                        if (streamReply != null) streamReply?.invoke(full) else replies[seq]?.offer(full)
                     }
                     else -> onEvent?.invoke(type, packet)
                 }
@@ -188,27 +210,52 @@ internal class X11Client private constructor(
      * Sends [packet] (position = its length); with [reply], waits for and
      * returns the reply, or null when the server answered with an error.
      */
-    private fun request(packet: ByteBuffer, reply: Boolean = false, fd: java.io.FileDescriptor? = null): ByteBuffer? {
-        val queue = if (reply) LinkedBlockingQueue<ByteBuffer>(1) else null
-        val seq: Int
-        synchronized(output) {
-            sequence = (sequence + 1) and 0xffff
-            seq = sequence
-            if (queue != null) replies[seq] = queue
-            // The descriptor travels as SCM_RIGHTS with the first bytes of this request.
-            if (fd != null) socket.setFileDescriptorsForSend(arrayOf(fd))
-            output.write(packet.array(), 0, packet.position())
-            output.flush()
-            if (fd != null) socket.setFileDescriptorsForSend(null)
-        }
-        if (queue == null) return null
-        return try {
-            val result = queue.poll(5, TimeUnit.SECONDS) ?: throw IOException("X11 reply timeout (seq $seq)")
-            result.takeIf { it !== ERROR_REPLY }
-        } finally {
-            replies.remove(seq)
-        }
+    private fun request(packet: ByteBuffer, reply: Boolean = false, fd: java.io.FileDescriptor? = null, checked: Boolean = false): ByteBuffer? {
+        val queue = if (reply || checked) LinkedBlockingQueue<ByteBuffer>(1) else null
+        var seq = -1
+        try {
+            synchronized(output) {
+                sequence = (sequence + 1) and 0xffff
+                seq = sequence
+                if (queue != null) replies[seq] = queue
+                // Always release the pending descriptor even if sending fails.
+                try {
+                    if (fd != null) socket.setFileDescriptorsForSend(arrayOf(fd))
+                    output.write(packet.array(), 0, packet.position())
+                    output.flush()
+                } finally { if (fd != null) socket.setFileDescriptorsForSend(null) }
+            }
+            if (queue == null) return null
+            val result = if (checked) {
+                sync() // errors for this no-reply request precede the barrier reply
+                queue.poll() ?: le(0)
+            } else queue.poll(5, TimeUnit.SECONDS) ?: throw IOException("X11 reply timeout (seq $seq)")
+            return result.takeIf { it !== ERROR_REPLY }
+        } finally { if (queue != null && seq >= 0) replies.remove(seq) }
     }
+
+    /** RECORD runs on its own connection; callback must not make synchronous X requests. */
+    internal fun recordPointerGrabs(callback: (ByteBuffer) -> Unit): Boolean {
+        val opcode = queryExtension("RECORD")?.first ?: return false
+        request(le(8).put(opcode.toByte()).put(0).putShort(2).putShort(1).putShort(13), reply = true) ?: return false
+        val xi = queryExtension("XInputExtension")?.first ?: 0
+        val context = allocateId()
+        val packet = le(72).put(opcode.toByte()).put(1).putShort(18).putInt(context)
+            .putInt(0).putInt(1).putInt(2).putInt(3) // AllClients, two ranges
+        val core = ByteArray(24); core[0] = 26; core[1] = 28; core[2] = 26; core[3] = 26; core[23] = 1
+        packet.put(core)
+        val ext = le(24); ext.put(4, xi.toByte()); ext.put(5, xi.toByte()); ext.putShort(6, 51); ext.putShort(8, 52)
+        ext.put(10, xi.toByte()); ext.put(11, xi.toByte()); ext.putShort(12, 51); ext.putShort(14, 51)
+        ext.put(23, 1)
+        packet.put(ext.array()); request(packet); sync()
+        synchronized(output) {
+            streamReply = callback
+            request(le(8).put(opcode.toByte()).put(5).putShort(2).putInt(context))
+        }
+        return true
+    }
+
+    fun relativeMotion(dx: Int, dy: Int) = fakeInput(MOTION_NOTIFY, 1, dx, dy)
 
     fun close() {
         closed = true
@@ -268,10 +315,11 @@ internal class X11Client private constructor(
 
     fun selectInput(window: Int, mask: Int) = changeWindowAttributes(window, 0x800, intArrayOf(mask))
 
-    /** (override-redirect, map state 0 unmapped / 1 unviewable / 2 viewable), or null if the window is gone. */
-    fun windowAttributes(window: Int): Pair<Boolean, Int>? {
+    data class WindowAttributes(val overrideRedirect: Boolean, val mapState: Int, val inputOutput: Boolean, val visual: Int)
+
+    fun windowAttributes(window: Int): WindowAttributes? {
         val reply = request(le(8).put(3).put(0).putShort(2).putInt(window), reply = true) ?: return null
-        return (reply.get(27).toInt() != 0) to (reply.get(26).toInt() and 0xff)
+        return WindowAttributes(reply.get(27).toInt() != 0, reply.get(26).toInt() and 0xff, reply.getShort(12).toInt() == 1, reply.getInt(8))
     }
 
     /** Position relative to the parent and size, or null if the window is gone. */
@@ -324,7 +372,7 @@ internal class X11Client private constructor(
     }
 
     /** SendEvent of a 32-byte event to [destination]. */
-    private fun sendEvent(destination: Int, mask: Int, event: ByteBuffer) {
+    internal fun sendEvent(destination: Int, mask: Int, event: ByteBuffer) {
         val packet = le(44).put(25).put(0).putShort(11).putInt(destination).putInt(mask)
         packet.put(event.array(), 0, 32)
         request(packet)
@@ -335,6 +383,30 @@ internal class X11Client private constructor(
         val event = le(32).put(33).put(32).putShort(0).putInt(window).putInt(type)
         for (i in 0 until 5) event.putInt(data.getOrElse(i) { 0 })
         sendEvent(window, 0, event)
+    }
+
+    /** A separate embedder for each icon, using that client's visual and transparent background. */
+    fun createTrayWindow(visual: Int): Int {
+        val id = allocateId()
+        val colormap = allocateId()
+        request(le(16).put(78).put(0).putShort(4).putInt(colormap).putInt(root).putInt(visual))
+        trayColormaps[id] = colormap
+        val mask = (1 shl 1) or (1 shl 3) or (1 shl 9) or (1 shl 13)
+        request(le(48).put(1).put((visualDepths[visual] ?: 24).toByte()).putShort(12).putInt(id).putInt(root)
+            .putShort(0).putShort(0).putShort(32).putShort(32).putShort(0).putShort(1)
+            .putInt(visual).putInt(mask).putInt(0).putInt(0).putInt(1).putInt(colormap))
+        return id
+    }
+
+    fun reparentWindow(window: Int, parent: Int) {
+        request(le(16).put(7).put(0).putShort(4).putInt(window).putInt(parent).putShort(0).putShort(0))
+    }
+
+    fun saveWindow(window: Int) { request(le(8).put(6).put(0).putShort(2).putInt(window)) }
+    fun unmapWindow(window: Int) { request(le(8).put(10).put(0).putShort(2).putInt(window)) }
+    fun destroyWindow(window: Int) {
+        request(le(8).put(4).put(0).putShort(2).putInt(window))
+        trayColormaps.remove(window)?.let { request(le(8).put(79).put(0).putShort(2).putInt(it)) }
     }
 
     /** An unmapped 1x1 InputOnly window on the root, for owning and requesting selections. */
@@ -407,7 +479,7 @@ internal class X11Client private constructor(
     // region MIT-SHM
     /** Attaches shared memory [fd] as segment [segment] (MIT-SHM AttachFd, read-write). */
     fun shmAttachFd(segment: Int, fd: java.io.FileDescriptor) {
-        request(le(12).put(shmOpcode.toByte()).put(6).putShort(3).putInt(segment).put(0).put(0).putShort(0), fd = fd)
+        checkNotNull(request(le(12).put(shmOpcode.toByte()).put(6).putShort(3).putInt(segment).put(0).put(0).putShort(0), fd = fd, checked = true)) { "X server rejected shared memory" }
     }
 
     fun shmDetach(segment: Int) {

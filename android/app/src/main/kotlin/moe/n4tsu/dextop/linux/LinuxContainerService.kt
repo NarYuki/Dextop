@@ -31,8 +31,10 @@ import kotlin.system.exitProcess
 class LinuxContainerService : ILinuxContainerService.Stub() {
     companion object {
         private const val TAG = "DextopLinuxService"
-        // Retire pre-Wayland daemons retained by compatible privilege servers.
-        const val PROTOCOL_VERSION = 12
+        // Includes guest state files (AIDL transaction 47).
+        const val PROTOCOL_VERSION = 20
+        private val GUEST_LOG = Regex("""[A-Za-z0-9._-]+\.log""")
+        private val GUEST_STATE = Regex("""dextop-[a-z0-9-]+\.conf""")
         private const val BUFFER = 256 * 1024
     }
 
@@ -43,6 +45,12 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     private val activeProcesses = ConcurrentHashMap<String, Process>()
 
     override fun protocolVersion(): Int = PROTOCOL_VERSION
+    private var fifoServer: LinuxFifoServer? = null
+    private var bluetoothBridge: LinuxBluetoothBridge? = null
+    @Synchronized override fun attachFifoBridge(bridge: ILinuxFifoBridge): String {
+        val server = fifoServer?.apply { endpoint = bridge } ?: LinuxFifoServer(bridge).also { fifoServer = it }
+        return server.namespace
+    }
 
     override fun codePath(): String = javaClass.classLoader.toString()
 
@@ -51,8 +59,39 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
 
     @Volatile private var graphics: LinuxGraphics? = null
     @Volatile private var audio: LinuxAudio? = null
+    @Volatile private var networkLink: String? = null
+    @Volatile private var networkResolver: String? = null
+    @Volatile private var networkSnapshot: String? = null
 
+    @Synchronized override fun consumeNetworkScanRequests(): Boolean {
+        var requested = false
+        containerIds().forEach { id ->
+            val marker = java.io.File(LinuxPaths.rootfs(id), "etc/droiddeck-wifi-scan-request")
+            if (marker.isFile && marker.delete()) requested = true
+        }
+        return requested
+    }
+
+    @Synchronized override fun setNetworkLink(json: String) {
+        val description = LinuxNetworkLink.describe(json)
+        val resolver = LinuxNetworkLink.resolver(json)
+        networkLink = description
+        networkResolver = resolver
+        networkSnapshot = json.takeIf { JSONObject(it).has("connected") }
+        containerIds().filter { readConfig(it)?.optString("state") == "installed" }
+            .forEach {
+                LinuxNetworkLink.stage(LinuxPaths.rootfs(it), description)
+                networkSnapshot?.let { snapshot -> LinuxNetworkLink.stageSnapshot(LinuxPaths.rootfs(it), snapshot) }
+                resolver?.let { dns -> LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(it), dns) }
+            }
+    }
+
+    @Synchronized
     override fun initialize(nativeLibraryDir: String, callback: ILinuxContainerCallback?) {
+        // Rebinding the app must retain the running servers and their audio ports.
+        // APK changes are handled by the client's code-path/version check.
+        this.callback = callback
+        if (proot != null) return
         val renderer = LinuxGraphics(nativeLibraryDir)
         graphics = renderer
         val sound = LinuxAudio({ requireProot() }, { id, line -> log(id, line) }) { notifyChanged() }
@@ -65,15 +104,22 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         // An install interrupted by a reboot or a killed service never completes.
         containerIds().forEach { id ->
             val config = readConfig(id) ?: return@forEach
+            if (config.optString("state") == "installed") runCatching {
+                LinuxSessionCompatibility.install(LinuxPaths.rootfs(id), nativeLibraryDir, LinuxProot.socketNamespace(id),
+                    xvfb = config.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME)
+            }.onFailure { log(id, "Linux compatibility setup failed: ${it.message}") }
             if (config.optString("state") == "installing") writeConfig(id, config.put("state", "failed"))
             if (config.optString("state") == "updating") writeConfig(id, config.put("state", "installed").put("error", "Setup was interrupted; run setup again"))
         }
         // Sessions of an earlier service process (an APK update) keep their displays, buses and
         // Firefox's profile lock, so a new session's Firefox reports "already running".
-        if (sessions.isEmpty() && appSessions.isEmpty()) containerIds().forEach { id ->
-            val killed = runCatching { LinuxRuntime.forceStop(id) }.getOrDefault(0)
-            if (killed > 0) log(id, "Stopped $killed processes left by an earlier Linux service")
+        if (sessions.isEmpty() && appSessions.isEmpty()) {
+            val killed = runCatching { LinuxRuntime.forceStopAll() }.getOrDefault(0)
+            if (killed > 0) Log.i("DextopLinux", "Stopped $killed processes left by an earlier Linux service")
         }
+        bluetoothBridge = LinuxBluetoothBridge {
+            containerIds().filter { readConfig(it)?.optString("state") == "installed" }.map(LinuxPaths::rootfs)
+        }.also { it.start() }
     }
 
     override fun listContainers(): String = JSONArray().apply {
@@ -121,7 +167,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
 
     override fun cancelInstall(containerId: String): Boolean {
         cancelled += containerId
-        activeProcesses[containerId]?.destroyForcibly()
+        activeProcesses[containerId]?.let(LinuxRuntime::terminate)
         return true
     }
 
@@ -129,6 +175,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         cancelInstall(containerId)
         sessions.remove(containerId)?.stop()
         stopApps(containerId)
+        LinuxRuntime.forceStop(containerId)
         val dir = LinuxPaths.container(containerId)
         if (!dir.exists()) return false
         // Files may be read-only inside the rootfs; let the shell remove everything.
@@ -243,6 +290,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         val session = runtimeStart(containerId) { LinuxDesktopSession.start(
             requireProot(), containerId, display,
             width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 480),
+            xwayland = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend") == "wayland",
         )
         }
         sessions[containerId] = session
@@ -301,8 +349,32 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     private fun usedDisplays(): Set<Int> =
         sessions.values.map { it.display }.toSet() + appSessions.values.map { it.display }
 
+    override fun guestLog(containerId: String, name: String, maxBytes: Int, truncate: Boolean): String {
+        require(GUEST_LOG.matches(name)) { "Invalid guest log $name" }
+        val file = File(LinuxPaths.rootfs(containerId), "tmp/$name")
+        if (truncate) { file.writeText(""); return "" }
+        if (!file.isFile) return ""
+        return java.io.RandomAccessFile(file, "r").use { input ->
+            val size = minOf(input.length(), maxBytes.coerceIn(0, 256 * 1024).toLong()).toInt()
+            input.seek(input.length() - size)
+            LinuxRuntime.readable(ByteArray(size).also { input.readFully(it) }.toString(Charsets.UTF_8))
+        }
+    }
+
+    override fun setGuestState(containerId: String, name: String, content: String) {
+        require(GUEST_STATE.matches(name) && content.length <= 16 * 1024) { "Invalid guest state $name" }
+        val directory = File(LinuxPaths.rootfs(containerId), "tmp")
+        check(directory.isDirectory) { "Container $containerId is not installed" }
+        // Readers see either the old or the new file, never a partial one.
+        val staged = File(directory, ".$name.staged")
+        staged.writeText(content)
+        check(staged.renameTo(File(directory, name))) { "Cannot write guest state $name" }
+    }
+
     override fun listApps(containerId: String, locale: String): String {
         val rootfs = LinuxPaths.rootfs(containerId)
+        if (File(rootfs, ".dextop-dd-stock-experiment").isFile) LinuxSteam.stage(rootfs)
+        runCatching { LinuxSteam.stageIcon(rootfs) }.onFailure { log(containerId, "Steam icon setup failed: ${it.message}") }
         return LinuxDesktopEntries.toJson(rootfs, LinuxDesktopEntries.list(rootfs, locale))
     }
 
@@ -316,10 +388,19 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
         val display = LinuxRuntime.freeDisplay(usedDisplays())
         startRenderer(containerId)
+        // DroidDeck's runtime has no Xvfb: its X clients go through KWin's Xwayland.
+        val runtime = readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME
+        if (runtime) stageDroidDeckFiles(containerId)
+        val selectedWayland = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend") == "wayland"
         val session = runtimeStart(containerId) { LinuxAppSession.start(
             requireProot(), containerId, display,
-            width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 640),
-        ) { event -> callback(containerId) { it.onWindowEvent(containerId, event.toString()) } }
+            width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 640), waylandOnly = runtime, requireWayland = selectedWayland, xwayland = selectedWayland && !runtime,
+        ) { event ->
+            if (event.optString("type") == "tray-wine-metadata") {
+                Thread({ runCatching { wineTrayMetadata.ensure(containerId, event.optInt("pid"), requireProot()) }
+                    .onFailure { log(containerId, "Wine tray metadata unavailable: ${it.message}") } }, "DextopWineTraySetup").apply { isDaemon = true; start() }
+            } else callback(containerId) { it.onWindowEvent(containerId, event.toString()) }
+        }
         }
         appSessions[containerId] = session
         session.onClipboard = { text -> shareClipboard(containerId, text) }
@@ -332,10 +413,17 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     override fun launchApp(containerId: String, desktopId: String) {
         val session = appSessions[containerId]?.takeIf { it.alive } ?: error("Application display is not running")
         val entry = LinuxDesktopEntries.find(LinuxPaths.rootfs(containerId), desktopId) ?: error("Unknown application $desktopId")
-        val command = LinuxDesktopEntries.command(entry)
+        val droidDeck = LinuxSettings.windowManager(containerId) == LinuxWindowManager.DROIDDECK
+        // DroidDeck's desktop and the Steam mode size their nested output from the session's screen.
+        val sized = entry.id == LinuxSteam.DROIDDECK_DESKTOP_ENTRY || entry.id == LinuxSteam.STEAM_MODE_ENTRY
+        val command = (if (sized) "DEXTOP_WIDTH=${session.screenWidth} DEXTOP_HEIGHT=${session.screenHeight} " else "") +
+            LinuxDesktopEntries.command(entry)
         log(containerId, "launch ${entry.id}: $command")
-        val process = requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command,
-            wayland = session.wayland?.running == true && LinuxSettings.gpuMode == LinuxGpuMode.TURNIP && graphics?.turnipWaylandInstalled(containerId) == true))
+        val backend = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend", "") ?: ""
+        check(backend != "wayland" || session.wayland?.running == true) { "The selected Wayland compositor is unavailable; restart the Linux application session" }
+        val waylandGpu = LinuxSettings.gpuMode(containerId) == LinuxGpuMode.TURNIP && graphics?.turnipWaylandInstalled(containerId) == true
+        val wayland = session.wayland?.running == true && (droidDeck || backend == "wayland" || backend.isEmpty() && waylandGpu)
+        val process = requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command, wayland = wayland, waylandGpu = droidDeck || waylandGpu))
             .redirectErrorStream(true).start()
         process.outputStream.close()
         appProcesses.getOrPut(containerId) { java.util.Collections.synchronizedList(ArrayList()) }.apply {
@@ -356,13 +444,16 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     }
 
     override fun stopApps(containerId: String) {
-        appProcesses.remove(containerId)?.toList()?.forEach { runCatching { it.destroyForcibly() } }
+        wineTrayMetadata.stop(containerId)
+        appProcesses.remove(containerId)?.toList()?.forEach { runCatching { LinuxRuntime.terminate(it) } }
         appSessions.remove(containerId)?.let { notifiers.remove(it.display)?.stop(); it.stop() }
         stopRendererIfIdle(containerId)
     }
 
     // region notifications
     /** Notification servers by X display (each display has its own session bus). */
+    private val wineTrayMetadata = LinuxWineTrayMetadata()
+
     private val notifiers = ConcurrentHashMap<Int, LinuxNotificationServer>()
 
     private fun startNotifications(containerId: String, display: Int) {
@@ -397,10 +488,22 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     // region graphics
     /** Starts the container's VirGL renderer when hardware rendering is selected (falls back to llvmpipe). */
     private fun startRenderer(containerId: String) {
+        networkLink?.let { LinuxNetworkLink.stage(LinuxPaths.rootfs(containerId), it) }
+        networkSnapshot?.let { LinuxNetworkLink.stageSnapshot(LinuxPaths.rootfs(containerId), it) }
+        networkResolver?.let { LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(containerId), it) }
+        LinuxSessionCompatibility.stage(LinuxPaths.rootfs(containerId), requireProot().nativeLibraryDir, LinuxProot.socketNamespace(containerId))
+        val distro = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)
+        // DroidDeck's runtime is used as DroidDeck ships it: Turnip on KGSL, no VirGL,
+        // and pacman never runs (its own builds are not in pacman's database).
+        if (distro?.id == LinuxCatalog.DROIDDECK_RUNTIME) {
+            audio?.ensure(containerId, distro.family, install = false)
+            return
+        }
+        runCatching { LinuxSteam.stage(LinuxPaths.rootfs(containerId)) }
+            .onFailure { log(containerId, "Steam launcher setup failed: ${it.message}") }
         graphics?.ensure(containerId) { line -> log(containerId, line) }
-        val family = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family
-        ensureFakeroot(containerId, family)
-        audio?.ensure(containerId, family)
+        ensureFakeroot(containerId, distro?.family)
+        audio?.ensure(containerId, distro?.family)
     }
 
     /** Containers set up before real-uid sessions lack fakeroot, which sessions use for apt and sudo. */
@@ -432,19 +535,24 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
      * afterwards; running sessions keep theirs until restarted.
      */
     override fun setLinuxSettings(json: String): String {
-        val before = LinuxSettings.gpuMode
-        LinuxSettings.write(JSONObject(json))
-        if (LinuxSettings.gpuMode != before) {
-            (sessions.keys + appSessions.keys).toSet().forEach { id ->
-                startRenderer(id)
-            }
-        }
+        val update = JSONObject(json)
+        val active = (sessions.keys + appSessions.keys).toSet()
+        val before = active.associateWith { LinuxSettings.gpuMode(it) }
+        // {"container": id, ...} changes that container's settings; otherwise the global defaults.
+        val container = update.optString("container").takeIf { it.isNotEmpty() && readConfig(it) != null }
+        if (container != null) LinuxSettings.writeContainer(container, update) else LinuxSettings.write(update)
+        active.filter { LinuxSettings.gpuMode(it) != before[it] }.forEach(::startRenderer)
         return linuxSettings()
     }
     // endregion
 
     override fun attachWindow(containerId: String, xid: Int, surface: android.view.Surface?): Boolean =
         surface != null && appSessions[containerId]?.attachSurface(xid, surface) == true
+
+    override fun attachDeckWindow(containerId: String, xid: Int, surface: android.view.Surface?): Boolean =
+        surface != null && appSessions[containerId]?.attachSurface(xid, surface, deckDirect = true,
+            deck30 = runCatching { File(LinuxPaths.rootfs(containerId), "tmp/${LinuxSteam.STEAM_MODE_RATE}").readText().trim() == "30" }.getOrDefault(false),
+            noVsync = runCatching { File(LinuxPaths.rootfs(containerId), "tmp/${LinuxSteam.STEAM_MODE_VSYNC}").readText().trim() == "0" }.getOrDefault(false)) == true
 
     override fun detachWindow(containerId: String, xid: Int) {
         appSessions[containerId]?.detachSurface(xid)
@@ -456,6 +564,43 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
 
     override fun activateWindow(containerId: String, xid: Int) {
         appSessions[containerId]?.runCatching { activate(xid) }
+    }
+
+    override fun setWindowState(containerId: String, xid: Int, maximized: Boolean, minimized: Boolean) {
+        appSessions[containerId]?.runCatching { setWindowState(xid, maximized, minimized) }
+    }
+
+    @Synchronized override fun updateDisplay(containerId: String, apps: Boolean, width: Int, height: Int, dpi: Int, refreshRate: Float) {
+        val config = LinuxDisplayConfiguration.create(width, height, dpi, refreshRate)
+        val application = if (apps) appSessions[containerId] else null
+        val desktop = if (!apps) sessions[containerId] else null
+        val display = application?.display ?: desktop?.display ?: return
+        if ((application?.displayConfiguration ?: desktop?.displayConfiguration) == config) return
+        runCatching {
+            if (application?.wayland != null && readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME) {
+                application.updateDisplay(config)
+            } else if (application?.usesXwayland == true || desktop?.usesXwayland == true) {
+                application?.updateDisplay(config); desktop?.updateDisplay(config)
+            } else {
+                val result = requireProot().run(requireProot().guest(containerId, LinuxCatalog.updateDisplayScript(display, config, apps)), 15)
+                check(result.exitCode == 0) { "Linux display update failed: ${result.output.takeLast(2000)}" }
+                application?.updateDisplay(config); desktop?.updateDisplay(config)
+            }
+            callback(containerId) { it.onWindowEvent(containerId, JSONObject().put("type", "display-config").put("apps", apps)
+                .put("w", config.width).put("h", config.height).put("refreshMilliHz", config.refreshMilliHz).toString()) }
+        }.onFailure { log(containerId, "Linux display update failed: ${it.message}") }
+    }
+
+    override fun relativePointer(containerId: String, xid: Int, action: Int, dx: Int, dy: Int, button: Int) {
+        if (xid == 0) sessions[containerId]?.relativePointer(action, dx, dy, button)
+        else appSessions[containerId]?.relativePointer(xid, action, dx, dy, button)
+    }
+    override fun pointerCaptureRequested(containerId: String, xid: Int): Boolean =
+        if (xid == 0) sessions[containerId]?.pointerCaptureRequested() == true
+        else appSessions[containerId]?.pointerCaptureRequested() == true
+
+    override fun trayAction(containerId: String, key: String, button: Int, x: Int, y: Int) {
+        appSessions[containerId]?.trayAction(key, button, x, y)
     }
 
     override fun closeWindow(containerId: String, xid: Int) {
@@ -472,16 +617,40 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         appSessions.keys.toList().forEach { runCatching { stopApps(it) } }
         graphics?.stopAll()
         audio?.stopAll()
+        wineTrayMetadata.stopAll()
         notifiers.values.forEach { it.stop() }
-        activeProcesses.values.forEach { runCatching { it.destroyForcibly() } }
+        activeProcesses.values.forEach { runCatching { LinuxRuntime.terminate(it) } }
+        bluetoothBridge?.close()
         installer.shutdownNow()
         // A killed proot cannot take its tracees (Firefox, the session bus) down with it.
-        containerIds().forEach { id -> runCatching { LinuxRuntime.forceStop(id) } }
+        runCatching { LinuxRuntime.forceStopAll() }
         exitProcess(0)
     }
 
     // region install pipeline
     private fun runInstall(id: String, distro: LinuxDistro) {
+        distro.image?.let { image ->
+            runCatching {
+                progress(id, "prepare", -1, image.url.substringAfterLast('/'))
+                val tarball = File(LinuxPaths.container(id), image.url.substringAfterLast('/'))
+                val actual = fetch(id, image, tarball)
+                progress(id, "verify", -1, actual.take(16))
+                check(actual.equals(image.sha256, ignoreCase = true)) { "SHA-256 mismatch: expected ${image.sha256}, got $actual" }
+                log(id, "SHA-256 verified $actual (${image.url})")
+                extract(id, tarball)
+                tarball.delete()
+                if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) {
+                    // DroidDeck's markers: droiddeck-session reports /.version, the desktop package its tag.
+                    File(LinuxPaths.rootfs(id), ".version").writeText(image.release())
+                    installOverlay(id, LinuxCatalog.DROIDDECK_DESKTOP)
+                    File(LinuxPaths.rootfs(id), ".droiddeck-pkg-desktop-kde").writeText(LinuxCatalog.DROIDDECK_DESKTOP.release())
+                    stageDroidDeckFiles(id)
+                }
+                readConfig(id)?.let { writeConfig(id, it.put("imageReady", true)) }
+                configure(id, distro)
+            }.onSuccess { finish(id) }.onFailure { fail(id, it) }
+            return
+        }
         runCatching {
             progress(id, "prepare", -1, "${distro.imageDistro}/${distro.imageRelease}")
             val build = latestBuild(distro)
@@ -532,6 +701,32 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     }
 
     /** Downloads [url] to [target] and returns its SHA-256. */
+    /**
+     * Like DroidDeck's installer, an archive left by an earlier attempt is kept
+     * and reused when it is complete and matches, instead of downloading it again.
+     */
+    private fun fetch(id: String, image: LinuxImage, target: File): String {
+        if (target.isFile && target.length() == image.size) {
+            progress(id, "verify", -1, target.name)
+            val digest = MessageDigest.getInstance("SHA-256")
+            target.inputStream().use { input ->
+                val buffer = ByteArray(BUFFER)
+                while (true) {
+                    checkCancelled(id)
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    digest.update(buffer, 0, read)
+                }
+            }
+            val actual = digest.digest().joinToString("") { "%02x".format(it) }
+            if (actual.equals(image.sha256, ignoreCase = true)) {
+                log(id, "reusing the downloaded ${target.name}")
+                return actual
+            }
+        }
+        return download(id, image.url, target)
+    }
+
     private fun download(id: String, url: String, target: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val connection = connect(url)
@@ -568,17 +763,9 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     private fun extract(id: String, tarball: File) {
         val rootfs = LinuxPaths.rootfs(id)
         val staging = File(LinuxPaths.container(id), "rootfs-extract")
-        progress(id, "extract", -1, "")
         LinuxRootfsArchive.deleteTree(staging)
         try {
-            XZInputStream(BufferedInputStream(FileInputStream(tarball), BUFFER)).use { input ->
-                var lastMiB = 0L
-                LinuxRootfsArchive.extract(input, staging, { checkCancelled(id) }) { written ->
-                    val mib = written / 1_048_576
-                    if (mib / 32 > lastMiB / 32) progress(id, "extract", -1, "$mib MiB")
-                    lastMiB = mib
-                }
-            }
+            unpack(id, tarball, staging)
             check(File(staging, "bin/sh").exists() || File(staging, "usr/bin/sh").exists()) {
                 "Root filesystem extraction completed without a shell"
             }
@@ -595,14 +782,78 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         }
     }
 
+    /** Extracts [tarball] into the empty [staging]: .tar.zst through libzstd_cat.so (nativeLibraryDir), .tar.xz through XZ for Java. */
+    private fun unpack(id: String, tarball: File, staging: File) {
+        progress(id, "extract", -1, "")
+        val decompressor = if (tarball.name.endsWith(".zst")) {
+            val tool = File(requireProot().nativeLibraryDir, "libzstd_cat.so")
+            check(tool.canExecute()) { "zstd decompressor is not packaged" }
+            ProcessBuilder(tool.absolutePath).redirectInput(tarball).redirectError(ProcessBuilder.Redirect.INHERIT).start()
+        } else null
+        try {
+            (decompressor?.inputStream?.buffered(BUFFER) ?: XZInputStream(BufferedInputStream(FileInputStream(tarball), BUFFER))).use { input ->
+                var lastMiB = 0L
+                LinuxRootfsArchive.extract(input, staging, { checkCancelled(id) }) { written ->
+                    val mib = written / 1_048_576
+                    if (mib / 32 > lastMiB / 32) progress(id, "extract", -1, "$mib MiB")
+                    lastMiB = mib
+                }
+            }
+            decompressor?.let { check(it.waitFor() == 0) { "zstd decompression failed (exit ${it.exitValue()})" } }
+        } finally {
+            decompressor?.destroy()
+        }
+    }
+
+    /** DroidDeck stages its session files before every session; so does Dextop. */
+    private fun stageDroidDeckFiles(id: String) {
+        LinuxDroidDeckFiles.stage(LinuxPaths.rootfs(id), requireProot().nativeLibraryDir) { log(id, it) }
+        LinuxSteam.writeDroidDeckDesktop(LinuxPaths.rootfs(id))
+    }
+
+    /** Downloads [image], checks it and extracts it over [id]'s root filesystem (DroidDeck's desktop package). */
+    private fun installOverlay(id: String, image: LinuxImage) {
+        val name = image.url.substringAfterLast('/')
+        progress(id, "prepare", -1, name)
+        val tarball = File(LinuxPaths.container(id), name)
+        try {
+            val actual = fetch(id, image, tarball)
+            progress(id, "verify", -1, actual.take(16))
+            check(actual.equals(image.sha256, ignoreCase = true)) { "SHA-256 mismatch: expected ${image.sha256}, got $actual" }
+            log(id, "SHA-256 verified $actual (${image.url})")
+            val staging = File(LinuxPaths.container(id), "overlay-extract")
+            LinuxRootfsArchive.deleteTree(staging)
+            try {
+                unpack(id, tarball, staging)
+                LinuxRootfsArchive.merge(staging, LinuxPaths.rootfs(id))
+                log(id, "installed $name over the root filesystem")
+            } finally {
+                LinuxRootfsArchive.deleteTree(staging)
+            }
+            tarball.delete()
+        } catch (error: Exception) {
+            // A complete, matching download is reused by the next attempt.
+            if (tarball.length() != image.size) tarball.delete()
+            throw error
+        }
+    }
+
     private fun configure(id: String, distro: LinuxDistro) {
         val runner = requireProot()
         checkCancelled(id)
         val options = LinuxSetupOptions.fromJson(readConfig(id)?.optJSONObject("setupOptions")).validate(distro)
         progress(id, "configure", -1, "")
-        val configured = runner.run(runner.guest(id, LinuxCatalog.configureScript(distro.family), fakeRoot = true), 600, onProcess = { activeProcesses[id] = it }) { log(id, it) }
+        val runtime = distro.id == LinuxCatalog.DROIDDECK_RUNTIME
+        val configureScript = if (runtime) LinuxCatalog.runtimeConfigureScript() else LinuxCatalog.configureScript(distro.family)
+        val configured = runner.run(runner.guest(id, configureScript, fakeRoot = true), 600, onProcess = { activeProcesses[id] = it }) { log(id, it) }
         check(configured.exitCode == 0) { "Configuration failed (exit ${configured.exitCode})" }
         checkCancelled(id)
+        // DroidDeck's runtime and desktop package bring everything; pacman would replace its own builds.
+        if (!runtime) provisionPackages(id, distro, runner)
+        setupSteps(id, distro, options, runner)
+    }
+
+    private fun provisionPackages(id: String, distro: LinuxDistro, runner: LinuxProot) {
         progress(id, "refresh", -1, "")
         val refreshed = runner.run(runner.guest(id, LinuxCatalog.refreshScript(distro.family), fakeRoot = true), 1_800, onProcess = { activeProcesses[id] = it }) { line ->
             log(id, line)
@@ -635,13 +886,22 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
             }
         }
         check(provisioned.exitCode == 0) { "Package installation failed (exit ${provisioned.exitCode})" }
+    }
+
+    private fun setupSteps(id: String, distro: LinuxDistro, options: LinuxSetupOptions, runner: LinuxProot) {
         for (step in LinuxSetupPlan.steps(distro, options)) {
             checkCancelled(id)
+            // Steam's FEX preflight needs socket emulation before finish() can run.
+            if (step.phase == "steam") {
+                LinuxSessionCompatibility.stage(LinuxPaths.rootfs(id), runner.nativeLibraryDir, LinuxProot.socketNamespace(id))
+            }
             progress(id, step.phase, -1, "")
             val result = try {
-                runner.run(runner.guest(id, step.script, fakeRoot = true), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
-                    log(id, line)
-                    if (line.startsWith("Unpacking ") || line.startsWith("Setting up ")) progress(id, step.phase, -1, line.take(100))
+                LinuxSetupScript.run(LinuxPaths.rootfs(id), step.script) { command ->
+                    runner.run(runner.guest(id, command, fakeRoot = true), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
+                        log(id, line)
+                        if (line.startsWith("Unpacking ") || line.startsWith("Setting up ")) progress(id, step.phase, -1, line.take(100))
+                    }
                 }
             } finally { activeProcesses.remove(id) }
             checkCancelled(id)
@@ -650,8 +910,10 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     }
 
     private fun finish(id: String) {
-        activeProcesses.remove(id)
         val config = readConfig(id) ?: return
+        LinuxSessionCompatibility.install(LinuxPaths.rootfs(id), requireProot().nativeLibraryDir,
+            LinuxProot.socketNamespace(id), xvfb = config.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME)
+        activeProcesses.remove(id)
         progress(id, "finish", -1, "")
         val bytes = runCatching {
             ProcessBuilder("/system/bin/du", "-sk", LinuxPaths.container(id).absolutePath).start()

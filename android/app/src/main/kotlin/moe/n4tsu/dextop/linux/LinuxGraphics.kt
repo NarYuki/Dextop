@@ -22,26 +22,90 @@ internal enum class LinuxGpuMode(val id: String) {
     }
 }
 
-/** Global Linux settings, kept by the shell-side service next to the containers. */
+/** How a container's windows reach Plasma. */
+internal enum class LinuxWindowManager(val id: String) {
+    /** Xvfb with Dextop's X window manager (per-app windows) and IceWM for the desktop. */
+    DEXTOP("dextop"),
+
+    /**
+     * DroidDeck's layout: Dextop's Wayland compositor as the host, KDE
+     * Plasma's KWin nested in it with Xwayland for X applications, and
+     * gamescope windows for GPU applications (droiddeck-desktop, droiddeck-gpu).
+     */
+    DROIDDECK("droiddeck");
+
+    companion object {
+        fun of(id: String?) = entries.firstOrNull { it.id == id } ?: DEXTOP
+    }
+}
+
+/**
+ * Linux settings, kept by the shell-side service next to the containers:
+ * global defaults ({"gpu", "defaultContainer"}, "" meaning every container)
+ * and per-container overrides ({"gpu"}) in each container's settings.json,
+ * apart from config.json, which the installer rewrites.
+ */
 internal object LinuxSettings {
     private val file get() = File(LinuxPaths.base, "settings.json")
+    private fun containerFile(id: String) = File(LinuxPaths.container(id), "settings.json")
+
+    private fun load(file: File) = runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject())
+
+    private fun save(file: File, json: JSONObject) {
+        file.parentFile?.mkdirs()
+        val temp = File(file.path + ".tmp")
+        temp.writeText(json.toString(2))
+        temp.renameTo(file)
+    }
 
     @Synchronized
-    fun read(): JSONObject = runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject())
-        .also { if (!it.has("gpu")) it.put("gpu", LinuxGpuMode.TURNIP.id) }
+    fun read(): JSONObject = load(file).also {
+        if (!it.has("gpu")) it.put("gpu", LinuxGpuMode.TURNIP.id)
+        if (!it.has("defaultContainer")) it.put("defaultContainer", "")
+    }
 
     @Synchronized
     fun write(update: JSONObject): JSONObject {
         val merged = read()
         update.optString("gpu").takeIf { it.isNotEmpty() }?.let { merged.put("gpu", LinuxGpuMode.of(it).id) }
-        file.parentFile?.mkdirs()
-        val temp = File(file.path + ".tmp")
-        temp.writeText(merged.toString(2))
-        temp.renameTo(file)
+        if (update.has("defaultContainer")) {
+            val id = update.optString("defaultContainer")
+            merged.put("defaultContainer", id.takeIf { runCatching { LinuxPaths.container(it).isDirectory }.getOrDefault(false) } ?: "")
+        }
+        save(file, merged)
         return merged
     }
 
+    /** [id]'s own settings; a missing "gpu" follows the global default. */
+    @Synchronized
+    fun readContainer(id: String): JSONObject = load(containerFile(id))
+
+    /** Merges [update] into [id]'s settings; "gpu": "" returns it to the global default. */
+    @Synchronized
+    fun writeContainer(id: String, update: JSONObject): JSONObject {
+        val merged = readContainer(id)
+        if (update.has("gpu")) {
+            val gpu = update.optString("gpu")
+            if (gpu.isEmpty()) merged.remove("gpu") else merged.put("gpu", LinuxGpuMode.of(gpu).id)
+        }
+        if (update.has("wm")) {
+            val wm = update.optString("wm")
+            if (wm.isEmpty()) merged.remove("wm") else merged.put("wm", LinuxWindowManager.of(wm).id)
+        }
+        save(containerFile(id), merged)
+        return merged
+    }
+
+    /** [id]'s window manager: its own choice, else DroidDeck's for the DroidDeck runtime. */
+    fun windowManager(id: String): LinuxWindowManager =
+        readContainer(id).optString("wm").takeIf { it.isNotEmpty() }?.let(LinuxWindowManager::of)
+            ?: if (load(LinuxPaths.config(id)).optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME) LinuxWindowManager.DROIDDECK
+            else LinuxWindowManager.DEXTOP
+
     val gpuMode: LinuxGpuMode get() = LinuxGpuMode.of(read().optString("gpu"))
+
+    fun gpuMode(id: String): LinuxGpuMode =
+        readContainer(id).optString("gpu").takeIf { it.isNotEmpty() }?.let(LinuxGpuMode::of) ?: gpuMode
 }
 
 /**
@@ -84,7 +148,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
 
     /** Turnip is selected and built for [containerId]. */
     private fun usesTurnip(containerId: String) =
-        LinuxSettings.gpuMode == LinuxGpuMode.TURNIP && turnipInstalled(containerId)
+        LinuxSettings.gpuMode(containerId) == LinuxGpuMode.TURNIP && turnipInstalled(containerId)
 
     /**
      * Starts the renderer of [containerId] when hardware rendering is
@@ -93,7 +157,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
      */
     @Synchronized
     fun ensure(containerId: String, log: (String) -> Unit): Boolean {
-        val mode = LinuxSettings.gpuMode
+        val mode = LinuxSettings.gpuMode(containerId)
         if (usesTurnip(containerId)) {
             // Applications drive the GPU themselves; no renderer process.
             stop(containerId)
@@ -122,7 +186,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
         val deadline = SystemClock.uptimeMillis() + START_TIMEOUT_MS
         while (SystemClock.uptimeMillis() < deadline && process.isAlive && !listening(containerId)) SystemClock.sleep(50)
         if (!process.isAlive || !listening(containerId)) {
-            process.destroyForcibly()
+            LinuxRuntime.terminate(process)
             log("VirGL renderer failed to start; using software rendering\n${logFile.takeIf { it.isFile }?.readText()?.takeLast(2000).orEmpty()}")
             return false
         }
@@ -132,7 +196,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
     }
 
     fun stop(containerId: String) {
-        servers.remove(containerId)?.destroyForcibly()
+        servers.remove(containerId)?.let(LinuxRuntime::terminate)
     }
 
     fun stopAll() = servers.keys.toList().forEach(::stop)
@@ -153,8 +217,20 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
         "MESA_GLES_VERSION_OVERRIDE=3.2",
     ) else listOf("GALLIUM_DRIVER=llvmpipe")
 
-    /** Settings plus the live renderer state, for the Linux settings screen. */
+    /**
+     * Settings plus the live renderer state, for the Linux settings screens:
+     * "containers" maps each container id to its own settings and its
+     * effective "gpuEffective".
+     */
     fun status(): JSONObject = LinuxSettings.read()
+        .put("containers", JSONObject().apply {
+            LinuxPaths.containers.listFiles().orEmpty().filter { it.isDirectory }.forEach { dir ->
+                runCatching {
+                    put(dir.name, LinuxSettings.readContainer(dir.name).put("gpuEffective", LinuxSettings.gpuMode(dir.name).id)
+                        .put("wmEffective", LinuxSettings.windowManager(dir.name).id))
+                }
+            }
+        })
         .put("hardwareAvailable", available)
         .put("rendererRunning", org.json.JSONArray(servers.keys.filter(::running)))
         .put("turnipInstalled", org.json.JSONArray(

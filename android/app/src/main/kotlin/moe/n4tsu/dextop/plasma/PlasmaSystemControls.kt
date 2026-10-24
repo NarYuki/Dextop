@@ -116,8 +116,23 @@ internal class PlasmaSystemControls(
 
     /** Radio technology of the default SIM ("5G", "LTE", "3G"…), read from the telephony properties. */
     fun cellularNetworkType(): String? {
+        // Includes NSA overrides: gsm.network.type alone reports LTE for 5G NSA.
+        // The full registry dump is about 0.7 MB and overflows the 1 MB Binder buffer; filter it in the shell.
+        val registry = run("sh", "-c", "dumpsys telephony.registry | grep mTelephonyDisplayInfo=").orEmpty()
+        val displays = Regex("mTelephonyDisplayInfo=TelephonyDisplayInfo[^\n]*").findAll(registry).map { it.value }.toList()
+        val slot = runCatching {
+            android.telephony.SubscriptionManager.getSlotIndex(
+                android.telephony.SubscriptionManager.getDefaultDataSubscriptionId())
+        }.getOrDefault(0).coerceAtLeast(0)
+        val display = displays.getOrNull(slot) ?: displays.firstOrNull().orEmpty()
+        when {
+            "NR_ADVANCED" in display -> return "5G+"
+            "NR_NSA" in display || "network=NR," in display -> return "5G"
+            "LTE_ADVANCED_PRO" in display -> return "4G+"
+            "LTE_CA" in display -> return "4G+"
+        }
         val raw = run("getprop", "gsm.network.type")?.split(',')?.map { it.trim() }
-            ?.firstOrNull { it.isNotEmpty() && !it.equals("Unknown", ignoreCase = true) } ?: return null
+            ?.getOrNull(slot)?.takeIf { it.isNotEmpty() && !it.equals("Unknown", ignoreCase = true) } ?: return null
         return when (raw.uppercase()) {
             "NR", "NR_SA", "NR_NSA" -> "5G"
             "LTE", "LTE_CA" -> "LTE"

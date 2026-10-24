@@ -1,0 +1,27 @@
+diff --git a/src/steamcompmgr.cpp b/src/steamcompmgr.cpp
+index 5b0e300..b9b07ca 100644
+--- a/src/steamcompmgr.cpp
++++ b/src/steamcompmgr.cpp
+@@ -6875,10 +6875,19 @@ static bool steamcompmgr_should_vblank_window( bool bShouldLimitFPS, uint64_t vb
+ 	{
+ 		if ( g_nSteamCompMgrTargetFPS && bShouldLimitFPS && nRefreshHz > nTargetFPS )
+ 		{
+-			int nVblankDivisor = nRefreshHz / nTargetFPS;
++			if ( w && now )
++			{
++				uint64_t schedule = w->last_commit_first_latch_time + g_SteamCompMgrLimitedAppRefreshCycle;
++				if ( now + g_SteamCompMgrAppRefreshCycle / 2 < schedule )
++					bSendCallback = false;
++			}
++			else
++			{
++				int nVblankDivisor = nRefreshHz / nTargetFPS;
+ 
+-			if ( vblank_idx % nVblankDivisor != 0 )
+-				bSendCallback = false;
++				if ( vblank_idx % nVblankDivisor != 0 )
++					bSendCallback = false;
++			}
+ 		}
+ 	}
+ 

@@ -31,9 +31,62 @@ internal class OverlayLayer(
     val context: Context,
     private val tag: String,
     private val windowType: Int = WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+    private val displayOverlayService: android.accessibilityservice.AccessibilityService? = null,
 ) {
     private val windowManager = context.getSystemService(WindowManager::class.java)
     private val attached = HashMap<View, WindowManager.LayoutParams>()
+
+    private data class HostedOverlay(
+        val host: android.view.SurfaceControlViewHost,
+        val surface: android.view.SurfaceControlViewHost.SurfacePackage,
+        var placed: Boolean = false,
+    )
+    private val hosted = HashMap<View, HostedOverlay>()
+    private val attachHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private val attachWithResult by lazy {
+        android.accessibilityservice.AccessibilityService::class.java.methods.firstOrNull {
+            it.name == "attachAccessibilityOverlayToDisplay" && it.parameterTypes.size == 4
+        }
+    }
+
+    private fun placeHosted(view: View, overlay: HostedOverlay, attempt: Int = 0) {
+        if (hosted[view] !== overlay || overlay.placed || !overlay.surface.surfaceControl.isValid) return
+        val service = displayOverlayService ?: return
+        val displayId = context.display?.displayId ?: return
+        val answered = java.util.concurrent.atomic.AtomicBoolean()
+        fun finish(result: Int?) {
+            if (!answered.compareAndSet(false, true) || hosted[view] !== overlay) return
+            if (result == 0) {
+                overlay.placed = true
+                view.invalidate()
+                Log.i(tag, "Auto overlay attached display=$displayId attempt=$attempt")
+                return
+            }
+            if (attempt < 7) {
+                attachHandler.postDelayed({ placeHosted(view, overlay, attempt + 1) },
+                    (50L shl attempt).coerceAtMost(1_000L))
+            } else if (result != null) {
+                Log.e(tag, "Auto overlay attachment failed display=$displayId result=$result")
+            }
+        }
+        try {
+            val callbackMethod = attachWithResult
+            if (callbackMethod != null) {
+                callbackMethod.invoke(service, displayId, overlay.surface.surfaceControl,
+                    java.util.concurrent.Executor { attachHandler.post(it) },
+                    java.util.function.IntConsumer { result -> finish(result) })
+                attachHandler.postDelayed({ finish(null) }, 750L)
+            } else {
+                service.attachAccessibilityOverlayToDisplay(displayId, overlay.surface.surfaceControl)
+                // The older API returns before WMS attaches the surface and reports no result.
+                // Repeating the same attachment is safe once the display container exists.
+                finish(null)
+            }
+        } catch (failure: Throwable) {
+            Log.w(tag, "Auto overlay attach attempt=$attempt display=$displayId failed", failure)
+            finish(1)
+        }
+    }
 
     val density: Float get() = context.resources.displayMetrics.density
 
@@ -76,6 +129,39 @@ internal class OverlayLayer(
         if (watchOutside) flags = flags or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH
         if (focusable) flags = flags or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL
         params.flags = flags
+        // Auto is composed in the display's accessibility overlay container,
+        // above Samsung's system-decoration container (including DexTaskbarWindow).
+        // WindowManager's accessibility window type alone is insufficient on One UI.
+        if (android.os.Build.VERSION.SDK_INT >= 34 && displayOverlayService != null) {
+            val existing = hosted[view]
+            if (existing != null) {
+                existing.host.relayout(params.width, params.height)
+                android.view.SurfaceControl.Transaction().use { transaction ->
+                    transaction.setPosition(existing.surface.surfaceControl, bounds.left.toFloat(), bounds.top.toFloat()).apply()
+                }
+            } else {
+                @Suppress("DEPRECATION")
+                val host = android.view.SurfaceControlViewHost(context, context.display!!, android.os.Binder())
+                try {
+                    host.setView(view, params.width, params.height)
+                    val surface = requireNotNull(host.surfacePackage)
+                    android.view.SurfaceControl.Transaction().use { transaction ->
+                        transaction.setLayer(surface.surfaceControl, 1)
+                            .setPosition(surface.surfaceControl, bounds.left.toFloat(), bounds.top.toFloat())
+                            .setVisibility(surface.surfaceControl, true).apply()
+                    }
+                    val overlay = HostedOverlay(host, surface)
+                    hosted[view] = overlay
+                    // Display creation and WMS's accessibility-overlay container are asynchronous.
+                    attachHandler.post { placeHosted(view, overlay) }
+                } catch (failure: Throwable) {
+                    host.release()
+                    throw failure
+                }
+            }
+            attached[view] = params
+            return
+        }
         runCatching {
             if (attached.containsKey(view)) {
                 windowManager.updateViewLayout(view, params)
@@ -88,6 +174,12 @@ internal class OverlayLayer(
 
     fun hide(view: View?) {
         if (view == null || attached.remove(view) == null) return
+        hosted.remove(view)?.let { overlay ->
+            android.view.SurfaceControl.Transaction().use { it.reparent(overlay.surface.surfaceControl, null).apply() }
+            overlay.host.release()
+            overlay.surface.release()
+            return
+        }
         runCatching { windowManager.removeViewImmediate(view) }
             .onFailure { Log.w(tag, "overlay removal failed", it) }
     }
@@ -95,6 +187,10 @@ internal class OverlayLayer(
     /** Re-adds a window so it stacks above every other Plasma overlay. */
     fun raise(view: View) {
         val params = attached[view] ?: return
+        hosted[view]?.let { overlay ->
+            android.view.SurfaceControl.Transaction().use { it.setLayer(overlay.surface.surfaceControl, 1).apply() }
+            return
+        }
         runCatching {
             windowManager.removeViewImmediate(view)
             windowManager.addView(view, params)
