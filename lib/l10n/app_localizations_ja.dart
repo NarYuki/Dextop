@@ -2896,6 +2896,14 @@ class AppLocalizationsJa extends AppLocalizations {
       'LibreOffice — 文書・表計算・プレゼンテーション。ダウンロード量と必要な空き容量が増えます。';
 
   @override
+  String get linuxSetupSteamDetail =>
+      'Valve の Steam（ARM64 版）。初回に Valve から取得します。Proton と FEX は Steam が入れます。';
+
+  @override
+  String get linuxSetupDroidDeckNote =>
+      'DroidDeck ランタイムは KDE Plasma デスクトップ（KWin・Xwayland）とフォント・入力メソッドを内蔵しているため、IceWM・言語・入力の手順は省きます。';
+
+  @override
   String get linuxSetupStorage =>
       '数 GB 以上の空き容量を確保してください。ダウンロード量と使用容量は、選んだ環境やアプリによって変わります。この画面を閉じてもインストールは続きます。';
 
@@ -2986,6 +2994,54 @@ class AppLocalizationsJa extends AppLocalizations {
       '変更は、これから起動するアプリに反映されます。開いているデスクトップは開き直してください。';
 
   @override
+  String get linuxContainerSettings => 'このコンテナの設定';
+
+  @override
+  String get linuxGpuFollowDefault => '既定に従う';
+
+  @override
+  String get linuxGpuFollowDefaultDescription => 'Linux 設定の既定のグラフィックスを使います';
+
+  @override
+  String get linuxDefaultSection => '既定';
+
+  @override
+  String get linuxDefaultContainer => '既定のコンテナ';
+
+  @override
+  String get linuxDefaultContainerDescription => 'Plasma のランチャーにアプリを表示するコンテナ';
+
+  @override
+  String get linuxDefaultContainerAll => 'すべてのコンテナ';
+
+  @override
+  String get linuxDefaultBadge => '既定';
+
+  @override
+  String get linuxGpuDefaultSection => '既定のグラフィックスアクセラレーション';
+
+  @override
+  String get linuxGpuDefaultNote => 'コンテナごとの設定で変えていないコンテナに使われます。';
+
+  @override
+  String get linuxWmSection => 'ウィンドウマネージャ';
+
+  @override
+  String get linuxWmDefault => '既定';
+
+  @override
+  String get linuxWmDefaultDescription =>
+      'コンテナの種類に合わせます（DroidDeck ランタイムは DroidDeck、ほかは Dextop）';
+
+  @override
+  String get linuxWmDextopDescription =>
+      'Xvfb と Dextop のウィンドウ管理。アプリごとのウィンドウと、IceWM のデスクトップ';
+
+  @override
+  String get linuxWmDroidDeckDescription =>
+      'DroidDeck と同じ構成。Wayland のコンポジタに KDE Plasma（KWin）を入れ子で動かし、X アプリは Xwayland、GPU アプリは gamescope。DroidDeck ランタイムが必要です';
+
+  @override
   String linuxGpuRunning(int count) {
     return 'VirGL を $count 個のコンテナで使用中';
   }
@@ -3014,14 +3070,69 @@ class AppLocalizationsJa extends AppLocalizations {
   String get linuxSetupPhaseGpu => 'GPU ドライバー（Turnip）をビルド中';
 
   @override
+  String get linuxSetupDisplayBackend => '表示方式';
+
+  @override
+  String get linuxSetupXvfbDetail => 'アプリとIceWMデスクトップをX11で表示します。';
+
+  @override
+  String get linuxSetupWaylandDetail =>
+      '対応アプリはWayland、X11専用アプリとIceWMデスクトップはXwaylandで表示します。';
+
+  @override
+  String get nativeSteamModeTitle => 'Steam Deck Mode';
+
+  @override
+  String get nativeSteamModeStarting => '起動しています…';
+
+  @override
+  String get nativeSteamModeStepDisplay => '画面を準備しています…';
+
+  @override
+  String get nativeSteamModeStepClient => 'Steamクライアントを確認しています…';
+
+  @override
+  String get nativeSteamModeStepDownload => 'Steamをダウンロードしています · %1\$s';
+
+  @override
+  String get nativeSteamModeStepRepair => 'Steamクライアントを修復しています…';
+
+  @override
+  String get nativeSteamModeStepUpdate => 'Steamのアップデートをダウンロードしています · %1\$d%%';
+
+  @override
+  String get nativeSteamModeStepServices => 'システムサービスを起動しています…';
+
+  @override
+  String get nativeSteamModeStepSteam => 'Steamを起動しています…';
+
+  @override
+  String get nativeSteamModeStepStopping => '終了しています…';
+
+  @override
+  String get nativeSteamModeElapsed => '%1\$d:%2\$02d 経過';
+
+  @override
+  String get nativeSteamModeHint1 => '初回はSteamのダウンロードに数分かかります。';
+
+  @override
+  String get nativeSteamModeHint2 => '電源メニューの「シャットダウン」でSteam Deck Modeを終了します。';
+
+  @override
+  String get nativeSteamModeHint3 =>
+      'ゲームはSteamのライブラリから起動できます。Protonは自動で準備されます。';
+
+  @override
+  String get nativeSteamModeFailed => 'Steam Deck Modeが終了しました';
+
+  @override
+  String get nativeSteamModeRestart => '再起動';
+
+  @override
+  String get nativeSteamModeClose => '閉じる';
+
+  @override
   String get uiShortcutAdd => 'ホーム画面にショートカットを追加';
-
-  @override
-  String get uiShortcutAdded =>
-      'ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。';
-
-  @override
-  String get uiShortcutDismissed => 'ショートカットは追加されませんでした';
 
   @override
   String get uiShortcutUnsupported =>
@@ -3033,8 +3144,15 @@ class AppLocalizationsJa extends AppLocalizations {
   }
 
   @override
-  String get nativeShortcutStartDisplay => 'Dextop を起動';
+  String get uiShortcutDismissed => 'ショートカットは追加されませんでした';
+
+  @override
+  String get uiShortcutAdded =>
+      'ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。';
 
   @override
   String get nativeShortcutStartDisplayLong => 'Dextop の仮想ディスプレイを起動または停止します';
+
+  @override
+  String get nativeShortcutStartDisplay => 'Dextop を起動';
 }

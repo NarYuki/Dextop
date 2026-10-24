@@ -2911,6 +2911,14 @@ class AppLocalizationsKo extends AppLocalizations {
       'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
 
   @override
+  String get linuxSetupSteamDetail =>
+      'Valve의 Steam(ARM64). 처음 사용할 때 Valve에서 받으며, Proton과 FEX는 Steam이 설치합니다.';
+
+  @override
+  String get linuxSetupDroidDeckNote =>
+      'DroidDeck 런타임에는 KDE Plasma 데스크톱(KWin, Xwayland)과 글꼴, 입력기가 포함되어 있어 IceWM·언어·입력 단계를 건너뜁니다.';
+
+  @override
   String get linuxSetupStorage =>
       'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
 
@@ -3001,6 +3009,53 @@ class AppLocalizationsKo extends AppLocalizations {
       '변경 사항은 이후에 실행하는 앱에 적용됩니다. 열려 있는 데스크톱은 다시 여세요.';
 
   @override
+  String get linuxContainerSettings => '이 컨테이너 설정';
+
+  @override
+  String get linuxGpuFollowDefault => '기본값 사용';
+
+  @override
+  String get linuxGpuFollowDefaultDescription => 'Linux 설정의 기본 그래픽을 사용합니다';
+
+  @override
+  String get linuxDefaultSection => '기본값';
+
+  @override
+  String get linuxDefaultContainer => '기본 컨테이너';
+
+  @override
+  String get linuxDefaultContainerDescription => 'Plasma 런처에 앱을 표시할 컨테이너';
+
+  @override
+  String get linuxDefaultContainerAll => '모든 컨테이너';
+
+  @override
+  String get linuxDefaultBadge => '기본';
+
+  @override
+  String get linuxGpuDefaultSection => '기본 그래픽 가속';
+
+  @override
+  String get linuxGpuDefaultNote => '자체 설정에서 바꾸지 않은 컨테이너에 사용됩니다.';
+
+  @override
+  String get linuxWmSection => '창 관리자';
+
+  @override
+  String get linuxWmDefault => '기본값';
+
+  @override
+  String get linuxWmDefaultDescription =>
+      '컨테이너 종류에 맞춥니다(DroidDeck 런타임은 DroidDeck, 그 외는 Dextop)';
+
+  @override
+  String get linuxWmDextopDescription => 'Xvfb와 Dextop의 창 관리: 앱별 창과 IceWM 데스크톱';
+
+  @override
+  String get linuxWmDroidDeckDescription =>
+      'DroidDeck과 같은 구성: Wayland 컴포지터 안에서 KDE Plasma(KWin), X 앱은 Xwayland, GPU 앱은 gamescope. DroidDeck 런타임이 필요합니다';
+
+  @override
   String linuxGpuRunning(int count) {
     return '$count개 컨테이너에서 VirGL 사용 중';
   }
@@ -3029,14 +3084,71 @@ class AppLocalizationsKo extends AppLocalizations {
   String get linuxSetupPhaseGpu => 'GPU 드라이버(Turnip) 빌드 중';
 
   @override
+  String get linuxSetupDisplayBackend => 'Display system';
+
+  @override
+  String get linuxSetupXvfbDetail =>
+      'Use X11 for applications and the IceWM desktop.';
+
+  @override
+  String get linuxSetupWaylandDetail =>
+      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+
+  @override
+  String get nativeSteamModeTitle => 'Steam Deck Mode';
+
+  @override
+  String get nativeSteamModeStarting => '시작하는 중…';
+
+  @override
+  String get nativeSteamModeStepDisplay => '화면을 준비하는 중…';
+
+  @override
+  String get nativeSteamModeStepClient => 'Steam 클라이언트를 확인하는 중…';
+
+  @override
+  String get nativeSteamModeStepDownload => 'Steam 다운로드 중 · %1\$s';
+
+  @override
+  String get nativeSteamModeStepRepair => 'Steam 클라이언트를 복구하는 중…';
+
+  @override
+  String get nativeSteamModeStepUpdate => 'Steam 업데이트 다운로드 중 · %1\$d%%';
+
+  @override
+  String get nativeSteamModeStepServices => '시스템 서비스를 시작하는 중…';
+
+  @override
+  String get nativeSteamModeStepSteam => 'Steam을 시작하는 중…';
+
+  @override
+  String get nativeSteamModeStepStopping => '종료하는 중…';
+
+  @override
+  String get nativeSteamModeElapsed => '%1\$d:%2\$02d 경과';
+
+  @override
+  String get nativeSteamModeHint1 => '처음 시작할 때 Steam을 다운로드하며 몇 분 걸립니다.';
+
+  @override
+  String get nativeSteamModeHint2 =>
+      '전원 메뉴의 \"시스템 종료\"로 Steam Deck Mode를 끝냅니다.';
+
+  @override
+  String get nativeSteamModeHint3 =>
+      'Steam 라이브러리에서 게임을 시작하세요. Proton은 자동으로 준비됩니다.';
+
+  @override
+  String get nativeSteamModeFailed => 'Steam Deck Mode가 종료되었습니다';
+
+  @override
+  String get nativeSteamModeRestart => '다시 시작';
+
+  @override
+  String get nativeSteamModeClose => '닫기';
+
+  @override
   String get uiShortcutAdd => '홈 화면에 바로가기 추가';
-
-  @override
-  String get uiShortcutAdded =>
-      '홈 화면에 추가했습니다. 탭하면 Dextop 가상 디스플레이를 시작하거나 중지합니다.';
-
-  @override
-  String get uiShortcutDismissed => '바로가기가 추가되지 않았습니다';
 
   @override
   String get uiShortcutUnsupported =>
@@ -3048,8 +3160,15 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get nativeShortcutStartDisplay => 'Dextop 시작';
+  String get uiShortcutDismissed => '바로가기가 추가되지 않았습니다';
+
+  @override
+  String get uiShortcutAdded =>
+      '홈 화면에 추가했습니다. 탭하면 Dextop 가상 디스플레이를 시작하거나 중지합니다.';
 
   @override
   String get nativeShortcutStartDisplayLong => 'Dextop 가상 디스플레이를 시작하거나 중지합니다';
+
+  @override
+  String get nativeShortcutStartDisplay => 'Dextop 시작';
 }

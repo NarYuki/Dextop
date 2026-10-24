@@ -7,20 +7,22 @@ import android.view.Surface
 import java.io.File
 
 /**
- * One running X display of a container: Xvfb plus the session (IceWM in
- * desktop mode), the X connection used for input, and the renderer that
- * copies damaged regions of the framebuffer into the attached Surface.
+ * An IceWM desktop on either Xvfb or a rootful Xwayland Wayland output.
+ * Xvfb copies damaged framebuffer regions; Xwayland presents through its host
+ * compositor. Both use the same X connection for input and clipboard.
  */
 internal class LinuxDesktopSession(
     val containerId: String,
     val display: Int,
     private val process: Process,
     private val x: X11Client,
-    private val framebuffer: XvfbFramebuffer,
+    private val framebuffer: XvfbFramebuffer?,
+    private val xwaylandHost: LinuxXwaylandHost? = null,
+    initialWidth: Int = framebuffer?.width ?: 640,
+    initialHeight: Int = framebuffer?.height ?: 480,
 ) {
     companion object {
         private const val TAG = "DextopLinuxDesktop"
-        private const val FRAME_INTERVAL_MS = 16L
         /** Area around the pointer redrawn on motion; covers large (HiDPI) cursor themes. */
         private const val CURSOR_EXTENT = 96
         /** Frames to keep redrawing the cursor area after a move, in case Xvfb draws it late. */
@@ -28,35 +30,50 @@ internal class LinuxDesktopSession(
         /** Give up waiting for the window manager after this long and show the screen anyway. */
         private const val WM_TIMEOUT_MS = 30_000L
 
-        /** Launches Xvfb + IceWM through [proot] and connects once the X socket is up. */
-        fun start(proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int): LinuxDesktopSession {
-            val fbFile = File(LinuxPaths.rootfs(containerId), "tmp/dextop-fb-$display/Xvfb_screen0")
-            fbFile.delete()
-            val process = proot.guest(containerId, LinuxCatalog.desktopScript(display, width, height, dpi, "icewm"))
-                .redirectErrorStream(true).start()
-            process.outputStream.close()
-            Thread {
-                // Destroying the process interrupts this read; that must not crash the service.
-                runCatching { process.inputStream.bufferedReader().forEachLine { Log.i(TAG, "[$display] $it") } }
-            }.apply { isDaemon = true; start() }
-            val deadline = SystemClock.uptimeMillis() + 15_000
-            var client: X11Client? = null
-            var framebuffer: XvfbFramebuffer? = null
-            while (SystemClock.uptimeMillis() < deadline && (client == null || framebuffer == null)) {
-                if (!process.isAlive) {
-                    client?.close()
-                    error("Xvfb/session exited (exit ${process.exitValue()})")
+        /** Launches the selected X server and IceWM, then connects once the X socket is up. */
+        fun start(proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int, xwayland: Boolean = false): LinuxDesktopSession {
+            val host = if (xwayland) LinuxXwaylandHost.start(containerId, display, width, height) else null
+            var startedProcess: Process? = null
+            try {
+                val fbFile = File(LinuxPaths.rootfs(containerId), "tmp/dextop-fb-$display/Xvfb_screen0")
+                fbFile.delete()
+                val process = proot.guest(containerId, LinuxCatalog.desktopScript(display, width, height, dpi, "icewm", xwayland))
+                    .redirectErrorStream(true).start()
+                startedProcess = process
+                process.outputStream.close()
+                val startupReady = java.util.concurrent.atomic.AtomicBoolean(false)
+                Thread {
+                    // Destroying the process interrupts this read; that must not crash the service.
+                    runCatching { process.inputStream.bufferedReader().forEachLine {
+                        if (it == "dextop-x-ready") startupReady.set(true)
+                        Log.i(TAG, "[$display] $it")
+                    } }
+                }.apply { isDaemon = true; start() }
+                val deadline = SystemClock.uptimeMillis() + 15_000
+                var client: X11Client? = null
+                var framebuffer: XvfbFramebuffer? = null
+                while (SystemClock.uptimeMillis() < deadline && (client == null || (!xwayland && framebuffer == null) || !startupReady.get())) {
+                    if (!process.isAlive) {
+                        client?.close()
+                        error("X server/session exited (exit ${process.exitValue()})")
+                    }
+                    if (!xwayland && framebuffer == null) framebuffer = runCatching { XvfbFramebuffer.open(fbFile) }.getOrNull()
+                    if (client == null) client = runCatching { X11Client.connect(display) }.getOrNull()
+                    if (client == null || (!xwayland && framebuffer == null) || !startupReady.get()) SystemClock.sleep(150)
                 }
-                if (framebuffer == null) framebuffer = runCatching { XvfbFramebuffer.open(fbFile) }.getOrNull()
-                if (client == null) client = runCatching { X11Client.connect(display) }.getOrNull()
-                if (client == null || framebuffer == null) SystemClock.sleep(150)
+                if (client == null || (!xwayland && framebuffer == null) || !startupReady.get()) {
+                    client?.close()
+                    LinuxRuntime.terminate(process)
+                    error("X display :$display did not start")
+                }
+                return LinuxDesktopSession(containerId, display, process, client, framebuffer, host, if (xwayland) width else framebuffer!!.width, if (xwayland) height else framebuffer!!.height).also {
+                    it.viewportWidth = width; it.viewportHeight = height; it.begin()
+                }
+            } catch (error: Throwable) {
+                startedProcess?.let(LinuxRuntime::terminate)
+                host?.stop()
+                throw error
             }
-            if (client == null || framebuffer == null) {
-                client?.close()
-                process.destroyForcibly()
-                error("X display :$display did not start")
-            }
-            return LinuxDesktopSession(containerId, display, process, client, framebuffer).also { it.begin() }
         }
     }
 
@@ -76,8 +93,13 @@ internal class LinuxDesktopSession(
     private var pointerX = 0
     private var pointerY = 0
 
-    val width get() = framebuffer.width
-    val height get() = framebuffer.height
+    @Volatile private var viewportWidth = initialWidth
+    @Volatile private var viewportHeight = initialHeight
+    @Volatile private var frameIntervalNanos = 16_666_667L
+    @Volatile var displayConfiguration: LinuxDisplayConfiguration? = null; private set
+    val usesXwayland get() = xwaylandHost != null
+    val width get() = viewportWidth
+    val height get() = viewportHeight
     val alive get() = running && process.isAlive
     /** True once a window manager owns the ICCCM WM_S0 selection (or the wait timed out). */
     @Volatile var windowManagerReady = false; private set
@@ -109,7 +131,7 @@ internal class LinuxDesktopSession(
             }
         }
         x.onClosed = { stop() }
-        renderer = Thread(::renderLoop, "DextopLinuxRender-$display").apply { isDaemon = true; start() }
+        if (framebuffer != null) renderer = Thread(::renderLoop, "DextopLinuxRender-$display").apply { isDaemon = true; start() }
         Thread(::awaitWindowManager, "DextopLinuxWm-$display").apply { isDaemon = true; start() }
     }
 
@@ -131,7 +153,7 @@ internal class LinuxDesktopSession(
         }
         Log.i(TAG, "[$display] window manager ready")
         windowManagerReady = true
-        markDirty(Rect(0, 0, framebuffer.width, framebuffer.height))
+        markDirty(Rect(0, 0, viewportWidth, viewportHeight))
     }
 
     private fun markDirty(area: Rect) = synchronized(lock) {
@@ -140,12 +162,15 @@ internal class LinuxDesktopSession(
     }
 
     private fun renderLoop() {
+        val framebuffer = framebuffer ?: return
         val region = Rect()
+        var nextFrame = System.nanoTime()
+        var failures = 0
         while (running) {
             synchronized(lock) {
                 // Without DAMAGE, poll the whole screen at the frame rate.
                 if (dirty.isEmpty && cursorFrames == 0 && damage != 0) lock.wait(250)
-                if (damage == 0) dirty.set(0, 0, framebuffer.width, framebuffer.height)
+                if (damage == 0) dirty.set(0, 0, viewportWidth, viewportHeight)
                 if (cursorFrames > 0) {
                     if (dirty.isEmpty) dirty.set(cursorArea) else dirty.union(cursorArea)
                     if (--cursorFrames == 0) cursorArea.setEmpty()
@@ -158,25 +183,45 @@ internal class LinuxDesktopSession(
                     val handle = surfaceHandle
                     handle == 0L || LinuxFrameBridge.nativeBlit(
                         handle, framebuffer.buffer, framebuffer.pixelOffset, framebuffer.stride,
-                        framebuffer.width, framebuffer.height, region.left, region.top, region.width(), region.height(),
+                        viewportWidth, viewportHeight, region.left, region.top, region.width(), region.height(),
                     )
                 }
-                if (!ok) detachSurface()
+                if (!ok && running) {
+                    failures = (failures + 1).coerceAtMost(6)
+                    markDirty(region)
+                    if (failures == 1) Log.w(TAG, "[$display] Surface write failed; scheduling redraw")
+                    java.util.concurrent.locks.LockSupport.parkNanos(minOf(1_000L, 16L shl failures) * 1_000_000L)
+                } else failures = 0
             }
-            SystemClock.sleep(FRAME_INTERVAL_MS)
+            nextFrame = maxOf(nextFrame + frameIntervalNanos, System.nanoTime())
+            java.util.concurrent.locks.LockSupport.parkNanos((nextFrame - System.nanoTime()).coerceAtLeast(0))
         }
     }
 
+    fun updateDisplay(config: LinuxDisplayConfiguration) {
+        xwaylandHost?.updateDisplay(config)
+        require(framebuffer == null || config.width <= framebuffer.width && config.height <= framebuffer.height) { "Xvfb framebuffer is too small; restart this Linux desktop" }
+        synchronized(surfaceLock) {
+            viewportWidth = config.width; viewportHeight = config.height
+            frameIntervalNanos = config.frameIntervalNanos; displayConfiguration = config
+            x.updateScreenSize(config.width, config.height)
+            if (surfaceHandle != 0L) LinuxFrameBridge.nativeResize(surfaceHandle, config.width, config.height)
+        }
+        markDirty(Rect(0, 0, config.width, config.height))
+    }
+
     fun attachSurface(surface: Surface): Boolean {
+        xwaylandHost?.let { return it.attachSurface(surface) }
         detachSurface()
-        val handle = LinuxFrameBridge.nativeAttach(surface, framebuffer.width, framebuffer.height)
+        val handle = LinuxFrameBridge.nativeAttach(surface, viewportWidth, viewportHeight)
         if (handle == 0L) return false
         synchronized(surfaceLock) { surfaceHandle = handle }
-        markDirty(Rect(0, 0, framebuffer.width, framebuffer.height))
+        markDirty(Rect(0, 0, viewportWidth, viewportHeight))
         return true
     }
 
     fun detachSurface() {
+        xwaylandHost?.detachSurface()
         synchronized(surfaceLock) {
             val handle = surfaceHandle
             surfaceHandle = 0L
@@ -184,10 +229,19 @@ internal class LinuxDesktopSession(
         }
     }
 
+    private val pointerGrabs = LinuxPointerGrabs(display)
+    fun pointerCaptureRequested(): Boolean {
+        x.sync()
+        return pointerGrabs.requested
+    }
+    fun relativePointer(action: Int, dx: Int, dy: Int, button: Int) {
+        if (dx != 0 || dy != 0) x.relativeMotion(dx, dy)
+        if (action == 1 || action == 2) x.fakeInput(if (action == 1) X11Client.BUTTON_PRESS else X11Client.BUTTON_RELEASE, button)
+    }
     // region input
     fun pointer(action: Int, px: Int, py: Int, button: Int) {
-        val cx = px.coerceIn(0, framebuffer.width - 1)
-        val cy = py.coerceIn(0, framebuffer.height - 1)
+        val cx = px.coerceIn(0, viewportWidth - 1)
+        val cy = py.coerceIn(0, viewportHeight - 1)
         input.pointer(action, cx, cy, button)
         synchronized(lock) {
             val area = Rect(pointerX - CURSOR_EXTENT, pointerY - CURSOR_EXTENT, pointerX + CURSOR_EXTENT, pointerY + CURSOR_EXTENT)
@@ -209,11 +263,13 @@ internal class LinuxDesktopSession(
 
     fun stop() {
         if (!running) return
+        pointerGrabs.stop()
         running = false
         synchronized(lock) { lock.notifyAll() }
         detachSurface()
         clipboard?.stop()
         x.close()
-        process.destroyForcibly()
+        LinuxRuntime.terminate(process)
+        xwaylandHost?.stop()
     }
 }

@@ -19,6 +19,9 @@
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
     <uses-permission android:name="roro.stellar.manager.permission.API_V23" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
+    <!-- Home-screen launchers for Linux applications are tiny generated APKs. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
     <permission
         android:name="moe.n4tsu.dextop.permission.CARDEX_RELAY"
         android:protectionLevel="normal" />
@@ -233,6 +236,40 @@
                 <action android:name="moe.n4tsu.dextop.action.CARDEX_INTERRUPTED" />
             </intent-filter>
         </receiver>
+        <!-- Linux applications outside Plasma: one Android task per X window. -->
+        <activity
+            android:name=".linux.LinuxWindowActivity"
+            android:exported="false"
+            android:documentLaunchMode="always"
+            android:autoRemoveFromRecents="true"
+            android:resizeableActivity="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- A Linux dialog whose parent window is gone: floating, at its own size. -->
+        <activity
+            android:name=".linux.LinuxDialogActivity"
+            android:exported="false"
+            android:documentLaunchMode="always"
+            android:autoRemoveFromRecents="true"
+            android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- Opened by the generated Linux launcher APKs and the Linux tab. -->
+        <activity
+            android:name=".linux.LinuxLaunchActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar">
+            <intent-filter>
+                <action android:name="moe.n4tsu.dextop.action.LAUNCH_LINUX_APP" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
+        </activity>
+        <receiver
+            android:name=".linux.LinuxShortcutInstaller$Status"
+            android:exported="false" />
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

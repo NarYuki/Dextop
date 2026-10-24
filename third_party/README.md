@@ -57,3 +57,17 @@ Local changes:
 
 To update, replace the directory contents with the new upstream files and update
 this table.
+
+## Dart packages
+
+| Directory | Upstream | Version | License |
+| --- | --- | --- | --- |
+| `material_3_expressive/` | https://pub.dev/packages/material_3_expressive | 1.2.0, without `example/` and `test/` | MIT |
+
+Local changes:
+- `material_3_expressive/lib/components/lists/components/m3e_list_row_surface.dart`:
+  list rows animate their corner radius on press (`M3EMotion.short4`,
+  `M3EMotion.emphasized`); upstream passes `Duration.zero`, so the shape snapped.
+
+- `material_3_expressive/pubspec.yaml`: removed the upstream-only `klin_dart`
+  development dependency; its tooling directory is not included in this vendored copy.

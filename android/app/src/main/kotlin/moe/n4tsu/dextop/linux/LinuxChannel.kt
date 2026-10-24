@@ -15,6 +15,7 @@ import org.json.JSONObject
  */
 internal class LinuxChannel(private val context: Context, messenger: BinaryMessenger) : LinuxContainerClient.Listener {
     private val channel = MethodChannel(messenger, "app.freedextop/linux")
+    private val main = android.os.Handler(android.os.Looper.getMainLooper())
 
     init {
         LinuxContainerClient.addListener(this)
@@ -60,6 +61,56 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     it.runCommand(call.argument<String>("id")!!, call.argument<String>("command")!!,
                         call.argument<Int>("timeout") ?: 120)
                 }) { jsonMap(it) }
+                "apps" -> remote({
+                    it.listApps(call.argument<String>("id")!!, java.util.Locale.getDefault().toLanguageTag())
+                }) { jsonList(it) }
+                "launchApp" -> {
+                    LinuxAndroidWindows.launch(context, call.argument<String>("id")!!,
+                        call.argument<String>("desktop")!!, call.argument<String>("label"))
+                    result.success(null)
+                }
+                "createShortcut" -> {
+                    val id = call.argument<String>("id")!!
+                    val desktop = call.argument<String>("desktop")!!
+                    val label = call.argument<String>("label").orEmpty()
+                    val icon = call.argument<String>("icon")?.takeIf { it.isNotEmpty() }
+                        ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull() }
+                    Thread {
+                        val outcome = runCatching { LinuxShortcutInstaller.install(context, id, desktop, label, icon) }
+                        main.post {
+                            outcome.onSuccess { result.success(it) }
+                                .onFailure { result.error("shortcut", it.message ?: it.javaClass.simpleName, null) }
+                        }
+                    }.start()
+                }
+                "removeShortcut" -> {
+                    LinuxShortcutInstaller.uninstall(context, call.argument<String>("id")!!, call.argument<String>("desktop")!!)
+                    result.success(null)
+                }
+                "shortcuts" -> Thread {
+                    val keys = LinuxShortcutInstaller.installedKeys(context)
+                    main.post { result.success(keys) }
+                }.start()
+                "storePackages" -> remote({
+                    it.runCommand(call.argument<String>("id")!!,
+                        "dpkg-query -W -f='\${db:Status-Abbrev} \${Package}\\n' 2>/dev/null | awk '\$1==\"ii\"{print \$2}'; " +
+                            "echo '--upgradable--'; apt list --upgradable 2>/dev/null | grep -v '^Listing'", 120)
+                }) { json ->
+                    val output = org.json.JSONObject(json).optString("output")
+                    val (installed, upgradable) = output.split("--upgradable--").let { it[0] to it.getOrElse(1) { "" } }
+                    // "name/suite 2.0-1 arm64 [upgradable from: 1.0-1]"
+                    val updates = upgradable.lines().map(String::trim).filter { it.contains('/') }.map { line ->
+                        val name = line.substringBefore('/')
+                        val fields = line.substringAfter(' ').split(' ')
+                        mapOf("name" to name, "to" to fields.firstOrNull().orEmpty(),
+                            "from" to line.substringAfter("upgradable from: ", "").removeSuffix("]"))
+                    }
+                    mapOf("installed" to installed.lines().map(String::trim).filter(String::isNotEmpty),
+                        "upgradable" to updates.map { it["name"] }, "updates" to updates)
+                }
+                "storeRun" -> result.success(LinuxStoreJobs.start(call.argument<String>("id")!!,
+                    call.argument<String>("action") ?: "install", call.argument<List<String>>("packages").orEmpty()))
+                "storeJobs" -> result.success(LinuxStoreJobs.poll(call.argument<String>("id")!!))
                 else -> result.notImplemented()
             }
         }

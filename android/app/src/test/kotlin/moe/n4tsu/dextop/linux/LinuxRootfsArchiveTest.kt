@@ -6,6 +6,7 @@ import org.apache.commons.compress.archivers.tar.TarConstants
 import org.junit.Assert.*
 import org.junit.Test
 import java.io.ByteArrayInputStream
+import java.io.File
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
 
@@ -52,11 +53,13 @@ class LinuxRootfsArchiveTest {
         } finally { LinuxRootfsArchive.deleteTree(root) }
     }
 
-    @Test fun rejectsSymlinksEscapingTheGuestRoot() {
+    @Test fun keepsSymlinksEscapingTheGuestRootInsideIt() {
         val root = Files.createTempDirectory("dextop-link-escape").toFile()
         try {
             val link = TarArchiveEntry("escape", TarConstants.LF_SYMLINK).apply { linkName = "../outside" }
-            assertThrows(java.io.IOException::class.java) { LinuxRootfsArchive.extract(archive(link to byteArrayOf()), root) }
+            LinuxRootfsArchive.extract(archive(link to byteArrayOf()), root)
+            // ".." stops at the guest's /, as it does inside the container.
+            assertEquals("outside", Files.readSymbolicLink(File(root, "escape").toPath()).toString())
         } finally { LinuxRootfsArchive.deleteTree(root) }
     }
 

@@ -118,23 +118,57 @@ private class ProgressBarView(context: Context, private val palette: PlasmaPalet
     }
 }
 
-/** "Status and Notifications" overflow: hidden tray entries rendered as a list. */
+/** A Linux tray entry is separate from both ordinary windows and notifications. */
+internal data class PlasmaLinuxTrayItem(val container: String, val key: String, val title: String,
+    val icon: android.graphics.drawable.Drawable?)
+
+/** "Status and Notifications" overflow, including live application tray icons. */
 internal class TrayOverflowApplet(
     context: Context,
-    palette: PlasmaPalette,
-    items: List<MenuItem>,
-    dismiss: () -> Unit,
+    private val palette: PlasmaPalette,
+    private val items: List<MenuItem>,
+    linuxItems: List<PlasmaLinuxTrayItem> = emptyList(),
+    private val onLinuxAction: (PlasmaLinuxTrayItem, Int, Float, Float) -> Unit = { _, _, _, _ -> },
+    private val dismiss: () -> Unit,
 ) : LinearLayout(context) {
+    private val rows = LinearLayout(context).apply { orientation = VERTICAL }
     init {
         orientation = VERTICAL
         val density = resources.displayMetrics.density
         setPadding((8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt(), (8 * density).toInt())
         addView(appletHeader(context, palette, t("nativePlasmaStatusAndNotifications")))
+        addView(android.widget.ScrollView(context).apply { isFillViewport = false; addView(rows) }, LayoutParams(-1, -2))
+        updateLinuxItems(linuxItems)
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    fun updateLinuxItems(linuxItems: List<PlasmaLinuxTrayItem>) {
+        rows.removeAllViews()
+        linuxItems.forEach { item ->
+            lateinit var row: PlasmaRow
+            fun invoke(button: Int, x: Float? = null, y: Float? = null) {
+                val location = IntArray(2).also { row.getLocationOnScreen(it) }
+                val rootX = x ?: (location[0] + row.width / 2f)
+                val rootY = y ?: (location[1] + row.height / 2f)
+                dismiss(); onLinuxAction(item, button, rootX, rootY)
+            }
+            row = PlasmaRow(context, palette, item.icon ?: GlyphDrawable(Glyph.APPS, palette.text), item.title,
+                heightDp = 40f, iconDp = 24f, onRightClick = { x, y -> invoke(3, x, y) }) { invoke(1) }
+            // Consume the entire secondary-button gesture so its release cannot also activate.
+            var secondary = false
+            row.setOnTouchListener { _, event ->
+                when {
+                    event.actionMasked == MotionEvent.ACTION_DOWN && event.isButtonPressed(MotionEvent.BUTTON_SECONDARY) -> { secondary = true; invoke(3, event.rawX, event.rawY); true }
+                    secondary -> { if (event.actionMasked in listOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL)) secondary = false; true }
+                    else -> false
+                }
+            }
+            rows.addView(row, LayoutParams(-1, -2))
+        }
+        if (linuxItems.isNotEmpty()) rows.addView(View(context).apply { setBackgroundColor(palette.separator) }, LayoutParams(-1, 1).apply { topMargin = 4; bottomMargin = 4 })
         items.forEach { item ->
-            addView(PlasmaRow(context, palette, item.glyph?.let { GlyphDrawable(it, palette.text, 1.5f) }, item.text,
-                heightDp = 36f, iconDp = 18f, checked = item.checked) {
-                dismiss(); item.action()
-            }, LayoutParams(-1, -2))
+            rows.addView(PlasmaRow(context, palette, item.glyph?.let { GlyphDrawable(it, palette.text, 1.5f) }, item.text,
+                heightDp = 36f, iconDp = 18f, checked = item.checked) { dismiss(); item.action() }, LayoutParams(-1, -2))
         }
     }
 }
@@ -368,11 +402,26 @@ internal class DesktopSettingsApplet(
         setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (12 * density).toInt())
         addView(appletHeader(context, palette, t("nativePlasmaConfigureDesktop")))
         var current = settings
-        fun section(title: String) = addView(plasmaLabel(context, title, palette.inactiveText, 12f, bold = true).apply {
-            setPadding((6 * density).toInt(), (10 * density).toInt(), 0, (4 * density).toInt())
-        })
+        val categories = ArrayList<Pair<String, LinearLayout>>()
+        var sectionBody: LinearLayout = this
+        fun section(title: String) {
+            sectionBody = LinearLayout(context).apply {
+                orientation = VERTICAL
+                val pad = (12 * density).toInt()
+                setPadding(pad, pad, pad, pad)
+                background = android.graphics.drawable.GradientDrawable().apply {
+                    setColor(palette.viewBackground)
+                    cornerRadius = 8 * density
+                    setStroke(1, palette.separator)
+                }
+                addView(plasmaLabel(context, title, palette.text, 14f, bold = true),
+                    LayoutParams(-1, -2).apply { bottomMargin = (10 * density).toInt() })
+            }
+            categories += title to sectionBody
+            addView(sectionBody, LayoutParams(-1, -2).apply { bottomMargin = (12 * density).toInt() })
+        }
         fun choices(options: List<Pair<String, String>>, selected: String, apply: (String) -> PlasmaSettings) {
-            val row = horizontalLayout(context)
+            val row = LinearLayout(context).apply { orientation = VERTICAL }
             val chips = ArrayList<ChoiceChip>()
             options.forEach { (value, label) ->
                 val chip = ChoiceChip(context, palette, label, value == selected) {
@@ -382,9 +431,9 @@ internal class DesktopSettingsApplet(
                 }
                 chip.value = value
                 chips += chip
-                row.addView(chip, LayoutParams(0, (32 * density).toInt(), 1f).apply { rightMargin = (4 * density).toInt() })
+                row.addView(chip, LayoutParams(-1, (40 * density).toInt()).apply { bottomMargin = (4 * density).toInt() })
             }
-            addView(row, LayoutParams(-1, -2))
+            sectionBody.addView(row, LayoutParams(-1, -2))
         }
         section(t("nativePlasmaColorScheme"))
         choices(listOf("dark" to t("nativePlasmaBreezeDark"), "light" to t("nativePlasmaBreezeLight"), "system" to t("nativePlasmaFollowSystem")), settings.colorScheme) {
@@ -393,7 +442,7 @@ internal class DesktopSettingsApplet(
         section(t("nativePlasmaAccentColor"))
         val accents = listOf(0xFF3DAEE9, 0xFF9B59B6, 0xFFE93A9A, 0xFFE93D58, 0xFFE9643A, 0xFFEF973C, 0xFFE8CB2D, 0xFFB6E521, 0xFF3DD425, 0xFF00D485, 0xFF00D3B8, 0xFF7F8C8D)
             .map { it.toInt() }
-        val accentRow = horizontalLayout(context)
+        val accentRow = android.widget.GridLayout(context).apply { columnCount = 6 }
         val swatches = ArrayList<AccentSwatch>()
         accents.forEach { color ->
             val swatch = AccentSwatch(context, palette, color, color == settings.accentColor) {
@@ -402,9 +451,13 @@ internal class DesktopSettingsApplet(
                 onChange(current)
             }
             swatches += swatch
-            accentRow.addView(swatch, LayoutParams((28 * density).toInt(), (28 * density).toInt()).apply { rightMargin = (6 * density).toInt() })
+            accentRow.addView(swatch, android.widget.GridLayout.LayoutParams().apply {
+                width = 0; height = (36 * density).toInt()
+                columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
+                rightMargin = (8 * density).toInt(); bottomMargin = (8 * density).toInt()
+            })
         }
-        addView(accentRow)
+        sectionBody.addView(accentRow)
         section(t("nativePlasmaWallpaper"))
         choices(listOf("plasma" to t("nativePlasmaWallpaperPlasma"), "system" to t("nativePlasmaWallpaperAndroid")), settings.wallpaper) {
             current.copy(wallpaper = it)
@@ -422,6 +475,38 @@ internal class DesktopSettingsApplet(
             when { settings.animationSpeed <= 0f -> "0"; settings.animationSpeed < .75f -> "0.5"; settings.animationSpeed > 1.5f -> "2"; else -> "1" }) {
             current.copy(animationSpeed = it.toFloat())
         }
+        // A category navigator on desktops; a single scrollable column on narrow displays.
+        if (resources.displayMetrics.widthPixels / density >= 560f) {
+            val navigation = LinearLayout(context).apply { orientation = VERTICAL }
+            val page = FrameLayout(context)
+            val buttons = ArrayList<android.widget.TextView>()
+            fun select(index: Int) {
+                categories.forEachIndexed { i, (_, content) -> content.visibility = if (i == index) VISIBLE else GONE }
+                buttons.forEachIndexed { i, button ->
+                    button.isSelected = i == index
+                    button.setTextColor(if (i == index) palette.accent else palette.text)
+                    button.setBackgroundColor(if (i == index) palette.hover else android.graphics.Color.TRANSPARENT)
+                }
+            }
+            categories.forEachIndexed { index, (title, content) ->
+                removeView(content)
+                page.addView(content, FrameLayout.LayoutParams(-1, -2))
+                val button = plasmaLabel(context, title, palette.text, 13f).apply {
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding((10 * density).toInt(), 0, (8 * density).toInt(), 0)
+                    isFocusable = true
+                    setOnClickListener { select(index) }
+                }
+                buttons += button
+                navigation.addView(button, LayoutParams(-1, (44 * density).toInt()))
+            }
+            addView(horizontalLayout(context).apply {
+                gravity = Gravity.TOP
+                addView(navigation, LayoutParams((144 * density).toInt(), -2).apply { rightMargin = (12 * density).toInt() })
+                addView(page, LayoutParams(0, -2, 1f))
+            }, LayoutParams(-1, -2))
+            select(0)
+        }
     }
 }
 
@@ -433,6 +518,12 @@ private class ChoiceChip(
     initial: Boolean,
     private val onPick: () -> Unit,
 ) : View(context) {
+    init {
+        contentDescription = label
+        isFocusable = true
+        isClickable = true
+        setOnClickListener { onPick() }
+    }
     var value = ""
     var selectedChip = initial
         set(v) { field = v; invalidate() }
@@ -456,7 +547,7 @@ private class ChoiceChip(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_UP) onPick()
+        if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
         return true
     }
 }
@@ -469,6 +560,12 @@ private class AccentSwatch(
     initial: Boolean,
     private val onPick: () -> Unit,
 ) : View(context) {
+    init {
+        contentDescription = String.format("#%06X", color and 0xFFFFFF)
+        isFocusable = true
+        isClickable = true
+        setOnClickListener { onPick() }
+    }
     var selectedSwatch = initial
         set(v) { field = v; animateScale() }
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
@@ -498,7 +595,7 @@ private class AccentSwatch(
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_UP) onPick()
+        if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
         return true
     }
 }

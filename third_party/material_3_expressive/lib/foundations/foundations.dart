@@ -1,0 +1,44 @@
+/// Design tokens, theming hosts, and shared interaction primitives for
+/// Material 3 Expressive components.
+library;
+
+export 'color/m3e_color_scheme.dart';
+export 'color/m3e_color_utils.dart';
+export 'components/m3e_component_theme.dart';
+export 'interaction/m3e_focus.dart';
+export 'interaction/m3e_focus_interaction.dart';
+export 'interaction/m3e_focus_ring.dart';
+export 'interaction/m3e_focus_ring_theme.dart';
+export 'interaction/m3e_haptics.dart';
+export 'interaction/m3e_ink_splash_theme.dart';
+export 'interaction/m3e_motion.dart';
+export 'interaction/m3e_overlay_history.dart';
+export 'interaction/m3e_state_layer.dart';
+export 'interaction/m3e_state_layer_overlay.dart';
+export 'interaction/m3e_tappable.dart';
+export 'interaction/m3e_tappable_ink_scope.dart';
+export 'm3e_icons.dart';
+export 'shape/m3e_material_new_shapes_bridge.dart';
+export 'shape/m3e_shape_clipper.dart';
+export 'shape/m3e_shape_container.dart';
+export 'shape/m3e_shape_kind.dart';
+export 'shape/m3e_shapes.dart';
+export 'theme/m3e_dynamic_color_host.dart';
+export 'theme/m3e_material_app.dart';
+export 'theme/m3e_resolved_theme.dart';
+export 'theme/m3e_theme.dart';
+export 'theme/m3e_theme_controller.dart';
+export 'theme/m3e_theme_data.dart';
+export 'theme/m3e_theme_defaults.dart';
+export 'theme/m3e_theme_extension.dart';
+export 'theme/m3e_theme_scope.dart';
+export 'tokens/m3e_dimensions.dart';
+export 'tokens/m3e_elevation.dart';
+export 'tokens/m3e_safe_area.dart';
+export 'tokens/m3e_scrim_system_ui.dart';
+export 'tokens/m3e_spacing.dart';
+export 'type/m3e_type_style_conversion.dart';
+export 'type/m3e_type_style_tokens.dart';
+export 'type/m3e_typography.dart';
+export 'type/m3e_variable_font_axes.dart';
+export 'type/m3e_variable_font_config.dart';

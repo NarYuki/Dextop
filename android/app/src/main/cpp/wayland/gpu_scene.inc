@@ -111,7 +111,8 @@ static bool scene_window_init(struct linux_gpu_window *w) {
     VkAttachmentDescription attachment = {.format = w->format, .samples = VK_SAMPLE_COUNT_1_BIT,
         .loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR, .storeOp = VK_ATTACHMENT_STORE_OP_STORE,
         .stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE, .stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, .finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR};
+        .initialLayout = w->deck ? VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL : VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = w->deck ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_PRESENT_SRC_KHR};
     VkAttachmentReference reference = {.attachment = 0, .layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL};
     VkSubpassDescription subpass = {.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS,
         .colorAttachmentCount = 1, .pColorAttachments = &reference};
@@ -195,6 +196,11 @@ int linux_gpu_present_scene(struct linux_gpu_window *w, const struct linux_gpu_d
             d->x + d->y + d->width + d->height) || d->sx < 0 || d->sy < 0 || d->sw <= 0 || d->sh <= 0 ||
             d->sx + d->sw > d->image->width || d->sy + d->sh > d->image->height || d->width <= 0 || d->height <= 0) return -1;
     }
+    if (w->deck && w->deck_can_blit && count == 1 && draws[0].image->external && draws[0].image->opaque &&
+        draws[0].x == 0 && draws[0].y == 0 && draws[0].width == scene_width && draws[0].height == scene_height &&
+        floorf(draws[0].sx) == draws[0].sx && floorf(draws[0].sy) == draws[0].sy &&
+        floorf(draws[0].sw) == draws[0].sw && floorf(draws[0].sh) == draws[0].sh)
+        return deck_present_blit(w, &draws[0], release_fd);
     if (w->submitted) {
         r = g->GetFenceStatus(g->device, w->fence);
         if (r == VK_NOT_READY) return 0;
@@ -203,12 +209,19 @@ int linux_gpu_present_scene(struct linux_gpu_window *w, const struct linux_gpu_d
     if (!scene_window_init(w)) goto fail;
     if ((r = g->ResetCommandPool(g->device, w->pool, 0)) != VK_SUCCESS) goto fail;
     uint32_t index;
-    r = g->AcquireNextImageKHR(g->device, w->swapchain, 0, w->acquired, VK_NULL_HANDLE, &index);
-    if (r == VK_NOT_READY || r == VK_TIMEOUT) return 0;
-    if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) goto fail;
+    bool output_wait = false;
+    if (w->deck) {
+        int taken = deck_output_take(w, &index, &output_wait);
+        if (!taken) return 0;
+        if (taken < 0) { r = VK_ERROR_INVALID_EXTERNAL_HANDLE; goto fail; }
+    } else {
+        r = g->AcquireNextImageKHR(g->device, w->swapchain, 0, w->acquired, VK_NULL_HANDLE, &index);
+        if (r == VK_NOT_READY || r == VK_TIMEOUT) return 0;
+        if (r != VK_SUCCESS && r != VK_SUBOPTIMAL_KHR) goto fail;
+    }
     VkSemaphore waits[LINUX_GPU_MAX_DRAWS + 1] = {w->acquired};
     VkPipelineStageFlags wait_stages[LINUX_GPU_MAX_DRAWS + 1] = {VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-    unsigned wait_count = 1;
+    unsigned wait_count = w->deck ? (output_wait ? 1 : 0) : 1;
     VkImageMemoryBarrier barriers[LINUX_GPU_MAX_DRAWS];
     struct linux_gpu_image *images[LINUX_GPU_MAX_DRAWS];
     unsigned unique = 0;
@@ -243,7 +256,19 @@ int linux_gpu_present_scene(struct linux_gpu_window *w, const struct linux_gpu_d
     if ((r = g->BeginCommandBuffer(w->command, &begin)) != VK_SUCCESS) goto fail;
     g->CmdPipelineBarrier(w->command, VK_PIPELINE_STAGE_ALL_COMMANDS_BIT | VK_PIPELINE_STAGE_HOST_BIT,
         VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, 0, 0, NULL, 0, NULL, unique, barriers);
-    VkClearValue clear = {.color = {.float32 = {0, 0, 0, 1}}};
+    if (w->deck) {
+        bool reused = w->deck_initialized[index];
+        VkImageMemoryBarrier target = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = reused ? VK_IMAGE_LAYOUT_GENERAL : VK_IMAGE_LAYOUT_UNDEFINED,
+            .newLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+            .srcQueueFamilyIndex = reused ? VK_QUEUE_FAMILY_FOREIGN_EXT : VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = reused ? g->family : VK_QUEUE_FAMILY_IGNORED,
+            .image = w->images[index], .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+        g->CmdPipelineBarrier(w->command, VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+            VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, 0, 0, NULL, 0, NULL, 1, &target);
+    }
+    VkClearValue clear = {.color = {.float32 = {0, 0, 0, 0}}};
     VkRenderPassBeginInfo pass = {.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
         .renderPass = w->render_pass, .framebuffer = w->framebuffers[index],
         .renderArea = {.extent = w->extent}, .clearValueCount = 1, .pClearValues = &clear};
@@ -257,7 +282,7 @@ int linux_gpu_present_scene(struct linux_gpu_window *w, const struct linux_gpu_d
         float push[12] = {d->sx / d->image->width, d->sy / d->image->height,
             d->sw / d->image->width, d->sh / d->image->height,
             -1 + 2 * d->x / scene_width, -1 + 2 * d->y / scene_height,
-            2 * d->width / scene_width, 2 * d->height / scene_height, d->image->opaque ? 1 : 0};
+            2 * d->width / scene_width, 2 * d->height / scene_height, d->opaque || d->image->opaque ? 1 : 0};
         g->CmdBindDescriptorSets(w->command, VK_PIPELINE_BIND_POINT_GRAPHICS, w->pipeline_layout,
             0, 1, &d->image->descriptor, 0, NULL);
         g->CmdPushConstants(w->command, w->pipeline_layout, VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_FRAGMENT_BIT,
@@ -273,11 +298,20 @@ int linux_gpu_present_scene(struct linux_gpu_window *w, const struct linux_gpu_d
     }
     g->CmdPipelineBarrier(w->command, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
         0, 0, NULL, 0, NULL, unique, barriers);
+    if (w->deck) {
+        VkImageMemoryBarrier target = {.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER,
+            .srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+            .oldLayout = VK_IMAGE_LAYOUT_GENERAL, .newLayout = VK_IMAGE_LAYOUT_GENERAL,
+            .srcQueueFamilyIndex = g->family, .dstQueueFamilyIndex = VK_QUEUE_FAMILY_FOREIGN_EXT,
+            .image = w->images[index], .subresourceRange = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1}};
+        g->CmdPipelineBarrier(w->command, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+            VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, 0, 0, NULL, 0, NULL, 1, &target);
+    }
     if ((r = g->EndCommandBuffer(w->command)) != VK_SUCCESS) goto fail;
-    VkSemaphore signals[] = {w->rendered[index], w->release};
+    VkSemaphore signals[2] = {w->release, w->deck ? VK_NULL_HANDLE : w->rendered[index]};
     VkSubmitInfo submit = {.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO, .waitSemaphoreCount = wait_count,
         .pWaitSemaphores = waits, .pWaitDstStageMask = wait_stages,
-        .commandBufferCount = 1, .pCommandBuffers = &w->command, .signalSemaphoreCount = 2, .pSignalSemaphores = signals};
+        .commandBufferCount = 1, .pCommandBuffers = &w->command, .signalSemaphoreCount = w->deck ? 1 : 2, .pSignalSemaphores = signals};
     if ((r = g->ResetFences(g->device, 1, &w->fence)) != VK_SUCCESS ||
         (r = g->QueueSubmit(g->queue, 1, &submit, w->fence)) != VK_SUCCESS) goto fail;
     w->submitted = true;
@@ -285,6 +319,11 @@ int linux_gpu_present_scene(struct linux_gpu_window *w, const struct linux_gpu_d
     VkSemaphoreGetFdInfoKHR export = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_GET_FD_INFO_KHR,
         .semaphore = w->release, .handleType = VK_EXTERNAL_SEMAPHORE_HANDLE_TYPE_SYNC_FD_BIT};
     if ((r = g->GetSemaphoreFdKHR(g->device, &export, release_fd)) != VK_SUCCESS) goto fail;
+    if (w->deck) {
+        w->deck_initialized[index] = true;
+        if (!deck_output_present(w, index, *release_fd, false)) goto fail;
+        return 1;
+    }
     VkPresentInfoKHR present = {.sType = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1, .pWaitSemaphores = &w->rendered[index], .swapchainCount = 1,
         .pSwapchains = &w->swapchain, .pImageIndices = &index};

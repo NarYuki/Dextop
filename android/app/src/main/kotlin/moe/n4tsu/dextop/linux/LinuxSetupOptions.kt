@@ -12,8 +12,10 @@ internal data class LinuxSetupOptions(
     val graphics: Boolean = false,
     val themes: Boolean = false,
     val apps: Set<String> = emptySet(),
+    val displayBackend: String = "xvfb",
 ) {
     init {
+        require(displayBackend in setOf("xvfb", "wayland")) { "Unknown display backend" }
         require(profile in setOf("minimal", "complete")) { "Unknown desktop profile" }
         require(locale in LOCALES) { "Unsupported locale" }
         require(ime in setOf("none", "mozc", "pinyin", "hangul")) { "Unsupported input method" }
@@ -27,16 +29,19 @@ internal data class LinuxSetupOptions(
         require(distro.family == LinuxPackageFamily.APT || "chrome" !in apps) {
             "Google Chrome installation is available for Debian and Ubuntu"
         }
+        require(distro.id != LinuxCatalog.DROIDDECK_RUNTIME || apps.all { it == "steam" }) {
+            "The DroidDeck runtime takes Steam only; add other applications from its KDE desktop"
+        }
     }
 
     fun toJson(): JSONObject = JSONObject()
         .put("profile", profile).put("locale", locale).put("cjkFonts", cjkFonts)
         .put("ime", ime).put("graphics", graphics).put("themes", themes)
-        .put("apps", JSONArray(apps.sorted()))
+        .put("apps", JSONArray(apps.sorted())).put("displayBackend", displayBackend)
 
     companion object {
         val LOCALES = setOf("en_US", "ja_JP", "zh_CN", "zh_TW", "ko_KR", "ru_RU", "pt_BR", "de_DE", "fr_FR", "es_ES")
-        val APPS = setOf("firefox", "chromium", "chrome", "files", "editor", "office")
+        val APPS = setOf("firefox", "chromium", "chrome", "files", "editor", "office", "steam")
 
         fun fromJson(json: JSONObject?): LinuxSetupOptions {
             if (json == null) return LinuxSetupOptions()
@@ -46,6 +51,7 @@ internal data class LinuxSetupOptions(
                 json.optBoolean("cjkFonts", true), json.optString("ime", "none"),
                 json.optBoolean("graphics", false), json.optBoolean("themes", false),
                 (0 until apps.length()).map { apps.getString(it) }.toSet(),
+                json.optString("displayBackend", "xvfb"),
             )
         }
     }
@@ -57,11 +63,15 @@ internal object LinuxSetupPlan {
 
     fun steps(distro: LinuxDistro, options: LinuxSetupOptions): List<Step> {
         options.validate(distro)
+        if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) return runtimeSteps(options)
         val apt = distro.family == LinuxPackageFamily.APT
         fun install(packages: List<String>): String = if (packages.isEmpty()) "" else if (apt)
             "export DEBIAN_FRONTEND=noninteractive\napt-get install -y --no-install-recommends ${packages.joinToString(" ")}\n"
         else "pacman -S --noconfirm --needed ${packages.joinToString(" ")}\n"
         return buildList {
+            if (options.displayBackend == "wayland") add(Step("graphics", "set -e\n" + install(if (apt)
+                listOf("xwayland", "libwayland-client0", "libwayland-egl1", "qtwayland5", "qt6-wayland", "libegl-mesa0", "libgl1-mesa-dri")
+                else listOf("xorg-xwayland", "wayland", "qt5-wayland", "qt6-wayland", "mesa"))))
             val fonts = if (apt) mutableListOf("locales", "fontconfig", "fonts-noto-core", "fonts-noto-color-emoji")
                 else mutableListOf("fontconfig", "noto-fonts", "noto-fonts-emoji")
             if (options.cjkFonts || options.ime != "none") fonts += if (apt) "fonts-noto-cjk" else "noto-fonts-cjk"
@@ -106,6 +116,10 @@ internal object LinuxSetupPlan {
                 else listOf("mesa", "mesa-utils"))))
             // Turnip for the device's Adreno GPU through Android's KGSL driver; OpenGL runs on it through Zink.
             if (options.graphics && apt) add(Step("gpu", LinuxCatalog.turnipScript()))
+            // DroidDeck's runtime brings Turnip for KGSL in its own Mesa.
+            if (options.graphics && distro.id == LinuxCatalog.DROIDDECK_RUNTIME) add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
+            // DroidDeck's desktop (Plasma, KWin nested in Dextop's compositor) for its window manager choice.
+            if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) add(Step("droiddeck-desktop", LinuxSteam.droidDeckDesktopScript()))
 
             val packages = buildList {
                 if ("firefox" in options.apps) add(if (apt) "firefox-esr" else "firefox")
@@ -127,8 +141,30 @@ internal object LinuxSetupPlan {
                 apt-get install -y --no-install-recommends "${'$'}package"
             """.trimIndent() + "\n" else ""))
 
+            // Valve's ARM64 Steam client, fetched from Valve's CDN as DroidDeck does.
+            if ("steam" in options.apps) add(Step("steam", LinuxSteam.installScript(apt, install = ::install)))
+
             add(Step("integration", integration(options, apt)))
         }
+    }
+
+    /**
+     * DroidDeck's runtime and desktop package are complete and their builds
+     * (Mesa, gamescope, KWin) are not in pacman's database, so no step
+     * installs packages: Dextop only registers the runtime's Turnip, adds the
+     * launcher of DroidDeck's desktop and, when asked, fetches Steam with the
+     * runtime's own droiddeck-steam-install.
+     */
+    private fun runtimeSteps(options: LinuxSetupOptions): List<Step> = buildList {
+        add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
+        add(Step("droiddeck-desktop", LinuxSteam.droidDeckDesktopScript()))
+        if ("steam" in options.apps) add(Step("steam", LinuxSteam.installScript(apt = false, steamMode = false) { "" }))
+        add(Step("integration", """
+            set -e
+            mkdir -p /etc/dextop
+            printf '%s\n' 'export LANG=${options.locale}.UTF-8' >/etc/dextop/session.env
+            printf '%s\n' wayland >${LinuxSessionCompatibility.WSI_CONFIG}
+        """.trimIndent() + "\n"))
     }
 
     private fun integration(options: LinuxSetupOptions, apt: Boolean): String {
@@ -142,6 +178,8 @@ internal object LinuxSetupPlan {
         }
         val files = buildString {
             appendLine("set -e\nmkdir -p /etc/dextop /etc/default /usr/local/bin /root/.config/fcitx5 /root/.local/share/applications")
+            appendLine("printf '%s\\n' xvfb >${LinuxSessionCompatibility.WSI_CONFIG}")
+            appendLine("printf '%s\\n' ${options.displayBackend} >/etc/dextop/display-backend")
             appendLine("cat >/etc/dextop/session.env <<'DEXTOP_ENV'")
             append(environment)
             appendLine("DEXTOP_ENV")

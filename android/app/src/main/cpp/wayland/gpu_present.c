@@ -1,6 +1,11 @@
 #include "gpu_present.h"
 #include <adrenotools/driver.h>
 #include <android/log.h>
+#include <android/hardware_buffer.h>
+#include <android/surface_control.h>
+#include <pthread.h>
+#include <poll.h>
+#include <stdatomic.h>
 #include <dlfcn.h>
 #include <stdlib.h>
 #include <string.h>
@@ -11,7 +16,7 @@
 #define INSTANCE_FUNCTIONS(X) \
     X(DestroyInstance) X(EnumeratePhysicalDevices) X(GetPhysicalDeviceProperties) \
     X(GetPhysicalDeviceQueueFamilyProperties) X(EnumerateDeviceExtensionProperties) \
-    X(GetPhysicalDeviceFormatProperties) X(GetPhysicalDeviceFormatProperties2) X(GetPhysicalDeviceMemoryProperties) X(CreateDevice) X(GetDeviceProcAddr) \
+    X(GetPhysicalDeviceFormatProperties) X(GetPhysicalDeviceFormatProperties2) X(GetPhysicalDeviceImageFormatProperties2) X(GetPhysicalDeviceMemoryProperties) X(CreateDevice) X(GetDeviceProcAddr) \
     X(CreateAndroidSurfaceKHR) X(DestroySurfaceKHR) X(GetPhysicalDeviceSurfaceSupportKHR) \
     X(GetPhysicalDeviceSurfaceCapabilitiesKHR) X(GetPhysicalDeviceSurfaceFormatsKHR)
 #define DEVICE_FUNCTIONS(X) \
@@ -39,6 +44,7 @@ struct linux_gpu {
     VkQueue queue;
     uint32_t family;
     bool failed;
+    PFN_vkGetAndroidHardwareBufferPropertiesANDROID GetAndroidHardwareBufferPropertiesANDROID;
     VkSampler sampler;
     VkDescriptorSetLayout descriptors;
     VkDescriptorPool descriptor_pool;
@@ -59,8 +65,22 @@ struct linux_gpu_image {
     unsigned refs;
     bool external, opaque;
 };
+#define DECK_OUTPUT_SLOTS 3
+struct deck_output {
+    pthread_mutex_t lock;
+    atomic_uint refs;
+    ASurfaceControl *control;
+    AHardwareBuffer *buffers[DECK_OUTPUT_SLOTS];
+    bool busy[DECK_OUTPUT_SLOTS];
+    int release_fds[DECK_OUTPUT_SLOTS];
+    int current;
+};
 struct linux_gpu_window {
     struct linux_gpu *gpu;
+    struct deck_output *deck;
+    bool deck_can_blit, deck_blit_logged;
+    VkDeviceMemory deck_memory[DECK_OUTPUT_SLOTS];
+    bool deck_initialized[DECK_OUTPUT_SLOTS];
     ANativeWindow *window;
     VkSurfaceKHR surface;
     VkSwapchainKHR swapchain;
@@ -137,8 +157,13 @@ struct linux_gpu *linux_gpu_create(const char *driver_dir, const char *library, 
             supported = false;
         }
     }
+    bool ahb_supported = extension(properties, n, VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME);
     free(properties);
     if (!supported) goto fail;
+    const char *enabled[16];
+    unsigned enabled_count = sizeof(required) / sizeof(required[0]);
+    memcpy(enabled, required, sizeof(required));
+    if (ahb_supported) enabled[enabled_count++] = VK_ANDROID_EXTERNAL_MEMORY_ANDROID_HARDWARE_BUFFER_EXTENSION_NAME;
     g->GetPhysicalDeviceQueueFamilyProperties(g->physical, &n, NULL);
     VkQueueFamilyProperties *families = calloc(n, sizeof(*families));
     if (!families) goto fail;
@@ -152,12 +177,14 @@ struct linux_gpu *linux_gpu_create(const char *driver_dir, const char *library, 
         .queueFamilyIndex = g->family, .queueCount = 1, .pQueuePriorities = &priority};
     VkDeviceCreateInfo device = {.sType = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .queueCreateInfoCount = 1, .pQueueCreateInfos = &queue,
-        .enabledExtensionCount = sizeof(required) / sizeof(required[0]), .ppEnabledExtensionNames = required};
+        .enabledExtensionCount = enabled_count, .ppEnabledExtensionNames = enabled};
     r = g->CreateDevice(g->physical, &device, NULL, &g->device);
     if (r != VK_SUCCESS) { error("create device", r); goto fail; }
 #define LOAD(n) g->n = (PFN_vk##n)g->GetDeviceProcAddr(g->device, "vk" #n); if (!g->n) goto fail;
     DEVICE_FUNCTIONS(LOAD)
 #undef LOAD
+    if (ahb_supported) g->GetAndroidHardwareBufferPropertiesANDROID =
+        (PFN_vkGetAndroidHardwareBufferPropertiesANDROID)g->GetDeviceProcAddr(g->device, "vkGetAndroidHardwareBufferPropertiesANDROID");
     g->GetDeviceQueue(g->device, g->family, 0, &g->queue);
     VkPhysicalDeviceProperties name;
     g->GetPhysicalDeviceProperties(g->physical, &name);
@@ -180,9 +207,50 @@ void linux_gpu_destroy(struct linux_gpu *g) {
     free(g);
 }
 
+unsigned linux_gpu_modifiers(struct linux_gpu *g, uint32_t fourcc, uint64_t *out, unsigned capacity) {
+    if (!g || g->failed || !out || !capacity) return 0;
+    VkFormat format;
+    switch (fourcc) {
+        case 0x34325241: case 0x34325258: format = VK_FORMAT_B8G8R8A8_UNORM; break;
+        case 0x34324241: case 0x34324258: format = VK_FORMAT_R8G8B8A8_UNORM; break;
+        default: return 0;
+    }
+    VkDrmFormatModifierPropertiesListEXT list = {.sType = VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT};
+    VkFormatProperties2 fp = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = &list};
+    g->GetPhysicalDeviceFormatProperties2(g->physical, format, &fp);
+    if (!list.drmFormatModifierCount) return 0;
+    VkDrmFormatModifierPropertiesEXT *mods = calloc(list.drmFormatModifierCount, sizeof(*mods));
+    if (!mods) return 0;
+    list.pDrmFormatModifierProperties = mods;
+    g->GetPhysicalDeviceFormatProperties2(g->physical, format, &fp);
+    unsigned n = 0;
+    for (uint32_t i = 0; i < list.drmFormatModifierCount && n < capacity; i++) {
+        uint64_t m = mods[i].drmFormatModifier;
+        VkFormatFeatureFlags needed = VK_FORMAT_FEATURE_SAMPLED_IMAGE_BIT | VK_FORMAT_FEATURE_BLIT_SRC_BIT;
+        if ((m != 0 && m != UINT64_C(0x0500000000000001)) || mods[i].drmFormatModifierPlaneCount != 1 ||
+            (mods[i].drmFormatModifierTilingFeatures & needed) != needed) continue;
+        VkPhysicalDeviceExternalImageFormatInfo external = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTERNAL_IMAGE_FORMAT_INFO,
+            .handleType = VK_EXTERNAL_MEMORY_HANDLE_TYPE_DMA_BUF_BIT_EXT};
+        VkPhysicalDeviceImageDrmFormatModifierInfoEXT modifier = {
+            .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_DRM_FORMAT_MODIFIER_INFO_EXT, .pNext = &external,
+            .drmFormatModifier = m, .sharingMode = VK_SHARING_MODE_EXCLUSIVE};
+        VkPhysicalDeviceImageFormatInfo2 info = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_IMAGE_FORMAT_INFO_2,
+            .pNext = &modifier, .format = format, .type = VK_IMAGE_TYPE_2D,
+            .tiling = VK_IMAGE_TILING_DRM_FORMAT_MODIFIER_EXT,
+            .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_SAMPLED_BIT};
+        VkExternalImageFormatProperties ext = {.sType = VK_STRUCTURE_TYPE_EXTERNAL_IMAGE_FORMAT_PROPERTIES};
+        VkImageFormatProperties2 props = {.sType = VK_STRUCTURE_TYPE_IMAGE_FORMAT_PROPERTIES_2, .pNext = &ext};
+        if (g->GetPhysicalDeviceImageFormatProperties2(g->physical, &info, &props) == VK_SUCCESS &&
+            (ext.externalMemoryProperties.externalMemoryFeatures & VK_EXTERNAL_MEMORY_FEATURE_IMPORTABLE_BIT)) out[n++] = m;
+    }
+    free(mods);
+    return n;
+}
+
 struct linux_gpu_image *linux_gpu_import(struct linux_gpu *g, int fd, uint32_t fourcc,
     uint64_t modifier, int width, int height, uint32_t stride, uint32_t offset) {
-    if (!g || g->failed || fd < 0 || modifier != 0 || width <= 0 || height <= 0 ||
+    if (!g || g->failed || fd < 0 || width <= 0 || height <= 0 ||
         width > 16384 || height > 16384 || stride < (uint64_t)width * 4) return NULL;
     VkFormat format;
     switch (fourcc) {
@@ -192,7 +260,8 @@ struct linux_gpu_image *linux_gpu_import(struct linux_gpu *g, int fd, uint32_t f
     }
     struct stat stat;
     uint64_t required_bytes = (uint64_t)offset + (uint64_t)stride * (height - 1) + (uint64_t)width * 4;
-    if (fstat(fd, &stat) || stat.st_size <= 0 || required_bytes > (uint64_t)stat.st_size) return NULL;
+    if (fstat(fd, &stat) || stat.st_size <= 0 || offset >= (uint64_t)stat.st_size ||
+        (modifier == 0 && required_bytes > (uint64_t)stat.st_size)) return NULL;
     VkDrmFormatModifierPropertiesListEXT list = {.sType = VK_STRUCTURE_TYPE_DRM_FORMAT_MODIFIER_PROPERTIES_LIST_EXT};
     VkFormatProperties2 format_properties = {.sType = VK_STRUCTURE_TYPE_FORMAT_PROPERTIES_2, .pNext = &list};
     g->GetPhysicalDeviceFormatProperties2(g->physical, format, &format_properties);
@@ -267,15 +336,20 @@ void linux_gpu_image_destroy(struct linux_gpu_image *image) {
 
 void linux_gpu_image_ref(struct linux_gpu_image *image) { if (image) image->refs++; }
 
-struct linux_gpu_window *linux_gpu_window_create(struct linux_gpu *g, ANativeWindow *native) {
+#include "deck_output.inc"
+
+struct linux_gpu_window *linux_gpu_window_create(struct linux_gpu *g, ANativeWindow *native, bool deck_direct) {
     if (!g || g->failed || !native) return NULL;
     struct linux_gpu_window *w = calloc(1, sizeof(*w));
     if (!w) return NULL;
     w->gpu = g; w->window = native;
     ANativeWindow_acquire(native);
+    VkResult r = VK_SUCCESS;
+    if (deck_direct && deck_output_init(w)) goto resources;
+    if (deck_direct) __android_log_print(ANDROID_LOG_WARN, "DextopLinuxGpu", "Deck AHB output unavailable; retaining swapchain output");
     VkAndroidSurfaceCreateInfoKHR info = {.sType = VK_STRUCTURE_TYPE_ANDROID_SURFACE_CREATE_INFO_KHR,
         .window = native};
-    VkResult r = g->CreateAndroidSurfaceKHR(g->instance, &info, NULL, &w->surface);
+    r = g->CreateAndroidSurfaceKHR(g->instance, &info, NULL, &w->surface);
     if (r != VK_SUCCESS) goto fail;
     VkBool32 present = VK_FALSE;
     if (g->GetPhysicalDeviceSurfaceSupportKHR(g->physical, g->family, w->surface, &present) != VK_SUCCESS || !present) goto fail;
@@ -304,7 +378,8 @@ struct linux_gpu_window *linux_gpu_window_create(struct linux_gpu *g, ANativeWin
     if (!w->extent.width || !w->extent.height) goto fail;
     uint32_t n = caps.minImageCount + 1;
     if (caps.maxImageCount && n > caps.maxImageCount) n = caps.maxImageCount;
-    VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
+    VkCompositeAlphaFlagBitsKHR alpha = VK_COMPOSITE_ALPHA_PRE_MULTIPLIED_BIT_KHR;
+    if (!(caps.supportedCompositeAlpha & alpha)) alpha = VK_COMPOSITE_ALPHA_INHERIT_BIT_KHR;
     if (!(caps.supportedCompositeAlpha & alpha)) alpha = (VkCompositeAlphaFlagBitsKHR)(caps.supportedCompositeAlpha & -caps.supportedCompositeAlpha);
     VkSwapchainCreateInfoKHR swap = {.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .surface = w->surface, .minImageCount = n, .imageFormat = format.format,
@@ -318,8 +393,9 @@ struct linux_gpu_window *linux_gpu_window_create(struct linux_gpu *g, ANativeWin
     w->images = calloc(w->image_count, sizeof(*w->images));
     w->rendered = calloc(w->image_count, sizeof(*w->rendered));
     if (!w->images || !w->rendered || g->GetSwapchainImagesKHR(g->device, w->swapchain, &w->image_count, w->images) != VK_SUCCESS) goto fail;
+resources:;
     VkSemaphoreCreateInfo sem = {.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    for (uint32_t i = 0; i < w->image_count; i++)
+    for (uint32_t i = 0; !w->deck && i < w->image_count; i++)
         if (g->CreateSemaphore(g->device, &sem, NULL, &w->rendered[i]) != VK_SUCCESS) goto fail;
     if (g->CreateSemaphore(g->device, &sem, NULL, &w->acquired) != VK_SUCCESS ||
         g->CreateSemaphore(g->device, &sem, NULL, &w->producer) != VK_SUCCESS) goto fail;
@@ -355,12 +431,14 @@ void linux_gpu_window_destroy(struct linux_gpu_window *w) {
     if (w->release) g->DestroySemaphore(g->device, w->release, NULL);
     if (w->rendered) for (uint32_t i = 0; i < w->image_count; i++)
         if (w->rendered[i]) g->DestroySemaphore(g->device, w->rendered[i], NULL);
+    deck_output_destroy(w);
     if (w->swapchain) g->DestroySwapchainKHR(g->device, w->swapchain, NULL);
     if (w->surface) g->DestroySurfaceKHR(g->instance, w->surface, NULL);
     ANativeWindow_release(w->window);
     free(w->images); free(w->rendered); free(w);
 }
 
+#include "deck_blit.inc"
 #include "gpu_scene.inc"
 
 int linux_gpu_present(struct linux_gpu_window *w, struct linux_gpu_image *image,

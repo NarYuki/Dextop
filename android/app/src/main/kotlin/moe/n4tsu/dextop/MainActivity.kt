@@ -7,6 +7,7 @@ import android.content.pm.ActivityInfo
 import android.content.pm.PackageManager
 import android.hardware.display.DisplayManager
 import android.net.Uri
+import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.Build
@@ -17,6 +18,7 @@ import android.util.DisplayMetrics
 import android.view.WindowInsets
 import android.view.WindowInsetsController
 import io.flutter.embedding.android.FlutterActivity
+import io.flutter.embedding.android.FlutterView
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import kotlinx.coroutines.CoroutineScope
@@ -146,6 +148,27 @@ open class MainActivity : FlutterActivity() {
         }
     }
 
+    /**
+     * Writes the device profile's window manager once, before Flutter reads its
+     * preferences, so setup starts on it. A choice the user made is never changed.
+     */
+    private fun applyDefaultWindowManager() {
+        val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+        if (preferences.contains("flutter.window_manager")) return
+        val value = DesktopEnvironmentRegistry.current().defaultWindowManager
+        if (value != "system") preferences.edit().putString("flutter.window_manager", value).apply()
+    }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        applyDefaultWindowManager()
+        super.onCreate(savedInstanceState)
+        // Flutter draws its own focus indicators. Android's legacy theme otherwise
+        // outlines the focused, full-screen FlutterView in yellow-green.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            findViewById<FlutterView>(FLUTTER_VIEW_ID)?.setDefaultFocusHighlightEnabled(false)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
         applySessionSystemBars()
@@ -238,73 +261,16 @@ open class MainActivity : FlutterActivity() {
             embeddedRestoreInProgress ||
             !storedPairing
         ) return
-        var wirelessDebuggingEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
-            runCatching {
-                Settings.Global.getInt(contentResolver, "adb_wifi_enabled", 0) == 1
-            }.getOrDefault(false)
-        if (!wirelessDebuggingEnabled && hasSecureSettingsPermission()) {
-            wirelessDebuggingEnabled = runCatching {
-                Settings.Global.putInt(contentResolver, "adb_wifi_enabled", 1)
-            }.getOrDefault(false)
-            if (wirelessDebuggingEnabled) {
-                OperationLog.i(
-                    this,
-                    "EmbeddedPrivilege",
-                    "wireless debugging enabled for stored pairing",
-                )
-            }
-        }
-        if (!wirelessDebuggingEnabled) return
-
+        // One reconnection for the app, Android Auto and a runtime that died in the background.
+        // It switches Wireless debugging back on and keeps retrying; only a rejected pairing
+        // asks the user to set the access up again.
         embeddedRestoreInProgress = true
-        embeddedRestoreNeedsSetup = false
         OperationLog.i(this, "EmbeddedPrivilege", "restoring stored pairing reason=$reason")
-        embeddedPrivilegeScope.launch {
-            var restored = false
-            var lastDetail: String? = null
-            repeat(4) { attempt ->
-                if (restored) return@repeat
-                val start = runCatching {
-                    DistributionPrivilegeBootstrap.connectAndStart(applicationContext)
-                }.onFailure { error ->
-                    lastDetail = error.message ?: error.javaClass.simpleName
-                }.getOrNull()
-                if (start?.started == true) {
-                    restored = true
-                    DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
-                    rememberPrivilegeMode("embedded")
-                    OperationLog.i(
-                        this@MainActivity,
-                        "EmbeddedPrivilege",
-                        "stored pairing restored endpoint=${start.endpoint ?: "unknown"} attempt=${attempt + 1}",
-                    )
-                    notifyFlutterPrivilegeStatus()
-                    return@repeat
-                }
-                lastDetail = start?.detail ?: lastDetail
-                if (!restored && attempt < 3) delay(1_000)
-            }
-            if (!restored) {
-                embeddedRestoreNeedsSetup = true
-                // Only an advertised ADB connect endpoint that rejects every
-                // saved-key attempt is evidence that the pairing was revoked.
-                // A missing endpoint is normal while Wireless debugging starts
-                // and must not trigger a needless re-pairing notification.
-                val pairingRevoked = lastDetail
-                    ?.contains("rejected all local connection candidates", ignoreCase = true) == true
-                if (pairingRevoked) {
-                    DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
-                } else {
-                    DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
-                }
-                OperationLog.w(
-                    this@MainActivity,
-                    "EmbeddedPrivilege",
-                    "stored pairing could not reconnect after retries revoked=$pairingRevoked detail=${lastDetail ?: "unknown"}",
-                )
-                notifyFlutterPrivilegeStatus()
-            }
+        moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.ensure(this, reason) { outcome ->
             embeddedRestoreInProgress = false
+            embeddedRestoreNeedsSetup = outcome == moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.Outcome.REJECTED
+            if (outcome == moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.Outcome.CONNECTED) rememberPrivilegeMode("embedded")
+            notifyFlutterPrivilegeStatus()
         }
     }
 
@@ -874,6 +840,7 @@ open class MainActivity : FlutterActivity() {
             ,"sdk" to Build.VERSION.SDK_INT
             ,"appVersion" to packageInfo.versionName.orEmpty()
             ,"desktopMode" to DesktopEnvironmentRegistry.current().displayName
+            ,"defaultWindowManager" to DesktopEnvironmentRegistry.current().defaultWindowManager
         )
         return status
     }

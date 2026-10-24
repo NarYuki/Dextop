@@ -1,0 +1,22 @@
+{
+  "bundleSha256": "4a490b9abe9e4cd62d5dd3e7f7cf9ed62a4629548ea12cd16e92786093c792b8",
+  "files": {
+    "NOTICE.md": "f03a220fd48a9fa6dd452e516cbfe276fa68ae2ed4c256c6ac356d88d65a0c8d",
+    "bin/gamescope": "f8a47df448293849597318aaadacb0c78064d3b8a674847a3147a15e0072a8ce",
+    "lib/libgcc_s.so.1": "ac598673a4bf67c0295b6609e46b1fafd0d4adf3f80a513d61ac49ecff772e48",
+    "lib/libstdc++.so.6": "abdf011833740a6f0ca1654876f18d9a5911a9ad08806a38d015e60e3e516ab8",
+    "lib/libwayland-client.so.0": "ccae8b4a09ec07ce893cf276697bab766d7e406efe4c42e0149680c755b96437",
+    "lib/libwayland-cursor.so.0": "d172c3875c6c385870a110703934ea080bdd472e8959117c44a33c2e53ed50e1",
+    "lib/libwayland-egl.so.1": "40f8c72ba7675193d014946dcee8da6f33b904667c22e1fefe8ca3cfc0d3dc4f",
+    "lib/libwayland-server.so.0": "c02e55b3b3e852dd7fbf0478cd5cbfc7da276e697478cc0180b4b3795beff5c8",
+    "licenses/GAMESCOPE-LICENSE": "907dd845489cd09c25f18b6819f476805285e2adcad8c099e3506260023e9e5f",
+    "licenses/GPL-3.0": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "licenses/libstdc++/RUNTIME.LIBRARY.EXCEPTION": "9d6b43ce4d8de0c878bf16b54d8e7a10d9bd42b75178153e3af6a815bdc90f74",
+    "licenses/wayland/COPYING": "6eefcb023622a463168a5c20add95fd24a38c7482622a9254a23b99b7c153061"
+  },
+  "sources": {
+    "gamescope": "07b69944a1ebf2741d4a867afa6327dcc63ec458f432a8f7483089dce2197010",
+    "runtime": "d3240c1531531615b0dd06b6ad56e92db9015a8641eb18c3a613835ae45992e7"
+  },
+  "version": "gamescope-3.16.29-p12"
+}

@@ -159,7 +159,7 @@ _コミュニティから提出され、レビューされた動作報告_
 
 ## 動作要件
 
-- Android 10以降。大半の端末では実用的なデスクトップ環境にAndroid 14以降が必要です。
+- Android 13以降。大半の端末では実用的なデスクトップ環境にAndroid 14以降が必要です。
 - 現行リリース：**Dextop 1.7.0**
 - Android Auto Companion：**Dextop・Parking 2.0.0**／**Dextop・Driving 2.0.0**
 

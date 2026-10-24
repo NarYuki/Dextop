@@ -1,0 +1,43 @@
+name: material_3_expressive
+description: >-
+  A faithful Flutter implementation of the Material 3 Expressive component set,
+  exposed as direct M3E component widgets.
+version: 1.2.0
+homepage: https://github.com/paadevelopments/material_3_expressive
+repository: https://github.com/paadevelopments/material_3_expressive
+issue_tracker: https://github.com/paadevelopments/material_3_expressive/issues
+
+topics:
+  - ui
+  - material-design
+  - widgets
+  - components
+  - material-3-expressive
+
+platforms:
+  android:
+  ios:
+  linux:
+  macos:
+  web:
+  windows:
+
+environment:
+  sdk: ^3.13.0
+  flutter: '>=3.47.0'
+
+dependencies:
+  collection: ^1.19.1
+  dynamic_color: ^2.1.0
+  flutter:
+    sdk: flutter
+  material_new_shapes: ^1.0.0
+  material_ui: ^1.8.0
+  motor: ^1.1.0
+
+dev_dependencies:
+  custom_lint: ^0.8.1
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+  material_color_utilities: ^0.13.0

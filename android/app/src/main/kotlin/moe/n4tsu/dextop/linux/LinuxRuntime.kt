@@ -25,32 +25,72 @@ internal object LinuxRuntime {
 
     internal fun readable(text: String): String = text.filter { it == '\n' || it == '\t' || !it.isISOControl() }
 
-    private data class Entry(val pid: Int, val parent: Int, val command: List<String>)
-    fun forceStop(id: String): Int {
-        val root = LinuxPaths.rootfs(id).absolutePath
-        val entries = File("/proc").listFiles().orEmpty().mapNotNull { dir ->
-            val pid = dir.name.toIntOrNull() ?: return@mapNotNull null
-            runCatching {
-                val status = File(dir, "status").readText()
-                val uid = Regex("(?m)^Uid:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toInt()
-                if (uid != Os.getuid()) return@mapNotNull null
-                val parent = Regex("(?m)^PPid:\\s+(\\d+)").find(status)!!.groupValues[1].toInt()
-                Entry(pid, parent, File(dir, "cmdline").readText().split('\u0000').filter { it.isNotEmpty() })
-            }.getOrNull()
-        }
-        val roots = entries.filter { it.command.firstOrNull()?.substringAfterLast('/') == "libproot.so" && root in it.command }
-        val targets = roots.map { it.pid }.toMutableSet()
-        val displays = roots.flatMap { entry ->
-            Regex("(?:D=|DISPLAY=:)(\\d+)").findAll(entry.command.joinToString(" ")).map { it.groupValues[1] }.toList()
-        }.toSet()
-        entries.filter { entry -> entry.command.firstOrNull()?.substringAfterLast('/') == "dbus-daemon" &&
-            displays.any { "--address=unix:abstract=/tmp/dextop-dbus-$it" in entry.command } }.forEach { targets += it.pid }
+    internal data class Entry(val pid: Int, val parent: Int, val command: List<String>, val start: String = "", val tracer: Int = 0)
+
+    private fun snapshot(): List<Entry> = File("/proc").listFiles().orEmpty().mapNotNull { dir ->
+        val pid = dir.name.toIntOrNull() ?: return@mapNotNull null
+        runCatching {
+            val status = File(dir, "status").readText()
+            if (Regex("(?m)^Uid:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toInt() != Os.getuid()) return@mapNotNull null
+            val parent = Regex("(?m)^PPid:\\s+(\\d+)").find(status)!!.groupValues[1].toInt()
+            Entry(pid, parent, File(dir, "cmdline").readText().split('\u0000').filter { it.isNotEmpty() },
+                File(dir, "stat").readText().substringAfterLast(") ").split(' ')[19],
+                Regex("(?m)^TracerPid:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toInt() ?: 0)
+        }.getOrNull()
+    }
+
+    internal fun rootOf(entry: Entry): String? {
+        if (entry.command.firstOrNull()?.substringAfterLast('/') != "libproot.so") return null
+        val index = entry.command.indexOf("-r")
+        val root = entry.command.getOrNull(index + 1).takeIf { index >= 0 } ?: return null
+        val base = LinuxPaths.containers.absolutePath + "/"
+        return root.takeIf { it.startsWith(base) && it.removePrefix(base).matches(Regex("c[a-zA-Z0-9]+/rootfs")) }
+    }
+
+    internal fun descendants(entries: List<Entry>, roots: Set<Int>): List<Entry> {
+        val selected = roots.toMutableSet()
+        val ordered = entries.filter { it.pid in roots }.toMutableList()
         do {
-            val added = entries.filter { it.parent in targets && it.pid !in targets }.map { it.pid }
-            targets.addAll(added)
+            val added = entries.filter { (it.parent in selected || it.tracer in selected) && it.pid !in selected }
+            ordered.addAll(added); selected.addAll(added.map { it.pid })
         } while (added.isNotEmpty())
-        targets.forEach { runCatching { Os.kill(it, OsConstants.SIGKILL) } }
-        return targets.size
+        return ordered.asReversed() // terminate tracees before their tracer
+    }
+
+    private fun kill(entries: List<Entry>): Int = entries.count { entry ->
+        runCatching {
+            // A snapshot must never send a signal to a subsequently reused PID.
+            val now = File("/proc/${entry.pid}/stat").readText().substringAfterLast(") ").split(' ')[19]
+            if (now != entry.start) false else { Os.kill(entry.pid, OsConstants.SIGKILL); true }
+        }.getOrDefault(false)
+    }
+
+    private fun stopMatching(root: String?): Int {
+        val entries = snapshot()
+        val roots = entries.filter { rootOf(it)?.let { path -> root == null || path == root } == true }
+        val namespaces = roots.mapNotNull { rootOf(it)?.removeSuffix("/rootfs")?.substringAfterLast('/') }
+            .map { LinuxProot.socketNamespace(it) }.toSet()
+        // Forked session buses may already have been reparented to init. Match the
+        // container namespace, rather than a display number shared with another container.
+        val buses = entries.filter { it.command.firstOrNull()?.substringAfterLast('/') == "dbus-daemon" &&
+            runCatching { File("/proc/${it.pid}/environ").readText().split('\u0000')
+                .any { value -> value.removePrefix("DEXTOP_SOCKET_NS=") in namespaces && value.startsWith("DEXTOP_SOCKET_NS=") } }.getOrDefault(false) }
+        return kill(descendants(entries, (roots + buses).map { it.pid }.toSet()))
+    }
+
+    fun forceStop(id: String): Int = stopMatching(LinuxPaths.rootfs(id).absolutePath)
+
+    /** Includes deleted containers, which no longer appear in containerIds(). */
+    fun forceStopAll(): Int = stopMatching(null)
+
+    fun terminate(process: Process) {
+        if (!process.isAlive) return
+        val entries = snapshot()
+        // Android's Process API does not expose pid(); its process description does.
+        val pid = Regex("pid=(\\d+)").find(process.toString())?.groupValues?.get(1)?.toIntOrNull()
+        if (pid != null && process.isAlive) kill(descendants(entries, setOf(pid)))
+        else android.util.Log.w("DextopLinux", "Cannot identify process tree: $process")
+        if (process.isAlive) process.destroyForcibly()
     }
 
     fun freeDisplay(used: Set<Int>, sockets: String = File("/proc/net/unix").readText()): Int {

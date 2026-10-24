@@ -5657,6 +5657,18 @@ abstract class AppLocalizations {
   /// **'LibreOffice — 文書・表計算・プレゼンテーション。ダウンロード量と必要な空き容量が増えます。'**
   String get linuxSetupOfficeDetail;
 
+  /// No description provided for @linuxSetupSteamDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'Valve の Steam（ARM64 版）。初回に Valve から取得します。Proton と FEX は Steam が入れます。'**
+  String get linuxSetupSteamDetail;
+
+  /// No description provided for @linuxSetupDroidDeckNote.
+  ///
+  /// In ja, this message translates to:
+  /// **'DroidDeck ランタイムは KDE Plasma デスクトップ（KWin・Xwayland）とフォント・入力メソッドを内蔵しているため、IceWM・言語・入力の手順は省きます。'**
+  String get linuxSetupDroidDeckNote;
+
   /// No description provided for @linuxSetupStorage.
   ///
   /// In ja, this message translates to:
@@ -5825,6 +5837,96 @@ abstract class AppLocalizations {
   /// **'変更は、これから起動するアプリに反映されます。開いているデスクトップは開き直してください。'**
   String get linuxGpuApplyNote;
 
+  /// No description provided for @linuxContainerSettings.
+  ///
+  /// In ja, this message translates to:
+  /// **'このコンテナの設定'**
+  String get linuxContainerSettings;
+
+  /// No description provided for @linuxGpuFollowDefault.
+  ///
+  /// In ja, this message translates to:
+  /// **'既定に従う'**
+  String get linuxGpuFollowDefault;
+
+  /// No description provided for @linuxGpuFollowDefaultDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Linux 設定の既定のグラフィックスを使います'**
+  String get linuxGpuFollowDefaultDescription;
+
+  /// No description provided for @linuxDefaultSection.
+  ///
+  /// In ja, this message translates to:
+  /// **'既定'**
+  String get linuxDefaultSection;
+
+  /// No description provided for @linuxDefaultContainer.
+  ///
+  /// In ja, this message translates to:
+  /// **'既定のコンテナ'**
+  String get linuxDefaultContainer;
+
+  /// No description provided for @linuxDefaultContainerDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Plasma のランチャーにアプリを表示するコンテナ'**
+  String get linuxDefaultContainerDescription;
+
+  /// No description provided for @linuxDefaultContainerAll.
+  ///
+  /// In ja, this message translates to:
+  /// **'すべてのコンテナ'**
+  String get linuxDefaultContainerAll;
+
+  /// No description provided for @linuxDefaultBadge.
+  ///
+  /// In ja, this message translates to:
+  /// **'既定'**
+  String get linuxDefaultBadge;
+
+  /// No description provided for @linuxGpuDefaultSection.
+  ///
+  /// In ja, this message translates to:
+  /// **'既定のグラフィックスアクセラレーション'**
+  String get linuxGpuDefaultSection;
+
+  /// No description provided for @linuxGpuDefaultNote.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンテナごとの設定で変えていないコンテナに使われます。'**
+  String get linuxGpuDefaultNote;
+
+  /// No description provided for @linuxWmSection.
+  ///
+  /// In ja, this message translates to:
+  /// **'ウィンドウマネージャ'**
+  String get linuxWmSection;
+
+  /// No description provided for @linuxWmDefault.
+  ///
+  /// In ja, this message translates to:
+  /// **'既定'**
+  String get linuxWmDefault;
+
+  /// No description provided for @linuxWmDefaultDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'コンテナの種類に合わせます（DroidDeck ランタイムは DroidDeck、ほかは Dextop）'**
+  String get linuxWmDefaultDescription;
+
+  /// No description provided for @linuxWmDextopDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'Xvfb と Dextop のウィンドウ管理。アプリごとのウィンドウと、IceWM のデスクトップ'**
+  String get linuxWmDextopDescription;
+
+  /// No description provided for @linuxWmDroidDeckDescription.
+  ///
+  /// In ja, this message translates to:
+  /// **'DroidDeck と同じ構成。Wayland のコンポジタに KDE Plasma（KWin）を入れ子で動かし、X アプリは Xwayland、GPU アプリは gamescope。DroidDeck ランタイムが必要です'**
+  String get linuxWmDroidDeckDescription;
+
   /// No description provided for @linuxGpuRunning.
   ///
   /// In ja, this message translates to:
@@ -5873,23 +5975,131 @@ abstract class AppLocalizations {
   /// **'GPU ドライバー（Turnip）をビルド中'**
   String get linuxSetupPhaseGpu;
 
+  /// No description provided for @linuxSetupDisplayBackend.
+  ///
+  /// In ja, this message translates to:
+  /// **'表示方式'**
+  String get linuxSetupDisplayBackend;
+
+  /// No description provided for @linuxSetupXvfbDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'アプリとIceWMデスクトップをX11で表示します。'**
+  String get linuxSetupXvfbDetail;
+
+  /// No description provided for @linuxSetupWaylandDetail.
+  ///
+  /// In ja, this message translates to:
+  /// **'対応アプリはWayland、X11専用アプリとIceWMデスクトップはXwaylandで表示します。'**
+  String get linuxSetupWaylandDetail;
+
+  /// No description provided for @nativeSteamModeTitle.
+  ///
+  /// In ja, this message translates to:
+  /// **'Steam Deck Mode'**
+  String get nativeSteamModeTitle;
+
+  /// No description provided for @nativeSteamModeStarting.
+  ///
+  /// In ja, this message translates to:
+  /// **'起動しています…'**
+  String get nativeSteamModeStarting;
+
+  /// No description provided for @nativeSteamModeStepDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'画面を準備しています…'**
+  String get nativeSteamModeStepDisplay;
+
+  /// No description provided for @nativeSteamModeStepClient.
+  ///
+  /// In ja, this message translates to:
+  /// **'Steamクライアントを確認しています…'**
+  String get nativeSteamModeStepClient;
+
+  /// No description provided for @nativeSteamModeStepDownload.
+  ///
+  /// In ja, this message translates to:
+  /// **'Steamをダウンロードしています · %1\$s'**
+  String get nativeSteamModeStepDownload;
+
+  /// No description provided for @nativeSteamModeStepRepair.
+  ///
+  /// In ja, this message translates to:
+  /// **'Steamクライアントを修復しています…'**
+  String get nativeSteamModeStepRepair;
+
+  /// No description provided for @nativeSteamModeStepUpdate.
+  ///
+  /// In ja, this message translates to:
+  /// **'Steamのアップデートをダウンロードしています · %1\$d%%'**
+  String get nativeSteamModeStepUpdate;
+
+  /// No description provided for @nativeSteamModeStepServices.
+  ///
+  /// In ja, this message translates to:
+  /// **'システムサービスを起動しています…'**
+  String get nativeSteamModeStepServices;
+
+  /// No description provided for @nativeSteamModeStepSteam.
+  ///
+  /// In ja, this message translates to:
+  /// **'Steamを起動しています…'**
+  String get nativeSteamModeStepSteam;
+
+  /// No description provided for @nativeSteamModeStepStopping.
+  ///
+  /// In ja, this message translates to:
+  /// **'終了しています…'**
+  String get nativeSteamModeStepStopping;
+
+  /// No description provided for @nativeSteamModeElapsed.
+  ///
+  /// In ja, this message translates to:
+  /// **'%1\$d:%2\$02d 経過'**
+  String get nativeSteamModeElapsed;
+
+  /// No description provided for @nativeSteamModeHint1.
+  ///
+  /// In ja, this message translates to:
+  /// **'初回はSteamのダウンロードに数分かかります。'**
+  String get nativeSteamModeHint1;
+
+  /// No description provided for @nativeSteamModeHint2.
+  ///
+  /// In ja, this message translates to:
+  /// **'電源メニューの「シャットダウン」でSteam Deck Modeを終了します。'**
+  String get nativeSteamModeHint2;
+
+  /// No description provided for @nativeSteamModeHint3.
+  ///
+  /// In ja, this message translates to:
+  /// **'ゲームはSteamのライブラリから起動できます。Protonは自動で準備されます。'**
+  String get nativeSteamModeHint3;
+
+  /// No description provided for @nativeSteamModeFailed.
+  ///
+  /// In ja, this message translates to:
+  /// **'Steam Deck Modeが終了しました'**
+  String get nativeSteamModeFailed;
+
+  /// No description provided for @nativeSteamModeRestart.
+  ///
+  /// In ja, this message translates to:
+  /// **'再起動'**
+  String get nativeSteamModeRestart;
+
+  /// No description provided for @nativeSteamModeClose.
+  ///
+  /// In ja, this message translates to:
+  /// **'閉じる'**
+  String get nativeSteamModeClose;
+
   /// No description provided for @uiShortcutAdd.
   ///
   /// In ja, this message translates to:
   /// **'ホーム画面にショートカットを追加'**
   String get uiShortcutAdd;
-
-  /// No description provided for @uiShortcutAdded.
-  ///
-  /// In ja, this message translates to:
-  /// **'ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。'**
-  String get uiShortcutAdded;
-
-  /// No description provided for @uiShortcutDismissed.
-  ///
-  /// In ja, this message translates to:
-  /// **'ショートカットは追加されませんでした'**
-  String get uiShortcutDismissed;
 
   /// No description provided for @uiShortcutUnsupported.
   ///
@@ -5903,17 +6113,29 @@ abstract class AppLocalizations {
   /// **'ショートカットを追加できませんでした：\$error'**
   String uiShortcutFailed(String error);
 
-  /// No description provided for @nativeShortcutStartDisplay.
+  /// No description provided for @uiShortcutDismissed.
   ///
   /// In ja, this message translates to:
-  /// **'Dextop を起動'**
-  String get nativeShortcutStartDisplay;
+  /// **'ショートカットは追加されませんでした'**
+  String get uiShortcutDismissed;
+
+  /// No description provided for @uiShortcutAdded.
+  ///
+  /// In ja, this message translates to:
+  /// **'ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。'**
+  String get uiShortcutAdded;
 
   /// No description provided for @nativeShortcutStartDisplayLong.
   ///
   /// In ja, this message translates to:
   /// **'Dextop の仮想ディスプレイを起動または停止します'**
   String get nativeShortcutStartDisplayLong;
+
+  /// No description provided for @nativeShortcutStartDisplay.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextop を起動'**
+  String get nativeShortcutStartDisplay;
 }
 
 class _AppLocalizationsDelegate

@@ -28,3 +28,4 @@ plugins {
 include(":app")
 include(":cardex")
 include(":cardexdriving")
+include(":linuxshortcut")

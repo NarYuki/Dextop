@@ -137,28 +137,43 @@ internal class LinuxProot(val nativeLibraryDir: String) {
      * kernel agree on the uid (D-Bus EXTERNAL, file owners); [fakeRoot]
      * (`-0`) is for package management, which needs root semantics.
      */
-    fun guest(id: String, script: String, fakeRoot: Boolean = false): ProcessBuilder = environment(
-        ProcessBuilder(
+    fun guest(id: String, script: String, fakeRoot: Boolean = false): ProcessBuilder {
+        val sessionBinds = binds(id, fakeRoot)
+        val root = LinuxPaths.rootfs(id)
+        // Package management requires fake ownership/permissions; retain PRoot's full translation there.
+        val fastPath = if (!fakeRoot && File(root, LinuxProotFastPath.LIBRARY.removePrefix("/")).isFile &&
+            System.getenv("PROOT_NO_SECCOMP") == null) LinuxProotFastPath.create(root, sessionBinds) else null
+        return environment(ProcessBuilder(
             proot.absolutePath,
             // link2symlink stays for sessions too: Xvfb locks its display with link(), which Android denies.
             "--kill-on-exit", "--link2symlink",
             *(if (fakeRoot) arrayOf("-0") else arrayOf("-i", "$uid:$uid")),
             "-r", LinuxPaths.rootfs(id).absolutePath,
             "-w", "/root",
-            *binds(id, fakeRoot).flatMap { listOf("-b", it) }.toTypedArray(),
+            *sessionBinds.flatMap { listOf("-b", it) }.toTypedArray(),
             "/usr/bin/env", "-i",
             "HOME=/root", "USER=root", "LOGNAME=root", "TERM=xterm-256color", "LANG=C.UTF-8",
             // Android's time zone (images default to UTC); sites compare it with the network location.
             *timeZone(id)?.let { arrayOf("TZ=$it") }.orEmpty(),
             "TMPDIR=/tmp", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             // Path unix sockets fall back to abstract ones (the shell user may not create them).
-            *(if (shim.isFile) arrayOf("LD_PRELOAD=$GUEST_LIBRARY_DIR/$SOCKET_SHIM", "DEXTOP_SOCKET_NS=${socketNamespace(id)}") else emptyArray()),
+            // DD's bind/connect hooks must run before the socket shim: its udev
+            // stand-in sockets need bind() emulation before the real syscall.
+            *(if (shim.isFile) arrayOf("LD_PRELOAD=" +
+                (if (File(LinuxPaths.rootfs(id), LinuxSessionCompatibility.GUEST_PRELOAD.removePrefix("/")).isFile)
+                    "${LinuxSessionCompatibility.GUEST_PRELOAD}:" else "") +
+                "$GUEST_LIBRARY_DIR/$SOCKET_SHIM", "DEXTOP_SOCKET_NS=${socketNamespace(id)}") else emptyArray()),
             // No accessibility bus runs in the session.
             "NO_AT_BRIDGE=1",
+            "DEXTOP_EVDEV_UDEV=1",
+            *fastPath?.guestEnvironment?.toTypedArray().orEmpty(),
             *guestEnvironment(id).toTypedArray(),
             "/bin/sh", "-c", script,
-        )
-    )
+        )).apply {
+            environment().remove("PROOT_FASTPATH")
+            if (fastPath != null) environment()["PROOT_FASTPATH"] = fastPath.key
+        }
+    }
 
     data class Result(val exitCode: Int, val output: String)
 
@@ -180,7 +195,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         val finished = if (timeoutSeconds > 0) process.waitFor(timeoutSeconds, TimeUnit.SECONDS) else {
             process.waitFor(); true
         }
-        if (!finished) process.destroyForcibly()
+        if (!finished) LinuxRuntime.terminate(process)
         reader.join(2_000)
         return Result(if (finished) process.exitValue() else -1, synchronized(output) { output.toString() })
     }

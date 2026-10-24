@@ -38,6 +38,7 @@ internal object DeviceProfiles {
             DesktopEnvironmentRegistry.aospFreeform(identity)
                 .copy(
                     id = "sony_xperia",
+                    defaultWindowManager = "dextop_plasma_v2",
                     untrustedMirrorDisplay = true,
                     fullscreenApplicationDisplays = true,
                     passivePlasmaShellFocus = true,
@@ -48,7 +49,24 @@ internal object DeviceProfiles {
                     directPlasmaDisplay = identity.sdk <= 35,
                 )
         },
-        vendor("hyperos_miui", setOf("xiaomi", "redmi", "poco"), "nativeHyperosMiuiDesktop"),
+        // HyperOS starts SecondaryDisplayLauncher on the recording display, gives
+        // overlay-display windows the phone's portrait bounds, and reports the
+        // phone's size and density as overrides on new virtual displays (even
+        // after a reset). A directly rendered VirtualDisplay with explicitly pinned
+        // metrics avoids these paths. First verified on Xiaomi 14 Ultra
+        // (24030PN60G, Android 16) and applied to every Xiaomi, Redmi and POCO
+        // device, which share HyperOS / MIUI.
+        DesktopEnvironmentRule("xiaomi_hyperos", DeviceMatch(manufacturers = setOf("xiaomi", "redmi", "poco"))) { identity ->
+            DesktopEnvironmentRegistry.vendorFreeform(identity, "xiaomi_hyperos", "nativeHyperosMiuiDesktop")
+                .copy(
+                    directPlasmaDisplay = true,
+                    untrustedMirrorDisplay = true,
+                    fullscreenApplicationDisplays = true,
+                    privateApplicationDisplays = true,
+                    passivePlasmaShellFocus = true,
+                    defaultWindowManager = "dextop_plasma_v2",
+                )
+        },
         vendor("coloros_family", setOf("oppo", "realme", "oneplus"), "nativeColorosDesktop"),
         vendor("vivo_family", setOf("vivo", "iqoo"), "nativeOriginosFuntouchOsDesktop"),
         vendor("huawei_emui", setOf("huawei"), "nativeHuaweiEmuiDesktop"),

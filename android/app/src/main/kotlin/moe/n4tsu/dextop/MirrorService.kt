@@ -182,6 +182,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val VIRTUAL_TOUCHPAD_MOVE_LOG_INTERVAL_MS = 250L
         private const val SYSTEM_UI_PACKAGE = "com.android.systemui"
         private const val NOTIFICATION_LAUNCH_WINDOW_MS = 3_000L
+        /** How soon after a car tap a swipe still starts at the tapped point. */
+        private const val CAR_TAP_DRAG_MS = 1_500L
+        /** HyperOS / MIUI device profile, see DeviceProfiles. */
+        private const val XIAOMI_PROFILE = "xiaomi_hyperos"
+        /** Without new scroll deltas for this long, a car swipe is treated as lifted. */
+        private const val CAR_SWIPE_IDLE_MS = 700L
         private const val NOTIFICATION_ROUTE_RETRY_DELAY_MS = 140L
         private const val NOTIFICATION_ROUTE_RETRIES = 5
         private const val HOST_DISPLAY_MONITOR_INTERVAL_MS = 1_000L
@@ -227,7 +233,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 completion(Result.failure(IllegalStateException("Dextop is still finishing its previous session")))
                 return
             }
-            val effectiveDecorations = running?.let {
+            // Dextop Auto's display never has system decorations (createDirectAutoDisplay), so a
+            // request for it compares as undecorated and reuses the running session instead of
+            // rebuilding it for every new car Surface.
+            val dextopAuto = autoOnly && context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                .getString("flutter.android_auto_shell", "dextop") == "dextop"
+            val effectiveDecorations = if (dextopAuto) false else running?.let {
                 decorations || it.shouldUsePersistedSystemDecorations()
             } ?: decorations
             if (active && running != null && running.targetDisplayId >= 0 &&
@@ -237,6 +248,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 val requested = Config(width, height, density, secure, effectiveDecorations, autoOnly, forceFreeform)
                 Handler(Looper.getMainLooper()).post {
                     runCatching {
+                        check(instance === running && !running.serviceDestroyed) { "Dextop service changed before the display could be updated" }
                         if (autoOnly) running.replaceAutoDestinationSurface(autoSurface)
                         val next = running.effectiveConfig(requested)
                         running.resizeActiveDisplay(next, "resolution changed from Android UI")
@@ -650,6 +662,21 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         fun topologyOverlayDisplayId(): Int = instance?.mirrorDisplayId ?: -1
 
         /** Opens a Linux container's desktop in the running Plasma v2 shell; false without one. */
+        /**
+         * Opens a Linux application in the running Plasma v2 desktop; false when no Plasma
+         * desktop runs, so the caller shows it as Android windows instead.
+         */
+        fun launchLinuxAppInPlasma(containerId: String, desktopId: String): Boolean {
+            val shell = instance?.plasmaShell as? moe.n4tsu.dextop.plasma.PlasmaV2Shell ?: return false
+            Handler(Looper.getMainLooper()).post {
+                shell.launch("${moe.n4tsu.dextop.plasma.LINUX_APP_PREFIX}$containerId:$desktopId")
+            }
+            return true
+        }
+
+        val plasmaDesktopRunning: Boolean
+            get() = instance?.plasmaShell is moe.n4tsu.dextop.plasma.PlasmaV2Shell
+
         fun openLinuxDesktop(containerId: String, name: String): Boolean {
             val shell = instance?.plasmaShell as? moe.n4tsu.dextop.plasma.PlasmaV2Shell ?: return false
             shell.openLinuxDesktop(containerId, name)
@@ -746,6 +773,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
         }
 
+        fun setCarVisibleArea(left: Float, top: Float, right: Float, bottom: Float) {
+            if (listOf(left,top,right,bottom).any { !it.isFinite() } || left<0f || top<0f || right>1f || bottom>1f || right<=left || bottom<=top) return
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                service.carVisibleArea = floatArrayOf(left,top,right,bottom)
+                service.plasmaShell?.setAutoViewport(left,top,right,bottom)
+            }
+        }
+
         fun dispatchCarPan(dx: Float, dy: Float, drag: Boolean, release: Boolean, anchorX: Float, anchorY: Float) {
             val service = instance ?: return
             Handler(Looper.getMainLooper()).post {
@@ -753,15 +789,47 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     if (!service.carPanHeld && anchorX.isFinite() && anchorY.isFinite()) {
                         service.cursorX = anchorX.coerceIn(0f, 1f) * (service.targetWidth - 1)
                         service.cursorY = anchorY.coerceIn(0f, 1f) * (service.targetHeight - 1)
+                        if (!drag) service.rememberCarTapAnchor(anchorX, anchorY)
                     }
                     service.carPan(dx * service.targetWidth, dy * service.targetHeight, drag, release)
                 }
             }
         }
 
+        /** A tap on the car screen; a swipe that follows soon after starts where it was tapped. */
+        fun noteCarTap() {
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                service.carTapAt = SystemClock.uptimeMillis()
+                service.scheduleCarDesktopAnchor()
+            }
+        }
+
         fun releaseCarPan() {
             val service = instance ?: return
-            Handler(Looper.getMainLooper()).post { service.finishCarPan() }
+            Handler(Looper.getMainLooper()).post { service.finishCarPan(); service.finishCarPinch() }
+        }
+
+        /** Android Auto fling velocity, in Surface widths/heights per second. */
+        fun dispatchCarFling(vx: Float, vy: Float) {
+            if (!vx.isFinite() || !vy.isFinite()) return
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service && active && service.autoOnlySession)
+                    service.carFling(vx * service.targetWidth, vy * service.targetHeight)
+            }
+        }
+
+        /**
+         * Android Auto pinch or double tap; a negative focus means none was supplied.
+         * The anchor is the last tap, used when the pinch follows a tap.
+         */
+        fun dispatchCarScale(x: Float, y: Float, factor: Float, anchorX: Float = -1f, anchorY: Float = -1f) {
+            if (!x.isFinite() || !y.isFinite() || !factor.isFinite() || factor <= 0f) return
+            val service = instance ?: return
+            Handler(Looper.getMainLooper()).post {
+                if (instance === service && active && service.autoOnlySession) service.carScale(x, y, factor, anchorX, anchorY)
+            }
         }
 
         fun attachCarCompanionPhoneTrackpad(surface: View, nativeTouchpad: Boolean) {
@@ -828,6 +896,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         /** Global navigation requested by the signature-protected CARDEX relay. */
         fun performCardexAction(action: String): Boolean {
             val service = instance ?: return false
+            if ((action == "home" || action == "recents") && service.autoOnlySession &&
+                service.plasmaShell?.showHome() == true) return true
             if (action == "recents") return service.showRecentsOnTargetDisplay()
             val globalAction = when (action) {
                 "back" -> GLOBAL_ACTION_BACK
@@ -932,6 +1002,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var surfaceView: SurfaceView? = null
     /** Dextop's own window manager; null while the platform desktop owns the display. */
     private var plasmaShell: moe.n4tsu.dextop.plasma.DesktopShell? = null
+    private var serviceDestroyed = false
     private var cursorView: CursorView? = null
     private var carCompanionCursorView: CursorView? = null
     private var carCompanionCursorWindowManager: WindowManager? = null
@@ -1818,7 +1889,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * same as starting the session half-open.
      */
     private fun scheduleLaptopModeReevaluation(reason: String) {
-        if (!active || suspendedForLockScreen) return
+        if (!active || suspendedForLockScreen || autoOnlySession) return
         val generation = ++laptopPostureReevaluationGeneration
         android.os.Handler(mainLooper).postDelayed({
             if (generation != laptopPostureReevaluationGeneration ||
@@ -1854,6 +1925,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "screen lifecycle broadcast action=${intent?.action} " +
                         "suspended=$suspendedForLockScreen generation=$screenLifecycleGeneration"
             )
+            // Android Auto keeps running with the phone asleep. The lock-screen suspend is for the
+            // phone's own desktop: on an Auto-only session it removed the car display and, after
+            // unlock, recreated the session as a phone desktop that opened on the phone.
+            if (autoOnlySession) return
             when (intent?.action) {
                 Intent.ACTION_SCREEN_OFF -> suspendForLockScreen()
                 Intent.ACTION_SCREEN_ON -> waitForConfirmedUnlock(screenLifecycleGeneration)
@@ -1929,6 +2004,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     override fun onServiceConnected() {
+        if (serviceDestroyed) {
+            Log.w(logTag, "Ignoring accessibility connection delivered after service destruction")
+            return
+        }
         HiddenApiBypass.addHiddenApiExemptions("")
         // These preferences belonged to the removed DPI/acceleration
         // controls. Clear them here as well as in Flutter startup because the
@@ -2137,60 +2216,250 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private var autoOverlapCorrectionGeneration = 0
+    private var carVisibleArea: FloatArray? = null
     private var carPanHeld = false
-    private var carPanNative = false
+    private var carPanDrag = false
     private var carPanDownTime = 0L
+    private var carPanX = 0f
+    private var carPanY = 0f
     private val carPanHandler = Handler(Looper.getMainLooper())
     private val carPanRelease = Runnable { finishCarPan() }
+
+    /**
+     * Android Auto reports a swipe only as distances, never where the finger went down. A swipe
+     * therefore starts in the middle of the pane being used (the Auto shell's focused pane or open
+     * page), not at the last tap, which may be on another pane or on the car chrome.
+     */
+    private fun carSwipeStart(): android.graphics.PointF =
+        plasmaShell?.autoGestureAnchor()?.takeIf { autoOnlySession }
+            ?: carDesktopAnchor
+            ?: android.graphics.PointF(targetWidth / 2f, targetHeight / 2f)
+
+    /**
+     * Android Desktop has no Auto pane: swipes start in the focused window on the Auto display.
+     * Task bounds come over Binder, so they are read off the main thread after taps and swipes.
+     */
+    @Volatile private var carDesktopAnchor: android.graphics.PointF? = null
+    private val refreshCarDesktopAnchor = Runnable {
+        if (!active || !autoOnlySession || plasmaShell?.autoGestureAnchor() != null) {
+            carDesktopAnchor = null
+            return@Runnable
+        }
+        val displayId = targetDisplayId
+        val width = targetWidth
+        val height = targetHeight
+        if (displayId < 0 || width <= 0 || height <= 0) return@Runnable
+        recentsExecutor.execute {
+            val anchor = runCatching {
+                val tasks = moe.n4tsu.dextop.plasma.TaskBridge({ name, type -> privilegedAccess.service(name, type) }, logTag)
+                    .tasks(displayId).filter { it.visible && it.activityType == 1 }
+                // Task lists are ordered from the top; an empty rectangle is a fullscreen task.
+                val task = tasks.firstOrNull { it.focused } ?: tasks.minByOrNull { it.zIndex }
+                val bounds = task?.bounds?.takeUnless { it.isEmpty }?.let(::Rect)
+                if (bounds == null || !bounds.intersect(0, 0, width, height)) null
+                else android.graphics.PointF(bounds.exactCenterX(), bounds.exactCenterY())
+            }.getOrNull()
+            carPanHandler.post { if (targetDisplayId == displayId) carDesktopAnchor = anchor }
+        }
+    }
+
+    private fun scheduleCarDesktopAnchor() {
+        carPanHandler.removeCallbacks(refreshCarDesktopAnchor)
+        // Give a tap time to move focus before reading which window is in front.
+        carPanHandler.postDelayed(refreshCarDesktopAnchor, 300L)
+    }
+
+    /**
+     * Tap, then gesture: swipes, flings and pinches that begin within [CAR_TAP_DRAG_MS] of a tap
+     * use the tapped point (the anchor the Driving app sends), so sliders, map points and sheets
+     * are grabbed where they are. Each anchored gesture renews the window when it ends, so a run
+     * of gestures (panning a map several times, zooming in steps) keeps the same point until the
+     * user pauses for longer than the window.
+     */
+    private var carTapAt = 0L
+    private var carTapAnchor: android.graphics.PointF? = null
+    private var carAnchoredGesture = false
+
+    private fun carAnchorActive() =
+        carTapAnchor != null && SystemClock.uptimeMillis() - carTapAt <= CAR_TAP_DRAG_MS
+
+    private fun carGestureStart(): android.graphics.PointF {
+        carAnchoredGesture = carAnchorActive()
+        return carTapAnchor?.takeIf { carAnchoredGesture }?.let { android.graphics.PointF(it.x, it.y) } ?: carSwipeStart()
+    }
+
+    /** The Driving app's last tap, in normalised Surface coordinates. */
+    private fun rememberCarTapAnchor(x: Float, y: Float) {
+        if (x in 0f..1f && y in 0f..1f) carTapAnchor = android.graphics.PointF(x * targetWidth, y * targetHeight)
+    }
+
+    private fun renewCarAnchor() {
+        if (carAnchoredGesture) carTapAt = SystemClock.uptimeMillis()
+        carAnchoredGesture = false
+    }
 
     private fun carPan(dx: Float, dy: Float, drag: Boolean, release: Boolean) {
         if (release || !dx.isFinite() || !dy.isFinite()) { finishCarPan(); return }
         if (dx == 0f && dy == 0f) return
-        // Auto PAN has an absolute tap anchor. Relative uinput mouse movement
-        // cannot synchronize that anchor and adds pointer acceleration.
-        val native = false
-        if (carPanHeld && (!drag || native != carPanNative)) finishCarPan()
-        if (drag) {
-            if (!carPanHeld) {
-                carPanNative = native
-                carPanHeld = if (native) virtualMouseButton("BTN_LEFT", true, true)
-                    else sendCarPanMouse(MotionEvent.ACTION_DOWN, 0f, 0f, true)
-            }
-            if (!carPanHeld) return
-            if (native) virtualMouseMove(dx, dy, true)
-            else {
-                cursorX = (cursorX + dx).coerceIn(0f, targetWidth - 1f)
-                cursorY = (cursorY + dy).coerceIn(0f, targetHeight - 1f)
-                sendCarPanMouse(MotionEvent.ACTION_MOVE, 0f, 0f, true)
-            }
-            carPanHandler.removeCallbacks(carPanRelease)
-            carPanHandler.postDelayed(carPanRelease, 1_000L)
-        } else if (native) {
-            virtualMouseScroll(dy, true)
-            virtualMouseHorizontalScroll(dx, true)
-        } else sendCarPanMouse(MotionEvent.ACTION_SCROLL, dx, dy, false)
+        finishCarPinch()
+        if (carPanHeld && drag != carPanDrag) finishCarPan()
+        if (!carPanHeld) {
+            carPanDrag = drag
+            // Drag mode keeps the tapped pickup point; a swipe starts in the active pane.
+            val start = if (drag) android.graphics.PointF(cursorX, cursorY) else carGestureStart()
+            carPanX = start.x.coerceIn(0f, targetWidth - 1f)
+            carPanY = start.y.coerceIn(0f, targetHeight - 1f)
+            carPanHeld = sendCarPanPointer(MotionEvent.ACTION_DOWN)
+        }
+        if (!carPanHeld) return
+        val nextX = (carPanX + dx).coerceIn(0f, targetWidth - 1f)
+        val nextY = (carPanY + dy).coerceIn(0f, targetHeight - 1f)
+        // A scroll gesture reaching an edge continues with another swipe rather
+        // than losing all subsequent deltas against the clamped coordinate.
+        if (!drag && (nextX == carPanX && dx != 0f || nextY == carPanY && dy != 0f)) {
+            // A long scroll that reaches an edge lifts and continues from its starting point,
+            // the tapped anchor when the scroll is anchored.
+            val anchor = carTapAnchor?.takeIf { carAnchoredGesture }
+            finishCarPan()
+            if (anchor != null) carAnchoredGesture = true
+            val start = anchor?.let { android.graphics.PointF(it.x, it.y) } ?: carSwipeStart()
+            carPanX = start.x.coerceIn(0f, targetWidth - 1f)
+            carPanY = start.y.coerceIn(0f, targetHeight - 1f)
+            carPanDrag = false
+            carPanHeld = sendCarPanPointer(MotionEvent.ACTION_DOWN)
+        }
+        carPanX = (carPanX + dx).coerceIn(0f, targetWidth - 1f)
+        carPanY = (carPanY + dy).coerceIn(0f, targetHeight - 1f)
+        if (!sendCarPanPointer(MotionEvent.ACTION_MOVE)) { finishCarPan(); return }
+        cursorX = carPanX; cursorY = carPanY
+        carPanHandler.removeCallbacks(carPanRelease)
+        // Scroll callbacks have no UP callback. A short pause must not split one swipe into
+        // several (each restarting from the pane centre), so the finger is lifted only after a
+        // long gap; a fling or a tap ends the swipe at once. Drag ends with another tap.
+        carPanHandler.postDelayed(carPanRelease, if (drag) 30_000L else CAR_SWIPE_IDLE_MS)
     }
 
     private fun finishCarPan() {
         carPanHandler.removeCallbacks(carPanRelease)
         if (carPanHeld) {
-            if (carPanNative) virtualMouseButton("BTN_LEFT", false, true)
-            else sendCarPanMouse(MotionEvent.ACTION_UP, 0f, 0f, false)
+            sendCarPanPointer(MotionEvent.ACTION_UP)
+            scheduleCarDesktopAnchor()
+            if (!carPanDrag) renewCarAnchor()
         }
         carPanHeld = false
     }
 
-    private fun sendCarPanMouse(action: Int, dx: Float, dy: Float, held: Boolean): Boolean {
-        val now = SystemClock.uptimeMillis()
-        if (action == MotionEvent.ACTION_DOWN) carPanDownTime = now
-        val properties = MotionEvent.PointerProperties().apply { id = 0; toolType = MotionEvent.TOOL_TYPE_MOUSE }
-        val coords = MotionEvent.PointerCoords().apply {
-            x = cursorX; y = cursorY
-            setAxisValue(MotionEvent.AXIS_HSCROLL, dx / 48f)
-            setAxisValue(MotionEvent.AXIS_VSCROLL, -dy / 48f)
+    /**
+     * Ends the swipe with a few moves at the host's velocity before lifting, so the application's
+     * VelocityTracker sees the fling instead of a finger that stopped 180 ms earlier.
+     */
+    private fun carFling(vx: Float, vy: Float) {
+        if (carPanHeld && carPanDrag) return
+        finishCarPinch()
+        if (!carPanHeld) {
+            carPanDrag = false
+            val start = carGestureStart()
+            carPanX = start.x.coerceIn(0f, targetWidth - 1f)
+            carPanY = start.y.coerceIn(0f, targetHeight - 1f)
+            carPanHeld = sendCarPanPointer(MotionEvent.ACTION_DOWN)
+            if (!carPanHeld) return
         }
-        val event = MotionEvent.obtain(if (action == MotionEvent.ACTION_SCROLL) now else carPanDownTime, now, action, 1, arrayOf(properties), arrayOf(coords),
-            0, if (held) MotionEvent.BUTTON_PRIMARY else 0, 1f, 1f, 0, 0, InputDevice.SOURCE_MOUSE, 0)
+        carPanHandler.removeCallbacks(carPanRelease)
+        var time = maxOf(SystemClock.uptimeMillis(), carPanEventTime)
+        repeat(3) {
+            time += 8L
+            carPanX = (carPanX + vx * .008f).coerceIn(0f, targetWidth - 1f)
+            carPanY = (carPanY + vy * .008f).coerceIn(0f, targetHeight - 1f)
+            sendCarPanPointer(MotionEvent.ACTION_MOVE, time)
+        }
+        sendCarPanPointer(MotionEvent.ACTION_UP, time)
+        carPanHeld = false
+        cursorX = carPanX; cursorY = carPanY
+        renewCarAnchor()
+    }
+
+    private var carPanEventTime = 0L
+    private var carPinchHeld = false
+    private var carPinchDownTime = 0L
+    private var carPinchX = 0f
+    private var carPinchY = 0f
+    private var carPinchSpan = 0f
+    private val carPinchRelease = Runnable { finishCarPinch() }
+
+    /**
+     * Two synthetic fingers moved apart by each scale factor. Tap, then pinch: a pinch in the
+     * tap's window (see [carGestureStart]) zooms around the tapped point; otherwise around the
+     * host's focal point, or the active pane when the host gives none.
+     */
+    private fun carScale(x: Float, y: Float, factor: Float, anchorX: Float, anchorY: Float) {
+        finishCarPan()
+        val limit = minOf(targetWidth, targetHeight).toFloat()
+        if (!carPinchHeld) {
+            rememberCarTapAnchor(anchorX, anchorY)
+            carAnchoredGesture = carAnchorActive()
+            val anchor = carTapAnchor
+            val focus = when {
+                carAnchoredGesture && anchor != null -> android.graphics.PointF(anchor.x, anchor.y)
+                x >= 0f && y >= 0f -> android.graphics.PointF(x * targetWidth, y * targetHeight)
+                else -> carSwipeStart()
+            }
+            carPinchX = focus.x.coerceIn(0f, targetWidth - 1f)
+            carPinchY = focus.y.coerceIn(0f, targetHeight - 1f)
+            carPinchSpan = (limit * .2f).coerceAtLeast(48f)
+            carPinchDownTime = SystemClock.uptimeMillis()
+            carPinchHeld = sendCarPinch(MotionEvent.ACTION_DOWN, 1) &&
+                sendCarPinch(MotionEvent.ACTION_POINTER_DOWN or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2)
+            if (!carPinchHeld) return
+        }
+        carPinchSpan = (carPinchSpan * factor).coerceIn(24f, limit * .95f)
+        sendCarPinch(MotionEvent.ACTION_MOVE, 2)
+        carPanHandler.removeCallbacks(carPinchRelease)
+        carPanHandler.postDelayed(carPinchRelease, 220L)
+    }
+
+    private fun finishCarPinch() {
+        carPanHandler.removeCallbacks(carPinchRelease)
+        if (!carPinchHeld) return
+        sendCarPinch(MotionEvent.ACTION_POINTER_UP or (1 shl MotionEvent.ACTION_POINTER_INDEX_SHIFT), 2)
+        sendCarPinch(MotionEvent.ACTION_UP, 1)
+        carPinchHeld = false
+        renewCarAnchor()
+    }
+
+    private fun sendCarPinch(action: Int, pointers: Int): Boolean {
+        val properties = Array(pointers) { index ->
+            MotionEvent.PointerProperties().apply { id = index; toolType = MotionEvent.TOOL_TYPE_FINGER }
+        }
+        val coords = Array(pointers) { index ->
+            MotionEvent.PointerCoords().apply {
+                val offset = carPinchSpan / 2f * if (index == 0) -1f else 1f
+                x = (carPinchX + offset).coerceIn(0f, targetWidth - 1f)
+                y = carPinchY
+                pressure = if (action == MotionEvent.ACTION_UP) 0f else 1f
+                size = 1f
+            }
+        }
+        val event = MotionEvent.obtain(carPinchDownTime, SystemClock.uptimeMillis(), action, pointers, properties, coords,
+            0, 0, 1f, 1f, 0, 0, InputDevice.SOURCE_TOUCHSCREEN, 0)
+        return try { inputDispatcher.send(event, targetDisplayId) } finally { event.recycle() }
+    }
+
+    private fun sendCarPanPointer(action: Int, eventTime: Long = SystemClock.uptimeMillis()): Boolean {
+        val now = maxOf(eventTime, carPanEventTime)
+        carPanEventTime = now
+        if (action == MotionEvent.ACTION_DOWN) carPanDownTime = now
+        val properties = MotionEvent.PointerProperties().apply {
+            id = 0
+            toolType = if (carPanDrag) MotionEvent.TOOL_TYPE_MOUSE else MotionEvent.TOOL_TYPE_FINGER
+        }
+        val coords = MotionEvent.PointerCoords().apply {
+            x = carPanX; y = carPanY
+            pressure = if (action == MotionEvent.ACTION_UP) 0f else 1f
+            size = 1f
+        }
+        val event = MotionEvent.obtain(carPanDownTime, now, action, 1, arrayOf(properties), arrayOf(coords),
+            0, if (carPanDrag && action != MotionEvent.ACTION_UP) MotionEvent.BUTTON_PRIMARY else 0,
+            1f, 1f, 0, 0, if (carPanDrag) InputDevice.SOURCE_MOUSE else InputDevice.SOURCE_TOUCHSCREEN, 0)
         return try { inputDispatcher.send(event, targetDisplayId) } finally { event.recycle() }
     }
 
@@ -2385,8 +2654,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }, 120L)
     }
 
-    override fun onKeyEvent(event: KeyEvent): Boolean =
-        plasmaShell?.handleKey(event) == true || forwardKeyEvent(event)
+    override fun onKeyEvent(event: KeyEvent): Boolean {
+        if (active && moe.n4tsu.dextop.plasma.PlasmaVolumeKeys.handle(this, event)) {
+            if (event.action == KeyEvent.ACTION_DOWN) plasmaShell?.onVolumeChanged()
+            return true
+        }
+        return plasmaShell?.handleKey(event) == true || forwardKeyEvent(event)
+    }
 
     override fun onMotionEvent(event: MotionEvent) {
         // Events emitted by our uinput device already travel through
@@ -2419,7 +2693,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // A completed stop sets active=false before the delayed accessibility
         // detach runs. Do not start a second teardown from that unbind; doing
         // so used to leave the service's stopping latch set forever.
-        if (!pausedForAndroid && (active || stopping || pending != null)) stop()
+        if (instance === this && !pausedForAndroid && (active || stopping || pending != null)) stop()
         if (screenReceiverRegistered) unregisterReceiver(screenReceiver)
         inputManager?.unregisterInputDeviceListener(inputDeviceListener)
         sensorManager?.unregisterListener(hingeListener)
@@ -2430,11 +2704,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (privilegedInputClientDelegate.isInitialized()) {
             privilegedInputClient.release("accessibility_unbound")
         }
-        instance = null
+        if (instance === this) instance = null
         return super.onUnbind(intent)
     }
 
     override fun onDestroy() {
+        serviceDestroyed = true
+        stopPlasmaShell(restoreWindows = false)
+        runCatching { autoOwnedDisplay?.attachment?.release() }
+        autoOwnedDisplay = null
+        if (instance === this) instance = null
         endCastSession("service_destroyed")
         if (coverDisplayController.state().backButtonsActive) {
             CoverBackButtonsActivity.finishActive()
@@ -2494,6 +2773,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun start(config: Config) {
+        if (serviceDestroyed || instance !== this) {
+            Log.w(logTag, "Ignoring session start on an obsolete accessibility service")
+            return
+        }
         // Do not let the delayed detach from "temporarily return to Android"
         // tear down a session that has already been resumed.
         pauseDisableSelfRunnable?.let(pauseLifecycleHandler::removeCallbacks)
@@ -2743,10 +3026,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * remains the default and is restored whenever the shell stops.
      */
     private fun applyWindowManagerSelection(reason: String): Boolean {
-        if (!active || autoOnlySession || targetDisplayId < 0) return false
+        if (serviceDestroyed || instance !== this) return false
+        val carShell = autoOnlySession && getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.android_auto_shell", "dextop") == "dextop"
+        if (!active || (autoOnlySession && !carShell) || targetDisplayId < 0) return false
         val selection = moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this)
-        val wantPlasma = selection != moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
-        val wantV2 = selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
+        val wantPlasma = carShell || selection != moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
+        val wantV2 = carShell || selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
         val existing = plasmaShell
         if (!wantPlasma) {
             if (existing != null) {
@@ -2756,15 +3042,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             return true
         }
-        val existingIsV2 = existing is moe.n4tsu.dextop.plasma.PlasmaV2Shell
-        if (existing != null && existing.displayId == targetDisplayId && existingIsV2 == wantV2) return true
+        val existingIsV2 = existing is moe.n4tsu.dextop.plasma.CompositedWindowShell
+        val existingIsAuto = existing is moe.n4tsu.dextop.plasma.DextopAutoShell
+        if (existing != null && existing.displayId == targetDisplayId && existingIsV2 == wantV2 && existingIsAuto == carShell) return true
         // Switching between v1 and v2 hands windows back to the display first.
         if (existing != null) stopPlasmaShell(restoreWindows = existingIsV2 != wantV2)
         return runCatching {
-            (if (wantV2) {
+            (if (carShell) {
+                moe.n4tsu.dextop.plasma.DextopAutoShell(
+                    this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
+                    fullscreenAppDisplays = true,
+                    passiveShellFocus = desktopEnvironment.passivePlasmaShellFocus,
+                    maxRateAppDisplays = desktopEnvironment.maxRateApplicationDisplays,
+                    applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
+                    privateAppDisplays = desktopEnvironment.privateApplicationDisplays,
+                )
+            } else if (wantV2) {
                 moe.n4tsu.dextop.plasma.PlasmaV2Shell(
                     this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
-                    fullscreenAppDisplays = desktopEnvironment.fullscreenApplicationDisplays,
+                    fullscreenAppDisplays = carShell || desktopEnvironment.fullscreenApplicationDisplays,
                     passiveShellFocus = desktopEnvironment.passivePlasmaShellFocus,
                     maxRateAppDisplays = desktopEnvironment.maxRateApplicationDisplays,
                     applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
@@ -2775,6 +3071,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }).also {
                     plasmaShell = it
                     it.start()
+                    if (carShell) carVisibleArea?.let { r -> it.setAutoViewport(r[0],r[1],r[2],r[3]) }
                 }
         }.onSuccess {
             OperationLog.i(this, "PlasmaShell", "Dextop window manager active display=$targetDisplayId reason=$reason")
@@ -2789,9 +3086,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * layer to be added after Samsung's SecondaryLauncher has already created
      * a DeX desktop and taskbar on the same display.
      */
+    /** Starts the Dextop Auto shell again with growing pauses, e.g. while Dextop's access reconnects. */
+    private fun retryDextopAutoShell(displayId: Int, attempt: Int) {
+        if (attempt >= 10) {
+            OperationLog.w(this, "PlasmaShell", "Dextop Auto shell did not start on display $displayId", null)
+            return
+        }
+        postMainDelayed((500L shl attempt.coerceAtMost(4)).coerceAtMost(8_000L)) {
+            if (!active || !autoOnlySession || targetDisplayId != displayId ||
+                plasmaShell is moe.n4tsu.dextop.plasma.DextopAutoShell) return@postMainDelayed
+            if (!PrivilegedAccess(logTag).isAvailable()) {
+                moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.ensure(this, "dextop_auto_shell")
+            }
+            if (!applyWindowManagerSelection("dextop_auto_retry_${attempt + 1}")) retryDextopAutoShell(displayId, attempt + 1)
+            else OperationLog.i(this, "PlasmaShell", "Dextop Auto shell started on retry ${attempt + 1}")
+        }
+    }
+
     private fun launchSelectedDesktopHome(reason: String): Boolean {
-        val plasmaSelected = !autoOnlySession &&
-            moe.n4tsu.dextop.plasma.WindowManagerSelection.isPlasma(this)
+        val plasmaSelected = if (autoOnlySession) {
+            getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                .getString("flutter.android_auto_shell", "dextop") == "dextop"
+        } else moe.n4tsu.dextop.plasma.WindowManagerSelection.isPlasma(this)
         return if (plasmaSelected) {
             applyWindowManagerSelection(reason)
         } else {
@@ -3645,6 +3961,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         enabled: Boolean,
         requestedStyle: KeyboardDeckStyle = KeyboardDeckStyle.LAPTOP,
     ) {
+        // Laptop decks belong to the phone screen, which an Auto-only session does not use.
+        if (enabled && autoOnlySession) return
         if (enabled && !demoMode &&
             (requestedStyle == KeyboardDeckStyle.GAMEPAD || requestedStyle == KeyboardDeckStyle.GAMEBOY) &&
             !isExperimentalGamepadEnabled()
@@ -4336,6 +4654,24 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 virtualMouseDescriptor = device.descriptor
                 virtualPointerDisplayId = display.displayId
                 virtualPointerAssociationPending = false
+                if (desktopEnvironment.id == XIAOMI_PROFILE && profile == "touchpad") {
+                    val x = device.getMotionRange(MotionEvent.AXIS_X, InputDevice.SOURCE_MOUSE)
+                    val y = device.getMotionRange(MotionEvent.AXIS_Y, InputDevice.SOURCE_MOUSE)
+                    val matches = x != null && y != null &&
+                        kotlin.math.abs(x.max - (targetWidth - 1)) <= 1f &&
+                        kotlin.math.abs(y.max - (targetHeight - 1)) <= 1f
+                    if (!matches) {
+                        if (attempt < 30) {
+                            scheduleVirtualMouseReadyCheck(generation, profile, attempt + 1)
+                        } else {
+                            Log.w(logTag, "Xiaomi touchpad viewport does not match desktop; retrying as relative mouse")
+                            stopVirtualMouse()
+                            virtualPointerRuntimeProfile = "mouse"
+                            startVirtualMouse("mouse")
+                        }
+                        return@Runnable
+                    }
+                }
                 virtualMouseReady = true
                 privilegedInputClient.setOutputReady(true)
                 refreshPrivilegedInputConfig("input_reader_ready")
@@ -10446,6 +10782,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun resumeAfterUnlock(reason: String) {
         if (!suspendedForLockScreen || unlockResumeScheduled) return
+        // Never turn an Auto-only session into a phone desktop.
+        if (autoOnlySession) { suspendedForLockScreen = false; return }
         val previous = suspendedConfig ?: return
         val bounds = windowManager?.currentWindowMetrics?.bounds
         val config = if (shouldFollowHostDisplay() && bounds != null &&
@@ -11283,6 +11621,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 targetHeight,
                 density,
                 showSystemDecorations,
+                configureBeforePublish = { displayId ->
+                    if (desktopEnvironment.id == XIAOMI_PROFILE) applyXiaomiDesktopDensity(displayId, density)
+                },
                 publicDisplay = true,
                 name = "Dextop Desktop",
             )
@@ -11346,6 +11687,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             VirtualDisplayPlatform.MANAGER_INTERFACE
         )
         autoOwnedDisplay?.attachment?.release()
+        val dextopAutoSelected = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+            .getString("flutter.android_auto_shell", "dextop") == "dextop"
+        // Dextop Auto draws the whole car display and keeps each app on a display of its own.
+        // With system decorations or desktop windowing Android puts its own desktop here (DeX on
+        // Samsung, HyperOS's desktop on Xiaomi), which shows in the car whenever Dextop Auto is
+        // not drawn over it. The display stays public and trusted so Dextop's windows can use it.
+        val displayDecorations = decorations && !dextopAutoSelected
         val owned = platform.openOwned(
             this,
             service,
@@ -11353,31 +11701,28 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             targetWidth,
             targetHeight,
             density,
-            decorations,
+            displayDecorations,
             configureBeforePublish = { displayId ->
-                if (forceFreeformSession) {
+                if (forceFreeformSession && !dextopAutoSelected) {
                     desktopModeConfigurator.configureDisplay(displayId, forceFreeform = true)
                 }
             },
+            publicDisplay = dextopAutoSelected,
         )
         autoOwnedDisplay = owned
         targetDisplayId = owned.displayId
         mirrorDisplayId = owned.displayId
-        showSystemDecorations = decorations
-        // Match the regular Samsung Dextop path. The decorated direct display
-        // makes One UI create both DexTaskbarWindow and NavigationBar<id>;
-        // suppress framework navigation while retaining the DeX taskbar.
-        navigationSuppressedDisplayId = targetDisplayId
-        applyNavigationDisabled(
-            targetDisplayId,
-            true,
-            desktopNavigationToken,
-            "desktop",
-        )
+        showSystemDecorations = displayDecorations
+        // An Android Auto session never disables navigation or gestures: the phone stays
+        // fully usable, and the car display has no phone navigation to suppress.
         clearInheritedDisplayOverrides(targetDisplayId)
-        configureDisplay(skipWindowing = forceFreeformSession)
-        startAutoOverlapCorrection()
-        if (!launchHome()) {
+        configureDisplay(skipWindowing = forceFreeformSession || dextopAutoSelected)
+        if (!dextopAutoSelected) startAutoOverlapCorrection()
+        if (dextopAutoSelected) {
+            // Dextop Auto never falls back to a decorated platform desktop (DeX's desktop on
+            // Samsung); a shell that cannot start yet is started again on the same display.
+            if (!applyWindowManagerSelection("auto_display_created")) retryDextopAutoShell(owned.displayId, 0)
+        } else if (!launchSelectedDesktopHome("auto_display_created")) {
             if (!decorations) {
                 OperationLog.w(
                     this,
@@ -11551,7 +11896,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // The session-level navigation request is made before the asynchronous
             // overlay display exists. Apply it again now that SystemUI has created
             // a per-display navigation bar for the actual desktop display.
-            if (active && targetDisplayId != Display.DEFAULT_DISPLAY) {
+            if (active && !autoOnlySession && targetDisplayId != Display.DEFAULT_DISPLAY) {
                 navigationSuppressedDisplayId = targetDisplayId
                 applyNavigationDisabled(
                     targetDisplayId,
@@ -11562,6 +11907,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             requestImeRegionProbe("display_attached", force = true)
             clearInheritedDisplayOverrides(targetDisplayId)
+            if (desktopEnvironment.id == XIAOMI_PROFILE) applyXiaomiDesktopDensity(targetDisplayId, density)
             configureDisplay()
             if (!autoOnlySession) {
                 val strategyOverride = configuredMirrorStrategyOverride()
@@ -11727,7 +12073,30 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 Int::class.javaPrimitiveType
             ).invoke(service, displayId, userId)
         }.onFailure { Log.w(logTag, "inherited display density clear failed display=$displayId", it) }
+        // HyperOS keeps reporting the phone's size and density for a new virtual
+        // display after the clear, so the desktop draws a shrunken portrait phone
+        // layout. Setting the display's own metrics explicitly does stick.
+        if (desktopEnvironment.id == XIAOMI_PROFILE && displayId == targetDisplayId && targetWidth > 0 && targetHeight > 0) {
+            runCatching {
+                type.getMethod("setForcedDisplaySize", Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                    .invoke(service, displayId, targetWidth, targetHeight)
+                type.getMethod("setForcedDisplayDensityForUser", Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                    .invoke(service, displayId, density, userId)
+            }.onFailure { Log.w(logTag, "Xiaomi display metrics pin failed display=$displayId", it) }
+        }
         OperationLog.i(this, "DisplayBackend", "cleared inherited metrics display=$displayId")
+    }
+
+    private fun applyXiaomiDesktopDensity(displayId: Int, dpi: Int) {
+        val service = systemService("window", "android.view.IWindowManager")
+        val userId = android.os.UserHandle::class.java.getMethod("myUserId").invoke(null) as Int
+        Class.forName("android.view.IWindowManager").getMethod(
+            "setForcedDisplayDensityForUser", Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType,
+        ).invoke(service, displayId, dpi, userId)
+        Log.i(logTag, "Xiaomi desktop density applied display=$displayId dpi=$dpi")
     }
 
     private fun configureDisplay(skipWindowing: Boolean = false) {
@@ -12149,6 +12518,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun shouldFollowHostDisplay(): Boolean {
+        // The car display has its own size; folding or rotating the phone must not resize it.
+        if (autoOnlySession) return false
         val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
         val selectedDeviceResolution =
             preferences.getString("flutter.selected_resolution_id", "device") == "device"
@@ -12298,7 +12669,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     Int::class.javaPrimitiveType
                 ).invoke(service, targetDisplayId, next.width, next.height)
             }
-            if (densityChanged) {
+            if (densityChanged || desktopEnvironment.id == XIAOMI_PROFILE) {
                 type.getMethod(
                     "setForcedDisplayDensityForUser",
                     Int::class.javaPrimitiveType,
@@ -12318,9 +12689,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             synchronizeDesktopWallpaperDimensions(targetWidth, targetHeight, reason)
             plasmaShell?.onDisplayResized(targetWidth, targetHeight)
         }
-        phoneOwnedDisplay?.takeIf { sizeChanged }?.let { owned ->
+        phoneOwnedDisplay?.takeIf { sizeChanged || densityChanged }?.let { owned ->
             val surface = surfaceView?.holder?.surface?.takeIf { it.isValid }
             val updated = surface != null && owned.resize(surface, targetWidth, targetHeight, density)
+            check(updated) { "Unable to resize the direct Dextop display" }
             OperationLog.i(
                 this,
                 "DisplayBackend",
@@ -12390,6 +12762,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             "live resized display=$targetDisplayId to ${next.width}x${next.height}/${next.density}; " +
                     "tasks retained " + displayGeometrySnapshot("live_resize_applied")
         )
+        if (desktopEnvironment.id == XIAOMI_PROFILE && sizeChanged &&
+            virtualPointerRegisteredProfile == "touchpad" && virtualMouseProcessAlive()) {
+            virtualMouseReady = false
+            privilegedInputClient.setOutputReady(false)
+            startVirtualMouse()
+        }
     }
 
     private fun synchronizeDesktopWallpaperDimensions(
@@ -12721,6 +13099,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         token: Binder,
         target: String,
     ) {
+        // Last line of defence: Android Auto sessions only ever clear these flags.
+        if (disabled && autoOnlySession) return
         runCatching {
             val service = systemService("statusbar", STATUS_BAR_INTERFACE)
             val type = Class.forName(STATUS_BAR_INTERFACE)

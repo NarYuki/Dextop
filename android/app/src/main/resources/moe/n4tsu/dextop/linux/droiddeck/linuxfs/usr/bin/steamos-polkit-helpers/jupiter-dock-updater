@@ -1,0 +1,5 @@
+#!/bin/sh
+case "${1:-}" in
+  --check) exit 7 ;;
+esac
+exit 0

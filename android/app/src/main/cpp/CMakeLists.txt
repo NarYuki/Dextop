@@ -23,6 +23,8 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     add_subdirectory(virgl)
     # Wayland compositor for Linux application windows.
     add_subdirectory(wayland)
+    # zstd decompressor for .tar.zst root filesystems.
+    add_subdirectory(zstd)
 
     # Framebuffer-to-Surface copies for Linux windows (loaded by the shell-side service).
     add_library(dextop_linux SHARED linux_bridge.cpp)

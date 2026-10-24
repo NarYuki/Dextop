@@ -1,0 +1,64 @@
+diff --git a/src/steamcompmgr.cpp b/src/steamcompmgr.cpp
+index 214677d..6c9299d 100644
+--- a/src/steamcompmgr.cpp
++++ b/src/steamcompmgr.cpp
+@@ -298,6 +298,7 @@ update_runtime_info();
+ gamescope::ConVar<bool> cv_adaptive_sync( "adaptive_sync", false, "Whether or not adaptive sync is enabled if available." );
+ gamescope::ConVar<bool> cv_adaptive_sync_ignore_overlay( "adaptive_sync_ignore_overlay", false, "Whether or not to ignore overlay planes for pushing commits with adaptive sync." );
+ gamescope::ConVar<int> cv_adaptive_sync_overlay_cycles( "adaptive_sync_overlay_cycles", 1, "Number of vblank cycles to ignore overlay repaints before forcing a commit with adaptive sync." );
++gamescope::ConVar<int> cv_external_overlay_hold_cycles( "external_overlay_hold_cycles", 4, "Number of vblank cycles an external overlay's repaint waits for the next base plane commit on a fixed refresh output, 0 repaints at once." );
+ gamescope::ConVar<bool> cv_adaptive_sync_uncapped( "adaptive_sync_uncapped", true, "Whether or not to allow mailbox/immediate clients to run uncapped with adaptive sync by deferring paints until the display can take a new flip." );
+ 
+ gamescope::ConVar<bool> cv_upscale_preemptive( "upscale_preemptive", true, "Allow pre-emptive upscaling" );
+@@ -1119,6 +1120,7 @@ uint32_t		lastPublishedInputCounter;
+ 
+ std::atomic<bool> hasRepaint = false;
+ bool			hasRepaintNonBasePlane = false;
++bool			hasRepaintExternalOverlay = false;
+ 
+ bool			g_bUpdateForwardedVROverlays = false;
+ 
+@@ -8015,7 +8017,10 @@ bool handle_done_commit( steamcompmgr_win_t *w, xwayland_ctx_t *ctx, uint64_t co
+ 				if ( ( w == pFocus->externalOverlayWindow && w->opacity != TRANSLUCENT ) &&
+ 				     ( GetBackend()->GetCurrentConnector() && !GetBackend()->GetCurrentConnector()->IsVRRActive() ) )
+ 				{
+-					hasRepaintNonBasePlane = true;
++					if ( cv_external_overlay_hold_cycles > 0 )
++						hasRepaintExternalOverlay = true;
++					else
++						hasRepaintNonBasePlane = true;
+ 				}
+ 
+ 				// If this is the main plane, repaint
+@@ -10573,6 +10578,14 @@ steamcompmgr_main(int argc, char **argv)
+ 			hasRepaint = true;
+ 
+ 		bool bPainted = false;
++		bool bPaintedOutput = false;
++
++		static int nHeldExternalOverlayCycles = 0;
++
++		if ( !hasRepaintExternalOverlay )
++			nHeldExternalOverlayCycles = 0;
++		else if ( vblank && ++nHeldExternalOverlayCycles >= cv_external_overlay_hold_cycles )
++			hasRepaintNonBasePlane = true;
+ 
+ 		static int nIgnoredOverlayRepaints = 0;
+ 
+@@ -10733,6 +10746,7 @@ steamcompmgr_main(int argc, char **argv)
+ 				paint_all( pPaintFocus, eFlipType == FlipType::Async );
+ 
+ 				bPainted = true;
++				bPaintedOutput = true;
+ 			}
+ 		}
+ 
+@@ -10751,6 +10765,8 @@ steamcompmgr_main(int argc, char **argv)
+ 
+ 			hasRepaint = false;
+ 			hasRepaintNonBasePlane = false;
++			if ( bPaintedOutput )
++				hasRepaintExternalOverlay = false;
+ 			nIgnoredOverlayRepaints = 0;
+ 
+ 			{

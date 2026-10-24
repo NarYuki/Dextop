@@ -1,0 +1,348 @@
+# This file configures the analyzer, which statically analyzes Dart code to
+# check for errors, warnings, and lints.
+#
+# The issues identified by the analyzer are surfaced in the UI of Dart-enabled
+# IDEs (https://dart.dev/tools#ides-and-editors). The analyzer can also be
+# invoked from the command line by running `flutter analyze`.
+
+# The following line activates a set of recommended lints for Flutter apps,
+# packages, and plugins designed to encourage good coding practices.
+include: package:flutter_lints/flutter.yaml
+
+custom_lint:
+  rules:
+    # UI package: demo/example/test strings are intentional labels, not i18n debt.
+    - avoid_hardcoded_strings_in_ui: false
+    - avoid_string_literals_in_logic: false
+
+analyzer:
+  exclude:
+    - "analysis_options.yaml"
+    - "README.md"
+    # Generated Material Icons glyph registry (~52k lines); not practical to split.
+    - "lib/foundations/m3e_icons.dart"
+    - build/**
+    - android/**
+    - ios/**
+    - web/**
+    - windows/**
+    - macos/**
+    - linux/**
+
+  plugins:
+    - custom_lint
+    
+  strong-mode: true
+  errors:
+    missing_return: error
+    unused_local_variable: warning
+    dead_code: warning
+    avoid_catches_without_on_clauses: ignore
+    constant_identifier_names: ignore
+    depend_on_referenced_packages: ignore
+    invalid_use_of_protected_member: ignore
+    unnecessary_lambdas: ignore
+    prefer_constructors_over_static_methods: ignore
+    type_annotate_public_apis: ignore
+    avoid_annotating_with_dynamic: ignore
+
+linter:
+  rules:
+    # Nomenclature Guidelines & Naming conventions
+    - camel_case_types # Enforces naming conventions for types (classes, enums, etc.)
+    - avoid_types_as_parameter_names # Avoids using types as parameter names to prevent disinformation
+    - non_constant_identifier_names # Enforces intention-revealing names by avoiding disinformation in variable names
+    - avoid_positional_boolean_parameters # Use named parameters for clarity and searchability
+    - avoid_renaming_method_parameters # Avoids unnecessary renaming that could lead to confusion
+    - camel_case_extensions
+    - library_names
+    - file_names: error
+    - constant_identifier_names
+    - prefer_function_declarations_over_variables
+    - always_declare_return_types # Ensures function signatures are clear and understandable
+    - type_annotate_public_apis # Makes APIs more searchable and understandable
+    - avoid_private_typedef_functions # Prevents disinformation in method and function naming
+    - prefer_constructors_over_static_methods # Ensures class names are noun-based and methods verb-based
+    - prefer_generic_function_type_aliases # Encourages meaningful distinctions in method names
+
+    # Functions
+    - prefer_final_locals: warning # Encourages immutability to avoid side effects
+    - sized_box_for_whitespace
+    - prefer_asserts_in_initializer_lists # Ensures single level of abstraction and readability
+    - avoid_void_async
+    - avoid_returning_null_for_future
+    - avoid_returning_null_for_void
+    - prefer_void_to_null
+    - avoid_returning_this
+    - avoid_annotating_with_dynamic
+
+    # Miscellaneous Guidelines
+    - always_put_control_body_on_new_line # Improves readability by avoiding long lines
+    - lines_longer_than_80_chars: ignore # Limits line length to improve readability and adherence to file length guidelines
+    - avoid_empty_else # Encourages clarity and avoids unnecessary code
+    - prefer_mixin # Promotes composition over inheritance
+    - prefer_final_fields: warning
+    - prefer_const_declarations: warning
+    - empty_constructor_bodies
+    - unnecessary_const
+    - unnecessary_new
+    - sort_unnamed_constructors_first
+    - avoid_catches_without_on_clauses
+    - avoid_catching_errors
+    - use_rethrow_when_possible
+
+    # DRY and SOLID
+    - avoid_redundant_argument_values # Avoids unnecessary repetition, promoting DRY
+    - prefer_const_constructors # Promotes immutability and reuse, adhering to SOLID principles
+    - prefer_final_in_for_each
+    - avoid_print
+    - avoid_function_literals_in_foreach_calls
+    - prefer_initializing_formals
+    - avoid_init_to_null
+    - avoid_null_checks_in_equality_operators
+    - prefer_is_empty
+    - prefer_is_not_empty
+    - avoid_unused_constructor_parameters
+
+    # Additional Best Practices
+    - unnecessary_null_checks # Avoids redundant checks to keep functions concise
+    - no_leading_underscores_for_local_identifiers # Avoids disinformation and mental mapping in variable names
+    - avoid_single_cascade_in_expression_statements
+    - curly_braces_in_flow_control_structures
+    - prefer_conditional_assignment
+    - unnecessary_lambdas
+    - unnecessary_parenthesis
+    - unnecessary_this
+    - avoid_slow_async_io
+    - prefer_interpolation_to_compose_strings
+    - always_put_required_named_parameters_first: ignore
+    - always_require_non_null_named_parameters
+    - annotate_overrides
+    - annotate_redeclares
+    - avoid_as
+    - avoid_bool_literals_in_conditional_expressions
+    - avoid_classes_with_only_static_members
+    - avoid_double_and_int_checks
+    - avoid_dynamic_calls
+    - avoid_equals_and_hash_code_on_mutable_classes
+    - avoid_escaping_inner_quotes
+    - avoid_field_initializers_in_const_classes
+    - avoid_final_parameters
+    - avoid_implementing_value_types
+    - avoid_js_rounded_ints
+    - avoid_multiple_declarations_per_line: ignore
+    - avoid_relative_lib_imports
+    - avoid_return_types_on_setters
+    - avoid_returning_null
+    - avoid_setters_without_getters
+    - avoid_shadowing_type_parameters
+    - avoid_type_to_string
+    - avoid_types_on_closure_parameters: ignore
+    - avoid_unnecessary_containers
+    - avoid_unstable_final_fields
+    - avoid_web_libraries_in_flutter
+    - await_only_futures
+    - cancel_subscriptions
+    - cascade_invocations
+    - cast_nullable_to_non_nullable
+    - close_sinks
+    - collection_methods_unrelated_type
+    - combinators_ordering
+    - comment_references
+    - conditional_uri_does_not_exist
+    - control_flow_in_finally
+    - dangling_library_doc_comments
+    - deprecated_consistency
+    - deprecated_member_use_from_same_package
+    - directives_ordering
+    - discarded_futures: ignore
+    - do_not_use_environment
+    - document_ignores
+    - empty_catches
+    - empty_statements
+    - enable_null_safety
+    - eol_at_end_of_file
+    - exhaustive_cases
+    - flutter_style_todos: ignore
+    - hash_and_equals
+    - implementation_imports
+    - implicit_call_tearoffs
+    - implicit_reopen
+    - invalid_case_patterns
+    - invalid_runtime_check_with_js_interop_types
+    - invariant_booleans
+    - iterable_contains_unrelated_type
+    - join_return_with_assignment
+    - leading_newlines_in_multiline_strings
+    - library_annotations
+    - library_prefixes
+    - library_private_types_in_public_api
+    - list_remove_unrelated_type
+    - literal_only_boolean_expressions
+    - matching_super_parameters
+    - missing_code_block_language_in_doc_comment
+    - missing_whitespace_between_adjacent_strings
+    - no_adjacent_strings_in_list
+    - no_default_cases
+    - no_duplicate_case_values
+    - no_leading_underscores_for_library_prefixes
+    - no_literal_bool_comparisons
+    - no_logic_in_create_state
+    - no_runtimeType_toString
+    - no_self_assignments
+    - no_wildcard_variable_uses
+    - noop_primitive_operations
+    - null_check_on_nullable_type_parameter
+    - null_closures
+    - omit_local_variable_types: ignore
+    - omit_obvious_local_variable_types
+    - only_throw_errors
+    - overridden_fields
+    - package_api_docs
+    - package_names
+    - package_prefixed_library_names
+    - parameter_assignments
+    - prefer_adjacent_string_concatenation
+    - prefer_asserts_with_message
+    - prefer_bool_in_asserts
+    - prefer_collection_literals
+    - prefer_const_constructors_in_immutables
+    - prefer_const_literals_to_create_immutables
+    - prefer_contains
+    - prefer_equal_for_default_values
+    - prefer_for_elements_to_map_fromIterable
+    - prefer_foreach
+    - prefer_if_elements_to_conditional_expressions
+    - prefer_if_null_operators
+    - prefer_inlined_adds
+    - prefer_int_literals
+    - prefer_is_not_operator
+    - prefer_iterable_whereType
+    - prefer_null_aware_method_calls
+    - prefer_null_aware_operators
+    - prefer_spread_collections
+    - prefer_typing_uninitialized_variables
+    - provide_deprecation_message
+    - recursive_getters
+    - require_trailing_commas: ignore
+    - secure_pubspec_urls
+    - sized_box_shrink_expand
+    - slash_for_doc_comments
+    - sort_child_properties_last
+    - sort_pub_dependencies
+    - super_goes_last
+    - test_types_in_equals
+    - throw_in_finally
+    - tighten_type_of_initializing_formals
+    - type_init_formals
+    - type_literal_in_constant_pattern
+    - unawaited_futures: ignore
+    - unintended_html_in_doc_comment
+    - unnecessary_await_in_return
+    - unnecessary_brace_in_string_interps
+    - unnecessary_breaks
+    - unnecessary_constructor_name
+    - unnecessary_getters_setters
+    - unnecessary_late
+    - unnecessary_library_directive
+    - unnecessary_library_name
+    - unnecessary_null_aware_assignments
+    - unnecessary_null_aware_operator_on_extension_on_nullable
+    - unnecessary_null_in_if_null_operators
+    - unnecessary_nullable_for_final_variable_declarations
+    - unnecessary_overrides
+    - unnecessary_raw_strings
+    - unnecessary_statements
+    - unnecessary_string_escapes
+    - unnecessary_string_interpolations
+    - unnecessary_to_list_in_spreads
+    - unreachable_from_main
+    - unrelated_type_equality_checks
+    - unsafe_html
+    - use_build_context_synchronously
+    - use_colored_box
+    - use_decorated_box
+    - use_enums
+    - use_full_hex_values_for_flutter_colors
+    - use_function_type_syntax_for_parameters
+    - use_if_null_to_convert_nulls_to_bools
+    - use_is_even_rather_than_modulo
+    - use_key_in_widget_constructors
+    - use_late_for_private_fields_and_variables
+    - use_named_constants
+    - use_raw_strings
+    - use_setters_to_change_properties
+    - use_string_buffers
+    - use_string_in_part_of_directives
+    - use_super_parameters
+    - use_test_throws_matchers
+    - use_to_and_as_if_applicable
+    - use_truncating_division
+    - valid_regexps
+    - void_checks
+    - abi_specific_integer_invalid
+    - abstract_field_initializer
+    - argument_must_be_native
+    - argument_type_not_assignable_to_error_handler
+    - body_might_complete_normally
+    - conflicting_constructor_and_static_member
+    - const_map_key_not_primitive_equality
+    - dead_null_aware_expression
+    - deprecated_new_in_comment_reference
+    - duplicate_constructor
+    - duplicate_field_name
+    - duplicate_ignore
+    - duplicate_pattern_field
+    - external_with_initializer
+    - field_initializer_redirecting_constructor
+    - illegal_concrete_enum_member
+    - illegal_enum_values
+    - implicit_super_initializer_missing_arguments
+    - inconsistent_pattern_variable_logical_or
+    - invalid_annotation
+    - invalid_extension_argument_count
+    - invalid_field_name
+    - invalid_literal_annotation
+    - invalid_non_virtual_annotation
+    - invalid_null_aware_operator
+    - invalid_pattern_variable_in_shared_case_scope
+    - invalid_return_type_for_catch_error
+    - invalid_super_formal_parameter_location
+    - invalid_type_argument_in_const_literal
+    - invalid_visible_outside_template_annotation
+    - invocation_of_non_function_expression
+    - missing_default_value_for_parameter
+    - non_constant_map_element
+    - not_assigned_potentially_non_nullable_local_variable
+    - not_initialized_non_nullable_instance_field
+    - not_initialized_non_nullable_variable
+    - recursive_constructor_redirect
+    - redirect_to_invalid_function_type
+    - return_in_generator
+    - subtype_of_disallowed_type
+    - super_formal_parameter_without_associated_positional
+    - type_check_with_null
+    - type_parameter_supertype_of_its_bound
+    - undefined_constructor_in_initializer
+    - undefined_enum_constructor
+    - undefined_extension_getter
+    - undefined_extension_method
+    - undefined_extension_setter
+    - undefined_super_member
+    - unnecessary_null_comparison
+    - uri_does_not_exist
+    - uri_does_not_exist_in_doc_import
+    - wrong_number_of_parameters_for_setter
+    - wrong_number_of_type_arguments
+    - yield_in_non_generator
+    - literal_only_boolean_expressions
+    - no_logic_in_create_state
+    - sized_box_shrink_expand
+
+    - public_member_api_docs
+    - prefer_double_quotes: ignore
+    - prefer_relative_imports: ignore
+    - prefer_single_quotes: ignore
+    - prefer_final_parameters: ignore
+    - diagnostic_describe_all_properties: ignore
+    - prefer_expression_function_bodies: ignore

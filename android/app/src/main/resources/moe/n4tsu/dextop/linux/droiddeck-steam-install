@@ -1,0 +1,147 @@
+#!/bin/bash
+# Based on Droid-Deck/DroidDeck droiddeck-steam-install (GPL-3.0),
+# update synchronization from c2c80c3; Dextop stages verified files before replacement.
+set -eu
+cdn_list="https://client-update.steamstatic.com https://client-update.akamai.steamstatic.com https://client-update.fastly.steamstatic.com"
+steam_channel=steamdeck_publicbeta
+manifest=steam_client_${steam_channel}_linuxarm64
+steam_root=${XDG_DATA_HOME:-$HOME/.local/share}/Steam
+stamp=$steam_root/package/droiddeck-installed
+legacy_stamp=$steam_root/package/bannerlator-installed
+unconfirmed=$steam_root/package/droiddeck-unconfirmed
+repair_request=$HOME/.bl-steam-repair
+if [ -f "$legacy_stamp" ] && [ ! -f "$stamp" ]; then
+  mv -f "$legacy_stamp" "$stamp" || true
+fi
+repair=""
+if [ -e "$repair_request" ]; then
+  repair="requested"
+elif [ -f "$unconfirmed" ] && ! grep -qx repaired "$unconfirmed" \
+    && [ "$(grep -cx start "$unconfirmed")" -ge 2 ]; then
+  repair="the client was started $(grep -cx start "$unconfirmed") times without showing anything"
+fi
+if [ -n "$repair" ]; then
+  echo "== STEP $(date -u +%H:%M:%S) repairing the Steam client ($repair)"
+  rm -f "$stamp" "$legacy_stamp" "$steam_root/.crash" "$steam_root/steam.pid" \
+    "$steam_root"/package/steam_client_*.manifest "$steam_root"/package/steam_client_*.installed
+  for part in "$steam_root"/package/*.zip.*; do
+    [ -f "$part" ] || continue
+    sum=${part##*.}
+    sum=${sum%%_*}
+    case $sum in
+      *[!0-9a-f]*|"") continue ;;
+    esac
+    [ ${#sum} -eq 40 ] || continue
+    [ "$(sha1sum "$part" | cut -d' ' -f1)" = "$sum" ] || rm -f "$part"
+  done
+fi
+sync=""
+if [ "${1:-}" = --sync ]; then
+  case "${2:-$steam_channel}" in
+    publicbeta|steamdeck_publicbeta) sync=${2:-$steam_channel} ;;
+    *) echo "Unsupported Steam update channel: ${2:-}" >&2; exit 2 ;;
+  esac
+  manifest=steam_client_${sync}_linuxarm64
+fi
+# The bootstrap loads its installed version using package/beta before applying
+# -clientbeta. A stale branch makes a complete installation look like version 0.
+select_channel() {
+  printf '%s\n' "${sync:-$steam_channel}" > "$steam_root/package/beta.staged"
+  mv -f "$steam_root/package/beta.staged" "$steam_root/package/beta"
+}
+if [ -z "$sync" ] && [ -x "$steam_root/steamrtarm64/steam" ] && [ -f "$stamp" ]; then
+  select_channel
+  exit 0
+fi
+
+work=$(mktemp -d)
+trap 'rm -rf "$work"' EXIT
+cdn=""
+for candidate in $cdn_list; do
+  if curl -fsSL --connect-timeout 10 --max-time 30 --retry 2 --retry-connrefused --retry-delay 3 \
+      "$candidate/$manifest" -o "$work/manifest"; then
+    cdn=$candidate
+    break
+  fi
+done
+[ -n "$cdn" ] || { echo "droiddeck-steam-install: no Steam client CDN answered for $manifest" >&2; exit 1; }
+cdn_order=("$cdn")
+for candidate in $cdn_list; do
+  [ "$candidate" = "$cdn" ] || cdn_order+=("$candidate")
+done
+version=$(awk -F'"' '$2 == "version" { print $4; exit }' "$work/manifest")
+case "$version" in
+  ''|*[!0-9]*) echo "Invalid Steam client manifest version" >&2; exit 1 ;;
+esac
+if [ -n "$sync" ]; then
+  installed=$(awk -F'"' '$2 == "version" { print $4; exit }' "$steam_root/package/$manifest.manifest" 2>/dev/null || true)
+  # Steam itself writes pending manifests, so a matching downloaded manifest is not
+  # proof that our ARM64 payload was installed successfully.
+  completed=$(cat "$stamp" 2>/dev/null || true)
+  if [ -x "$steam_root/steamrtarm64/steam" ] && [ "$installed" = "$version" ] && [ "$completed" = "$version" ]; then
+    select_channel
+    chmod -R a+x "$steam_root/steamrtarm64" "$steam_root/linuxarm64" 2>/dev/null || true
+    exit 0
+  fi
+  echo "== STEP $(date -u +%H:%M:%S) updating the ARM64 Steam client to $version (was ${installed:-unknown})"
+fi
+# Download and verify every component before changing the installed client.
+mkdir -p "$work/client"
+
+awk -F'"' '
+  /^\t"/ && NF >= 3 && $4 == "" { block = $2 }
+  $2 == "file" { file[block] = $4 }
+  $2 == "sha2" { sha[block] = $4 }
+  END { for (b in file) if (b ~ /_all$/ || b ~ /_linuxarm64_linuxarm64$/) print b, file[b], sha[b] }
+' "$work/manifest" | sort > "$work/parts"
+[ -s "$work/parts" ] || { echo "droiddeck-steam-install: no client components in $manifest" >&2; exit 1; }
+total=$(grep -c . "$work/parts" 2>/dev/null || echo 0)
+
+mkdir -p "$steam_root/package"
+while read -r block file sum; do
+  i=$((${i:-0} + 1))
+  echo "== STEP $(date -u +%H:%M:%S) downloading Steam: $block ($i/$total)"
+  fetched=""
+  for host in "${cdn_order[@]}"; do
+    if curl -fsSL --connect-timeout 10 --speed-limit 1024 --speed-time 60 --max-time 1800 \
+        "$host/$file" -o "$work/$file" && echo "$sum  $work/$file" | sha256sum -c --quiet; then
+      fetched=$host
+      break
+    fi
+    rm -f "$work/$file"
+  done
+  [ -n "$fetched" ] || { echo "droiddeck-steam-install: $file failed on every CDN" >&2; exit 1; }
+  unzip -qo "$work/$file" -d "$work/client"
+  rm -f "$work/$file"
+done < "$work/parts"
+find "$work/client" -depth -name '*\\*' | while read -r odd; do
+  fixed=${odd//\\//}
+  mkdir -p "$(dirname "$fixed")"
+  if [ -d "$odd" ]; then
+    cp -a "$odd/." "$fixed/" && rm -rf "$odd"
+  else
+    mv -f "$odd" "$fixed"
+  fi
+done
+# Replace each inode rather than truncating executables mapped by a remaining helper.
+# The launchers call --sync only after the main client exits.
+cp -a --remove-destination "$work/client/." "$steam_root/"
+chmod -R a+x "$steam_root/steamrtarm64" "$steam_root/linuxarm64" 2>/dev/null || true
+cp "$work/manifest" "$steam_root/package/$manifest.manifest.staged"
+mv -f "$steam_root/package/$manifest.manifest.staged" "$steam_root/package/$manifest.manifest"
+select_channel
+ln -sfn "$steam_root/steamrtarm64" "$steam_root/steamrtarm32"
+chmod +x "$steam_root/steamrtarm64/steam" 2>/dev/null || true
+mkdir -p "$HOME/.steam"
+ln -sfn "$steam_root" "$HOME/.steam/root"
+ln -sfn "$steam_root" "$HOME/.steam/steam"
+ln -sfn "$steam_root/steamrtarm64" "$HOME/.steam/bin64"
+ln -sfn "$steam_root/linuxarm64" "$HOME/.steam/sdk64"
+ln -sfn "$steam_root/linuxarm64" "$HOME/.steam/sdkarm64"
+ln -sfn "$steam_root/steamrtarm64" "$HOME/.steam/binarm64"
+ln -sfn "$steam_root/linux32" "$HOME/.steam/sdk32"
+echo "$version" > "$stamp"
+if [ -n "$repair" ]; then
+  echo repaired > "$unconfirmed"
+  rm -f "$repair_request"
+fi

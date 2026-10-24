@@ -65,6 +65,9 @@ internal data class TrayState(
     val cellularVisible: Boolean = false,
     val cellularLevel: Float = 0f,
     val cellularNoService: Boolean = false,
+    val cellularType: String? = null,
+    /** The active connection is Wi-Fi (networkGlyph alone also shows Wi-Fi state beside a SIM). */
+    val wifiConnected: Boolean = false,
 )
 
 /**
@@ -218,8 +221,9 @@ internal class PlasmaPanelView(
             TrayItem.EXPAND,
         )
         tray.forEach { item ->
-            slots += Slot.Tray(RectF(right - trayCell, bar.top, right, bar.bottom), item)
-            right -= trayCell
+            val cellWidth = if (item == TrayItem.BATTERY) dp(48f) else trayCell
+            slots += Slot.Tray(RectF(right - cellWidth, bar.top, right, bar.bottom), item)
+            right -= cellWidth
         }
         right -= dp(6f)
         val entries = host.panelEntries()
@@ -300,6 +304,24 @@ internal class PlasmaPanelView(
                 }
                 rect.set(slot.rect); rect.inset(dp(6f), (slot.rect.height() - dp(18f)) / 2f)
                 glyph.setBounds(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
+                val caption = when (slot.item) {
+                    TrayItem.BATTERY -> percentText(tray.battery)
+                    TrayItem.CELLULAR -> tray.cellularType
+                    else -> null
+                }
+                if (caption != null) {
+                    val cx = slot.rect.centerX()
+                    textPaint.textSize = dp(9f)
+                    textPaint.color = palette.text
+                    val metrics = textPaint.fontMetrics
+                    val iconSize = dp(18f)
+                    val gap = dp(1f)
+                    val groupHeight = iconSize + gap + metrics.descent - metrics.ascent
+                    val iconTop = slot.rect.centerY() - groupHeight / 2f
+                    glyph.setBounds((cx - iconSize / 2f).toInt(), iconTop.toInt(),
+                        (cx + iconSize / 2f).toInt(), (iconTop + iconSize).toInt())
+                    canvas.drawText(caption, cx, iconTop + iconSize + gap - metrics.ascent, textPaint)
+                }
                 glyph.draw(canvas)
                 if (slot.item == TrayItem.NETWORK && !tray.networkConnected) {
                     indicatorPaint.color = palette.negative

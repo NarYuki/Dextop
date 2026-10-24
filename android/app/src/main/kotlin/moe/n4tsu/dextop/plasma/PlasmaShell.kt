@@ -1317,6 +1317,11 @@ internal class PlasmaShell(
      * KDE Plasma default global shortcuts.  Returns true when the shell
      * consumed the key so it is not delivered to the focused application.
      */
+    override fun onVolumeChanged() {
+        service.getSystemService(AudioManager::class.java).adjustStreamVolume(
+            AudioManager.STREAM_MUSIC, AudioManager.ADJUST_SAME, AudioManager.FLAG_SHOW_UI)
+    }
+
     override fun handleKey(event: KeyEvent): Boolean {
         if (!running) return false
         val down = event.action == KeyEvent.ACTION_DOWN

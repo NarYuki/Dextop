@@ -20,14 +20,24 @@ object EmbeddedPrivilegeServer {
             System.setProperty("moe.n4tsu.dextop.embedded_input_library", nativeInputLibrary)
         }
         Looper.prepareMainLooper()
+        // An app update deletes the APK this process was started from. Exit then even if the main
+        // thread is stuck publishing to a provider that is being replaced.
+        val apk = System.getenv("CLASSPATH")?.substringBefore(':')?.takeIf { it.isNotBlank() }
+        if (apk != null) Thread({
+            while (File(apk).exists()) Thread.sleep(5_000L)
+            kotlin.system.exitProcess(0)
+        }, "DextopApkWatch").apply { isDaemon = true }.start()
         HiddenApiBypass.addHiddenApiExemptions("Landroid/app/", "Landroid/content/", "Landroid/os/", "Landroid/window/")
         val server = RuntimeBinder()
         val handler = Handler(Looper.getMainLooper())
         lateinit var publishAndWatch: () -> Unit
         publishAndWatch = {
             val response = runCatching {
-                publishBinder("$packageName.embedded_privilege", server)
+                publishBinder("$packageName.embedded_privilege", server,
+                    argument = apk)
             }.getOrNull()
+            // The app already has a live server, or this one runs an outdated APK.
+            if (response?.getBoolean("retire") == true) kotlin.system.exitProcess(0)
             val lifecycle = response
                 ?.takeIf { it.getBoolean("accepted") }
                 ?.getBinder(EmbeddedPrivilegeProtocol.providerLifecycleBinder)

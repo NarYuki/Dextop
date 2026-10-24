@@ -20,6 +20,9 @@
 #include <android/log.h>
 #include <android/native_window.h>
 #include <android/native_window_jni.h>
+#include <android/hardware_buffer.h>
+#include <android/surface_control.h>
+#include "banner-ahb-v1-server-protocol.h"
 #include <errno.h>
 #include <fcntl.h>
 #include <jni.h>
@@ -31,12 +34,14 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/eventfd.h>
+#include <sys/file.h>
 #include <sys/mman.h>
 #include <linux/memfd.h>
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/un.h>
 #include <time.h>
 #include <unistd.h>
@@ -45,6 +50,7 @@
 #include "wayland-server-protocol.h"
 #include "xdg-shell-server-protocol.h"
 #include "linux-dmabuf-v1-server-protocol.h"
+#include "single-pixel-buffer-v1-server-protocol.h"
 #include "xdg-decoration-unstable-v1-server-protocol.h"
 #include "server-decoration-server-protocol.h"
 #include "text-input-unstable-v3-server-protocol.h"
@@ -84,6 +90,7 @@ struct pixels {
 };
 
 struct viewport_state { float x, y, width, height; int dest_width, dest_height; };
+struct opaque_rect { int64_t x1, y1, x2, y2; bool set; };
 
 struct surface {
     struct comp *comp;
@@ -93,19 +100,24 @@ struct surface {
     struct wl_list pending_frames; /* wl_callback resources (wl_resource_get_link) */
     struct wl_list ready_frames;   /* rendered, waiting for the frame tick */
     struct pixels pixels;
+    struct opaque_rect opaque, pending_opaque;
 #ifdef DEXTOP_WAYLAND_GPU
     struct dmabuf *gpu_buffer;
     struct linux_gpu_image *gpu_shm;
     struct viewport_state view, pending_view;
     struct wl_resource *viewport;
-    struct wl_list presentation_feedback;
+    struct wl_list presentation_feedback; /* pending until wl_surface.commit */
+    struct wl_list committed_feedback;
 #endif
-    int32_t scale;
+    int32_t scale, pending_scale;
+    int32_t buffer_transform;
     /* Subsurface role. */
     struct surface *parent;
     struct wl_resource *subsurface;
     int32_t sub_x, sub_y, pending_sub_x, pending_sub_y;
-    bool sub_sync;
+    bool sub_sync, below_parent;
+    struct surface *cached;
+    bool cached_commit, cached_attach;
     struct wl_list children; /* struct surface.child_link, bottom to top */
     struct wl_list child_link;
     /* xdg role. */
@@ -122,6 +134,8 @@ struct xdg {
     struct xdg *parent;
     bool configured;
     bool mapped;
+    bool client_decorated;
+    bool maximized;
     uint32_t window_id;
     int32_t geo_x, geo_y, geo_w, geo_h;
     bool has_geometry;
@@ -132,10 +146,21 @@ struct xdg {
     ANativeWindow *window;
     int window_w, window_h;
     bool needs_redraw;
+    bool deck_direct;
+    bool deck_30, deck_no_vsync;
+    bool deck; /* gamescope from the Deck launcher, not ordinary Linux windows */
+    bool frame_announced;
 #ifdef DEXTOP_WAYLAND_GPU
     struct linux_gpu_window *gpu_window;
+    struct deck_direct_layer *direct_layer;
+    unsigned deck_direct_submits;
     bool gpu_announced;
     bool gpu_disabled;
+    uint64_t deck_buffer_serial, deck_submitted_serial, deck_buffer_ns;
+    uint64_t deck_age_ns, deck_age_max_ns;
+    unsigned deck_buffers, deck_submits, deck_coalesced, deck_redraws, deck_age_samples;
+    uint64_t deck_previous_commit_ns, deck_commit_gap_max_ns;
+    unsigned deck_commit_gaps[4];
 #endif
 };
 
@@ -151,6 +176,8 @@ struct dmabuf_params {
     uint32_t offset, stride;
     uint64_t modifier;
     bool used;
+    bool deck;
+    struct comp *comp;
 };
 
 struct dmabuf {
@@ -158,10 +185,14 @@ struct dmabuf {
     uint32_t offset, stride;
     int32_t width, height;
     uint32_t format;
+    uint64_t modifier;
     void *map;
     size_t map_size;
 #ifdef DEXTOP_WAYLAND_GPU
     struct linux_gpu_image *image;
+    AHardwareBuffer *ahb;
+    struct comp *comp;
+    bool deck;
     struct wl_resource *resource;
     unsigned refs, busy;
 #endif
@@ -174,6 +205,7 @@ struct gpu_job {
     unsigned count;
     struct comp *comp;
     uint64_t started_ns;
+    uint32_t window_id;
     int fence;
     struct wl_event_source *source;
     struct wl_list link;
@@ -182,31 +214,38 @@ struct gpu_job {
 
 enum command_type {
     CMD_ATTACH, CMD_DETACH, CMD_CONFIGURE, CMD_ACTIVATE, CMD_CLOSE,
-    CMD_POINTER, CMD_AXIS, CMD_KEY, CMD_TEXT, CMD_QUIT,
+    CMD_POINTER, CMD_AXIS, CMD_KEY, CMD_TEXT, CMD_QUIT, CMD_STATE, CMD_OUTPUT, CMD_DECK_VSYNC,
 };
 
 struct command {
     enum command_type type;
     uint32_t id;
     int32_t a, b, c, d;
+    uint64_t frame_time_ns;
     ANativeWindow *window;
     char *text;
     struct command *next;
 };
 
 struct comp {
+    uint64_t deck_vsync_ns, deck_frame_ns;
 #ifdef DEXTOP_WAYLAND_GPU
     struct linux_gpu *gpu;
     struct wl_list gpu_jobs;
+    struct wl_list direct_frames;
+    struct wl_list buffer_releases;
+    struct wl_event_source *buffer_release_idle;
     uint64_t gpu_cpu_ns, gpu_release_ns, gpu_release_max_ns;
     unsigned gpu_submits, gpu_retries, gpu_releases, gpu_commits;
     uint32_t gpu_stats_time;
 #endif
     struct wl_display *display;
+    struct wl_global *normal_dmabuf_global, *deck_dmabuf_global, *deck_ahb_global;
     struct wl_event_loop *loop;
     struct wl_event_source *command_source;
     struct wl_event_source *frame_timer;
     int command_fd;
+    int ahb_broker_fd;
     pthread_mutex_t lock;
     struct command *commands, *commands_tail;
     pthread_t thread;
@@ -214,12 +253,18 @@ struct comp {
     JNIEnv *env;
     jobject callback;
     jmethodID on_event;
-    int32_t width, height;
+    int32_t width, height, refresh_mhz;
+    uint64_t next_frame_ns;
+    struct wl_list outputs;
     uint32_t next_window_id;
     struct wl_list pointers;    /* wl_resource links */
     struct wl_list keyboards;
     struct wl_list text_inputs;
     struct xdg *xdgs[1024];     /* by window id & 1023 */
+#ifdef DEXTOP_WAYLAND_GPU
+    struct wl_list constraints, relative_pointers;
+    wl_fixed_t pointer_x, pointer_y;
+#endif
     struct surface *pointer_focus;
     struct surface *keyboard_focus;
     uint32_t mods_depressed, mods_locked;
@@ -275,19 +320,36 @@ static struct xdg *xdg_by_id(struct comp *comp, uint32_t id) {
     return xdg && xdg->window_id == id ? xdg : NULL;
 }
 
+static int surface_width(struct surface *surface) {
+#ifdef DEXTOP_WAYLAND_GPU
+    if (surface->view.dest_width > 0) return surface->view.dest_width;
+    if (surface->view.width >= 0) return (int)surface->view.width;
+#endif
+    return surface->pixels.width / (surface->scale > 0 ? surface->scale : 1);
+}
+
+static int surface_height(struct surface *surface) {
+#ifdef DEXTOP_WAYLAND_GPU
+    if (surface->view.dest_height > 0) return surface->view.dest_height;
+    if (surface->view.height >= 0) return (int)surface->view.height;
+#endif
+    return surface->pixels.height / (surface->scale > 0 ? surface->scale : 1);
+}
+
 static void emit_window(struct comp *comp, struct xdg *xdg, const char *type) {
     char title[600], app[300], json[1200];
     json_escape(title, sizeof(title), xdg->title);
     json_escape(app, sizeof(app), xdg->app_id);
-    int w = xdg->has_geometry ? xdg->geo_w : xdg->surface->pixels.width;
-    int h = xdg->has_geometry ? xdg->geo_h : xdg->surface->pixels.height;
+    int w = xdg->has_geometry ? xdg->geo_w : surface_width(xdg->surface);
+    int h = xdg->has_geometry ? xdg->geo_h : surface_height(xdg->surface);
     if (xdg->popup) { w = xdg->popup_w; h = xdg->popup_h; }
     snprintf(json, sizeof(json),
              "{\"type\":\"%s\",\"id\":%u,\"popup\":%s,\"parent\":%u,\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,"
-             "\"title\":\"%s\",\"class\":\"%s\"}",
+             "\"title\":\"%s\",\"class\":\"%s\",\"decorated\":%s,\"deck\":%s}",
              type, xdg->window_id, xdg->popup ? "true" : "false",
              xdg->parent ? xdg->parent->window_id : 0,
-             xdg->popup ? xdg->popup_x : 0, xdg->popup ? xdg->popup_y : 0, w, h, title, app);
+             xdg->popup ? xdg->popup_x : 0, xdg->popup ? xdg->popup_y : 0, w, h, title, app,
+             xdg->client_decorated ? "false" : "true", xdg->deck ? "true" : "false");
     emit(comp, json);
 }
 
@@ -333,17 +395,24 @@ static bool pixels_resize(struct pixels *pixels, int width, int height) {
 static const struct wl_buffer_interface dmabuf_buffer_impl;
 
 #ifdef DEXTOP_WAYLAND_GPU
+#include "deck_buffer_release.inc"
+
 static void gpu_buffer_unref(struct dmabuf *buffer, bool busy) {
     if (!buffer) return;
-    if (busy && --buffer->busy == 0 && buffer->resource) wl_buffer_send_release(buffer->resource);
+    if (busy && --buffer->busy == 0 && buffer->resource)
+        deck_buffer_release_queue(buffer->comp, buffer->resource, buffer->deck);
     if (--buffer->refs) return;
     linux_gpu_image_destroy(buffer->image);
+    if (buffer->ahb) AHardwareBuffer_release(buffer->ahb);
     if (buffer->map) munmap(buffer->map, buffer->map_size);
     close(buffer->fd);
     free(buffer);
 }
 
-static void gpu_buffer_hold(struct dmabuf *buffer) { buffer->refs++; buffer->busy++; }
+static void gpu_buffer_hold(struct dmabuf *buffer) {
+    if (buffer->resource) deck_buffer_release_cancel(buffer->comp, buffer->resource);
+    buffer->refs++; buffer->busy++;
+}
 
 static void gpu_job_finish(struct gpu_job *job) {
     uint64_t elapsed = gpu_now_ns() - job->started_ns;
@@ -360,11 +429,25 @@ static void gpu_job_finish(struct gpu_job *job) {
     free(job);
 }
 
+static void window_draw(struct xdg *xdg);
+
 static int gpu_job_ready(int fd, uint32_t mask, void *data) {
     struct gpu_job *job = data;
     struct pollfd complete = {.fd = fd, .events = POLLIN};
-    if ((mask & WL_EVENT_READABLE) && poll(&complete, 1, 0) == 1 && (complete.revents & POLLIN))
+    if ((mask & WL_EVENT_READABLE) && poll(&complete, 1, 0) == 1 && (complete.revents & POLLIN)) {
+        struct comp *comp = job->comp;
+        uint32_t window_id = job->window_id;
         gpu_job_finish(job);
+        /* A busy submission retains only the newest scene. Retry as soon as
+         * the in-flight GPU job completes, not one 16ms timer later. Resolve
+         * the ID afresh: the window may have closed while its fence was live.
+         * VSync-on windows keep their existing presentation schedule. */
+        struct xdg *xdg = xdg_by_id(comp, window_id);
+        if (xdg && xdg->deck && xdg->deck_no_vsync && xdg->mapped && xdg->window && xdg->needs_redraw) {
+            xdg->needs_redraw = false;
+            window_draw(xdg);
+        }
+    }
     return 0;
 }
 
@@ -386,7 +469,7 @@ static bool gpu_take_buffer(struct surface *surface, struct wl_resource *resourc
         !wl_resource_instance_of(resource, &wl_buffer_interface, &dmabuf_buffer_impl)) return false;
     struct dmabuf *buffer = wl_resource_get_user_data(resource);
     if (!buffer->image) buffer->image = linux_gpu_import(comp->gpu, buffer->fd, buffer->format,
-        0, buffer->width, buffer->height, buffer->stride, buffer->offset);
+        buffer->modifier, buffer->width, buffer->height, buffer->stride, buffer->offset);
     if (!buffer->image) return false;
     gpu_buffer_hold(buffer);
     surface->gpu_buffer = buffer;
@@ -397,6 +480,10 @@ static bool gpu_take_buffer(struct surface *surface, struct wl_resource *resourc
 #endif
 
 static void surface_take_dmabuf(struct surface *surface, struct dmabuf *dmabuf) {
+        if (dmabuf->modifier != DRM_FORMAT_MOD_LINEAR) {
+            emit_error(surface->comp, "Compressed Deck buffer requires GPU import; CPU conversion is unavailable");
+            return;
+        }
         if (!dmabuf->map) {
             dmabuf->map_size = dmabuf->offset + (size_t)dmabuf->stride * dmabuf->height;
             dmabuf->map = mmap(NULL, dmabuf->map_size, PROT_READ, MAP_SHARED, dmabuf->fd, 0);
@@ -419,8 +506,36 @@ static void surface_take_dmabuf(struct surface *surface, struct dmabuf *dmabuf) 
         ioctl(dmabuf->fd, DMA_BUF_IOCTL_SYNC, &sync);
 }
 
+static void solid_buffer_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
+static const struct wl_buffer_interface solid_buffer_impl = {.destroy = solid_buffer_destroy};
+static void solid_buffer_free(struct wl_resource *r) { free(wl_resource_get_user_data(r)); }
+
+static void solid_create(struct wl_client *client, struct wl_resource *manager, uint32_t id,
+                         uint32_t red, uint32_t green, uint32_t blue, uint32_t alpha) {
+    uint32_t *pixel = malloc(sizeof(*pixel));
+    struct wl_resource *buffer = pixel ? wl_resource_create(client, &wl_buffer_interface, 1, id) : NULL;
+    if (!buffer) { free(pixel); wl_client_post_no_memory(client); return; }
+    /* pixels.data uses premultiplied RGBA bytes, like converted wl_shm. */
+    *pixel = (red >> 24) | ((green >> 24) << 8) | ((blue >> 24) << 16) | ((alpha >> 24) << 24);
+    wl_resource_set_implementation(buffer, &solid_buffer_impl, pixel, solid_buffer_free);
+}
+static void solid_manager_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
+static const struct wp_single_pixel_buffer_manager_v1_interface solid_manager_impl = {
+    .destroy = solid_manager_destroy, .create_u32_rgba_buffer = solid_create,
+};
+static void bind_solid(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
+    struct wl_resource *r = wl_resource_create(client, &wp_single_pixel_buffer_manager_v1_interface, 1, id);
+    if (!r) { wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &solid_manager_impl, NULL, NULL);
+}
+
 /* Copies a committed buffer into the surface's pixels. */
 static void surface_take_buffer(struct surface *surface, struct wl_resource *buffer) {
+    if (wl_resource_instance_of(buffer, &wl_buffer_interface, &solid_buffer_impl)) {
+        if (pixels_resize(&surface->pixels, 1, 1))
+            surface->pixels.data[0] = *(uint32_t *)wl_resource_get_user_data(buffer);
+        return;
+    }
     struct wl_shm_buffer *shm = wl_shm_buffer_get(buffer);
     if (shm) {
         int width = wl_shm_buffer_get_width(shm), height = wl_shm_buffer_get_height(shm);
@@ -439,41 +554,61 @@ static void surface_take_buffer(struct surface *surface, struct wl_resource *buf
 }
 
 /* Draws [surface] and its subsurfaces at (x, y) of a w x h RGBA target. */
-static void composite(struct surface *surface, uint32_t *target, int stride, int tw, int th, int x, int y, bool base) {
+static void composite(struct surface *surface, uint32_t *target, int stride, int tw, int th, int x, int y) {
+    struct surface *child;
+    wl_list_for_each(child, &surface->children, child_link)
+        if (child->below_parent)
+            composite(child, target, stride, tw, th, x + child->sub_x, y + child->sub_y);
     const struct pixels *p = &surface->pixels;
-    for (int row = 0; row < p->height; ++row) {
+    int width = surface_width(surface), height = surface_height(surface);
+    float sx = 0, sy = 0, sw = p->width, sh = p->height;
+#ifdef DEXTOP_WAYLAND_GPU
+    if (surface->view.width >= 0) {
+        int scale = surface->scale > 0 ? surface->scale : 1;
+        sx = surface->view.x * scale; sy = surface->view.y * scale;
+        sw = surface->view.width * scale; sh = surface->view.height * scale;
+    }
+#endif
+    for (int row = 0; p->data && row < height; ++row) {
         int ty = y + row;
         if (ty < 0 || ty >= th) continue;
         int x0 = x < 0 ? -x : 0;
-        int x1 = p->width;
+        int x1 = width;
         if (x + x1 > tw) x1 = tw - x;
         if (x1 <= x0) continue;
-        const uint32_t *src = p->data + (size_t)row * p->width;
-        uint32_t *dst = target + (size_t)ty * stride + x;
-        if (base) {
-            memcpy(dst + x0, src + x0, (size_t)(x1 - x0) * 4);
-            continue;
-        }
+        int source_y = (int)(sy + row * sh / height);
+        if (source_y < 0 || source_y >= p->height) continue;
+        const uint32_t *src = p->data + (size_t)source_y * p->width;
+        uint32_t *dst = target + (size_t)ty * stride;
         for (int col = x0; col < x1; ++col) {
-            uint32_t s = src[col];
+            int source_x = (int)(sx + col * sw / width);
+            if (source_x < 0 || source_x >= p->width) continue;
+            uint32_t s = src[source_x];
+            if (surface->opaque.set && col >= surface->opaque.x1 && row >= surface->opaque.y1 &&
+                col < surface->opaque.x2 && row < surface->opaque.y2) s |= 0xff000000u;
             uint32_t a = s >> 24;
-            if (a == 0xff) { dst[col] = s; continue; }
+            if (a == 0xff) { dst[x + col] = s; continue; }
             if (a == 0) continue;
-            uint32_t d = dst[col], inv = 255 - a;
-            uint32_t rb = ((d & 0x00ff00ffu) * inv >> 8) & 0x00ff00ffu;
-            uint32_t ga = (((d >> 8) & 0x00ff00ffu) * inv) & 0xff00ff00u;
-            dst[col] = s + rb + ga;
+            uint32_t d = dst[x + col], inv = 255 - a;
+            uint32_t out = 0;
+            for (unsigned shift = 0; shift < 32; shift += 8)
+                out |= (((s >> shift) & 255) + ((((d >> shift) & 255) * inv + 127) / 255)) << shift;
+            dst[x + col] = out;
         }
     }
-    struct surface *child;
     wl_list_for_each(child, &surface->children, child_link)
-        composite(child, target, stride, tw, th, x + child->sub_x, y + child->sub_y, false);
+        if (!child->below_parent)
+            composite(child, target, stride, tw, th, x + child->sub_x, y + child->sub_y);
 }
 
 #ifdef DEXTOP_WAYLAND_GPU
 static bool gpu_collect_scene(struct surface *surface, float x, float y, struct linux_gpu_draw *draws,
     struct gpu_job *job, unsigned depth) {
     if (depth > 64) return false;
+    struct surface *child;
+    wl_list_for_each(child, &surface->children, child_link)
+        if (child->below_parent &&
+            !gpu_collect_scene(child, x + child->sub_x, y + child->sub_y, draws, job, depth + 1)) return false;
     struct dmabuf *buffer = surface->gpu_buffer;
     if (!buffer && surface->pixels.data && !surface->gpu_shm)
         surface->gpu_shm = linux_gpu_upload_rgba(surface->comp->gpu, surface->pixels.width,
@@ -493,16 +628,18 @@ static bool gpu_collect_scene(struct surface *surface, float x, float y, struct 
             .x = x, .y = y,
             .width = surface->view.dest_width > 0 ? surface->view.dest_width : sw / scale,
             .height = surface->view.dest_height > 0 ? surface->view.dest_height : sh / scale,
-            .acquire_fd = -1};
+            .acquire_fd = -1,
+            .opaque = surface->opaque.set && surface->opaque.x1 <= 0 && surface->opaque.y1 <= 0 &&
+                surface->opaque.x2 >= surface_width(surface) && surface->opaque.y2 >= surface_height(surface)};
         if (buffer) {
         struct dma_buf_export_sync_file acquire = {.flags = DMA_BUF_SYNC_READ, .fd = -1};
             if (ioctl(buffer->fd, DMA_BUF_IOCTL_EXPORT_SYNC_FILE, &acquire)) return false;
             draws[i].acquire_fd = acquire.fd;
         }
     }
-    struct surface *child;
     wl_list_for_each(child, &surface->children, child_link)
-        if (!gpu_collect_scene(child, x + child->sub_x, y + child->sub_y, draws, job, depth + 1)) return false;
+        if (!child->below_parent &&
+            !gpu_collect_scene(child, x + child->sub_x, y + child->sub_y, draws, job, depth + 1)) return false;
     return true;
 }
 
@@ -517,7 +654,17 @@ static void gpu_materialize_tree(struct surface *surface) {
     wl_list_for_each(child, &surface->children, child_link) gpu_materialize_tree(child);
 }
 
+static void presentation_submitted(struct surface *surface);
+
+/* Direct layer and its asynchronous display-release ownership. */
+#include "deck_direct.inc"
+
 static bool gpu_draw_window(struct xdg *xdg) {
+    if (deck_direct_present(xdg)) {
+        presentation_submitted(xdg->surface);
+        if (!xdg->frame_announced) { xdg->frame_announced = true; emit_window(xdg->comp, xdg, "frame"); }
+        return true;
+    }
     if (!xdg->comp->gpu || xdg->gpu_disabled) return false;
     uint64_t started = gpu_now_ns();
     struct gpu_job *job = calloc(1, sizeof(*job));
@@ -529,13 +676,26 @@ static bool gpu_draw_window(struct xdg *xdg) {
     if (collected && job->count) {
         int width = xdg->has_geometry ? xdg->geo_w : (int)draws[0].width;
         int height = xdg->has_geometry ? xdg->geo_h : (int)draws[0].height;
-        if (!xdg->gpu_window) xdg->gpu_window = linux_gpu_window_create(xdg->comp->gpu, xdg->window);
+        if (!xdg->gpu_window) xdg->gpu_window = linux_gpu_window_create(xdg->comp->gpu, xdg->window, xdg->deck && xdg->deck_direct);
         if (xdg->gpu_window) result = linux_gpu_present_scene(xdg->gpu_window, draws, job->count,
             width, height, &job->fence);
     }
     for (unsigned i = 0; i < job->count; i++) if (draws[i].acquire_fd >= 0) close(draws[i].acquire_fd);
     if (result == 1) {
+        deck_direct_hide(xdg, false);
+        if (xdg->deck) {
+            xdg->deck_submits++;
+            if (xdg->deck_buffer_serial != xdg->deck_submitted_serial) {
+                uint64_t age = started >= xdg->deck_buffer_ns ? started - xdg->deck_buffer_ns : 0;
+                xdg->deck_age_ns += age;
+                if (age > xdg->deck_age_max_ns) xdg->deck_age_max_ns = age;
+                xdg->deck_age_samples++;
+                xdg->deck_coalesced += xdg->deck_buffer_serial - xdg->deck_submitted_serial - 1;
+                xdg->deck_submitted_serial = xdg->deck_buffer_serial;
+            } else xdg->deck_redraws++;
+        }
         job->comp = xdg->comp;
+        job->window_id = xdg->window_id;
         job->started_ns = started;
         xdg->comp->gpu_submits++;
         xdg->comp->gpu_cpu_ns += gpu_now_ns() - started;
@@ -544,6 +704,11 @@ static bool gpu_draw_window(struct xdg *xdg) {
             if (job->buffers[i]) gpu_buffer_hold(job->buffers[i]);
         }
         wl_list_insert(&xdg->comp->gpu_jobs, &job->link);
+        presentation_submitted(xdg->surface);
+        if (xdg->deck && !xdg->frame_announced) {
+            xdg->frame_announced = true;
+            emit_window(xdg->comp, xdg, "frame");
+        }
         if (job->fence >= 0) job->source = wl_event_loop_add_fd(xdg->comp->loop, job->fence,
             WL_EVENT_READABLE, gpu_job_ready, job);
         if (!xdg->gpu_announced) {
@@ -570,8 +735,8 @@ static void window_draw(struct xdg *xdg) {
     if (!xdg->surface->pixels.data) return;
     int ox = xdg->has_geometry ? xdg->geo_x : 0;
     int oy = xdg->has_geometry ? xdg->geo_y : 0;
-    int w = xdg->has_geometry ? xdg->geo_w : xdg->surface->pixels.width;
-    int h = xdg->has_geometry ? xdg->geo_h : xdg->surface->pixels.height;
+    int w = xdg->has_geometry ? xdg->geo_w : surface_width(xdg->surface);
+    int h = xdg->has_geometry ? xdg->geo_h : surface_height(xdg->surface);
     if (w <= 0 || h <= 0) return;
     if (w != xdg->window_w || h != xdg->window_h) {
         ANativeWindow_setBuffersGeometry(xdg->window, w, h, WINDOW_FORMAT_RGBA_8888);
@@ -582,8 +747,15 @@ static void window_draw(struct xdg *xdg) {
     if (ANativeWindow_lock(xdg->window, &out, NULL) != 0) return;
     uint32_t *target = out.bits;
     for (int row = 0; row < out.height; ++row) memset(target + (size_t)row * out.stride, 0, (size_t)out.width * 4);
-    composite(xdg->surface, target, out.stride, out.width, out.height, -ox, -oy, true);
-    ANativeWindow_unlockAndPost(xdg->window);
+    composite(xdg->surface, target, out.stride, out.width, out.height, -ox, -oy);
+    int posted = ANativeWindow_unlockAndPost(xdg->window);
+    if (posted == 0 && xdg->deck && !xdg->frame_announced) {
+        xdg->frame_announced = true;
+        emit_window(xdg->comp, xdg, "frame");
+    }
+#ifdef DEXTOP_WAYLAND_GPU
+    if (posted == 0) { deck_direct_hide(xdg, false); presentation_submitted(xdg->surface); }
+#endif
 }
 
 /* ------------------------------------------------------------ wl_surface */
@@ -594,12 +766,58 @@ static struct surface *root_of(struct surface *surface) {
 }
 
 #ifdef DEXTOP_WAYLAND_GPU
-static void presentation_discard(struct surface *surface) {
+static void presentation_discard_list(struct wl_list *list) {
     struct wl_resource *feedback, *tmp;
-    wl_resource_for_each_safe(feedback, tmp, &surface->presentation_feedback) {
+    wl_resource_for_each_safe(feedback, tmp, list) {
         wp_presentation_feedback_send_discarded(feedback);
         wl_resource_destroy(feedback);
     }
+}
+
+static void presentation_discard(struct surface *surface) {
+    presentation_discard_list(&surface->presentation_feedback);
+    presentation_discard_list(&surface->committed_feedback);
+}
+
+/* This nested output is presented into an Android Surface. Report successful
+ * submission in the compositor clock domain; no hardware-clock/completion or
+ * scanout/VSYNC flags are claimed for this estimate. Gamescope needs successful
+ * feedback to advance its nested vblank clock, not an endless stream of drops. */
+/* DD uses the Android VSync tick for nested presentation feedback, with a
+ * monotonic render-time fallback if the tick is stale. Only the authenticated
+ * Auto Deck output uses that policy; ordinary Linux feedback is unchanged. */
+static void presentation_submitted_at(struct surface *surface, uint64_t nanos, uint32_t flags) {
+    uint64_t seconds = nanos / 1000000000ull;
+    uint32_t refresh = (uint32_t)(1000000000000ull / (unsigned)surface->comp->refresh_mhz);
+    struct surface *root = root_of(surface);
+    if (root->xdg && root->xdg->deck && root->xdg->deck_30) refresh = 33333333;
+    struct wl_resource *feedback, *tmp;
+    wl_resource_for_each_safe(feedback, tmp, &surface->committed_feedback) {
+        wp_presentation_feedback_send_presented(feedback, (uint32_t)(seconds >> 32),
+            (uint32_t)seconds, (uint32_t)(nanos % 1000000000ull), refresh, 0, 0, flags);
+        wl_resource_destroy(feedback);
+    }
+    struct surface *child;
+    wl_list_for_each(child, &surface->children, child_link) presentation_submitted_at(child, nanos, flags);
+}
+
+static void presentation_submitted(struct surface *surface) {
+    uint64_t nanos = gpu_now_ns();
+    uint32_t flags = 0;
+    struct xdg *deck = NULL;
+    for (unsigned i = 0; i < 1024; i++) {
+        struct xdg *candidate = surface->comp->xdgs[i];
+        if (candidate && candidate->surface == surface) { deck = candidate; break; }
+    }
+    if (deck && deck->deck && deck->deck_direct && !deck->deck_no_vsync) {
+        uint64_t tick = surface->comp->deck_frame_ns;
+        uint64_t interval = 1000000000000ull / (unsigned)surface->comp->refresh_mhz;
+        if (tick && nanos >= tick && nanos - tick <= interval) {
+            nanos = tick;
+            flags = WP_PRESENTATION_FEEDBACK_KIND_VSYNC;
+        }
+    }
+    presentation_submitted_at(surface, nanos, flags);
 }
 #endif
 
@@ -609,6 +827,8 @@ static void schedule_frames(struct surface *surface) {
 }
 
 static void xdg_send_configure(struct xdg *xdg);
+static void focus_keyboard(struct comp *comp, struct surface *surface);
+static void pointer_focus(struct comp *comp, struct surface *surface, wl_fixed_t x, wl_fixed_t y);
 static void xdg_map_if_ready(struct xdg *xdg);
 
 static void surface_destroy_request(struct wl_client *client, struct wl_resource *resource) { wl_resource_destroy(resource); }
@@ -632,18 +852,152 @@ static void surface_frame(struct wl_client *client, struct wl_resource *resource
 }
 
 static void surface_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region) {}
-static void surface_transform(struct wl_client *c, struct wl_resource *r, int32_t t) {}
+static void surface_opaque_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region);
+static void surface_transform(struct wl_client *c, struct wl_resource *r, int32_t t) {
+    struct surface *surface = wl_resource_get_user_data(r);
+    surface->buffer_transform = t;
+}
 
 static void surface_scale(struct wl_client *c, struct wl_resource *r, int32_t scale) {
     struct surface *surface = wl_resource_get_user_data(r);
-    surface->scale = scale;
+    surface->pending_scale = scale;
 }
 
+static bool surface_synchronized(struct surface *surface) {
+    for (; surface && surface->parent; surface = surface->parent)
+        if (surface->sub_sync) return true;
+    return false;
+}
+
+static void surface_clear_content(struct surface *surface) {
+#ifdef DEXTOP_WAYLAND_GPU
+    gpu_buffer_unref(surface->gpu_buffer, true);
+    surface->gpu_buffer = NULL;
+    linux_gpu_image_destroy(surface->gpu_shm);
+    surface->gpu_shm = NULL;
+#endif
+    free(surface->pixels.data);
+    surface->pixels = (struct pixels){0};
+}
+
+static void surface_apply_cached(struct surface *surface) {
+    struct surface *cached = surface->cached;
+    if (!cached || !surface->cached_commit) return;
+    if (surface->cached_attach) {
+        surface_clear_content(surface);
+        surface->pixels = cached->pixels;
+        cached->pixels = (struct pixels){0};
+#ifdef DEXTOP_WAYLAND_GPU
+        surface->gpu_buffer = cached->gpu_buffer;
+        cached->gpu_buffer = NULL;
+#endif
+    }
+    surface->scale = cached->scale;
+    surface->opaque = cached->opaque;
+#ifdef DEXTOP_WAYLAND_GPU
+    surface->view = cached->view;
+    presentation_discard_list(&surface->committed_feedback);
+    wl_list_insert_list(&surface->committed_feedback, &cached->committed_feedback);
+    wl_list_init(&cached->committed_feedback);
+#endif
+    wl_list_insert_list(&surface->ready_frames, &cached->pending_frames);
+    wl_list_init(&cached->pending_frames);
+    surface->cached_commit = surface->cached_attach = false;
+}
+
+static void surface_apply_children(struct surface *surface) {
+    struct surface *child;
+    wl_list_for_each(child, &surface->children, child_link) {
+        /* Subsurface positions are latched by the parent, even in desync mode. */
+        child->sub_x = child->pending_sub_x;
+        child->sub_y = child->pending_sub_y;
+        if (surface_synchronized(child)) {
+            surface_apply_cached(child);
+            surface_apply_children(child);
+        }
+    }
+}
+
+static void surface_cache_destroy(struct surface *surface) {
+    struct surface *cached = surface->cached;
+    if (!cached) return;
+    surface_clear_content(cached);
+    struct wl_resource *callback, *tmp;
+    wl_resource_for_each_safe(callback, tmp, &cached->pending_frames) wl_resource_destroy(callback);
+#ifdef DEXTOP_WAYLAND_GPU
+    presentation_discard(cached);
+#endif
+    free(cached);
+    surface->cached = NULL;
+    surface->cached_commit = surface->cached_attach = false;
+}
+
+#ifdef DEXTOP_WAYLAND_GPU
+static void constraints_commit(struct surface *surface);
+#endif
 static void surface_commit(struct wl_client *client, struct wl_resource *resource) {
     struct surface *surface = wl_resource_get_user_data(resource);
 #ifdef DEXTOP_WAYLAND_GPU
-    /* SurfaceFlinger owns actual display timing; do not invent presented timestamps. */
-    presentation_discard(surface);
+    if (surface->xdg && surface->xdg->deck && surface->pending_attach && surface->pending_buffer) {
+        surface->xdg->deck_buffer_serial++;
+        surface->xdg->deck_buffers++;
+        uint64_t committed_ns = gpu_now_ns();
+        struct xdg *deck = surface->xdg;
+        if (deck->deck_previous_commit_ns) {
+            uint64_t gap = committed_ns - deck->deck_previous_commit_ns;
+            unsigned bucket = gap < 25000000 ? 0 : gap < 40000000 ? 1 : gap < 60000000 ? 2 : 3;
+            deck->deck_commit_gaps[bucket]++;
+            if (gap > deck->deck_commit_gap_max_ns) deck->deck_commit_gap_max_ns = gap;
+        }
+        deck->deck_previous_commit_ns = committed_ns;
+        deck->deck_buffer_ns = committed_ns;
+    }
+#endif
+    struct surface *owner = surface;
+    bool synchronized = surface_synchronized(surface);
+    if (synchronized) {
+        if (!owner->cached) {
+            owner->cached = calloc(1, sizeof(*owner->cached));
+            if (!owner->cached) { wl_client_post_no_memory(client); return; }
+            owner->cached->comp = owner->comp;
+            wl_list_init(&owner->cached->pending_frames);
+#ifdef DEXTOP_WAYLAND_GPU
+            wl_list_init(&owner->cached->presentation_feedback);
+            wl_list_init(&owner->cached->committed_feedback);
+#endif
+        }
+        surface = owner->cached;
+        surface->parent = owner->parent;
+        surface->pending_scale = owner->pending_scale;
+        surface->pending_opaque = owner->pending_opaque;
+        surface->pending_attach = owner->pending_attach;
+        surface->pending_buffer = owner->pending_buffer;
+        owner->cached_attach |= owner->pending_attach;
+        owner->pending_attach = false;
+        owner->pending_buffer = NULL;
+        wl_list_insert_list(&surface->pending_frames, &owner->pending_frames);
+        wl_list_init(&owner->pending_frames);
+#ifdef DEXTOP_WAYLAND_GPU
+        surface->pending_view = owner->pending_view;
+        wl_list_insert_list(&surface->presentation_feedback, &owner->presentation_feedback);
+        wl_list_init(&owner->presentation_feedback);
+#endif
+        owner->cached_commit = true;
+    } else {
+        surface_apply_cached(surface);
+    }
+    int old_width = surface_width(surface), old_height = surface_height(surface);
+    surface->scale = surface->pending_scale;
+    surface->opaque = surface->pending_opaque;
+#ifdef DEXTOP_WAYLAND_GPU
+    if (!synchronized) constraints_commit(surface);
+#endif
+#ifdef DEXTOP_WAYLAND_GPU
+    /* A commit supersedes the previous, unpresented content. New feedback
+     * belongs to this commit and must survive until it is submitted. */
+    presentation_discard_list(&surface->committed_feedback);
+    wl_list_insert_list(&surface->committed_feedback, &surface->presentation_feedback);
+    wl_list_init(&surface->presentation_feedback);
     surface->comp->gpu_commits++;
     surface->view = surface->pending_view;
 #endif
@@ -665,8 +1019,10 @@ static void surface_commit(struct wl_client *client, struct wl_resource *resourc
 #ifdef DEXTOP_WAYLAND_GPU
             if (!wl_resource_instance_of(buffer, &wl_buffer_interface, &dmabuf_buffer_impl) ||
                 ((struct dmabuf *)wl_resource_get_user_data(buffer))->busy == 0)
-#endif
+            deck_buffer_release_queue(surface->comp, buffer, root_of(owner)->xdg && root_of(owner)->xdg->deck);
+#else
             wl_buffer_send_release(buffer);
+#endif
 #ifdef DEXTOP_WAYLAND_GPU
             }
 #endif
@@ -674,6 +1030,8 @@ static void surface_commit(struct wl_client *client, struct wl_resource *resourc
             free(surface->pixels.data);
             surface->pixels = (struct pixels){0};
             if (surface->xdg && surface->xdg->mapped) {
+                if(surface->comp->keyboard_focus==surface)focus_keyboard(surface->comp,NULL);
+                if(surface->comp->pointer_focus==surface)pointer_focus(surface->comp,NULL,0,0);
                 surface->xdg->mapped = false;
                 emit_window(surface->comp, surface->xdg, "unmap");
             }
@@ -682,16 +1040,25 @@ static void surface_commit(struct wl_client *client, struct wl_resource *resourc
         gpu_buffer_unref(previous, true);
 #endif
     }
-    if (surface->subsurface) {
-        surface->sub_x = surface->pending_sub_x;
-        surface->sub_y = surface->pending_sub_y;
-    }
+    if (synchronized) return;
+    surface_apply_children(surface);
     schedule_frames(surface);
     struct surface *root = root_of(surface);
     if (root->xdg) {
         if (!root->xdg->configured) xdg_send_configure(root->xdg);
-        else if (root == surface) xdg_map_if_ready(root->xdg);
+        else if (root == surface) {
+            if (root->xdg->mapped && !root->xdg->has_geometry &&
+                (old_width != surface_width(surface) || old_height != surface_height(surface)))
+                emit_window(surface->comp, root->xdg, "configure");
+            xdg_map_if_ready(root->xdg);
+        }
         root->xdg->needs_redraw = true;
+        /* gamescope paces the producer. With VSync off, forward its latest
+         * frame without another independently phased cap. */
+        if (root->xdg->deck && root->xdg->deck_no_vsync && root->xdg->mapped) {
+            root->xdg->needs_redraw = false;
+            window_draw(root->xdg);
+        }
     }
 }
 
@@ -699,7 +1066,7 @@ static void surface_offset(struct wl_client *c, struct wl_resource *r, int32_t x
 
 static const struct wl_surface_interface surface_impl = {
     .destroy = surface_destroy_request, .attach = surface_attach, .damage = surface_damage,
-    .frame = surface_frame, .set_opaque_region = surface_region, .set_input_region = surface_region,
+    .frame = surface_frame, .set_opaque_region = surface_opaque_region, .set_input_region = surface_region,
     .commit = surface_commit, .set_buffer_transform = surface_transform, .set_buffer_scale = surface_scale,
     .damage_buffer = surface_damage, .offset = surface_offset,
 };
@@ -708,6 +1075,8 @@ static void xdg_forget(struct xdg *xdg);
 
 static void surface_resource_destroy(struct wl_resource *resource) {
     struct surface *surface = wl_resource_get_user_data(resource);
+    surface_cache_destroy(surface);
+    if (surface->subsurface) wl_resource_set_user_data(surface->subsurface, NULL);
 #ifdef DEXTOP_WAYLAND_GPU
     presentation_discard(surface);
     if (surface->viewport) wl_resource_set_user_data(surface->viewport, NULL);
@@ -741,18 +1110,64 @@ static void surface_resource_destroy(struct wl_resource *resource) {
 
 /* ------------------------------------------------------------- compositor */
 
+struct pointer_rect {int64_t x1,y1,x2,y2;};
+struct pointer_region {struct pointer_rect *rects;size_t count;};
+static void surface_opaque_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region) {
+    struct surface *surface = wl_resource_get_user_data(r);
+    struct pointer_region *rects = region ? wl_resource_get_user_data(region) : NULL;
+    surface->pending_opaque = (struct opaque_rect){0};
+    /* A single rectangle is sufficient for full-surface opaque declarations.
+     * Complex regions keep the buffer's alpha rather than overclaiming opacity. */
+    if (rects && rects->count == 1) {
+        struct pointer_rect q = rects->rects[0];
+        surface->pending_opaque = (struct opaque_rect){q.x1, q.y1, q.x2, q.y2, true};
+    }
+}
+static void region_clear(struct pointer_region *region){free(region->rects);region->rects=NULL;region->count=0;}
+static bool region_append(struct pointer_region *region,struct pointer_rect rect){
+    if(rect.x1>=rect.x2||rect.y1>=rect.y2)return true;
+    if(region->count>=4096)return false;
+    void *next=realloc(region->rects,(region->count+1)*sizeof(rect));if(!next)return false;
+    region->rects=next;region->rects[region->count++]=rect;return true;
+}
+static bool region_copy(struct pointer_region *dest,const struct pointer_region *src){
+    struct pointer_region copy={0};
+    for(size_t i=0;i<src->count;i++)if(!region_append(&copy,src->rects[i])){region_clear(&copy);return false;}
+    region_clear(dest);*dest=copy;return true;
+}
+static void region_resource_destroy(struct wl_resource*r){struct pointer_region*region=wl_resource_get_user_data(r);region_clear(region);free(region);}
 static void region_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
-static void region_add(struct wl_client *c, struct wl_resource *r, int32_t x, int32_t y, int32_t w, int32_t h) {}
-static const struct wl_region_interface region_impl = {.destroy = region_destroy, .add = region_add, .subtract = region_add};
+static void region_add(struct wl_client *c, struct wl_resource *r, int32_t x, int32_t y, int32_t w, int32_t h) {
+    if(w<=0||h<=0)return;
+    if(!region_append(wl_resource_get_user_data(r),(struct pointer_rect){x,y,(int64_t)x+w,(int64_t)y+h}))wl_client_post_no_memory(c);
+}
+static void region_subtract(struct wl_client*c,struct wl_resource*r,int32_t x,int32_t y,int32_t w,int32_t h){
+    if(w<=0||h<=0)return;
+    struct pointer_region *region=wl_resource_get_user_data(r),result={0};bool ok=true;
+    int64_t x2=(int64_t)x+w,y2=(int64_t)y+h;
+    for(size_t i=0;i<region->count&&ok;i++){
+        struct pointer_rect q=region->rects[i];
+        int64_t a=q.x1>x?q.x1:x,b=q.y1>y?q.y1:y,d=q.x2<x2?q.x2:x2,e=q.y2<y2?q.y2:y2;
+        if(a>=d||b>=e){ok=region_append(&result,q);continue;}
+        ok=region_append(&result,(struct pointer_rect){q.x1,q.y1,q.x2,b})&&
+           region_append(&result,(struct pointer_rect){q.x1,e,q.x2,q.y2})&&
+           region_append(&result,(struct pointer_rect){q.x1,b,a,e})&&
+           region_append(&result,(struct pointer_rect){d,b,q.x2,e});
+    }
+    if(!ok){region_clear(&result);wl_client_post_no_memory(c);return;}
+    region_clear(region);*region=result;
+}
+static const struct wl_region_interface region_impl = {.destroy = region_destroy, .add = region_add, .subtract = region_subtract};
 
 static void compositor_create_surface(struct wl_client *client, struct wl_resource *resource, uint32_t id) {
     struct comp *comp = wl_resource_get_user_data(resource);
     struct surface *surface = calloc(1, sizeof(*surface));
     if (!surface) { wl_client_post_no_memory(client); return; }
     surface->comp = comp;
-    surface->scale = 1;
+    surface->scale = surface->pending_scale = 1;
 #ifdef DEXTOP_WAYLAND_GPU
     wl_list_init(&surface->presentation_feedback);
+    wl_list_init(&surface->committed_feedback);
     surface->view = surface->pending_view = (struct viewport_state){.width = -1, .height = -1,
         .dest_width = -1, .dest_height = -1};
 #endif
@@ -766,7 +1181,9 @@ static void compositor_create_surface(struct wl_client *client, struct wl_resour
 
 static void compositor_create_region(struct wl_client *client, struct wl_resource *resource, uint32_t id) {
     struct wl_resource *region = wl_resource_create(client, &wl_region_interface, 1, id);
-    wl_resource_set_implementation(region, &region_impl, NULL, NULL);
+    struct pointer_region *data=calloc(1,sizeof(*data));
+    if(!region||!data){free(data);wl_client_post_no_memory(client);return;}
+    wl_resource_set_implementation(region, &region_impl, data, region_resource_destroy);
 }
 
 static const struct wl_compositor_interface compositor_impl = {
@@ -792,8 +1209,10 @@ static void subsurface_position(struct wl_client *c, struct wl_resource *r, int3
 static void subsurface_place(struct wl_client *c, struct wl_resource *r, struct wl_resource *sibling) {
     struct surface *surface = wl_resource_get_user_data(r);
     struct surface *other = wl_resource_get_user_data(sibling);
-    if (!surface || !surface->parent || !other || other == surface) return;
+    if (!surface || !surface->parent || !other || other == surface ||
+        (other != surface->parent && other->parent != surface->parent)) return;
     wl_list_remove(&surface->child_link);
+    surface->below_parent = other == surface->parent ? false : other->below_parent;
     if (other == surface->parent) wl_list_insert(&surface->parent->children, &surface->child_link);
     else wl_list_insert(&other->child_link, &surface->child_link);
 }
@@ -801,23 +1220,41 @@ static void subsurface_place(struct wl_client *c, struct wl_resource *r, struct 
 static void subsurface_place_below(struct wl_client *c, struct wl_resource *r, struct wl_resource *sibling) {
     struct surface *surface = wl_resource_get_user_data(r);
     struct surface *other = wl_resource_get_user_data(sibling);
-    if (!surface || !surface->parent || !other || other == surface) return;
+    if (!surface || !surface->parent || !other || other == surface ||
+        (other != surface->parent && other->parent != surface->parent)) return;
     wl_list_remove(&surface->child_link);
-    if (other == surface->parent) wl_list_insert(&surface->parent->children, &surface->child_link);
+    surface->below_parent = other == surface->parent ? true : other->below_parent;
+    if (other == surface->parent) wl_list_insert(surface->parent->children.prev, &surface->child_link);
     else wl_list_insert(other->child_link.prev, &surface->child_link);
 }
 
-static void subsurface_sync(struct wl_client *c, struct wl_resource *r) {}
+static void subsurface_sync(struct wl_client *c, struct wl_resource *r) {
+    struct surface *surface = wl_resource_get_user_data(r);
+    if (surface) surface->sub_sync = true;
+}
+
+static void subsurface_desync(struct wl_client *c, struct wl_resource *r) {
+    struct surface *surface = wl_resource_get_user_data(r);
+    if (!surface) return;
+    surface->sub_sync = false;
+    if (!surface_synchronized(surface)) {
+        surface_apply_cached(surface);
+        surface_apply_children(surface);
+        struct surface *root = root_of(surface);
+        if (root->xdg) root->xdg->needs_redraw = true;
+    }
+}
 
 static const struct wl_subsurface_interface subsurface_impl = {
     .destroy = subsurface_destroy_request, .set_position = subsurface_position,
     .place_above = subsurface_place, .place_below = subsurface_place_below,
-    .set_sync = subsurface_sync, .set_desync = subsurface_sync,
+    .set_sync = subsurface_sync, .set_desync = subsurface_desync,
 };
 
 static void subsurface_resource_destroy(struct wl_resource *resource) {
     struct surface *surface = wl_resource_get_user_data(resource);
     if (!surface) return;
+    surface_cache_destroy(surface);
     surface->subsurface = NULL;
     if (surface->parent) {
         struct surface *root = root_of(surface);
@@ -854,16 +1291,18 @@ static void bind_subcompositor(struct wl_client *client, void *data, uint32_t ve
 
 /* ---------------------------------------------------------------- output */
 
+static void output_destroy(struct wl_resource *r) { wl_list_remove(wl_resource_get_link(r)); }
 static void output_release(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
 static const struct wl_output_interface output_impl = {.release = output_release};
 
 static void bind_output(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
     struct comp *comp = data;
     struct wl_resource *resource = wl_resource_create(client, &wl_output_interface, version, id);
-    wl_resource_set_implementation(resource, &output_impl, comp, NULL);
+    wl_resource_set_implementation(resource, &output_impl, comp, output_destroy);
+    wl_list_insert(&comp->outputs, wl_resource_get_link(resource));
     wl_output_send_geometry(resource, 0, 0, comp->width * 254 / 1600, comp->height * 254 / 1600,
                             WL_OUTPUT_SUBPIXEL_UNKNOWN, "Dextop", "Plasma", WL_OUTPUT_TRANSFORM_NORMAL);
-    wl_output_send_mode(resource, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, comp->width, comp->height, 60000);
+    wl_output_send_mode(resource, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, comp->width, comp->height, comp->refresh_mhz);
     if (version >= 4) {
         wl_output_send_name(resource, "DEXTOP-1");
         wl_output_send_description(resource, "Dextop Plasma display");
@@ -971,6 +1410,10 @@ static void xdg_send_configure(struct xdg *xdg) {
     } else {
         struct wl_array states;
         wl_array_init(&states);
+        if (xdg->maximized) {
+            uint32_t *state = wl_array_add(&states, sizeof(uint32_t));
+            if (state) *state = XDG_TOPLEVEL_STATE_MAXIMIZED;
+        }
         if (comp->keyboard_focus && xdg->surface && comp->keyboard_focus == xdg->surface) {
             uint32_t *s = wl_array_add(&states, sizeof(uint32_t));
             if (s) *s = XDG_TOPLEVEL_STATE_ACTIVATED;
@@ -995,6 +1438,7 @@ static void xdg_map_if_ready(struct xdg *xdg) {
 
 static void xdg_forget(struct xdg *xdg) {
 #ifdef DEXTOP_WAYLAND_GPU
+    deck_direct_hide(xdg, true);
     linux_gpu_window_destroy(xdg->gpu_window);
     xdg->gpu_window = NULL;
 #endif
@@ -1015,9 +1459,36 @@ static void toplevel_title(struct wl_client *c, struct wl_resource *r, const cha
     if (xdg->mapped) emit_window(xdg->comp, xdg, "title");
 }
 
+static bool is_deck_client(const struct wl_client *client) {
+    pid_t pid; uid_t uid; gid_t gid;
+    wl_client_get_credentials((struct wl_client *)client, &pid, &uid, &gid);
+    char path[64], data[65536];
+    snprintf(path, sizeof(path), "/proc/%d/environ", (int)pid);
+    int fd = open(path, O_RDONLY | O_CLOEXEC);
+    ssize_t n = fd >= 0 ? read(fd, data, sizeof(data)) : -1;
+    if (fd >= 0) close(fd);
+    static const char marker[] = "DEXTOP_STEAM_INSIDE=1";
+    for (ssize_t i = 0; i + (ssize_t)sizeof(marker) <= n; i++)
+        if ((i == 0 || !data[i - 1]) && !memcmp(data + i, marker, sizeof(marker))) return true;
+    return false;
+}
+
+static bool filter_deck_global(const struct wl_client *client, const struct wl_global *global, void *data) {
+    struct comp *comp = data;
+    if (global == comp->deck_dmabuf_global || global == comp->deck_ahb_global) return is_deck_client(client);
+    if (global == comp->normal_dmabuf_global) return !is_deck_client(client);
+    return true;
+}
+
 static void toplevel_app_id(struct wl_client *c, struct wl_resource *r, const char *app_id) {
     struct xdg *xdg = wl_resource_get_user_data(r);
-    if (xdg) snprintf(xdg->app_id, sizeof(xdg->app_id), "%s", app_id);
+    if (!xdg) return;
+    snprintf(xdg->app_id, sizeof(xdg->app_id), "%s", app_id);
+    if (!strcmp(app_id, "gamescope")) {
+        xdg->deck = is_deck_client(c);
+        if (xdg->deck) LOGI("Deck VSync eligible window=%u", xdg->window_id);
+    }
+    if (xdg->mapped) emit_window(xdg->comp, xdg, "class");
 }
 
 static void toplevel_menu(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, int32_t x, int32_t y) {}
@@ -1028,7 +1499,24 @@ static void toplevel_move(struct wl_client *c, struct wl_resource *r, struct wl_
     snprintf(json, sizeof(json), "{\"type\":\"move\",\"id\":%u,\"popup\":false}", xdg->window_id);
     emit(xdg->comp, json);
 }
-static void toplevel_resize(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, uint32_t edges) {}
+static void toplevel_resize(struct wl_client *c, struct wl_resource *r, struct wl_resource *seat, uint32_t serial, uint32_t edges) {
+    struct xdg *xdg = wl_resource_get_user_data(r);
+    int direction = edges == 5 ? 0 : edges == 1 ? 1 : edges == 9 ? 2 : edges == 8 ? 3 :
+        edges == 10 ? 4 : edges == 2 ? 5 : edges == 6 ? 6 : edges == 4 ? 7 : -1;
+    if (!xdg || direction < 0) return;
+    char json[128];
+    snprintf(json, sizeof(json), "{\"type\":\"moveresize\",\"id\":%u,\"direction\":%d}", xdg->window_id, direction);
+    emit(xdg->comp, json);
+}
+static void toplevel_maximize_request(struct wl_resource *r, int action) {
+    struct xdg *xdg = wl_resource_get_user_data(r);
+    if (!xdg) return;
+    char json[96];
+    snprintf(json, sizeof(json), "{\"type\":\"maximize\",\"id\":%u,\"action\":%d}", xdg->window_id, action);
+    emit(xdg->comp, json);
+}
+static void toplevel_maximize(struct wl_client *c, struct wl_resource *r) { toplevel_maximize_request(r, 1); }
+static void toplevel_unmaximize(struct wl_client *c, struct wl_resource *r) { toplevel_maximize_request(r, 0); }
 static void toplevel_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h) {}
 static void toplevel_noop(struct wl_client *c, struct wl_resource *r) {}
 static void toplevel_fullscreen(struct wl_client *c, struct wl_resource *r, struct wl_resource *output) {}
@@ -1045,7 +1533,7 @@ static const struct xdg_toplevel_interface toplevel_impl = {
     .destroy = toplevel_destroy, .set_parent = toplevel_parent, .set_title = toplevel_title,
     .set_app_id = toplevel_app_id, .show_window_menu = toplevel_menu, .move = toplevel_move,
     .resize = toplevel_resize, .set_max_size = toplevel_size, .set_min_size = toplevel_size,
-    .set_maximized = toplevel_noop, .unset_maximized = toplevel_noop,
+    .set_maximized = toplevel_maximize, .unset_maximized = toplevel_unmaximize,
     .set_fullscreen = toplevel_fullscreen, .unset_fullscreen = toplevel_noop,
     .set_minimized = toplevel_minimize,
 };
@@ -1227,9 +1715,19 @@ static void bind_wm(struct wl_client *client, void *data, uint32_t version, uint
 
 static void decoration_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
 
+struct decoration_target { struct comp *comp; uint32_t id; };
+static void decoration_free(struct wl_resource *r) { free(wl_resource_get_user_data(r)); }
+
 static void decoration_mode(struct wl_client *c, struct wl_resource *r, uint32_t mode) {
-    /* Plasma draws the frame. */
-    zxdg_toplevel_decoration_v1_send_configure(r, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
+    struct decoration_target *target = wl_resource_get_user_data(r);
+    struct xdg *xdg = target ? xdg_by_id(target->comp, target->id) : NULL;
+    bool client = mode == ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE;
+    if (xdg && xdg->client_decorated != client) {
+        xdg->client_decorated = client;
+        if (xdg->mapped) emit_window(xdg->comp, xdg, "decorations");
+    }
+    zxdg_toplevel_decoration_v1_send_configure(r, client ?
+        ZXDG_TOPLEVEL_DECORATION_V1_MODE_CLIENT_SIDE : ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
 static void decoration_unset(struct wl_client *c, struct wl_resource *r) { decoration_mode(c, r, 0); }
@@ -1241,8 +1739,13 @@ static const struct zxdg_toplevel_decoration_v1_interface decoration_impl = {
 static void decoration_manager_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
 
 static void decoration_manager_get(struct wl_client *client, struct wl_resource *resource, uint32_t id, struct wl_resource *toplevel) {
+    struct xdg *xdg = wl_resource_get_user_data(toplevel);
+    struct decoration_target *target = calloc(1, sizeof(*target));
+    if (!target) { wl_client_post_no_memory(client); return; }
+    target->comp = xdg->comp; target->id = xdg->window_id;
     struct wl_resource *r = wl_resource_create(client, &zxdg_toplevel_decoration_v1_interface, 1, id);
-    wl_resource_set_implementation(r, &decoration_impl, NULL, NULL);
+    if (!r) { free(target); wl_client_post_no_memory(client); return; }
+    wl_resource_set_implementation(r, &decoration_impl, target, decoration_free);
     zxdg_toplevel_decoration_v1_send_configure(r, ZXDG_TOPLEVEL_DECORATION_V1_MODE_SERVER_SIDE);
 }
 
@@ -1313,14 +1816,26 @@ static struct wl_resource *params_make_buffer(struct wl_client *client, struct w
     struct dmabuf_params *params = wl_resource_get_user_data(r);
     if (params->used || params->fd < 0 || width <= 0 || height <= 0 ||
         width > 16384 || height > 16384 || params->stride < (uint64_t)width * 4 ||
-        params->modifier != DRM_FORMAT_MOD_LINEAR ||
+        (params->modifier != DRM_FORMAT_MOD_LINEAR && !params->deck) ||
         (format != DRM_FORMAT_ARGB8888 && format != DRM_FORMAT_XRGB8888 &&
          format != DRM_FORMAT_ABGR8888 && format != DRM_FORMAT_XBGR8888)) {
         return NULL;
     }
     struct stat info;
     uint64_t required = (uint64_t)params->offset + (uint64_t)params->stride * (height - 1) + (uint64_t)width * 4;
-    if (fstat(params->fd, &info) != 0 || info.st_size <= 0 || required > (uint64_t)info.st_size) return NULL;
+    if (fstat(params->fd, &info) != 0 || info.st_size <= 0 || params->offset >= (uint64_t)info.st_size ||
+        (params->modifier == DRM_FORMAT_MOD_LINEAR && required > (uint64_t)info.st_size)) return NULL;
+#ifdef DEXTOP_WAYLAND_GPU
+    if (params->modifier != DRM_FORMAT_MOD_LINEAR) {
+        uint64_t mods[8];
+        unsigned n = linux_gpu_modifiers(params->comp->gpu, format, mods, 8);
+        bool supported = false;
+        for (unsigned i = 0; i < n; i++) if (mods[i] == params->modifier) supported = true;
+        if (!supported) return NULL;
+    }
+#else
+    if (params->modifier != DRM_FORMAT_MOD_LINEAR) return NULL;
+#endif
     params->used = true;
     struct dmabuf *dmabuf = calloc(1, sizeof(*dmabuf));
     if (!dmabuf) { wl_client_post_no_memory(client); return NULL; }
@@ -1331,11 +1846,14 @@ static struct wl_resource *params_make_buffer(struct wl_client *client, struct w
     dmabuf->width = width;
     dmabuf->height = height;
     dmabuf->format = format;
+    dmabuf->modifier = params->modifier;
     struct wl_resource *buffer = wl_resource_create(client, &wl_buffer_interface, 1, id);
     if (!buffer) { close(dmabuf->fd); free(dmabuf); wl_client_post_no_memory(client); return NULL; }
     wl_resource_set_implementation(buffer, &dmabuf_buffer_impl, dmabuf, dmabuf_resource_destroy);
 #ifdef DEXTOP_WAYLAND_GPU
     dmabuf->resource = buffer;
+    dmabuf->comp = params->comp;
+    dmabuf->deck = params->deck;
     dmabuf->refs = 1;
 #endif
     LOGI("dma-buf imported %dx%d format=0x%x stride=%u", width, height, format, dmabuf->stride);
@@ -1367,20 +1885,42 @@ static void dmabuf_destroy(struct wl_client *c, struct wl_resource *r) { wl_reso
 
 static void dmabuf_create_params(struct wl_client *client, struct wl_resource *resource, uint32_t id) {
     struct dmabuf_params *params = calloc(1, sizeof(*params));
+    if (!params) { wl_client_post_no_memory(client); return; }
     params->fd = -1;
+    params->comp = wl_resource_get_user_data(resource);
+    params->deck = is_deck_client(client);
     struct wl_resource *r = wl_resource_create(client, &zwp_linux_buffer_params_v1_interface, wl_resource_get_version(resource), id);
+    if (!r) { free(params); wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(r, &params_impl, params, params_resource_destroy);
 }
 
-static const struct zwp_linux_dmabuf_v1_interface dmabuf_impl = {.destroy = dmabuf_destroy, .create_params = dmabuf_create_params};
+#include "deck_dmabuf.inc"
+#include "deck_ahb_protocol.inc"
+
+static const struct zwp_linux_dmabuf_v1_interface dmabuf_impl = {
+    .destroy = dmabuf_destroy, .create_params = dmabuf_create_params,
+    .get_default_feedback = deck_default_feedback, .get_surface_feedback = deck_surface_feedback,
+};
 
 static void bind_dmabuf(struct wl_client *client, void *data, uint32_t version, uint32_t id) {
     struct wl_resource *resource = wl_resource_create(client, &zwp_linux_dmabuf_v1_interface, version, id);
+    if (!resource) { wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(resource, &dmabuf_impl, data, NULL);
+    if (version >= 4) return;
     const uint32_t formats[] = {DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888, DRM_FORMAT_ABGR8888, DRM_FORMAT_XBGR8888};
     for (size_t i = 0; i < sizeof(formats) / sizeof(formats[0]); ++i) {
         zwp_linux_dmabuf_v1_send_format(resource, formats[i]);
-        if (version >= 3) zwp_linux_dmabuf_v1_send_modifier(resource, formats[i], 0, 0);
+        if (version >= 3) {
+            zwp_linux_dmabuf_v1_send_modifier(resource, formats[i], 0, 0);
+#ifdef DEXTOP_WAYLAND_GPU
+            if (is_deck_client(client)) {
+                uint64_t mods[8];
+                unsigned n = linux_gpu_modifiers(((struct comp *)data)->gpu, formats[i], mods, 8);
+                for (unsigned m = 0; m < n; m++) if (mods[m])
+                    zwp_linux_dmabuf_v1_send_modifier(resource, formats[i], mods[m] >> 32, (uint32_t)mods[m]);
+            }
+#endif
+        }
     }
 }
 
@@ -1440,26 +1980,140 @@ static void bind_text_input(struct wl_client *client, void *data, uint32_t versi
 /* ------------------------------------------------------------- viewporter */
 
 #ifdef DEXTOP_WAYLAND_GPU
-static void constraint_region(struct wl_client *client, struct wl_resource *resource, struct wl_resource *region) {}
-static void constraint_hint(struct wl_client *client, struct wl_resource *resource, wl_fixed_t x, wl_fixed_t y) {}
+struct pointer_constraint {
+    struct comp *comp;
+    struct wl_resource *resource;
+    struct surface *surface;
+    struct wl_list link;
+    struct wl_listener surface_destroy;
+    bool locked, active, spent, persistent;
+    struct pointer_region region,pending_region;
+    bool region_set,pending_region_set,region_dirty;
+    wl_fixed_t hint_x,hint_y;bool hint_set;
+};
+static void constraints_commit(struct surface *surface){
+    struct pointer_constraint*c;
+    wl_list_for_each(c,&surface->comp->constraints,link)if(c->surface==surface&&c->region_dirty){
+        region_clear(&c->region);c->region=c->pending_region;c->pending_region=(struct pointer_region){0};
+        c->region_set=c->pending_region_set;c->region_dirty=false;
+    }
+}
+static bool constraint_point(struct pointer_constraint*c,wl_fixed_t x,wl_fixed_t y){
+    if(!c->surface)return false;
+    double px=wl_fixed_to_double(x),py=wl_fixed_to_double(y);
+    if(px<0||py<0||px>=surface_width(c->surface)||py>=surface_height(c->surface))return false;
+    if(!c->region_set)return true;
+    for(size_t i=0;i<c->region.count;i++){
+        struct pointer_rect r=c->region.rects[i];double px=wl_fixed_to_double(x),py=wl_fixed_to_double(y);
+        if(px>=r.x1&&px<r.x2&&py>=r.y1&&py<r.y2)return true;
+    }return false;
+}
+static void confine_position(struct comp*comp,wl_fixed_t *x,wl_fixed_t*y){
+    struct pointer_constraint*c;
+    wl_list_for_each(c,&comp->constraints,link)if(c->active&&!c->locked&&c->region_set&&!constraint_point(c,*x,*y)){
+        double best=1e100;wl_fixed_t bx=comp->pointer_x,by=comp->pointer_y;
+        for(size_t i=0;i<c->region.count;i++){
+            struct pointer_rect r=c->region.rects[i];
+            if(r.x1<0)r.x1=0;if(r.y1<0)r.y1=0;
+            if(r.x2>surface_width(c->surface))r.x2=surface_width(c->surface);
+            if(r.y2>surface_height(c->surface))r.y2=surface_height(c->surface);
+            if(r.x1>=r.x2||r.y1>=r.y2)continue;
+            double px=wl_fixed_to_double(*x),py=wl_fixed_to_double(*y);
+            double cx=px<r.x1?r.x1:px>=r.x2?r.x2-1.0/256:px;
+            double cy=py<r.y1?r.y1:py>=r.y2?r.y2-1.0/256:py;
+            double dist=(cx-px)*(cx-px)+(cy-py)*(cy-py);
+            if(dist<best){best=dist;bx=wl_fixed_from_double(cx);by=wl_fixed_from_double(cy);}
+        }*x=bx;*y=by;
+    }
+}
+static void constraint_state(struct pointer_constraint *c, bool active) {
+    if (active == c->active) return;
+    c->active = active;
+    if (c->locked) {
+        if (active) zwp_locked_pointer_v1_send_locked(c->resource);
+        else zwp_locked_pointer_v1_send_unlocked(c->resource);
+    } else {
+        if (active) zwp_confined_pointer_v1_send_confined(c->resource);
+        else zwp_confined_pointer_v1_send_unconfined(c->resource);
+    }
+    if (!active && !c->persistent) c->spent = true;
+    if (c->surface && c->surface->xdg) {
+        char json[160];
+        snprintf(json, sizeof(json), "{\"type\":\"pointer-capture\",\"id\":%u,\"capture\":%s}",
+                 c->surface->xdg->window_id, active ? "true" : "false");
+        emit(c->comp, json);
+    }
+}
+static void constraints_focus(struct comp *comp) {
+    struct pointer_constraint *c;
+    wl_list_for_each(c, &comp->constraints, link)
+        constraint_state(c, c->surface && !c->spent && c->surface == comp->pointer_focus && c->surface == comp->keyboard_focus && (c->active || constraint_point(c,comp->pointer_x,comp->pointer_y)));
+}
+static bool pointer_locked(struct comp *comp) {
+    struct pointer_constraint *c;
+    wl_list_for_each(c, &comp->constraints, link) if(c->active && c->locked) return true;
+    return false;
+}
+static void constraint_resource_destroy(struct wl_resource *resource) {
+    struct pointer_constraint *c = wl_resource_get_user_data(resource);
+    if(c->active&&c->locked&&c->hint_set&&constraint_point(c,c->hint_x,c->hint_y)){
+        c->comp->pointer_x=c->hint_x;c->comp->pointer_y=c->hint_y;
+    }
+    constraint_state(c, false);
+    wl_list_remove(&c->surface_destroy.link); wl_list_remove(&c->link);
+    region_clear(&c->region);region_clear(&c->pending_region);free(c);
+}
+static void constraint_surface_destroy(struct wl_listener *listener, void *data) {
+    struct pointer_constraint *c = wl_container_of(listener, c, surface_destroy);
+    constraint_state(c, false); c->surface = NULL;
+    wl_list_remove(&c->surface_destroy.link); wl_list_init(&c->surface_destroy.link);
+}
+static void constraint_region(struct wl_client *client, struct wl_resource *resource, struct wl_resource *region) {
+    struct pointer_constraint*c=wl_resource_get_user_data(resource);
+    if(region&&!region_copy(&c->pending_region,wl_resource_get_user_data(region))){wl_client_post_no_memory(client);return;}
+    if(!region)region_clear(&c->pending_region);
+    c->pending_region_set=region!=NULL;c->region_dirty=true;
+}
+static void constraint_hint(struct wl_client *client, struct wl_resource *resource, wl_fixed_t x, wl_fixed_t y) {
+    struct pointer_constraint*c=wl_resource_get_user_data(resource);c->hint_x=x;c->hint_y=y;c->hint_set=true;
+}
 static const struct zwp_locked_pointer_v1_interface locked_impl = {
     .destroy = decoration_destroy, .set_cursor_position_hint = constraint_hint, .set_region = constraint_region,
 };
 static const struct zwp_confined_pointer_v1_interface confined_impl = {
     .destroy = decoration_destroy, .set_region = constraint_region,
 };
+static void constraint_create(struct wl_client *client, struct wl_resource *manager, uint32_t id,
+    struct wl_resource *surface, struct wl_resource *pointer, struct wl_resource *region, uint32_t lifetime, bool locked) {
+    struct comp *comp = wl_resource_get_user_data(manager);
+    struct surface *target = wl_resource_get_user_data(surface);
+    struct pointer_constraint *existing;
+    wl_list_for_each(existing, &comp->constraints, link) if(existing->surface == target) {
+        wl_resource_post_error(manager, ZWP_POINTER_CONSTRAINTS_V1_ERROR_ALREADY_CONSTRAINED, "surface already constrained");return;
+    }
+    struct pointer_constraint *c = calloc(1, sizeof(*c));
+    if (!c) { wl_client_post_no_memory(client); return; }
+    c->comp = comp; c->surface = target; c->locked = locked;
+    c->persistent = lifetime == ZWP_POINTER_CONSTRAINTS_V1_LIFETIME_PERSISTENT;
+    c->resource = wl_resource_create(client, locked ? &zwp_locked_pointer_v1_interface : &zwp_confined_pointer_v1_interface, 1, id);
+    if (!c->resource) {free(c);wl_client_post_no_memory(client);return;}
+    wl_resource_set_implementation(c->resource, locked ? (const void*)&locked_impl : (const void*)&confined_impl, c, constraint_resource_destroy);
+    c->surface_destroy.notify = constraint_surface_destroy;
+    wl_resource_add_destroy_listener(surface, &c->surface_destroy);
+    wl_list_insert(&comp->constraints, &c->link);
+    if(region){
+        c->region_set=true;
+        if(!region_copy(&c->region,wl_resource_get_user_data(region))){wl_client_post_no_memory(client);return;}
+    }
+    constraints_focus(comp);
+}
 static void constraint_lock(struct wl_client *client, struct wl_resource *manager, uint32_t id,
     struct wl_resource *surface, struct wl_resource *pointer, struct wl_resource *region, uint32_t lifetime) {
-    struct wl_resource *resource = wl_resource_create(client, &zwp_locked_pointer_v1_interface, 1, id);
-    if (!resource) { wl_client_post_no_memory(client); return; }
-    /* Defer activation: Linux clients must not capture Plasma/DeX's host pointer. */
-    wl_resource_set_implementation(resource, &locked_impl, NULL, NULL);
+    constraint_create(client,manager,id,surface,pointer,region,lifetime,true);
 }
 static void constraint_confine(struct wl_client *client, struct wl_resource *manager, uint32_t id,
     struct wl_resource *surface, struct wl_resource *pointer, struct wl_resource *region, uint32_t lifetime) {
-    struct wl_resource *resource = wl_resource_create(client, &zwp_confined_pointer_v1_interface, 1, id);
-    if (!resource) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(resource, &confined_impl, NULL, NULL);
+    constraint_create(client,manager,id,surface,pointer,region,lifetime,false);
 }
 static const struct zwp_pointer_constraints_v1_interface constraints_impl = {
     .destroy = decoration_destroy, .lock_pointer = constraint_lock, .confine_pointer = constraint_confine,
@@ -1469,12 +2123,15 @@ static void bind_constraints(struct wl_client *client, void *data, uint32_t vers
     if (!resource) { wl_client_post_no_memory(client); return; }
     wl_resource_set_implementation(resource, &constraints_impl, data, NULL);
 }
+static void relative_destroy(struct wl_resource *resource) {wl_list_remove(wl_resource_get_link(resource));}
 static const struct zwp_relative_pointer_v1_interface relative_impl = {.destroy = decoration_destroy};
 static void relative_get(struct wl_client *client, struct wl_resource *manager, uint32_t id,
     struct wl_resource *pointer) {
+    struct comp *comp = wl_resource_get_user_data(manager);
     struct wl_resource *resource = wl_resource_create(client, &zwp_relative_pointer_v1_interface, 1, id);
     if (!resource) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(resource, &relative_impl, NULL, NULL);
+    wl_resource_set_implementation(resource, &relative_impl, comp, relative_destroy);
+    wl_list_insert(&comp->relative_pointers, wl_resource_get_link(resource));
 }
 static const struct zwp_relative_pointer_manager_v1_interface relative_manager_impl = {
     .destroy = decoration_destroy, .get_relative_pointer = relative_get,
@@ -1581,6 +2238,9 @@ static void focus_keyboard(struct comp *comp, struct surface *surface) {
     }
     struct surface *previous = comp->keyboard_focus;
     comp->keyboard_focus = surface;
+#ifdef DEXTOP_WAYLAND_GPU
+    constraints_focus(comp);
+#endif
     if (previous && previous->xdg && !previous->xdg->popup) xdg_send_configure(previous->xdg);
     if (!surface) return;
     struct wl_client *client = wl_resource_get_client(surface->resource);
@@ -1611,6 +2271,12 @@ static void pointer_focus(struct comp *comp, struct surface *surface, wl_fixed_t
         pointer_frame(comp, old);
     }
     comp->pointer_focus = surface;
+#ifdef DEXTOP_WAYLAND_GPU
+    comp->pointer_x=x;comp->pointer_y=y;
+#endif
+#ifdef DEXTOP_WAYLAND_GPU
+    constraints_focus(comp);
+#endif
     if (!surface) return;
     struct wl_client *client = wl_resource_get_client(surface->resource);
     wl_resource_for_each(r, &comp->pointers)
@@ -1630,6 +2296,31 @@ static uint32_t x_button_to_linux(int32_t button) {
 
 static void handle_pointer(struct comp *comp, struct xdg *xdg, int32_t action, int32_t lx, int32_t ly, int32_t button) {
     if (!xdg || !xdg->surface) return;
+#ifdef DEXTOP_WAYLAND_GPU
+    bool relative = action >= 10;
+    if (relative) {
+        action -= 10;
+        if (comp->pointer_focus != xdg->surface) return;
+        if (action == 0) {
+            struct wl_resource *resource;
+            struct wl_client *client = wl_resource_get_client(xdg->surface->resource);
+            struct timespec ts; clock_gettime(CLOCK_MONOTONIC, &ts);
+            uint64_t us = (uint64_t)ts.tv_sec * 1000000ull + ts.tv_nsec / 1000;
+            wl_resource_for_each(resource, &comp->relative_pointers)
+                if (wl_resource_get_client(resource) == client)
+                    zwp_relative_pointer_v1_send_relative_motion(resource, us >> 32, (uint32_t)us,
+                        wl_fixed_from_int(lx), wl_fixed_from_int(ly), wl_fixed_from_int(lx), wl_fixed_from_int(ly));
+            if (pointer_locked(comp)) return;
+        }
+        lx = wl_fixed_to_int(comp->pointer_x) + (action == 0 ? lx : 0);
+        ly = wl_fixed_to_int(comp->pointer_y) + (action == 0 ? ly : 0);
+        if (xdg->has_geometry) {lx -= xdg->geo_x; ly -= xdg->geo_y;}
+        lx = lx < 0 ? 0 : lx; ly = ly < 0 ? 0 : ly;
+        int w = xdg->has_geometry ? xdg->geo_w : surface_width(xdg->surface);
+        int h = xdg->has_geometry ? xdg->geo_h : surface_height(xdg->surface);
+        if (lx >= w) lx = w-1; if (ly >= h) ly = h-1;
+    }
+#endif
     /* Window coordinates start at the window geometry; surface coordinates at the buffer. */
     int32_t sx = lx + (xdg->has_geometry ? xdg->geo_x : 0);
     int32_t sy = ly + (xdg->has_geometry ? xdg->geo_y : 0);
@@ -1641,10 +2332,17 @@ static void handle_pointer(struct comp *comp, struct xdg *xdg, int32_t action, i
     wl_fixed_t fx = wl_fixed_from_int(sx), fy = wl_fixed_from_int(sy);
     struct wl_client *client = wl_resource_get_client(xdg->surface->resource);
     pointer_focus(comp, xdg->surface, fx, fy);
+#ifdef DEXTOP_WAYLAND_GPU
+    confine_position(comp,&fx,&fy);
+    comp->pointer_x = fx; comp->pointer_y = fy;
+#endif
     struct wl_resource *r;
     uint32_t time = now_ms();
     wl_resource_for_each(r, &comp->pointers) {
         if (wl_resource_get_client(r) != client) continue;
+#ifdef DEXTOP_WAYLAND_GPU
+        if (!pointer_locked(comp))
+#endif
         wl_pointer_send_motion(r, time, fx, fy);
         if (action == 1 || action == 2) {
             uint32_t linux_button = x_button_to_linux(button);
@@ -1760,16 +2458,67 @@ static void handle_text(struct comp *comp, const char *text) {
 
 /* -------------------------------------------------------------- commands */
 
+static void finish_frames(struct surface *surface, uint32_t time);
+
+/* gamescope owns the Deck frame limit. Do not add an independent 30Hz gate
+ * here: a frame arriving just after it would wait an entire extra period. */
 static void run_command(struct comp *comp, struct command *cmd) {
     struct xdg *xdg = xdg_by_id(comp, cmd->id);
     switch (cmd->type) {
+        case CMD_DECK_VSYNC: {
+            uint64_t interval = 1000000000000ull / (unsigned)comp->refresh_mhz;
+            if (cmd->frame_time_ns <= comp->deck_frame_ns ||
+                (comp->deck_frame_ns && cmd->frame_time_ns - comp->deck_frame_ns < interval * 3 / 4)) break;
+            comp->deck_frame_ns = cmd->frame_time_ns;
+            comp->deck_vsync_ns = (uint64_t)now_ms() * 1000000ull;
+#ifdef DEXTOP_WAYLAND_GPU
+            gpu_jobs_collect(comp, false);
+#endif
+            for (int i = 0; i < 1024; ++i) {
+                struct xdg *deck = comp->xdgs[i];
+                if (!deck || !deck->deck || !deck->mapped || !deck->surface || deck->deck_no_vsync) continue;
+                if (deck->needs_redraw) {
+                    deck->needs_redraw = false;
+                    window_draw(deck);
+                }
+                finish_frames(deck->surface, (uint32_t)(cmd->frame_time_ns / 1000000ull));
+            }
+            break;
+        }
+        case CMD_OUTPUT: {
+            if (cmd->a < 1 || cmd->b < 1 || cmd->c < 1000) break;
+            struct wl_resource *output;
+            wl_resource_for_each(output, &comp->outputs) {
+                wl_output_send_mode(output, 0, comp->width, comp->height, comp->refresh_mhz);
+            }
+            comp->width = cmd->a; comp->height = cmd->b; comp->refresh_mhz = cmd->c;
+            comp->next_frame_ns = 0;
+            wl_resource_for_each(output, &comp->outputs) {
+                wl_output_send_geometry(output, 0, 0, comp->width * 254 / 1600, comp->height * 254 / 1600,
+                    WL_OUTPUT_SUBPIXEL_UNKNOWN, "Dextop", "Plasma", WL_OUTPUT_TRANSFORM_NORMAL);
+                wl_output_send_mode(output, WL_OUTPUT_MODE_CURRENT | WL_OUTPUT_MODE_PREFERRED, comp->width, comp->height, comp->refresh_mhz);
+                if (wl_resource_get_version(output) >= 2) wl_output_send_done(output);
+            }
+            break;
+        }
+        case CMD_STATE:
+            if (xdg && xdg->maximized != (bool)cmd->a) {
+                xdg->maximized = (bool)cmd->a;
+                xdg_send_configure(xdg);
+            }
+            break;
         case CMD_ATTACH:
             if (xdg) {
 #ifdef DEXTOP_WAYLAND_GPU
+                deck_direct_hide(xdg, true);
                 linux_gpu_window_destroy(xdg->gpu_window);
                 xdg->gpu_window = NULL;
 #endif
                 if (xdg->window) ANativeWindow_release(xdg->window);
+                xdg->deck_direct = cmd->a != 0;
+                xdg->deck_30 = cmd->b != 0;
+                xdg->deck_no_vsync = cmd->c != 0;
+                xdg->frame_announced = false;
                 xdg->window = cmd->window;
                 cmd->window = NULL;
                 xdg->window_w = xdg->window_h = 0;
@@ -1778,7 +2527,7 @@ static void run_command(struct comp *comp, struct command *cmd) {
             break;
         case CMD_DETACH:
 #ifdef DEXTOP_WAYLAND_GPU
-            if (xdg) { linux_gpu_window_destroy(xdg->gpu_window); xdg->gpu_window = NULL; }
+            if (xdg) { deck_direct_hide(xdg, true); linux_gpu_window_destroy(xdg->gpu_window); xdg->gpu_window = NULL; }
 #endif
             if (xdg && xdg->window) { ANativeWindow_release(xdg->window); xdg->window = NULL; }
             break;
@@ -1791,6 +2540,10 @@ static void run_command(struct comp *comp, struct command *cmd) {
             break;
         case CMD_ACTIVATE:
             if (xdg && xdg->surface && !xdg->popup) focus_keyboard(comp, xdg->surface);
+            else if (!xdg) {focus_keyboard(comp, NULL);pointer_focus(comp, NULL, 0, 0);}
+#ifdef DEXTOP_WAYLAND_GPU
+            constraints_focus(comp);
+#endif
             break;
         case CMD_CLOSE:
             if (xdg && xdg->role) {
@@ -1872,6 +2625,24 @@ static int on_frame(void *data) {
             (unsigned long long)(comp->gpu_release_ns / (comp->gpu_releases ? comp->gpu_releases : 1) / 1000),
             (unsigned long long)(comp->gpu_release_max_ns / 1000));
         comp->gpu_stats_time = stats_now;
+        for (int i = 0; i < 1024; ++i) {
+            struct xdg *deck = comp->xdgs[i];
+            if (!deck || !deck->deck) continue;
+            LOGI("Deck producer cadence window=%u gaps_lt25ms=%u gaps_25to40ms=%u gaps_40to60ms=%u gaps_ge60ms=%u max_us=%llu",
+                deck->window_id, deck->deck_commit_gaps[0], deck->deck_commit_gaps[1],
+                deck->deck_commit_gaps[2], deck->deck_commit_gaps[3],
+                (unsigned long long)(deck->deck_commit_gap_max_ns / 1000));
+            memset(deck->deck_commit_gaps, 0, sizeof(deck->deck_commit_gaps));
+            deck->deck_commit_gap_max_ns = 0;
+            LOGI("Deck direct submissions=%u", deck->deck_direct_submits);
+            deck->deck_direct_submits = 0;
+            LOGI("Deck pipeline window=%u root_buffers=%u submits=%u coalesced=%u redraw_submits=%u latest_buffer_age_avg_us=%llu latest_buffer_age_max_us=%llu",
+                deck->window_id, deck->deck_buffers, deck->deck_submits, deck->deck_coalesced, deck->deck_redraws,
+                (unsigned long long)(deck->deck_age_ns / (deck->deck_age_samples ? deck->deck_age_samples : 1) / 1000),
+                (unsigned long long)(deck->deck_age_max_ns / 1000));
+            deck->deck_buffers = deck->deck_submits = deck->deck_coalesced = deck->deck_redraws = deck->deck_age_samples = 0;
+            deck->deck_age_ns = deck->deck_age_max_ns = 0;
+        }
         comp->gpu_cpu_ns = comp->gpu_release_ns = comp->gpu_release_max_ns = 0;
         comp->gpu_commits = comp->gpu_submits = comp->gpu_retries = comp->gpu_releases = 0;
     }
@@ -1880,17 +2651,30 @@ static int on_frame(void *data) {
     for (int i = 0; i < 1024; ++i) {
         struct xdg *xdg = comp->xdgs[i];
         if (!xdg || !xdg->surface) continue;
+        /* DD drives Deck rendering from Android VSync. Keep the existing timer
+         * for other Linux windows and as a fallback if Android stops ticking. */
+        if (xdg->deck && !xdg->deck_no_vsync && comp->deck_vsync_ns &&
+            (uint32_t)(time - comp->deck_vsync_ns / 1000000ull) < 100) continue;
         if (xdg->needs_redraw) {
             xdg->needs_redraw = false;
             if (xdg->mapped) window_draw(xdg);
         }
         finish_frames(xdg->surface, time);
     }
-    wl_event_source_timer_update(comp->frame_timer, 16);
+    struct timespec pacing_now;
+    clock_gettime(CLOCK_MONOTONIC, &pacing_now);
+    uint64_t nanos = (uint64_t)pacing_now.tv_sec * 1000000000ull + pacing_now.tv_nsec;
+    uint64_t interval = 1000000000000ull / (unsigned)comp->refresh_mhz;
+    comp->next_frame_ns += interval;
+    if (comp->next_frame_ns <= nanos) comp->next_frame_ns = nanos + interval;
+    int delay_ms = (int)((comp->next_frame_ns - nanos + 999999ull) / 1000000ull);
+    wl_event_source_timer_update(comp->frame_timer, delay_ms > 0 ? delay_ms : 1);
     return 0;
 }
 
 /* ------------------------------------------------------------- lifecycle */
+
+#include "deck_ahb_broker.inc"
 
 static void *compositor_main(void *data) {
     struct comp *comp = data;
@@ -1908,11 +2692,14 @@ static void *compositor_main(void *data) {
 #ifdef DEXTOP_WAYLAND_GPU
     /* Client teardown destroys windows and drains their GPU work. */
     gpu_jobs_collect(comp, true);
+    struct deck_direct_frame *direct, *next_direct;
+    wl_list_for_each_safe(direct, next_direct, &comp->direct_frames, link) deck_direct_frame_destroy(direct);
     linux_gpu_destroy(comp->gpu);
 #endif
     wl_display_destroy(comp->display);
     (*comp->env)->DeleteGlobalRef(comp->env, comp->callback);
     (*comp->vm)->DetachCurrentThread(comp->vm);
+    if (comp->ahb_broker_fd >= 0) close(comp->ahb_broker_fd);
     close(comp->command_fd);
     wl_array_release(&comp->pressed_keys);
     pthread_mutex_destroy(&comp->lock);
@@ -1941,14 +2728,21 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeStart(JNIEnv *env, jclass cl
                                                           jint width, jint height, jobject callback) {
     struct comp *comp = calloc(1, sizeof(*comp));
     if (!comp) return 0;
+    comp->ahb_broker_fd = -1;
+    comp->refresh_mhz = 60000;
     comp->width = width;
     comp->height = height;
     comp->next_window_id = 1;
+    wl_list_init(&comp->outputs);
     wl_list_init(&comp->pointers);
     wl_list_init(&comp->keyboards);
     wl_list_init(&comp->text_inputs);
 #ifdef DEXTOP_WAYLAND_GPU
+    wl_list_init(&comp->constraints);
+    wl_list_init(&comp->relative_pointers);
     wl_list_init(&comp->gpu_jobs);
+    wl_list_init(&comp->direct_frames);
+    wl_list_init(&comp->buffer_releases);
 #endif
     wl_array_init(&comp->pressed_keys);
     pthread_mutex_init(&comp->lock, NULL);
@@ -1959,6 +2753,8 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeStart(JNIEnv *env, jclass cl
 
     const char *name = (*env)->GetStringUTFChars(env, socket_name, NULL);
     int listen_fd = listen_abstract(name);
+    char broker_name[108];
+    snprintf(broker_name, sizeof(broker_name), "%s.ahb", name);
     (*env)->ReleaseStringUTFChars(env, socket_name, name);
     comp->display = wl_display_create();
     if (listen_fd < 0 || !comp->display || wl_display_add_socket_fd(comp->display, listen_fd) != 0) {
@@ -1969,6 +2765,16 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeStart(JNIEnv *env, jclass cl
         return 0;
     }
     comp->loop = wl_display_get_event_loop(comp->display);
+    struct sockaddr_un broker_address = {.sun_family = AF_UNIX};
+    size_t broker_length = strlen(broker_name);
+    if (broker_length + 1 < sizeof(broker_address.sun_path)) {
+        memcpy(broker_address.sun_path + 1, broker_name, broker_length);
+        int broker = socket(AF_UNIX, SOCK_SEQPACKET | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
+        if (broker >= 0 && !bind(broker, (void *)&broker_address, offsetof(struct sockaddr_un, sun_path) + 1 + broker_length) && !listen(broker, 16)) {
+            if (wl_event_loop_add_fd(comp->loop, broker, WL_EVENT_READABLE, deck_ahb_accept, NULL)) comp->ahb_broker_fd = broker;
+            else close(broker);
+        } else if (broker >= 0) close(broker);
+    }
     wl_display_init_shm(comp->display);
     wl_display_add_shm_format(comp->display, WL_SHM_FORMAT_ABGR8888);
     wl_display_add_shm_format(comp->display, WL_SHM_FORMAT_XBGR8888);
@@ -1984,9 +2790,13 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeStart(JNIEnv *env, jclass cl
     wl_global_create(comp->display, &xdg_wm_base_interface, 5, comp, bind_wm);
     wl_global_create(comp->display, &zxdg_decoration_manager_v1_interface, 1, comp, bind_decoration);
     wl_global_create(comp->display, &org_kde_kwin_server_decoration_manager_interface, 1, comp, bind_kde_decoration);
-    wl_global_create(comp->display, &zwp_linux_dmabuf_v1_interface, 3, comp, bind_dmabuf);
+    comp->normal_dmabuf_global = wl_global_create(comp->display, &zwp_linux_dmabuf_v1_interface, 3, comp, bind_dmabuf);
+    comp->deck_dmabuf_global = wl_global_create(comp->display, &zwp_linux_dmabuf_v1_interface, 4, comp, bind_dmabuf);
+    comp->deck_ahb_global = wl_global_create(comp->display, &banner_ahb_v1_interface, 2, comp, bind_deck_ahb);
+    wl_display_set_global_filter(comp->display, filter_deck_global, comp);
     wl_global_create(comp->display, &zwp_text_input_manager_v3_interface, 1, comp, bind_text_input);
     wl_global_create(comp->display, &wp_viewporter_interface, 1, comp, bind_viewporter);
+    wl_global_create(comp->display, &wp_single_pixel_buffer_manager_v1_interface, 1, comp, bind_solid);
 #ifdef DEXTOP_WAYLAND_GPU
     wl_global_create(comp->display, &wp_presentation_interface, 1, comp, bind_presentation);
     wl_global_create(comp->display, &zwp_pointer_constraints_v1_interface, 1, comp, bind_constraints);
@@ -2022,9 +2832,12 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeStop(JNIEnv *env, jclass cls
 }
 
 JNIEXPORT void JNICALL
-Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeAttach(JNIEnv *env, jclass cls, jlong handle, jint id, jobject surface) {
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeAttach(JNIEnv *env, jclass cls, jlong handle, jint id, jobject surface, jboolean deck_direct, jboolean deck_30, jboolean no_vsync) {
     struct command *cmd = command(CMD_ATTACH, id);
     if (!cmd) return;
+    cmd->a = deck_direct;
+    cmd->b = deck_30;
+    cmd->c = no_vsync;
     cmd->window = ANativeWindow_fromSurface(env, surface);
     post(COMP(handle), cmd);
 }
@@ -2033,6 +2846,23 @@ JNIEXPORT void JNICALL
 Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeDetach(JNIEnv *env, jclass cls, jlong handle, jint id) {
     struct command *cmd = command(CMD_DETACH, id);
     if (cmd) post(COMP(handle), cmd);
+}
+
+JNIEXPORT void JNICALL
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeOutput(JNIEnv *env, jclass cls, jlong handle, jint w, jint h, jint refresh) {
+    struct command *cmd = command(CMD_OUTPUT, 0);
+    if (!cmd) return;
+    cmd->a = w; cmd->b = h; cmd->c = refresh;
+    post((struct comp *)(intptr_t)handle, cmd);
+}
+
+JNIEXPORT void JNICALL
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeDeckVsync(JNIEnv *env, jclass cls, jlong handle, jlong frame_time_ns) {
+    if (frame_time_ns <= 0) return;
+    struct command *cmd = command(CMD_DECK_VSYNC, 0);
+    if (!cmd) return;
+    cmd->frame_time_ns = (uint64_t)frame_time_ns;
+    post(COMP(handle), cmd);
 }
 
 JNIEXPORT void JNICALL
@@ -2048,6 +2878,14 @@ JNIEXPORT void JNICALL
 Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeActivate(JNIEnv *env, jclass cls, jlong handle, jint id) {
     struct command *cmd = command(CMD_ACTIVATE, id);
     if (cmd) post(COMP(handle), cmd);
+}
+
+JNIEXPORT void JNICALL
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeSetState(JNIEnv *env, jclass cls, jlong handle, jint id, jboolean maximized) {
+    struct command *cmd = command(CMD_STATE, id);
+    if (!cmd) return;
+    cmd->a = maximized;
+    post(COMP(handle), cmd);
 }
 
 JNIEXPORT void JNICALL
@@ -2089,4 +2927,29 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeText(JNIEnv *env, jclass cls
     cmd->text = strdup(utf);
     (*env)->ReleaseStringUTFChars(env, text, utf);
     post(COMP(handle), cmd);
+}
+
+/*
+ * Holds <runtime dir>/wayland-N.lock the way libwayland does for a socket it
+ * serves. Guest compositors (KWin's kwin_wayland_wrapper, wl_socket_create)
+ * take the first wayland-N whose lock they can flock; without this lock they
+ * pick wayland-0, whose name Dextop already serves, and give up.
+ */
+JNIEXPORT jint JNICALL
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeLockName(JNIEnv *env, jclass cls, jstring path) {
+    const char *utf = (*env)->GetStringUTFChars(env, path, NULL);
+    int fd = open(utf, O_CREAT | O_CLOEXEC | O_RDWR, 0660);
+    (*env)->ReleaseStringUTFChars(env, path, utf);
+    if (fd < 0) return -errno;
+    if (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+        int error = errno;
+        close(fd);
+        return -error;
+    }
+    return fd;
+}
+
+JNIEXPORT void JNICALL
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeUnlockName(JNIEnv *env, jclass cls, jint fd) {
+    if (fd >= 0) close(fd);
 }

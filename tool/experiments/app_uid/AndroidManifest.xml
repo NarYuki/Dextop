@@ -1,0 +1,7 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android" package="moe.n4tsu.dextop.uidprobe">
+    <uses-sdk android:minSdkVersion="30" android:targetSdkVersion="36" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <application android:label="Dextop UID experiment" android:debuggable="true" android:extractNativeLibs="true" android:allowBackup="false">
+        <receiver android:name=".ProbeReceiver" android:exported="true" />
+    </application>
+</manifest>

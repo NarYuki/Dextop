@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Placeholders (LXSTUB_*) are replaced on the device for each Linux application. -->
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application
+        android:label="LXSTUB_LABEL_PLACEHOLDER_0000000000"
+        android:icon="@drawable/lxstub_icon"
+        android:allowBackup="false">
+        <meta-data android:name="dextop.target" android:value="LXSTUB_TARGET_PLACEHOLDER" />
+        <meta-data android:name="dextop.container" android:value="LXSTUB_CONTAINER_PLACEHOLDER" />
+        <meta-data android:name="dextop.desktop" android:value="LXSTUB_DESKTOP_PLACEHOLDER" />
+        <activity
+            android:name="moe.n4tsu.dextop.lxstub.Launch"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:theme="@android:style/Theme.NoDisplay">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+    </application>
+</manifest>

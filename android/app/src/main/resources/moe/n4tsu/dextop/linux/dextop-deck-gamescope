@@ -1,0 +1,100 @@
+#!/usr/bin/python3
+"""DroidDeck gamescope and private libraries, used only by Dextop Deck Mode."""
+import fcntl
+import hashlib
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+import tarfile
+import tempfile
+
+PAYLOAD = Path('/usr/local/lib/dextop-gaming/deck-gamescope.tar.xz')
+METADATA = PAYLOAD.with_name('deck-gamescope.json')
+INSTALL = Path('/opt/dextop-deck-gamescope')
+LOADER = '/lib/ld-linux-aarch64.so.1'
+
+
+def digest(path):
+    with path.open('rb') as stream:
+        return hashlib.file_digest(stream, 'sha256').hexdigest()
+
+
+def prepare(payload=None, metadata_path=None, install=None, required=None):
+    payload = PAYLOAD if payload is None else payload
+    metadata_path = METADATA if metadata_path is None else metadata_path
+    install = INSTALL if install is None else install
+    metadata = json.loads(metadata_path.read_text())
+    sha = metadata['bundleSha256']
+    if len(sha) != 64 or any(c not in '0123456789abcdef' for c in sha):
+        raise ValueError('Invalid Deck gamescope payload hash')
+    target = install / sha
+    install.mkdir(parents=True, exist_ok=True)
+    with (install / '.install.lock').open('a') as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        # A version directory is published only after the complete payload is verified.
+        if not target.is_dir():
+            if digest(payload) != sha:
+                raise ValueError('Deck gamescope payload checksum mismatch; update Dextop')
+            staging = Path(tempfile.mkdtemp(prefix='.staged-', dir=install))
+            try:
+                with tarfile.open(payload, 'r:xz') as archive:
+                    members = archive.getmembers()
+                    expected = set(metadata['files']) | {'manifest.json'}
+                    if {m.name for m in members} != expected or len(members) != len(expected):
+                        raise ValueError('Unexpected Deck gamescope payload contents')
+                    for member in members:
+                        relative = Path(member.name)
+                        if not member.isfile() or relative.is_absolute() or '..' in relative.parts or member.size > 32 * 1024 * 1024:
+                            raise ValueError('Invalid Deck gamescope payload path')
+                        output = staging / relative
+                        output.parent.mkdir(parents=True, exist_ok=True)
+                        with archive.extractfile(member) as source, output.open('wb') as destination:
+                            shutil.copyfileobj(source, destination)
+                        output.chmod(0o755 if relative.parts[0] in ('bin', 'lib') else 0o644)
+                    for name, expected_hash in metadata['files'].items():
+                        if digest(staging / name) != expected_hash:
+                            raise ValueError('Deck gamescope file verification failed: ' + name)
+                staging.replace(target)
+            finally:
+                if staging.exists():
+                    shutil.rmtree(staging)
+        for name in (required or ('bin/gamescope', 'lib/libstdc++.so.6', 'lib/libwayland-server.so.0')):
+            if not (target / name).is_file():
+                raise ValueError('Incomplete Deck gamescope installation; reset the Deck payload')
+    return target
+
+
+def main(args):
+    root = prepare()
+    if not Path(LOADER).is_file():
+        raise ValueError('Deck gamescope requires an ARM64 glibc Linux container')
+    # ld.so's process-local search path does not leak private C++/Wayland libs
+    # into Steam, Proton or other applications launched by gamescope.
+    libraries = str(root / 'lib')
+    # Gamescope's Wayland planes bypass Vulkan Wayland WSI. Its normal
+    # session must not change drivers merely because the AHB experiment ships.
+    if os.environ.get('DEXTOP_DECK_AHB') == '1':
+        gpu_payload = PAYLOAD.with_name('deck-direct-gpu.tar.xz')
+        gpu = prepare(gpu_payload, gpu_payload.with_name('deck-direct-gpu.json'),
+                      Path('/opt/dextop-deck-gpu'),
+                      ('lib/libvulkan_freedreno.so', 'lib/libnativewindow.so', 'icd.json'))
+        # This environment belongs to gamescope and its Deck children. The system
+        # ICD and normal Linux launchers remain independent of this private driver.
+        os.environ['VK_ICD_FILENAMES'] = os.environ['VK_DRIVER_FILES'] = str(gpu / 'icd.json')
+        os.environ['BANNER_WSI_AHB'] = '1'
+        os.environ['DROIDDECK_WAYLAND_ZERO_COPY'] = '1'
+        libraries = str(gpu / 'lib') + ':' + libraries
+    if os.environ.get('LD_LIBRARY_PATH'):
+        libraries += ':' + os.environ['LD_LIBRARY_PATH']
+    os.execv(LOADER, [LOADER, '--argv0', 'gamescope', '--library-path', libraries,
+                      str(root / 'bin/gamescope'), *args])
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
+    except Exception as error:
+        print('Dextop Deck gamescope: ' + str(error), file=sys.stderr)
+        sys.exit(1)

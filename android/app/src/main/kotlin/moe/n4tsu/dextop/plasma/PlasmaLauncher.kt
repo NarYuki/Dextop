@@ -465,7 +465,15 @@ internal class KickoffView(
         content.post {
             val columns = ((content.width - dp(8f)) / tile).coerceAtLeast(1)
             if (grid.columnCount != columns) {
+                val children = (0 until grid.childCount).map { grid.getChildAt(it) }
+                grid.removeAllViews()
                 grid.columnCount = columns
+                children.forEach { child ->
+                    grid.addView(child, GridLayout.LayoutParams().apply {
+                        width = tile
+                        height = dp(108f)
+                    })
+                }
                 grid.requestLayout()
             }
         }

@@ -12,6 +12,7 @@ import android.graphics.RectF
 import android.graphics.SurfaceTexture
 import android.os.SystemClock
 import android.view.MotionEvent
+import android.view.InputDevice
 import android.view.PointerIcon
 import android.view.Surface
 import android.view.Gravity
@@ -24,11 +25,53 @@ import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
 import moe.n4tsu.dextop.OwnedVirtualDisplay
+import moe.n4tsu.dextop.linux.LinuxWindowViewport
 
 internal enum class V2Edge { LEFT, RIGHT, TOP, BOTTOM, TOP_LEFT, TOP_RIGHT, BOTTOM_LEFT, BOTTOM_RIGHT }
 
+/** Keep a frame's mouse stream on its owner instead of hit-testing it again. */
+internal open class V2WindowInputRoot(
+    context: Context,
+    private val capturedWindow: (MotionEvent) -> V2WindowView?,
+) : FrameLayout(context) {
+    private var controllerPointerUnbuffered = false
+    private fun prepareControllerPointer(event: MotionEvent) {
+        if (controllerPointerUnbuffered || android.os.Build.VERSION.SDK_INT < 30) return
+        if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return
+        val device = event.device ?: return
+        // DualShock/compatible pads publish one combined gamepad + pointer.
+        // Avoid waiting for the UI frame to deliver their touchpad motion.
+        if (!device.supportsSource(InputDevice.SOURCE_GAMEPAD) ||
+            !device.supportsSource(InputDevice.SOURCE_TOUCHPAD)) return
+        requestUnbufferedDispatch(InputDevice.SOURCE_MOUSE or InputDevice.SOURCE_TOUCHPAD)
+        controllerPointerUnbuffered = true
+    }
+    private fun capturedFrameEvent(event: MotionEvent): Boolean {
+        val target = capturedWindow(event) ?: return false
+        val copy = MotionEvent.obtain(event)
+        try {
+            copy.offsetLocation(-target.x, -target.y)
+            target.dispatchGenericMotionEvent(copy)
+        } finally {
+            copy.recycle()
+        }
+        return true
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        prepareControllerPointer(event)
+        return capturedFrameEvent(event) || super.dispatchGenericMotionEvent(event)
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean {
+        prepareControllerPointer(event)
+        return capturedFrameEvent(event) || super.dispatchHoverEvent(event)
+    }
+}
+
 /** Window-manager callbacks from one composited window. */
 internal interface V2WindowHost {
+    fun onContentFrame(window: V2Window) {}
     val palette: PlasmaPalette
     fun isActive(window: V2Window): Boolean
     fun activate(window: V2Window)
@@ -44,7 +87,13 @@ internal interface V2WindowHost {
     fun showWindowMenu(window: V2Window, rawX: Float, rawY: Float)
     fun onSurfaceReady(window: V2Window, surface: Surface, width: Int, height: Int)
     fun onSurfaceDestroyed(window: V2Window)
+    fun captureLost(window: V2Window)
+    fun forwardCapturedInput(window: V2Window, event: MotionEvent)
     fun forwardInput(window: V2Window, event: MotionEvent, source: View)
+    /** Dextop Auto draws its panes flat, without the desktop window shadow. */
+    val windowShadows: Boolean get() = true
+    /** Corner radius of the window outline in pixels, or a negative value for the desktop default. */
+    fun windowCornerRadius(): Float = -1f
 }
 
 /**
@@ -82,6 +131,8 @@ internal class V2Window(
     var displayHeight = 0
     var surface: Surface? = null
     var hadTask = false
+    /** Task currently shown on this window's display, or -1. */
+    var taskId = -1
     var emptySince = 0L
     val createdAt = SystemClock.uptimeMillis()
     /** Task to pull onto this window's display once it exists (adopted strays). */
@@ -96,10 +147,23 @@ internal class V2Window(
     var linuxWidth = 0
     var linuxHeight = 0
     /** Pointer state of the Linux surface (buttons, gesture remainders). */
+    var linuxCaptureRequested = false
+    var linuxCaptureSuppressed = false
+    var linuxMousePresent = false
+    var linuxManualCapture = false
+    val linuxRelativeMotion = moe.n4tsu.dextop.linux.LinuxRelativeMotion()
     val linuxPointer = LinuxPointerState()
+    /** Container whose Steam Deck Mode this window wraps: gamescope as its content, other Steam windows inside it. */
+    var steamMode: String? = null
     /** X window id when this window shows one Linux application window (0: the whole desktop). */
     var linuxXid = 0
     var linuxWMClass = ""
+    var linuxWindowIcon: android.graphics.drawable.Drawable? = null
+    var linuxClientDecorated = false
+    var linuxFullscreen = false
+    var linuxFullscreenRestore: Rect? = null
+    var linuxMoveResize = -1
+    fun decorationHeight(titleHeight: Int) = if (linuxClientDecorated || linuxFullscreen) 0 else titleHeight
     /** When Dextop last moved or resized the X window, to tell its own ConfigureNotify from the client's. */
     var linuxConfiguredAt = 0L
 
@@ -123,7 +187,7 @@ internal class V2Window(
     }
 
     fun clientWidth() = frame.width()
-    fun clientHeight(titleHeight: Int) = (frame.height() - titleHeight).coerceAtLeast(1)
+    fun clientHeight(titleHeight: Int) = (frame.height() - decorationHeight(titleHeight)).coerceAtLeast(1)
 }
 
 /** Breeze window: shadowed rounded chrome with a title bar above the app surface. */
@@ -137,21 +201,76 @@ internal class V2WindowView(
 ) : FrameLayout(context) {
     val chrome = LinearLayout(context)
     val titleBar = V2TitleBar(context, host, window)
-    val content = TextureView(context)
-    private val contentFrame = FrameLayout(context)
+    val content = object : TextureView(context) {
+        override fun onPointerCaptureChange(hasCapture: Boolean) {
+            super.onPointerCaptureChange(hasCapture)
+            if (!hasCapture) host.captureLost(window)
+        }
+        override fun onWindowFocusChanged(hasWindowFocus: Boolean) {
+            super.onWindowFocusChanged(hasWindowFocus)
+            if (!hasWindowFocus) { releasePointerCapture(); host.captureLost(window) }
+        }
+    }
+    /** Holds [content] and what covers it (status, errors, Steam Deck Mode's screen and windows). */
+    val contentFrame = FrameLayout(context)
+    /** Auto Deck output is a child SurfaceControl, composed by SurfaceFlinger rather
+     * than sampled into the host window by TextureView. The transparent TextureView
+     * remains the input target, preserving pointer capture and coordinate mapping. */
+    private var deckSurface: android.view.SurfaceView? = null
+    val usesDeckSurface get() = deckSurface != null
+
+    fun enableAutoDeckSurface() {
+        check(window.steamMode != null)
+        if (deckSurface != null) return
+        host.onSurfaceDestroyed(window)
+        window.surface?.release()
+        window.surface = null
+        val output = android.view.SurfaceView(context)
+        deckSurface = output
+        output.setZOrderOnTop(false)
+        output.holder.setFormat(android.graphics.PixelFormat.OPAQUE)
+        output.holder.addCallback(object : android.view.SurfaceHolder.Callback {
+            override fun surfaceCreated(holder: android.view.SurfaceHolder) = Unit
+            override fun surfaceChanged(holder: android.view.SurfaceHolder, format: Int, width: Int, height: Int) {
+                // Holder owns this Surface; never release it from the TextureView path.
+                window.surface = holder.surface
+                holder.surface.setFrameRate(display?.refreshRate ?: 60f, Surface.FRAME_RATE_COMPATIBILITY_DEFAULT)
+                host.onSurfaceReady(window, holder.surface, width, height)
+                android.util.Log.i("DextopPlasmaV2", "Deck SurfaceControl ready id=${window.id} ${width}x$height")
+            }
+            override fun surfaceDestroyed(holder: android.view.SurfaceHolder) {
+                host.onSurfaceDestroyed(window)
+                window.surface = null
+            }
+        })
+        contentFrame.addView(output, 0, LayoutParams(-1, -1))
+        content.alpha = 0f
+    }
+
     private var status: View? = null
     private var statusText: TextView? = null
     private var resizing = false
+    private var contentMoving = false
+    private var gripMoving = false
+    /** Mouse button/hover events are a separate stream from Android touch. */
+    var capturesFramePointer = false
+        private set
+    private var framePointerDevice = -1
+    fun ownsFramePointer(event: MotionEvent) = capturesFramePointer && framePointerDevice == event.deviceId &&
+        event.isFromSource(InputDevice.SOURCE_MOUSE)
+    private val moveGripPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val density = resources.displayMetrics.density
 
     init {
         clipChildren = false
+        setWillNotDraw(false)
         clipToPadding = false
         setPadding(grip, grip, grip, grip)
         chrome.orientation = LinearLayout.VERTICAL
         chrome.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                outline.setRoundRect(0, 0, view.width, view.height, 6 * density)
+                val radius = host.windowCornerRadius()
+                outline.setRoundRect(0, 0, view.width, view.height, if (radius >= 0f) radius else 6 * density)
             }
         }
         chrome.clipToOutline = true
@@ -160,39 +279,69 @@ internal class V2WindowView(
         contentFrame.addView(content, LayoutParams(-1, -1))
         chrome.addView(contentFrame, LinearLayout.LayoutParams(-1, 0, 1f))
         addView(chrome, LayoutParams(-1, -1))
-        content.isOpaque = true
+        content.isOpaque = window.linuxXid == 0
+        content.isFocusable = true
+        content.isFocusableInTouchMode = true
+        content.setOnCapturedPointerListener { _, event -> host.forwardCapturedInput(window, event); true }
         content.surfaceTextureListener = object : TextureView.SurfaceTextureListener {
             override fun onSurfaceTextureAvailable(texture: SurfaceTexture, width: Int, height: Int) {
+                if (usesDeckSurface) return
                 val surface = Surface(texture)
                 window.surface = surface
                 host.onSurfaceReady(window, surface, width, height)
+                refreshLinuxViewport()
             }
 
-            override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) = Unit
+            override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
+                refreshLinuxViewport()
+            }
 
             override fun onSurfaceTextureDestroyed(texture: SurfaceTexture): Boolean {
+                if (usesDeckSurface) return true
                 host.onSurfaceDestroyed(window)
                 window.surface?.release()
                 window.surface = null
                 return true
             }
 
-            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
+            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) { if (!usesDeckSurface) host.onContentFrame(window) }
         }
         content.setOnTouchListener { view, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) host.activate(window)
-            host.forwardInput(window, event, view)
+            if (!moveClientWindow(event)) host.forwardInput(window, event, view)
             true
         }
         content.setOnGenericMotionListener { view, event ->
-            host.forwardInput(window, event, view)
+            if (!moveClientWindow(event)) host.forwardInput(window, event, view)
             true
         }
         content.setOnHoverListener { view, event ->
-            host.forwardInput(window, event, view)
+            if (!moveClientWindow(event)) host.forwardInput(window, event, view)
             true
         }
         refreshElevation(active = true)
+    }
+
+    /** Alt+drag also moves clients that expose no usable title-bar drag area. */
+    private fun moveClientWindow(event: MotionEvent): Boolean {
+        if (!window.linuxClientDecorated || window.linuxXid == 0 || window.linuxFullscreen) return false
+        if (!contentMoving && event.metaState and android.view.KeyEvent.META_ALT_ON != 0 &&
+            (event.actionMasked == MotionEvent.ACTION_DOWN ||
+                event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS && event.actionButton == MotionEvent.BUTTON_PRIMARY)) {
+            contentMoving = true
+            host.activate(window)
+            host.beginMove(window, event.rawX, event.rawY)
+            return true
+        }
+        if (!contentMoving) return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_HOVER_MOVE -> host.move(window, event.rawX, event.rawY)
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_BUTTON_RELEASE, MotionEvent.ACTION_CANCEL -> {
+                host.endMove(window, event.rawX, event.rawY)
+                contentMoving = false
+            }
+        }
+        return true
     }
 
     /** Shows [text] with a spinner over the content (for example while a Linux desktop starts); null hides it. */
@@ -248,11 +397,46 @@ internal class V2WindowView(
     }
 
     fun refreshElevation(active: Boolean) {
-        chrome.elevation = if (active) 22 * density else 9 * density
+        chrome.elevation = if (!host.windowShadows) 0f else if (active) 22 * density else 9 * density
         titleBar.invalidate()
     }
 
+    fun refreshDecorations() {
+        content.isOpaque = window.linuxXid == 0
+        titleBar.visibility = if (window.linuxClientDecorated || window.linuxFullscreen) View.GONE else View.VISIBLE
+        chrome.clipToOutline = !window.linuxClientDecorated && !window.linuxFullscreen
+        chrome.setBackgroundColor(if (window.linuxFullscreen) android.graphics.Color.BLACK
+            else if (window.linuxClientDecorated) android.graphics.Color.TRANSPARENT else host.palette.windowBackground)
+        refreshLinuxViewport()
+        requestLayout()
+        invalidate()
+    }
+
+    fun refreshLinuxViewport() {
+        if (window.linuxXid == 0 || content.width <= 0 || content.height <= 0) return
+        val viewport = LinuxWindowViewport(window.linuxWidth.coerceAtLeast(1), window.linuxHeight.coerceAtLeast(1),
+            content.width, content.height, window.linuxFullscreen)
+        content.setTransform(android.graphics.Matrix().apply {
+            setScale(viewport.width / content.width, viewport.height / content.height,
+                content.width / 2f, content.height / 2f)
+        })
+    }
+
+    private val moveGripTop get() = (grip - window.frame.top).coerceAtLeast(0).toFloat()
+    private fun isMoveGrip(x: Float, y: Float) = window.linuxClientDecorated && !window.linuxFullscreen &&
+        y >= moveGripTop && y < moveGripTop + grip && x > grip + 14 * density && x < width - grip - 14 * density
+
+    override fun dispatchDraw(canvas: Canvas) {
+        super.dispatchDraw(canvas)
+        if (!window.linuxClientDecorated || window.linuxFullscreen) return
+        moveGripPaint.color = host.palette.inactiveText
+        val half = 24 * density
+        canvas.drawRoundRect(width / 2f - half, moveGripTop + grip * .25f, width / 2f + half, moveGripTop + grip * .75f,
+            grip.toFloat(), grip.toFloat(), moveGripPaint)
+    }
+
     private fun edgeAt(x: Float, y: Float): V2Edge? {
+        if (window.linuxFullscreen) return null
         val w = width.toFloat()
         val h = height.toFloat()
         val corner = grip + 14 * density
@@ -273,20 +457,97 @@ internal class V2WindowView(
         }
     }
 
+    private fun isFramePoint(x: Float, y: Float): Boolean =
+        isMoveGrip(x, y) || edgeAt(x, y) != null ||
+            (!window.linuxClientDecorated && y >= grip && y < grip + titleHeight)
+
+    override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN) {
+            capturesFramePointer = isFramePoint(event.x, event.y)
+            framePointerDevice = event.deviceId
+        }
+        super.dispatchTouchEvent(event)
+        if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) {
+            capturesFramePointer = false
+        }
+        // Empty chrome/padding is still part of the front window. Returning
+        // false lets ViewGroup deliver the same event to a window underneath.
+        return true
+    }
+
+    private fun frameMouseEvent(event: MotionEvent): Boolean {
+        if (!event.isFromSource(InputDevice.SOURCE_MOUSE)) return false
+        if (capturesFramePointer && !ownsFramePointer(event)) return false
+        when (event.actionMasked) {
+            MotionEvent.ACTION_BUTTON_PRESS -> if (event.actionButton == MotionEvent.BUTTON_PRIMARY &&
+                isFramePoint(event.x, event.y)) {
+                // A normal mouse also sends ACTION_DOWN; do not start twice.
+                if (!capturesFramePointer) frameMouseAsTouch(event, MotionEvent.ACTION_DOWN)
+                return true
+            }
+            MotionEvent.ACTION_MOVE, MotionEvent.ACTION_HOVER_MOVE -> if (capturesFramePointer) {
+                // Relayed mice may omit buttonState on motion. Only an
+                // explicit up/release/cancel ends the owned gesture.
+                frameMouseAsTouch(event, MotionEvent.ACTION_MOVE)
+                return true
+            }
+            MotionEvent.ACTION_BUTTON_RELEASE -> if (capturesFramePointer && event.actionButton == MotionEvent.BUTTON_PRIMARY) {
+                frameMouseAsTouch(event, MotionEvent.ACTION_UP)
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> if (capturesFramePointer) {
+                frameMouseAsTouch(event, MotionEvent.ACTION_CANCEL)
+                return true
+            }
+        }
+        return capturesFramePointer
+    }
+
+    private fun frameMouseAsTouch(event: MotionEvent, action: Int) {
+        val copy = MotionEvent.obtain(event)
+        try {
+            copy.action = action
+            dispatchTouchEvent(copy)
+        } finally {
+            copy.recycle()
+        }
+    }
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean {
+        if (frameMouseEvent(event)) return true
+        super.dispatchGenericMotionEvent(event)
+        return true
+    }
+
+    override fun dispatchHoverEvent(event: MotionEvent): Boolean {
+        if (frameMouseEvent(event)) return true
+        super.dispatchHoverEvent(event)
+        return true
+    }
+
     override fun onInterceptTouchEvent(event: MotionEvent): Boolean =
-        event.actionMasked == MotionEvent.ACTION_DOWN && edgeAt(event.x, event.y) != null
+        event.actionMasked == MotionEvent.ACTION_DOWN && (isMoveGrip(event.x, event.y) || edgeAt(event.x, event.y) != null)
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
-                val edge = edgeAt(event.x, event.y) ?: return false
+                if (isMoveGrip(event.x, event.y)) {
+                    gripMoving = true
+                    host.activate(window)
+                    host.beginMove(window, event.rawX, event.rawY)
+                    return true
+                }
+                val edge = edgeAt(event.x, event.y) ?: return true
                 host.activate(window)
                 resizing = true
                 host.beginResize(window, edge, event.rawX, event.rawY)
             }
-            MotionEvent.ACTION_MOVE -> if (resizing) host.resize(window, event.rawX, event.rawY)
+            MotionEvent.ACTION_MOVE -> if (gripMoving) host.move(window, event.rawX, event.rawY)
+                else if (resizing) host.resize(window, event.rawX, event.rawY)
             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
+                if (gripMoving) host.endMove(window, event.rawX, event.rawY)
+                gripMoving = false
                 if (resizing) host.endResize(window)
                 resizing = false
             }
@@ -295,6 +556,8 @@ internal class V2WindowView(
     }
 
     override fun onResolvePointerIcon(event: MotionEvent, pointerIndex: Int): PointerIcon? {
+        if (isMoveGrip(event.getX(pointerIndex), event.getY(pointerIndex)))
+            return PointerIcon.getSystemIcon(context, PointerIcon.TYPE_GRAB)
         val type = when (edgeAt(event.getX(pointerIndex), event.getY(pointerIndex))) {
             V2Edge.LEFT, V2Edge.RIGHT -> PointerIcon.TYPE_HORIZONTAL_DOUBLE_ARROW
             V2Edge.TOP, V2Edge.BOTTOM -> PointerIcon.TYPE_VERTICAL_DOUBLE_ARROW

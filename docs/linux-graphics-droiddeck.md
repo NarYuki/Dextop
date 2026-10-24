@@ -162,3 +162,65 @@ both phones, with either Turnip. Debian containers therefore install Mesa 26
 from trixie-backports (prebuilt) in the GPU step. With it, glxgears on the
 Galaxy (Adreno 840, DD-Turnip, Zink, `MESA_VK_WSI_DEBUG=sw`,
 `LIBGL_KOPPER_DRI2=true`) is visible at about 1660 FPS.
+
+## Installation display selection (2026-10-20)
+
+The setup desktop step now offers Xvfb and Wayland and repeats the selection
+in the installation summary. `setupOptions.displayBackend` is validated and
+serialized with the other setup choices, so repair reuses it. Missing choices
+default to Xvfb; existing containers are not switched by installing the APK.
+The integration step also writes `/etc/dextop/display-backend`.
+
+Xvfb explicitly selects X11 toolkit backends. Wayland selects the existing
+Dextop compositor for GTK, Qt, SDL, Firefox and compatible Electron clients,
+with X11 fallback. Setup installs distribution Wayland client/EGL libraries
+and Qt 5/6 Wayland plugins even in the minimal profile. The GPU-specific EGL
+vendor/path override is applied only when the existing KGSL Mesa readiness
+check succeeds; selecting Wayland alone must not force a nonexistent EGL
+manifest. Failure to start the explicitly selected compositor is surfaced as
+a session error rather than silently ignoring the choice.
+
+Wayland mode now starts a separate rootful Xwayland server for each app or
+desktop display. Each server has its own host Wayland socket/lock, avoiding
+collisions with native Wayland applications or another desktop in the same
+container. The host starts before Xwayland and is torn down after the X
+process tree, including startup failures. Setup installs xwayland (APT) or
+xorg-xwayland (Arch) so fresh installations and repair receive the dependency.
+
+The IceWM desktop presents the Xwayland Wayland output directly to its Android
+Surface; input and clipboard keep the existing X connection. Individual X11
+apps still use Dextop's existing Composite/DAMAGE capture and window management.
+Output changes configure Xwayland through its Wayland host, rather than applying
+Xvfb-specific xrandr output names and modes. Native Wayland app routing remains
+separate. The initial Xwayland path explicitly uses -shm, not Glamor/DRI3 GPU
+presentation; the common software X11 Vulkan compatibility policy therefore
+remains `xvfb`. Accelerated rootless Xwayland is not implemented by this change.
+Plasma and DeX Android display/input paths are unchanged.
+
+Validation: 18 Steam/setup-plan JVM tests passed and Flutter analysis of the
+setup page reported no issues. `tool/wayland_smoke/LinuxBackendProbe.java`
+verified serialization using Android JSONObject, an isolated native Wayland
+registry/socket roundtrip, and both actual LinuxProot guest launch environments
+on Galaxy. No GUI interaction or game launch was used. The GitHub release APK
+was installed on Galaxy; SHA-256:
+`3e49a16f94a74354312f94dfaafcb9f00e1d0b466ba6d78813bdc0474bf88c5e`.
+
+### Xwayland and setup interaction follow-up
+
+`tool/wayland_smoke/LinuxXwaylandProbe.java` uses an isolated display and
+synthetic X windows, with no actual desktop/application GUI automation. On
+Galaxy it passed X11 root background -> Wayland -> ImageReader pixel checking,
+640x480 -> 480x640 output resizing, and real LinuxAppSession window management
+and individual Surface pixel capture. It launches the generated production
+server script and the actual production app session, then stops their runtimes.
+
+Container customize/settings actions remain in the overflow menu; their
+separate large buttons were removed. Both new-container and customize wizards
+share a directional slide/fade transition (260 ms) between steps, honoring
+Android's reduced-animation setting.
+
+Final Xwayland follow-up: 19 Steam/setup-plan JVM tests passed; Flutter
+analysis of both changed pages reported no issues. Generated Xvfb/Xwayland
+app and desktop scripts passed shell syntax checking. Release installed on
+Galaxy. SHA-256:
+`e1ca005b8cca8c074074cea5058270252c94bfd25e2e88a75de4b83b9d952b9a`.

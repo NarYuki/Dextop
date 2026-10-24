@@ -3023,6 +3023,14 @@ class AppLocalizationsRu extends AppLocalizations {
       'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
 
   @override
+  String get linuxSetupSteamDetail =>
+      'Steam от Valve (ARM64). Загружается у Valve при первом запуске; Proton и FEX Steam устанавливает сам.';
+
+  @override
+  String get linuxSetupDroidDeckNote =>
+      'Среда DroidDeck содержит собственный рабочий стол KDE Plasma (KWin, Xwayland), шрифты и методы ввода, поэтому шаги IceWM, языка и ввода пропускаются.';
+
+  @override
   String get linuxSetupStorage =>
       'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
 
@@ -3114,6 +3122,57 @@ class AppLocalizationsRu extends AppLocalizations {
       'Изменения применяются к приложениям, запущенным после этого. Откройте рабочий стол заново.';
 
   @override
+  String get linuxContainerSettings => 'Настройки контейнера';
+
+  @override
+  String get linuxGpuFollowDefault => 'По умолчанию';
+
+  @override
+  String get linuxGpuFollowDefaultDescription =>
+      'Использует графику по умолчанию из настроек Linux';
+
+  @override
+  String get linuxDefaultSection => 'По умолчанию';
+
+  @override
+  String get linuxDefaultContainer => 'Контейнер по умолчанию';
+
+  @override
+  String get linuxDefaultContainerDescription =>
+      'Контейнер, приложения которого показывает меню Plasma';
+
+  @override
+  String get linuxDefaultContainerAll => 'Все контейнеры';
+
+  @override
+  String get linuxDefaultBadge => 'По умолчанию';
+
+  @override
+  String get linuxGpuDefaultSection => 'Графическое ускорение по умолчанию';
+
+  @override
+  String get linuxGpuDefaultNote =>
+      'Используется контейнерами, в настройках которых оно не изменено.';
+
+  @override
+  String get linuxWmSection => 'Оконный менеджер';
+
+  @override
+  String get linuxWmDefault => 'По умолчанию';
+
+  @override
+  String get linuxWmDefaultDescription =>
+      'По типу контейнера (DroidDeck для среды DroidDeck, иначе Dextop)';
+
+  @override
+  String get linuxWmDextopDescription =>
+      'Xvfb и управление окнами Dextop: окно на приложение и рабочий стол IceWM';
+
+  @override
+  String get linuxWmDroidDeckDescription =>
+      'Схема DroidDeck: KDE Plasma (KWin) внутри Wayland-композитора, Xwayland для X-приложений и gamescope для GPU-приложений. Нужна среда DroidDeck';
+
+  @override
   String linuxGpuRunning(int count) {
     return 'VirGL используется контейнерами: $count';
   }
@@ -3142,14 +3201,72 @@ class AppLocalizationsRu extends AppLocalizations {
   String get linuxSetupPhaseGpu => 'Сборка драйвера GPU (Turnip)';
 
   @override
+  String get linuxSetupDisplayBackend => 'Display system';
+
+  @override
+  String get linuxSetupXvfbDetail =>
+      'Use X11 for applications and the IceWM desktop.';
+
+  @override
+  String get linuxSetupWaylandDetail =>
+      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+
+  @override
+  String get nativeSteamModeTitle => 'Steam Deck Mode';
+
+  @override
+  String get nativeSteamModeStarting => 'Запуск…';
+
+  @override
+  String get nativeSteamModeStepDisplay => 'Подготовка экрана…';
+
+  @override
+  String get nativeSteamModeStepClient => 'Проверка клиента Steam…';
+
+  @override
+  String get nativeSteamModeStepDownload => 'Загрузка Steam · %1\$s';
+
+  @override
+  String get nativeSteamModeStepRepair => 'Восстановление клиента Steam…';
+
+  @override
+  String get nativeSteamModeStepUpdate => 'Загрузка обновления Steam · %1\$d%%';
+
+  @override
+  String get nativeSteamModeStepServices => 'Запуск системных служб…';
+
+  @override
+  String get nativeSteamModeStepSteam => 'Запуск Steam…';
+
+  @override
+  String get nativeSteamModeStepStopping => 'Завершение…';
+
+  @override
+  String get nativeSteamModeElapsed => 'Прошло %1\$d:%2\$02d';
+
+  @override
+  String get nativeSteamModeHint1 =>
+      'При первом запуске Steam загружается несколько минут.';
+
+  @override
+  String get nativeSteamModeHint2 =>
+      '«Выключить» в меню питания завершает Steam Deck Mode.';
+
+  @override
+  String get nativeSteamModeHint3 =>
+      'Запускайте игры из библиотеки Steam. Proton настраивается автоматически.';
+
+  @override
+  String get nativeSteamModeFailed => 'Steam Deck Mode завершён';
+
+  @override
+  String get nativeSteamModeRestart => 'Перезапустить';
+
+  @override
+  String get nativeSteamModeClose => 'Закрыть';
+
+  @override
   String get uiShortcutAdd => 'Добавить ярлык на главный экран';
-
-  @override
-  String get uiShortcutAdded =>
-      'Ярлык добавлен на главный экран. Нажмите на него, чтобы запустить или остановить виртуальный дисплей Dextop.';
-
-  @override
-  String get uiShortcutDismissed => 'Ярлык не добавлен';
 
   @override
   String get uiShortcutUnsupported =>
@@ -3161,9 +3278,16 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
-  String get nativeShortcutStartDisplay => 'Запустить Dextop';
+  String get uiShortcutDismissed => 'Ярлык не добавлен';
+
+  @override
+  String get uiShortcutAdded =>
+      'Ярлык добавлен на главный экран. Нажмите на него, чтобы запустить или остановить виртуальный дисплей Dextop.';
 
   @override
   String get nativeShortcutStartDisplayLong =>
       'Запустить или остановить виртуальный дисплей Dextop';
+
+  @override
+  String get nativeShortcutStartDisplay => 'Запустить Dextop';
 }

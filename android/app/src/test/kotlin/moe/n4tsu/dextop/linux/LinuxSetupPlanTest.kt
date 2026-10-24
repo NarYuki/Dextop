@@ -8,6 +8,58 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LinuxSetupPlanTest {
+    @Test fun waylandInstallsXwaylandAndStartsItForDesktopAndApps() {
+        assertContains(scripts(debian, LinuxSetupOptions(displayBackend = "wayland")), "xwayland libwayland-client0")
+        assertContains(scripts(LinuxCatalog.find("archlinux")!!, LinuxSetupOptions(displayBackend = "wayland")), "xorg-xwayland wayland")
+        for (script in listOf(
+            LinuxCatalog.appsScript(98, 640, 480, 160, xwayland = true),
+            LinuxCatalog.desktopScript(98, 640, 480, 160, "icewm", xwayland = true),
+        )) {
+            assertContains(script, "WAYLAND_DISPLAY=wayland-x11-98 Xwayland")
+            assertContains(script, "-geometry 640x480")
+            assertContains(script, "-shm -noreset -nolisten tcp -ac")
+            assertFalse("Xvfb :" in script)
+            assertFalse("xrandr --output screen" in script)
+        }
+        assertContains(LinuxCatalog.appsScript(98, 640, 480, 160), "Xvfb :")
+    }
+
+    @Test fun displayBackendDefaultsToXvfbAndRejectsInvalidValues() {
+        assertTrue(LinuxSetupOptions.fromJson(null).displayBackend == "xvfb")
+        assertFailsWith<IllegalArgumentException> { LinuxSetupOptions(displayBackend = "wayland; id") }
+    }
+
+    @Test fun waylandSetupInstallsToolkitBackendsAndKeepsX11Compatibility() {
+        for (distro in listOf(debian, LinuxCatalog.find("archlinux")!!)) {
+            val script = scripts(distro, LinuxSetupOptions(displayBackend = "wayland"))
+            assertContains(script, if (distro.family == LinuxPackageFamily.APT) "qtwayland5 qt6-wayland" else "qt5-wayland qt6-wayland")
+            assertContains(script, "wayland >/etc/dextop/display-backend")
+            // X11-only clients still use Xvfb, so its Vulkan capability policy remains necessary.
+            assertContains(script, "xvfb >${LinuxSessionCompatibility.WSI_CONFIG}")
+        }
+        val x11 = scripts(debian, LinuxSetupOptions())
+        assertContains(x11, "xvfb >/etc/dextop/display-backend")
+        assertFalse("qtwayland5" in x11)
+    }
+
+    @Test fun waylandWithoutKgslEglDoesNotForceMissingVendorLibrary() {
+        val script = LinuxCatalog.launchScript(10, "client", wayland = true, waylandGpu = false)
+        assertContains(script, "GDK_BACKEND=wayland,x11")
+        assertContains(script, "QT_QPA_PLATFORM='wayland;xcb'")
+        assertFalse("__EGL_VENDOR_LIBRARY_FILENAMES" in script)
+        assertFalse("/opt/dextop-mesa/lib/aarch64-linux-gnu" in script)
+        val x11 = LinuxCatalog.launchScript(10, "client")
+        assertContains(x11, "unset WAYLAND_DISPLAY")
+        assertContains(x11, "GDK_BACKEND=x11")
+    }
+
+    @Test fun minimalAndSteamInstallersPersistTheSharedXvfbConfiguration() {
+        for (options in listOf(LinuxSetupOptions(), LinuxSetupOptions(apps = setOf("steam")))) {
+            val script = scripts(debian, options)
+            assertContains(script, "cat >/etc/dextop/session.env")
+            assertContains(script, "printf '%s\\n' xvfb >${LinuxSessionCompatibility.WSI_CONFIG}")
+        }
+    }
     @Test fun gpuPackageIsVerifiedAndNeverBuiltOnTheDevice() {
         val script = LinuxCatalog.turnipScript()
         val gpu = LinuxCatalog.GPU_PACKAGE
@@ -23,6 +75,17 @@ class LinuxSetupPlanTest {
         val withMesa = LinuxCatalog.turnipScript(gpu.copy(mesa = "mesa"))
         assertContains(withMesa, "cp -a mesa/. /opt/dextop-mesa/")
         assertTrue(withMesa.indexOf("touch ${LinuxCatalog.TURNIP_WAYLAND_READY}") > withMesa.indexOf("cp ${gpu.driver}"))
+    }
+
+    @Test fun steamComesFromValveWithDroidDecksInstallerAndPreload() {
+        val script = scripts(debian, LinuxSetupOptions(apps = setOf("steam")))
+        assertContains(script, "steam_client_\${steam_channel}_linuxarm64")
+        assertContains(script, "sha256sum -c --quiet")
+        assertContains(script, "libdextop_blsession.so")
+        assertContains(script, "-no-cef-sandbox -cef-ozone-platform=x11")
+        val runtime = LinuxCatalog.find(LinuxCatalog.DROIDDECK_RUNTIME)!!
+        assertTrue(runtime.image!!.url.endsWith(".tar.zst"))
+        assertContains(scripts(runtime, LinuxSetupOptions(graphics = true)), "libvulkan_freedreno.so")
     }
 
     @Test fun turnipCoversAdreno6To8() {
@@ -108,8 +171,9 @@ class LinuxSetupPlanTest {
     @Test fun generatesScriptsForAllSupportedDistributionsAndInputMethods() {
         val directory = System.getProperty("dextop.setup.scriptDirectory")?.let { File(it).apply { mkdirs() } }
         for (distro in LinuxCatalog.distros) for (ime in listOf("none", "mozc", "pinyin", "hangul")) {
-            val apps = if (distro.id == "ubuntu") setOf("chrome", "files", "editor", "office")
-                else if (distro.id == "archlinux") setOf("firefox", "chromium", "files", "editor", "office")
+            val apps = if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) setOf("steam")
+                else if (distro.id == "ubuntu") setOf("chrome", "files", "editor", "office")
+                else if (distro.family == LinuxPackageFamily.PACMAN) setOf("firefox", "chromium", "files", "editor", "office", "steam")
                 else LinuxSetupOptions.APPS
             val plan = LinuxSetupPlan.steps(distro, LinuxSetupOptions("complete", "ja_JP", true, ime, true, true, apps))
             assertTrue(plan.last().phase == "integration")

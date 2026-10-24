@@ -52,7 +52,9 @@ class EmbeddedPairingService : Service() {
         }
         Log.i("DextopEmbeddedPair", "foreground pairing service started")
         DistributionPrivilegeBootstrap.beginPairingDiscovery(applicationContext)
-        return START_REDELIVER_INTENT
+        // Pairing is something the user starts. When the process dies (an update, memory) the
+        // search must not come back by itself and ask for Wireless debugging again.
+        return START_NOT_STICKY
     }
 
     override fun onDestroy() {

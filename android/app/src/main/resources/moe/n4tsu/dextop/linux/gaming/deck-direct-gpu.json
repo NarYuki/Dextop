@@ -1,0 +1,23 @@
+{
+  "bannerCommit": "558866f688e9a99b6eac461162a14038b3120964",
+  "bundleSha256": "c04262e5368c47b14d9ec42e82a42b628133883aa8b26aa78520318486ea736c",
+  "files": {
+    "NOTICE.md": "4fb200036cd0fd8fdd9ea7dd2024b42a161ed877794f811b098b2ceaee377a02",
+    "icd.json": "c5751c00936ea4fe4a4996995135b179b4efdbc10480f067ac67dcaa13ee97e2",
+    "lib/libnativewindow.so": "3818d4a9076de0e7b5667e40b72e9373f94b313cc0c26e1ddbcee62d6c965bf0",
+    "lib/libvulkan_freedreno.so": "fc96bc86ab78a2da676f7da7bbad6a1aab2d90e05a60b30af75df48163062bf1",
+    "licenses/GPL-3.0": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "licenses/banner-ahb-v1.xml": "b84bb56a52b76eef5b1b8669ceed07a8f33976831337fa3a4a660ee5bccf1bdd",
+    "licenses/mesa/Apache-2.0": "7e4d3fba250d15e9e0afa380d4b611828fa2560cc8fdebe95bcf2f01a487de12",
+    "licenses/mesa/BSL-1.0": "9b9fea7520a816107fcac2598b7c0155222f16bc430e989706b22f4367f1df7d",
+    "licenses/mesa/GPL-1.0-or-later": "8ff76f1528e6e4e9400c0f6b1f2d19d4979aaac3bcc44bb707a55389132825c4",
+    "licenses/mesa/GPL-2.0-only": "6667ad4063569cd53b13500550d93fcd3dc11bcf82c5514296af013a0b720ba5",
+    "licenses/mesa/MIT": "323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f",
+    "licenses/mesa/SGI-B-2.0": "686bf035a1fd22076416fd3b90370ac67771e884bf57f55693d51f8ce7c710a7",
+    "licenses/mesa/exceptions/Linux-Syscall-Note": "9b4084655174654608fd037e9ddb4feeadfada01cd042e9c17b05aa7105b2b9f",
+    "licenses/mesa/license.rst": "0d1a0472ecc81830e75c20d59b0ea02841e3db21255e0ebad97ab682c54d6615"
+  },
+  "mesa": "c90ff433291a5c3ff5cea9913bbebeef9cd4e885",
+  "sourceSha256": "834054084604cacb2fe82d9151256bac83fd353d50b602f6824a1ce8ae73a3a8",
+  "version": "dd-turnip-0.3.3-deck-ahb-1"
+}

@@ -1,0 +1,202 @@
+diff --git a/src/Backends/WaylandBackend.cpp b/src/Backends/WaylandBackend.cpp
+index d74268b..f49ef59 100644
+--- a/src/Backends/WaylandBackend.cpp
++++ b/src/Backends/WaylandBackend.cpp
+@@ -10,6 +10,7 @@
+ #include "refresh_rate.h"
+ #include "waitable.h"
+ #include "Utils/TempFiles.h"
++#include "Utils/CursorRouting.h"
+ 
+ #include <cstring>
+ #include <unordered_map>
+@@ -114,6 +115,7 @@ static bool IsGamescopeToplevel( wl_surface *pSurface ) {
+ #define LIBDECOR_USERDATA_TO_THIS(type, name) []<typename... Args> ( Args... args ) { type *pThing = (type *)std::get<sizeof...(Args)-1>(std::forward_as_tuple(args...)); CallWithAllButLast([&]<typename... Args2>(Args2... args2){ pThing->name(std::forward<Args2>(args2)...); }, std::forward<Args>(args)...); }
+ 
+ extern gamescope::ConVar<bool> cv_hdr_enabled;
++extern gamescope::ConVar<int> cv_cursor_composite;
+ 
+ namespace gamescope
+ {
+@@ -2462,11 +2464,16 @@ namespace gamescope
+         if ( !m_pPointer )
+             return;
+ 
+-		if ( cv_wayland_mouse_warp_without_keyboard_focus )
+-			bUseHostCursor = m_bPointerLocked && !m_bKeyboardEntered && m_pDefaultCursorSurface;
+-		else
+-			bUseHostCursor = !m_bKeyboardEntered && m_pDefaultCursorSurface;
+-
++        bUseHostCursor = CursorShouldUseHostFallback(
++            cv_wayland_mouse_warp_without_keyboard_focus.Get(), m_bPointerLocked,
++            m_bKeyboardEntered, m_pDefaultCursorSurface != nullptr );
++
++        if ( !CursorShouldBeForwardedToHost( cv_cursor_composite.Get(), bUseHostCursor ) )
++        {
++            wl_pointer_set_cursor( m_pPointer, m_uPointerEnterSerial, nullptr, 0, 0 );
++            return;
++        }
++
+         if ( bUseHostCursor )
+         {
+             wl_pointer_set_cursor( m_pPointer, m_uPointerEnterSerial, m_pDefaultCursorSurface, m_pDefaultCursorInfo->uXHotspot, m_pDefaultCursorInfo->uYHotspot );
+diff --git a/src/Utils/CursorRouting.h b/src/Utils/CursorRouting.h
+new file mode 100644
+index 0000000..d7c21da
+--- /dev/null
++++ b/src/Utils/CursorRouting.h
+@@ -0,0 +1,36 @@
++#pragma once
++
++namespace gamescope
++{
++    constexpr bool CursorShouldBeComposited( int cursorCompositeMode, bool forceRelativeMouse,
++                                             bool hasFocus, bool hasNestedHints, bool nestedPaintsCursor )
++    {
++        if ( cursorCompositeMode == 2 )
++            return true;
++        if ( cursorCompositeMode == 0 )
++            return false;
++        if ( forceRelativeMouse )
++            return true;
++        if ( !hasFocus )
++            return false;
++        return !hasNestedHints || nestedPaintsCursor;
++    }
++
++    constexpr bool CursorShouldUseHostFallback( bool warpWithoutKeyboardFocus, bool pointerLocked,
++                                                bool keyboardEntered, bool hasDefaultCursor )
++    {
++        if ( warpWithoutKeyboardFocus )
++            return pointerLocked && !keyboardEntered && hasDefaultCursor;
++        return !keyboardEntered && hasDefaultCursor;
++    }
++
++    constexpr bool CursorShouldBeForwardedToHost( int cursorCompositeMode, bool useHostCursorFallback )
++    {
++        return cursorCompositeMode != 2 || useHostCursorFallback;
++    }
++
++    constexpr bool CursorImageShouldBePainted( bool imageEmpty, bool cursorHidden )
++    {
++        return !imageEmpty && !cursorHidden;
++    }
++}
+diff --git a/src/steamcompmgr.cpp b/src/steamcompmgr.cpp
+index 18b799e..2e90466 100644
+--- a/src/steamcompmgr.cpp
++++ b/src/steamcompmgr.cpp
+@@ -99,6 +99,7 @@
+ #include "BufferMemo.h"
+ #include "vrclient_detect.h"
+ #include "Utils/Process.h"
++#include "Utils/CursorRouting.h"
+ 
+ #include "wlr_begin.hpp"
+ #include "wlr/types/wlr_pointer_constraints_v1.h"
+@@ -2353,7 +2354,7 @@ void MouseCursor::GetDesiredSize( int& nWidth, int &nHeight )
+ 
+ void MouseCursor::paint(steamcompmgr_win_t *window, steamcompmgr_win_t *fit, struct FrameInfo_t *frameInfo)
+ {
+-	if ( m_imageEmpty || wlserver.bCursorHidden )
++	if ( !gamescope::CursorImageShouldBePainted( m_imageEmpty, wlserver.bCursorHidden ) )
+ 		return;
+ 
+ 	int winX = x();
+@@ -3025,23 +3026,11 @@ static void paint_pipewire()
+ gamescope::ConVar<int> cv_cursor_composite{ "cursor_composite", 1, "0 = Never composite a cursor. 1 = Composite cursor when not nested. 2 = Always composite a cursor manually" };
+ bool ShouldDrawCursor()
+ {
+-	if ( cv_cursor_composite == 2 )
+-		return true;
+-
+-	if ( cv_cursor_composite == 0 )
+-		return false;
+-
+-	if ( g_bForceRelativeMouse )
+-		return true;
+-
+ 	global_focus_t *pFocus = GetCurrentFocus();
+-	if ( !pFocus )
+-		return false;
+-
+-	if ( !pFocus->GetNestedHints() )
+-		return true;
+-
+-	return pFocus->GetNestedHints()->ShouldPaintCursor();
++	gamescope::INestedHints *pNestedHints = pFocus ? pFocus->GetNestedHints() : nullptr;
++	return gamescope::CursorShouldBeComposited( cv_cursor_composite.Get(), g_bForceRelativeMouse,
++	                                             pFocus != nullptr, pNestedHints != nullptr,
++	                                             pNestedHints && pNestedHints->ShouldPaintCursor() );
+ }
+ 
+ static void ForwardVROverlayTargets()
+diff --git a/tests/meson.build b/tests/meson.build
+index 9f73a33..1ccdf7d 100644
+--- a/tests/meson.build
++++ b/tests/meson.build
+@@ -8,7 +8,7 @@ endforeach
+ 
+ gamescope_tests = executable(
+ 	'gamescope_tests',
+-	unittest_src + ['test_convar.cpp', 'test_focus_placement.cpp', 'test_mangoapp_config.cpp', 'test_mangoapp_control.cpp', 'test_process.cpp', 'test_upscale.cpp', 'test_utils_parsers.cpp', 'test_utils_string.cpp', 'test_vrclient_detect.cpp'],
++	unittest_src + ['test_convar.cpp', 'test_cursor_routing.cpp', 'test_focus_placement.cpp', 'test_mangoapp_config.cpp', 'test_mangoapp_control.cpp', 'test_process.cpp', 'test_upscale.cpp', 'test_utils_parsers.cpp', 'test_utils_string.cpp', 'test_vrclient_detect.cpp'],
+ 	include_directories: [srcdir, sol2_include],
+ 	dependencies: [catch2_dep, luajit_dep, cap_dep, drm_dep, glm_dep, wlroots_dep],
+ 	cpp_args: gamescope_cpp_args,
+@@ -17,6 +17,7 @@ gamescope_tests = executable(
+ reaper_test_helper = executable('reaper_test_helper', 'reaper_test_helper.cpp')
+ 
+ test('convar', gamescope_tests, args: ['[convar]'])
++test('cursor_routing', gamescope_tests, args: ['[cursor_routing]'])
+ test('focus_placement', gamescope_tests, args: ['[focus_placement]'])
+ test('mangoapp_config', gamescope_tests, args: ['[mangoapp_config]'])
+ test('mangoapp_control', gamescope_tests, args: ['[mangoapp_control]'])
+diff --git a/tests/test_cursor_routing.cpp b/tests/test_cursor_routing.cpp
+new file mode 100644
+index 0000000..9c622db
+--- /dev/null
++++ b/tests/test_cursor_routing.cpp
+@@ -0,0 +1,42 @@
++#include <catch2/catch_test_macros.hpp>
++
++#include "Utils/CursorRouting.h"
++
++using namespace gamescope;
++
++TEST_CASE("nested cursor composition can be forced without changing the default", "[cursor_routing]")
++{
++    REQUIRE_FALSE( CursorShouldBeComposited( 1, false, true, true, false ) );
++    REQUIRE( CursorShouldBeComposited( 2, false, true, true, false ) );
++
++    REQUIRE( CursorShouldBeComposited( 1, true, true, true, false ) );
++    REQUIRE( CursorShouldBeComposited( 1, false, true, false, false ) );
++    REQUIRE_FALSE( CursorShouldBeComposited( 0, true, true, false, true ) );
++    REQUIRE_FALSE( CursorShouldBeComposited( 1, false, false, false, false ) );
++    REQUIRE( CursorShouldBeComposited( 2, false, false, true, false ) );
++}
++
++TEST_CASE("manual composition retains only the no-focus default cursor fallback", "[cursor_routing]")
++{
++    REQUIRE_FALSE( CursorShouldBeForwardedToHost( 2, false ) );
++    REQUIRE( CursorShouldBeForwardedToHost( 2, true ) );
++    REQUIRE( CursorShouldBeForwardedToHost( 1, false ) );
++    REQUIRE( CursorShouldBeForwardedToHost( 0, false ) );
++}
++
++TEST_CASE("host cursor fallback follows the keyboard-focus and lock defaults", "[cursor_routing]")
++{
++    REQUIRE( CursorShouldUseHostFallback( true, true, false, true ) );
++    REQUIRE_FALSE( CursorShouldUseHostFallback( true, false, false, true ) );
++    REQUIRE_FALSE( CursorShouldUseHostFallback( true, true, true, true ) );
++    REQUIRE_FALSE( CursorShouldUseHostFallback( true, true, false, false ) );
++    REQUIRE( CursorShouldUseHostFallback( false, false, false, true ) );
++    REQUIRE_FALSE( CursorShouldUseHostFallback( false, true, true, true ) );
++}
++
++TEST_CASE("an empty or hidden client cursor stays hidden when composition is forced", "[cursor_routing]")
++{
++    REQUIRE_FALSE( CursorImageShouldBePainted( true, false ) );
++    REQUIRE_FALSE( CursorImageShouldBePainted( false, true ) );
++    REQUIRE( CursorImageShouldBePainted( false, false ) );
++}

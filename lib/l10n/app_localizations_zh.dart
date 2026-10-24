@@ -2870,6 +2870,14 @@ class AppLocalizationsZh extends AppLocalizations {
       'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
 
   @override
+  String get linuxSetupSteamDetail =>
+      'Valve 的 Steam（ARM64 版）。首次使用时从 Valve 获取；Proton 和 FEX 由 Steam 自行安装。';
+
+  @override
+  String get linuxSetupDroidDeckNote =>
+      'DroidDeck 运行时自带 KDE Plasma 桌面（KWin、Xwayland）、字体和输入法，因此跳过 IceWM、语言和输入步骤。';
+
+  @override
   String get linuxSetupStorage =>
       'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
 
@@ -2959,6 +2967,54 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linuxGpuApplyNote => '更改将应用于此后启动的应用。请重新打开已打开的桌面。';
 
   @override
+  String get linuxContainerSettings => '此容器的设置';
+
+  @override
+  String get linuxGpuFollowDefault => '使用默认值';
+
+  @override
+  String get linuxGpuFollowDefaultDescription => '使用 Linux 设置中的默认图形';
+
+  @override
+  String get linuxDefaultSection => '默认';
+
+  @override
+  String get linuxDefaultContainer => '默认容器';
+
+  @override
+  String get linuxDefaultContainerDescription => 'Plasma 启动器显示其应用的容器';
+
+  @override
+  String get linuxDefaultContainerAll => '所有容器';
+
+  @override
+  String get linuxDefaultBadge => '默认';
+
+  @override
+  String get linuxGpuDefaultSection => '默认图形加速';
+
+  @override
+  String get linuxGpuDefaultNote => '用于未在自身设置中更改的容器。';
+
+  @override
+  String get linuxWmSection => '窗口管理器';
+
+  @override
+  String get linuxWmDefault => '默认';
+
+  @override
+  String get linuxWmDefaultDescription =>
+      '按容器类型（DroidDeck 运行时用 DroidDeck，其他用 Dextop）';
+
+  @override
+  String get linuxWmDextopDescription =>
+      'Xvfb 与 Dextop 的窗口管理：每个应用一个窗口，IceWM 桌面';
+
+  @override
+  String get linuxWmDroidDeckDescription =>
+      '与 DroidDeck 相同的构成：在 Wayland 合成器中嵌套运行 KDE Plasma（KWin），X 应用用 Xwayland，GPU 应用用 gamescope。需要 DroidDeck 运行时';
+
+  @override
   String linuxGpuRunning(int count) {
     return '$count 个容器正在使用 VirGL';
   }
@@ -2987,13 +3043,69 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linuxSetupPhaseGpu => '正在构建 GPU 驱动（Turnip）';
 
   @override
+  String get linuxSetupDisplayBackend => 'Display system';
+
+  @override
+  String get linuxSetupXvfbDetail =>
+      'Use X11 for applications and the IceWM desktop.';
+
+  @override
+  String get linuxSetupWaylandDetail =>
+      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+
+  @override
+  String get nativeSteamModeTitle => 'Steam Deck Mode';
+
+  @override
+  String get nativeSteamModeStarting => '正在启动…';
+
+  @override
+  String get nativeSteamModeStepDisplay => '正在准备画面…';
+
+  @override
+  String get nativeSteamModeStepClient => '正在检查 Steam 客户端…';
+
+  @override
+  String get nativeSteamModeStepDownload => '正在下载 Steam · %1\$s';
+
+  @override
+  String get nativeSteamModeStepRepair => '正在修复 Steam 客户端…';
+
+  @override
+  String get nativeSteamModeStepUpdate => '正在下载 Steam 更新 · %1\$d%%';
+
+  @override
+  String get nativeSteamModeStepServices => '正在启动系统服务…';
+
+  @override
+  String get nativeSteamModeStepSteam => '正在启动 Steam…';
+
+  @override
+  String get nativeSteamModeStepStopping => '正在关闭…';
+
+  @override
+  String get nativeSteamModeElapsed => '已用 %1\$d:%2\$02d';
+
+  @override
+  String get nativeSteamModeHint1 => '首次启动需要下载 Steam，需要几分钟。';
+
+  @override
+  String get nativeSteamModeHint2 => '在电源菜单中选择“关机”即可退出 Steam Deck Mode。';
+
+  @override
+  String get nativeSteamModeHint3 => '从 Steam 库启动游戏。Proton 会自动准备。';
+
+  @override
+  String get nativeSteamModeFailed => 'Steam Deck Mode 已结束';
+
+  @override
+  String get nativeSteamModeRestart => '重新启动';
+
+  @override
+  String get nativeSteamModeClose => '关闭';
+
+  @override
   String get uiShortcutAdd => '添加主屏幕快捷方式';
-
-  @override
-  String get uiShortcutAdded => '已添加到主屏幕，点按即可启动或停止 Dextop 虚拟显示器。';
-
-  @override
-  String get uiShortcutDismissed => '未添加快捷方式';
 
   @override
   String get uiShortcutUnsupported =>
@@ -3005,8 +3117,14 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get nativeShortcutStartDisplay => '启动 Dextop';
+  String get uiShortcutDismissed => '未添加快捷方式';
+
+  @override
+  String get uiShortcutAdded => '已添加到主屏幕，点按即可启动或停止 Dextop 虚拟显示器。';
 
   @override
   String get nativeShortcutStartDisplayLong => '启动或停止 Dextop 虚拟显示器';
+
+  @override
+  String get nativeShortcutStartDisplay => '启动 Dextop';
 }

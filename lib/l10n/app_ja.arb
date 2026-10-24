@@ -956,6 +956,8 @@
   "linuxSetupEditorDetail": "Mousepad — 軽量なグラフィカルエディター。",
   "linuxSetupOffice": "オフィススイート",
   "linuxSetupOfficeDetail": "LibreOffice — 文書・表計算・プレゼンテーション。ダウンロード量と必要な空き容量が増えます。",
+  "linuxSetupSteamDetail": "Valve の Steam（ARM64 版）。初回に Valve から取得します。Proton と FEX は Steam が入れます。",
+  "linuxSetupDroidDeckNote": "DroidDeck ランタイムは KDE Plasma デスクトップ（KWin・Xwayland）とフォント・入力メソッドを内蔵しているため、IceWM・言語・入力の手順は省きます。",
   "linuxSetupStorage": "数 GB 以上の空き容量を確保してください。ダウンロード量と使用容量は、選んだ環境やアプリによって変わります。この画面を閉じてもインストールは続きます。",
   "linuxSetupAdditive": "選択を外したアプリは削除しません。選んだパッケージを追加し、言語やセッション設定を更新します。",
   "linuxSetupNothingExtra": "追加アプリなし",
@@ -984,6 +986,21 @@
   "linuxGpuSoftwareDescription": "CPU で描画します。遅くなりますが、GPU で表示が乱れるアプリでも正しく描けます。",
   "linuxGpuUnavailable": "この端末では VirGL を使えません。",
   "linuxGpuApplyNote": "変更は、これから起動するアプリに反映されます。開いているデスクトップは開き直してください。",
+  "linuxContainerSettings": "このコンテナの設定",
+  "linuxGpuFollowDefault": "既定に従う",
+  "linuxGpuFollowDefaultDescription": "Linux 設定の既定のグラフィックスを使います",
+  "linuxDefaultSection": "既定",
+  "linuxDefaultContainer": "既定のコンテナ",
+  "linuxDefaultContainerDescription": "Plasma のランチャーにアプリを表示するコンテナ",
+  "linuxDefaultContainerAll": "すべてのコンテナ",
+  "linuxDefaultBadge": "既定",
+  "linuxGpuDefaultSection": "既定のグラフィックスアクセラレーション",
+  "linuxGpuDefaultNote": "コンテナごとの設定で変えていないコンテナに使われます。",
+  "linuxWmSection": "ウィンドウマネージャ",
+  "linuxWmDefault": "既定",
+  "linuxWmDefaultDescription": "コンテナの種類に合わせます（DroidDeck ランタイムは DroidDeck、ほかは Dextop）",
+  "linuxWmDextopDescription": "Xvfb と Dextop のウィンドウ管理。アプリごとのウィンドウと、IceWM のデスクトップ",
+  "linuxWmDroidDeckDescription": "DroidDeck と同じ構成。Wayland のコンポジタに KDE Plasma（KWin）を入れ子で動かし、X アプリは Xwayland、GPU アプリは gamescope。DroidDeck ランタイムが必要です",
   "linuxGpuRunning": "VirGL を {count} 個のコンテナで使用中",
   "@linuxGpuRunning": {
     "placeholders": {
@@ -999,11 +1016,31 @@
   "linuxGpuTurnipDescription": "Linux アプリが Adreno GPU を直接使います（Vulkan と OpenGL 4.6）。最も速く、ゲームにも向いています。",
   "linuxGpuTurnipSetup": "コンテナのセットアップで「3D グラフィックス」を有効にすると使えます（ビルドに 30 分ほどかかります）。それまでは VirGL を使います。",
   "linuxSetupPhaseGpu": "GPU ドライバー（Turnip）をビルド中",
+  "linuxSetupDisplayBackend": "表示方式",
+  "linuxSetupXvfbDetail": "アプリとIceWMデスクトップをX11で表示します。",
+  "linuxSetupWaylandDetail": "対応アプリはWayland、X11専用アプリとIceWMデスクトップはXwaylandで表示します。",
+  "nativeSteamModeTitle": "Steam Deck Mode",
+  "nativeSteamModeStarting": "起動しています…",
+  "nativeSteamModeStepDisplay": "画面を準備しています…",
+  "nativeSteamModeStepClient": "Steamクライアントを確認しています…",
+  "nativeSteamModeStepDownload": "Steamをダウンロードしています · %1$s",
+  "nativeSteamModeStepRepair": "Steamクライアントを修復しています…",
+  "nativeSteamModeStepUpdate": "Steamのアップデートをダウンロードしています · %1$d%%",
+  "nativeSteamModeStepServices": "システムサービスを起動しています…",
+  "nativeSteamModeStepSteam": "Steamを起動しています…",
+  "nativeSteamModeStepStopping": "終了しています…",
+  "nativeSteamModeElapsed": "%1$d:%2$02d 経過",
+  "nativeSteamModeHint1": "初回はSteamのダウンロードに数分かかります。",
+  "nativeSteamModeHint2": "電源メニューの「シャットダウン」でSteam Deck Modeを終了します。",
+  "nativeSteamModeHint3": "ゲームはSteamのライブラリから起動できます。Protonは自動で準備されます。",
+  "nativeSteamModeFailed": "Steam Deck Modeが終了しました",
+  "nativeSteamModeRestart": "再起動",
+  "nativeSteamModeClose": "閉じる",
   "uiShortcutAdd": "ホーム画面にショートカットを追加",
-  "uiShortcutAdded": "ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。",
-  "uiShortcutDismissed": "ショートカットは追加されませんでした",
   "uiShortcutUnsupported": "このホームアプリはショートカットの固定に対応していません。Dextop のアイコンを長押しして「Dextop を起動」を選んでください。",
   "uiShortcutFailed": "ショートカットを追加できませんでした：$error",
+  "uiShortcutDismissed": "ショートカットは追加されませんでした",
+  "uiShortcutAdded": "ホーム画面に追加しました。タップすると Dextop の仮想ディスプレイを起動または停止します。",
   "@uiShortcutFailed": {
     "placeholders": {
       "error": {
@@ -1011,6 +1048,6 @@
       }
     }
   },
-  "nativeShortcutStartDisplay": "Dextop を起動",
-  "nativeShortcutStartDisplayLong": "Dextop の仮想ディスプレイを起動または停止します"
+  "nativeShortcutStartDisplayLong": "Dextop の仮想ディスプレイを起動または停止します",
+  "nativeShortcutStartDisplay": "Dextop を起動"
 }

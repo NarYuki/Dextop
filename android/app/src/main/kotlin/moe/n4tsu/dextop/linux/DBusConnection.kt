@@ -48,6 +48,66 @@ internal class DBusReader(private val buffer: ByteBuffer) {
         buffer.get()
         return String(bytes, Charsets.UTF_8)
     }
+    fun signature(): String {
+        val length = byte()
+        val bytes = ByteArray(length).also(buffer::get)
+        require(byte() == 0)
+        return bytes.toString(Charsets.US_ASCII)
+    }
+
+    /** Bounded recursive decoding for StatusNotifier properties and D-Bus menus. */
+    fun value(signature: String, depth: Int = 0): Any {
+        require(depth < 32 && signature.isNotEmpty())
+        fun endType(at: Int): Int = when (signature[at]) {
+            'a' -> endType(at + 1)
+            '(', '{' -> {
+                val end = if (signature[at] == '(') ')' else '}'
+                var p = at + 1
+                while (signature[p] != end) p = endType(p)
+                p + 1
+            }
+            else -> at + 1
+        }
+        when (signature[0]) {
+            'y' -> return byte()
+            'b' -> return u32() != 0
+            'i', 'u', 'h' -> return u32()
+            's', 'o' -> return string()
+            'g' -> return signature()
+            'v' -> return value(signature(), depth + 1)
+            'n', 'q' -> { align(2); return buffer.short.toInt() }
+            'x', 't' -> { align(8); return buffer.long }
+            'd' -> { align(8); return buffer.double }
+            'a' -> {
+                val length = u32()
+                require(length in 0..4_194_304)
+                val element = signature.substring(1)
+                val alignment = when (element[0]) { 'y', 'g', 'v' -> 1; 'n', 'q' -> 2; 'x', 't', 'd', '(', '{' -> 8; else -> 4 }
+                align(alignment)
+                require(length <= buffer.remaining())
+                val end = buffer.position() + length
+                if (element == "y") return ByteArray(length).also(buffer::get)
+                val values = ArrayList<Any>()
+                while (buffer.position() < end) values += value(element, depth + 1)
+                require(buffer.position() == end)
+                if (element.startsWith("{")) return values.associate { val pair = it as List<*>; pair[0] as String to pair[1] }
+                return values
+            }
+            '(', '{' -> {
+                align(8)
+                val values = ArrayList<Any>()
+                var p = 1
+                while (p < signature.length - 1) {
+                    val end = endType(p)
+                    values += value(signature.substring(p, end), depth + 1)
+                    p = end
+                }
+                return values
+            }
+            else -> error("Unsupported D-Bus type $signature")
+        }
+    }
+
     fun strings(): List<String> {
         val length = u32()
         val end = buffer.position() + length

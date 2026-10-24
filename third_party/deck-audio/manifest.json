@@ -1,0 +1,15 @@
+{
+  "droiddeck": "8aa1fdaf708eb44ef7cff7e493bda946989af511",
+  "files": {
+    "android/app/src/main/jniLibs/arm64-v8a/libpulseaudio.so": "a9256b038381b192593c019ba779e219419f71b2a66aa1c1e29a756314489ed7",
+    "android/app/src/main/jniLibs/arm64-v8a/libpulsecore-13.0.so": "1305d78969858a7a60e030a75c383901148b980518fc2d337b9c028c968c3f95",
+    "android/app/src/main/jniLibs/arm64-v8a/libpulsecommon-13.0.so": "3ef683f23660898933a66fb032976e06905cbca8e01027aa1ce9891e1d854c2b",
+    "android/app/src/main/jniLibs/arm64-v8a/libpulse.so": "8ce9c5ba9710aee64c70356b051a8df4f88396075b0264048b992ab7c337f2e6",
+    "android/app/src/main/jniLibs/arm64-v8a/libltdl.so": "14d616028b38a4b778576477c675c1ce34618582b84ccc5c3fd2492e6518196f",
+    "android/app/src/main/jniLibs/arm64-v8a/libsndfile.so": "ab999a10cd3f6979580447169a19c1c9c121e0d8340b2bc810c54dc916bb3ee0",
+    "android/app/src/main/jniLibs/arm64-v8a/libffi.so": "8855ba6dc12e9abf40729481a7a99aa391ac7b2e77bad4fbe0bb51cd66216c0e",
+    "android/app/src/main/assets/deck-audio/modules/module-native-protocol-tcp.so": "9110627b8610debd2f2e143c41c448499918f14bd721812fe84c73c1714aa264",
+    "android/app/src/main/assets/deck-audio/modules/libprotocol-native.so": "02397b758c39ecfcc5e5a9a2a5549fb194b33cce6161262d28e632bc9b9f8dea",
+    "android/app/src/main/assets/deck-audio/modules/module-directaudio-native-sink.so": "1d9b683b9169d90bda2bdf93c23c604e1e95bb87a6f2e468388e7380921baf6b"
+  }
+}

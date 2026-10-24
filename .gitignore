@@ -20,8 +20,32 @@ firebase-debug.log
 firebase-debug.*.log
 
 # Internal project setup notes
-docs/internal/
-docs/FIREBASE_ANALYTICS_SETUP.md
+/docs/internal/
+/docs/FIREBASE_ANALYTICS_SETUP.md
+/docs/container-development.md
+/docs/controller-touchpad.md
+/docs/deck-30fps-mode.md
+/docs/deck-auto-video-diagnosis.md
+/docs/deck-dd-debian-comparison.md
+/docs/deck-dd-implementation.md
+/docs/deck-dd-structural-audit.md
+/docs/deck-network-startup.md
+/docs/deck-startup-cover.md
+/docs/dextop-auto-mock/
+/docs/dextop-auto-prototype.md
+/docs/driving-input.md
+/docs/linux-app-uid-experiment.md
+/docs/linux-command-validation.md
+/docs/linux-icons.md
+/docs/linux-pointer-capture.md
+/docs/linux-privilege-validation.md
+/docs/linux-proton.md
+/docs/linux-runtime-performance.md
+/docs/linux-tray.md
+/docs/xiaomi-aurora.md
+/tool/experiments/container-development/
+/tool/experiments/*/README.md
+/tool/wayland_smoke/gbm-export-probe.md
 
 # Flutter and Dart
 .dart_tool/
@@ -38,7 +62,9 @@ doc/api/
 *.map.json
 
 # Android and Gradle
-android/.gradle/
+.gradle/
+.kotlin/
+.externalNativeBuild/
 android/local.properties
 android/**/build/
 android/app/debug/
@@ -73,6 +99,13 @@ Thumbs.db
 *.pyc
 __pycache__/
 .pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+.coverage
+.coverage.*
+htmlcov/
 .cache/
 tmp/
 temp/

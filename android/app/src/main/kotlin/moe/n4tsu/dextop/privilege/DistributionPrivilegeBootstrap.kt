@@ -13,6 +13,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.runInterruptible
+import kotlinx.coroutines.CancellationException
 import java.net.NetworkInterface
 import kotlin.coroutines.resume
 
@@ -23,6 +25,8 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
     private const val PREFS = "dextop_embedded_privilege"
     private const val KEY_PAIRED = "paired"
     private const val LOG_TAG = "DextopEmbeddedPair"
+    private const val CONNECT_TIMEOUT_MS = 3_000
+    private const val SOCKET_TIMEOUT_MS = 5_000
     @Volatile private var identityConfigured = false
     private val pairingScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     @Volatile private var pairingDiscoveryGeneration = 0
@@ -168,7 +172,15 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
             return false
         }
         return endpoint.connectionHosts().any { host ->
-            Kadb.tryConnection(host, endpoint.port)?.use { true } ?: false
+            runCatching {
+                runInterruptible(Dispatchers.IO) {
+                    Kadb.create(host, endpoint.port, connectTimeout = CONNECT_TIMEOUT_MS, socketTimeout = SOCKET_TIMEOUT_MS)
+                        .use { it.shell("true"); true }
+                }
+            }.getOrElse { error ->
+                if (error is CancellationException) throw error
+                false
+            }
         }.also { connected ->
             Log.i(LOG_TAG, "saved pairing connection probe connected=$connected endpoint=${endpoint.label()}")
         }
@@ -184,18 +196,39 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
         val endpoint = discover(context, "_adb-tls-connect._tcp")
         val candidates = endpoint.connectionHosts()
         var connectedHost: String? = null
+        // tryConnection() hides why a connection failed. A key the device no longer trusts
+        // (authentication or TLS refused) is the only proof the pairing was revoked; refused
+        // sockets and timeouts are network trouble and must not ask the user to pair again.
+        var refusedKey = false
         val connection = candidates.firstNotNullOfOrNull { host ->
-            Kadb.tryConnection(host, endpoint.port)?.also { connectedHost = host }
+            runCatching {
+                runInterruptible(Dispatchers.IO) {
+                    Kadb.create(host, endpoint.port, connectTimeout = CONNECT_TIMEOUT_MS, socketTimeout = SOCKET_TIMEOUT_MS)
+                        .also { connection ->
+                            try { connection.shell("true") }
+                            catch (error: Throwable) { connection.close(); throw error }
+                        }
+                }
+            }
+                .onFailure { error ->
+                    if (error is CancellationException) throw error
+                    if (generateSequence(error) { it.cause }.any {
+                            it is com.flyfishxu.kadb.exception.AdbAuthException || it is javax.net.ssl.SSLException
+                        }) refusedKey = true
+                    Log.i(LOG_TAG, "stored pairing connection to $host failed: ${error.javaClass.simpleName}")
+                }
+                .getOrNull()?.also { connectedHost = host }
         } ?: return EmbeddedPrivilegeContract.StartResult(
             started = false,
             endpoint = endpoint.label(),
-            detail = "The paired ADB endpoint rejected all local connection candidates",
+            detail = if (refusedKey) "The paired ADB endpoint rejected all local connection candidates"
+                else "The paired ADB endpoint could not be reached",
         )
         connection.use {
             // The server launcher is supplied by the isolated Play runtime.
             // Do not silently run an external-manager command here.
             val command = EmbeddedServerPayload.startCommand(context)
-            val response = it.shell(command)
+            val response = runInterruptible(Dispatchers.IO) { it.shell(command) }
             if (response.exitCode == 0) {
                 // app_process is detached through nohup/setsid.  On slower Samsung
                 // builds it can take several seconds before the Binder is published;
@@ -254,6 +287,14 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
                             @Suppress("DEPRECATION")
                             override fun onServiceResolved(info: NsdServiceInfo) {
                                 if (info.port !in 1..65535 || !continuation.isActive) return
+                                val host = info.host?.hostAddress
+                                val localAddresses = runCatching { NetworkInterface.getNetworkInterfaces().toList() }
+                                    .getOrDefault(emptyList()).flatMap { it.inetAddresses.toList() }
+                                    .mapNotNull { it.hostAddress }
+                                if (!LocalAdbEndpoint.accepts(host, localAddresses)) {
+                                    Log.i(LOG_TAG, "ignoring Wireless debugging advertised by another device")
+                                    return
+                                }
                                 // Pairing endpoints are deliberately not connected until the
                                 // code is supplied. A TCP probe here makes some OEM builds
                                 // look absent even though mDNS correctly found the service.

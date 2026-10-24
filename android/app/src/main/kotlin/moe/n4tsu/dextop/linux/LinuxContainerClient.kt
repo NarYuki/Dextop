@@ -114,6 +114,14 @@ internal object LinuxContainerClient {
                     binding = false
                     protocolRestarts = 0
                     remote = service
+                    runCatching {
+                        LinuxNetworkMonitor.start(context, scanRequested = { remote?.consumeNetworkScanRequests() == true }) { snapshot ->
+                            calls.execute {
+                                runCatching { remote?.setNetworkLink(snapshot) }
+                                    .onFailure { Log.w(TAG, "Cannot publish Linux network link", it) }
+                            }
+                        }
+                    }.onFailure { Log.w(TAG, "Cannot observe Android network link", it) }
                     refreshAudio()
                     Log.i(TAG, "connected via=${if (usingEmbedded) "embedded" else "external"}: ${runCatching { service.probe() }.getOrNull()}")
                     dispatch { it.onConnectionChanged(true) }
@@ -135,21 +143,33 @@ internal object LinuxContainerClient {
 
     /** Sound players by container, following the containers' PulseAudio ports. */
     private val players = HashMap<String, LinuxAudioPlayer>()
+    private val audioCalls = Executors.newSingleThreadExecutor { Thread(it, "DextopLinuxAudioRefresh") }
+
+    fun prepareDeckAudio(service: ILinuxContainerService, containerId: String) {
+        val port = runCatching { LinuxDeckAudio.ensure(checkNotNull(appContext), containerId) }
+            .onFailure { Log.w(TAG, "Deck DirectAudio unavailable; using container audio", it) }.getOrDefault(0)
+        service.setGuestState(containerId, LinuxDeckAudio.STATE, if (port > 0) "$port\n" else "0\n")
+    }
+
+    fun releaseDeckAudio(containerId: String) { calls.execute { LinuxDeckAudio.release(containerId) } }
 
     private fun refreshAudio() {
-        calls.execute {
+        audioCalls.execute {
             val service = remote ?: return@execute
             val ports = runCatching {
                 val list = org.json.JSONArray(service.listContainers())
                 (0 until list.length()).map(list::getJSONObject)
                     .associate { it.optString("id") to it.optInt("audioPort") }
                     .filterValues { it > 0 }
-            }.getOrNull() ?: return@execute
+            }.onFailure { Log.w(TAG, "Cannot refresh Linux audio ports", it) }.getOrNull() ?: return@execute
             synchronized(players) {
                 players.entries.removeAll { (id, player) ->
                     (ports[id] != player.port).also { stale -> if (stale) player.stop() }
                 }
-                ports.forEach { (id, port) -> if (id !in players) players[id] = LinuxAudioPlayer(id, port) }
+                ports.forEach { (id, port) -> if (id !in players) {
+                    Log.i(TAG, "Connecting Linux audio $id port=$port")
+                    players[id] = LinuxAudioPlayer(id, port)
+                } }
             }
         }
     }

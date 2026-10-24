@@ -11,9 +11,11 @@ import java.nio.file.Files
  * (/usr/share/applications) straight from the rootfs, for Kickoff.
  */
 internal object LinuxDesktopEntries {
-    private const val MAX_ICON_BYTES = 256 * 1024
+    private const val MAX_ICON_BYTES = 2 * 1024 * 1024
     private val ICON_SIZES = listOf("48x48", "64x64", "96x96", "128x128", "32x32", "256x256", "512x512")
     private val FIELD_CODE = Regex("%[fFuUdDnNickvm]")
+    private val ICON_ROOTS = listOf("/root/.icons", "/root/.local/share/icons", "/usr/local/share/icons", "/usr/share/icons")
+    private val ICON_DIRECTORY_SIZE = Regex("(?:^|/)(\\d+)(?:x\\d+)?(?:@\\d+)?(?:/|$)")
 
     data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "")
 
@@ -31,19 +33,20 @@ internal object LinuxDesktopEntries {
     fun find(rootfs: File, id: String): Entry? {
         require('/' !in id && '\\' !in id) { "Invalid desktop entry id" }
         for (path in listOf("/root/.local/share/applications", "/usr/local/share/applications", "/usr/share/applications")) {
-            resolve(rootfs, "$path/$id")?.let { return parse(rootfs, it, "") }
+            resolve(rootfs, "$path/$id")?.let { return parse(rootfs, it, "", launcher = false) }
         }
         return null
     }
 
     fun toJson(rootfs: File, entries: List<Entry>): String = JSONArray().apply {
+        val icons = HashMap<String, String>()
         entries.forEach { entry ->
             put(JSONObject()
                 .put("id", entry.id)
                 .put("name", entry.name)
                 .put("categories", entry.categories)
                 .put("startupWMClass", entry.startupWMClass)
-                .put("icon", iconPng(rootfs, entry.icon)?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty()))
+                .put("icon", icons.getOrPut(entry.icon) { iconPng(rootfs, entry.icon)?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty() }))
         }
     }.toString()
 
@@ -53,7 +56,8 @@ internal object LinuxDesktopEntries {
         return if (entry.terminal) "xterm -e $exec" else exec
     }
 
-    private fun parse(rootfs: File, file: File, locale: String): Entry? {
+    /** [launcher]: listing for Kickoff, where NoDisplay entries stay out; a launch by id may run them. */
+    private fun parse(rootfs: File, file: File, locale: String, launcher: Boolean = true): Entry? {
         val values = HashMap<String, String>()
         var inEntry = false
         runCatching { (resolveFile(rootfs, file) ?: return null).readLines() }.getOrNull()?.forEach { raw ->
@@ -64,7 +68,7 @@ internal object LinuxDesktopEntries {
             }
         } ?: return null
         if (values["Type"] != "Application") return null
-        if (values["NoDisplay"] == "true" || values["Hidden"] == "true") return null
+        if ((launcher && values["NoDisplay"] == "true") || values["Hidden"] == "true") return null
         if (values["OnlyShowIn"] != null) return null
         val exec = values["Exec"]?.takeIf { it.isNotBlank() } ?: return null
         val language = locale.substringBefore('-').substringBefore('_')
@@ -72,7 +76,7 @@ internal object LinuxDesktopEntries {
         return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty())
     }
 
-    private fun iconPng(rootfs: File, icon: String): ByteArray? {
+    internal fun iconPng(rootfs: File, icon: String): ByteArray? {
         if (icon.isBlank()) return null
         for (path in iconCandidates(rootfs, icon)) {
             val file = resolve(rootfs, path) ?: continue
@@ -105,12 +109,14 @@ internal object LinuxDesktopEntries {
 
     internal fun iconCandidates(rootfs: File, icon: String): Sequence<String> =
         if (icon.startsWith("/")) sequenceOf(icon) else sequence {
-            val names = if (icon.substringAfterLast('.') in listOf("png", "svg", "xpm")) listOf(icon)
-                else listOf("$icon.png", "$icon.svg", "$icon.xpm")
+            val names = if (icon.substringAfterLast('.').lowercase() in listOf("png", "svg", "xpm", "ico")) listOf(icon)
+                else listOf("$icon.png", "$icon.svg", "$icon.xpm", "$icon.ico")
             val themes = linkedSetOf("hicolor", "Adwaita", "gnome")
-            resolve(rootfs, "/usr/share/icons")?.listFiles()?.filter { it.isDirectory }?.forEach { themes.add(it.name) }
-            for (theme in themes) {
-                val base = "/usr/share/icons/$theme"
+            ICON_ROOTS.forEach { root ->
+                resolve(rootfs, root)?.listFiles()?.filter { it.isDirectory }?.forEach { themes.add(it.name) }
+            }
+            for (theme in themes) for (root in ICON_ROOTS) {
+                val base = "$root/$theme"
                 val directories = linkedSetOf<String>()
                 ICON_SIZES.forEach { directories.add("$it/apps") }
                 directories.add("scalable/apps")
@@ -120,27 +126,49 @@ internal object LinuxDesktopEntries {
                         line.substringAfter('=').split(',').map(String::trim).filter { it.isNotEmpty() }.forEach(directories::add)
                     }
                 }
-                for (directory in directories) for (name in names) yield("$base/$directory/$name")
+                val ordered = directories.sortedBy { directory ->
+                    val size = ICON_DIRECTORY_SIZE.find(directory)?.groupValues?.get(1)?.toIntOrNull()
+                    when {
+                        size == null -> if ("scalable" in directory) 64 else 20000
+                        size >= 48 -> size
+                        else -> 10000 - size
+                    }
+                }
+                for (directory in ordered) for (name in names) yield("$base/$directory/$name")
             }
+            for (root in ICON_ROOTS) for (name in names) yield("$root/$name")
             for (name in names) yield("/usr/share/pixmaps/$name")
         }
 
     /** [path] inside the container, following symbolic links (absolute targets point into the rootfs). */
-    private fun resolve(rootfs: File, path: String): File? = resolveFile(rootfs, File(rootfs, path.removePrefix("/")))
+    internal fun resolve(rootfs: File, path: String): File? = resolveFile(rootfs, File(rootfs, path.removePrefix("/")))
 
     private fun resolveFile(rootfs: File, start: File): File? {
-        var file = start
-        repeat(16) {
-            val nio = file.toPath()
-            if (!Files.isSymbolicLink(nio)) return file.takeIf { it.exists() }
-            val target = Files.readSymbolicLink(nio).toString()
-            file = if (target.startsWith("/")) {
-                // proot's --link2symlink stores hard links as links to host paths under the rootfs.
-                if (target.startsWith(rootfs.path)) File(target) else File(rootfs, target.removePrefix("/"))
-            } else {
-                File(file.parentFile, target)
+        val root = rootfs.toPath().toAbsolutePath().normalize()
+        val initial = start.toPath().toAbsolutePath().normalize()
+        if (!initial.startsWith(root)) return null
+        val pending = ArrayDeque(root.relativize(initial).map { it.toString() })
+        var current = root
+        var links = 0
+        while (pending.isNotEmpty()) {
+            when (val part = pending.removeFirst()) {
+                "", "." -> Unit
+                ".." -> { if (current == root) return null; current = current.parent }
+                else -> {
+                    val next = current.resolve(part)
+                    if (Files.isSymbolicLink(next)) {
+                        if (++links > 40) return null
+                        val target = Files.readSymbolicLink(next)
+                        val parts = if (target.isAbsolute) {
+                            current = root
+                            if (target.startsWith(root)) root.relativize(target).map { it.toString() }
+                            else target.map { it.toString() }
+                        } else target.map { it.toString() }
+                        parts.asReversed().forEach(pending::addFirst)
+                    } else current = next
+                }
             }
         }
-        return null
+        return current.toFile().takeIf { it.exists() }
     }
 }

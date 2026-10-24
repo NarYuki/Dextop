@@ -30,12 +30,15 @@ restrict none
 | --- | --- |
 | `dhu-parked-small-landscape.ini` | 標準の 800x480 横画面 |
 | `dhu-parked-wide-landscape.ini` | ワイド横画面（1920x1080、実効 1920x484） |
+| `dhu-parked-hdplus-landscape.ini` | HD+ 横画面（1920x1080から中央の1600x900領域を使用） |
 | `dhu-parked-portrait.ini` | 縦長カーナビ（1920x1080から中央の1042x1080領域を使用） |
 | `dhu-parked-subaru-portrait.ini` | Subaru型の縦長カーナビ（中央の600x1080領域を使用） |
 
 DHUが受け付ける動画解像度は `800x480`、`1280x720`、`1920x1080` の3種類です。
-縦長プロファイルは仕様外の縦解像度を要求せず、対応する `1920x1080` の左右に
-マージンを設定し、`cropmargins=true` で中央の縦長領域だけを表示します。
+DHU 2.0 は内部に 2560x1440 や 3840x2160 の定義を持ちますが、設定で指定すると
+「not supported」として 800x480 に戻されます。
+縦長・HD+プロファイルは仕様外の解像度を要求せず、対応する `1920x1080` の左右（HD+は上下も）に
+マージンを設定し、`cropmargins=true` で中央の領域だけを表示します。
 
 ## Dextop の確認ポイント
 

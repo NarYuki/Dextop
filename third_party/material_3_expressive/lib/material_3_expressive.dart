@@ -1,0 +1,44 @@
+/// Material 3 Expressive: a faithful Flutter implementation of the Material 3
+/// component set, exposed as direct `M3E*` component widgets.
+library;
+
+export 'components/app_bars/m3e_app_bars.dart';
+export 'components/badges/m3e_badges.dart';
+export 'components/bottom_sheets/m3e_bottom_sheets.dart';
+export 'components/button_group/m3e_button_group.dart';
+export 'components/buttons/m3e_buttons.dart';
+export 'components/cards/m3e_cards.dart';
+export 'components/carousel/m3e_carousel.dart';
+export 'components/checkbox/m3e_checkbox.dart';
+export 'components/chips/m3e_chips.dart';
+export 'components/date_pickers/m3e_date_pickers.dart';
+export 'components/dialogs/m3e_dialogs.dart';
+export 'components/divider/m3e_divider.dart';
+export 'components/dropdown_menus/m3e_dropdown_menus.dart';
+export 'components/extended_fabs/m3e_extended_fabs.dart';
+export 'components/fab_menu/m3e_fab_menu.dart';
+export 'components/floating_action_buttons/m3e_floating_action_buttons.dart';
+export 'components/icon_buttons/m3e_icon_buttons.dart';
+export 'components/lists/m3e_lists.dart';
+export 'components/loading_indicator/m3e_loading_indicator.dart';
+export 'components/menus/m3e_menus.dart';
+export 'components/navigation_bar/m3e_navigation_bar.dart';
+export 'components/navigation_drawer/m3e_navigation_drawer.dart';
+export 'components/navigation_rail/m3e_navigation_rail.dart';
+export 'components/progress_indicators/m3e_progress_indicators.dart';
+export 'components/radio_button/m3e_radio_button.dart';
+export 'components/refresh_indicator/m3e_refresh_indicator.dart';
+export 'components/search/m3e_search.dart';
+export 'components/segmented_buttons/m3e_segmented_buttons.dart';
+export 'components/selection/m3e_selection.dart';
+export 'components/side_sheets/m3e_side_sheets.dart';
+export 'components/sliders/m3e_sliders.dart';
+export 'components/snackbar/m3e_snackbar.dart';
+export 'components/split_buttons/m3e_split_buttons.dart';
+export 'components/switch_control/m3e_switch_control.dart';
+export 'components/tabs/m3e_tabs.dart';
+export 'components/text_fields/m3e_text_fields.dart';
+export 'components/time_pickers/m3e_time_pickers.dart';
+export 'components/toolbars/m3e_toolbars.dart';
+export 'components/tooltips/m3e_tooltips.dart';
+export 'foundations/foundations.dart';

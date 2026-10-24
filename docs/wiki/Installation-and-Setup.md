@@ -2,7 +2,7 @@
 
 ## Requirements
 
-- Android 10 or later
+- Android 13 or later
 - Current release: Dextop 1.7.0
 - Dextop・Parking 2.0.0 requires Android 15 or later
 - Dextop・Driving 2.0.0 requires Android 13 or later
