@@ -70,11 +70,13 @@ class _DextopAppState extends State<DextopApp> {
       themeMode: themeMode,
       theme: appTheme(Brightness.light),
       darkTheme: appTheme(Brightness.dark),
+      builder: (context, child) => LinuxExpressive(child: child!),
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
+        linuxMaterialUiLocalizations,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
       home: setupCompleted == null || desktopWindow == null
@@ -203,40 +205,20 @@ class DisplayProfile {
 class NativeBridge {
   static const channel = MethodChannel('app.freedextop/display');
 
-  // Launcher shortcut callbacks arrive from native at unpredictable times, so
-  // both outcomes are broadcast for as long as the app listens.
-  static final _pinResults = StreamController<bool?>.broadcast();
-  static final _shortcutActions = StreamController<void>.broadcast();
-  static var _nativeCallbacksInstalled = false;
-
-  /// Outcome of a home screen shortcut request: `true` after successful pinning
-  /// and `null` when no callback arrives. Android does not report cancellation.
-  static Stream<bool?> get pinResults {
-    _installNativeCallbacks();
-    return _pinResults.stream;
-  }
-
-  /// Fired when a launcher shortcut is tapped while the app is already in the
-  /// foreground. The pending action is read back with [consumeShortcutAction].
-  static Stream<void> get shortcutActions {
-    _installNativeCallbacks();
-    return _shortcutActions.stream;
-  }
-
-  static void _installNativeCallbacks() {
-    if (_nativeCallbacksInstalled) return;
-    _nativeCallbacksInstalled = true;
-    channel.setMethodCallHandler((call) async {
-      if (call.method == 'shortcutPinResult') {
+  /// Outcome of a home screen shortcut request. Android does not report cancellation.
+  static Stream<bool?> get pinResults => NativeDisplayEvents.stream
+      .where((call) => call.method == 'shortcutPinResult')
+      .map((call) {
         final pinned = call.arguments is Map
             ? (call.arguments as Map)['pinned']
             : null;
-        _pinResults.add(pinned is bool ? pinned : null);
-      } else if (call.method == 'shortcutAction') {
-        _shortcutActions.add(null);
-      }
-    });
-  }
+        return pinned is bool ? pinned : null;
+      });
+
+  /// A launcher shortcut tapped while the app is already in the foreground.
+  static Stream<void> get shortcutActions => NativeDisplayEvents.stream
+      .where((call) => call.method == 'shortcutAction')
+      .map<void>((_) {});
 
   Future<Map<String, dynamic>> status() async {
     return await channel.invokeMapMethod<String, dynamic>('status') ?? {};

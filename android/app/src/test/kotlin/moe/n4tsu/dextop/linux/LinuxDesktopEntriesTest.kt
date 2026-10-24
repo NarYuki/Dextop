@@ -53,6 +53,45 @@ class LinuxDesktopEntriesTest {
         } finally { root.deleteRecursively() }
     }
 
+    @Test fun legacyThemeDirectoriesDoNotSelectATinyIconBeforeTheFullSize() {
+        val root = Files.createTempDirectory("linux-legacy-icons").toFile()
+        try {
+            File(root, "usr/share/icons/Legacy/index.theme").apply {
+                parentFile.mkdirs()
+                writeText("[Icon Theme]\nDirectories=16x16/legacy,48x48/legacy,32x32/legacy\n")
+            }
+            val paths = LinuxDesktopEntries.iconCandidates(root, "system-file-manager").toList()
+            assertTrue(paths.indexOf("/usr/share/icons/Legacy/48x48/legacy/system-file-manager.png") <
+                paths.indexOf("/usr/share/icons/Legacy/16x16/legacy/system-file-manager.png"))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun searchesUserThemesAndWineGeneratedApplicationIcons() {
+        val root = Files.createTempDirectory("linux-user-icons").toFile()
+        try {
+            val icon = File(root, "root/.local/share/icons/hicolor/48x48/apps/wine-game.png").apply {
+                parentFile.mkdirs(); writeText("fixture")
+            }
+            val paths = LinuxDesktopEntries.iconCandidates(root, "wine-game").toList()
+            assertTrue("/root/.local/share/icons/hicolor/48x48/apps/wine-game.png" in paths)
+            assertTrue("/root/.icons/hicolor/48x48/apps/wine-game.png" in paths)
+            assertTrue(paths.indexOf("/root/.local/share/icons/hicolor/48x48/apps/wine-game.png") <
+                paths.indexOf("/usr/share/icons/hicolor/48x48/apps/wine-game.png"))
+            assertEquals(icon, LinuxDesktopEntries.resolve(root, "/root/.local/share/icons/hicolor/48x48/apps/wine-game.png"))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun resolvesLinkedThemeDirectoriesInsideTheGuestRoot() {
+        val root = Files.createTempDirectory("linux-linked-icons").toFile()
+        try {
+            val icon = File(root, "usr/share/icons/Actual/app.png").apply { parentFile.mkdirs(); writeText("icon") }
+            val link = File(root, "usr/share/icons/Linked").toPath()
+            try { Files.createSymbolicLink(link, icon.parentFile.toPath()) }
+            catch (error: java.io.IOException) { org.junit.Assume.assumeNoException(error) }
+            assertEquals(icon, LinuxDesktopEntries.resolve(root, "/usr/share/icons/Linked/app.png"))
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun preservesWindowClassIndependentlyOfLocalizedLauncherName() {
         val root = Files.createTempDirectory("linux-entries").toFile()
         try {

@@ -1,0 +1,46 @@
+#!/bin/bash
+set -eu
+# Host integration only. DD supplies gamescope, Mesa, Xwayland and Steam session.
+export HOME=/root USER=root PATH=/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8
+unset DISPLAY DBUS_SESSION_BUS_ADDRESS LIBGL_ALWAYS_SOFTWARE MESA_VK_WSI_DEBUG VK_DRIVER_FILES VK_ICD_FILENAMES
+export XDG_RUNTIME_DIR=/tmp/runtime-root XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=wayland-0
+export GAMESCOPE_FORCE_GENERAL_QUEUE=1 MESA_LOADER_DRIVER_OVERRIDE=zink GALLIUM_DRIVER=zink LIBGL_KOPPER_DRI2=true
+export ZINK_DESCRIPTORS=lazy ZINK_DEBUG=compact mesa_glthread=true MESA_NO_ERROR=1 TU_DEBUG=sysmem
+export GLIBC_TUNABLES=glibc.pthread.rseq=0:glibc.malloc.top_pad=16777216 MESA_DISK_CACHE_DATABASE=1
+export DEXTOP_STEAM_INSIDE=1
+export BL_LAUNCH_DIR=/tmp/dextop-dd-stock-launch DBUS_SYSTEM_BUS_ADDRESS=unix:path=/run/dbus/system_bus_socket
+mkdir -p "$BL_LAUNCH_DIR"
+export BL_WIDTH=${DEXTOP_WIDTH:-1280} BL_HEIGHT=${DEXTOP_HEIGHT:-720} BL_REFRESH=${DEXTOP_REFRESH:-60} BL_FPS=0
+if [ -r /tmp/dextop-steam-size.conf ]; then read -r BL_WIDTH BL_HEIGHT </tmp/dextop-steam-size.conf; export BL_WIDTH BL_HEIGHT; fi
+export BL_LOG=/tmp/dextop-steam-gamemode.log BL_MANGOAPP=0 BL_STEAM_CLIENT_ARCH=arm64
+export BL_SYNC=0 BL_SYNC_FALLBACK=1 BL_FSYNC_FIRST=0 BL_GAMESCOPE_REALTIME=0
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+# Dextop's cover consumes READY; do not change DD's client invocation.
+python3 - "$BL_LOG" <<'PYREADY' &
+import os,sys,time
+from pathlib import Path
+root=os.environ.get('PROOT_FP_ROOT','')
+namespace=os.environ.get('DEXTOP_SOCKET_NAMESPACE','')
+for attempt in range(900):
+    for p in Path('/proc').glob('[0-9]*'):
+        try:
+            cmd=(p/'cmdline').read_bytes()
+            if b'steamwebhelper' not in cmd or b'--type=renderer' not in cmd: continue
+            env=(p/'environ').read_bytes()
+            if root: same=('PROOT_FP_ROOT='+root).encode()+b'\0' in env
+            elif namespace: same=('DEXTOP_SOCKET_NAMESPACE='+namespace).encode()+b'\0' in env
+            else: same=False
+            if same:
+                time.sleep(3)
+                with open(sys.argv[1],'a') as f: f.write('== READY '+time.strftime('%H:%M:%S',time.gmtime())+'\n')
+                raise SystemExit(0)
+        except OSError: pass
+    time.sleep(1)
+PYREADY
+watcher=$!
+status=0
+/usr/local/bin/droiddeck-session steam "$@" || status=$?
+kill "$watcher" 2>/dev/null || true
+printf '== EXIT %s\n' "$status" >>"$BL_LOG"
+exit "$status"

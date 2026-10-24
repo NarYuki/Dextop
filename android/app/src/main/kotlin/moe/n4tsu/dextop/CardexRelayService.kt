@@ -30,20 +30,31 @@ class CardexRelayService : Service() {
     private var width = 0
     private var height = 0
     private var renderScale = 1f
+    /** Density Android Auto gave for its display; restarts reuse it instead of the phone's. */
+    private var clientDensity = 160
     private var gracefulStopRequested = false
     private var directSessionOwned = false
     private var relayGeneration = 0L
     private var clientGeneration = 0L
     private var launchInFlight = false
     private var pendingStart: PendingStart? = null
+    /** The latest start requested while Dextop's access is reconnecting. */
+    private var privilegeStart: PendingStart? = null
+    private val privilegeStartupTimeout = Runnable {
+        if (privilegeStart != null) {
+            privilegeStart = null
+            sendError(IllegalStateException("Dextop's access did not reconnect in time. Select Recover to retry."))
+        }
+    }
     private var activeMode = "idle"
+    /** Times a lost Dextop Auto session was started again; reset once one is verified healthy. */
+    private var dextopRestarts = 0
     private var clientBinder: IBinder? = null
     private var lastClientHeartbeat = 0L
     private var currentStatus = STATUS_IDLE
     private var currentStatusDetail = ""
-    private val clientDeathRecipient = IBinder.DeathRecipient {
-        handler.post { scheduleUnexpectedClientLoss("Car Companion process died") }
-    }
+    /** Death of the current client's process only: a replaced client dying must not end the new one's session. */
+    private var clientDeathRecipient: IBinder.DeathRecipient? = null
     private val clientWatchdog = object : Runnable {
         override fun run() {
             if (!relaySessionActive) return
@@ -117,6 +128,7 @@ class CardexRelayService : Service() {
         when (message.what) {
             MSG_START -> {
                 updateClientMode(message.sendingUid)
+                if (activeClientMode=="Parking") MirrorService.setCarVisibleArea(0f,0f,1f,1f)
                 registerClient(message.replyTo)
                 val data = message.data.apply { classLoader = Surface::class.java.classLoader }
                 val nextSurface = data.getParcelable(KEY_SURFACE, Surface::class.java) ?: return true
@@ -128,12 +140,16 @@ class CardexRelayService : Service() {
                     data.getFloat(KEY_RENDER_SCALE, 1f),
                 )
             }
+            10 -> MirrorService.setCarVisibleArea(
+                message.data.getFloat("left"),message.data.getFloat("top"),
+                message.data.getFloat("right",1f),message.data.getFloat("bottom",1f))
             MSG_HEARTBEAT -> registerClient(message.replyTo)
             MSG_TOUCH -> {
                 MirrorService.releaseCarPan()
                 MirrorService.hideCarCompanionCursor()
                 message.data.classLoader = MotionEvent::class.java.classLoader
                 message.data.getParcelable(KEY_EVENT, MotionEvent::class.java)?.let { event ->
+                    if (event.actionMasked == MotionEvent.ACTION_UP) MirrorService.noteCarTap()
                     controller?.dispatchTouch(event, width, height)
                     event.recycle()
                 }
@@ -171,6 +187,10 @@ class CardexRelayService : Service() {
                 message.data.getFloat("dx"), message.data.getFloat("dy"),
                 message.data.getBoolean("drag"), message.data.getBoolean("release"),
                 message.data.getFloat("anchor_x", 0.5f), message.data.getFloat("anchor_y", 0.5f))
+            11 -> MirrorService.dispatchCarFling(message.data.getFloat("vx"), message.data.getFloat("vy"))
+            12 -> MirrorService.dispatchCarScale(
+                message.data.getFloat("x", -1f), message.data.getFloat("y", -1f), message.data.getFloat("factor", 1f),
+                message.data.getFloat("anchor_x", -1f), message.data.getFloat("anchor_y", -1f))
         }
         return true
     }
@@ -188,6 +208,19 @@ class CardexRelayService : Service() {
         }
         if (nextWidth <= 0 || nextHeight <= 0) {
             sendError(IllegalStateException("Android Auto reported an invalid surface size: ${nextWidth}x$nextHeight."))
+            return
+        }
+        clientDensity = density
+        // Without Dextop's access the car desktop cannot be created, and a half-made session falls
+        // back to the platform desktop. Reconnect it first, without asking the user.
+        if (!PrivilegedAccess("CardexRelayService").isAvailable()) {
+            val waiting = privilegeStart != null
+            privilegeStart = PendingStart(nextSurface, nextWidth, nextHeight, density, requestedScale)
+            if (waiting) return
+            sendStatus(STATUS_STARTING, "Reconnecting Dextop's access over Wireless debugging…")
+            OperationLog.i(this, "CarCompanion", "access unavailable at start; reconnecting before the session")
+            handler.postDelayed(privilegeStartupTimeout, ACCESS_RECONNECT_WINDOW_MS)
+            reconnectAccess(SystemClock.elapsedRealtime() + ACCESS_RECONNECT_WINDOW_MS)
             return
         }
         if (launchInFlight) {
@@ -214,7 +247,7 @@ class CardexRelayService : Service() {
         // The former 2.0 direct mode now migrates to the stable decorated 2.1
         // path. Only an explicit legacy selection (both flags false) uses the
         // OverlayDisplay implementation.
-        val requestedDecorated = requestedCodec || requestedDirect
+        val requestedDecorated = requestedCodec || requestedDirect || preferences.getString("flutter.android_auto_shell", "dextop") == "dextop"
         val normalizedScale = requestedScale.coerceIn(MIN_RENDER_SCALE, 1f)
         val (desktopWidth, desktopHeight) = scaledDesktopSize(nextWidth, nextHeight, normalizedScale)
         val reusableCodec = requestedDecorated && controller != null && directSessionOwned
@@ -267,6 +300,7 @@ class CardexRelayService : Service() {
         height = nextHeight
         renderScale = requestedScale.coerceIn(MIN_RENDER_SCALE, 1f)
         val generation = ++relayGeneration
+        dextopRestarts = 0
         relaySessionActive = true
         lastClientHeartbeat = SystemClock.elapsedRealtime()
         handler.removeCallbacks(clientWatchdog)
@@ -275,6 +309,38 @@ class CardexRelayService : Service() {
         gracefulStopRequested = false
         requestPrivilegedBinder()
         waitForPrivilegedAccess(nextSurface, nextWidth, nextHeight, density.coerceIn(80, 640), 0, generation)
+    }
+
+    /**
+     * Reconnects Dextop's access for the waiting start. A reconnection that ends without access
+     * (one that was already giving up, or a runtime that died right after connecting) is tried
+     * again until [deadline]; only a revoked pairing ends at once.
+     */
+    private fun reconnectAccess(deadline: Long) {
+        moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.ensure(this, "android_auto_start") { outcome ->
+            val start = privilegeStart ?: return@ensure
+            when {
+                PrivilegedAccess("CardexRelayService").isAvailable() -> {
+                    handler.removeCallbacks(privilegeStartupTimeout)
+                    privilegeStart = null
+                    if (start.surface.isValid) startRelay(start.surface, start.width, start.height, start.density, start.renderScale)
+                }
+                outcome == moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.Outcome.REJECTED -> {
+                    handler.removeCallbacks(privilegeStartupTimeout)
+                    privilegeStart = null
+                    sendError(IllegalStateException(
+                        "Dextop's access was revoked in Wireless debugging. Open Dextop on the phone and set it up again."))
+                }
+                SystemClock.elapsedRealtime() < deadline -> handler.postDelayed({
+                    if (privilegeStart === start) reconnectAccess(deadline)
+                }, ACCESS_RECONNECT_RETRY_MS)
+                else -> {
+                    privilegeStart = null
+                    sendError(IllegalStateException(
+                        "Dextop could not reconnect its access. Check that Wi-Fi is on, then select Recover and retry."))
+                }
+            }
+        }
     }
 
     private fun waitForPrivilegedAccess(
@@ -307,7 +373,7 @@ class CardexRelayService : Service() {
         migrateCarCompanion21(preferences)
         val codecStreaming = preferences.getBoolean("flutter.android_auto_scrcpy_streaming", false)
         val directDisplay = preferences.getBoolean("flutter.android_auto_hidden_display", false)
-        if (codecStreaming || directDisplay) {
+        if (codecStreaming || directDisplay || preferences.getString("flutter.android_auto_shell", "dextop") == "dextop") {
             activeMode = "decorated-direct"
             startCodecDisplay(nextSurface, desktopWidth, desktopHeight, density, generation)
         } else {
@@ -468,7 +534,13 @@ class CardexRelayService : Service() {
                     sample.recycle()
                     if (generation != relayGeneration || surface !== expectedSurface) return@request
                     if (result == PixelCopy.SUCCESS) {
+                        dextopRestarts = 0
                         OperationLog.i(this, "CarCompanion", "direct display frame verified display=$displayId attempt=$attempt")
+                    } else if (dextopShell()) {
+                        dextopRestarts = 0
+                        // Dextop Auto's frames come through SurfaceFlinger, which PixelCopy often cannot read;
+                        // the display and session checked above are what count, so the session is kept.
+                        OperationLog.i(this, "CarCompanion", "Dextop Auto frame not readable (PixelCopy=$result); session kept")
                     } else if (attempt + 1 < DIRECT_FRAME_PROBE_ATTEMPTS) {
                         OperationLog.w(this, "CarCompanion", "direct display has no readable frame result=$result attempt=$attempt", null)
                         scheduleDirectFrameProbe(generation, displayId, attempt + 1)
@@ -481,6 +553,7 @@ class CardexRelayService : Service() {
                 }, handler)
             }.onFailure {
                 sample.recycle()
+                if (dextopShell()) return@onFailure
                 if (attempt + 1 < DIRECT_FRAME_PROBE_ATTEMPTS) {
                     scheduleDirectFrameProbe(generation, displayId, attempt + 1)
                 } else {
@@ -490,31 +563,44 @@ class CardexRelayService : Service() {
         }, if (attempt == 0) DIRECT_FRAME_PROBE_INITIAL_DELAY_MS else DIRECT_FRAME_PROBE_INTERVAL_MS)
     }
 
+    private fun dextopShell() =
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).getString("flutter.android_auto_shell", "dextop") == "dextop"
+
     private fun fallbackDirectToLegacy(reason: String, generation: Long) {
         if (generation != relayGeneration || activeMode == "overlay") return
         val activeSurface = surface ?: return
         if (!activeSurface.isValid) return
-        OperationLog.w(this, "CarCompanion", "$reason; falling back to the stable overlay display", null)
-        sendStatus(STATUS_STARTING, "$reason\nFalling back to the stable display method…")
+        // The overlay mirror cannot host Dextop Auto: a lost Dextop Auto session starts again as itself.
+        val restart = dextopShell()
+        if (restart && ++dextopRestarts > DEXTOP_RESTART_ATTEMPTS) {
+            sendError(IllegalStateException("$reason. ${diagnosticSnapshot()}"))
+            return
+        }
+        OperationLog.w(this, "CarCompanion",
+            if (restart) "$reason; restarting Dextop Auto ($dextopRestarts)" else "$reason; falling back to the stable overlay display", null)
+        sendStatus(STATUS_STARTING,
+            if (restart) "$reason\nStarting Dextop Auto again…" else "$reason\nFalling back to the stable display method…")
         controller?.stop()
         controller = null
         MirrorService.stopActive()
-        waitForDirectFallbackStop(activeSurface, generation, 0)
+        waitForDirectFallbackStop(activeSurface, generation, 0, restart)
     }
 
-    private fun waitForDirectFallbackStop(activeSurface: Surface, generation: Long, attempt: Int) {
+    private fun waitForDirectFallbackStop(activeSurface: Surface, generation: Long, attempt: Int, restart: Boolean = false) {
         if (generation != relayGeneration || surface !== activeSurface || !activeSurface.isValid) return
         if (!MirrorService.isActive() && !MirrorService.isStopping()) {
+            val (desktopWidth, desktopHeight) = scaledDesktopSize(width, height)
+            val density = clientDensity.coerceIn(80, 640)
+            if (restart) {
+                startCodecDisplay(activeSurface, desktopWidth, desktopHeight, density, generation)
+                return
+            }
             directSessionOwned = false
             activeMode = "overlay"
-            val (desktopWidth, desktopHeight) = scaledDesktopSize(width, height)
-            startLegacyOverlay(
-                activeSurface, width, height, desktopWidth, desktopHeight,
-                resources.displayMetrics.densityDpi.coerceIn(80, 640), generation,
-            )
+            startLegacyOverlay(activeSurface, width, height, desktopWidth, desktopHeight, density, generation)
         } else if (attempt < DIRECT_FALLBACK_STOP_ATTEMPTS) {
             handler.postDelayed({
-                waitForDirectFallbackStop(activeSurface, generation, attempt + 1)
+                waitForDirectFallbackStop(activeSurface, generation, attempt + 1, restart)
             }, DIRECT_FALLBACK_STOP_RETRY_MS)
         } else {
             sendError(IllegalStateException("The failed direct display could not be stopped. ${diagnosticSnapshot()}"))
@@ -571,6 +657,8 @@ class CardexRelayService : Service() {
     }
 
     private fun stopRelay() {
+        handler.removeCallbacks(privilegeStartupTimeout)
+        privilegeStart = null
         activeClientMode = ""
         relayGeneration += 1
         pendingStart = null
@@ -613,6 +701,7 @@ class CardexRelayService : Service() {
                     putInt(KEY_STATUS, currentStatus)
                     putString(KEY_DETAIL, currentStatusDetail)
                     putString("split_placement", AutoSplitPlacement.state())
+                    putBoolean(KEY_SHOW_DRAG_BUTTON, showDragButton(this@CardexRelayService))
                 }
             })
         }
@@ -621,13 +710,19 @@ class CardexRelayService : Service() {
         unlinkClientDeathRecipient()
         clientGeneration += 1
         clientBinder = nextBinder
-        runCatching { nextBinder.linkToDeath(clientDeathRecipient, 0) }
+        val recipient = IBinder.DeathRecipient {
+            handler.post { if (clientBinder === nextBinder) scheduleUnexpectedClientLoss("Car Companion process died") }
+        }
+        clientDeathRecipient = recipient
+        runCatching { nextBinder.linkToDeath(recipient, 0) }
             .onFailure { scheduleUnexpectedClientLoss("Car Companion binder was already dead") }
     }
 
     private fun unlinkClientDeathRecipient() {
-        clientBinder?.let { binder -> runCatching { binder.unlinkToDeath(clientDeathRecipient, 0) } }
+        val recipient = clientDeathRecipient
+        clientBinder?.let { binder -> if (recipient != null) runCatching { binder.unlinkToDeath(recipient, 0) } }
         clientBinder = null
+        clientDeathRecipient = null
     }
 
     private fun handleUnexpectedClientLoss(reason: String) {
@@ -651,10 +746,20 @@ class CardexRelayService : Service() {
         // The direct display already owns this Surface. Reconnect now
         // re-submits that same surface through the normal start path rather
         // than creating a second recording display.
-        startRelay(activeSurface, width, height, resources.displayMetrics.densityDpi, renderScale)
+        startRelay(activeSurface, width, height, clientDensity, renderScale)
     }
 
     private fun recoverAndRestart() {
+        // A start waiting for Dextop's access is resumed once it reconnects; recovering it now
+        // would find no display yet and only report an error.
+        privilegeStart?.let { pending ->
+            sendStatus(STATUS_STARTING, "Reconnecting Dextop's access over Wireless debugging…")
+            if (!moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.reconnecting) {
+                privilegeStart = null
+                startRelay(pending.surface, pending.width, pending.height, pending.density, pending.renderScale)
+            }
+            return
+        }
         val activeSurface = surface
         if (activeSurface == null || !activeSurface.isValid || width <= 0 || height <= 0) {
             sendError(IllegalStateException("The Android Auto display surface is no longer available. Close and reopen Car Companion."))
@@ -662,7 +767,7 @@ class CardexRelayService : Service() {
         }
         val restartWidth = width
         val restartHeight = height
-        val restartDensity = resources.displayMetrics.densityDpi
+        val restartDensity = clientDensity
         val restartScale = renderScale
         sendStatus(STATUS_STARTING, "Stopping the remaining Dextop session…")
         MirrorService.stopActive()
@@ -770,6 +875,18 @@ class CardexRelayService : Service() {
     companion object {
         @Volatile private var activeClientMode = ""
         fun activeMode(): String = activeClientMode
+        const val KEY_SHOW_DRAG_BUTTON = "show_drag_button"
+
+        /** Dextop Auto setting: whether Driving shows its drag-mode button beside the map. */
+        fun showDragButton(context: android.content.Context): Boolean =
+            context.getSharedPreferences("dextop_auto_ui", android.content.Context.MODE_PRIVATE)
+                .getBoolean("show_drag_button", true)
+
+        /** Sends the current settings to the connected Driving app at once instead of on its next heartbeat. */
+        fun pushClientSettings() {
+            val service = instance ?: return
+            android.os.Handler(android.os.Looper.getMainLooper()).post { service.client?.let(service::registerClient) }
+        }
         @Volatile
         private var instance: CardexRelayService? = null
         @Volatile
@@ -863,6 +980,10 @@ class CardexRelayService : Service() {
         private const val DIRECT_FRAME_PROBE_INITIAL_DELAY_MS = 1_500L
         private const val DIRECT_FRAME_PROBE_INTERVAL_MS = 1_000L
         private const val DIRECT_FRAME_PROBE_ATTEMPTS = 5
+        private const val DEXTOP_RESTART_ATTEMPTS = 3
+        // Someone is waiting in the car: give up quickly and offer Recover instead.
+        private const val ACCESS_RECONNECT_WINDOW_MS = 20_000L
+        private const val ACCESS_RECONNECT_RETRY_MS = 1_000L
         private const val DIRECT_FALLBACK_STOP_RETRY_MS = 100L
         private const val DIRECT_FALLBACK_STOP_ATTEMPTS = 50
         private const val PREF_CAR_COMPANION_21_MIGRATED =

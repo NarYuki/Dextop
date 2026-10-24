@@ -162,11 +162,16 @@ class CarDexActivity : ComponentActivity() {
     private val incoming = Messenger(Handler(Looper.getMainLooper()) { message ->
         when (message.what) {
             MSG_STATUS -> {
+                val previousDetail = relayError
                 relayStatus = message.data.getInt(KEY_STATUS, STATUS_IDLE)
                 relayError = message.data.getString(KEY_DETAIL).orEmpty()
                 splitDialog.update(message.data.getString("split_placement").orEmpty())
                 if (relayStatus == STATUS_RUNNING || relayStatus == STATUS_ERROR) {
                     relayHandler.removeCallbacks(startupTimeout)
+                } else if (relayStatus == STATUS_STARTING && relayError != previousDetail) {
+                    // Dextop reported a new startup step (reconnecting its access, restarting the
+                    // display): it is still working, so the wait starts again from this step.
+                    scheduleStartupTimeout()
                 }
             }
             MSG_WORKSPACES -> {
@@ -182,20 +187,25 @@ class CarDexActivity : ComponentActivity() {
             relay = binder?.let(::Messenger)
             relayHandler.removeCallbacks(heartbeat)
             heartbeat.run()
+            if (relayRequested) relaySurface?.takeIf { it.isValid }?.let {
+                startRelay(it, relaySurfaceWidth, relaySurfaceHeight)
+            }
         }
         override fun onServiceDisconnected(name: ComponentName?) {
             relay = null
-            relayBound = false
+            relayHandler.removeCallbacks(heartbeat)
             if (relayRequested) showRelayError("The connection to Dextop was lost. The Dextop process may have stopped or crashed.")
         }
 
         override fun onBindingDied(name: ComponentName?) {
+            if (relayBound) runCatching { unbindService(this) }
             relay = null
             relayBound = false
             if (relayRequested) showRelayError("The Dextop relay connection died and must be reconnected.")
         }
 
         override fun onNullBinding(name: ComponentName?) {
+            if (relayBound) runCatching { unbindService(this) }
             relay = null
             relayBound = false
             if (relayRequested) showRelayError("The installed Dextop build does not provide a usable Car Companion relay service.")
@@ -425,7 +435,7 @@ class CarDexActivity : ComponentActivity() {
         private const val MAIN_ACTIVITY = "moe.n4tsu.dextop.MainActivity"
         private const val RELAY_SERVICE = "moe.n4tsu.dextop.CardexRelayService"
         private const val HEARTBEAT_INTERVAL_MS = 2_000L
-        private const val STARTUP_TIMEOUT_MS = 12_000L
+        private const val STARTUP_TIMEOUT_MS = 25_000L
         private const val SURFACE_LOSS_GRACE_MS = 2_500L
     }
 }
@@ -558,27 +568,37 @@ private fun RelaySurface(
 
                         override fun onSurfaceTextureUpdated(texture: SurfaceTexture) = Unit
                     }
+                    // Touches near the left edge go to Dextop at once like any other (Dextop Auto's
+                    // sidebar lives there). Only a swipe from the edge that travels far enough is
+                    // taken back, with a cancel, to reveal the controls.
+                    var revealed = false
                     setOnTouchListener { _, event ->
                         when (event.actionMasked) {
                             MotionEvent.ACTION_DOWN -> {
                                 edgeStartX = event.x
                                 edgeGesture = event.x <= edgeWidth
+                                revealed = false
                             }
                             MotionEvent.ACTION_MOVE -> {
+                                if (revealed) return@setOnTouchListener true
                                 if (edgeGesture && event.x - edgeStartX >= revealDistance) {
                                     edgeGesture = false
+                                    revealed = true
+                                    MotionEvent.obtain(event).apply { action = MotionEvent.ACTION_CANCEL }
+                                        .also { onTouch(it); it.recycle() }
                                     onShowControls()
                                     return@setOnTouchListener true
                                 }
                             }
                             MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                                if (edgeGesture) {
-                                    edgeGesture = false
+                                edgeGesture = false
+                                if (revealed) {
+                                    revealed = false
                                     return@setOnTouchListener true
                                 }
                             }
                         }
-                        if (!edgeGesture) onTouch(event)
+                        onTouch(event)
                         true
                     }
                 }

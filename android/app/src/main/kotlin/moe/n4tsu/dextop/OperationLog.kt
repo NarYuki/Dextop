@@ -39,9 +39,13 @@ internal object OperationLog {
         write(context, "E", component, "$message${error?.let { " error=${it.javaClass.simpleName}" } ?: ""}")
 
     private fun write(context: Context, level: String, component: String, rawMessage: String) {
-        val current = File(context.filesDir, CURRENT_FILE)
-        if (!current.exists()) return
         val message = sanitizeForReport(rawMessage)
+        if (level == "I") Log.i(component, message)
+        val current = File(context.filesDir, CURRENT_FILE)
+        if (!current.exists()) {
+            if (level == "E") Log.e(component, message) else if (level == "W") Log.w(component, message)
+            return
+        }
         val line = "${SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSZ", Locale.US).format(Date())} $level/$component $message\n"
         if (level == "E") Log.e(component, message) else if (level == "W") Log.w(component, message)
         synchronized(lock) {

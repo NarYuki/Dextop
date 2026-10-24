@@ -29,6 +29,8 @@ add_library(dextop_wayland SHARED
     "${WLP}/xdg-shell-protocol.c" "${WLP}/linux-dmabuf-v1-protocol.c"
     "${WLP}/xdg-decoration-unstable-v1-protocol.c" "${WLP}/text-input-unstable-v3-protocol.c"
     "${WLP}/viewporter-protocol.c" "${WLP}/server-decoration-protocol.c"
+    "${WLP}/banner-ahb-v1-protocol.c"
+    "${WLP}/single-pixel-buffer-v1-protocol.c"
     "${WLP}/presentation-time-protocol.c"
     "${WLP}/pointer-constraints-unstable-v1-protocol.c"
     "${WLP}/relative-pointer-unstable-v1-protocol.c")

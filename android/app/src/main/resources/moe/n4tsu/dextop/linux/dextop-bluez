@@ -1,0 +1,243 @@
+#!/usr/bin/python3
+"""BlueZ D-Bus facade for Android's Bluetooth owner (Dextop, GPL-3.0)."""
+import json
+import signal
+import time
+import uuid
+from pathlib import Path
+from xml.sax.saxutils import escape
+import gi
+gi.require_version('Gio', '2.0')
+from gi.repository import Gio, GLib
+
+SNAPSHOT = Path('/etc/dextop-bluetooth.json')
+REQUESTS = Path('/etc/dextop-bluetooth-requests')
+NAME = 'org.bluez'
+ADAPTER = '/org/bluez/hci0'
+OM = 'org.freedesktop.DBus.ObjectManager'
+PROPS = 'org.freedesktop.DBus.Properties'
+A = NAME + '.Adapter1'
+D = NAME + '.Device1'
+AGENT = NAME + '.AgentManager1'
+METHODS = {
+ OM: '<method name="GetManagedObjects"><arg type="a{oa{sa{sv}}}" direction="out"/></method><signal name="InterfacesAdded"><arg type="o"/><arg type="a{sa{sv}}"/></signal><signal name="InterfacesRemoved"><arg type="o"/><arg type="as"/></signal>',
+ A: '<method name="StartDiscovery"/><method name="StopDiscovery"/><method name="SetDiscoveryFilter"><arg type="a{sv}" direction="in"/></method><method name="GetDiscoveryFilters"><arg type="as" direction="out"/></method><method name="RemoveDevice"><arg type="o" direction="in"/></method>',
+ D: '<method name="Pair"/><method name="CancelPairing"/><method name="Connect"/><method name="Disconnect"/><method name="ConnectProfile"><arg type="s" direction="in"/></method><method name="DisconnectProfile"><arg type="s" direction="in"/></method>',
+ AGENT: '<method name="RegisterAgent"><arg type="o" direction="in"/><arg type="s" direction="in"/></method><method name="UnregisterAgent"><arg type="o" direction="in"/></method><method name="RequestDefaultAgent"><arg type="o" direction="in"/></method>',
+}
+WRITABLE = {A: {'Powered', 'Alias'}, D: {'Alias', 'Trusted'}}
+def variant(kind, value): return GLib.Variant(kind, value)
+def device_path(address): return ADAPTER + '/dev_' + address.upper().replace(':', '_')
+def now(): return int(time.clock_gettime(time.CLOCK_BOOTTIME) * 1000)
+def snapshot():
+ try:
+  result = json.loads(SNAPSHOT.read_text())
+  return result if isinstance(result, dict) else {}
+ except (OSError, ValueError): return {}
+def icon(device):
+ cls = device.get('class', 0)
+ if cls & 0x1f00 == 0x0400: return 'audio-card'
+ if cls & 0x1f00 == 0x0200: return 'phone'
+ if cls & 0x1f00 == 0x0100: return 'computer'
+ if cls & 0x1f00 == 0x0500:
+  return 'input-gaming' if cls & 0x3c in (4, 8) else 'input-keyboard'
+ return 'bluetooth'
+def objects(state):
+ result = {'/': {OM: {}}, '/org/bluez': {AGENT: {}}}
+ if not state.get('available'): return result
+ result[ADAPTER] = {A: {
+  'Address': variant('s', state.get('address') or '00:00:00:00:00:00'), 'AddressType': variant('s', 'public'),
+  'Name': variant('s', state.get('name') or 'Android Bluetooth'), 'Alias': variant('s', state.get('name') or 'Android Bluetooth'),
+  'Class': variant('u', 0), 'Powered': variant('b', bool(state.get('powered'))), 'Discovering': variant('b', bool(state.get('discovering'))),
+  'Discoverable': variant('b', False), 'Pairable': variant('b', bool(state.get('powered'))),
+  'PairableTimeout': variant('u', 0), 'DiscoverableTimeout': variant('u', 0), 'UUIDs': variant('as', []),
+ }}
+ for device in state.get('devices', []):
+  address = device['address'].upper()
+  props = {
+   'Address': variant('s', address), 'AddressType': variant('s', 'public'), 'Adapter': variant('o', ADAPTER),
+   'Name': variant('s', device.get('name') or address), 'Alias': variant('s', device.get('alias') or device.get('name') or address),
+   'Class': variant('u', device.get('class', 0)), 'Icon': variant('s', icon(device)),
+   'Paired': variant('b', bool(device.get('paired'))), 'Bonded': variant('b', bool(device.get('paired'))),
+   'Trusted': variant('b', bool(device.get('paired'))), 'Connected': variant('b', bool(device.get('connected'))),
+   'Blocked': variant('b', False), 'LegacyPairing': variant('b', False),
+   'ServicesResolved': variant('b', bool(device.get('connected'))), 'UUIDs': variant('as', device.get('uuids', [])),
+  }
+  if device.get('rssi') is not None: props['RSSI'] = variant('n', max(-32768, min(32767, device['rssi'])))
+  result[device_path(address)] = {D: props}
+ return result
+
+def info(interface, properties):
+ body = METHODS.get(interface, '')
+ for name, value in properties.items():
+  access = 'readwrite' if name in WRITABLE.get(interface, set()) else 'read'
+  body += '<property name="%s" type="%s" access="%s"/>' % (escape(name), value.get_type_string(), access)
+ return Gio.DBusNodeInfo.new_for_xml('<node><interface name="%s">%s</interface></node>' % (interface, body)).interfaces[0]
+
+class BlueZ:
+ def __init__(self, bus):
+  self.bus = bus; self.state = snapshot(); self.objects = objects(self.state)
+  self.registrations = {}; self.pending = {}; self.agents = {}; self.default_agent = None; self.prompts = set(); self.discovery_clients = set()
+  self.register(self.objects)
+  GLib.timeout_add(200, self.tick)
+  bus.signal_subscribe('org.freedesktop.DBus', 'org.freedesktop.DBus', 'NameOwnerChanged', '/org/freedesktop/DBus', None, Gio.DBusSignalFlags.NONE, self.owner_changed, None)
+ def owner_changed(self, bus, sender, path, interface, name, args, data):
+  owner, old, new = args.unpack()
+  if not new:
+   self.agents.pop(owner, None)
+   if self.default_agent == owner: self.default_agent = None
+   if owner in self.discovery_clients:
+    self.discovery_clients.remove(owner)
+    if not self.discovery_clients:self.enqueue('stopDiscovery')
+ def register(self, found):
+  wanted = {(path, interface) for path, interfaces in found.items() for interface in interfaces}
+  for key in self.registrations.keys() - wanted: self.bus.unregister_object(self.registrations.pop(key))
+  for key in wanted - self.registrations.keys():
+   path, interface = key
+   self.registrations[key] = self.bus.register_object(path, info(interface, found[path][interface]), self.call, self.get_property, self.set_property)
+ def get_property(self, bus, sender, path, interface, name): return self.objects.get(path, {}).get(interface, {}).get(name)
+ def device(self, path):
+  return next((d for d in self.state.get('devices', []) if device_path(d['address']) == path), None)
+ def enqueue(self, action, address=None, **values):
+  REQUESTS.mkdir(parents=True, exist_ok=True)
+  token = uuid.uuid4().hex
+  request = dict(action=action, deadline=now()+10_000, **values)
+  if address: request['address'] = address
+  temporary = REQUESTS / (token+'.staged'); target = REQUESTS / (token+'.json')
+  temporary.write_text(json.dumps(request)); temporary.replace(target)
+  return token
+ def submit(self, invocation, action, address=None, **values):
+  token = self.enqueue(action, address, **values)
+  self.pending[token] = dict(invocation=invocation, action=action, address=address, deadline=now()+(120_000 if action=='pair' else 30_000 if action in ('connect','disconnect') else 15_000), waiting=None)
+ def set_property(self, bus, sender, path, interface, name, value):
+  action = {(A,'Powered'):'power',(A,'Alias'):'adapterAlias',(D,'Alias'):'alias',(D,'Trusted'):'trust'}.get((interface,name))
+  if action is None: return False
+  device = self.device(path)
+  token = self.enqueue(action, device['address'] if device else None, value=value.unpack())
+  result_path = REQUESTS/(token+'.result')
+  limit = time.monotonic()+6
+  while time.monotonic()<limit:
+   try:
+    response=json.loads(result_path.read_text()); result_path.unlink()
+    if not response.get('ok'): print('BlueZ: '+response.get('error','Android rejected the request'),flush=True)
+    return bool(response.get('ok'))
+   except FileNotFoundError: time.sleep(.05)
+  return False
+ def call(self, bus, sender, path, interface, method, args, invocation):
+  args = args.unpack()
+  try:
+   if method == 'GetManagedObjects': invocation.return_value(variant('(a{oa{sa{sv}}})', (self.objects,)))
+   elif interface == AGENT:
+    if method == 'RegisterAgent':
+     if sender in self.agents: return invocation.return_dbus_error(NAME+'.Error.AlreadyExists','An agent is already registered')
+     self.agents[sender] = args[0]
+    elif method == 'RequestDefaultAgent':
+     if self.agents.get(sender)!=args[0]: return invocation.return_dbus_error(NAME+'.Error.DoesNotExist','Agent is not registered')
+     self.default_agent=sender
+    elif method == 'UnregisterAgent':
+     self.agents.pop(sender,None)
+     if self.default_agent==sender:self.default_agent=None
+    invocation.return_value(variant('()',()))
+   elif method == 'SetDiscoveryFilter': invocation.return_value(variant('()',()))
+   elif method == 'GetDiscoveryFilters': invocation.return_value(variant('(as)',(['UUIDs','RSSI','Pathloss','Transport','DuplicateData','Discoverable','Pattern'],)))
+   elif method == 'StartDiscovery':
+    if sender in self.discovery_clients:return invocation.return_value(variant('()',()))
+    self.discovery_clients.add(sender)
+    self.submit(invocation,'startDiscovery')
+   elif method == 'StopDiscovery':
+    self.discovery_clients.discard(sender)
+    if self.discovery_clients:return invocation.return_value(variant('()',()))
+    self.submit(invocation,'stopDiscovery')
+   elif method == 'RemoveDevice':
+    device = self.device(args[0])
+    if device is None: return invocation.return_dbus_error(NAME+'.Error.DoesNotExist','Device is not known')
+    self.submit(invocation,'remove',device['address'])
+   elif method in ('Pair','CancelPairing','Connect','Disconnect','ConnectProfile','DisconnectProfile'):
+    device = self.device(path)
+    if device is None: return invocation.return_dbus_error(NAME+'.Error.DoesNotExist','Device is not known')
+    action={'Pair':'pair','CancelPairing':'cancelPairing','Connect':'connect','Disconnect':'disconnect','ConnectProfile':'connect','DisconnectProfile':'disconnect'}[method]
+    self.submit(invocation,action,device['address'],agent=bool(self.agents))
+   else: invocation.return_dbus_error(NAME+'.Error.NotSupported','Unsupported Bluetooth operation')
+  except Exception as error: invocation.return_dbus_error(NAME+'.Error.Failed',str(error))
+ def finish(self, token, error=None, name='Failed'):
+  pending = self.pending.pop(token,None)
+  if not pending:return
+  if pending['action']=='pair':self.prompts={key for key in self.prompts if key[0]!=pending['address']}
+  if error: pending['invocation'].return_dbus_error(NAME+'.Error.'+name,error)
+  else: pending['invocation'].return_value(variant('()',()))
+ def request_agent(self, device):
+  pairing=device.get('pairing')
+  if not pairing or not any(p['action']=='pair' and p['address']==device['address'] for p in self.pending.values()):return
+  key=(device['address'],pairing['variant'],pairing.get('key',0))
+  if key in self.prompts:return
+  owner=self.default_agent or next(iter(self.agents),None)
+  if owner is None:return
+  self.prompts.add(key)
+  pair_token=next(token for token,pending in self.pending.items() if pending['action']=='pair' and pending['address']==device['address'])
+  address=device['address']; path=device_path(address); kind=pairing['variant']; number=max(0,pairing.get('key',0))
+  methods={0:('RequestPinCode','(o)',(path,),'(s)'),1:('RequestPasskey','(o)',(path,),'(u)'),
+           2:('RequestConfirmation','(ou)',(path,number),'()'),3:('RequestAuthorization','(o)',(path,),'()'),
+           4:('DisplayPasskey','(ouq)',(path,number,0),'()'),5:('DisplayPinCode','(os)',(path,str(number)),'()'),
+           7:('RequestPinCode','(o)',(path,),'(s)')}
+  if kind not in methods:
+   self.enqueue('confirm',address,value=False);return
+  method,signature,values,reply=methods[kind]
+  self.bus.call(owner,self.agents[owner],NAME+'.Agent1',method,variant(signature,values),GLib.VariantType.new(reply),Gio.DBusCallFlags.NONE,110_000,None,self.agent_reply,(address,kind,pair_token))
+ def agent_reply(self,bus,result,data):
+  address,kind,pair_token=data
+  if pair_token not in self.pending:return
+  try:
+   reply=bus.call_finish(result).unpack()
+   if kind in (0,7):self.enqueue('pin',address,value=reply[0])
+   elif kind==1:self.enqueue('passkey',address,value=reply[0])
+   elif kind in (2,3):self.enqueue('confirm',address,value=True)
+  except GLib.Error:
+   self.enqueue('confirm',address,value=False)
+   for token,pending in list(self.pending.items()):
+    if pending['action']=='pair' and pending['address']==address:self.finish(token,'Pairing was rejected','AuthenticationRejected')
+ def tick(self):
+  try:
+   state=snapshot(); found=objects(state); before=self.objects
+   self.state=state; self.objects=found; self.register(found)
+   for path in before.keys() | found.keys():
+    removed=before.get(path,{}).keys()-found.get(path,{}).keys(); added=found.get(path,{}).keys()-before.get(path,{}).keys()
+    if removed:self.bus.emit_signal(None,'/',OM,'InterfacesRemoved',variant('(oas)',(path,list(removed))))
+    if added:self.bus.emit_signal(None,'/',OM,'InterfacesAdded',variant('(oa{sa{sv}})',(path,{k:found[path][k] for k in added})))
+    for interface,props in found.get(path,{}).items():
+     old=before.get(path,{}).get(interface,{})
+     changed={k:v for k,v in props.items() if old.get(k)!=v}
+     if changed:self.bus.emit_signal(None,path,PROPS,'PropertiesChanged',variant('(sa{sv}as)',(interface,changed,[])))
+   for token,pending in list(self.pending.items()):
+    result=REQUESTS/(token+'.result')
+    if result.exists():
+     response=json.loads(result.read_text()); result.unlink()
+     if not response.get('ok'):
+      self.finish(token,response.get('error','Android rejected the request'),response.get('errorName','Failed'));continue
+     pending['waiting']=response.get('waitFor')
+     if not pending['waiting']:self.finish(token);continue
+    waiting=pending['waiting']
+    device=next((d for d in state.get('devices',[]) if d['address']==pending['address']),{})
+    done = waiting=='paired' and device.get('paired') or waiting=='unpaired' and not device.get('paired') or waiting=='connected' and device.get('connected') or waiting=='disconnected' and not device.get('connected')
+    if done:self.finish(token);continue
+    if waiting=='paired' and device.get('pairingError'):self.finish(token,device['pairingError'],'AuthenticationFailed');continue
+    if now()>pending['deadline']:self.finish(token,'Android Bluetooth operation timed out','ConnectionAttemptFailed')
+   for device in state.get('devices',[]):self.request_agent(device)
+  except Exception as error: print('BlueZ bridge: '+str(error),flush=True)
+  return True
+ def close(self):
+  if self.discovery_clients:self.enqueue('stopDiscovery')
+  for pending in self.pending.values():
+   if pending['action']=='pair':self.enqueue('cancelPairing',pending['address'])
+
+
+def main():
+ loop=GLib.MainLoop(); service=[]
+ def acquired(bus,name):service.append(BlueZ(bus))
+ def lost(bus,name):loop.quit()
+ owner=Gio.bus_own_name(Gio.BusType.SYSTEM,NAME,Gio.BusNameOwnerFlags.NONE,acquired,None,lost)
+ GLib.unix_signal_add(GLib.PRIORITY_DEFAULT,signal.SIGTERM,lambda: (loop.quit(),False)[1])
+ try:loop.run()
+ finally:
+  for item in service:item.close()
+  Gio.bus_unown_name(owner)
+if __name__=='__main__':main()

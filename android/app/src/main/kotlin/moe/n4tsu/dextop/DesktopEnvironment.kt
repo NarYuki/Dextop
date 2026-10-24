@@ -56,6 +56,12 @@ internal data class DesktopEnvironment(
     val supportsLaunchBounds: Boolean = true,
     /** Recreate a device-resolution session when a foldable host changes size. */
     val autoResizeWithHostDisplay: Boolean = false,
+    /**
+     * Window manager written at first launch while the user has not chosen one
+     * (a WindowManagerSelection value). Vendors whose own desktop is unusable on
+     * Dextop's display start on the Dextop window manager instead.
+     */
+    val defaultWindowManager: String = "system",
     /** Ordered, device-local strategies. Never change the global order for one model. */
     val displayCreationStrategies: List<String> = listOf("overlay_settings"),
     val mirrorStrategies: List<String> = listOf("virtual_display", "window_manager", "surface_control"),

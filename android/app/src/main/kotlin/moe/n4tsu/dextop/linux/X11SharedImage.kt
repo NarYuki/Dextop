@@ -19,19 +19,33 @@ internal class X11SharedImage private constructor(
     companion object {
         fun create(x: X11Client, size: Long): X11SharedImage? {
             if (x.shmOpcode < 0) return null
-            return runCatching {
-                val fd = Os.memfd_create("dextop-x11-shm", 0)
-                Os.ftruncate(fd, size)
-                val address = Os.mmap(0, size, OsConstants.PROT_READ or OsConstants.PROT_WRITE, OsConstants.MAP_SHARED, fd, 0)
-                val segment = x.allocateId()
-                x.shmAttachFd(segment, fd)
-                x.sync()
-                X11SharedImage(x, fd, segment, address, size)
-            }.getOrNull()
+            var fd: FileDescriptor? = null
+            var address: Long? = null
+            var segment: Int? = null
+            return try {
+                val allocated = Os.memfd_create("dextop-x11-shm", 0)
+                fd = allocated
+                Os.ftruncate(allocated, size)
+                val mapped = Os.mmap(0, size, OsConstants.PROT_READ or OsConstants.PROT_WRITE, OsConstants.MAP_SHARED, allocated, 0)
+                address = mapped
+                val id = x.allocateId()
+                segment = id
+                x.shmAttachFd(id, allocated)
+                X11SharedImage(x, allocated, id, mapped, size)
+            } catch (_: Exception) {
+                segment?.let { runCatching { x.shmDetach(it) } }
+                address?.let { runCatching { Os.munmap(it, size) } }
+                fd?.let { runCatching { Os.close(it) } }
+                null
+            }
         }
     }
 
-    fun close() {
+    private var closed = false
+
+    @Synchronized fun close() {
+        if (closed) return
+        closed = true
         runCatching { x.shmDetach(segment) }
         runCatching { Os.munmap(address, size) }
         runCatching { Os.close(fd) }

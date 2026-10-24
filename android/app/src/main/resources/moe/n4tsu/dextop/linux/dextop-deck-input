@@ -1,0 +1,166 @@
+#!/usr/bin/python3
+"""Physical keyboards and mice for Dextop's Steam mode.
+
+gamescope only takes input from the compositor it runs in, which never sees the phone's own
+keyboards and mice. This helper takes them from Android (EVIOCGRAB, so the phone does not act
+on them too) and types them into gamescope's X server through XTEST. Game controllers are left
+to Steam and SDL, which read them from /dev/input themselves.
+"""
+import ctypes
+import fcntl
+import os
+import select
+import struct
+import sys
+import time
+
+EV_KEY, EV_REL, EV_ABS = 1, 2, 3
+REL_X, REL_Y, REL_HWHEEL, REL_WHEEL = 0, 1, 6, 8
+KEY_A, KEY_Z, KEY_SPACE = 30, 44, 57
+BTN_LEFT, BTN_RIGHT, BTN_MIDDLE, BTN_SIDE, BTN_EXTRA = 0x110, 0x111, 0x112, 0x113, 0x114
+BTN_JOYSTICK, BTN_GAMEPAD, BTN_TOUCH = 0x120, 0x130, 0x14A
+# X buttons: 1 left, 2 middle, 3 right, 4/5 wheel, 6/7 horizontal wheel, 8/9 back/forward.
+BUTTONS = {BTN_LEFT: 1, BTN_MIDDLE: 2, BTN_RIGHT: 3, BTN_SIDE: 8, BTN_EXTRA: 9}
+EVENT = struct.Struct("llHHi")
+
+
+def ioc(direction, number, size):
+    return (direction << 30) | (size << 16) | (ord("E") << 8) | number
+
+
+EVIOCGRAB = ioc(1, 0x90, 4)
+
+
+def bits(fd, kind, size=96):
+    buffer = bytearray(size)
+    try:
+        fcntl.ioctl(fd, ioc(2, 0x20 + kind, size), buffer)
+    except OSError:
+        return lambda bit: False
+    return lambda bit: bool(buffer[bit // 8] >> (bit % 8) & 1)
+
+
+def name(fd):
+    buffer = bytearray(256)
+    try:
+        fcntl.ioctl(fd, ioc(2, 0x06, len(buffer)), buffer)
+    except OSError:
+        return ""
+    return buffer.split(b"\0", 1)[0].decode(errors="replace")
+
+
+def classify(fd):
+    """'mouse', 'keyboard' or None (controllers, touch screens, sensors, Dextop's own devices)."""
+    if name(fd).startswith("Dextop"):
+        return None
+    key, rel, absolute = bits(fd, EV_KEY), bits(fd, EV_REL), bits(fd, EV_ABS)
+    if key(BTN_GAMEPAD) or key(BTN_JOYSTICK) or key(BTN_TOUCH) or absolute(0) and not rel(REL_X):
+        return None
+    if rel(REL_X) and rel(REL_Y) and key(BTN_LEFT):
+        return "mouse"
+    if key(KEY_A) and key(KEY_Z) and key(KEY_SPACE):
+        return "keyboard"
+    return None
+
+
+class X:
+    def __init__(self):
+        x11 = ctypes.CDLL("libX11.so.6")
+        xtst = ctypes.CDLL("libXtst.so.6")
+        x11.XOpenDisplay.restype = ctypes.c_void_p
+        x11.XOpenDisplay.argtypes = [ctypes.c_char_p]
+        x11.XFlush.argtypes = [ctypes.c_void_p]
+        self.display = x11.XOpenDisplay(None)
+        if not self.display:
+            raise SystemExit("dextop-deck-input: no X display")
+        self.flush = lambda: x11.XFlush(self.display)
+        xtst.XTestFakeKeyEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        xtst.XTestFakeButtonEvent.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_int, ctypes.c_ulong]
+        xtst.XTestFakeRelativeMotionEvent.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_int, ctypes.c_ulong]
+        self.xtst = xtst
+
+    def key(self, code, down):
+        # Xwayland uses the evdev keymap: X keycode = evdev code + 8.
+        self.xtst.XTestFakeKeyEvent(self.display, code + 8, 1 if down else 0, 0)
+
+    def button(self, number, down):
+        self.xtst.XTestFakeButtonEvent(self.display, number, 1 if down else 0, 0)
+
+    def click(self, number, count):
+        for _ in range(abs(count)):
+            self.button(number, True)
+            self.button(number, False)
+
+    def move(self, dx, dy):
+        self.xtst.XTestFakeRelativeMotionEvent(self.display, dx, dy, 0)
+
+
+def main():
+    x = X()
+    devices = {}  # fd -> (path, kind)
+    known = set()
+    last_scan = 0.0
+    dx = dy = 0
+    while True:
+        now = time.monotonic()
+        if now - last_scan > 2:
+            last_scan = now
+            for entry in sorted(os.listdir("/dev/input")):
+                path = "/dev/input/" + entry
+                if not entry.startswith("event") or path in known:
+                    continue
+                known.add(path)
+                try:
+                    fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+                except OSError:
+                    continue
+                kind = classify(fd)
+                if kind is None:
+                    os.close(fd)
+                    continue
+                try:
+                    fcntl.ioctl(fd, EVIOCGRAB, 1)
+                except OSError as error:
+                    print("dextop-deck-input: %s not taken from Android: %s" % (path, error), flush=True)
+                devices[fd] = (path, kind)
+                print("dextop-deck-input: %s %s (%s)" % (kind, name(fd), path), flush=True)
+        ready, _, _ = select.select(list(devices), [], [], 1.0)
+        for fd in ready:
+            try:
+                data = os.read(fd, EVENT.size * 64)
+            except BlockingIOError:
+                continue
+            except OSError:
+                path, _ = devices.pop(fd)
+                known.discard(path)
+                os.close(fd)
+                continue
+            for offset in range(0, len(data) - EVENT.size + 1, EVENT.size):
+                _, _, kind, code, value = EVENT.unpack_from(data, offset)
+                if kind == EV_REL:
+                    if code == REL_X:
+                        dx += value
+                    elif code == REL_Y:
+                        dy += value
+                    elif code == REL_WHEEL:
+                        x.click(4 if value > 0 else 5, value)
+                    elif code == REL_HWHEEL:
+                        x.click(7 if value > 0 else 6, value)
+                elif kind == EV_KEY and value in (0, 1):
+                    # Held keys repeat in the X server; evdev's repeats (2) are dropped.
+                    if code in BUTTONS:
+                        x.button(BUTTONS[code], value == 1)
+                    elif code < BTN_LEFT:
+                        x.key(code, value == 1)
+                elif kind == 0:
+                    if dx or dy:
+                        x.move(dx, dy)
+                        dx = dy = 0
+                    x.flush()
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except KeyboardInterrupt:
+        sys.exit(0)

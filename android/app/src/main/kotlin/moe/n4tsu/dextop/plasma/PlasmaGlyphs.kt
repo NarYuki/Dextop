@@ -22,7 +22,7 @@ internal enum class Glyph {
     LOCK, LOGOUT, SLEEP, NETWORK, VOLUME, VOLUME_MUTED, BATTERY, BATTERY_CHARGING, OVERVIEW,
     DESKTOP, SETTINGS, APPS, STAR, HISTORY, CHEVRON_RIGHT, CHEVRON_UP, CHEVRON_DOWN, PIN,
     NOTIFICATIONS, CLIPBOARD, SHOW_DESKTOP, WINDOW, BACK, COMPUTER, KEYBOARD, PLUS, CHECK,
-    WALLPAPER, TILE, BRIGHTNESS, INFO,
+    WALLPAPER, TILE, BRIGHTNESS, INFO, HOME, FULLSCREEN_EXIT, GAMEPAD,
 
     // Status and system controls. WIFI, CELLULAR, VOLUME_LEVEL, BATTERY and
     // BATTERY_CHARGING pick their variant from GlyphDrawable.level01.
@@ -209,6 +209,9 @@ internal object GlyphPainter {
         Glyph.THERMOMETER -> "thermostat"
         Glyph.OVERVIEW -> "overview_key"
         Glyph.DESKTOP, Glyph.SHOW_DESKTOP -> "desktop_windows"
+        Glyph.HOME -> "home"
+        Glyph.FULLSCREEN_EXIT -> "fullscreen_exit"
+        Glyph.GAMEPAD -> "sports_esports"
         Glyph.SETTINGS -> "settings"
         Glyph.APPS -> "apps"
         Glyph.STAR -> "star"

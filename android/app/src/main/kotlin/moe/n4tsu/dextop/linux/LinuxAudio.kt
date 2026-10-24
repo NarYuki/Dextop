@@ -37,14 +37,14 @@ internal class LinuxAudio(
 
     /** NAME=value entries for container processes while its sound server runs. */
     fun environment(containerId: String): List<String> =
-        if (running(containerId)) listOf("PULSE_SERVER=$PULSE_SERVER") else emptyList()
+        listOf("PULSE_SERVER=$PULSE_SERVER")
 
     /** Starts sound for [containerId] in the background, installing PulseAudio first when it is missing. */
-    fun ensure(containerId: String, family: LinuxPackageFamily?) {
+    fun ensure(containerId: String, family: LinuxPackageFamily?, install: Boolean = true) {
         if (running(containerId) || !installing.add(containerId)) return
         Thread({
             try {
-                if (!installed(containerId)) install(containerId, family ?: LinuxPackageFamily.APT)
+                if (!installed(containerId) && install) install(containerId, family ?: LinuxPackageFamily.APT)
                 if (installed(containerId)) start(containerId)
             } catch (error: Throwable) {
                 log(containerId, "Linux audio unavailable: ${error.message}")
@@ -96,7 +96,7 @@ internal class LinuxAudio(
     }
 
     fun stop(containerId: String) {
-        outputs.remove(containerId)?.process?.destroyForcibly()
+        outputs.remove(containerId)?.process?.let(LinuxRuntime::terminate)
     }
 
     fun stopAll() = outputs.keys.toList().forEach(::stop)

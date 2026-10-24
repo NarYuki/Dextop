@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:free_dextop/analytics_service.dart';
+import 'package:free_dextop/native_display_events.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -25,6 +26,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   var status = <String, dynamic>{};
   var loading = false;
   Timer? statusTimer;
+  StreamSubscription<MethodCall>? nativeEvents;
   var statusRequest = 0;
   var shizukuSetupConfirmed = false;
   var providerChoiceShown = false;
@@ -39,9 +41,9 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     super.initState();
     AppAnalytics.screen('initial_setup');
     WidgetsBinding.instance.addObserver(this);
-    channel.setMethodCallHandler((call) async {
+    nativeEvents = NativeDisplayEvents.stream.listen((call) {
       if (call.method == 'shizukuStatusChanged') {
-        await refreshStatus(clearPrevious: true);
+        unawaited(refreshStatus(clearPrevious: true));
       }
     });
     loadAccessibilityDisclosureConsent();
@@ -60,7 +62,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    channel.setMethodCallHandler(null);
+    nativeEvents?.cancel();
     statusTimer?.cancel();
     channel.invokeMethod<void>('hideOverlayDemo');
     super.dispose();
@@ -821,7 +823,12 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             info(l.model, '${status['model'] ?? l.loadingLabel}'),
             info(l.vendor, '${status['manufacturer'] ?? l.loadingLabel}'),
             info('Android', '${status['androidVersion'] ?? l.loadingLabel}'),
-            info(l.desktopUi, '${status['desktopMode'] ?? l.loadingLabel}'),
+            info(
+              l.desktopUi,
+              status['defaultWindowManager'] == 'dextop_plasma_v2'
+                  ? l.windowManagerPlasmaV2
+                  : '${status['desktopMode'] ?? l.loadingLabel}',
+            ),
             info(l.detectedResolution, detectedResolution()),
           ],
         ),

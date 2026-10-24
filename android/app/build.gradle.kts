@@ -50,10 +50,8 @@ android {
 
     defaultConfig {
         applicationId = "moe.n4tsu.dextop"
-        // Dextop relies on the modern display/windowing APIs introduced with
-        // Android 11. Keeping the declared floor aligned with that runtime
-        // contract avoids exposing an unsupported setup path on Android 10.
-        minSdk = 30
+        // Desktop windows and task descriptions require Android 13 or later.
+        minSdk = 33
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -186,6 +184,8 @@ dependencies {
     implementation("org.apache.commons:commons-compress:1.28.0")
     // 2.1.1 is the newest Kadb line compatible with this project's compileSdk 36.
     implementation("com.flyfishxu:kadb:2.1.1")
+    // Signs the generated home-screen launchers of Linux applications on the device.
+    implementation("com.android.tools.build:apksig:8.11.1")
     testImplementation(kotlin("test"))
 }
 
@@ -205,3 +205,16 @@ tasks.configureEach {
         }
     }
 }
+
+// The home-screen launcher template for Linux applications (see :linuxshortcut), shipped as an asset.
+val linuxShortcutAssets = layout.buildDirectory.dir("generated/linuxshortcut/assets")
+val copyLinuxShortcutTemplate by tasks.registering(Copy::class) {
+    dependsOn(":linuxshortcut:assembleRelease")
+    from(project(":linuxshortcut").layout.buildDirectory.dir("outputs/apk/release")) {
+        include("*.apk")
+        rename { "linux-shortcut-template.apk" }
+    }
+    into(linuxShortcutAssets)
+}
+android.sourceSets.getByName("main").assets.srcDir(linuxShortcutAssets)
+tasks.named("preBuild") { dependsOn(copyLinuxShortcutTemplate) }

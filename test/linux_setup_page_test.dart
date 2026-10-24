@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux_setup_page.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 
 const catalog = <Map<Object?, Object?>>[
   {'id': 'debian', 'name': 'Debian 13'},
@@ -60,7 +61,7 @@ void main() {
       expect(selected?['graphics'], false);
       expect(selected?['themes'], false);
       expect(selected?['ime'], 'mozc');
-    expect(selected?['apps'], isEmpty);
+      expect(selected?['apps'], isEmpty);
       expect(find.text('Setting up language and fonts'), findsOneWidget);
       progress.value = {'new': const LinuxSetupProgress(state: 'installed')};
       await tester.pumpAndSettle();
@@ -95,15 +96,15 @@ void main() {
     for (var i = 0; i < 4; i++) {
       await next(tester);
     }
-    final firefox = tester.widget<CheckboxListTile>(
-      find.widgetWithText(CheckboxListTile, 'Firefox'),
+    M3ECheckbox browser(String name) => tester.widget<M3ECheckbox>(
+      find.descendant(
+        of: find.widgetWithText(M3EListItem, name),
+        matching: find.byType(M3ECheckbox),
+      ),
     );
-    final chromium = tester.widget<CheckboxListTile>(
-      find.widgetWithText(CheckboxListTile, 'Chromium'),
-    );
-    final chrome = tester.widget<CheckboxListTile>(
-      find.widgetWithText(CheckboxListTile, 'Google Chrome'),
-    );
+    final firefox = browser('Firefox');
+    final chromium = browser('Chromium');
+    final chrome = browser('Google Chrome');
     expect(firefox.onChanged, isNull);
     expect(firefox.value, false);
     expect(chromium.onChanged, isNull);

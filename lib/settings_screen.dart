@@ -1213,10 +1213,13 @@ class AutoSettingsPage extends StatefulWidget {
 class _AutoSettingsPageState extends State<AutoSettingsPage> {
   var loading = true;
   var matchPhoneOrientation = true;
+  var autoShell = true;
   var hiddenAutoDisplay = false;
   var scrcpyStreaming = false;
   var correctFullscreenOverlap = false;
   var correctAutoSplit = false;
+  var deck30Fps = false;
+  var deckVsync = true;
 
   @override
   void initState() {
@@ -1246,6 +1249,10 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
     setState(() {
       matchPhoneOrientation =
           preferences.getBool('android_auto_match_phone_orientation') ?? true;
+      autoShell =
+          (preferences.getString('android_auto_shell') ?? 'dextop') == 'dextop';
+      deck30Fps = preferences.getBool('android_auto_deck_30fps') ?? false;
+      deckVsync = preferences.getBool('android_auto_deck_vsync') ?? true;
       hiddenAutoDisplay = savedHiddenDisplay;
       scrcpyStreaming = savedDecoratedDisplay;
       correctFullscreenOverlap =
@@ -1281,7 +1288,84 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
+        _settingsSection(japanese ? 'Autoのホーム画面' : 'Auto home screen', [
+          RadioGroup<bool>(
+            groupValue: autoShell,
+            onChanged: (value) async {
+              if (loading || value == null) return;
+              final preferences = await SharedPreferences.getInstance();
+              await preferences.setString(
+                'android_auto_shell',
+                value ? 'dextop' : 'android',
+              );
+              if (mounted) setState(() => autoShell = value);
+            },
+            child: Column(
+              children: [
+                RadioListTile<bool>(
+                  value: false,
+                  enabled: !loading,
+                  title: const Text('Android Desktop'),
+                  subtitle: Text(
+                    japanese
+                        ? 'Androidのデスクトップを表示します。'
+                        : 'Show the Android desktop.',
+                  ),
+                ),
+                const Divider(height: 1),
+                RadioListTile<bool>(
+                  value: true,
+                  enabled: !loading,
+                  title: const Text('Dextop Auto'),
+                  subtitle: Text(
+                    japanese
+                        ? '車向けホームと大きな操作ボタンを使う試作版。Autoを再接続すると反映されます。'
+                        : 'Prototype car home with large controls. Reconnect Auto to apply.',
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ]),
         _settingsSection(l.autoSettingsOptions, [
+          SwitchListTile(
+            secondary: const Icon(Icons.speed),
+            title: Text(
+              japanese ? 'Deck Modeを30fpsに制限' : 'Limit Deck Mode to 30 fps',
+            ),
+            subtitle: Text(
+              japanese
+                  ? '30fpsの描画制限と低遅延提出を適用します。入力頻度は制限しません。Deck Modeを開き直すと反映されます。'
+                  : 'Apply 30 fps pacing and low-latency submission. Input remains unrestricted. Reopen Deck Mode to apply.',
+            ),
+            value: deck30Fps,
+            onChanged: loading
+                ? null
+                : (value) async {
+                    final preferences = await SharedPreferences.getInstance();
+                    await preferences.setBool('android_auto_deck_30fps', value);
+                    if (mounted) setState(() => deck30Fps = value);
+                  },
+          ),
+          const Divider(height: 1),
+          SwitchListTile(
+            secondary: const Icon(Icons.sync),
+            title: const Text('Deck Mode VSync'),
+            subtitle: Text(
+              japanese
+                  ? 'オフにするとDeckの描画でVSync待ちを省きます。Autoの映像転送周期は変更しません。Deck Modeを開き直すと反映されます。'
+                  : 'Disable VSync waits for Deck rendering. Auto video cadence is unchanged. Reopen Deck Mode to apply.',
+            ),
+            value: deckVsync,
+            onChanged: loading
+                ? null
+                : (value) async {
+                    final preferences = await SharedPreferences.getInstance();
+                    await preferences.setBool('android_auto_deck_vsync', value);
+                    if (mounted) setState(() => deckVsync = value);
+                  },
+          ),
+          const Divider(height: 1),
           SwitchListTile(
             secondary: const Icon(Icons.vertical_split_outlined),
             title: Text(

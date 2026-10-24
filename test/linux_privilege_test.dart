@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -47,7 +48,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.textContaining('built-in access service'), findsOneWidget);
       expect(
-        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged,
+        tester.widget<M3ESwitch>(find.byType(M3ESwitch)).onChanged,
         isNull,
       );
       await tester.tap(find.text('Set up Dextop access'));
@@ -55,7 +56,7 @@ void main() {
       expect(openedSetup, isTrue);
       expect(find.textContaining('built-in access service'), findsNothing);
       expect(
-        tester.widget<SwitchListTile>(find.byType(SwitchListTile)).onChanged,
+        tester.widget<M3ESwitch>(find.byType(M3ESwitch)).onChanged,
         isNotNull,
       );
     },
@@ -63,7 +64,10 @@ void main() {
   testWidgets(
     'runtime failure survives refresh and recovery targets only its container',
     (tester) async {
-      SharedPreferences.setMockInitialValues({'linux_enabled': true});
+      SharedPreferences.setMockInitialValues({
+        'linux_enabled': true,
+        'linux_tab': 1,
+      });
       final calls = <MethodCall>[];
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (call) async {
@@ -105,23 +109,37 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.text('Xvfb exited (exit 1)'), findsOneWidget);
-      await tester.tap(find.byType(PopupMenuButton<String>));
+      expect(
+        find.text('Xvfb exited (exit 1)', findRichText: true),
+        findsOneWidget,
+      );
+      await tester.tap(
+        find.widgetWithIcon(M3EIconButton, M3EIcons.more_vert_rounded),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(find.text('My Linux').last, const Offset(0, -450));
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(find.text('Show log'));
       await tester.pumpAndSettle();
       await tester.tap(find.text('Show log'));
       await tester.pumpAndSettle();
       expect(
-        find.text('SingletonSocket: Permission denied (13)'),
+        find.text(
+          'SingletonSocket: Permission denied (13)',
+          findRichText: true,
+        ),
         findsOneWidget,
       );
-      await tester.tap(find.text('Close'));
+      await tester.tap(find.text('OK'));
       await tester.pumpAndSettle();
-      await tester.tap(find.byType(PopupMenuButton<String>));
+      await tester.tap(
+        find.widgetWithIcon(M3EIconButton, M3EIcons.more_vert_rounded),
+      );
       await tester.pumpAndSettle();
       await tester.tap(find.text('Force stop PRoot'));
       await tester.pumpAndSettle();
       expect(calls.where((call) => call.method == 'resetSession'), isEmpty);
-      await tester.tap(find.widgetWithText(FilledButton, 'Force stop PRoot'));
+      await tester.tap(find.widgetWithText(M3EButton, 'Force stop PRoot'));
       await tester.pumpAndSettle();
       expect(
         calls.lastWhere((call) => call.method == 'resetSession').arguments,

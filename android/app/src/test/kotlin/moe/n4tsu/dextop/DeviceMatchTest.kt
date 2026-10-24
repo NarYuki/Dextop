@@ -6,6 +6,35 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DeviceMatchTest {
+    private val xiaomiAurora = DeviceIdentity(
+        "Xiaomi", "Xiaomi", "24030PN60G", "aurora", "aurora_global", "Xiaomi/aurora_global/aurora:16/build", 36,
+    )
+
+    @Test fun everyXiaomiDeviceUsesTheHyperosProfileAndStartsOnTheDextopWindowManager() {
+        for (identity in listOf(
+            xiaomiAurora,
+            xiaomiAurora.copy(model = "other", device = "other"),
+            xiaomiAurora.copy(sdk = 33), xiaomiAurora.copy(sdk = 37),
+            xiaomiAurora.copy(manufacturer = "Redmi", brand = "Redmi"),
+            xiaomiAurora.copy(manufacturer = "POCO", brand = "POCO"),
+        )) {
+            val profile = DesktopEnvironmentRegistry.resolve(identity)
+            assertEquals("xiaomi_hyperos", profile.id)
+            assertTrue(profile.directPlasmaDisplay)
+            assertTrue(profile.untrustedMirrorDisplay)
+            assertTrue(profile.fullscreenApplicationDisplays)
+            assertTrue(profile.privateApplicationDisplays)
+            assertTrue(profile.passivePlasmaShellFocus)
+            assertEquals("dextop_plasma_v2", profile.defaultWindowManager)
+        }
+    }
+
+    @Test fun xperiaStartsOnTheDextopWindowManagerAndOthersKeepTheSystemOne() {
+        val xperia = DeviceIdentity("Sony", "Sony", "A401SO", "A401SO", "A401SO", "Sony/A401SO/build", 36)
+        assertEquals("dextop_plasma_v2", DesktopEnvironmentRegistry.resolve(xperia).defaultWindowManager)
+        assertEquals("system", DesktopEnvironmentRegistry.resolve(pixel).defaultWindowManager)
+    }
+
     private val pixel = DeviceIdentity("Google", "google", "Pixel 9", "tokay", "tokay", "google/tokay/build", 35)
 
     @Test fun normalizesAndMatchesAllSpecifiedFields() {

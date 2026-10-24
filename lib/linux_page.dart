@@ -1,18 +1,24 @@
-import 'linux_settings_page.dart';
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
-import 'package:free_dextop/penguin_icon.dart';
+import 'package:free_dextop/linux/linux_apps.dart';
+import 'package:free_dextop/linux/linux_expressive.dart';
+import 'package:free_dextop/linux/linux_store_page.dart';
+import 'package:free_dextop/linux/linux_widgets.dart';
+import 'package:free_dextop/linux_settings_page.dart';
 import 'package:free_dextop/linux_setup_page.dart';
+import 'package:free_dextop/penguin_icon.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Linux destination: enable the feature and manage containers.
+/// Linux destination: the containers' applications, the containers themselves,
+/// and the Store.
 ///
 /// Containers live in the shell user's /data/local/tmp and are managed by a
 /// Shizuku/Stellar UserService over the 'app.freedextop/linux' channel. The
-/// feature is available only while Plasma v2 is the selected window manager.
+/// apps open in Plasma v2 when it runs, otherwise as Android windows.
 class LinuxPage extends StatefulWidget {
   const LinuxPage({
     super.key,
@@ -72,6 +78,7 @@ class _Progress {
 class _LinuxPageState extends State<LinuxPage> {
   static const _channel = MethodChannel('app.freedextop/linux');
   static const _enabledKey = 'linux_enabled';
+  static const _tabKey = 'linux_tab';
 
   Timer? _runtimePoll;
   bool _refreshing = false;
@@ -79,21 +86,44 @@ class _LinuxPageState extends State<LinuxPage> {
   bool enabled = false;
   Map<Object?, Object?> status = const {};
   List<_LinuxContainer> containers = const [];
+  String defaultContainer = '';
   List<Map<Object?, Object?>> catalog = const [];
   final Map<String, _Progress> progress = {};
   final Map<String, List<String>> logs = {};
   String? error;
   final setupProgress = ValueNotifier<Map<String, LinuxSetupProgress>>({});
 
+  /// 0: applications, 1: containers.
+  int tab = 0;
+  final apps = LinuxAppList();
+  String _appsSignature = '';
+
   bool get plasmaV2 => status['plasmaV2'] == true;
   bool get privilege => status['privilege'] == true;
   bool get supportedDevice => status['supportedDevice'] == true;
-  bool get usable => plasmaV2 && privilege && supportedDevice;
+
+  /// Plasma v2 is optional: without it, Linux apps open as Android windows.
+  bool get usable => privilege && supportedDevice;
+
+  List<_LinuxContainer> get installedContainers =>
+      containers.where((c) => c.state == 'installed').toList();
+
+  /// The containers whose applications are listed: the default one, or all.
+  List<_LinuxContainer> get appContainers {
+    final installed = installedContainers;
+    final preferred = installed.where((c) => c.id == defaultContainer).toList();
+    return preferred.isNotEmpty ? preferred : installed;
+  }
+
+  String t(String ja, String en) => linuxText(context, ja, en);
 
   @override
   void initState() {
     super.initState();
     _channel.setMethodCallHandler(_onEvent);
+    SharedPreferences.getInstance().then((p) {
+      if (mounted) setState(() => tab = p.getInt(_tabKey) ?? 0);
+    });
     _load();
     _runtimePoll = Timer.periodic(
       const Duration(seconds: 2),
@@ -106,6 +136,7 @@ class _LinuxPageState extends State<LinuxPage> {
     _channel.setMethodCallHandler(null);
     _runtimePoll?.cancel();
     setupProgress.dispose();
+    apps.dispose();
     super.dispose();
   }
 
@@ -179,6 +210,9 @@ class _LinuxPageState extends State<LinuxPage> {
     _refreshing = true;
     try {
       final list = await _channel.invokeListMethod<Object?>('list') ?? const [];
+      final settings =
+          await _channel.invokeMapMethod<Object?, Object?>('settings') ??
+          const {};
       final distros = catalog.isEmpty
           ? (await _channel.invokeListMethod<Object?>('catalog') ?? const [])
                 .cast<Map<Object?, Object?>>()
@@ -190,9 +224,16 @@ class _LinuxPageState extends State<LinuxPage> {
             .map(_LinuxContainer.new)
             .toList();
         catalog = distros;
+        defaultContainer = settings['defaultContainer'] as String? ?? '';
         error = null;
       });
       _publishSetupProgress();
+      // The application list follows the installed containers.
+      final signature = appContainers.map((c) => c.id).join(',');
+      if (signature != _appsSignature) {
+        _appsSignature = signature;
+        unawaited(_loadApps());
+      }
     } on PlatformException catch (e) {
       if (mounted) setState(() => error = e.message);
     } finally {
@@ -200,11 +241,25 @@ class _LinuxPageState extends State<LinuxPage> {
     }
   }
 
+  Future<void> _loadApps() =>
+      apps.loadAll([for (final c in appContainers) c.id]);
+
+  Future<void> _reload() async {
+    await _load();
+    await _loadApps();
+  }
+
   Future<void> _setEnabled(bool value) async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool(_enabledKey, value);
     setState(() => enabled = value);
     if (value) await _load();
+  }
+
+  Future<void> _setTab(int value) async {
+    setState(() => tab = value);
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setInt(_tabKey, value);
   }
 
   String _distroName(String id) =>
@@ -279,8 +334,8 @@ class _LinuxPageState extends State<LinuxPage> {
     if (catalog.isEmpty) await _refreshContainers();
     if (!mounted || catalog.isEmpty) return;
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => LinuxSetupPage(
+      linuxRoute(
+        LinuxSetupPage(
           catalog: catalog,
           containerId: container?.id,
           containerName: container?.name,
@@ -320,26 +375,45 @@ class _LinuxPageState extends State<LinuxPage> {
     await _refreshContainers();
   }
 
+  Future<bool> _confirm(
+    String title,
+    String message,
+    String action,
+    IconData icon,
+  ) async =>
+      await M3EDialog.show<bool>(
+        context,
+        dialog: Builder(
+          builder: (dialogContext) => M3EDialog(
+            title: title,
+            icon: Icon(icon),
+            content: Text(message),
+            actions: [
+              M3EButton.text(
+                onPressed: () => Navigator.pop(dialogContext, false),
+                child: Text(AppLocalizations.of(context).linuxCancel),
+              ),
+              M3EButton.filled(
+                onPressed: () => Navigator.pop(dialogContext, true),
+                child: Text(action),
+              ),
+            ],
+          ),
+        ),
+      ) ==
+      true;
+
   Future<void> _resetSession(_LinuxContainer container, bool force) async {
     final l = AppLocalizations.of(context);
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(force ? l.linuxForceStop : l.linuxSessionReset),
-        content: Text(l.linuxForceStopConfirm),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l.linuxCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(force ? l.linuxForceStop : l.linuxSessionReset),
-          ),
-        ],
-      ),
-    );
-    if (accepted != true) return;
+    final title = force ? l.linuxForceStop : l.linuxSessionReset;
+    if (!await _confirm(
+      title,
+      l.linuxForceStopConfirm,
+      title,
+      M3EIcons.restart_alt_rounded,
+    )) {
+      return;
+    }
     await _channel.invokeMethod('resetSession', {
       'id': container.id,
       'force': force,
@@ -349,24 +423,14 @@ class _LinuxPageState extends State<LinuxPage> {
 
   Future<void> _remove(_LinuxContainer container) async {
     final l = AppLocalizations.of(context);
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l.linuxDelete),
-        content: Text(l.linuxDeleteConfirm(container.name)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l.linuxCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l.linuxDelete),
-          ),
-        ],
-      ),
-    );
-    if (confirmed != true) return;
+    if (!await _confirm(
+      l.linuxDelete,
+      l.linuxDeleteConfirm(container.name),
+      l.linuxDelete,
+      M3EIcons.delete_forever_rounded,
+    )) {
+      return;
+    }
     await _channel.invokeMethod('remove', {'id': container.id});
     await _refreshContainers();
   }
@@ -376,21 +440,32 @@ class _LinuxPageState extends State<LinuxPage> {
     final command = TextEditingController(
       text: 'uname -a && cat /etc/os-release | head -2',
     );
-    final run = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(l.linuxRunCommand),
-        content: TextField(controller: command, autofocus: true, maxLines: 3),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(l.linuxCancel),
+    final run = await M3EDialog.show<bool>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) => M3EDialog(
+          title: l.linuxRunCommand,
+          icon: const Icon(M3EIcons.terminal_rounded),
+          content: SizedBox(
+            width: 520,
+            child: M3ETextField(
+              variant: M3ETextFieldVariant.outlined,
+              controller: command,
+              autofocus: true,
+              maxLines: 3,
+            ),
           ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(l.linuxRun),
-          ),
-        ],
+          actions: [
+            M3EButton.text(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(l.linuxCancel),
+            ),
+            M3EButton.filled(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(l.linuxRun),
+            ),
+          ],
+        ),
       ),
     );
     if (run != true || !mounted) return;
@@ -405,150 +480,110 @@ class _LinuxPageState extends State<LinuxPage> {
     } on PlatformException catch (e) {
       output = e.message ?? '$e';
     }
-    if (mounted) _showText(l.linuxRunCommand, output);
+    if (mounted) showStoreLog(context, l.linuxRunCommand, output);
   }
 
-  void _showText(String title, String text) {
-    final l = AppLocalizations.of(context);
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(title),
-        content: SizedBox(
-          width: 560,
-          child: SingleChildScrollView(
-            child: SelectableText(
-              text,
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
-            ),
-          ),
+  Future<void> _openStore() async {
+    final installed = installedContainers;
+    if (installed.isEmpty) {
+      M3ESnackbar.show(
+        context,
+        message: t('先にコンテナを作成してください', 'Create a container first'),
+      );
+      return;
+    }
+    final stores = [
+      for (final c in installed) StoreContainer(c.id, c.name, c.distro),
+    ];
+    final initial = stores.firstWhere(
+      (c) => c.id == defaultContainer,
+      orElse: () => stores.first,
+    );
+    await Navigator.of(context).push<void>(
+      linuxRoute(LinuxStorePage(containers: stores, initial: initial)),
+    );
+    await _loadApps();
+  }
+
+  Future<void> _openSettings([_LinuxContainer? container]) async {
+    await Navigator.of(context).push(
+      linuxRoute<void>(
+        LinuxSettingsPage(
+          containerId: container?.id,
+          containerName: container?.name,
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(l.close),
-          ),
-        ],
       ),
     );
+    await _refreshContainers();
   }
 
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     final theme = Theme.of(context);
-    if (loading) return const Center(child: CircularProgressIndicator());
+    if (loading) {
+      return const Center(
+        child: M3ELoadingIndicator(
+          variant: M3ELoadingIndicatorVariant.contained,
+        ),
+      );
+    }
+    final ready = enabled && usable;
     return Scaffold(
-      floatingActionButton: enabled && usable
-          ? FloatingActionButton.extended(
-              onPressed: _addContainer,
-              icon: const Icon(Icons.add_rounded),
-              label: Text(l.linuxAddContainer),
-            )
-          : null,
+      backgroundColor: theme.colorScheme.surface,
+      floatingActionButton: AnimatedSwitcher(
+        duration: const Duration(milliseconds: 220),
+        transitionBuilder: (child, animation) =>
+            ScaleTransition(scale: animation, child: child),
+        child: ready && tab == 1
+            ? M3EExtendedFab(
+                key: const ValueKey('add'),
+                label: l.linuxAddContainer,
+                icon: const Icon(M3EIcons.add_rounded),
+                onPressed: _addContainer,
+              )
+            : const SizedBox.shrink(key: ValueKey('none')),
+      ),
       body: SafeArea(
         bottom: false,
-        child: RefreshIndicator(
-          onRefresh: _load,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(16, 24, 16, 96),
-            children: [
-              Row(
-                children: [
-                  PenguinIcon(
-                    filled: true,
-                    size: 32,
-                    color: theme.colorScheme.primary,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Text(
-                      l.nativePlasmaCategoryLinux,
-                      style: theme.textTheme.headlineMedium,
-                    ),
-                  ),
-                  if (usable)
-                    IconButton(
-                      tooltip: l.linuxSettingsTitle,
-                      icon: const Icon(Icons.tune_rounded),
-                      onPressed: _openSettings,
-                    ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Text(l.linuxDescription, style: theme.textTheme.bodyMedium),
-              const SizedBox(height: 16),
-              if (!supportedDevice)
-                _notice(Icons.block_rounded, l.linuxUnsupportedDevice)
-              else if (!plasmaV2)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.space_dashboard_outlined),
-                    title: Text(l.linuxRequiresPlasma),
-                    trailing: FilledButton.tonal(
-                      onPressed: () async {
-                        await widget.onSwitchToPlasmaV2();
-                        await _load();
-                      },
-                      child: Text(l.linuxSwitchToPlasma),
-                    ),
-                  ),
-                )
-              else if (!privilege)
-                Card(
+        child: M3ERefreshIndicator.contained(
+          elevation: 0,
+          onRefresh: _reload,
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverToBoxAdapter(child: _header(l, theme)),
+              if (!ready) ..._setupNotices(l, theme),
+              if (error != null)
+                SliverToBoxAdapter(
+                  child: _notice(M3EIcons.error_outline_rounded, error!),
+                ),
+              if (ready) ...[
+                SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(l.linuxRequiresPrivilege),
-                        if (widget.onSetupPrivilege != null) ...[
-                          const SizedBox(height: 12),
-                          FilledButton.tonalIcon(
-                            onPressed: () async {
-                              await widget.onSetupPrivilege!();
-                              if (mounted) await _load();
-                            },
-                            icon: const Icon(Icons.key_rounded),
-                            label: Text(l.setupEmbeddedTitle),
-                          ),
-                        ],
+                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                    child: M3ESegmentedButton<int>(
+                      segments: [
+                        M3ESegment(
+                          value: 0,
+                          label: t('アプリ', 'Apps'),
+                          icon: const Icon(M3EIcons.apps_rounded),
+                        ),
+                        M3ESegment(
+                          value: 1,
+                          label: t('コンテナ', 'Containers'),
+                          icon: const Icon(M3EIcons.dns_rounded),
+                        ),
                       ],
+                      selected: {tab},
+                      onSelectionChanged: (value) => _setTab(value.first),
                     ),
                   ),
                 ),
-              Card(
-                child: SwitchListTile(
-                  secondary: const PenguinIcon(),
-                  title: Text(l.linuxEnable),
-                  subtitle: Text(l.linuxEnableDescription),
-                  value: enabled,
-                  onChanged: usable ? _setEnabled : null,
-                ),
-              ),
-              if (enabled && usable)
-                Card(
-                  child: ListTile(
-                    leading: const Icon(Icons.tune_rounded),
-                    title: Text(l.linuxSettingsTitle),
-                    subtitle: Text(l.linuxSettingsEntry),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: _openSettings,
-                  ),
-                ),
-              if (error != null) _notice(Icons.error_outline_rounded, error!),
-              if (enabled && usable) ...[
-                const SizedBox(height: 8),
-                if (containers.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Text(
-                      l.linuxNoContainers,
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                for (final container in containers)
-                  _containerCard(l, theme, container),
+                if (tab == 0)
+                  ..._appsSlivers(theme)
+                else
+                  ..._containerSlivers(l, theme),
               ],
             ],
           ),
@@ -557,13 +592,251 @@ class _LinuxPageState extends State<LinuxPage> {
     );
   }
 
-  Future<void> _openSettings() => Navigator.of(
-    context,
-  ).push(MaterialPageRoute<void>(builder: (_) => const LinuxSettingsPage()));
-
-  Widget _notice(IconData icon, String text) => Card(
-    child: ListTile(leading: Icon(icon), title: Text(text)),
+  Widget _header(AppLocalizations l, ThemeData theme) => Padding(
+    padding: const EdgeInsets.fromLTRB(20, 20, 12, 12),
+    child: Row(
+      children: [
+        PenguinIcon(filled: true, size: 34, color: theme.colorScheme.primary),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Text(
+            l.nativePlasmaCategoryLinux,
+            style: theme.textTheme.headlineMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+        if (enabled && usable) ...[
+          M3EButton.tonal(
+            icon: const Icon(M3EIcons.storefront_rounded),
+            onPressed: _openStore,
+            label: const Text('Store'),
+          ),
+          const SizedBox(width: 4),
+          M3EIconButton(
+            variant: M3EIconButtonVariant.standard,
+            icon: const Icon(M3EIcons.tune_rounded),
+            tooltip: l.linuxSettingsTitle,
+            onPressed: () => _openSettings(),
+          ),
+        ],
+      ],
+    ),
   );
+
+  List<Widget> _setupNotices(AppLocalizations l, ThemeData theme) => [
+    SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
+        child: Text(l.linuxDescription, style: theme.textTheme.bodyMedium),
+      ),
+    ),
+    if (!supportedDevice)
+      SliverToBoxAdapter(
+        child: _notice(M3EIcons.block_rounded, l.linuxUnsupportedDevice),
+      )
+    else if (!privilege)
+      SliverToBoxAdapter(
+        child: _card(
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(l.linuxRequiresPrivilege),
+                if (widget.onSetupPrivilege != null) ...[
+                  const SizedBox(height: 12),
+                  M3EButton.tonal(
+                    icon: const Icon(M3EIcons.key_rounded),
+                    onPressed: () async {
+                      await widget.onSetupPrivilege!();
+                      if (mounted) await _load();
+                    },
+                    label: Text(l.setupEmbeddedTitle),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ),
+      ),
+    SliverToBoxAdapter(
+      child: _card(
+        M3EListItem(
+          headline: l.linuxEnable,
+          supportingText: l.linuxEnableDescription,
+          leading: const PenguinIcon(),
+          trailing: M3ESwitch(
+            value: enabled,
+            onChanged: usable ? _setEnabled : null,
+          ),
+        ),
+      ),
+    ),
+  ];
+
+  /// One list item on its own, as a single-row expressive list.
+  Widget _card(Widget child) => Padding(
+    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    child: child is M3EListItem
+        ? LinuxGroup(children: [child])
+        : M3ECard(
+            variant: M3ECardVariant.filled,
+            padding: EdgeInsets.zero,
+            child: child,
+          ),
+  );
+
+  Widget _notice(IconData icon, String text) =>
+      _card(M3EListItem(headline: text, leading: Icon(icon)));
+
+  // region applications
+
+  List<Widget> _appsSlivers(ThemeData theme) {
+    if (installedContainers.isEmpty) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: _emptyState(
+            theme,
+            M3EIcons.dns_rounded,
+            t('まだコンテナがありません', 'No containers yet'),
+            t(
+              'コンテナを作成すると、ここにLinuxアプリが並びます。',
+              'Create a container and its Linux apps appear here.',
+            ),
+            M3EButton.filled(
+              icon: const Icon(M3EIcons.add_rounded),
+              onPressed: () {
+                _setTab(1);
+                _addContainer();
+              },
+              label: Text(t('コンテナを作成', 'Create a container')),
+            ),
+          ),
+        ),
+      ];
+    }
+    return [
+      SliverToBoxAdapter(
+        child: ListenableBuilder(
+          listenable: apps,
+          builder: (context, _) => AnimatedSwitcher(
+            duration: const Duration(milliseconds: 240),
+            child: apps.loading && apps.apps.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.all(48),
+                    child: Center(child: M3ELoadingIndicator()),
+                  )
+                : apps.apps.isEmpty
+                ? _emptyState(
+                    theme,
+                    M3EIcons.storefront_rounded,
+                    t('アプリがありません', 'No apps'),
+                    t(
+                      'Storeからアプリをインストールしましょう。',
+                      'Install apps from the Store.',
+                    ),
+                    M3EButton.filled(
+                      icon: const Icon(M3EIcons.storefront_rounded),
+                      onPressed: _openStore,
+                      label: Text(t('Storeを開く', 'Open the Store')),
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ),
+      ),
+      LinuxAppsGrid(
+        list: apps,
+        onReload: _loadApps,
+        containerNames: {for (final c in appContainers) c.id: c.name},
+      ),
+    ];
+  }
+
+  Widget _emptyState(
+    ThemeData theme,
+    IconData icon,
+    String title,
+    String text,
+    Widget action,
+  ) => Padding(
+    padding: const EdgeInsets.fromLTRB(32, 48, 32, 48),
+    child: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        M3EShapeContainer(
+          kind: M3EShapeKind.cookie9Sided,
+          width: 112,
+          height: 112,
+          color: theme.colorScheme.primaryContainer,
+          child: Icon(
+            icon,
+            size: 48,
+            color: theme.colorScheme.onPrimaryContainer,
+          ),
+        ),
+        const SizedBox(height: 20),
+        Text(
+          title,
+          style: theme.textTheme.titleLarge,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          text,
+          style: theme.textTheme.bodyMedium,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 20),
+        action,
+      ],
+    ),
+  );
+  // endregion
+
+  // region containers
+
+  List<Widget> _containerSlivers(AppLocalizations l, ThemeData theme) {
+    if (containers.isEmpty) {
+      return [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: _emptyState(
+            theme,
+            M3EIcons.dns_rounded,
+            l.linuxNoContainers,
+            '',
+            M3EButton.filled(
+              icon: const Icon(M3EIcons.add_rounded),
+              onPressed: _addContainer,
+              label: Text(l.linuxAddContainer),
+            ),
+          ),
+        ),
+      ];
+    }
+    return [
+      SliverPadding(
+        padding: const EdgeInsets.only(bottom: 120),
+        sliver: SliverList.list(
+          children: [
+            for (final container in containers)
+              _containerCard(l, theme, container),
+            _card(
+              M3EListItem(
+                headline: l.linuxEnable,
+                supportingText: l.linuxEnableDescription,
+                leading: const PenguinIcon(),
+                trailing: M3ESwitch(value: enabled, onChanged: _setEnabled),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ];
+  }
 
   Widget _containerCard(
     AppLocalizations l,
@@ -573,6 +846,7 @@ class _LinuxPageState extends State<LinuxPage> {
     final current = progress[container.id] ?? container.progress;
     final installing =
         container.state == 'installing' || container.state == 'updating';
+    final running = container.runtimeState == 'running';
     final subtitle = [
       _distroName(container.distro),
       switch (container.state) {
@@ -590,168 +864,214 @@ class _LinuxPageState extends State<LinuxPage> {
       if (container.bytes >= 0 && !installing) _size(container.bytes),
     ].join(' · ');
     final detail = installing ? _phaseDetail(current) : null;
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            leading: const PenguinIcon(),
-            title: Text(container.name),
-            subtitle: Text(subtitle),
-            trailing: PopupMenuButton<String>(
-              onSelected: (action) async {
-                try {
-                  switch (action) {
-                    case 'cancel':
-                      await _channel.invokeMethod('cancel', {
-                        'id': container.id,
-                      });
-                    case 'setup':
-                      await _openSetup(container);
-                    case 'repair':
-                      await _channel.invokeMethod('repair', {
-                        'id': container.id,
-                      });
-                    case 'reset':
-                      await _resetSession(container, false);
-                    case 'force':
-                      await _resetSession(container, true);
-                    case 'log':
-                      final output = await _channel.invokeMethod<String>(
-                        'runtimeLogs',
-                        {'id': container.id},
-                      );
-                      if (mounted) {
-                        _showText(
-                          l.linuxShowLog,
-                          output ?? (logs[container.id] ?? const []).join('\n'),
-                        );
-                      }
-                    case 'run':
-                      await _runCommand(container);
-                    case 'desktop':
-                      final opened = await _channel.invokeMethod<bool>(
-                        'openDesktop',
-                        {'id': container.id, 'name': container.name},
-                      );
-                      if (opened != true && mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(l.linuxStartPlasmaFirst)),
-                        );
-                      }
-                    case 'delete':
-                      await _remove(container);
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    _showText(
-                      l.linuxStateFailed,
-                      e is PlatformException
-                          ? e.message ?? e.toString()
-                          : e.toString(),
-                    );
-                  }
-                }
-              },
-              itemBuilder: (_) => [
-                if (installing)
-                  PopupMenuItem(value: 'cancel', child: Text(l.linuxCancel)),
-                if (container.state == 'installed')
-                  PopupMenuItem(
-                    value: 'desktop',
-                    child: Text(l.linuxOpenDesktop),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: M3ECard(
+        variant: M3ECardVariant.filled,
+        padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+        onPressed: () => _containerMenu(l, container),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                PenguinIcon(
+                  filled: running,
+                  size: 40,
+                  color: running
+                      ? theme.colorScheme.primary
+                      : theme.colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              container.name,
+                              style: theme.textTheme.titleMedium,
+                            ),
+                          ),
+                          if (container.id == defaultContainer) ...[
+                            const SizedBox(width: 8),
+                            M3EChip(
+                              label: l.linuxDefaultBadge,
+                              type: M3EChipType.assist,
+                            ),
+                          ],
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(subtitle, style: theme.textTheme.bodySmall),
+                    ],
                   ),
-                if (container.state == 'installed')
-                  PopupMenuItem(value: 'run', child: Text(l.linuxRunCommand)),
-                if (!installing) ...[
-                  PopupMenuItem(
-                    value: 'reset',
-                    child: Text(l.linuxSessionReset),
-                  ),
-                  PopupMenuItem(value: 'force', child: Text(l.linuxForceStop)),
-                ],
-                if (!installing)
-                  PopupMenuItem(
-                    value: 'setup',
-                    child: Text(l.linuxSetupCustomize),
-                  ),
-                if (!installing)
-                  PopupMenuItem(value: 'repair', child: Text(l.linuxRepair)),
-                PopupMenuItem(value: 'log', child: Text(l.linuxShowLog)),
-                PopupMenuItem(value: 'delete', child: Text(l.linuxDelete)),
+                ),
+                M3EIconButton(
+                  variant: M3EIconButtonVariant.standard,
+                  icon: const Icon(M3EIcons.more_vert_rounded),
+                  onPressed: () => _containerMenu(l, container),
+                ),
               ],
             ),
-          ),
-          if (installing)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: TextButton.icon(
-                  onPressed: () => _openSetup(container),
-                  icon: const Icon(Icons.downloading_rounded),
-                  label: Text(l.linuxSetupLog),
-                ),
+            if (installing) ...[
+              const SizedBox(height: 16),
+              M3EProgressIndicator.linearWavy(
+                strokeWidth: 3,
+                trackStrokeWidth: 3,
+                value: current != null && current.percent >= 0
+                    ? current.percent / 100
+                    : null,
               ),
-            ),
-          if (!installing)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: TextButton.icon(
-                  onPressed: () => _openSetup(container),
-                  icon: const Icon(Icons.tune_rounded),
-                  label: Text(l.linuxSetupCustomize),
-                ),
-              ),
-            ),
-          if (installing)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  LinearProgressIndicator(
-                    value: current != null && current.percent >= 0
-                        ? current.percent / 100
-                        : null,
+              if (detail != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Text(
+                    detail,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.bodySmall,
                   ),
-                  if (detail != null)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 6),
-                      child: Text(
-                        detail,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodySmall,
-                      ),
-                    ),
-                ],
+                ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: M3EButton.text(
+                  onPressed: () => _openSetup(container),
+                  child: Text(l.linuxSetupLog),
+                ),
               ),
-            ),
-          if (!installing && container.runtimeState == 'starting')
-            const Padding(
-              padding: EdgeInsets.all(16),
-              child: LinearProgressIndicator(),
-            ),
-          if (!installing && container.runtimeError != null)
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: SelectableText(
-                container.runtimeError!,
-                style: TextStyle(color: theme.colorScheme.error),
+            ],
+            if (!installing && container.runtimeState == 'starting') ...[
+              const SizedBox(height: 16),
+              const M3EProgressIndicator.linearWavy(
+                strokeWidth: 3,
+                trackStrokeWidth: 3,
               ),
-            ),
-          if (!installing && container.error != null)
-            Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-              child: Text(
-                container.error!,
-                style: TextStyle(color: theme.colorScheme.error),
+            ],
+            if (!installing && container.runtimeError != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: SelectableText(
+                  container.runtimeError!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
               ),
-            ),
-        ],
+            if (!installing && container.error != null)
+              Padding(
+                padding: const EdgeInsets.only(top: 12),
+                child: Text(
+                  container.error!,
+                  style: TextStyle(color: theme.colorScheme.error),
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
+
+  Future<void> _containerMenu(
+    AppLocalizations l,
+    _LinuxContainer container,
+  ) async {
+    final installing =
+        container.state == 'installing' || container.state == 'updating';
+    final installed = container.state == 'installed';
+    final action = await M3EBottomSheet.show<String>(
+      context,
+      builder: (sheet) {
+        final items = <(String, String, IconData)>[
+          if (installing) ('cancel', l.linuxCancel, M3EIcons.close_rounded),
+          if (installed)
+            ('desktop', l.linuxOpenDesktop, M3EIcons.desktop_windows_rounded),
+          if (installed) ('run', l.linuxRunCommand, M3EIcons.terminal_rounded),
+          if (!installing)
+            ('reset', l.linuxSessionReset, M3EIcons.restart_alt_rounded),
+          if (!installing)
+            ('force', l.linuxForceStop, M3EIcons.stop_circle_rounded),
+          if (installed)
+            ('settings', l.linuxContainerSettings, M3EIcons.tune_rounded),
+          if (!installing)
+            ('setup', l.linuxSetupCustomize, M3EIcons.settings_suggest_rounded),
+          if (!installing)
+            ('repair', l.linuxRepair, M3EIcons.home_repair_service_rounded),
+          ('log', l.linuxShowLog, M3EIcons.description_rounded),
+          ('delete', l.linuxDelete, M3EIcons.delete_forever_rounded),
+        ];
+        return SingleChildScrollView(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                child: Text(
+                  container.name,
+                  style: Theme.of(sheet).textTheme.titleLarge,
+                ),
+              ),
+              for (final item in items)
+                LinuxMenuRow(
+                  title: item.$2,
+                  icon: item.$3,
+                  onTap: () => Navigator.pop(sheet, item.$1),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+    if (action == null || !mounted) return;
+    try {
+      switch (action) {
+        case 'cancel':
+          await _channel.invokeMethod('cancel', {'id': container.id});
+        case 'setup':
+          await _openSetup(container);
+        case 'settings':
+          await _openSettings(container);
+        case 'repair':
+          await _channel.invokeMethod('repair', {'id': container.id});
+        case 'reset':
+          await _resetSession(container, false);
+        case 'force':
+          await _resetSession(container, true);
+        case 'log':
+          final output = await _channel.invokeMethod<String>('runtimeLogs', {
+            'id': container.id,
+          });
+          if (mounted) {
+            showStoreLog(
+              context,
+              l.linuxShowLog,
+              output ?? (logs[container.id] ?? const []).join('\n'),
+            );
+          }
+        case 'run':
+          await _runCommand(container);
+        case 'desktop':
+          final opened = await _channel.invokeMethod<bool>('openDesktop', {
+            'id': container.id,
+            'name': container.name,
+          });
+          if (opened != true && mounted) {
+            M3ESnackbar.show(context, message: l.linuxStartPlasmaFirst);
+          }
+        case 'delete':
+          await _remove(container);
+      }
+    } catch (e) {
+      if (mounted) {
+        showStoreLog(
+          context,
+          l.linuxStateFailed,
+          e is PlatformException ? e.message ?? e.toString() : e.toString(),
+        );
+      }
+    }
+  }
+  // endregion
 }
