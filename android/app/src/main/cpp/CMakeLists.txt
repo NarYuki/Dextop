@@ -27,7 +27,7 @@ if(ANDROID_ABI STREQUAL "arm64-v8a")
     add_subdirectory(zstd)
 
     # Framebuffer-to-Surface copies for Linux windows (loaded by the shell-side service).
-    add_library(dextop_linux SHARED linux_bridge.cpp)
+    add_library(dextop_linux SHARED linux_bridge.cpp linux_pty.cpp)
     target_compile_features(dextop_linux PRIVATE cxx_std_20)
     target_compile_options(dextop_linux PRIVATE -O3)
     target_link_libraries(dextop_linux android log)

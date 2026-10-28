@@ -95,7 +95,7 @@ class _LinuxPageState extends State<LinuxPage> {
 
   /// 0: applications, 1: containers.
   int tab = 0;
-  final apps = LinuxAppList();
+  final apps = LinuxAppList()..track();
   String _appsSignature = '';
 
   bool get plasmaV2 => status['plasmaV2'] == true;
@@ -435,60 +435,29 @@ class _LinuxPageState extends State<LinuxPage> {
     await _refreshContainers();
   }
 
-  Future<void> _runCommand(_LinuxContainer container) async {
-    final l = AppLocalizations.of(context);
-    final command = TextEditingController(
-      text: 'uname -a && cat /etc/os-release | head -2',
-    );
-    final run = await M3EDialog.show<bool>(
-      context,
-      dialog: Builder(
-        builder: (dialogContext) => M3EDialog(
-          title: l.linuxRunCommand,
-          icon: const Icon(M3EIcons.terminal_rounded),
-          content: SizedBox(
-            width: 520,
-            child: M3ETextField(
-              variant: M3ETextFieldVariant.outlined,
-              controller: command,
-              autofocus: true,
-              maxLines: 3,
-            ),
-          ),
-          actions: [
-            M3EButton.text(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(l.linuxCancel),
-            ),
-            M3EButton.filled(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(l.linuxRun),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (run != true || !mounted) return;
-    String output;
+  /// Opens an interactive shell of [container] in its own window.
+  Future<void> _openTerminal(_LinuxContainer container) async {
     try {
-      final result = await _channel.invokeMapMethod<Object?, Object?>('run', {
+      await _channel.invokeMethod('openTerminal', {
         'id': container.id,
-        'command': command.text,
-        'timeout': 300,
+        'name': container.name,
       });
-      output = 'exit ${result?['exitCode']}\n${result?['output'] ?? ''}';
     } on PlatformException catch (e) {
-      output = e.message ?? '$e';
+      if (mounted) M3ESnackbar.show(context, message: e.message ?? '$e');
     }
-    if (mounted) showStoreLog(context, l.linuxRunCommand, output);
   }
 
   Future<void> _openStore() async {
-    final installed = installedContainers;
+    final installed = installedContainers
+        .where((c) => const ['debian', 'ubuntu'].contains(c.distro))
+        .toList();
     if (installed.isEmpty) {
       M3ESnackbar.show(
         context,
-        message: t('先にコンテナを作成してください', 'Create a container first'),
+        message: t(
+          'Store は Debian／Ubuntu のコンテナに対応しています',
+          'Store supports Debian and Ubuntu containers',
+        ),
       );
       return;
     }
@@ -529,6 +498,23 @@ class _LinuxPageState extends State<LinuxPage> {
       );
     }
     final ready = enabled && usable;
+    final wide = linuxWide(context);
+    final tabs = M3ESegmentedButton<int>(
+      segments: [
+        M3ESegment(
+          value: 0,
+          label: t('アプリ', 'Apps'),
+          icon: const Icon(M3EIcons.apps_rounded),
+        ),
+        M3ESegment(
+          value: 1,
+          label: t('コンテナ', 'Containers'),
+          icon: const Icon(M3EIcons.dns_rounded),
+        ),
+      ],
+      selected: {tab},
+      onSelectionChanged: (value) => _setTab(value.first),
+    );
     return Scaffold(
       backgroundColor: theme.colorScheme.surface,
       floatingActionButton: AnimatedSwitcher(
@@ -546,40 +532,32 @@ class _LinuxPageState extends State<LinuxPage> {
       ),
       body: SafeArea(
         bottom: false,
+        // A desktop window has no status bar over it, only its own title bar.
+        top: !wide,
         child: M3ERefreshIndicator.contained(
           elevation: 0,
           onRefresh: _reload,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              SliverToBoxAdapter(child: _header(l, theme)),
+              SliverToBoxAdapter(
+                child: wide
+                    ? _wideHeader(l, theme, ready ? tabs : null)
+                    : _header(l, theme),
+              ),
               if (!ready) ..._setupNotices(l, theme),
               if (error != null)
                 SliverToBoxAdapter(
                   child: _notice(M3EIcons.error_outline_rounded, error!),
                 ),
               if (ready) ...[
-                SliverToBoxAdapter(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                    child: M3ESegmentedButton<int>(
-                      segments: [
-                        M3ESegment(
-                          value: 0,
-                          label: t('アプリ', 'Apps'),
-                          icon: const Icon(M3EIcons.apps_rounded),
-                        ),
-                        M3ESegment(
-                          value: 1,
-                          label: t('コンテナ', 'Containers'),
-                          icon: const Icon(M3EIcons.dns_rounded),
-                        ),
-                      ],
-                      selected: {tab},
-                      onSelectionChanged: (value) => _setTab(value.first),
+                if (!wide)
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                      child: tabs,
                     ),
                   ),
-                ),
                 if (tab == 0)
                   ..._appsSlivers(theme)
                 else
@@ -623,6 +601,46 @@ class _LinuxPageState extends State<LinuxPage> {
       ],
     ),
   );
+
+  /// The header of a tablet-sized window: one compact row with the title, the
+  /// Apps/Containers switch and the actions, so the content starts near the top.
+  Widget _wideHeader(AppLocalizations l, ThemeData theme, Widget? tabs) =>
+      Padding(
+        padding: const EdgeInsets.fromLTRB(24, 12, 16, 12),
+        child: Row(
+          children: [
+            PenguinIcon(
+              filled: true,
+              size: 28,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 12),
+            Text(
+              l.nativePlasmaCategoryLinux,
+              style: theme.textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(width: 24),
+            if (tabs != null) SizedBox(width: 340, child: tabs),
+            const Spacer(),
+            if (enabled && usable) ...[
+              M3EButton.tonal(
+                icon: const Icon(M3EIcons.storefront_rounded),
+                onPressed: _openStore,
+                label: const Text('Store'),
+              ),
+              const SizedBox(width: 4),
+              M3EIconButton(
+                variant: M3EIconButtonVariant.standard,
+                icon: const Icon(M3EIcons.tune_rounded),
+                tooltip: l.linuxSettingsTitle,
+                onPressed: () => _openSettings(),
+              ),
+            ],
+          ],
+        ),
+      );
 
   List<Widget> _setupNotices(AppLocalizations l, ThemeData theme) => [
     SliverToBoxAdapter(
@@ -677,7 +695,10 @@ class _LinuxPageState extends State<LinuxPage> {
 
   /// One list item on its own, as a single-row expressive list.
   Widget _card(Widget child) => Padding(
-    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+    padding: EdgeInsets.symmetric(
+      horizontal: linuxWide(context) ? 24 : 16,
+      vertical: 4,
+    ),
     child: child is M3EListItem
         ? LinuxGroup(children: [child])
         : M3ECard(
@@ -723,12 +744,12 @@ class _LinuxPageState extends State<LinuxPage> {
           listenable: apps,
           builder: (context, _) => AnimatedSwitcher(
             duration: const Duration(milliseconds: 240),
-            child: apps.loading && apps.apps.isEmpty
+            child: apps.loading && apps.displayedApps.isEmpty
                 ? const Padding(
                     padding: EdgeInsets.all(48),
                     child: Center(child: M3ELoadingIndicator()),
                   )
-                : apps.apps.isEmpty
+                : apps.displayedApps.isEmpty
                 ? _emptyState(
                     theme,
                     M3EIcons.storefront_rounded,
@@ -986,7 +1007,12 @@ class _LinuxPageState extends State<LinuxPage> {
           if (installing) ('cancel', l.linuxCancel, M3EIcons.close_rounded),
           if (installed)
             ('desktop', l.linuxOpenDesktop, M3EIcons.desktop_windows_rounded),
-          if (installed) ('run', l.linuxRunCommand, M3EIcons.terminal_rounded),
+          if (installed)
+            (
+              'terminal',
+              t('ターミナルを開く', 'Open terminal'),
+              M3EIcons.terminal_rounded,
+            ),
           if (!installing)
             ('reset', l.linuxSessionReset, M3EIcons.restart_alt_rounded),
           if (!installing)
@@ -1050,8 +1076,8 @@ class _LinuxPageState extends State<LinuxPage> {
               output ?? (logs[container.id] ?? const []).join('\n'),
             );
           }
-        case 'run':
-          await _runCommand(container);
+        case 'terminal':
+          await _openTerminal(container);
         case 'desktop':
           final opened = await _channel.invokeMethod<bool>('openDesktop', {
             'id': container.id,

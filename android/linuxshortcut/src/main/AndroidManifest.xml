@@ -19,5 +19,15 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+        <!-- The Linux application's windows: Dextop draws them in this launcher's own tasks,
+             so the system (and DeX) shows the application's name and icon, not Dextop's. -->
+        <activity
+            android:name="moe.n4tsu.dextop.lxstub.Window"
+            android:exported="true"
+            android:documentLaunchMode="always"
+            android:autoRemoveFromRecents="true"
+            android:resizeableActivity="true"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|navigation|density|uiMode"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
     </application>
 </manifest>

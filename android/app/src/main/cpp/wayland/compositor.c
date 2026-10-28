@@ -92,6 +92,11 @@ struct pixels {
 struct viewport_state { float x, y, width, height; int dest_width, dest_height; };
 struct opaque_rect { int64_t x1, y1, x2, y2; bool set; };
 
+struct pointer_rect {int64_t x1,y1,x2,y2;};
+struct pointer_region {struct pointer_rect *rects;size_t count;};
+static bool region_copy(struct pointer_region *dest,const struct pointer_region *src);
+static void region_clear(struct pointer_region *region);
+
 struct surface {
     struct comp *comp;
     struct wl_resource *resource;
@@ -101,6 +106,8 @@ struct surface {
     struct wl_list ready_frames;   /* rendered, waiting for the frame tick */
     struct pixels pixels;
     struct opaque_rect opaque, pending_opaque;
+    struct pointer_region input, pending_input;
+    bool input_set, pending_input_set;
 #ifdef DEXTOP_WAYLAND_GPU
     struct dmabuf *gpu_buffer;
     struct linux_gpu_image *gpu_shm;
@@ -122,6 +129,7 @@ struct surface {
     struct wl_list child_link;
     /* xdg role. */
     struct xdg *xdg;
+    bool decoration_set, client_decorated;
     struct wl_listener destroy_listener;
 };
 
@@ -139,8 +147,13 @@ struct xdg {
     uint32_t window_id;
     int32_t geo_x, geo_y, geo_w, geo_h;
     bool has_geometry;
+    bool pending_geometry;
+    int32_t pending_geo_x, pending_geo_y, pending_geo_w, pending_geo_h;
     int32_t popup_x, popup_y, popup_w, popup_h; /* relative to the parent's window geometry */
     int32_t want_w, want_h;                     /* size Plasma asked for */
+    int32_t min_w, min_h, max_w, max_h;
+    int32_t pending_min_w, pending_min_h, pending_max_w, pending_max_h;
+    bool pending_size_hints;
     char title[256];
     char app_id[128];
     ANativeWindow *window;
@@ -215,6 +228,7 @@ struct gpu_job {
 enum command_type {
     CMD_ATTACH, CMD_DETACH, CMD_CONFIGURE, CMD_ACTIVATE, CMD_CLOSE,
     CMD_POINTER, CMD_AXIS, CMD_KEY, CMD_TEXT, CMD_QUIT, CMD_STATE, CMD_OUTPUT, CMD_DECK_VSYNC,
+    CMD_CLIPBOARD,
 };
 
 struct command {
@@ -270,6 +284,12 @@ struct comp {
     uint32_t mods_depressed, mods_locked;
     uint32_t text_serial;
     struct wl_array pressed_keys;
+    /* Clipboard: the data devices of every client, the selection a client owns (its source),
+     * or text from outside (X applications, Android) offered in its place. */
+    struct wl_list data_devices;
+    struct wl_resource *selection_source;
+    char *selection_text;      /* text read from selection_source, or set from outside */
+    int selection_external;    /* selection_text is from outside, served by the compositor */
 };
 
 /* ---------------------------------------------------------------- helpers */
@@ -345,11 +365,12 @@ static void emit_window(struct comp *comp, struct xdg *xdg, const char *type) {
     if (xdg->popup) { w = xdg->popup_w; h = xdg->popup_h; }
     snprintf(json, sizeof(json),
              "{\"type\":\"%s\",\"id\":%u,\"popup\":%s,\"parent\":%u,\"x\":%d,\"y\":%d,\"w\":%d,\"h\":%d,"
-             "\"title\":\"%s\",\"class\":\"%s\",\"decorated\":%s,\"deck\":%s}",
+             "\"title\":\"%s\",\"class\":\"%s\",\"decorated\":%s,\"deck\":%s,\"fixedSize\":%s}",
              type, xdg->window_id, xdg->popup ? "true" : "false",
              xdg->parent ? xdg->parent->window_id : 0,
              xdg->popup ? xdg->popup_x : 0, xdg->popup ? xdg->popup_y : 0, w, h, title, app,
-             xdg->client_decorated ? "false" : "true", xdg->deck ? "true" : "false");
+             xdg->client_decorated ? "false" : "true", xdg->deck ? "true" : "false",
+             xdg->min_w > 0 && xdg->min_h > 0 && xdg->min_w == xdg->max_w && xdg->min_h == xdg->max_h ? "true" : "false");
     emit(comp, json);
 }
 
@@ -676,6 +697,16 @@ static bool gpu_draw_window(struct xdg *xdg) {
     if (collected && job->count) {
         int width = xdg->has_geometry ? xdg->geo_w : (int)draws[0].width;
         int height = xdg->has_geometry ? xdg->geo_h : (int)draws[0].height;
+        if (!xdg->deck && (width != xdg->window_w || height != xdg->window_h)) {
+            // A swapchain retains its creation extent. Resizing only the Android view
+            // left the old render target stretched to the new size indefinitely.
+            linux_gpu_window_destroy(xdg->gpu_window);
+            xdg->gpu_window = NULL;
+            if (ANativeWindow_setBuffersGeometry(xdg->window, width, height, WINDOW_FORMAT_RGBA_8888) == 0) {
+                xdg->window_w = width; xdg->window_h = height;
+                LOGI("GPU output resized window=%u pixels=%dx%d", xdg->window_id, width, height);
+            }
+        }
         if (!xdg->gpu_window) xdg->gpu_window = linux_gpu_window_create(xdg->comp->gpu, xdg->window, xdg->deck && xdg->deck_direct);
         if (xdg->gpu_window) result = linux_gpu_present_scene(xdg->gpu_window, draws, job->count,
             width, height, &job->fence);
@@ -712,12 +743,23 @@ static bool gpu_draw_window(struct xdg *xdg) {
         if (job->fence >= 0) job->source = wl_event_loop_add_fd(xdg->comp->loop, job->fence,
             WL_EVENT_READABLE, gpu_job_ready, job);
         if (!xdg->gpu_announced) {
-            LOGI("GPU scene presented window=%u layers=%u", xdg->window_id, job->count);
+            LOGI("GPU scene presented window=%u layers=%u source=%gx%g target=%gx%g origin=%g,%g geometry=%dx%d",
+                xdg->window_id, job->count, draws[0].sw, draws[0].sh, draws[0].width, draws[0].height,
+                draws[0].x, draws[0].y, xdg->geo_w, xdg->geo_h);
             xdg->gpu_announced = true;
         }
         return true;
     }
     free(job);
+    if (result == -2) {
+        // Surface resize invalidation is recoverable; it must not permanently switch
+        // this otherwise accelerated window to CPU rendering.
+        linux_gpu_window_destroy(xdg->gpu_window);
+        xdg->gpu_window = NULL;
+        xdg->window_w = xdg->window_h = 0;
+        xdg->needs_redraw = true;
+        return true;
+    }
     if (result == 0) { xdg->comp->gpu_retries++; xdg->needs_redraw = true; return true; }
     LOGW("CPU fallback window=%u (GPU scene unavailable)", xdg->window_id);
     xdg->gpu_disabled = true;
@@ -851,7 +893,13 @@ static void surface_frame(struct wl_client *client, struct wl_resource *resource
     wl_list_insert(surface->pending_frames.prev, wl_resource_get_link(callback));
 }
 
-static void surface_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region) {}
+static void surface_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region) {
+    struct surface *surface = wl_resource_get_user_data(r);
+    struct pointer_region *input = region ? wl_resource_get_user_data(region) : NULL;
+    if (input && !region_copy(&surface->pending_input, input)) { wl_client_post_no_memory(c); return; }
+    if (!input) region_clear(&surface->pending_input);
+    surface->pending_input_set = input != NULL;
+}
 static void surface_opaque_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region);
 static void surface_transform(struct wl_client *c, struct wl_resource *r, int32_t t) {
     struct surface *surface = wl_resource_get_user_data(r);
@@ -894,6 +942,8 @@ static void surface_apply_cached(struct surface *surface) {
     }
     surface->scale = cached->scale;
     surface->opaque = cached->opaque;
+    region_copy(&surface->input, &cached->input);
+    surface->input_set = cached->input_set;
 #ifdef DEXTOP_WAYLAND_GPU
     surface->view = cached->view;
     presentation_discard_list(&surface->committed_feedback);
@@ -927,6 +977,7 @@ static void surface_cache_destroy(struct surface *surface) {
 #ifdef DEXTOP_WAYLAND_GPU
     presentation_discard(cached);
 #endif
+    region_clear(&cached->input); region_clear(&cached->pending_input);
     free(cached);
     surface->cached = NULL;
     surface->cached_commit = surface->cached_attach = false;
@@ -970,6 +1021,8 @@ static void surface_commit(struct wl_client *client, struct wl_resource *resourc
         surface->parent = owner->parent;
         surface->pending_scale = owner->pending_scale;
         surface->pending_opaque = owner->pending_opaque;
+        if (!region_copy(&surface->pending_input, &owner->pending_input)) { wl_client_post_no_memory(client); return; }
+        surface->pending_input_set = owner->pending_input_set;
         surface->pending_attach = owner->pending_attach;
         surface->pending_buffer = owner->pending_buffer;
         owner->cached_attach |= owner->pending_attach;
@@ -989,6 +1042,8 @@ static void surface_commit(struct wl_client *client, struct wl_resource *resourc
     int old_width = surface_width(surface), old_height = surface_height(surface);
     surface->scale = surface->pending_scale;
     surface->opaque = surface->pending_opaque;
+    if (!region_copy(&surface->input, &surface->pending_input)) { wl_client_post_no_memory(client); return; }
+    surface->input_set = surface->pending_input_set;
 #ifdef DEXTOP_WAYLAND_GPU
     if (!synchronized) constraints_commit(surface);
 #endif
@@ -1041,14 +1096,32 @@ static void surface_commit(struct wl_client *client, struct wl_resource *resourc
 #endif
     }
     if (synchronized) return;
+    bool geometry_changed = false;
+    if (surface->xdg && surface->xdg->pending_size_hints) {
+        struct xdg *xdg = surface->xdg;
+        geometry_changed = xdg->min_w != xdg->pending_min_w || xdg->min_h != xdg->pending_min_h ||
+            xdg->max_w != xdg->pending_max_w || xdg->max_h != xdg->pending_max_h;
+        xdg->min_w = xdg->pending_min_w; xdg->min_h = xdg->pending_min_h;
+        xdg->max_w = xdg->pending_max_w; xdg->max_h = xdg->pending_max_h;
+        xdg->pending_size_hints = false;
+    }
+    if (surface->xdg && surface->xdg->pending_geometry) {
+        struct xdg *xdg = surface->xdg;
+        geometry_changed |= !xdg->has_geometry || xdg->geo_x != xdg->pending_geo_x ||
+            xdg->geo_y != xdg->pending_geo_y || xdg->geo_w != xdg->pending_geo_w || xdg->geo_h != xdg->pending_geo_h;
+        xdg->geo_x = xdg->pending_geo_x; xdg->geo_y = xdg->pending_geo_y;
+        xdg->geo_w = xdg->pending_geo_w; xdg->geo_h = xdg->pending_geo_h;
+        xdg->has_geometry = true;
+        xdg->pending_geometry = false;
+    }
     surface_apply_children(surface);
     schedule_frames(surface);
     struct surface *root = root_of(surface);
     if (root->xdg) {
         if (!root->xdg->configured) xdg_send_configure(root->xdg);
         else if (root == surface) {
-            if (root->xdg->mapped && !root->xdg->has_geometry &&
-                (old_width != surface_width(surface) || old_height != surface_height(surface)))
+            if (root->xdg->mapped && (geometry_changed || (!root->xdg->has_geometry &&
+                (old_width != surface_width(surface) || old_height != surface_height(surface)))))
                 emit_window(surface->comp, root->xdg, "configure");
             xdg_map_if_ready(root->xdg);
         }
@@ -1105,13 +1178,12 @@ static void surface_resource_destroy(struct wl_resource *resource) {
     linux_gpu_image_destroy(surface->gpu_shm);
 #endif
     free(surface->pixels.data);
+    region_clear(&surface->input); region_clear(&surface->pending_input);
     free(surface);
 }
 
 /* ------------------------------------------------------------- compositor */
 
-struct pointer_rect {int64_t x1,y1,x2,y2;};
-struct pointer_region {struct pointer_rect *rects;size_t count;};
 static void surface_opaque_region(struct wl_client *c, struct wl_resource *r, struct wl_resource *region) {
     struct surface *surface = wl_resource_get_user_data(r);
     struct pointer_region *rects = region ? wl_resource_get_user_data(region) : NULL;
@@ -1372,25 +1444,209 @@ static void bind_seat(struct wl_client *client, void *data, uint32_t version, ui
     if (version >= WL_SEAT_NAME_SINCE_VERSION) wl_seat_send_name(resource, "seat0");
 }
 
-/* ------------------------------------------------------- data device stub */
+/* ------------------------------------------------------------- clipboard */
 
-static void source_offer(struct wl_client *c, struct wl_resource *r, const char *t) {}
+/*
+ * The CLIPBOARD selection, bridged to Dextop: text a Wayland client copies is read from its
+ * source and reported as {"type":"clipboard"}, so X applications and Android get it; text from
+ * outside (CMD_CLIPBOARD) is offered to Wayland clients by the compositor itself.
+ */
+struct data_source {
+    struct comp *comp;
+    struct wl_array mimes; /* char* */
+};
+
+static const char *const TEXT_MIMES[] = {"text/plain;charset=utf-8", "UTF8_STRING", "text/plain", "TEXT", "STRING"};
+
+static void source_offer(struct wl_client *c, struct wl_resource *r, const char *t) {
+    struct data_source *source = wl_resource_get_user_data(r);
+    char **slot = wl_array_add(&source->mimes, sizeof(char *));
+    if (slot) *slot = strdup(t);
+}
 static void source_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
 static void source_actions(struct wl_client *c, struct wl_resource *r, uint32_t a) {}
 static const struct wl_data_source_interface source_impl = {.offer = source_offer, .destroy = source_destroy, .set_actions = source_actions};
+
+static void source_resource_destroyed(struct wl_resource *r) {
+    struct data_source *source = wl_resource_get_user_data(r);
+    if (!source) return;
+    if (source->comp->selection_source == r) source->comp->selection_source = NULL;
+    char **mime;
+    wl_array_for_each(mime, &source->mimes) free(*mime);
+    wl_array_release(&source->mimes);
+    free(source);
+}
+
+static void offer_accept(struct wl_client *c, struct wl_resource *r, uint32_t serial, const char *mime) {}
+static void offer_receive(struct wl_client *c, struct wl_resource *r, const char *mime, int32_t fd) {
+    struct comp *comp = wl_resource_get_user_data(r);
+    if (comp && comp->selection_source) {
+        wl_data_source_send_send(comp->selection_source, mime, fd);
+    } else if (comp && comp->selection_text) {
+        /* Small texts fit the pipe; larger ones are written as far as the reader takes them. */
+        const char *text = comp->selection_text;
+        size_t left = strlen(text);
+        while (left > 0) {
+            ssize_t written = write(fd, text, left);
+            if (written <= 0) break;
+            text += written;
+            left -= (size_t)written;
+        }
+    }
+    close(fd);
+}
+static void offer_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
+static void offer_finish(struct wl_client *c, struct wl_resource *r) {}
+static void offer_actions(struct wl_client *c, struct wl_resource *r, uint32_t a, uint32_t p) {}
+static const struct wl_data_offer_interface offer_impl = {
+    .accept = offer_accept, .receive = offer_receive, .destroy = offer_destroy,
+    .finish = offer_finish, .set_actions = offer_actions,
+};
+
+/* Tells [client] (the one with keyboard focus) what the selection is now. */
+static void offer_selection(struct comp *comp, struct wl_client *client) {
+    if (!client) return;
+    struct wl_resource *device;
+    wl_resource_for_each(device, &comp->data_devices) {
+        if (wl_resource_get_client(device) != client) continue;
+        struct data_source *source = comp->selection_source ? wl_resource_get_user_data(comp->selection_source) : NULL;
+        if (!source && !comp->selection_text) {
+            wl_data_device_send_selection(device, NULL);
+            continue;
+        }
+        struct wl_resource *offer = wl_resource_create(client, &wl_data_offer_interface, wl_resource_get_version(device), 0);
+        if (!offer) continue;
+        wl_resource_set_implementation(offer, &offer_impl, comp, NULL);
+        wl_data_device_send_data_offer(device, offer);
+        if (source) {
+            char **mime;
+            wl_array_for_each(mime, &source->mimes) wl_data_offer_send_offer(offer, *mime);
+        } else {
+            for (size_t i = 0; i < sizeof(TEXT_MIMES) / sizeof(*TEXT_MIMES); ++i) wl_data_offer_send_offer(offer, TEXT_MIMES[i]);
+        }
+        wl_data_device_send_selection(device, offer);
+    }
+}
+
+struct clipboard_read {
+    struct comp *comp;
+    struct wl_resource *source;
+    struct wl_event_source *event;
+    char *data;
+    size_t size;
+    int fd;
+};
+
+/* Collects what the selection's owner writes; at its end, reports the text to Dextop. */
+static int clipboard_readable(int fd, uint32_t mask, void *user) {
+    struct clipboard_read *read_state = user;
+    char buffer[16384];
+    ssize_t count = read(fd, buffer, sizeof(buffer));
+    if (count > 0 && read_state->size + (size_t)count <= (1u << 20)) {
+        char *grown = realloc(read_state->data, read_state->size + (size_t)count + 1);
+        if (grown) {
+            memcpy(grown + read_state->size, buffer, (size_t)count);
+            read_state->data = grown;
+            read_state->size += (size_t)count;
+            read_state->data[read_state->size] = 0;
+        }
+        return 0;
+    }
+    if (count < 0 && (errno == EAGAIN || errno == EINTR)) return 0;
+    struct comp *comp = read_state->comp;
+    if (read_state->data && read_state->size > 0 && comp->selection_source == read_state->source) {
+        free(comp->selection_text);
+        comp->selection_text = strdup(read_state->data);
+        comp->selection_external = 0;
+        size_t escaped_size = read_state->size * 6 + 64;
+        char *escaped = malloc(escaped_size);
+        char *json = escaped ? malloc(escaped_size + 64) : NULL;
+        if (json) {
+            json_escape(escaped, escaped_size, read_state->data);
+            snprintf(json, escaped_size + 64, "{\"type\":\"clipboard\",\"text\":\"%s\"}", escaped);
+            emit(comp, json);
+        }
+        free(json);
+        free(escaped);
+    }
+    wl_event_source_remove(read_state->event);
+    close(fd);
+    free(read_state->data);
+    free(read_state);
+    return 0;
+}
+
+/* Asks the selection's owner for its text, in the first text type it offers. */
+static void read_selection(struct comp *comp) {
+    if (!comp->selection_source) return;
+    struct data_source *source = wl_resource_get_user_data(comp->selection_source);
+    const char *chosen = NULL;
+    for (size_t i = 0; i < sizeof(TEXT_MIMES) / sizeof(*TEXT_MIMES) && !chosen; ++i) {
+        char **mime;
+        wl_array_for_each(mime, &source->mimes) if (!strcmp(*mime, TEXT_MIMES[i])) { chosen = TEXT_MIMES[i]; break; }
+    }
+    if (!chosen) return;
+    int fds[2];
+    if (pipe2(fds, O_CLOEXEC | O_NONBLOCK) != 0) return;
+    struct clipboard_read *read_state = calloc(1, sizeof(*read_state));
+    if (!read_state) { close(fds[0]); close(fds[1]); return; }
+    read_state->comp = comp;
+    read_state->source = comp->selection_source;
+    read_state->fd = fds[0];
+    read_state->event = wl_event_loop_add_fd(comp->loop, fds[0], WL_EVENT_READABLE, clipboard_readable, read_state);
+    wl_data_source_send_send(comp->selection_source, chosen, fds[1]);
+    close(fds[1]);
+}
+
 static void device_drag(struct wl_client *c, struct wl_resource *r, struct wl_resource *s, struct wl_resource *o, struct wl_resource *i, uint32_t serial) {}
-static void device_selection(struct wl_client *c, struct wl_resource *r, struct wl_resource *s, uint32_t serial) {}
+static void device_selection(struct wl_client *c, struct wl_resource *r, struct wl_resource *s, uint32_t serial) {
+    struct comp *comp = wl_resource_get_user_data(r);
+    if (!comp) return;
+    if (comp->selection_source && comp->selection_source != s) wl_data_source_send_cancelled(comp->selection_source);
+    comp->selection_source = s;
+    if (s) {
+        read_selection(comp);
+    } else {
+        free(comp->selection_text);
+        comp->selection_text = NULL;
+    }
+    if (comp->keyboard_focus) offer_selection(comp, wl_resource_get_client(comp->keyboard_focus->resource));
+}
 static void device_release(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
 static const struct wl_data_device_interface device_impl = {.start_drag = device_drag, .set_selection = device_selection, .release = device_release};
 
+static void device_destroyed(struct wl_resource *r) { wl_list_remove(wl_resource_get_link(r)); }
+
 static void ddm_create_source(struct wl_client *client, struct wl_resource *r, uint32_t id) {
     struct wl_resource *s = wl_resource_create(client, &wl_data_source_interface, wl_resource_get_version(r), id);
-    wl_resource_set_implementation(s, &source_impl, NULL, NULL);
+    struct data_source *source = calloc(1, sizeof(*source));
+    if (!s || !source) { free(source); if (s) wl_resource_destroy(s); return; }
+    source->comp = wl_resource_get_user_data(r);
+    wl_array_init(&source->mimes);
+    wl_resource_set_implementation(s, &source_impl, source, source_resource_destroyed);
 }
 
 static void ddm_get_device(struct wl_client *client, struct wl_resource *r, uint32_t id, struct wl_resource *seat) {
+    struct comp *comp = wl_resource_get_user_data(r);
     struct wl_resource *d = wl_resource_create(client, &wl_data_device_interface, wl_resource_get_version(r), id);
-    wl_resource_set_implementation(d, &device_impl, NULL, NULL);
+    if (!d) return;
+    wl_resource_set_implementation(d, &device_impl, comp, device_destroyed);
+    wl_list_insert(&comp->data_devices, wl_resource_get_link(d));
+    if (comp->keyboard_focus && wl_resource_get_client(comp->keyboard_focus->resource) == client) offer_selection(comp, client);
+}
+
+/* Text copied outside (an X application, Android) becomes the Wayland clients' selection. */
+static void handle_clipboard(struct comp *comp, const char *text) {
+    if (!text || !*text) return;
+    if (comp->selection_text && !strcmp(comp->selection_text, text)) return;
+    if (comp->selection_source) {
+        wl_data_source_send_cancelled(comp->selection_source);
+        comp->selection_source = NULL;
+    }
+    free(comp->selection_text);
+    comp->selection_text = strdup(text);
+    comp->selection_external = 1;
+    if (comp->keyboard_focus) offer_selection(comp, wl_resource_get_client(comp->keyboard_focus->resource));
 }
 
 static const struct wl_data_device_manager_interface ddm_impl = {.create_data_source = ddm_create_source, .get_data_device = ddm_get_device};
@@ -1437,6 +1693,10 @@ static void xdg_map_if_ready(struct xdg *xdg) {
 }
 
 static void xdg_forget(struct xdg *xdg) {
+    for (int i = 0; i < 1024; ++i) {
+        struct xdg *child = xdg->comp->xdgs[i];
+        if (child && child->parent == xdg) child->parent = NULL;
+    }
 #ifdef DEXTOP_WAYLAND_GPU
     deck_direct_hide(xdg, true);
     linux_gpu_window_destroy(xdg->gpu_window);
@@ -1450,7 +1710,10 @@ static void xdg_forget(struct xdg *xdg) {
 }
 
 static void toplevel_destroy(struct wl_client *c, struct wl_resource *r) { wl_resource_destroy(r); }
-static void toplevel_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p) {}
+static void toplevel_parent(struct wl_client *c, struct wl_resource *r, struct wl_resource *p) {
+    struct xdg *xdg = wl_resource_get_user_data(r);
+    xdg->parent = p ? wl_resource_get_user_data(p) : NULL;
+}
 
 static void toplevel_title(struct wl_client *c, struct wl_resource *r, const char *title) {
     struct xdg *xdg = wl_resource_get_user_data(r);
@@ -1517,7 +1780,16 @@ static void toplevel_maximize_request(struct wl_resource *r, int action) {
 }
 static void toplevel_maximize(struct wl_client *c, struct wl_resource *r) { toplevel_maximize_request(r, 1); }
 static void toplevel_unmaximize(struct wl_client *c, struct wl_resource *r) { toplevel_maximize_request(r, 0); }
-static void toplevel_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h) {}
+static void toplevel_min_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h) {
+    struct xdg *xdg = wl_resource_get_user_data(r);
+    if (w < 0 || h < 0) { wl_resource_post_error(r, XDG_TOPLEVEL_ERROR_INVALID_SIZE, "negative minimum size"); return; }
+    xdg->pending_min_w = w; xdg->pending_min_h = h; xdg->pending_size_hints = true;
+}
+static void toplevel_max_size(struct wl_client *c, struct wl_resource *r, int32_t w, int32_t h) {
+    struct xdg *xdg = wl_resource_get_user_data(r);
+    if (w < 0 || h < 0) { wl_resource_post_error(r, XDG_TOPLEVEL_ERROR_INVALID_SIZE, "negative maximum size"); return; }
+    xdg->pending_max_w = w; xdg->pending_max_h = h; xdg->pending_size_hints = true;
+}
 static void toplevel_noop(struct wl_client *c, struct wl_resource *r) {}
 static void toplevel_fullscreen(struct wl_client *c, struct wl_resource *r, struct wl_resource *output) {}
 
@@ -1532,7 +1804,7 @@ static void toplevel_minimize(struct wl_client *c, struct wl_resource *r) {
 static const struct xdg_toplevel_interface toplevel_impl = {
     .destroy = toplevel_destroy, .set_parent = toplevel_parent, .set_title = toplevel_title,
     .set_app_id = toplevel_app_id, .show_window_menu = toplevel_menu, .move = toplevel_move,
-    .resize = toplevel_resize, .set_max_size = toplevel_size, .set_min_size = toplevel_size,
+    .resize = toplevel_resize, .set_max_size = toplevel_max_size, .set_min_size = toplevel_min_size,
     .set_maximized = toplevel_maximize, .unset_maximized = toplevel_unmaximize,
     .set_fullscreen = toplevel_fullscreen, .unset_fullscreen = toplevel_noop,
     .set_minimized = toplevel_minimize,
@@ -1627,10 +1899,15 @@ static void xdg_surface_get_popup(struct wl_client *client, struct wl_resource *
 
 static void xdg_surface_geometry(struct wl_client *c, struct wl_resource *r, int32_t x, int32_t y, int32_t w, int32_t h) {
     struct xdg *xdg = wl_resource_get_user_data(r);
-    bool changed = !xdg->has_geometry || xdg->geo_w != w || xdg->geo_h != h;
-    xdg->geo_x = x; xdg->geo_y = y; xdg->geo_w = w; xdg->geo_h = h;
-    xdg->has_geometry = true;
-    if (changed && xdg->mapped && !xdg->popup) emit_window(xdg->comp, xdg, "configure");
+    if (w <= 0 || h <= 0) {
+        wl_resource_post_error(r, XDG_SURFACE_ERROR_INVALID_SIZE, "invalid window geometry");
+        return;
+    }
+    // Window geometry is double-buffered with wl_surface.commit. Publishing it here
+    // would crop the old buffer using the new size and race the host's resize.
+    xdg->pending_geo_x = x; xdg->pending_geo_y = y;
+    xdg->pending_geo_w = w; xdg->pending_geo_h = h;
+    xdg->pending_geometry = true;
 }
 
 static void xdg_surface_ack(struct wl_client *c, struct wl_resource *r, uint32_t serial) {}
@@ -1694,6 +1971,7 @@ static void wm_get_xdg_surface(struct wl_client *client, struct wl_resource *res
     struct xdg *xdg = calloc(1, sizeof(*xdg));
     xdg->comp = comp;
     xdg->surface = surface;
+    if (surface->decoration_set) xdg->client_decorated = surface->client_decorated;
     surface->xdg = xdg;
     xdg->xdg_surface = wl_resource_create(client, &xdg_surface_interface, wl_resource_get_version(resource), id);
     wl_resource_set_implementation(xdg->xdg_surface, &xdg_surface_impl, xdg, xdg_surface_resource_destroy);
@@ -1759,8 +2037,36 @@ static void bind_decoration(struct wl_client *client, void *data, uint32_t versi
 }
 
 /* GTK 3 uses KDE's older negotiation rather than xdg-decoration. */
+struct kde_decoration_target {
+    struct surface *surface;
+    struct wl_listener surface_destroy;
+};
+static void kde_decoration_surface_destroy(struct wl_listener *listener, void *data) {
+    struct kde_decoration_target *target = wl_container_of(listener, target, surface_destroy);
+    wl_list_remove(&target->surface_destroy.link);
+    target->surface = NULL;
+}
+static void kde_decoration_free(struct wl_resource *r) {
+    struct kde_decoration_target *target = wl_resource_get_user_data(r);
+    if (target->surface) wl_list_remove(&target->surface_destroy.link);
+    free(target);
+}
 static void kde_decoration_mode(struct wl_client *client, struct wl_resource *r, uint32_t mode) {
-    org_kde_kwin_server_decoration_send_mode(r, ORG_KDE_KWIN_SERVER_DECORATION_MODE_SERVER);
+    if (mode > ORG_KDE_KWIN_SERVER_DECORATION_MODE_SERVER) return;
+    struct kde_decoration_target *target = wl_resource_get_user_data(r);
+    if (target && target->surface) {
+        struct surface *surface = target->surface;
+        surface->decoration_set = true;
+        surface->client_decorated = mode != ORG_KDE_KWIN_SERVER_DECORATION_MODE_SERVER;
+        struct xdg *xdg = surface->xdg;
+        if (xdg && xdg->client_decorated != surface->client_decorated) {
+            xdg->client_decorated = surface->client_decorated;
+            if (xdg->mapped) emit_window(xdg->comp, xdg, "decorations");
+        }
+    }
+    // GTK retries a rejected CLIENT request. Always replying SERVER produces
+    // an unbounded request/event loop before it can draw its first frame.
+    org_kde_kwin_server_decoration_send_mode(r, mode);
 }
 static const struct org_kde_kwin_server_decoration_interface kde_decoration_impl = {
     .release = decoration_destroy, .request_mode = kde_decoration_mode,
@@ -1769,8 +2075,13 @@ static void kde_decoration_create(struct wl_client *client, struct wl_resource *
                                   uint32_t id, struct wl_resource *surface) {
     struct wl_resource *r = wl_resource_create(client, &org_kde_kwin_server_decoration_interface, 1, id);
     if (!r) { wl_client_post_no_memory(client); return; }
-    wl_resource_set_implementation(r, &kde_decoration_impl, NULL, NULL);
-    kde_decoration_mode(client, r, 0);
+    struct kde_decoration_target *target = calloc(1, sizeof(*target));
+    if (!target) { wl_resource_destroy(r); wl_client_post_no_memory(client); return; }
+    target->surface = wl_resource_get_user_data(surface);
+    target->surface_destroy.notify = kde_decoration_surface_destroy;
+    wl_resource_add_destroy_listener(surface, &target->surface_destroy);
+    wl_resource_set_implementation(r, &kde_decoration_impl, target, kde_decoration_free);
+    kde_decoration_mode(client, r, ORG_KDE_KWIN_SERVER_DECORATION_MODE_SERVER);
 }
 static const struct org_kde_kwin_server_decoration_manager_interface kde_decoration_manager_impl = {
     .create = kde_decoration_create,
@@ -2251,6 +2562,7 @@ static void focus_keyboard(struct comp *comp, struct surface *surface) {
     }
     wl_resource_for_each(r, &comp->text_inputs)
         if (wl_resource_get_client(r) == client) zwp_text_input_v3_send_enter(r, surface->resource);
+    offer_selection(comp, client);
     if (surface->xdg && !surface->xdg->popup) xdg_send_configure(surface->xdg);
 }
 
@@ -2294,13 +2606,38 @@ static uint32_t x_button_to_linux(int32_t button) {
     }
 }
 
+static struct surface *surface_at(struct surface *surface, int32_t x, int32_t y,
+                                  int32_t *local_x, int32_t *local_y, unsigned depth) {
+    if (depth > 64) return NULL;
+    struct surface *child, *hit;
+    wl_list_for_each_reverse(child, &surface->children, child_link) {
+        if (!child->below_parent && (hit = surface_at(child, x - child->sub_x,
+                y - child->sub_y, local_x, local_y, depth + 1))) return hit;
+    }
+    if (x >= 0 && y >= 0 && x < surface_width(surface) && y < surface_height(surface)) {
+        bool accepts = !surface->input_set;
+        for (size_t i = 0; !accepts && i < surface->input.count; i++) {
+            struct pointer_rect r = surface->input.rects[i];
+            accepts = x >= r.x1 && y >= r.y1 && x < r.x2 && y < r.y2;
+        }
+        if (accepts) { *local_x = x; *local_y = y; return surface; }
+    }
+    wl_list_for_each_reverse(child, &surface->children, child_link) {
+        if (child->below_parent && (hit = surface_at(child, x - child->sub_x,
+                y - child->sub_y, local_x, local_y, depth + 1))) return hit;
+    }
+    return NULL;
+}
+
 static void handle_pointer(struct comp *comp, struct xdg *xdg, int32_t action, int32_t lx, int32_t ly, int32_t button) {
     if (!xdg || !xdg->surface) return;
 #ifdef DEXTOP_WAYLAND_GPU
     bool relative = action >= 10;
     if (relative) {
         action -= 10;
-        if (comp->pointer_focus != xdg->surface) return;
+        // Capture belongs to the toplevel, while pointer focus can be on one of its
+        // subsurfaces (GLFW/Chromium/Wine). Do not discard that window's relative input.
+        if (!comp->pointer_focus || root_of(comp->pointer_focus) != xdg->surface) return;
         if (action == 0) {
             struct wl_resource *resource;
             struct wl_client *client = wl_resource_get_client(xdg->surface->resource);
@@ -2310,7 +2647,12 @@ static void handle_pointer(struct comp *comp, struct xdg *xdg, int32_t action, i
                 if (wl_resource_get_client(resource) == client)
                     zwp_relative_pointer_v1_send_relative_motion(resource, us >> 32, (uint32_t)us,
                         wl_fixed_from_int(lx), wl_fixed_from_int(ly), wl_fixed_from_int(lx), wl_fixed_from_int(ly));
-            if (pointer_locked(comp)) return;
+            if (pointer_locked(comp)) {
+                // SDL3 queues relative motion until wl_pointer.frame. A locked pointer
+                // suppresses absolute motion, but must still finish this input frame.
+                pointer_frame(comp, client);
+                return;
+            }
         }
         lx = wl_fixed_to_int(comp->pointer_x) + (action == 0 ? lx : 0);
         ly = wl_fixed_to_int(comp->pointer_y) + (action == 0 ? ly : 0);
@@ -2329,9 +2671,20 @@ static void handle_pointer(struct comp *comp, struct xdg *xdg, int32_t action, i
         if (xdg->role) xdg_popup_send_popup_done(xdg->role);
         return;
     }
+    struct surface *target = xdg->surface;
+#ifdef DEXTOP_WAYLAND_GPU
+    if (relative && comp->pointer_focus) target = comp->pointer_focus;
+#endif
+#ifdef DEXTOP_WAYLAND_GPU
+    if (!relative && !pointer_locked(comp))
+#endif
+    {
+        target = surface_at(xdg->surface, sx, sy, &sx, &sy, 0);
+        if (!target) { pointer_focus(comp, NULL, 0, 0); return; }
+    }
     wl_fixed_t fx = wl_fixed_from_int(sx), fy = wl_fixed_from_int(sy);
-    struct wl_client *client = wl_resource_get_client(xdg->surface->resource);
-    pointer_focus(comp, xdg->surface, fx, fy);
+    struct wl_client *client = wl_resource_get_client(target->resource);
+    pointer_focus(comp, target, fx, fy);
 #ifdef DEXTOP_WAYLAND_GPU
     confine_position(comp,&fx,&fy);
     comp->pointer_x = fx; comp->pointer_y = fy;
@@ -2364,12 +2717,16 @@ static void handle_axis(struct comp *comp, int32_t dx, int32_t dy) {
         if (wl_resource_get_client(r) != client) continue;
         uint32_t version = wl_resource_get_version(r);
         if (version >= WL_POINTER_AXIS_SOURCE_SINCE_VERSION) wl_pointer_send_axis_source(r, WL_POINTER_AXIS_SOURCE_WHEEL);
+        /* Wheel steps: axis_discrete up to version 7, axis_value120 from version 8 (toolkits
+         * such as GTK, and so Firefox, scroll a wheel only by these). */
         if (dy) {
-            if (version >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION && version < 8) wl_pointer_send_axis_discrete(r, WL_POINTER_AXIS_VERTICAL_SCROLL, dy);
+            if (version >= 8) wl_pointer_send_axis_value120(r, WL_POINTER_AXIS_VERTICAL_SCROLL, dy * 120);
+            else if (version >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION) wl_pointer_send_axis_discrete(r, WL_POINTER_AXIS_VERTICAL_SCROLL, dy);
             wl_pointer_send_axis(r, time, WL_POINTER_AXIS_VERTICAL_SCROLL, wl_fixed_from_int(dy * 15));
         }
         if (dx) {
-            if (version >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION && version < 8) wl_pointer_send_axis_discrete(r, WL_POINTER_AXIS_HORIZONTAL_SCROLL, dx);
+            if (version >= 8) wl_pointer_send_axis_value120(r, WL_POINTER_AXIS_HORIZONTAL_SCROLL, dx * 120);
+            else if (version >= WL_POINTER_AXIS_DISCRETE_SINCE_VERSION) wl_pointer_send_axis_discrete(r, WL_POINTER_AXIS_HORIZONTAL_SCROLL, dx);
             wl_pointer_send_axis(r, time, WL_POINTER_AXIS_HORIZONTAL_SCROLL, wl_fixed_from_int(dx * 15));
         }
     }
@@ -2532,6 +2889,12 @@ static void run_command(struct comp *comp, struct command *cmd) {
             if (xdg && xdg->window) { ANativeWindow_release(xdg->window); xdg->window = NULL; }
             break;
         case CMD_CONFIGURE:
+            if (xdg) {
+                if (xdg->min_w > 0 && cmd->c < xdg->min_w) cmd->c = xdg->min_w;
+                if (xdg->min_h > 0 && cmd->d < xdg->min_h) cmd->d = xdg->min_h;
+                if (xdg->max_w > 0 && cmd->c > xdg->max_w) cmd->c = xdg->max_w;
+                if (xdg->max_h > 0 && cmd->d > xdg->max_h) cmd->d = xdg->max_h;
+            }
             if (xdg && !xdg->popup && (xdg->want_w != cmd->c || xdg->want_h != cmd->d)) {
                 xdg->want_w = cmd->c;
                 xdg->want_h = cmd->d;
@@ -2562,6 +2925,9 @@ static void run_command(struct comp *comp, struct command *cmd) {
             break;
         case CMD_TEXT:
             if (cmd->text) handle_text(comp, cmd->text);
+            break;
+        case CMD_CLIPBOARD:
+            handle_clipboard(comp, cmd->text);
             break;
         case CMD_QUIT:
             wl_display_terminate(comp->display);
@@ -2735,6 +3101,7 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeStart(JNIEnv *env, jclass cl
     comp->next_window_id = 1;
     wl_list_init(&comp->outputs);
     wl_list_init(&comp->pointers);
+    wl_list_init(&comp->data_devices);
     wl_list_init(&comp->keyboards);
     wl_list_init(&comp->text_inputs);
 #ifdef DEXTOP_WAYLAND_GPU
@@ -2916,6 +3283,16 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeKey(JNIEnv *env, jclass cls,
     struct command *cmd = command(CMD_KEY, 0);
     if (!cmd) return;
     cmd->a = key; cmd->b = down;
+    post(COMP(handle), cmd);
+}
+
+JNIEXPORT void JNICALL
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeClipboard(JNIEnv *env, jclass cls, jlong handle, jstring text) {
+    struct command *cmd = command(CMD_CLIPBOARD, 0);
+    if (!cmd) return;
+    const char *utf = (*env)->GetStringUTFChars(env, text, NULL);
+    cmd->text = strdup(utf);
+    (*env)->ReleaseStringUTFChars(env, text, utf);
     post(COMP(handle), cmd);
 }
 

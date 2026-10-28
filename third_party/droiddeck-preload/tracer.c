@@ -6,6 +6,7 @@
 #include <ctype.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdio.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/syscall.h>
@@ -53,7 +54,7 @@ __attribute__((visibility("hidden"))) int bl_status_without_tracer(const char *p
   int saved = errno;
   int out = -1;
 
-  if ((flags & O_ACCMODE) != O_RDONLY || !is_status_path(path) || is_web_helper()) return -1;
+  if ((flags & O_ACCMODE) != O_RDONLY || (flags & (O_PATH | O_DIRECTORY)) || !is_status_path(path) || is_web_helper()) return -1;
   int in = (int)syscall(SYS_openat, AT_FDCWD, path, O_RDONLY | O_CLOEXEC);
   if (in < 0) goto done;
   for (;;) {
@@ -78,6 +79,18 @@ __attribute__((visibility("hidden"))) int bl_status_without_tracer(const char *p
       || lseek(out, 0, SEEK_SET) != 0) {
     close(out);
     out = -1;
+  }
+  if (out >= 0) {
+    /* memfd_create returns O_RDWR. Callers that requested O_RDONLY (including
+     * Chromium's checked ScopedFD conversion) must receive a read-only open file
+     * description, not a writable memfd or dup of one. Reopen before dropping the
+     * writable handle; this also preserves the requested close-on-exec flag. */
+    char link[48];
+    snprintf(link, sizeof(link), "/proc/self/fd/%d", out);
+    int readonly = (int)syscall(SYS_openat, AT_FDCWD, link,
+                               O_RDONLY | (flags & (O_CLOEXEC | O_NONBLOCK)));
+    close(out);
+    out = readonly;
   }
 done:
   errno = saved;

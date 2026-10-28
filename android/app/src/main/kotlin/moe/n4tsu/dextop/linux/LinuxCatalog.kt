@@ -33,6 +33,7 @@ internal data class LinuxImage(val url: String, val sha256: String, val size: Lo
 }
 
 internal object LinuxCatalog {
+    const val SYSTEM_BUS_ADDRESS = "unix:abstract=/tmp/dextop-dbus-system"
     /** Xvfb's default mode has no clock. Wine caches that as 0 Hz, which
      * leaves clients polling raster status before their first visible frame.
      * Publish timing before any desktop or application initializes Wine. */
@@ -194,8 +195,9 @@ internal object LinuxCatalog {
         rm -f /tmp/.X${'$'}D-lock /tmp/.X11-unix/X${'$'}D
         mkdir -p /tmp/.X11-unix /tmp/dextop-fb-${'$'}D
         chmod 1777 /tmp/.X11-unix
+        XROOT=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
         ${if (xwayland) xwaylandCommand(display, width, height, dpi) else """
-        Xvfb :${'$'}D -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1920)}x24 -dpi ${xDpi(dpi)} -fbdir /tmp/dextop-fb-${'$'}D \
+        $X_SERVER_ENV "${'$'}XROOT" Xvfb :${'$'}D -nolock -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1920)}x24 -dpi ${xDpi(dpi)} -fbdir /tmp/dextop-fb-${'$'}D \
             -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE >/tmp/xvfb-${'$'}D.log 2>&1 &
         """.trimIndent()}
         XPID=${'$'}!
@@ -224,8 +226,9 @@ internal object LinuxCatalog {
         D=$display
         rm -f /tmp/.X${'$'}D-lock /tmp/.X11-unix/X${'$'}D
         mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
+        XROOT=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
         ${if (xwayland) xwaylandCommand(display, width, height, dpi) else """
-        Xvfb :${'$'}D -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1080)}x24 -dpi ${xDpi(dpi)} \
+        $X_SERVER_ENV "${'$'}XROOT" Xvfb :${'$'}D -nolock -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1080)}x24 -dpi ${xDpi(dpi)} \
             -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
         """.trimIndent()}
         XPID=${'$'}!
@@ -241,11 +244,17 @@ internal object LinuxCatalog {
         wait ${'$'}XPID
     """.trimIndent() + "\n"
 
+    // The SHM server needs its distro GLX provider to advertise visuals. Client
+    // Zink and the separately packaged Mesa must not replace that provider.
+    private const val X_SERVER_ENV = "env -u LD_LIBRARY_PATH -u LIBGL_DRIVERS_PATH " +
+        "-u MESA_LOADER_DRIVER_OVERRIDE -u __EGL_VENDOR_LIBRARY_FILENAMES GALLIUM_DRIVER=llvmpipe"
+
     internal fun xwaylandCommand(display: Int, width: Int, height: Int, dpi: Int): String = """
         export XDG_RUNTIME_DIR=/tmp/runtime-root
         mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
         command -v Xwayland >/dev/null || { echo 'Xwayland is missing; run container setup again' >&2; exit 1; }
-        WAYLAND_DISPLAY=${LinuxXwaylandHost.displayName(display)} Xwayland :${'$'}D -geometry ${width}x$height -dpi ${xDpi(dpi)} \
+        XROOT=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
+        WAYLAND_DISPLAY=${LinuxXwaylandHost.displayName(display)} $X_SERVER_ENV "${'$'}XROOT" Xwayland :${'$'}D -nolock -geometry ${width}x$height -dpi ${xDpi(dpi)} \
             -shm -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
     """.trimIndent()
 
@@ -260,7 +269,7 @@ internal object LinuxCatalog {
         mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
         trap 'kill ${'$'}DBPID 2>/dev/null' EXIT HUP INT TERM
         if command -v dbus-daemon >/dev/null; then
-            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || dbus-uuidgen >/etc/machine-id 2>/dev/null
+            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || { chmod u+w /etc/machine-id 2>/dev/null; dbus-uuidgen >/etc/machine-id 2>/dev/null; }
             export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-${'$'}D
             mkdir -p /etc/dextop
             printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
@@ -270,15 +279,41 @@ internal object LinuxCatalog {
             dbus-daemon --config-file=/etc/dextop/dbus-session.conf --address=${'$'}DBUS_SESSION_BUS_ADDRESS \
                 --fork --print-pid >/tmp/dbus-${'$'}D.log 2>&1
             DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
+            # A system bus too: many applications (software centres, network and disk tools)
+            # give up without one. Its own permissive configuration, since the stock one
+            # switches to the messagebus user, which PRoot's shell user cannot.
+            export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
+            mkdir -p /run/dbus
+            if ! grep -q '@/tmp/dextop-dbus-system${'$'}' /proc/net/unix 2>/dev/null; then
+            # No bus runs: a socket file left by an earlier session would make its bind fail.
+            rm -f /run/dbus/system_bus_socket
+            printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
+                ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
+                "<busconfig><type>system</type><listen>${'$'}DBUS_SYSTEM_BUS_ADDRESS</listen><keep_umask/>" \
+                '<listen>unix:path=/run/dbus/system_bus_socket</listen><servicedir>/etc/dextop/system-services</servicedir>' \
+                '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/>' \
+                '<policy context="default"><allow user="*"/><allow own="*"/>' \
+                '<allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/></policy>' \
+                '</busconfig>' >/etc/dextop/dbus-system-${'$'}D.conf
+            pkill -f "^dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf" 2>/dev/null && sleep 0.3
+            dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf --fork >/tmp/dbus-system-${'$'}D.log 2>&1
+            fi
         fi
         echo dextop-wayland-ready
         while :; do sleep 3600 || exit; done
     """.trimIndent() + "\n"
 
     /** Runs [command] (a desktop entry's Exec line) as an application of display [display]. */
-    fun launchScript(display: Int, command: String, wayland: Boolean = false, waylandGpu: Boolean = true): String = """
+    fun launchScript(display: Int, command: String, wayland: Boolean = false, waylandGpu: Boolean = true,
+        appLog: String? = null): String {
+        require(appLog == null || appLog.matches(Regex("[A-Za-z0-9._-]+\\.log")))
+        val logs = "/tmp/apps-$display.log" + (appLog?.let { " /tmp/$it" } ?: "")
+        return """
         export DISPLAY=:$display XDG_RUNTIME_DIR=/tmp/runtime-root
         export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-$display
+        export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
+        # No accessibility bus runs in the session.
+        export GTK_A11Y=none
         # An application started before the session bus misses it for good (Firefox then
         # cannot take over URLs from later launches: "Firefox is already running").
         i=0
@@ -286,12 +321,88 @@ internal object LinuxCatalog {
             sleep 0.1; i=${'$'}((i + 1))
         done
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
+        # Light or dark, as Dextop's Linux theme setting says (LinuxTheme).
+        [ ! -f /etc/dextop/theme.env ] || . /etc/dextop/theme.env
+        [ ! -r /etc/profile.d/dextop-path.sh ] || . /etc/profile.d/dextop-path.sh
+        # Dextop manages these application windows without reparenting them.
+        # AWT otherwise waits for a reparent event and leaves its content at
+        # the initial size (Arduino/Swing appears blank after window resize).
+        export _JAVA_AWT_WM_NONREPARENTING=${'$'}{_JAVA_AWT_WM_NONREPARENTING:-1}
         $RENDERER_OVERRIDE
         $GTK_FONT_SCHEMA_FIX
-        ${if (wayland) (if (waylandGpu) WAYLAND_ENVIRONMENT else WAYLAND_TOOLKIT_ENVIRONMENT) else "unset WAYLAND_DISPLAY; export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11 MOZ_ENABLE_WAYLAND=0 ELECTRON_OZONE_PLATFORM_HINT=x11"}
+        ${if (wayland) (if (waylandGpu) WAYLAND_ENVIRONMENT else WAYLAND_TOOLKIT_ENVIRONMENT) else "unset WAYLAND_DISPLAY DEXTOP_WAYLAND_KGSL MESA_LOADER_DRIVER_OVERRIDE; export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11 SDL_VIDEO_DRIVER=x11 MOZ_ENABLE_WAYLAND=0 ELECTRON_OZONE_PLATFORM_HINT=x11"}
+        $HARDWARE_TOOLKIT_ENVIRONMENT
         cd /root
-        exec sh -c ${shellQuote(command)} >>/tmp/apps-$display.log 2>&1
+        cmd=${shellQuote(command)}
+        $CHROMIUM_SANDBOX_FIX
+        # The output also goes to Dextop, which shows it while the window opens; the marker
+        # carries the exit code through the pipe.
+        { printf '\n[dextop-launch] %s\n' "$(date -Iseconds)"; sh -c "${'$'}cmd" 2>&1; echo "$LAUNCH_EXIT_MARKER${'$'}?"; } | tee -a $logs
     """.trimIndent() + "\n"
+    }
+
+    /** Printed after a launched command ends, followed by its exit code. */
+    const val LAUNCH_EXIT_MARKER = "dextop-launch-exit:"
+
+    /**
+     * Chromium and Electron applications abort when their sandbox cannot start, and under
+     * PRoot neither the setuid helper (chrome-sandbox) nor user namespaces work. Such a
+     * command gets --no-sandbox: a Chromium-family executable, or one from a package that
+     * ships chrome-sandbox (Electron apps started through a wrapper script). Expects cmd.
+     */
+    private val CHROMIUM_SANDBOX_FIX = """
+        exe=${'$'}(printf '%s\n' "${'$'}cmd" | awk '{ for (i = 1; i <= NF; i++) if (${'$'}i != "env" && ${'$'}i !~ /^[A-Za-z_][A-Za-z0-9_]*=/) { print ${'$'}i; exit } }' | tr -d "'\"")
+        real=${'$'}(readlink -f "${'$'}(command -v "${'$'}exe" 2>/dev/null)" 2>/dev/null)
+        nosandbox=
+        case "${'$'}{real##*/}" in
+            chromium|chromium-browser|chrome|google-chrome*|dextop-chrome|dextop-chromium|electron*|code|code-oss|codium|brave*|vivaldi*|microsoft-edge*|opera*) nosandbox=1 ;;
+        esac
+        if [ -z "${'$'}nosandbox" ] && [ -n "${'$'}real" ]; then
+            if [ -e "${'$'}{real%/*}/chrome-sandbox" ]; then nosandbox=1
+            else
+                pkg=${'$'}(dpkg -S "${'$'}real" 2>/dev/null | head -n 1 | cut -d: -f1)
+                [ -n "${'$'}pkg" ] && dpkg -L "${'$'}pkg" 2>/dev/null | grep -q '/chrome-sandbox${'$'}' && nosandbox=1
+            fi
+        fi
+        if [ -n "${'$'}nosandbox" ]; then
+            case "${'$'}cmd" in *--no-sandbox*) ;; *) cmd="${'$'}cmd --no-sandbox" ;; esac
+            # PRoot cannot reliably clone Chromium's zygote/GPU subprocess
+            # state. Use exec-based renderer children and an in-process GPU,
+            # retaining actual GPU rendering in hardware mode.
+            case " ${'$'}cmd " in *" --in-process-gpu "*) ;; *) cmd="${'$'}cmd --in-process-gpu" ;; esac
+            case " ${'$'}cmd " in *" --no-zygote "*) ;; *) cmd="${'$'}cmd --no-zygote" ;; esac
+            case " ${'$'}cmd " in
+                *DEXTOP_SOFTWARE_RENDERING=1*)
+                    case " ${'$'}cmd " in *" --disable-gpu "*) ;; *) cmd="${'$'}cmd --disable-gpu" ;; esac
+                    ;;
+                *)
+                    if [ "${'$'}GALLIUM_DRIVER" = zink ]; then
+                        case "${'$'}cmd" in *--use-angle=*) ;; *) cmd="${'$'}cmd --use-angle=gl" ;; esac
+                        case " ${'$'}cmd " in *" --enable-gpu-rasterization "*) ;; *) cmd="${'$'}cmd --enable-gpu-rasterization" ;; esac
+                        case " ${'$'}cmd " in *" --ignore-gpu-blocklist "*) ;; *) cmd="${'$'}cmd --ignore-gpu-blocklist" ;; esac
+                        case " ${'$'}cmd " in *" --enable-zero-copy "*) ;; *) cmd="${'$'}cmd --enable-zero-copy" ;; esac
+                    fi
+                    ;;
+            esac
+            # With no GNOME/KDE session Electron may select basic_text despite a
+            # working Secret Service. Select the installed encrypted provider,
+            # while preserving an explicitly selected password store.
+            if command -v gnome-keyring-daemon >/dev/null 2>&1 &&
+                [ -f /usr/share/dbus-1/services/org.freedesktop.secrets.service ]; then
+                case "${'$'}cmd" in *--password-store=*) ;; *) cmd="${'$'}cmd --password-store=gnome-libsecret" ;; esac
+            fi
+            case "${'$'}cmd" in
+                *--ozone-platform=*) ;;
+                *)
+                    if [ -n "${'$'}WAYLAND_DISPLAY" ] && [ -n "${'$'}DEXTOP_GPU_RENDER_NODE" ]; then
+                        cmd="${'$'}cmd --ozone-platform=wayland --render-node-override=${'$'}DEXTOP_GPU_RENDER_NODE"
+                    else
+                        cmd="env -u WAYLAND_DISPLAY MESA_VK_WSI_DEBUG=sw LIBGL_KOPPER_DRI2=true GDK_BACKEND=x11 ELECTRON_OZONE_PLATFORM_HINT=x11 ${'$'}cmd --ozone-platform=x11"
+                    fi
+                    ;;
+            esac
+        fi
+    """.trimIndent()
 
     /**
      * The session bus, on an abstract socket because the shell user cannot
@@ -300,12 +411,16 @@ internal object LinuxCatalog {
      */
     private fun sessionSetup(dpi: Int): String = """
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
+        [ ! -r /etc/profile.d/dextop-path.sh ] || . /etc/profile.d/dextop-path.sh
+        if command -v python3 >/dev/null 2>&1 && [ -f /usr/local/bin/dextop-keyring-repair ]; then
+            python3 /usr/local/bin/dextop-keyring-repair || echo 'Keyring default recovery failed' >&2
+        fi
         $RENDERER_OVERRIDE
         $BROWSER_LAUNCHER_MIGRATION
         $ROOT_TOOLS
         if command -v dbus-daemon >/dev/null; then
             # Images ship "uninitialized" (13 characters), which D-Bus and Chrome reject.
-            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || dbus-uuidgen >/etc/machine-id 2>/dev/null
+            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || { chmod u+w /etc/machine-id 2>/dev/null; dbus-uuidgen >/etc/machine-id 2>/dev/null; }
             dbus-uuidgen --ensure=/etc/machine-id 2>/dev/null
             mkdir -p /var/lib/dbus && cp -f /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null
             export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-${'$'}D
@@ -321,6 +436,25 @@ internal object LinuxCatalog {
             dbus-daemon --config-file=/etc/dextop/dbus-session.conf --address=${'$'}DBUS_SESSION_BUS_ADDRESS \
                 --fork --print-pid >/tmp/dbus-${'$'}D.log 2>&1
             DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
+            # A system bus too: many applications (software centres, network and disk tools)
+            # give up without one. Its own permissive configuration, since the stock one
+            # switches to the messagebus user, which PRoot's shell user cannot.
+            export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
+            mkdir -p /run/dbus
+            if ! grep -q '@/tmp/dextop-dbus-system${'$'}' /proc/net/unix 2>/dev/null; then
+            # No bus runs: a socket file left by an earlier session would make its bind fail.
+            rm -f /run/dbus/system_bus_socket
+            printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
+                ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
+                "<busconfig><type>system</type><listen>${'$'}DBUS_SYSTEM_BUS_ADDRESS</listen><keep_umask/>" \
+                '<listen>unix:path=/run/dbus/system_bus_socket</listen><servicedir>/etc/dextop/system-services</servicedir>' \
+                '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/>' \
+                '<policy context="default"><allow user="*"/><allow own="*"/>' \
+                '<allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/></policy>' \
+                '</busconfig>' >/etc/dextop/dbus-system-${'$'}D.conf
+            pkill -f "^dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf" 2>/dev/null && sleep 0.3
+            dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf --fork >/tmp/dbus-system-${'$'}D.log 2>&1
+            fi
         fi
         # xterm's default bitmap font is not installed; use the Xft fonts (CJK included).
         command -v xrdb >/dev/null && printf '%s\n' 'Xft.dpi: $dpi' \
@@ -465,12 +599,15 @@ internal object LinuxCatalog {
     /**
      * GPU flags for Chromium-based browsers by renderer. On VirGL they draw
      * no text when they rasterize on the GPU (glyph atlases), so only
-     * compositing and WebGL use it. On Turnip, ANGLE drives Vulkan directly:
-     * through Zink the GPU process fails (calibrated timestamps).
+     * compositing and WebGL use it. Zink uses the ordinary GPU GL path; do not
+     * force ANGLE Vulkan, which can stall otherwise working Electron applications.
      */
     val CHROMIUM_VIRGL_FLAGS = "case \"${'$'}GALLIUM_DRIVER\" in " +
         "virpipe) set -- --disable-gpu-rasterization \"${'$'}@\" ;; " +
-        "zink) set -- --ozone-platform=x11 --use-angle=vulkan --enable-features=Vulkan,DefaultANGLEVulkan,VulkanFromANGLE \"${'$'}@\" ;; esac"
+        "zink) if [ -n \"${'$'}WAYLAND_DISPLAY\" ] && [ -n \"${'$'}DEXTOP_GPU_RENDER_NODE\" ]; then " +
+        "set -- --ozone-platform=wayland --render-node-override=\"${'$'}DEXTOP_GPU_RENDER_NODE\" \"${'$'}@\"; " +
+        "else export MESA_VK_WSI_DEBUG=sw LIBGL_KOPPER_DRI2=true; set -- --ozone-platform=x11 \"${'$'}@\"; fi; " +
+        "set -- --use-angle=gl --in-process-gpu --no-zygote --enable-gpu-rasterization --ignore-gpu-blocklist --enable-zero-copy \"${'$'}@\" ;; esac"
 
     /** Puts the current [CHROMIUM_VIRGL_FLAGS] into browser launchers written by earlier versions. */
     /**
@@ -486,6 +623,10 @@ internal object LinuxCatalog {
                 [ -x /usr/bin/${'$'}tool ] || continue
                 {
                     echo '#!/bin/sh'
+                    # First clear what an interrupted package operation left (see dextop-apt-heal).
+                    case "${'$'}tool" in apt|apt-get|aptitude)
+                        echo "if [ -x /usr/local/sbin/dextop-apt-heal ]; then if [ \"\${'$'}(id -u)\" = 0 ]; then /usr/local/sbin/dextop-apt-heal; else ${'$'}fakeroot /usr/local/sbin/dextop-apt-heal; fi; fi" ;;
+                    esac
                     echo "[ \"\${'$'}(id -u)\" = 0 ] && exec /usr/bin/${'$'}tool \"\${'$'}@\""
                     echo "exec ${'$'}fakeroot /usr/bin/${'$'}tool \"\${'$'}@\""
                 } >/usr/local/sbin/${'$'}tool
@@ -504,10 +645,12 @@ internal object LinuxCatalog {
 
     private val BROWSER_LAUNCHER_MIGRATION = """
         for launcher in /usr/local/bin/dextop-chrome /usr/local/bin/dextop-chromium; do
-            [ -f "${'$'}launcher" ] && ! grep -q -- '--ozone-platform=x11' "${'$'}launcher" && {
+            [ -f "${'$'}launcher" ] || continue
+            if ! grep -q -- 'DEXTOP_GPU_RENDER_NODE' "${'$'}launcher" || grep -q -- '--use-angle=vulkan' "${'$'}launcher"; then
                 sed -i '/disable-gpu-rasterization/d; /DefaultANGLEVulkan/d' "${'$'}launcher"
+                sed -i '/^case "${'$'}GALLIUM_DRIVER" in /d' "${'$'}launcher"
                 sed -i '/^exec /i ${CHROMIUM_VIRGL_FLAGS.replace("'", "'\\''")}' "${'$'}launcher"
-            }
+            fi
         done
         if [ -f /usr/local/bin/dextop-firefox ] && ! grep -q MOZ_SHM_NO_SEALS /usr/local/bin/dextop-firefox; then
             sed -i 's/^export MOZ_DISABLE_CONTENT_SANDBOX=1 .*${'$'}/$FIREFOX_SANDBOX_ENVIRONMENT/' /usr/local/bin/dextop-firefox
@@ -546,15 +689,37 @@ internal object LinuxCatalog {
      * dma-buf) and fall back to X11.
      */
     private val WAYLAND_TOOLKIT_ENVIRONMENT = "export WAYLAND_DISPLAY=${LinuxAppSession.WAYLAND_DISPLAY} " +
-        "GDK_BACKEND=wayland,x11 GTK_CSD=0 QT_QPA_PLATFORM='wayland;xcb' SDL_VIDEODRIVER=wayland,x11 " +
+        "GDK_BACKEND=wayland,x11 GTK_CSD=0 QT_QPA_PLATFORM='wayland;xcb' SDL_VIDEODRIVER=wayland,x11 SDL_VIDEO_DRIVER=wayland,x11 " +
         "MOZ_ENABLE_WAYLAND=1 ELECTRON_OZONE_PLATFORM_HINT=auto\n"
+
+    private val HARDWARE_TOOLKIT_ENVIRONMENT = """
+        case "${'$'}GALLIUM_DRIVER" in
+            zink|virpipe)
+                export GSK_RENDERER=${'$'}{GSK_RENDERER:-gl}
+                export MOZ_WEBRENDER=${'$'}{MOZ_WEBRENDER:-1} MOZ_ACCELERATED=${'$'}{MOZ_ACCELERATED:-1}
+                export QSG_RHI_BACKEND=${'$'}{QSG_RHI_BACKEND:-opengl}
+                export QSG_RHI_PREFER_SOFTWARE_RENDERER=0
+                export QT_WIDGETS_RHI=${'$'}{QT_WIDGETS_RHI:-1} QT_WIDGETS_RHI_BACKEND=${'$'}{QT_WIDGETS_RHI_BACKEND:-opengl}
+                ;;
+        esac
+    """.trimIndent()
 
     private val WAYLAND_ENVIRONMENT = WAYLAND_TOOLKIT_ENVIRONMENT +
         "export DEXTOP_WAYLAND_KGSL=1 MESA_LOADER_DRIVER_OVERRIDE=zink\n" +
-        // X11 GLX clients launched from a Wayland terminal still need XPutImage presentation.
-        "export LIBGL_KOPPER_DRI2=true MESA_VK_WSI_DEBUG=sw\n" +
-        "export __EGL_VENDOR_LIBRARY_FILENAMES=/opt/dextop-mesa/share/glvnd/egl_vendor.d/50_mesa.json\n" +
-        "export LD_LIBRARY_PATH=/opt/dextop-mesa/lib/aarch64-linux-gnu${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}"
+        "unset LIBGL_KOPPER_DRI2 MESA_VK_WSI_DEBUG\n" +
+        "if [ -f '${LinuxGpuRuntime.PREFIX}/.ready' ]; then\n" +
+        "  export __EGL_VENDOR_LIBRARY_FILENAMES=${LinuxGpuRuntime.PREFIX}/share/glvnd/egl_vendor.d/50_mesa.json\n" +
+        "  export LIBGL_DRIVERS_PATH=${LinuxGpuRuntime.LIB}/dri\n" +
+        "  export GBM_BACKENDS_PATH=${LinuxGpuRuntime.LIB}/gbm\n" +
+        "  export LD_PRELOAD=${LinuxGpuRuntime.LIB}/libdextop_kgsl_gbm.so${'$'}{LD_PRELOAD:+:${'$'}LD_PRELOAD}\n" +
+        "  for dextop_node in /dev/dri/renderD*; do\n" +
+        "    if [ -c \"${'$'}dextop_node\" ]; then export DEXTOP_GPU_RENDER_NODE=\"${'$'}dextop_node\"; break; fi\n" +
+        "  done\n" +
+        "  export LD_LIBRARY_PATH=${LinuxGpuRuntime.LIB}${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}\n" +
+        "else\n" +
+        "  export __EGL_VENDOR_LIBRARY_FILENAMES=/opt/dextop-mesa/share/glvnd/egl_vendor.d/50_mesa.json\n" +
+        "  export LD_LIBRARY_PATH=/opt/dextop-mesa/lib/aarch64-linux-gnu${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}\n" +
+        "fi"
 
     private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 }

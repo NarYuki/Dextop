@@ -14,6 +14,18 @@
 
 static const char marker[] = "Dextop abstract UNIX socket\n";
 
+int dextop_socket_marker_exists(const char *path) {
+    int saved = errno, yes = 0;
+    int fd = open(path, O_RDONLY | O_CLOEXEC | O_NOFOLLOW | O_NONBLOCK);
+    if (fd >= 0) {
+        char bytes[sizeof(marker) + 1];
+        yes = read(fd, bytes, sizeof(bytes)) == sizeof(marker) && !memcmp(bytes, marker, sizeof(marker));
+        close(fd);
+    }
+    errno = saved;
+    return yes;
+}
+
 void dextop_socket_marker(const char *path) {
     int saved = errno;
     const char *enabled = getenv("DEXTOP_SOCKET_MARKERS");

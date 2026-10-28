@@ -14,6 +14,10 @@ internal class LinuxPointerGrabs(display: Int) {
         runCatching { check(x.recordPointerGrabs(::record)); x }.getOrElse { x.close(); null }
     }
     val requested get() = owners.isNotEmpty()
+    fun requestedFor(window: Int, root: Int, focus: Int, parent: (Int) -> Int,
+                     inputOnly: (Int) -> Boolean): Boolean = owners.values.any { grab ->
+        LinuxPointerGrabTarget.matches(grab, window, root, focus, parent, inputOnly)
+    }
     private fun record(reply: ByteBuffer) {
         val category = reply.get(1).toInt() and 255
         val owner = reply.getInt(12)
@@ -44,4 +48,26 @@ internal class LinuxPointerGrabs(display: Int) {
         }
     }
     fun stop() { connection?.close(); pending.clear(); owners.clear() }
+}
+
+/** Wine's ClipCursor uses a root-level InputOnly helper, outside the game tree. */
+internal object LinuxPointerGrabTarget {
+    fun matches(grab: Int, window: Int, root: Int, focus: Int,
+                parent: (Int) -> Int, inputOnly: (Int) -> Boolean): Boolean {
+        fun belongs(start: Int): Boolean {
+            var current = start
+            repeat(64) {
+                if (current == window) return true
+                if (current == 0 || current == root) return false
+                current = parent(current)
+            }
+            return false
+        }
+        if (grab == 0 || window == 0) return false
+        if (grab == root || belongs(grab)) return true
+        // A visible helper's active grab already routes physical input at the
+        // X server. Capture for the focused client, without activating helpers
+        // or treating another ordinary application window as this game's child.
+        return belongs(focus) && parent(grab) == root && inputOnly(grab)
+    }
 }

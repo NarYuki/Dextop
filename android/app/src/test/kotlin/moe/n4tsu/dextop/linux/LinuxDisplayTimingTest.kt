@@ -35,7 +35,7 @@ class LinuxDisplayTimingTest {
     @Test fun launchesConsumeInstalledConfigurationWithoutPerApplicationFlags() {
         for (wayland in listOf(false, true)) {
             val script = LinuxCatalog.launchScript(10, "application", wayland = wayland)
-            assertTrue(script.indexOf(". /etc/dextop/session.env") < script.indexOf("exec sh -c"))
+            assertTrue(script.indexOf(". /etc/dextop/session.env") < script.indexOf("sh -c \"\$cmd\""))
             assertTrue("export DEXTOP_XVFB_WSI=1" !in script)
         }
     }

@@ -48,7 +48,7 @@ internal object LinuxDroidDeckFiles {
             val staged = File(target.parentFile, target.name + ".staged")
             try {
                 target.parentFile?.mkdirs()
-                resource(relative).use { input -> staged.outputStream().use { input.copyTo(it) } }
+                resource(relative).use { input -> staged.writeBytes(LinuxScript.resource(input.readBytes())) }
                 check(staged.setExecutable(true, false) && staged.setReadable(true, false) && staged.renameTo(target))
             } catch (error: Exception) {
                 staged.delete()

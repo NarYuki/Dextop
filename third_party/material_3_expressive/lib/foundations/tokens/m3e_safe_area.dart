@@ -9,6 +9,10 @@ import 'package:flutter/widgets.dart';
 abstract final class M3ESafeArea {
   const M3ESafeArea._();
 
+  /// Ignores the top inset (Dextop: a window on an external display, which has a
+  /// title bar and no status bar although the platform reports one).
+  static bool ignoreTop = false;
+
   /// Gesture / status / notch insets with keyboard-aware [EdgeInsets.bottom].
   static EdgeInsets paddingOf(BuildContext context) {
     // Register for MediaQuery updates so keyboard open/close rebuilds callers.
@@ -17,7 +21,7 @@ abstract final class M3ESafeArea {
     final keyboardVisible = raw.viewInsets.bottom > 0;
     return EdgeInsets.only(
       left: raw.viewPadding.left,
-      top: raw.viewPadding.top,
+      top: ignoreTop ? 0 : raw.viewPadding.top,
       right: raw.viewPadding.right,
       bottom: keyboardVisible ? 0.0 : raw.viewPadding.bottom,
     );

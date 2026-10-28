@@ -105,6 +105,12 @@ set_target_properties(virgl_server PROPERTIES PREFIX "lib" OUTPUT_NAME "virgl_se
 # Socket shim preloaded into container processes. It runs under the guest's
 # glibc or musl, so it is built for the GNU target with no libc at all.
 add_library(dextop_unixsock SHARED "${CMAKE_CURRENT_LIST_DIR}/../linux_unixsock.c")
+  add_library(dextop_faked SHARED "${CMAKE_CURRENT_LIST_DIR}/../linux_faked_loopback.c")
+  target_compile_options(dextop_faked PRIVATE --target=aarch64-unknown-linux-gnu -O2 -fPIC -ffreestanding -fno-stack-protector -fno-builtin)
+  target_link_options(dextop_faked PRIVATE --target=aarch64-unknown-linux-gnu -nostdlib -fuse-ld=lld
+      "-L${CMAKE_SYSROOT}/usr/lib/aarch64-linux-android/${ANDROID_PLATFORM_LEVEL}"
+      "-L${CMAKE_SYSROOT}/usr/lib/aarch64-linux-android"
+      "LINKER:-z,noexecstack,-z,undefs,--hash-style=both,--as-needed")
 target_compile_options(dextop_unixsock PRIVATE
     --target=aarch64-unknown-linux-gnu -O2 -fPIC -ffreestanding -fno-stack-protector -fno-builtin)
 # errno and environ resolve against the guest's libc at load time (-z undefs

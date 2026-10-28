@@ -291,6 +291,8 @@ internal class X11Client private constructor(
         request(le(4).put(43).put(0).putShort(1), reply = true)
     }
 
+    fun inputFocus(): Int = request(le(4).put(43).put(0).putShort(1), reply = true)?.getInt(8) ?: 0
+
     /** Keysyms for [count] keycodes from [first]; returns (keysyms per keycode, keysyms). */
     fun keyboardMapping(first: Int, count: Int): Pair<Int, IntArray> {
         val reply = request(le(8).put(101).put(0).putShort(2).put(first.toByte()).put(count.toByte()).putShort(0), reply = true)!!
@@ -330,9 +332,19 @@ internal class X11Client private constructor(
         return Rect(x, y, x + (reply.getShort(16).toInt() and 0xffff), y + (reply.getShort(18).toInt() and 0xffff))
     }
 
+    /** The drawable's depth (32 for a window with an alpha channel), or 0 when it is gone. */
+    fun depth(drawable: Int): Int {
+        val reply = request(le(8).put(14).put(0).putShort(2).putInt(drawable), reply = true) ?: return 0
+        return reply.get(1).toInt() and 0xff
+    }
+
     fun mapWindow(window: Int) {
         request(le(8).put(8).put(0).putShort(2).putInt(window))
     }
+
+    /** QueryTree's parent, including child surfaces used by SDL/Wine pointer grabs. */
+    fun parentWindow(window: Int): Int =
+        request(le(8).put(15).put(0).putShort(2).putInt(window), reply = true)?.getInt(12) ?: 0
 
     /** ConfigureWindow; [values] in the bit order of [mask] (x, y, width, height, border, sibling, stack mode). */
     fun configureWindow(window: Int, mask: Int, values: IntArray) {
@@ -376,6 +388,18 @@ internal class X11Client private constructor(
         val packet = le(44).put(25).put(0).putShort(11).putInt(destination).putInt(mask)
         packet.put(event.array(), 0, 32)
         request(packet)
+    }
+
+    /**
+     * A synthetic ConfigureNotify telling [window]'s client where the window manager placed it,
+     * in root coordinates (ICCCM 4.1.5). Clients such as Wine keep their own idea of their
+     * position and size otherwise, and draw and place their menus by it.
+     */
+    fun configureNotify(window: Int, x: Int, y: Int, width: Int, height: Int) {
+        val event = le(32).put(22).put(0).putShort(0).putInt(window).putInt(window).putInt(0)
+            .putShort(x.toShort()).putShort(y.toShort()).putShort(width.toShort()).putShort(height.toShort())
+            .putShort(0).put(0)
+        sendEvent(window, 1 shl 17, event)
     }
 
     /** ClientMessage of format 32 to [window], as used for WM_DELETE_WINDOW. */

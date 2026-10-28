@@ -23,7 +23,12 @@ with tempfile.TemporaryDirectory(prefix="dextop-sync-test-") as tmp:
     run()
     assert (root/"package/beta").read_text().strip()=="steamdeck_publicbeta"
     (root/"package/beta").write_text("steamdeck_stable\n")
+    (root/"package"/manifest).write_bytes((cdn/manifest).read_bytes())
     run("--sync")
+    assert not (root/"package"/manifest).exists()
+    (root/"package"/manifest).write_text('a different pending update\n')
+    run("--sync")
+    assert (root/"package"/manifest).read_text()=='a different pending update\n'
     assert (root/"package/beta").read_text().strip()=="steamdeck_publicbeta"
     assert (root/"package/droiddeck-installed").read_text().strip()=="100"
     release(101,"client-v2")
