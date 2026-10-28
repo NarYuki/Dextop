@@ -10,8 +10,13 @@ set -e
 ZIG=${1:?zig executable (0.13.0)}
 REPO=$(cd "$(dirname "$0")/.." && pwd)
 cd "$REPO/third_party/droiddeck-preload"
+if ! grep -q 'Chromium.s checked ScopedFD' tracer.c; then
+    git -C "$REPO" apply --directory=third_party/droiddeck-preload third_party/patches/droiddeck-status-readonly.patch
+fi
 "$ZIG" cc -target aarch64-linux-gnu.2.31 -shared -fPIC -DDEXTOP_BINFMT -O2 -Wall -pthread -s \
     -o "$REPO/android/app/src/main/jniLibs/arm64-v8a/libdextop_blsession.so" ./*.c \
     "$REPO/android/app/src/main/cpp/linux_wine_memory.c" \
-    "$REPO/android/app/src/main/cpp/linux_socket_markers.c" -ldl
+    "$REPO/android/app/src/main/cpp/linux_socket_markers.c" \
+    "$REPO/android/app/src/main/cpp/linux_credentials.c" \
+    "$REPO/android/app/src/main/cpp/linux_semaphores.c" -ldl
 echo "built libdextop_blsession.so"

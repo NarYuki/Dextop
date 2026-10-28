@@ -8,6 +8,36 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class LinuxSteamTest {
+    @Test fun nativeClientRegistersSteamCommandForGeneratedGameShortcuts() {
+        val root = Files.createTempDirectory("steam-shortcuts").toFile()
+        try {
+            LinuxSteam.stageCommandAlias(root)
+            assertFalse(File(root, "usr/local/bin/steam").exists())
+            File(root, "root/.local/share/Steam/steamrtarm64/steam").apply { parentFile.mkdirs(); writeText("client") }
+            val launcher = File(root, "usr/local/bin/dextop-steam").apply { parentFile.mkdirs(); writeText("launcher") }
+            LinuxSteam.stageCommandAlias(root)
+            assertEquals(launcher.canonicalFile, LinuxDesktopEntries.resolve(root, "/usr/local/bin/steam")?.canonicalFile)
+            val alias = File(root, "usr/local/bin/steam").toPath()
+            val target = Files.readSymbolicLink(alias)
+            LinuxSteam.stageCommandAlias(root)
+            assertEquals(target, Files.readSymbolicLink(alias))
+        } finally { root.deleteRecursively() }
+    }
+
+    @Test fun nativeSteamAliasPreservesVendorAndUserCommands() {
+        val root = Files.createTempDirectory("steam-vendor").toFile()
+        try {
+            File(root, "root/.local/share/Steam/steamrtarm64/steam").apply { parentFile.mkdirs(); writeText("client") }
+            val vendor = File(root, "usr/bin/steam").apply { parentFile.mkdirs(); writeText("vendor") }
+            LinuxSteam.stageCommandAlias(root)
+            assertFalse(Files.exists(File(root, "usr/local/bin/steam").toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS))
+            assertEquals("vendor", vendor.readText())
+            vendor.delete()
+            val custom = File(root, "usr/local/bin/steam").apply { parentFile.mkdirs(); writeText("custom") }
+            LinuxSteam.stageCommandAlias(root)
+            assertEquals("custom", custom.readText())
+        } finally { root.deleteRecursively() }
+    }
     @Test fun nestedSteamDisplayDoesNotInheritXvfbPresentationFallbackOrOuterWayland() {
         val script = LinuxSteam.installScript(apt = true) { "" }
         val clean = script.indexOf("unset DISPLAY DBUS_SESSION_BUS_ADDRESS MESA_VK_WSI_DEBUG LIBGL_ALWAYS_SOFTWARE")
@@ -84,6 +114,32 @@ class LinuxSteamTest {
         for (setting in listOf("ZINK_DESCRIPTORS", "ZINK_DEBUG", "mesa_glthread", "MESA_NO_ERROR", "TU_DEBUG")) {
             assertTrue("export $setting=" in deck)
             assertFalse("export $setting=" in LinuxSteam.launcherScript)
+        }
+    }
+
+    @Test fun desktopSteamLoadsSystemGlBeforeTheClientAndPreservesSessionPreloads() {
+        val script = LinuxSteam.launcherScript
+        val preload = "export LD_PRELOAD=libGL.so.1\${LD_PRELOAD:+:\$LD_PRELOAD}"
+        assertTrue(preload in script)
+        assertTrue(script.indexOf(preload) < script.indexOf("-nobigpicture"))
+        assertTrue("-cef-force-gpu -cef-use-gl=angle -cef-use-angle=gl" in script)
+        assertFalse("-cef-disable-gpu" in script)
+        assertTrue("export MESA_VK_WSI_DEBUG=sw LIBGL_KOPPER_DRI2=true" in script)
+        assertFalse("s/^export LIBGL_KOPPER_DISABLE=true" in script)
+        assertTrue("flock -n 9" in script)
+        assertTrue("steam_updates\" -ge 3" in script)
+        assertFalse("-skipinitialbootstrap" in script)
+        assertFalse("--sync steamdeck_publicbeta" in script)
+    }
+
+    @Test fun bothLaunchersLeaveUpdateApplicationToSteam() {
+        for (script in listOf(LinuxSteam.launcherScript, LinuxSteam.installScript(apt = true) { "" })) {
+            assertFalse("/usr/local/bin/dextop-steam-install --sync" in script)
+            assertFalse("-skipinitialbootstrap" in script)
+            assertTrue("steam_updates=0" in script)
+            assertTrue("steam_ran\" -lt 60" in script)
+            assertTrue("steam_updates\" -ge 3" in script)
+            assertTrue("set --" in script)
         }
     }
 

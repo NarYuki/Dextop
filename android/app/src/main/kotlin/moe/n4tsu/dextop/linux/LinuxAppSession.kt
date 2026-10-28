@@ -116,7 +116,7 @@ internal class LinuxAppSession(
     /** Dextop's Wayland compositor for this display's container, or null when it did not start. */
     @Volatile var wayland: WaylandCompositor? = null; private set
     /** Display positions of mapped Wayland windows, to place their popups. */
-    private val waylandBounds = ConcurrentHashMap<Int, Rect>()
+    private val waylandBounds = LinuxWindowGeometry()
     private val waylandWindows = ConcurrentHashMap<Int, String>()
     private val waylandPointerPositions = ConcurrentHashMap<Int, Pair<Int, Int>>()
     /** Keyboard input goes to Wayland while a Wayland window is the active one. */
@@ -137,10 +137,16 @@ internal class LinuxAppSession(
         Log.i(TAG, "[$display] Wayland compositor ${if (wayland != null) "listening on @$socket" else "not started"}")
     }
 
-    @Volatile private var waylandPointerCaptured = false
+    private val waylandPointerCaptured = ConcurrentHashMap.newKeySet<Int>()
     private fun onWaylandEvent(event: JSONObject) {
+        // Text a Wayland application copied: shared like X's CLIPBOARD.
+        if (event.optString("type") == "clipboard") {
+            event.optString("text").takeIf { it.isNotEmpty() }?.let { onClipboard(it) }
+            return
+        }
         if (event.optString("type") == "pointer-capture") {
-            waylandPointerCaptured = event.optBoolean("capture")
+            val id = WAYLAND_ID or event.optInt("id")
+            if (event.optBoolean("capture")) waylandPointerCaptured.add(id) else waylandPointerCaptured.remove(id)
             return
         }
         if (event.optString("type") == "error") {
@@ -165,20 +171,21 @@ internal class LinuxAppSession(
         }
         val parent = event.optInt("parent").takeIf { it != 0 }?.let { WAYLAND_ID or it }
         // Popups come relative to their parent's window; Plasma places windows in display coordinates.
-        val origin = parent?.let(waylandBounds::get)
-        val left = (origin?.left ?: 0) + event.optInt("x")
-        val top = (origin?.top ?: 0) + event.optInt("y")
         val width = event.optInt("w")
         val height = event.optInt("h")
-        when (type) {
-            "unmap" -> waylandBounds.remove(xid)
-            else -> if (popup) waylandBounds[xid] = Rect(left, top, left + width, top + height)
-                else waylandBounds.putIfAbsent(xid, Rect(0, 0, width, height))
+        val geometry = waylandBounds.report(xid, parent ?: 0, popup,
+            event.optInt("x"), event.optInt("y"), width, height)
+        val left = geometry.left
+        val top = geometry.top
+        if (type == "unmap") {
+            waylandBounds.remove(xid)
+            waylandPointerCaptured.remove(xid)
         }
         val translated = JSONObject()
             .put("type", type).put("xid", xid).put("popup", popup)
             .put("title", event.optString("title")).put("class", event.optString("class"))
             .put("deck", event.optBoolean("deck"))
+            .put("fixedSize", event.optBoolean("fixedSize"))
             .put("transientFor", parent ?: 0)
             .put("decorated", event.optBoolean("decorated", true))
             .put("x", left).put("y", top).put("w", width).put("h", height)
@@ -202,12 +209,22 @@ internal class LinuxAppSession(
         /** The window's Composite pixmap, read by the renderer; renamed after every resize. */
         @Volatile var pixmap = 0
         var surfaceHandle = 0L
+        /** A 32-bit window (shadows, rounded corners): shown with its transparency. */
+        var alpha = false
+        /**
+         * The Surface behind [surfaceHandle]. Released together with it: until this object is
+         * released its producer connection stays open, and attaching the same Android surface
+         * again (after a resize) would fail with "already connected" and freeze the window.
+         */
+        var surface: Surface? = null
         var frameFailures = 0
         var retryAt = 0L
         var title = ""
         var wmClass = ""
         var decorated = true
         var icon = ""
+        var transientFor = 0
+        var dialog = false
     }
 
     private val windows = ConcurrentHashMap<Int, Win>()
@@ -230,6 +247,10 @@ internal class LinuxAppSession(
     private var atomMoveResize = 0
     private var atomClose = 0
     private var atomActive = 0
+    private var atomTakeFocus = 0
+    /** The window that has the keyboard (X id, or a Wayland id with WAYLAND_ID). */
+    private var atomWindowType = 0
+    private var atomDialog = 0
 
     val alive get() = running && process.isAlive
 
@@ -242,6 +263,7 @@ internal class LinuxAppSession(
     /** Puts Android's clipboard text on this display's CLIPBOARD. */
     fun setClipboard(text: String) {
         clipboard?.setText(text)
+        wayland?.setClipboard(text)
     }
 
     private fun begin() {
@@ -262,6 +284,9 @@ internal class LinuxAppSession(
         atomMoveResize = x.internAtom("_NET_WM_MOVERESIZE")
         atomClose = x.internAtom("_NET_CLOSE_WINDOW")
         atomActive = x.internAtom("_NET_ACTIVE_WINDOW")
+        atomTakeFocus = x.internAtom("WM_TAKE_FOCUS")
+        atomWindowType = x.internAtom("_NET_WM_WINDOW_TYPE")
+        atomDialog = x.internAtom("_NET_WM_WINDOW_TYPE_DIALOG")
         val supported = intArrayOf(atomNetState, atomMaxH, atomMaxV, atomFullscreen, atomMoveResize, atomClose, atomActive, atomNetWmIcon)
         val bytes = ByteBuffer.allocate(supported.size * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         supported.forEach(bytes::putInt)
@@ -378,6 +403,11 @@ internal class LinuxAppSession(
         // No borders: the Plasma window draws the frame.
         x.configureWindow(id, X11Client.CONFIG_BORDER, intArrayOf(0))
         x.selectInput(id, X11Client.EVENT_PROPERTY_CHANGE)
+        // A window manager marks the windows it maps as shown (ICCCM WM_STATE NormalState);
+        // Wine only follows the manager's moves and resizes of a window marked so.
+        val wmState = x.internAtom("WM_STATE")
+        x.changeProperty(id, wmState, wmState, 32,
+            ByteBuffer.allocate(8).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(1).putInt(0).array())
         x.mapWindow(id)
         if (!windows.containsKey(id)) track(id, popup = false)
     }
@@ -389,6 +419,7 @@ internal class LinuxAppSession(
         val bounds = x.geometry(id) ?: return
         val window = Win(id, popup)
         window.bounds.set(bounds)
+        window.alpha = x.depth(id) == 32
         window.damage = x.damageCreate(id)
         window.pixmap = x.nameWindowPixmap(id)
         if (!popup) {
@@ -399,9 +430,12 @@ internal class LinuxAppSession(
         }
         windows[id] = window
         val transientFor = if (popup) 0 else x.propertyAtoms(id, X11Client.ATOM_WM_TRANSIENT_FOR).firstOrNull() ?: 0
+        window.transientFor = transientFor
+        window.dialog = !popup && atomDialog in x.propertyAtoms(id, atomWindowType)
         events(JSONObject()
             .put("type", "map").put("xid", id).put("popup", popup)
             .put("title", window.title).put("class", window.wmClass).put("transientFor", transientFor)
+            .put("dialog", window.dialog)
             .put("decorated", window.decorated)
             .put("icon", window.icon)
             .put("fullscreen", !popup && atomFullscreen in x.propertyAtoms(id, atomNetState))
@@ -414,6 +448,8 @@ internal class LinuxAppSession(
         synchronized(renderLock) {
             if (window.surfaceHandle != 0L) LinuxFrameBridge.nativeDetach(window.surfaceHandle)
             window.surfaceHandle = 0L
+            window.surface?.release()
+            window.surface = null
         }
         runCatching { x.damageDestroy(window.damage) }
         runCatching { x.freePixmap(window.pixmap) }
@@ -625,9 +661,13 @@ internal class LinuxAppSession(
         } ?: false
         val window = windows[id] ?: return false
         detachSurface(id)
-        val handle = LinuxFrameBridge.nativeAttach(surface, window.bounds.width().coerceAtLeast(1), window.bounds.height().coerceAtLeast(1))
+        val handle = LinuxFrameBridge.nativeAttach(surface, window.bounds.width().coerceAtLeast(1),
+            window.bounds.height().coerceAtLeast(1), window.alpha)
         if (handle == 0L) return false
-        synchronized(renderLock) { window.surfaceHandle = handle }
+        synchronized(renderLock) {
+            window.surfaceHandle = handle
+            window.surface = surface
+        }
         markDirty(window, Rect(0, 0, window.bounds.width(), window.bounds.height()))
         return true
     }
@@ -639,6 +679,8 @@ internal class LinuxAppSession(
             val handle = window.surfaceHandle
             window.surfaceHandle = 0L
             if (handle != 0L) LinuxFrameBridge.nativeDetach(handle)
+            window.surface?.release()
+            window.surface = null
         }
     }
     // endregion
@@ -647,7 +689,16 @@ internal class LinuxAppSession(
     /** Moves and resizes window [id] to the Plasma window's content area (display coordinates). */
     fun configure(id: Int, left: Int, top: Int, width: Int, height: Int) {
         if (isWayland(id)) {
-            waylandBounds[id] = Rect(left, top, left + width, top + height)
+            waylandBounds.place(id, left, top, width, height).forEach { (child, bounds) ->
+                waylandWindows.computeIfPresent(child) { _, snapshot ->
+                    val moved = JSONObject(snapshot).put("x", bounds.left).put("y", bounds.top)
+                    events(JSONObject(moved.toString()).put("type", "configure"))
+                    moved.toString()
+                }
+            }
+            waylandWindows.computeIfPresent(id) { _, snapshot ->
+                JSONObject(snapshot).put("x", left).put("y", top).toString()
+            }
             wayland?.configure(id and WAYLAND_ID.inv(), width, height)
             return
         }
@@ -656,14 +707,18 @@ internal class LinuxAppSession(
             id, X11Client.CONFIG_X or X11Client.CONFIG_Y or X11Client.CONFIG_WIDTH or X11Client.CONFIG_HEIGHT,
             intArrayOf(left, top, width.coerceAtLeast(1), height.coerceAtLeast(1)),
         )
+        x.configureNotify(id, left, top, width.coerceAtLeast(1), height.coerceAtLeast(1))
     }
 
     private var pointerGrabs: LinuxPointerGrabs? = null
-    fun pointerCaptureRequested(): Boolean {
-        if (waylandFocused) return waylandPointerCaptured
+    fun pointerCaptureRequested(id: Int): Boolean {
+        if (isWayland(id)) return id in waylandPointerCaptured
         // Flush RECORD's buffered disconnect notification even when rendering is idle.
-        xClient?.sync()
-        return pointerGrabs?.requested == true
+        val client = xClient ?: return false
+        val focus = client.inputFocus() // also flushes earlier X requests
+        return pointerGrabs?.requestedFor(id, client.root, focus, client::parentWindow) { grab ->
+            client.windowAttributes(grab)?.let { !it.inputOutput && it.mapState == 2 && it.overrideRedirect } == true
+        } == true
     }
     fun relativePointer(id: Int, action: Int, dx: Int, dy: Int, button: Int) {
         if (isWayland(id)) { wayland?.pointer(id and WAYLAND_ID.inv(), action + 10, dx, dy, button); return }
@@ -686,6 +741,11 @@ internal class LinuxAppSession(
         if (!windows.containsKey(id)) return
         x.raise(id)
         x.setInputFocus(id)
+        // As a window manager does: clients with WM_TAKE_FOCUS (Wine, Java) take the keyboard
+        // when asked, and toolkits learn the active window from the root.
+        if (atomTakeFocus in x.propertyAtoms(id, atomProtocols)) x.clientMessage(id, atomProtocols, intArrayOf(atomTakeFocus, 0))
+        x.changeProperty(x.root, atomActive, 33, 32,
+            ByteBuffer.allocate(4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(id).array())
     }
 
     fun setWindowState(id: Int, maximized: Boolean, minimized: Boolean) {
@@ -713,6 +773,12 @@ internal class LinuxAppSession(
 
     /** Pointer input at ([localX], [localY]) inside window [id]; [action] 0 move, 1 press, 2 release. */
     fun pointer(id: Int, action: Int, localX: Int, localY: Int, button: Int) {
+        // A press goes to the window under it: that window comes up and takes the keyboard,
+        // so neither a window above it in X nor an earlier focus swallows the input.
+        // Menus and other popups never take the focus from their window.
+        // Android focus and X stacking can change independently (new dialogs or FocusOut).
+        // Reconcile them on every press instead of trusting the last activated window ID.
+        if (action == 1 && !isPopup(id)) activate(id)
         if (isWayland(id)) {
             if (action == 1) waylandFocused = true
             waylandPointerPositions[id] = localX to localY
@@ -724,6 +790,10 @@ internal class LinuxAppSession(
         val window = windows[id] ?: return
         input.pointer(action, window.bounds.left + localX, window.bounds.top + localY, button)
     }
+
+    private fun isPopup(id: Int): Boolean =
+        if (isWayland(id)) waylandWindows[id]?.let { runCatching { JSONObject(it).optBoolean("popup") }.getOrDefault(false) } ?: false
+        else windows[id]?.popup ?: false
 
     fun scroll(dx: Int, dy: Int) { wayland?.takeIf { waylandFocused }?.scroll(dx, dy) ?: xClient?.let { input.scroll(dx, dy) } }
     fun key(evdevCode: Int, down: Boolean) { wayland?.takeIf { waylandFocused }?.key(evdevCode, down) ?: xClient?.let { input.key(evdevCode, down) } }
@@ -751,7 +821,8 @@ internal class LinuxAppSession(
             val b = window.bounds
             events(JSONObject()
                 .put("type", "map").put("xid", window.id).put("popup", window.popup)
-                .put("title", window.title).put("class", window.wmClass).put("transientFor", 0)
+                .put("title", window.title).put("class", window.wmClass).put("transientFor", window.transientFor)
+                .put("dialog", window.dialog)
                 .put("decorated", window.decorated)
                 .put("icon", window.icon)
                 .put("fullscreen", !window.popup && atomFullscreen in x.propertyAtoms(window.id, atomNetState))
@@ -765,7 +836,12 @@ internal class LinuxAppSession(
         running = false
         pointerGrabs?.stop()
         synchronized(renderLock) {
-            windows.values.forEach { if (it.surfaceHandle != 0L) LinuxFrameBridge.nativeDetach(it.surfaceHandle); it.surfaceHandle = 0L }
+            windows.values.forEach {
+                if (it.surfaceHandle != 0L) LinuxFrameBridge.nativeDetach(it.surfaceHandle)
+                it.surfaceHandle = 0L
+                it.surface?.release()
+                it.surface = null
+            }
             renderLock.notifyAll()
         }
         queue.offer(-1 to ByteBuffer.allocate(0))

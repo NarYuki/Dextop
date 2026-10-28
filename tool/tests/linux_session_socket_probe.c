@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <errno.h>
 
 int main(int argc, char **argv) {
     struct sockaddr_un address = { .sun_family = AF_UNIX };
@@ -30,8 +31,17 @@ int main(int argc, char **argv) {
     if (peer < 0 || read(peer, bytes, 4) != 4 || memcmp(bytes, "ping", 4)) return 5;
     int status;
     waitpid(child, &status, 0);
-    close(peer); close(fd); unlink(address.sun_path);
+    close(peer); close(fd);
+    /* The tagged path remains after the abstract listener exits. A new server
+     * must reuse it, while a concurrent listener must still get EADDRINUSE. */
+    fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (bind(fd, (struct sockaddr *)&address, sizeof(address)) || listen(fd, 1)) return 20;
+    int duplicate = socket(AF_UNIX, SOCK_STREAM, 0);
+    errno = 0;
+    if (!bind(duplicate, (struct sockaddr *)&address, sizeof(address)) || errno != EADDRINUSE) return 21;
+    close(duplicate); close(fd); unlink(address.sun_path);
     if (!WIFEXITED(status) || WEXITSTATUS(status)) return 6;
     puts("GLOBAL_SOCKET_DISCOVERY_AND_ENV_CLEARED_CLIENT_OK");
+    puts("SOCKET_RESTART_WITH_STALE_MARKER_AND_LIVE_LISTENER_EXCLUSION_OK");
     return 0;
 }

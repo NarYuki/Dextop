@@ -1,0 +1,61 @@
+#!/usr/bin/python3
+"""Repair a stale default alias after failed link-emulated keyring writes.
+
+Preserve every collection and password. Only recover an existing encrypted
+collection belonging to the same generated filename family.
+"""
+import os
+from pathlib import Path
+import re
+import tempfile
+
+
+def repair(home):
+    directory = Path(home) / '.local/share/keyrings'
+    alias = directory / 'default'
+    try:
+        name = alias.read_text().strip()
+    except OSError:
+        return None
+    if not re.fullmatch(r'[A-Za-z0-9_-]{1,180}', name):
+        return None
+
+    def encrypted(path):
+        try:
+            with path.open('rb') as stream:
+                return stream.read(16).startswith(b'GnomeKeyring\n\r\x00\n')
+        except OSError:
+            return False
+
+    if encrypted(directory / (name + '.keyring')):
+        return None
+    # A nonempty unknown format belongs to the user, not this recovery.
+    original = directory / (name + '.keyring')
+    if original.exists() and original.stat().st_size:
+        return None
+    family = re.compile(re.escape(name) + r'_\d+\.keyring')
+    candidates = [path for path in directory.iterdir()
+                  if family.fullmatch(path.name) and encrypted(path)]
+    if not candidates:
+        return None
+    selected = max(candidates, key=lambda path: path.stat().st_mtime_ns).stem
+    backup = directory / 'default.before-dextop-repair'
+    if not backup.exists():
+        fd = os.open(backup, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+        with os.fdopen(fd, 'wb') as stream:
+            stream.write(alias.read_bytes())
+    fd, pending = tempfile.mkstemp(prefix='.default-dextop-', dir=directory)
+    try:
+        with os.fdopen(fd, 'w') as stream:
+            stream.write(selected + '\n')
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(pending, alias)
+    finally:
+        if os.path.exists(pending):
+            os.unlink(pending)
+    return selected
+
+
+if __name__ == '__main__':
+    repair(os.environ.get('HOME', '/root'))

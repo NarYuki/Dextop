@@ -15,8 +15,9 @@ android {
         // Below 30, so the copied resources.arsc needs no alignment and package
         // visibility does not hide Dextop from the launcher.
         targetSdk = 29
-        versionCode = 1
-        versionName = "1.0"
+        // Dextop reinstalls launchers older than its own template (LinuxShortcutInstaller.VERSION).
+        versionCode = 2
+        versionName = "2.0"
     }
 
     compileOptions {

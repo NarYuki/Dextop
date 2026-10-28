@@ -68,6 +68,7 @@ internal object LinuxSettings {
     fun write(update: JSONObject): JSONObject {
         val merged = read()
         update.optString("gpu").takeIf { it.isNotEmpty() }?.let { merged.put("gpu", LinuxGpuMode.of(it).id) }
+        if (update.has("flatpakCompatibility")) merged.put("flatpakCompatibility", update.getBoolean("flatpakCompatibility"))
         if (update.has("defaultContainer")) {
             val id = update.optString("defaultContainer")
             merged.put("defaultContainer", id.takeIf { runCatching { LinuxPaths.container(it).isDirectory }.getOrDefault(false) } ?: "")
@@ -129,7 +130,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
 
     val available: Boolean get() = server.canExecute()
 
-    /** The Turnip Dextop builds (Mesa 25.0) drives Adreno 6xx and 7xx; newer GPUs such as the 840 use VirGL. */
+    /** The packaged KGSL Turnip driver supports Adreno 6xx through 8xx. */
     val turnipSupported: Boolean by lazy { LinuxCatalog.turnipSupports(adrenoModel()) }
 
     private fun socketName(containerId: String) = "${LinuxProot.socketNamespace(containerId)}$GUEST_SOCKET"
@@ -144,7 +145,8 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
         File(LinuxPaths.rootfs(containerId), LinuxCatalog.TURNIP_ICD.removePrefix("/")).isFile
 
     fun turnipWaylandInstalled(containerId: String) = turnipInstalled(containerId) &&
-        File(LinuxPaths.rootfs(containerId), LinuxCatalog.TURNIP_WAYLAND_READY.removePrefix("/")).isFile
+        (LinuxGpuRuntime.installed(LinuxPaths.rootfs(containerId)) ||
+            File(LinuxPaths.rootfs(containerId), LinuxCatalog.TURNIP_WAYLAND_READY.removePrefix("/")).isFile)
 
     /** Turnip is selected and built for [containerId]. */
     private fun usesTurnip(containerId: String) =
@@ -202,7 +204,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
     fun stopAll() = servers.keys.toList().forEach(::stop)
 
     /** Environment of container processes: Turnip + Zink, virpipe while the renderer runs, otherwise llvmpipe. */
-    fun environment(containerId: String): List<String> = if (usesTurnip(containerId)) listOf(
+    fun environment(containerId: String): List<String> = ((if (usesTurnip(containerId)) listOf(
         "VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD}",
         "GALLIUM_DRIVER=zink",
         // Xvfb has no DRI3; present through CPU-visible images (XPutImage).
@@ -215,7 +217,13 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
         "MESA_GL_VERSION_OVERRIDE=4.3COMPAT",
         "MESA_GLSL_VERSION_OVERRIDE=430",
         "MESA_GLES_VERSION_OVERRIDE=3.2",
-    ) else listOf("GALLIUM_DRIVER=llvmpipe")
+    ) else listOf("GALLIUM_DRIVER=llvmpipe")) +
+        if (usesTurnip(containerId) || running(containerId)) listOf(
+            "MOZ_WEBRENDER=1", "MOZ_ACCELERATED=1", "GSK_RENDERER=gl",
+            "QSG_RHI_BACKEND=opengl", "QSG_RHI_PREFER_SOFTWARE_RENDERER=0",
+            "QT_WIDGETS_RHI=1", "QT_WIDGETS_RHI_BACKEND=opengl",
+        ) else emptyList()) +
+        (if (usesTurnip(containerId)) LinuxGpuRuntime.environment(LinuxPaths.rootfs(containerId)) else emptyList())
 
     /**
      * Settings plus the live renderer state, for the Linux settings screens:
@@ -226,7 +234,12 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
         .put("containers", JSONObject().apply {
             LinuxPaths.containers.listFiles().orEmpty().filter { it.isDirectory }.forEach { dir ->
                 runCatching {
-                    put(dir.name, LinuxSettings.readContainer(dir.name).put("gpuEffective", LinuxSettings.gpuMode(dir.name).id)
+                    val effective = when {
+                        usesTurnip(dir.name) -> LinuxGpuMode.TURNIP
+                        running(dir.name) -> LinuxGpuMode.HARDWARE
+                        else -> LinuxGpuMode.SOFTWARE
+                    }
+                    put(dir.name, LinuxSettings.readContainer(dir.name).put("gpuEffective", effective.id)
                         .put("wmEffective", LinuxSettings.windowManager(dir.name).id))
                 }
             }

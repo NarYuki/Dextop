@@ -1,0 +1,34 @@
+{
+  "bundleSha256": "e561f2694267bda6fe89ae5d8901c24b5e07e0f2028606e85592b028d515bd22",
+  "files": {
+    "lib/aarch64-linux-gnu/dri/libdril_dri.so": "a04e772a551c74a71414c9b1b905a365edc59f01b2b6a5599bffa6b40dec950e",
+    "lib/aarch64-linux-gnu/gbm/dri_gbm.so": "5a799eac4b8502d8abfc613eb86b773f222ad0420c01dd6ff8ccad751b9a52b0",
+    "lib/aarch64-linux-gnu/libEGL_mesa.so.0.0.0": "f8ed6cfb4cd9adca71e74976e4a8b3a4e91505822c3f1f27dd2410f044bdd8b9",
+    "lib/aarch64-linux-gnu/libGLX_mesa.so.0.0.0": "3643e365160a4fd08c20add6e52f6847883e030855c04cc3008c5e170f89b527",
+    "lib/aarch64-linux-gnu/libdextop_kgsl_gbm.so": "3e73878743c3a0fe4c7769a1bf2c73488c82a07a3e56ecffc5d3cc3089632387",
+    "lib/aarch64-linux-gnu/libgallium-27.0.0-devel.so": "73c50548ab00a98dc531726bd702ac1a8bf8c018c469db3c683167ac4a67830a",
+    "lib/aarch64-linux-gnu/libgbm.so.1.0.0": "a3f4bd2ce301e809856e7d27f9c55f904dfa7912168001dd9b05e6afe7bd0c66",
+    "licenses/GPL-3.0": "3972dc9744f6499f0f9b2dbf76696f2ae7ad8af9b23dde66d6af86c9dfb36986",
+    "licenses/mesa/Apache-2.0": "7e4d3fba250d15e9e0afa380d4b611828fa2560cc8fdebe95bcf2f01a487de12",
+    "licenses/mesa/BSL-1.0": "9b9fea7520a816107fcac2598b7c0155222f16bc430e989706b22f4367f1df7d",
+    "licenses/mesa/GPL-1.0-or-later": "8ff76f1528e6e4e9400c0f6b1f2d19d4979aaac3bcc44bb707a55389132825c4",
+    "licenses/mesa/GPL-2.0-only": "6667ad4063569cd53b13500550d93fcd3dc11bcf82c5514296af013a0b720ba5",
+    "licenses/mesa/MIT": "323c587d0ccf10e376f8bf9a7f31fb4ca6078105194b42e0b1e0ee2bc9bde71f",
+    "licenses/mesa/SGI-B-2.0": "686bf035a1fd22076416fd3b90370ac67771e884bf57f55693d51f8ce7c710a7",
+    "licenses/mesa/exceptions/Linux-Syscall-Note": "9b4084655174654608fd037e9ddb4feeadfada01cd042e9c17b05aa7105b2b9f",
+    "licenses/mesa/license.rst": "0d1a0472ecc81830e75c20d59b0ea02841e3db21255e0ebad97ab682c54d6615",
+    "share/glvnd/egl_vendor.d/50_mesa.json": "451f305f440236a49a6eb86f852cb4bdaab1dd08e1626e20dd89b411da137619"
+  },
+  "glibcMinimum": "2.38",
+  "links": {
+    "lib/aarch64-linux-gnu/dri/zink_dri.so": "libdril_dri.so",
+    "lib/aarch64-linux-gnu/libEGL_mesa.so.0": "libEGL_mesa.so.0.0.0",
+    "lib/aarch64-linux-gnu/libGLX_mesa.so.0": "libGLX_mesa.so.0.0.0",
+    "lib/aarch64-linux-gnu/libgbm.so.1": "libgbm.so.1.0.0"
+  },
+  "mesa": "c90ff433291a5c3ff5cea9913bbebeef9cd4e885",
+  "patches": {
+    "tool/patch_linux_gpu_runtime.py": "fc1d56103a238eb464c6ce23e3ecf38967f85e772b679a385b34b3e179fa0464"
+  },
+  "sourceSha256": "834054084604cacb2fe82d9151256bac83fd353d50b602f6824a1ce8ae73a3a8"
+}

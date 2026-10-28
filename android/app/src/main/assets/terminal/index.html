@@ -1,0 +1,125 @@
+<!doctype html>
+<!-- Dextop's Linux terminal: xterm.js (MIT, see LICENSE) drawing a container shell's PTY. -->
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<link rel="stylesheet" href="xterm.css">
+<style>
+  :root { --bg: #101418; --bar: #1b2026; --key: #2a3038; --text: #e2e6ea; --accent: #9ccaff; }
+  html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
+  body { display: flex; flex-direction: column; }
+  #term { flex: 1; min-height: 0; padding: 6px 4px 0 8px; box-sizing: border-box; }
+  #keys { display: flex; gap: 6px; padding: 6px 8px; background: var(--bar); overflow-x: auto; flex: none; }
+  #keys button {
+    flex: none; min-width: 44px; height: 34px; padding: 0 10px; border: 0; border-radius: 10px;
+    background: var(--key); color: var(--text); font: 500 14px system-ui, sans-serif;
+  }
+  #keys button.on { background: var(--accent); color: #003258; }
+  #keys button:active { filter: brightness(1.3); }
+  #compose {
+    position: absolute; left: 12px; bottom: 56px; padding: 4px 10px; border-radius: 8px; display: none;
+    background: #3b4b5e; color: var(--text); font: 15px "Noto Sans Mono CJK JP", monospace; text-decoration: underline;
+  }
+</style>
+</head>
+<body>
+<div id="term"></div>
+<div id="compose"></div>
+<div id="keys">
+  <button data-send="\x1b">Esc</button>
+  <button data-send="\t">Tab</button>
+  <button id="ctrl">Ctrl</button>
+  <button id="alt">Alt</button>
+  <button data-send="\x1b[A">↑</button>
+  <button data-send="\x1b[B">↓</button>
+  <button data-send="\x1b[D">←</button>
+  <button data-send="\x1b[C">→</button>
+  <button data-send="\x1b[H">Home</button>
+  <button data-send="\x1b[F">End</button>
+  <button data-send="|">|</button>
+  <button data-send="~">~</button>
+  <button data-send="/">/</button>
+  <button data-send="-">-</button>
+  <button id="copy">Copy</button>
+  <button id="paste">Paste</button>
+</div>
+<script src="xterm.js"></script>
+<script src="addon-fit.js"></script>
+<script>
+  const term = new Terminal({
+    fontFamily: '"Noto Sans Mono CJK JP", "Noto Sans Mono", "Droid Sans Mono", monospace',
+    fontSize: Dextop.fontSize(),
+    cursorBlink: true,
+    scrollback: 10000,
+    allowProposedApi: true,
+    theme: { background: '#101418', foreground: '#e2e6ea', cursor: '#9ccaff', selectionBackground: '#3b4b5e' },
+  });
+  const fit = new FitAddon.FitAddon();
+  term.loadAddon(fit);
+  term.open(document.getElementById('term'));
+
+  // On-screen Ctrl and Alt apply to the next key typed.
+  const ctrl = document.getElementById('ctrl');
+  const alt = document.getElementById('alt');
+  function modified(data) {
+    let out = data;
+    if (ctrl.classList.contains('on') && data.length === 1) {
+      const code = data.toUpperCase().charCodeAt(0);
+      if (code >= 64 && code <= 95) out = String.fromCharCode(code - 64);
+      else if (data === ' ') out = '\x00';
+    }
+    if (alt.classList.contains('on')) out = '\x1b' + out;
+    ctrl.classList.remove('on');
+    alt.classList.remove('on');
+    return out;
+  }
+  ctrl.onclick = () => { ctrl.classList.toggle('on'); term.focus(); };
+  alt.onclick = () => { alt.classList.toggle('on'); term.focus(); };
+  for (const key of document.querySelectorAll('#keys [data-send]')) {
+    key.onclick = () => {
+      Dextop.input(modified(key.dataset.send.replace(/\\x1b/g, '\x1b').replace(/\\t/g, '\t')));
+      term.focus();
+    };
+  }
+  document.getElementById('copy').onclick = () => { Dextop.copy(term.getSelection()); term.focus(); };
+  document.getElementById('paste').onclick = () => { term.paste(Dextop.paste()); term.focus(); };
+  // Keep the soft keyboard up when the bar is tapped.
+  for (const key of document.querySelectorAll('#keys button')) key.onmousedown = e => e.preventDefault();
+
+  // Keys and IME text come from Android (see LinuxTerminalActivity), already encoded.
+  window.dextopKey = (normal, application) => {
+    term.input(application !== null && term.modes.applicationCursorKeysMode ? application : normal, true);
+  };
+  window.dextopCopy = () => Dextop.copy(term.getSelection());
+  window.dextopPaste = () => term.paste(Dextop.paste());
+  const compose = document.getElementById('compose');
+  window.dextopCompose = text => {
+    compose.textContent = text;
+    compose.style.display = text ? 'block' : 'none';
+  };
+
+  term.onData(data => Dextop.input(modified(data)));
+  term.onBinary(data => Dextop.binary(data));
+  term.onTitleChange(title => Dextop.title(title));
+
+  function resize() {
+    try { fit.fit(); } catch (e) {}
+    Dextop.resize(term.rows, term.cols);
+  }
+  new ResizeObserver(resize).observe(document.getElementById('term'));
+
+  window.dextopWrite = base64 => {
+    const text = atob(base64);
+    const bytes = new Uint8Array(text.length);
+    for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
+    term.write(bytes);
+  };
+  window.dextopNotice = message => term.write('\r\n\x1b[2m' + message + '\x1b[0m\r\n');
+
+  try { fit.fit(); } catch (e) {}
+  term.focus();
+  Dextop.ready(term.rows, term.cols);
+</script>
+</body>
+</html>

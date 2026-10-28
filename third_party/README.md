@@ -58,7 +58,24 @@ Local changes:
 To update, replace the directory contents with the new upstream files and update
 this table.
 
+The DroidDeck session preload also applies `patches/droiddeck-status-readonly.patch`
+through `tool/build_droiddeck_preload.sh`. Its synthetic `/proc/*/status` descriptors
+preserve `O_RDONLY` and `O_CLOEXEC`; returning a writable memfd aborts Electron's
+checked file conversion. `tool/tests/linux_status_fd.c` verifies this on Linux.
+
 ## Dart packages
+
+The shared Linux GL/EGL bundle under
+`android/app/src/main/resources/moe/n4tsu/dextop/linux/gpu/` uses Mesa
+`c90ff433291a5c3ff5cea9913bbebeef9cd4e885` from Droid-Deck/Drivers-CI
+[DD-Turnip-v0.3.3 source](https://github.com/Droid-Deck/Drivers-CI/releases/download/DD-Turnip-v0.3.3/DD-Turnip-v0.3.3-source.tar.xz),
+SHA-256 `834054084604cacb2fe82d9151256bac83fd353d50b602f6824a1ce8ae73a3a8`.
+`tool/patch_linux_gpu_runtime.py` selects Mesa's existing Kopper Wayland path
+for KGSL without a DRM render node. `tool/build_linux_gpu_runtime.sh` builds
+the ARM64 glibc libraries; `tool/package_linux_gpu_runtime.py` packages them
+with upstream and GPL notices and file hashes. The archive contains GL/EGL
+and Zink, while the selected Turnip ICD remains separate. Mesa's license text
+and individual notices are included in the bundle's `licenses/` directory.
 
 | Directory | Upstream | Version | License |
 | --- | --- | --- | --- |
@@ -68,6 +85,9 @@ Local changes:
 - `material_3_expressive/lib/components/lists/components/m3e_list_row_surface.dart`:
   list rows animate their corner radius on press (`M3EMotion.short4`,
   `M3EMotion.emphasized`); upstream passes `Duration.zero`, so the shape snapped.
+- `material_3_expressive/lib/foundations/tokens/m3e_safe_area.dart`: `M3ESafeArea.ignoreTop`
+  drops the top inset, which the package reads from the raw view (not `MediaQuery`); Dextop
+  sets it in windows on external displays, where the reported status bar inset is empty space.
 
 - `material_3_expressive/pubspec.yaml`: removed the upstream-only `klin_dart`
   development dependency; its tooling directory is not included in this vendored copy.

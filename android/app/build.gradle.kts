@@ -186,6 +186,8 @@ dependencies {
     implementation("com.flyfishxu:kadb:2.1.1")
     // Signs the generated home-screen launchers of Linux applications on the device.
     implementation("com.android.tools.build:apksig:8.11.1")
+    // Reads winget package manifests (YAML) for the Store's Windows applications.
+    implementation("org.snakeyaml:snakeyaml-engine:2.10")
     testImplementation(kotlin("test"))
 }
 

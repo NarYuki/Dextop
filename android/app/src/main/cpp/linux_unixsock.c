@@ -46,6 +46,7 @@
 #define E_ACCES 13
 #define E_ROFS 30
 #define E_CONNREFUSED 111
+#define E_ADDRINUSE 98
 
 struct sockaddr_un_compat {
     unsigned short sun_family;
@@ -55,6 +56,7 @@ struct sockaddr_un_compat {
 extern char **environ;
 extern int *__errno_location(void);
 extern void dextop_socket_marker(const char *) __attribute__((weak));
+extern int dextop_socket_marker_exists(const char *) __attribute__((weak));
 
 static long raw_syscall3(long number, long a, long b, long c) {
 #if defined(__aarch64__)
@@ -168,7 +170,8 @@ int bind(int fd, const void *address, unsigned length) {
     }
     name[name_length] = '\0';
     long result = raw_syscall3(SYS_bind, fd, (long)address, length);
-    if (twin_length != 0 && (result == -E_ACCES || result == -E_PERM || result == -E_ROFS)) {
+    if (twin_length != 0 && (result == -E_ACCES || result == -E_PERM || result == -E_ROFS ||
+        (result == -E_ADDRINUSE && dextop_socket_marker_exists && dextop_socket_marker_exists(name)))) {
         result = raw_syscall3(SYS_bind, fd, (long)&twin, twin_length);
         /* Wine checks for a socket or FIFO before it attempts connect().
          * The glibc companion reports our tagged discovery entry as a FIFO;

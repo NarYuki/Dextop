@@ -5,15 +5,15 @@ import android.media.AudioFormat
 import android.media.AudioTrack
 import android.os.SystemClock
 import android.util.Log
-import java.net.InetSocketAddress
-import java.net.Socket
+import android.os.ParcelFileDescriptor
 
 /**
  * Plays a container's sound in Dextop's app process: raw 48 kHz stereo
- * s16le PCM from PulseAudio's loopback port, into an AudioTrack with media
+ * s16le PCM from a private Binder descriptor, into an interactive AudioTrack with media
  * usage, so Android's media volume (and its volume keys) apply.
  */
-internal class LinuxAudioPlayer(private val containerId: String, val port: Int) {
+internal class LinuxAudioPlayer(private val containerId: String, val generation: Int, private val outputBurst: String? = null,
+    private val openStream: () -> ParcelFileDescriptor) {
     companion object {
         private const val TAG = "DextopLinuxAudio"
         private const val RATE = 48_000
@@ -22,41 +22,44 @@ internal class LinuxAudioPlayer(private val containerId: String, val port: Int) 
     }
 
     @Volatile private var running = true
-    @Volatile private var socket: Socket? = null
+    @Volatile private var stream: ParcelFileDescriptor? = null
 
     init {
         Thread(::run, "DextopLinuxAudio-$containerId").apply { isDaemon = true; start() }
     }
 
     private fun run() {
-        val minimum = AudioTrack.getMinBufferSize(RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT)
+        runCatching { android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_AUDIO) }
+        val burst = LinuxAudioBuffering.burstFrames(outputBurst)
+        val target = LinuxAudioBuffering.targetFrames(burst)
         val track = runCatching {
             AudioTrack.Builder()
                 .setAudioAttributes(AudioAttributes.Builder()
-                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setUsage(AudioAttributes.USAGE_GAME)
                     .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC).build())
                 .setAudioFormat(AudioFormat.Builder()
                     .setSampleRate(RATE)
                     .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
                     .setEncoding(AudioFormat.ENCODING_PCM_16BIT).build())
-                .setBufferSizeInBytes(minimum * 2)
+                .setPerformanceMode(AudioTrack.PERFORMANCE_MODE_LOW_LATENCY)
+                .setBufferSizeInBytes(LinuxAudioBuffering.capacityFrames(burst) * LinuxAudioBuffering.FRAME_BYTES)
                 .setTransferMode(AudioTrack.MODE_STREAM)
                 .build()
         }.onFailure { Log.w(TAG, "AudioTrack unavailable", it) }.getOrNull() ?: return
-        val buffer = ByteArray((minimum.coerceAtLeast(4096) + 3) / 4 * 4)
+        track.setBufferSizeInFrames(target)
+        track.setStartThresholdInFrames(track.bufferSizeInFrames)
+        Log.i(TAG, "audio mode=${track.performanceMode} rate=$RATE burst=$burst " +
+            "bufferFrames=${track.bufferSizeInFrames} capacityFrames=${track.bufferCapacityInFrames}")
+        val buffer = ByteArray(LinuxAudioBuffering.READ_BYTES)
+        var underruns = track.underrunCount
+        var lastTune = 0L
         var lastConnectError = 0L
         try {
             while (running) {
-                val connection = runCatching {
-                    Socket().apply {
-                        // Socket.port is 0 before connecting; use the container's port.
-                        connect(InetSocketAddress("127.0.0.1", this@LinuxAudioPlayer.port), 1_000)
-                        tcpNoDelay = true
-                    }
-                }.onFailure {
+                val connection = runCatching { openStream() }.onFailure {
                     val now = SystemClock.uptimeMillis()
                     if (now - lastConnectError >= 10_000) {
-                        Log.w(TAG, "Cannot connect audio $containerId port=$port", it)
+                        Log.w(TAG, "Cannot connect audio $containerId generation=$generation", it)
                         lastConnectError = now
                     }
                 }.getOrNull()
@@ -64,14 +67,22 @@ internal class LinuxAudioPlayer(private val containerId: String, val port: Int) 
                     SystemClock.sleep(500)
                     continue
                 }
-                socket = connection
-                Log.i(TAG, "playing $containerId from port $port")
+                stream = connection
+                Log.i(TAG, "playing $containerId over Binder FD generation=$generation")
                 try {
-                    connection.use {
-                        val input = java.io.DataInputStream(it.getInputStream())
+                    ParcelFileDescriptor.AutoCloseInputStream(connection).use { pcm ->
+                        val input = java.io.DataInputStream(pcm)
                         var lastSound = 0L
                         while (running) {
-                            // TCP reads can split a stereo frame; feed only complete frames.
+                            // Backpressure must not turn a short rendering stall into seconds
+                            // of permanently delayed sound. Keep the newest 20ms after a stall.
+                            var stale = LinuxAudioBuffering.staleBytes(input.available())
+                            while (running && stale > 0) {
+                                val bytes = minOf(stale, buffer.size)
+                                input.readFully(buffer, 0, bytes)
+                                stale -= bytes
+                            }
+                            // Pipe reads can split a stereo frame; feed only complete frames.
                             input.readFully(buffer)
                             val read = buffer.size
                             var silent = true
@@ -89,12 +100,23 @@ internal class LinuxAudioPlayer(private val containerId: String, val port: Int) 
                                 check(written > 0) { "AudioTrack write failed: $written" }
                                 offset += written
                             }
+                            if (now - lastTune >= 1000) {
+                                val count = track.underrunCount
+                                if (count > underruns && track.bufferSizeInFrames < track.bufferCapacityInFrames) {
+                                    val size = (track.bufferSizeInFrames + burst).coerceAtMost(track.bufferCapacityInFrames)
+                                    track.setBufferSizeInFrames(size)
+                                    track.setStartThresholdInFrames(track.bufferSizeInFrames)
+                                    Log.i(TAG, "audio buffer adapted frames=${track.bufferSizeInFrames} underruns=$count")
+                                }
+                                underruns = count
+                                lastTune = now
+                            }
                         }
                     }
                 } catch (error: java.io.IOException) {
                     if (running) Log.w(TAG, "Audio connection lost for $containerId; reconnecting", error)
                 } finally {
-                    socket = null
+                    stream = null
                     if (track.playState == AudioTrack.PLAYSTATE_PLAYING) track.pause()
                     track.flush()
                 }
@@ -110,6 +132,6 @@ internal class LinuxAudioPlayer(private val containerId: String, val port: Int) 
 
     fun stop() {
         running = false
-        runCatching { socket?.close() }
+        runCatching { stream?.close() }
     }
 }

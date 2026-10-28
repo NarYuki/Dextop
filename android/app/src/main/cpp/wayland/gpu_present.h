@@ -34,5 +34,6 @@ struct linux_gpu_draw {
     int acquire_fd;
     bool opaque;
 };
+/* Also returns -2 when the output swapchain must be recreated after a resize. */
 int linux_gpu_present_scene(struct linux_gpu_window *window, const struct linux_gpu_draw *draws,
     unsigned count, int scene_width, int scene_height, int *release_fd);

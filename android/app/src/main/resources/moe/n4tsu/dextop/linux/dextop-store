@@ -1,0 +1,243 @@
+#!/usr/bin/python3
+import time
+"""Debian/Ubuntu Store adapters. No sandbox bypasses and no curl-to-shell bootstrap.
+
+deb-get executable/definitions are pinned together and verified before execution.
+Upstream applications remain upstream's responsibility; HTTPS is not a code audit.
+"""
+import csv
+import hashlib
+import io
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import tarfile
+import urllib.request
+
+COMMIT = 'dd20e12013e27e58f61758b60dc7e69e55ee0245'
+SHA256 = '79bbb24427416858b2caa273e3b4a5621e844352da04c35cea517dd0706bb18d'
+DEBGET = Path('/opt/dextop/deb-get')
+ETC = Path('/etc/dextop-deb-get')
+FLATHUB = 'https://dl.flathub.org/repo/flathub.flatpakrepo'
+SAFE_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
+ENV = dict(os.environ, LC_ALL='C.UTF-8', DEBIAN_FRONTEND='noninteractive')
+
+
+def run(args, capture=False):
+    result = subprocess.run(args, env=ENV, text=True,
+                            stdout=subprocess.PIPE if capture else None,
+                            stderr=subprocess.PIPE if capture else None)
+    if result.returncode:
+        raise RuntimeError((result.stderr or result.stdout or 'Command failed: ' + args[0])[-2500:])
+    return result.stdout or ''
+
+
+def distro():
+    config = dict(line.strip().split('=', 1) for line in Path('/etc/os-release').read_text().splitlines()
+                  if '=' in line and not line.startswith('#'))
+    value = config.get('ID', '').strip('"')
+    if value not in ('debian', 'ubuntu'):
+        raise RuntimeError('Store supports Debian and Ubuntu only')
+    return value
+
+
+def apt_tools(packages):
+    run(['apt-get', 'update'])
+    run(['apt-get', 'install', '-y', '--no-install-recommends'] + packages)
+
+
+def prepare(source):
+    if source == 'flathub':
+        if not shutil.which('flatpak'):
+            apt_tools(['flatpak', 'ca-certificates'])
+        remotes = run(['flatpak', '--user', 'remotes', '--columns=name,url'], True)
+        existing = [line.split('\t') for line in remotes.splitlines() if line.startswith('flathub\t')]
+        if existing and existing[0][1].rstrip('/') != 'https://dl.flathub.org/repo':
+            raise RuntimeError('Existing flathub remote uses a different URL; inspect it in the terminal first')
+        run(['flatpak', '--user', 'remote-add', '--if-not-exists', 'flathub', FLATHUB])
+    elif source == 'deb-get':
+        if (DEBGET / 'revision').is_file() and (DEBGET / 'revision').read_text().strip() == COMMIT:
+            return
+        apt_tools(['ca-certificates', 'curl', 'wget', 'jq', 'lsb-release', 'gnupg', 'distro-info-data'])
+        url = 'https://codeload.github.com/wimpysworld/deb-get/tar.gz/' + COMMIT
+        with urllib.request.urlopen(url, timeout=60) as response:
+            archive = response.read(4 * 1024 * 1024 + 1)
+        if hashlib.sha256(archive).hexdigest() != SHA256:
+            raise RuntimeError('deb-get archive SHA-256 mismatch; refusing to execute')
+        DEBGET.mkdir(parents=True, exist_ok=True)
+        ETC.mkdir(parents=True, exist_ok=True)
+        packages = ETC / '01-main.d'
+        packages.mkdir(exist_ok=True)
+        prefix = 'deb-get-' + COMMIT + '/'
+        with tarfile.open(fileobj=io.BytesIO(archive), mode='r:gz') as tar:
+            for member in tar.getmembers():
+                if not member.isfile() or not member.name.startswith(prefix):
+                    continue
+                name = member.name[len(prefix):]
+                if name == 'deb-get':
+                    script = tar.extractfile(member).read().decode()
+                    script = script.replace('readonly ETC_DIR="/etc/deb-get"',
+                                            'readonly ETC_DIR="/etc/dextop-deb-get"')
+                    script = script.replace('/deb-get/main/01-main', '/deb-get/' + COMMIT + '/01-main')
+                    target = DEBGET / 'deb-get'
+                    target.write_text(script)
+                    target.chmod(0o755)
+                elif name == '01-main/manifest':
+                    manifest = tar.extractfile(member).read().decode()
+                    lines = manifest.splitlines()
+                    lines[0] = 'https://raw.githubusercontent.com/wimpysworld/deb-get/' + COMMIT + '/01-main'
+                    (ETC / '01-main.repo').write_text('\n'.join(lines) + '\n')
+                elif name.startswith('01-main/packages/') and SAFE_ID.fullmatch(name.rsplit('/', 1)[-1]):
+                    (packages / name.rsplit('/', 1)[-1]).write_bytes(tar.extractfile(member).read())
+        if not (DEBGET / 'deb-get').is_file() or not (ETC / '01-main.repo').is_file():
+            raise RuntimeError('Incomplete deb-get snapshot')
+        (DEBGET / 'revision').write_text(COMMIT + '\n')
+    else:
+        raise ValueError('Unknown source')
+
+
+def literal(text, key, default=''):
+    # Catalog browsing does not execute package definitions. Dynamic values are omitted.
+    match = re.search(r'^' + re.escape(key) + r'=(?:"([^"\n]*)"|\x27([^\x27\n]*)\x27|([^\s\n]+))\s*$', text, re.M)
+    if not match:
+        return default
+    value = next((v for v in match.groups() if v is not None), default)
+    return value if '$' not in value and '`' not in value else default
+
+
+def catalog(source):
+    if source not in ('deb-get', 'flathub'):
+        raise ValueError('Unknown source')
+    arch = run(['dpkg', '--print-architecture'], True).strip()
+    if source == 'deb-get':
+        if not (DEBGET / 'revision').exists():
+            raise RuntimeError('Prepare deb-get from Linux settings first')
+        codename = run(['lsb_release', '-cs'], True).strip()
+        apps = []
+        for path in sorted((ETC / '01-main.d').iterdir()):
+            text = path.read_text()
+            arches = literal(text, 'ARCHS_SUPPORTED', 'amd64').split()
+            codenames = literal(text, 'CODENAMES_SUPPORTED').split()
+            if arch not in arches and 'all' not in arches:
+                continue
+            if codenames and codename not in codenames:
+                continue
+            if re.search(r'^PPA=', text, re.M) and distro() != 'ubuntu':
+                continue
+            apps.append(dict(id=path.name, package='deb-get:' + path.name,
+                             name=literal(text, 'PRETTY_NAME', path.name),
+                             summary=literal(text, 'SUMMARY'), description=literal(text, 'WEBSITE'),
+                             source='deb-get', architecture='ARM64' if arch == 'arm64' else arch,
+                             categories=['Utility'], icon='', desktopIds=[]))
+        return apps
+    if not shutil.which('flatpak'):
+        raise RuntimeError('Prepare Flathub from Linux settings first')
+    fp_arch = {'arm64': 'aarch64', 'amd64': 'x86_64'}.get(arch, arch)
+    output = run(['flatpak', '--user', 'remote-ls', '--app', '--arch=' + fp_arch,
+                  '--columns=application,name,description,arch', 'flathub'], True)
+    apps = []
+    for row in csv.reader(io.StringIO(output), delimiter='\t'):
+        if len(row) < 4 or not SAFE_ID.fullmatch(row[0]):
+            continue
+        apps.append(dict(id=row[0], package='flathub:' + row[0], name=row[1], summary=row[2],
+                         description='', source='flathub', architecture='ARM64' if row[3] == 'aarch64' else row[3],
+                         categories=['Utility'], icon='', desktopIds=[row[0] + '.desktop']))
+    return apps
+
+
+def status(refresh=False):
+    installed, updates = [], []
+    if shutil.which('flatpak'):
+        installed += ['flathub:' + row[0] for row in csv.reader(io.StringIO(run(
+            ['flatpak', '--user', 'list', '--app', '--columns=application,origin'], True)), delimiter='\t')
+            if len(row) == 2 and row[1] == 'flathub' and SAFE_ID.fullmatch(row[0])]
+        # Query all user remotes for updates, but only expose apps installed from Flathub.
+        try:
+            cache = Path('/var/tmp/dextop-store/flathub-updates.json')
+            cache.parent.mkdir(parents=True, exist_ok=True)
+            if refresh or not cache.exists() or time.time() - cache.stat().st_mtime >= 3 * 86400:
+                values = run(['flatpak', '--user', 'remote-ls', '--updates', '--app',
+                              '--columns=application', 'flathub'], True).splitlines()
+                cache.write_text(json.dumps(values))
+            updates += ['flathub:' + value for value in json.loads(cache.read_text())
+                        if 'flathub:' + value in installed]
+        except RuntimeError:
+            pass
+    records = ETC / 'installed'
+    if records.exists():
+        for line in records.read_text().splitlines():
+            package = line.split()[0]
+            if SAFE_ID.fullmatch(package):
+                result = subprocess.run(['dpkg-query', '-W', '-f=${Status}', package], capture_output=True, text=True)
+                if result.returncode == 0 and result.stdout == 'install ok installed':
+                    installed.append('deb-get:' + package)
+    return dict(installed=installed, upgradable=updates)
+
+
+def operate(source, action, package):
+    if not SAFE_ID.fullmatch(package) or action not in ('install', 'remove', 'upgrade'):
+        raise ValueError('Invalid Store operation')
+    if source == 'deb-get':
+        if not (DEBGET / 'revision').exists():
+            raise RuntimeError('Prepare deb-get from Linux settings first')
+        # Restrict operations to the pinned main catalog; no arbitrary recipe names.
+        if not (ETC / '01-main.d' / package).is_file():
+            raise ValueError('Package not in the pinned deb-get catalog')
+        if action == 'remove':
+            # Upstream deb-get remove enables autoremove, which can remove unrelated
+            # pre-existing automatic packages. Store removal targets only this app.
+            run(['apt-get', 'remove', '-y', '--no-auto-remove', package])
+            records = ETC / 'installed'
+            if records.exists():
+                lines = [line for line in records.read_text().splitlines()
+                         if line.split() and line.split()[0] != package]
+                temporary = records.with_suffix('.staged')
+                temporary.write_text('\n'.join(lines) + ('\n' if lines else ''))
+                temporary.replace(records)
+        else:
+            run([str(DEBGET / 'deb-get'), 'install', package])
+    elif source == 'flathub':
+        command = {'install': ['install', '--noninteractive', 'flathub', package],
+                   'remove': ['uninstall', '--noninteractive', package],
+                   'upgrade': ['update', '--noninteractive', package]}[action]
+        run(['flatpak', '--user'] + command)
+        if action != 'remove':
+            print('Flatpak installed. Execution requires working kernel namespaces and bubblewrap.', flush=True)
+    else:
+        raise ValueError('Unknown source')
+
+
+def main(args):
+    distro()
+    if args[0] == 'prepare' and len(args) == 2:
+        prepare(args[1])
+    elif args[0] == 'catalog' and len(args) == 4:
+        # Cache one complete snapshot; paginate to stay below the service output limit.
+        cache = Path('/var/tmp/dextop-store/' + args[1] + '-catalog.json')
+        offset, count = int(args[2]), 80
+        cache.parent.mkdir(parents=True, exist_ok=True)
+        if offset == 0:
+            cache.write_text(json.dumps(catalog(args[1]), ensure_ascii=True))
+        apps = json.loads(cache.read_text())
+        page = apps[offset:offset + count]
+        while len(json.dumps(page)) > 48000 and len(page) > 1:
+            page = page[:len(page) // 2]
+        print(json.dumps(dict(apps=page, more=offset + len(page) < len(apps))))
+    elif args in (['status'], ['status', 'refresh']):
+        print(json.dumps(status(len(args) == 2)))
+    elif len(args) == 3:
+        operate(*args)
+    else:
+        raise ValueError('Invalid arguments')
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
+    except (RuntimeError, ValueError, OSError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

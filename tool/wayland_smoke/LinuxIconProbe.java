@@ -10,6 +10,11 @@ import org.json.JSONObject;
 /** Headless decoding/serialization check against actual container assets. */
 public class LinuxIconProbe {
     public static void main(String[] args) throws Exception {
+        Class<?> host = Class.forName("moe.n4tsu.dextop.linux.LinuxServiceHost");
+        for (Method method : host.getDeclaredMethods()) if (method.getName().startsWith("initializeFonts")) {
+            method.setAccessible(true);
+            method.invoke(host.getField("INSTANCE").get(null));
+        }
         Class<?> decoder = Class.forName("moe.n4tsu.dextop.linux.LinuxIconDecoder");
         Object instance = decoder.getField("INSTANCE").get(null);
         ByteBuffer icon = ByteBuffer.allocate(8 + 64 * 64 * 4).order(ByteOrder.LITTLE_ENDIAN);
@@ -23,8 +28,6 @@ public class LinuxIconProbe {
         System.out.println("WINDOW_ICON_PNG_ARGB_ALPHA_OK");
 
         File root = new File(args[0]);
-        Class<?> steam = Class.forName("moe.n4tsu.dextop.linux.LinuxSteam");
-        steam.getMethod("stageIcon", File.class).invoke(steam.getField("INSTANCE").get(null), root);
         Class<?> entries = Class.forName("moe.n4tsu.dextop.linux.LinuxDesktopEntries");
         Object reader = entries.getField("INSTANCE").get(null);
         Object list = entries.getMethod("list", File.class, String.class).invoke(reader, root, "en");
@@ -33,15 +36,15 @@ public class LinuxIconProbe {
         for (int i = 0; i < apps.length(); i++) {
             JSONObject app = apps.getJSONObject(i);
             String id = app.getString("id");
-            if (!id.equals("pcmanfm.desktop") && !id.equals("dextop-steam.desktop")) continue;
             byte[] bytes = android.util.Base64.decode(app.getString("icon"), android.util.Base64.DEFAULT);
             Bitmap image = BitmapFactory.decodeByteArray(bytes, 0, bytes.length);
-            if (image == null || image.getWidth() < 48 || image.getHeight() < 48 || image.getWidth() > 96 || image.getHeight() > 96)
-                throw new AssertionError("Missing or oversized launcher icon: " + id);
+            if (image == null || image.getWidth() < 1 || image.getHeight() < 1 || image.getWidth() > 96 || image.getHeight() > 96)
+                { System.out.println("LAUNCHER_ICON_FAILED " + id); continue; }
             System.out.println("LAUNCHER_ICON_OK " + id + " " + image.getWidth() + "x" + image.getHeight() + " bytes=" + bytes.length);
             image.recycle();
             checked++;
         }
-        if (checked != 2) throw new AssertionError("Expected installed launchers missing");
+        System.out.println("LAUNCHER_ICONS_CHECKED " + checked + "/" + apps.length());
+        if (checked != apps.length()) throw new AssertionError("Some installed launchers have missing icons");
     }
 }

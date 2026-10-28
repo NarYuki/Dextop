@@ -24,6 +24,9 @@ internal class LinuxProot(val nativeLibraryDir: String) {
     companion object {
         /** Where the APK's native libraries appear inside containers. */
         const val GUEST_LIBRARY_DIR = "/opt/dextop/lib"
+        /** Distribution packages also install games outside /usr/bin. Do not add
+         * every /opt application directory: vendor desktop entries/wrappers own those. */
+        const val GUEST_PATH = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/local/games:/usr/games:/root/.local/bin:/opt/bin"
         private const val SOCKET_SHIM = "libdextop_unixsock.so"
         private const val KGSL_DEVICE = "/dev/kgsl-3d0"
 
@@ -73,8 +76,38 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         add("/proc/self/fd/0:/dev/stdin"); add("/proc/self/fd/1:/dev/stdout"); add("/proc/self/fd/2:/dev/stderr")
         // Android has no /dev/shm; POSIX shared memory (Firefox, wlroots) needs one.
         add("${sharedMemory(id)}:/dev/shm")
-        File(runtime, "empty").apply { mkdirs() }.let { add("${it.absolutePath}:/sys/fs/selinux") }
+        File(runtime, "empty").apply { mkdirs() }.let {
+            add("${it.absolutePath}:/sys/fs/selinux")
+            // Android exposes PCI entries whose attributes the shell cannot read.
+            // libpci treats the denied vendor read as fatal and calls exit(1), taking
+            // Electron's browser and GPU processes down. KGSL GPUs are not PCI devices.
+            add("${it.absolutePath}:/sys/bus/pci/devices")
+        }
         add("$nativeLibraryDir:$GUEST_LIBRARY_DIR")
+        // Keep installed distro packages intact. Only this daemon's process
+        // loads the loopback policy; Steam and user servers keep normal binds.
+        val faked = File(LinuxPaths.rootfs(id), "usr/bin/faked-tcp")
+        if (faked.isFile) {
+            check(File(nativeLibraryDir, "libdextop_faked.so").isFile) { "Missing fakeroot loopback policy" }
+            val wrapper = File(runtime, "faked-loopback")
+            val script = "#!/bin/sh\nexec env LD_PRELOAD=\"$GUEST_LIBRARY_DIR/libdextop_faked.so\${LD_PRELOAD:+:\$LD_PRELOAD}\" /run/dextop-faked-original \"\$@\"\n"
+            if (!wrapper.isFile || wrapper.readText() != script) {
+                val staged = File.createTempFile("faked-", ".staged", runtime)
+                try {
+                    staged.writeText(script)
+                    check(staged.setExecutable(true, false) && staged.renameTo(wrapper)) { "Cannot stage fakeroot policy" }
+                } finally { staged.delete() }
+            }
+            add("${faked.absolutePath}:/run/dextop-faked-original")
+            add("${wrapper.absolutePath}:/usr/bin/faked-tcp")
+        }
+        // /proc/*/maps contains Android host paths. Apps such as VLC derive plugin
+        // directories from those paths, so expose the same library/data trees at
+        // their mapped names too. Bind subtrees, never the whole root recursively.
+        for (name in listOf("usr", "opt", "root")) {
+            val tree = File(LinuxPaths.rootfs(id), name)
+            if (tree.isDirectory) add("${tree.absolutePath}:${tree.absolutePath}")
+        }
         if (!fakeRoot) accounts(id, runtime)?.let { (passwd, group) -> add("$passwd:/etc/passwd"); add("$group:/etc/group") }
         addAll(fakeProc(runtime))
         addAll(gpuNode(runtime))
@@ -98,6 +131,9 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             "overflowuid" to ("/proc/sys/kernel/overflowuid" to "65534\n"),
             "overflowgid" to ("/proc/sys/kernel/overflowgid" to "65534\n"),
             "file-max" to ("/proc/sys/fs/file-max" to "9223372036854775807\n"),
+            "max_user_watches" to ("/proc/sys/fs/inotify/max_user_watches" to "65536\n"),
+            "max_user_instances" to ("/proc/sys/fs/inotify/max_user_instances" to "128\n"),
+            "max_queued_events" to ("/proc/sys/fs/inotify/max_queued_events" to "16384\n"),
         )
         return files.mapNotNull { (name, target) ->
             val (path, content) = target
@@ -137,16 +173,18 @@ internal class LinuxProot(val nativeLibraryDir: String) {
      * kernel agree on the uid (D-Bus EXTERNAL, file owners); [fakeRoot]
      * (`-0`) is for package management, which needs root semantics.
      */
-    fun guest(id: String, script: String, fakeRoot: Boolean = false): ProcessBuilder {
-        val sessionBinds = binds(id, fakeRoot)
+    fun guest(id: String, script: String, fakeRoot: Boolean = false,
+              extraBinds: List<String> = emptyList(), extraEnvironment: List<String> = emptyList()): ProcessBuilder {
+        val sessionBinds = binds(id, fakeRoot) + extraBinds
         val root = LinuxPaths.rootfs(id)
         // Package management requires fake ownership/permissions; retain PRoot's full translation there.
-        val fastPath = if (!fakeRoot && File(root, LinuxProotFastPath.LIBRARY.removePrefix("/")).isFile &&
+        val fastPath = if (!fakeRoot && "PROOT_FP_OFF=1" !in extraEnvironment && extraBinds.isEmpty() && File(root, LinuxProotFastPath.LIBRARY.removePrefix("/")).isFile &&
             System.getenv("PROOT_NO_SECCOMP") == null) LinuxProotFastPath.create(root, sessionBinds) else null
         return environment(ProcessBuilder(
             proot.absolutePath,
-            // link2symlink stays for sessions too: Xvfb locks its display with link(), which Android denies.
-            "--kill-on-exit", "--link2symlink",
+            // Secure stores reject link-emulated temporary files and can retry forever.
+            // Keep emulation for installers; ordinary applications need real file semantics.
+            "--kill-on-exit", *(if (fakeRoot) arrayOf("--link2symlink") else emptyArray()),
             *(if (fakeRoot) arrayOf("-0") else arrayOf("-i", "$uid:$uid")),
             "-r", LinuxPaths.rootfs(id).absolutePath,
             "-w", "/root",
@@ -155,7 +193,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             "HOME=/root", "USER=root", "LOGNAME=root", "TERM=xterm-256color", "LANG=C.UTF-8",
             // Android's time zone (images default to UTC); sites compare it with the network location.
             *timeZone(id)?.let { arrayOf("TZ=$it") }.orEmpty(),
-            "TMPDIR=/tmp", "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+            "TMPDIR=/tmp", "PATH=$GUEST_PATH",
             // Path unix sockets fall back to abstract ones (the shell user may not create them).
             // DD's bind/connect hooks must run before the socket shim: its udev
             // stand-in sockets need bind() emulation before the real syscall.
@@ -168,6 +206,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             "DEXTOP_EVDEV_UDEV=1",
             *fastPath?.guestEnvironment?.toTypedArray().orEmpty(),
             *guestEnvironment(id).toTypedArray(),
+            *extraEnvironment.toTypedArray(),
             "/bin/sh", "-c", script,
         )).apply {
             environment().remove("PROOT_FASTPATH")
