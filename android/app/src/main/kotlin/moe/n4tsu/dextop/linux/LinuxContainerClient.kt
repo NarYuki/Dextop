@@ -148,7 +148,8 @@ internal object LinuxContainerClient {
     fun prepareDeckAudio(service: ILinuxContainerService, containerId: String) {
         val port = runCatching { LinuxDeckAudio.ensure(checkNotNull(appContext), containerId) }
             .onFailure { Log.w(TAG, "Deck DirectAudio unavailable; using container audio", it) }.getOrDefault(0)
-        service.setGuestState(containerId, LinuxDeckAudio.STATE, if (port > 0) "$port\n" else "0\n")
+        val cookie = if (port > 0) android.util.Base64.encodeToString(LinuxDeckAudio.cookie(), android.util.Base64.NO_WRAP) else ""
+        service.setGuestState(containerId, LinuxDeckAudio.STATE, if (port > 0) "$port\n$cookie\n" else "0\n")
     }
 
     fun releaseDeckAudio(containerId: String) { calls.execute { LinuxDeckAudio.release(containerId) } }
@@ -159,16 +160,18 @@ internal object LinuxContainerClient {
             val ports = runCatching {
                 val list = org.json.JSONArray(service.listContainers())
                 (0 until list.length()).map(list::getJSONObject)
-                    .associate { it.optString("id") to it.optInt("audioPort") }
+                    .associate { it.optString("id") to it.optInt("audioGeneration") }
                     .filterValues { it > 0 }
             }.onFailure { Log.w(TAG, "Cannot refresh Linux audio ports", it) }.getOrNull() ?: return@execute
             synchronized(players) {
                 players.entries.removeAll { (id, player) ->
-                    (ports[id] != player.port).also { stale -> if (stale) player.stop() }
+                    (ports[id] != player.generation).also { stale -> if (stale) player.stop() }
                 }
                 ports.forEach { (id, port) -> if (id !in players) {
-                    Log.i(TAG, "Connecting Linux audio $id port=$port")
-                    players[id] = LinuxAudioPlayer(id, port)
+                    Log.i(TAG, "Connecting Linux audio $id generation=$port")
+                    val burst = appContext?.getSystemService(android.media.AudioManager::class.java)
+                        ?.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)
+                    players[id] = LinuxAudioPlayer(id, port, burst) { checkNotNull(remote) { "Linux service disconnected" }.openAudioStream(id) }
                 } }
             }
         }

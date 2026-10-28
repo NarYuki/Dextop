@@ -13,7 +13,8 @@ if ($LASTEXITCODE) { throw 'Failed to build Xvfb Vulkan capability layer' }
 $sources = Get-ChildItem (Join-Path $repo 'third_party/droiddeck-preload') -Filter '*.c' | ForEach-Object FullName
 & $Zig cc -target aarch64-linux-gnu.2.31 -shared -fPIC -DDEXTOP_BINFMT -O2 -pthread -s `
     -o "$repo/android/app/src/main/jniLibs/arm64-v8a/libdextop_blsession.so" @sources `
-    "$repo/android/app/src/main/cpp/linux_wine_memory.c" "$repo/android/app/src/main/cpp/linux_socket_markers.c" -ldl
+    "$repo/android/app/src/main/cpp/linux_wine_memory.c" "$repo/android/app/src/main/cpp/linux_socket_markers.c" `
+    "$repo/android/app/src/main/cpp/linux_credentials.c" "$repo/android/app/src/main/cpp/linux_semaphores.c" -ldl
 if ($LASTEXITCODE) { throw 'Failed to build shared ARM64 session compatibility' }
 foreach ($arch in @('x86_64', 'i386')) {
     $target = if ($arch -eq 'i386') { 'x86-linux-gnu.2.31' } else { 'x86_64-linux-gnu.2.31' }

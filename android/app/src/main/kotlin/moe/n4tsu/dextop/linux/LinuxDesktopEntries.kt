@@ -14,15 +14,18 @@ internal object LinuxDesktopEntries {
     private const val MAX_ICON_BYTES = 2 * 1024 * 1024
     private val ICON_SIZES = listOf("48x48", "64x64", "96x96", "128x128", "32x32", "256x256", "512x512")
     private val FIELD_CODE = Regex("%[fFuUdDnNickvm]")
-    private val ICON_ROOTS = listOf("/root/.icons", "/root/.local/share/icons", "/usr/local/share/icons", "/usr/share/icons")
+    private val ICON_ROOTS = listOf("/root/.icons", "/root/.local/share/icons", "/usr/local/share/icons", "/usr/share/icons",
+        "/root/.local/share/flatpak/exports/share/icons")
+    private val APPLICATION_ROOTS = listOf("/usr/share/applications", "/usr/local/share/applications",
+        "/root/.local/share/flatpak/exports/share/applications", "/root/.local/share/applications")
     private val ICON_DIRECTORY_SIZE = Regex("(?:^|/)(\\d+)(?:x\\d+)?(?:@\\d+)?(?:/|$)")
 
-    data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "")
+    data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "", val flatpakId: String = "", val displayBackend: String = "")
 
     fun list(rootfs: File, locale: String): List<Entry> {
         val files = linkedMapOf<String, File>()
         // XDG user entries override distribution entries, including Hidden=true.
-        for (path in listOf("/usr/share/applications", "/usr/local/share/applications", "/root/.local/share/applications")) {
+        for (path in APPLICATION_ROOTS) {
             resolve(rootfs, path)?.listFiles { file -> file.name.endsWith(".desktop") }.orEmpty()
                 .forEach { files[it.name] = it }
         }
@@ -32,7 +35,7 @@ internal object LinuxDesktopEntries {
 
     fun find(rootfs: File, id: String): Entry? {
         require('/' !in id && '\\' !in id) { "Invalid desktop entry id" }
-        for (path in listOf("/root/.local/share/applications", "/usr/local/share/applications", "/usr/share/applications")) {
+        for (path in APPLICATION_ROOTS.asReversed()) {
             resolve(rootfs, "$path/$id")?.let { return parse(rootfs, it, "", launcher = false) }
         }
         return null
@@ -53,7 +56,10 @@ internal object LinuxDesktopEntries {
     /** The shell command for [entry]: field codes removed, terminal apps wrapped in xterm. */
     fun command(entry: Entry): String {
         val exec = FIELD_CODE.replace(entry.exec, "").replace("%%", "%").trim()
-        return if (entry.terminal) "xterm -e $exec" else exec
+        // Give each terminal launcher its own class instead of making Vim, shells,
+        // and other unrelated terminal apps all claim the generic XTerm windows.
+        val terminalClass = "'" + entry.id.removeSuffix(".desktop").replace("'", "'\\''") + "'"
+        return if (entry.terminal) "xterm -class $terminalClass -e $exec" else exec
     }
 
     /** [launcher]: listing for Kickoff, where NoDisplay entries stay out; a launch by id may run them. */
@@ -73,7 +79,7 @@ internal object LinuxDesktopEntries {
         val exec = values["Exec"]?.takeIf { it.isNotBlank() } ?: return null
         val language = locale.substringBefore('-').substringBefore('_')
         val name = values["Name[${locale.replace('-', '_')}]"] ?: values["Name[$language]"] ?: values["Name"] ?: return null
-        return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty())
+        return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty(), values["X-Flatpak"].orEmpty(), values["X-Dextop-DisplayBackend"].orEmpty())
     }
 
     internal fun iconPng(rootfs: File, icon: String): ByteArray? {

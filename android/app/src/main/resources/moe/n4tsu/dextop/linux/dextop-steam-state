@@ -1,0 +1,61 @@
+#!/usr/bin/python3
+"""Recover missing Steam version metadata only when installed core files agree."""
+from pathlib import Path
+import os
+import re
+import sys
+import zlib
+
+
+def repair(root):
+    package = root / 'package'
+    beta = package / 'beta'
+    channel = beta.read_text().strip() if beta.is_file() else ''
+    if not re.fullmatch(r'[A-Za-z0-9_]*', channel):
+        return False
+    stem = 'steam_client_' + (channel + '_' if channel else '') + 'linuxarm64'
+    manifest = package / (stem + '.manifest')
+    pending = package / stem
+    installed = package / (stem + '.installed')
+    stamp = package / 'droiddeck-installed'
+    if manifest.exists() or not all(p.is_file() for p in (pending, installed, stamp)):
+        return False
+    data = pending.read_bytes()
+    version = re.search(rb'"version"\s*"([0-9]+)"', data)
+    if not version or version[1].decode() != stamp.read_text().strip():
+        return False
+    required = {'steamrtarm64/' + name for name in
+                ('steam', 'steamclient.so', 'steamwebhelper', 'steamwebhelper.sh')}
+    matched = set()
+    for line in installed.read_text().splitlines():
+        if ',' not in line:
+            continue
+        name, attributes = line.rsplit(',', 1)
+        if name not in required:
+            continue
+        size, _, crc = attributes.split(';')
+        path = root / name
+        if not path.is_file() or path.stat().st_size != int(size):
+            return False
+        actual = 0
+        with path.open('rb') as stream:
+            for block in iter(lambda: stream.read(1024 * 1024), b''):
+                actual = zlib.crc32(block, actual)
+        if actual & 0xffffffff != int(crc):
+            return False
+        matched.add(name)
+    if matched != required:
+        return False
+    staged = manifest.with_name(manifest.name + '.dextop-staged')
+    with staged.open('wb') as stream:
+        stream.write(data)
+    os.replace(staged, manifest)
+    print('Restored Steam version metadata after checking installed core files.', flush=True)
+    return True
+
+
+if __name__ == '__main__':
+    try:
+        repair(Path(sys.argv[1]))
+    except (OSError, ValueError) as error:
+        print('Steam metadata recovery skipped: ' + str(error), file=sys.stderr)

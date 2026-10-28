@@ -44,8 +44,29 @@ internal object LinuxShortcutInstaller {
     private const val TEMPLATE = "linux-shortcut-template.apk"
     private const val KEY_ALIAS = "dextop_linux_launchers"
     private const val PREFS = "linux_shortcuts"
-    private const val PACKAGE_PREFIX = "moe.n4tsu.dextop.lx."
+    const val PACKAGE_PREFIX = "moe.n4tsu.dextop.lx."
     private const val TEMPLATE_PACKAGE = "moe.n4tsu.dextop.lxstub"
+    /** The template's versionCode; older launchers cannot host windows yet and are rebuilt. */
+    const val VERSION = 2
+    /** The launcher's activity that roots each window's task. */
+    const val WINDOW_ACTIVITY = "moe.n4tsu.dextop.lxstub.Window"
+    private const val MODE_KEY = "install_mode"
+
+    /**
+     * How launchers are installed: "auto" through Shizuku/Stellar or Dextop's built-in access,
+     * with no confirmation; "manual" through Android's installer; "ask" until the user chose.
+     */
+    fun mode(context: Context): String =
+        context.getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE).getString(MODE_KEY, "ask") ?: "ask"
+
+    fun setMode(context: Context, mode: String) {
+        context.getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE).edit().putString(MODE_KEY, mode).apply()
+    }
+
+    private const val PREFS_SETTINGS = "linux_shortcut_settings"
+
+    /** Whether launchers can be installed without Android asking (Shizuku, Stellar or built-in access). */
+    fun silentAvailable(): Boolean = LinuxContainerClient.service() != null || moe.n4tsu.dextop.PrivilegedAccess(TAG).isAvailable()
 
     /** The launcher package for [desktopId] of [container]; stable, so a new build replaces the old one. */
     fun packageName(container: String, desktopId: String): String {
@@ -56,6 +77,58 @@ internal object LinuxShortcutInstaller {
     fun installed(context: Context, container: String, desktopId: String): Boolean = runCatching {
         context.packageManager.getPackageInfo(packageName(container, desktopId), 0); true
     }.getOrDefault(false)
+
+    @Suppress("DEPRECATION")
+    private fun installedVersion(context: Context, target: String): Long? = runCatching {
+        context.packageManager.getPackageInfo(target, 0).longVersionCode
+    }.getOrNull()
+
+    /** The launcher package that can host [desktopId]'s windows in its own tasks, if installed and current. */
+    fun hostPackage(context: Context, container: String, desktopId: String): String? {
+        val target = packageName(container, desktopId)
+        return target.takeIf { (installedVersion(context, target) ?: 0) >= VERSION &&
+            trustedHost(context, target, container, desktopId) }
+    }
+
+    /** Package names and version codes are public, so only our existing signing key grants trust. */
+    fun trustedHost(context: Context, caller: String?, container: String?, desktop: String?): Boolean = runCatching {
+        if (caller == null || container.isNullOrBlank() || desktop.isNullOrBlank() ||
+            !container.matches(Regex("c[a-zA-Z0-9]+")) || '/' in desktop || '\\' in desktop ||
+            caller != packageName(container, desktop)) return false
+        val store = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        val expected = store.getCertificate(KEY_ALIAS)?.encoded ?: return false
+        val info = context.packageManager.getPackageInfo(caller, PackageManager.GET_SIGNING_CERTIFICATES)
+        val signers = info.signingInfo?.apkContentsSigners ?: return false
+        if (signers.size != 1 || !MessageDigest.isEqual(expected, signers.single().toByteArray())) return false
+        val metadata = context.packageManager.getApplicationInfo(caller, PackageManager.GET_META_DATA).metaData
+        metadata?.getString("dextop.target") == context.packageName &&
+            metadata.getString("dextop.container") == container && metadata.getString("dextop.desktop") == desktop
+    }.getOrDefault(false)
+
+    private val upgrading = HashSet<String>()
+
+    /**
+     * Rebuilds an installed launcher made from an older template, keeping its name and icon.
+     * Silent when the user chose automatic installs and privileged access is available.
+     */
+    fun upgradeIfOld(context: Context, container: String, desktopId: String) {
+        val target = packageName(container, desktopId)
+        val version = installedVersion(context, target) ?: return
+        if (version >= VERSION || !upgrading.add(target)) return
+        val app = context.applicationContext
+        Thread {
+            runCatching {
+                val pm = app.packageManager
+                val label = pm.getApplicationLabel(pm.getApplicationInfo(target, 0)).toString()
+                val drawable = pm.getApplicationIcon(target)
+                val bitmap = Bitmap.createBitmap(192, 192, Bitmap.Config.ARGB_8888)
+                drawable.setBounds(0, 0, 192, 192)
+                drawable.draw(Canvas(bitmap))
+                val png = ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }.toByteArray()
+                install(app, container, desktopId, label, png, silent = mode(app) == "auto", iconReady = true)
+            }.onFailure { Log.w(TAG, "Launcher $target not upgraded", it) }
+        }.start()
+    }
 
     /** Every launcher Dextop made and that is still installed, as "container:desktopId" keys. */
     fun installedKeys(context: Context): List<String> {
@@ -70,8 +143,11 @@ internal object LinuxShortcutInstaller {
      * Builds and installs the launcher. Returns "permission" when Dextop may not install apps
      * yet (the settings page is opened), otherwise "pending": Android asks the user next.
      */
-    fun install(context: Context, container: String, desktopId: String, label: String, iconPng: ByteArray?): String {
-        if (!context.packageManager.canRequestPackageInstalls()) {
+    fun install(context: Context, container: String, desktopId: String, label: String, iconPng: ByteArray?,
+                silent: Boolean = false, iconReady: Boolean = false): String {
+        val quiet = silent || mode(context) == "auto"
+        check(!quiet || silentAvailable()) { "Automatic installation requires a running Stellar, Shizuku or built-in connection" }
+        if (!quiet && !context.packageManager.canRequestPackageInstalls()) {
             context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
             return "permission"
@@ -88,7 +164,7 @@ internal object LinuxShortcutInstaller {
             "LXSTUB_TARGET_PLACEHOLDER" to context.packageName,
             "LXSTUB_CONTAINER_PLACEHOLDER" to container,
             "LXSTUB_DESKTOP_PLACEHOLDER" to desktopId,
-        ), iconFor(iconPng))
+        ), if (iconReady && iconPng != null) iconPng else iconFor(iconPng))
         val (key, certificate) = signingKey()
         ApkSigner.Builder(listOf(ApkSigner.SignerConfig.Builder("DEXTOPLX", key, listOf(certificate)).build()))
             .setInputApk(unsigned)
@@ -101,6 +177,10 @@ internal object LinuxShortcutInstaller {
             .sign()
         unsigned.delete()
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("$container:$desktopId", target).apply()
+        if (quiet) {
+            installQuietly(context, signed, target)
+            return "installed"
+        }
         commit(context, signed, target)
         return "pending"
     }
@@ -110,6 +190,37 @@ internal object LinuxShortcutInstaller {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("$container:$desktopId").apply()
         val target = packageName(container, desktopId)
         context.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$target")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+    }
+
+    /**
+     * Installs [apk] as the shell user (Shizuku, Stellar or Dextop's built-in access), which
+     * needs no confirmation. The shell reads it from Dextop's external files directory.
+     */
+    private fun installQuietly(context: Context, apk: File, target: String) {
+        val linux = LinuxContainerClient.service()
+        if (linux != null) {
+            android.os.ParcelFileDescriptor.open(apk, android.os.ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
+                linux.installLauncher(fd, apk.length(), context.packageName)
+            }
+            apk.delete()
+            Log.i(TAG, "Installed launcher $target through Linux privilege service")
+            return
+        }
+        val shared = File(checkNotNull(context.getExternalFilesDir("launchers")), "$target.apk")
+        try {
+            apk.copyTo(shared, overwrite = true)
+            fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+            val command = "pm install -r -i ${quote(context.packageName)} --user current -S ${shared.length()} < ${quote(shared.absolutePath)}"
+            val result = moe.n4tsu.dextop.PrivilegedAccess(TAG)
+                .execute("/system/bin/sh", "-c", command)
+            check(result.succeeded && result.output.lineSequence().any { it.trim() == "Success" }) {
+                "Automatic launcher install failed: ${result.output} ${result.error}"
+            }
+            apk.delete()
+            Log.i(TAG, "Installed launcher $target quietly")
+        } finally {
+            shared.delete()
+        }
     }
 
     private fun commit(context: Context, apk: File, target: String) {

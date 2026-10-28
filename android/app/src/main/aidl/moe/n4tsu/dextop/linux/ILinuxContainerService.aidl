@@ -1,5 +1,6 @@
 package moe.n4tsu.dextop.linux;
 
+import android.os.ParcelFileDescriptor;
 import android.view.Surface;
 import moe.n4tsu.dextop.linux.ILinuxContainerCallback;
 import moe.n4tsu.dextop.linux.ILinuxFifoBridge;
@@ -96,4 +97,10 @@ interface ILinuxContainerService {
     boolean consumeNetworkScanRequests() = 48;
     /** Auto Deck SurfaceView output; never selected for ordinary Linux windows. */
     boolean attachDeckWindow(String containerId, int xid, in Surface surface) = 49;
+    /** An interactive shell of the container on a new pseudo-terminal; returns its master side. */
+    ParcelFileDescriptor openTerminal(String containerId, int rows, int cols) = 50;
+    /** Streams an app-owned launcher APK to the privileged package installer. */
+    String installLauncher(in ParcelFileDescriptor apk, long size, String installerPackage) = 51;
+    /** A fresh PCM recording over an anonymous descriptor, never a public TCP listener. */
+    ParcelFileDescriptor openAudioStream(String containerId) = 52;
 }

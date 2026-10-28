@@ -26,7 +26,14 @@ internal object LinuxSessionCompatibility {
     }
 
     fun stage(root: File, nativeLibraryDir: String, socketNamespace: String? = null) {
+        stageScript(root, "dextop-path.sh", "etc/profile.d/dextop-path.sh")
+        stageScript(root, "dextop-pipewire-client.conf", "etc/pipewire/client.conf.d/99-dextop-session.conf")
+        stageScript(root, "dextop-pipewire-client.conf", "etc/pipewire/client-rt.conf.d/99-dextop-session.conf")
         stageVulkan(root)
+        stageSystemPrompter(root)
+        stageSystemServices(root)
+        stageWindowsHelper(root)
+        stageScript(root, "dextop-apt-heal", "usr/local/sbin/dextop-apt-heal")
         val source = File(nativeLibraryDir, LIBRARY)
         check(source.isFile) { "Linux session compatibility library is not packaged" }
         val target = File(root, GUEST_PRELOAD.removePrefix("/"))
@@ -62,6 +69,70 @@ internal object LinuxSessionCompatibility {
         }
     }
 
+    /** A D-Bus helper has no initiating app's toolkit environment. Use X11 for its
+     * security dialogs so they can parent to both X11 and Xwayland applications. */
+    private fun stageSystemPrompter(root: File) {
+        stageScript(root, "dextop-keyring-repair", "usr/local/bin/dextop-keyring-repair")
+        val system = File(root, "usr/share/dbus-1/services/org.gnome.keyring.SystemPrompter.service")
+        if (!system.isFile) return
+        val marker = "# Dextop system prompt display compatibility\n"
+        val target = File(root, "root/.local/share/dbus-1/services/org.gnome.keyring.SystemPrompter.service")
+        if (target.isFile && !target.readText().startsWith(marker)) return
+        val content = marker + system.readText().replace(Regex("(?m)^Exec=(.+)$")) {
+            "Exec=/usr/bin/env GDK_BACKEND=x11 " + it.groupValues[1]
+        }
+        if (target.isFile && target.readText() == content) return
+        target.parentFile?.mkdirs()
+        val temporary = File(target.parentFile, target.name + ".staged")
+        temporary.writeText(content)
+        Files.move(temporary.toPath(), target.toPath(), REPLACE_EXISTING)
+    }
+
+    /** D-Bus activation does not preserve an initiating application's bus address.
+     * Keep helpers on this container's bus. Only polkit's privilege-drop operation
+     * needs fakeroot; packagekit itself clears its environment and must stay real-uid. */
+    internal fun stageSystemServices(root: File) {
+        val directory = File(root, "etc/dextop/system-services").apply { mkdirs() }
+        val sources = File(root, "usr/share/dbus-1/system-services").listFiles()
+            .orEmpty().filter { it.name.endsWith(".service") }
+        directory.listFiles().orEmpty().filter { target -> sources.none { it.name == target.name } }.forEach { it.delete() }
+        for (source in sources) {
+            val content = source.readText().replace(Regex("(?m)^Exec=(.+)$")) {
+                val command = it.groupValues[1]
+                val privilege = if (command.substringBefore(' ').endsWith("/polkitd")) "/usr/bin/fakeroot-tcp " else ""
+                "Exec=/usr/bin/env DBUS_SYSTEM_BUS_ADDRESS=${LinuxCatalog.SYSTEM_BUS_ADDRESS} $privilege$command"
+            }.replace(Regex("(?m)^User=.+$"), "User=root")
+            val target = File(directory, source.name)
+            if (!target.isFile || target.readText() != content) {
+                val temporary = File(directory, source.name + ".staged")
+                temporary.writeText(content)
+                Files.move(temporary.toPath(), target.toPath(), REPLACE_EXISTING)
+            }
+        }
+    }
+
+    /** Keeps installed Windows applications' launcher (dextop-windows) as current as Dextop. */
+    private fun stageWindowsHelper(root: File) {
+        if (File(root, "usr/local/bin/dextop-windows").isFile) stageScript(root, "dextop-windows", "usr/local/bin/dextop-windows")
+    }
+
+    /** A script of Dextop's resources at [path] in the container, with Unix line ends. */
+    internal fun script(name: String): ByteArray? =
+        javaClass.getResourceAsStream("/moe/n4tsu/dextop/linux/$name")?.use { it.readBytes() }
+            ?.toString(Charsets.UTF_8)?.replace("\r\n", "\n")?.toByteArray()
+
+    private fun stageScript(root: File, name: String, path: String) {
+        val target = File(root, path)
+        val bytes = script(name) ?: return
+        if (target.isFile && target.readBytes().contentEquals(bytes)) return
+        target.parentFile?.mkdirs()
+        val temporary = File(target.parentFile, target.name + ".staged")
+        temporary.writeBytes(bytes)
+        temporary.setExecutable(true, false)
+        temporary.setReadable(true, false)
+        Files.move(temporary.toPath(), target.toPath(), REPLACE_EXISTING)
+    }
+
     private fun stageVulkan(root: File) {
         val library = "/usr/local/lib/dextop/libdextop_vk_xvfb.so"
         val manifest = """{"file_format_version":"1.2.0","layer":{"name":"VK_LAYER_DEXTOP_xvfb","type":"GLOBAL","library_path":"$library","api_version":"1.3.0","implementation_version":"1","description":"Dextop Xvfb presentation capabilities","disable_environment":{"DEXTOP_DISABLE_XVFB_WSI_LAYER":"1"}}}"""
@@ -84,6 +155,11 @@ internal object LinuxSessionCompatibility {
             "/moe/n4tsu/dextop/linux/gaming/libblfastpath-aarch64.bin")) { "PRoot fast path is not packaged" }.use { it.readBytes() })
         replace("/usr/local/lib/dextop/dextop-wine-tray.exe", metadata)
         replace(library, bytes)
-        replace("/usr/share/vulkan/implicit_layer.d/dextop-xvfb.json", manifest.toByteArray())
+        // Flatpak replaces /usr but preserves /usr/local. The WSI capability
+        // correction must remain discoverable inside those runtimes as well.
+        replace("/usr/local/share/vulkan/implicit_layer.d/dextop-xvfb.json", manifest.toByteArray())
+        File(root, "usr/share/vulkan/implicit_layer.d/dextop-xvfb.json").takeIf {
+            it.isFile && it.readText() == manifest
+        }?.delete()
     }
 }

@@ -47,6 +47,7 @@ internal class WaylandCompositor(
         @JvmStatic private external fun nativeAxis(handle: Long, dx: Int, dy: Int)
         @JvmStatic private external fun nativeKey(handle: Long, key: Int, down: Boolean)
         @JvmStatic private external fun nativeText(handle: Long, text: String)
+        @JvmStatic private external fun nativeClipboard(handle: Long, text: String)
         @JvmStatic private external fun nativeLockName(path: String): Int
         @JvmStatic private external fun nativeUnlockName(fd: Int)
     }
@@ -100,10 +101,23 @@ internal class WaylandCompositor(
     @get:Synchronized
     val running get() = handle != 0L
 
+    /**
+     * Surfaces of attached windows, released on detach: an unreleased Surface keeps its
+     * producer connected, and the same Android surface attached again would be refused.
+     */
+    private val surfaces = java.util.concurrent.ConcurrentHashMap<Int, Surface>()
+
     @Synchronized
-    fun attach(id: Int, surface: Surface, deckDirect: Boolean = false, deck30: Boolean = false, noVsync: Boolean = false) { if (running) nativeAttach(handle, id, surface, deckDirect, deck30, noVsync) }
+    fun attach(id: Int, surface: Surface, deckDirect: Boolean = false, deck30: Boolean = false, noVsync: Boolean = false) {
+        if (!running) return
+        nativeAttach(handle, id, surface, deckDirect, deck30, noVsync)
+        surfaces.put(id, surface)?.takeIf { it !== surface }?.release()
+    }
     @Synchronized
-    fun detach(id: Int) { if (running) nativeDetach(handle, id) }
+    fun detach(id: Int) {
+        if (running) nativeDetach(handle, id)
+        surfaces.remove(id)?.release()
+    }
     @Synchronized
     fun updateOutput(width: Int, height: Int, refreshMilliHz: Int) { if (running) nativeOutput(handle, width, height, refreshMilliHz) }
     @Synchronized
@@ -122,6 +136,9 @@ internal class WaylandCompositor(
     fun key(evdevCode: Int, down: Boolean) { if (running) nativeKey(handle, evdevCode, down) }
     @Synchronized
     fun text(text: String) { if (running) nativeText(handle, text) }
+
+    /** Offers [text] (copied in an X application or Android) as Wayland clients' clipboard. */
+    fun setClipboard(text: String) { if (running) nativeClipboard(handle, text) }
     @Synchronized
     fun stop() {
         val current = handle

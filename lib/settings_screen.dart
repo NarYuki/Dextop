@@ -3,10 +3,7 @@ part of 'main.dart';
 extension _SettingsContent on _HomeScreenState {
   Widget settings() {
     final l = AppLocalizations.of(context);
-    if (widget.desktopWindow &&
-        MediaQuery.orientationOf(context) == Orientation.landscape) {
-      return _desktopSettings(l);
-    }
+    if (wideLayout) return _desktopSettings(l);
     return CustomScrollView(
       key: ValueKey('settings'),
       slivers: [

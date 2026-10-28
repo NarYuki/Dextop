@@ -15,7 +15,8 @@ internal object LinuxFrameBridge {
         if (library != null) System.load(library) else System.loadLibrary("dextop_linux")
     }
 
-    @JvmStatic external fun nativeAttach(surface: Surface, width: Int, height: Int): Long
+    /** [alpha]: the window is 32-bit (ARGB); its transparency is kept. */
+    @JvmStatic external fun nativeAttach(surface: Surface, width: Int, height: Int, alpha: Boolean = false): Long
     @JvmStatic external fun nativeDetach(handle: Long)
     @JvmStatic external fun nativeBlit(
         handle: Long, buffer: ByteBuffer, offset: Int, stride: Int,

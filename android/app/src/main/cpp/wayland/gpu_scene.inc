@@ -335,5 +335,5 @@ fail:
     if (r == VK_ERROR_DEVICE_LOST) g->failed = true;
     g->DeviceWaitIdle(g->device);
     if (*release_fd >= 0) { close(*release_fd); *release_fd = -1; }
-    return -1;
+    return r == VK_ERROR_OUT_OF_DATE_KHR ? -2 : -1;
 }

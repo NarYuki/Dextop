@@ -24,12 +24,15 @@ struct Target {
     ANativeWindow *window = nullptr;
     int32_t width = 0;
     int32_t height = 0;
+    /* A 32-bit X window (menus and popups with shadows, rounded corners): its alpha is kept,
+     * so the transparent parts show what is under them instead of black. */
+    bool alpha = false;
     std::vector<uint32_t> image;
     ARect pending{0, 0, 0, 0};
 };
 
-inline void copyRow(const uint8_t *src, uint8_t *dst, int32_t pixels) {
-    // BGRX -> RGBX: swap bytes 0 and 2 of each pixel.
+inline void copyRow(const uint8_t *src, uint8_t *dst, int32_t pixels, bool alpha) {
+    // BGRX -> RGBX (or BGRA -> RGBA, premultiplied as X has it): swap bytes 0 and 2.
     const auto *in = reinterpret_cast<const uint32_t *>(src);
     auto *out = reinterpret_cast<uint32_t *>(dst);
     int32_t i = 0;
@@ -39,13 +42,14 @@ inline void copyRow(const uint8_t *src, uint8_t *dst, int32_t pixels) {
         const auto red = channels.val[0];
         channels.val[0] = channels.val[2];
         channels.val[2] = red;
-        channels.val[3] = vdupq_n_u8(255);
+        if (!alpha) channels.val[3] = vdupq_n_u8(255);
         vst4q_u8(dst + i * 4, channels);
     }
 #endif
+    const uint32_t opaque = alpha ? 0u : 0xff000000u;
     for (; i < pixels; ++i) {
         const uint32_t p = in[i];
-        out[i] = 0xff000000u | ((p & 0xffu) << 16) | (p & 0xff00u) | ((p >> 16) & 0xffu);
+        out[i] = opaque | (p & 0xff000000u) | ((p & 0xffu) << 16) | (p & 0xff00u) | ((p >> 16) & 0xffu);
     }
 }
 
@@ -53,14 +57,15 @@ inline void copyRow(const uint8_t *src, uint8_t *dst, int32_t pixels) {
 
 extern "C" JNIEXPORT jlong JNICALL
 Java_moe_n4tsu_dextop_linux_LinuxFrameBridge_nativeAttach(
-        JNIEnv *env, jclass, jobject surface, jint width, jint height) {
+        JNIEnv *env, jclass, jobject surface, jint width, jint height, jboolean alpha) {
     ANativeWindow *window = ANativeWindow_fromSurface(env, surface);
     if (window == nullptr) return 0;
-    if (ANativeWindow_setBuffersGeometry(window, width, height, WINDOW_FORMAT_RGBX_8888) != 0) {
+    if (ANativeWindow_setBuffersGeometry(window, width, height, alpha ? WINDOW_FORMAT_RGBA_8888 : WINDOW_FORMAT_RGBX_8888) != 0) {
         ANativeWindow_release(window);
         return 0;
     }
     auto *target = new Target{window, width, height};
+    target->alpha = alpha;
     return reinterpret_cast<jlong>(target);
 }
 
@@ -111,7 +116,7 @@ Java_moe_n4tsu_dextop_linux_LinuxFrameBridge_nativeBlit(
     for (int32_t row = copyTop; row < copyBottom; ++row) {
         copyRow(base + offset + static_cast<size_t>(row) * stride + copyLeft * 4,
                 pixels + (static_cast<size_t>(row) * out.stride + copyLeft) * 4,
-                copyRight - copyLeft);
+                copyRight - copyLeft, target->alpha);
     }
     ANativeWindow_unlockAndPost(target->window);
     return JNI_TRUE;
@@ -121,7 +126,8 @@ extern "C" JNIEXPORT jboolean JNICALL
 Java_moe_n4tsu_dextop_linux_LinuxFrameBridge_nativeResize(JNIEnv *, jclass, jlong handle, jint width, jint height) {
     auto *target = reinterpret_cast<Target *>(handle);
     if (target == nullptr || width <= 0 || height <= 0) return JNI_FALSE;
-    if (ANativeWindow_setBuffersGeometry(target->window, width, height, WINDOW_FORMAT_RGBX_8888) != 0) return JNI_FALSE;
+    if (ANativeWindow_setBuffersGeometry(target->window, width, height,
+            target->alpha ? WINDOW_FORMAT_RGBA_8888 : WINDOW_FORMAT_RGBX_8888) != 0) return JNI_FALSE;
     target->width = width;
     target->height = height;
     std::vector<uint32_t>().swap(target->image);
@@ -160,11 +166,12 @@ bool stage(Target *target, const uint8_t *src, size_t length, int stride, int x,
     const int bottom = static_cast<int>(std::clamp<int64_t>(static_cast<int64_t>(y) + h, top, target->height));
     if (right <= left || bottom <= top) return true;
     try {
-        if (target->image.empty()) target->image.resize(static_cast<size_t>(target->width) * target->height, 0xff000000u);
+        if (target->image.empty()) target->image.resize(static_cast<size_t>(target->width) * target->height, target->alpha ? 0u : 0xff000000u);
     } catch (const std::bad_alloc &) { return false; }
     for (int row = top; row < bottom; ++row) {
         copyRow(src + static_cast<size_t>(row - y) * stride + static_cast<size_t>(left - x) * 4,
-            reinterpret_cast<uint8_t *>(target->image.data() + static_cast<size_t>(row) * target->width + left), right - left);
+            reinterpret_cast<uint8_t *>(target->image.data() + static_cast<size_t>(row) * target->width + left), right - left,
+            target->alpha);
     }
     if (target->pending.right <= target->pending.left || target->pending.bottom <= target->pending.top) {
         target->pending = {left, top, right, bottom};

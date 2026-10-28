@@ -968,9 +968,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     );
     final custom = <DisplayProfile>[];
     try {
-      final decoded =
-          jsonDecode(prefs.getString('custom_resolution_profiles') ?? '[]')
-              as List<dynamic>;
+      final decoded = jsonDecode(
+        prefs.getString('custom_resolution_profiles') ?? '[]',
+      ) as List<dynamic>;
       custom.addAll(
         decoded.map(
           (item) =>
@@ -1422,54 +1422,56 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
-    final desktopLandscape =
-        widget.desktopWindow &&
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    if (desktopLandscape) {
+    if (wideLayout) {
+      // A desktop window draws its own title bar: no status bar space above the pages.
       return Scaffold(
-        body: Row(
-          children: [
-            LayoutBuilder(
-              builder: (context, constraints) => NavigationRail(
-                extended: MediaQuery.sizeOf(context).width >= 1000,
-                selectedIndex: page,
-                onDestinationSelected: selectPage,
-                leading: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 20),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(9),
-                    child: Image.asset(
-                      'assets/dextop_icon.png',
-                      width: 36,
-                      height: 36,
-                      fit: BoxFit.cover,
+        body: MediaQuery.removePadding(
+          context: context,
+          removeTop: true,
+          child: Row(
+            children: [
+              LayoutBuilder(
+                builder: (context, constraints) => NavigationRail(
+                  extended: MediaQuery.sizeOf(context).width >= 1000,
+                  selectedIndex: page,
+                  onDestinationSelected: selectPage,
+                  leading: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 20),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(9),
+                      child: Image.asset(
+                        'assets/dextop_icon.png',
+                        width: 36,
+                        height: 36,
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
+                  destinations: [
+                    NavigationRailDestination(
+                      icon: const Icon(Icons.space_dashboard_outlined),
+                      selectedIcon: const Icon(Icons.space_dashboard_rounded),
+                      label: Text(currentLocalizations().home),
+                    ),
+                    NavigationRailDestination(
+                      icon: const PenguinIcon(),
+                      selectedIcon: const PenguinIcon(filled: true),
+                      label: Text(
+                        currentLocalizations().nativePlasmaCategoryLinux,
+                      ),
+                    ),
+                    NavigationRailDestination(
+                      icon: _settingsNavigationIcon(Icons.tune_outlined),
+                      selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
+                      label: Text(currentLocalizations().settings),
+                    ),
+                  ],
                 ),
-                destinations: [
-                  NavigationRailDestination(
-                    icon: const Icon(Icons.space_dashboard_outlined),
-                    selectedIcon: const Icon(Icons.space_dashboard_rounded),
-                    label: Text(currentLocalizations().home),
-                  ),
-                  NavigationRailDestination(
-                    icon: const PenguinIcon(),
-                    selectedIcon: const PenguinIcon(filled: true),
-                    label: Text(
-                      currentLocalizations().nativePlasmaCategoryLinux,
-                    ),
-                  ),
-                  NavigationRailDestination(
-                    icon: _settingsNavigationIcon(Icons.tune_outlined),
-                    selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
-                    label: Text(currentLocalizations().settings),
-                  ),
-                ],
               ),
-            ),
-            const VerticalDivider(width: 1),
-            Expanded(child: pageContent()),
-          ],
+              const VerticalDivider(width: 1),
+              Expanded(child: pageContent()),
+            ],
+          ),
         ),
       );
     }
@@ -1498,6 +1500,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       ),
     );
   }
+
+  /// A tablet-sized window (DeX, a tablet, an unfolded phone, or Dextop's own desktop
+  /// in landscape): navigation moves to a rail and pages use the width.
+  bool get wideLayout =>
+      MediaQuery.sizeOf(context).width >= 840 ||
+      (widget.desktopWindow &&
+          MediaQuery.orientationOf(context) == Orientation.landscape);
 
   Widget pageContent() => AnimatedSwitcher(
     duration: const Duration(milliseconds: 350),

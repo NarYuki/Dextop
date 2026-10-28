@@ -17,6 +17,8 @@ internal object LinuxDeckAudio {
     const val STATE = "dextop-deck-audio.conf"
     private var process: Process? = null
     private var port = 0
+    private var auth: ByteArray? = null
+    @Synchronized fun cookie(): ByteArray = checkNotNull(auth).copyOf()
     private var generation = 0L
     private val restartTimes = ArrayDeque<Long>()
     private val owners = mutableSetOf<String>()
@@ -43,9 +45,13 @@ internal object LinuxDeckAudio {
             check(staged.renameTo(File(modules, name))) { "Cannot stage Deck audio module $name" }
         }
         val selected = port.takeIf { it > 0 } ?: ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
+        val cookie = File(dir, "cookie")
+        val secret = auth ?: ByteArray(256).also { java.security.SecureRandom().nextBytes(it) }
+        cookie.writeBytes(secret)
+        android.system.Os.chmod(cookie.path, 0x180)
         val config = File(dir, "default.pa").apply {
             writeText("""
-                load-module module-native-protocol-tcp listen=127.0.0.1 port=$selected auth-anonymous=1 auth-cookie-enabled=0
+                load-module module-native-protocol-tcp listen=127.0.0.1 port=$selected auth-anonymous=0 auth-cookie-enabled=1 auth-cookie=${cookie.path}
                 load-module module-directaudio-native-sink sink_name=DirectAudio performance_mode=1 adaptive=1 decay=0 limiter=1 watchdog=1 volume=1.0
                 set-default-sink DirectAudio
             """.trimIndent() + "\n")
@@ -78,6 +84,7 @@ internal object LinuxDeckAudio {
             error("Deck DirectAudio did not become ready")
         }
         process = child
+        auth = secret
         port = selected
         owners += containerId
         val token = ++generation
@@ -119,5 +126,6 @@ internal object LinuxDeckAudio {
         }
         process = null
         port = 0
+        auth = null
     }
 }

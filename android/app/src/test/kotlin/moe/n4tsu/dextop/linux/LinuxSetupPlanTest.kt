@@ -8,6 +8,18 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LinuxSetupPlanTest {
+    @Test fun hardwareLaunchEnablesToolkitRenderersWithoutForcingCairo() {
+        val script = LinuxCatalog.launchScript(10, "client")
+        assertContains(script, "unset WAYLAND_DISPLAY DEXTOP_WAYLAND_KGSL MESA_LOADER_DRIVER_OVERRIDE")
+        assertContains(script, "zink|virpipe)")
+        assertContains(script, "GSK_RENDERER=\${GSK_RENDERER:-gl}")
+        assertContains(script, "MOZ_WEBRENDER=\${MOZ_WEBRENDER:-1}")
+        assertContains(script, "MOZ_ACCELERATED=\${MOZ_ACCELERATED:-1}")
+        assertContains(script, "QSG_RHI_BACKEND=\${QSG_RHI_BACKEND:-opengl}")
+        assertContains(script, "QSG_RHI_PREFER_SOFTWARE_RENDERER=0")
+        assertContains(script, "QT_WIDGETS_RHI=\${QT_WIDGETS_RHI:-1}")
+        assertFalse("GSK_RENDERER:-cairo" in script)
+    }
     @Test fun waylandInstallsXwaylandAndStartsItForDesktopAndApps() {
         assertContains(scripts(debian, LinuxSetupOptions(displayBackend = "wayland")), "xwayland libwayland-client0")
         assertContains(scripts(LinuxCatalog.find("archlinux")!!, LinuxSetupOptions(displayBackend = "wayland")), "xorg-xwayland wayland")
@@ -15,13 +27,15 @@ class LinuxSetupPlanTest {
             LinuxCatalog.appsScript(98, 640, 480, 160, xwayland = true),
             LinuxCatalog.desktopScript(98, 640, 480, 160, "icewm", xwayland = true),
         )) {
-            assertContains(script, "WAYLAND_DISPLAY=wayland-x11-98 Xwayland")
+            assertContains(script, "WAYLAND_DISPLAY=wayland-x11-98 env -u LD_LIBRARY_PATH -u LIBGL_DRIVERS_PATH")
+            assertContains(script, "Xwayland :\$D -nolock")
             assertContains(script, "-geometry 640x480")
             assertContains(script, "-shm -noreset -nolisten tcp -ac")
             assertFalse("Xvfb :" in script)
             assertFalse("xrandr --output screen" in script)
         }
         assertContains(LinuxCatalog.appsScript(98, 640, 480, 160), "Xvfb :")
+        assertContains(LinuxCatalog.appsScript(98, 640, 480, 160), "Xvfb :\$D -nolock")
     }
 
     @Test fun displayBackendDefaultsToXvfbAndRejectsInvalidValues() {
@@ -46,8 +60,8 @@ class LinuxSetupPlanTest {
         val script = LinuxCatalog.launchScript(10, "client", wayland = true, waylandGpu = false)
         assertContains(script, "GDK_BACKEND=wayland,x11")
         assertContains(script, "QT_QPA_PLATFORM='wayland;xcb'")
-        assertFalse("__EGL_VENDOR_LIBRARY_FILENAMES" in script)
-        assertFalse("/opt/dextop-mesa/lib/aarch64-linux-gnu" in script)
+        assertFalse("export __EGL_VENDOR_LIBRARY_FILENAMES" in script)
+        assertFalse("export LD_LIBRARY_PATH=/opt/dextop-mesa/lib/aarch64-linux-gnu" in script)
         val x11 = LinuxCatalog.launchScript(10, "client")
         assertContains(x11, "unset WAYLAND_DISPLAY")
         assertContains(x11, "GDK_BACKEND=x11")
@@ -98,7 +112,8 @@ class LinuxSetupPlanTest {
     @Test fun waylandLaunchOverridesLegacySessionAndKeepsX11PresentationAvailable() {
         val wayland = LinuxCatalog.launchScript(10, "wezterm start", wayland = true)
         assertContains(wayland, "export WAYLAND_DISPLAY=wayland-0")
-        assertContains(wayland, "LIBGL_KOPPER_DRI2=true MESA_VK_WSI_DEBUG=sw")
+        assertContains(wayland, "unset LIBGL_KOPPER_DRI2 MESA_VK_WSI_DEBUG")
+        assertContains(wayland, "export LIBGL_DRIVERS_PATH=${LinuxGpuRuntime.LIB}/dri")
         assertContains(wayland, "__EGL_VENDOR_LIBRARY_FILENAMES=/opt/dextop-mesa/")
         assertContains(wayland, "MESA_LOADER_DRIVER_OVERRIDE=zink")
         assertTrue(wayland.indexOf("export WAYLAND_DISPLAY") > wayland.indexOf(". /etc/dextop/session.env"))
@@ -154,7 +169,7 @@ class LinuxSetupPlanTest {
         assertContains(LinuxCatalog.appsScript(11, 1280, 720, 160), "'pref(\"browser.shell.checkDefaultBrowser\", false);'")
         // Applications wait for the session bus, or Firefox cannot take over later launches.
         assertTrue(LinuxCatalog.launchScript(11, "firefox").indexOf("@/tmp/dextop-dbus-11") <
-            LinuxCatalog.launchScript(11, "firefox").indexOf("exec sh -c"))
+            LinuxCatalog.launchScript(11, "firefox").indexOf("sh -c \"\$cmd\""))
         assertContains(LinuxCatalog.launchScript(11, "xterm"), ". /etc/dextop/session.env")
     }
 
@@ -165,7 +180,10 @@ class LinuxSetupPlanTest {
         assertContains(script, "libavcodec-extra")
         assertContains(script, "Exec=/usr/local/bin/dextop-chrome %U")
         assertFalse(script.contains("snap install"))
-        assertContains(script, "--ozone-platform=x11 --use-angle=vulkan")
+        assertContains(script, "--ozone-platform=x11")
+        assertContains(LinuxCatalog.CHROMIUM_VIRGL_FLAGS, "--use-angle=gl")
+        assertContains(LinuxCatalog.CHROMIUM_VIRGL_FLAGS, "--enable-gpu-rasterization")
+        assertFalse(LinuxCatalog.CHROMIUM_VIRGL_FLAGS.contains("--use-angle=vulkan"))
     }
 
     @Test fun generatesScriptsForAllSupportedDistributionsAndInputMethods() {

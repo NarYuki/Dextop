@@ -1,0 +1,328 @@
+#!/usr/bin/python3
+"""Windows applications from the winget catalogue, installed and run with Valve's ARM64 Proton.
+
+Dextop picks the installer from the package's winget manifest and passes it here as JSON.
+Installs into one Wine prefix, registers a desktop entry per application (so it appears among
+the container's applications and can get a home-screen launcher) and runs it again later.
+
+Progress lines for Dextop: "dextop-progress:<percent>:<text>".
+"""
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+import time
+import urllib.request
+import urllib.parse
+import zipfile
+
+HOME = Path.home()
+DATA = HOME / '.local/share/dextop-windows'
+# dextop-proton-arm64 keeps the ARM64 prefix next to the requested one.
+PREFIX = Path(str(DATA) + '-dextop-arm64') / 'pfx'
+RECORDS = DATA / 'apps'
+ICONS = DATA / 'icons'
+CACHE = HOME / '.cache/dextop-windows'
+ENTRIES = HOME / '.local/share/applications'
+PROTON = '/usr/local/bin/dextop-proton-arm64'
+START_MENUS = ('drive_c/ProgramData/Microsoft/Windows/Start Menu/Programs',
+               'drive_c/users/steamuser/AppData/Roaming/Microsoft/Windows/Start Menu/Programs')
+SAFE_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$')
+
+
+def progress(percent, text):
+    print('dextop-progress:%d:%s' % (percent, text), flush=True)
+
+
+def slug(package):
+    return re.sub(r'[^a-z0-9]+', '-', package.lower()).strip('-')
+
+
+def windows_path(path):
+    """A Unix path as Wine sees it on its Z: drive."""
+    return 'Z:' + str(path).replace('/', '\\')
+
+
+def window_class(package):
+    """Proton's Wine names every window steam_app_<SteamGameId>; one id per application lets
+    Dextop tell its windows apart."""
+    return 'steam_app_dextop-' + slug(package)
+
+
+def environment(package=None):
+    env = dict(os.environ)
+    env['STEAM_COMPAT_DATA_PATH'] = str(DATA)
+    env.setdefault('SteamAppId', '0')
+    env['SteamGameId'] = 'dextop-' + slug(package) if package else env.get('SteamGameId', '0')
+    env.setdefault('DISPLAY', ':10')
+    return env
+
+
+def proton(args, cwd=None, wait=True, timeout=1800, package=None):
+    DATA.mkdir(parents=True, exist_ok=True)
+    command = [PROTON, 'waitforexitandrun' if wait else 'run'] + args
+    if not wait:
+        # An application run replaces this process, so Dextop follows the program itself.
+        if cwd:
+            os.chdir(cwd)
+        os.execve(PROTON, command, environment(package))
+    return subprocess.run(command, env=environment(package), cwd=cwd, timeout=timeout).returncode
+
+
+def safe_archive_target(destination, name):
+    normalized = name.replace('\\', '/')
+    parts = normalized.split('/')
+    if not normalized or normalized.startswith('/') or '..' in parts or any(':' in p for p in parts):
+        raise RuntimeError('Unsafe archive program path')
+    root = destination.resolve()
+    target = (destination / normalized).resolve()
+    if target == root or not target.is_relative_to(root):
+        raise RuntimeError('Archive program escapes its destination')
+    return target
+
+
+def download(url, target, sha256, start, end):
+    if not isinstance(sha256, str) or not re.fullmatch(r'[0-9a-fA-F]{64}', sha256):
+        raise RuntimeError('A valid published SHA-256 is required')
+    if urllib.parse.urlsplit(url).scheme != 'https':
+        raise RuntimeError('Installer downloads require HTTPS')
+    target.parent.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    request = urllib.request.Request(url, headers={'User-Agent': 'Dextop'})
+    with urllib.request.urlopen(request, timeout=120) as source, open(target, 'wb') as out:
+        total = int(source.headers.get('Content-Length') or 0)
+        done = 0
+        reported = 0.0
+        while True:
+            chunk = source.read(1 << 20)
+            if not chunk:
+                break
+            out.write(chunk)
+            digest.update(chunk)
+            done += len(chunk)
+            now = time.monotonic()
+            if total and now - reported > 0.5:
+                reported = now
+                progress(start + (end - start) * done // total,
+                         'Downloading %d / %d MB' % (done >> 20, max(total >> 20, 1)))
+    if digest.hexdigest().lower() != sha256.lower():
+        target.unlink(missing_ok=True)
+        raise RuntimeError('The installer does not match its published SHA-256')
+
+
+def shortcuts():
+    found = set()
+    for menu in START_MENUS:
+        root = PREFIX / menu
+        if root.is_dir():
+            found.update(str(p) for p in root.rglob('*.lnk'))
+    return found
+
+
+def pick_shortcut(created, name):
+    candidates = [Path(p) for p in created if not re.search(r'uninstall|readme|help|license|website',
+                                                              Path(p).stem, re.I)]
+    if not candidates:
+        return None
+    words = set(re.findall(r'[a-z0-9]+', name.lower()))
+    # The shortcut named most like the application, then the shallowest.
+    return max(candidates, key=lambda p: (len(words & set(re.findall(r'[a-z0-9]+', p.stem.lower()))),
+                                         -len(p.parts)))
+
+
+def silent_arguments(spec, installer):
+    kind = spec.get('type', 'exe')
+    switches = spec.get('switches') or {}
+    custom = (switches.get('Custom') or '').split()
+    if kind in ('msi', 'wix'):
+        return ['msiexec', '/i', windows_path(installer), '/qn', '/norestart'] + custom
+    silent = switches.get('Silent') or switches.get('SilentWithProgress')
+    defaults = {
+        'nullsoft': ['/S'],
+        'inno': ['/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART', '/SP-'],
+        'burn': ['/quiet', '/norestart'],
+    }
+    arguments = silent.split() if silent else defaults.get(kind, [])
+    return [windows_path(installer)] + arguments + custom
+
+
+def install(spec):
+    package = spec['id']
+    if not SAFE_ID.match(package):
+        raise RuntimeError('Invalid package id')
+    if not isinstance(spec.get('sha256'), str) or not re.fullmatch(r'[0-9a-fA-F]{64}', spec['sha256']):
+        raise RuntimeError('A valid published SHA-256 is required')
+    progress(1, 'Preparing Proton')
+    status = subprocess.run([PROTON, 'install'], env=environment()).returncode
+    if status:
+        raise RuntimeError('Proton (ARM64) could not be installed')
+    name = spec.get('name') or package
+    url = spec['url']
+    work = CACHE / slug(package)
+    shutil.rmtree(work, ignore_errors=True)
+    filename = re.sub(r'[^A-Za-z0-9._+-]', '_', url.rstrip('/').rsplit('/', 1)[-1].split('?')[0]) or 'installer'
+    if spec.get('type') in ('msi', 'wix') and not filename.lower().endswith('.msi'):
+        filename += '.msi'
+    elif spec.get('type') not in ('zip', 'msi', 'wix') and not filename.lower().endswith('.exe'):
+        filename += '.exe'
+    installer = work / filename
+    progress(5, 'Downloading')
+    download(url, installer, spec.get('sha256'), 5, 60)
+
+    record = {'id': package, 'name': name, 'version': spec.get('version', ''),
+              'productCode': spec.get('productCode', '')}
+    if spec.get('type') == 'zip' or spec.get('type') == 'portable':
+        progress(65, 'Extracting')
+        destination = PREFIX / 'drive_c/Program Files' / slug(package)
+        shutil.rmtree(destination, ignore_errors=True)
+        destination.mkdir(parents=True, exist_ok=True)
+        if spec.get('type') == 'zip':
+            with zipfile.ZipFile(installer) as archive:
+                members = {item.filename for item in archive.infolist() if not item.is_dir()}
+                for item in archive.infolist():
+                    safe_archive_target(destination, item.filename)
+                    if (item.external_attr >> 16) & 0o170000 == 0o120000:
+                        raise RuntimeError('Archive symbolic links are not supported')
+                archive.extractall(destination)
+            nested = spec.get('nested') or ''
+            if not nested:
+                executables = sorted(destination.rglob('*.exe'), key=lambda p: len(p.parts))
+                if not executables:
+                    raise RuntimeError('The archive holds no program')
+                target = executables[0]
+            else:
+                normalized = nested.replace('\\', '/')
+                if normalized not in members:
+                    raise RuntimeError('The program is not a member of the archive')
+                target = safe_archive_target(destination, normalized)
+        else:
+            target = destination / filename
+            shutil.copy2(installer, target)
+        if not target.is_file():
+            raise RuntimeError('The program is missing from the archive')
+        record.update(kind='exe', target=str(target), portable=str(destination))
+    else:
+        before = shortcuts()
+        progress(65, 'Installing')
+        status = proton(silent_arguments(spec, installer), cwd=str(work))
+        created = shortcuts() - before
+        shortcut = pick_shortcut(created, name)
+        if shortcut is None:
+            if status:
+                raise RuntimeError('The installer failed (exit %d)' % status)
+            raise RuntimeError('The installer added no Start menu shortcut to open the app with')
+        record.update(kind='lnk', target=str(shortcut))
+    shutil.rmtree(work, ignore_errors=True)
+
+    progress(90, 'Adding the app')
+    icon = ''
+    if spec.get('iconUrl'):
+        try:
+            extension = spec['iconUrl'].rsplit('.', 1)[-1].lower()
+            extension = extension if extension in ('png', 'ico', 'svg') else 'png'
+            path = ICONS / ('%s.%s' % (slug(package), extension))
+            download(spec['iconUrl'], path, spec.get('iconSha256'), 90, 95)
+            icon = str(path)
+        except Exception as error:
+            print('Dextop: icon unavailable: %s' % error, file=sys.stderr)
+    RECORDS.mkdir(parents=True, exist_ok=True)
+    (RECORDS / (slug(package) + '.json')).write_text(json.dumps(record))
+    ENTRIES.mkdir(parents=True, exist_ok=True)
+    entry = ['[Desktop Entry]', 'Type=Application', 'Name=' + name.replace('\n', ' '),
+             'Exec=/usr/local/bin/dextop-windows run ' + package, 'Categories=Windows;',
+             'X-Dextop-Windows=' + package]
+    if icon:
+        entry.append('Icon=' + icon)
+    entry.append('StartupWMClass=' + window_class(package))
+    (ENTRIES / ('dextop-win-%s.desktop' % slug(package))).write_text('\n'.join(entry) + '\n')
+    progress(100, 'Installed')
+
+
+def load(package):
+    path = RECORDS / (slug(package) + '.json')
+    if not path.is_file():
+        raise RuntimeError('%s is not installed' % package)
+    return json.loads(path.read_text())
+
+
+def sync_theme():
+    """Windows' dark mode as Dextop's Linux theme setting says (DEXTOP_THEME, from theme.env).
+    Written to the prefix's registry once per change; Wine draws its controls by it."""
+    theme = os.environ.get('DEXTOP_THEME')
+    if theme not in ('dark', 'light'):
+        return
+    marker = DATA / 'theme'
+    if marker.is_file() and marker.read_text().strip() == theme:
+        return
+    light = '0' if theme == 'dark' else '1'
+    key = r'HKCU\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
+    for name in ('AppsUseLightTheme', 'SystemUsesLightTheme'):
+        proton(['reg.exe', 'add', key, '/v', name, '/t', 'REG_DWORD', '/d', light, '/f'], timeout=180)
+    marker.write_text(theme)
+
+
+def run(package, arguments):
+    record = load(package)
+    try:
+        sync_theme()
+    except Exception as error:
+        print('dextop-windows: theme not applied: %s' % error, file=sys.stderr)
+    target = Path(record['target'])
+    if record['kind'] == 'lnk':
+        proton(['start.exe', '/unix', str(target)] + arguments, wait=False, package=package)
+    else:
+        proton([windows_path(target)] + arguments, cwd=str(target.parent), wait=False, package=package)
+
+
+def remove(package):
+    record = load(package)
+    progress(10, 'Removing')
+    if record.get('portable'):
+        shutil.rmtree(record['portable'], ignore_errors=True)
+    elif record.get('productCode'):
+        proton(['uninstaller.exe', '--remove', record['productCode']], timeout=900)
+    (ENTRIES / ('dextop-win-%s.desktop' % slug(package))).unlink(missing_ok=True)
+    for icon in ICONS.glob(slug(package) + '.*'):
+        icon.unlink(missing_ok=True)
+    (RECORDS / (slug(package) + '.json')).unlink(missing_ok=True)
+    progress(100, 'Removed')
+
+
+def installed():
+    records = []
+    if RECORDS.is_dir():
+        for path in sorted(RECORDS.glob('*.json')):
+            try:
+                records.append(json.loads(path.read_text()))
+            except ValueError:
+                pass
+    print(json.dumps(records))
+
+
+def main(args):
+    if not args:
+        return 2
+    verb = args.pop(0)
+    if verb == 'install':
+        install(json.loads(args[0]))
+    elif verb == 'run':
+        run(args[0], args[1:])
+    elif verb == 'remove':
+        remove(args[0])
+    elif verb == 'list':
+        installed()
+    else:
+        return 2
+    return 0
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(main(sys.argv[1:]))
+    except Exception as error:
+        print('dextop-windows: %s' % error, file=sys.stderr)
+        sys.exit(1)

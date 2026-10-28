@@ -12,6 +12,10 @@ class _DextopAppState extends State<DextopApp> {
   bool? setupCompleted;
   bool? desktopWindow;
 
+  /// Shown on an external display (DeX, Dextop's desktop): a window with a title bar
+  /// and no status bar, although Android still reports a status bar inset.
+  bool externalDisplay = false;
+
   @override
   void initState() {
     super.initState();
@@ -23,7 +27,12 @@ class _DextopAppState extends State<DextopApp> {
   Future<void> loadLaunchContext() async {
     final context = await NativeBridge().launchContext();
     if (mounted) {
-      setState(() => desktopWindow = context['desktopWindow'] == true);
+      setState(() {
+        desktopWindow = context['desktopWindow'] == true;
+        externalDisplay = context['externalDisplay'] == true;
+        // M3E bars read the raw inset, not MediaQuery.
+        M3ESafeArea.ignoreTop = externalDisplay;
+      });
     }
   }
 
@@ -70,7 +79,13 @@ class _DextopAppState extends State<DextopApp> {
       themeMode: themeMode,
       theme: appTheme(Brightness.light),
       darkTheme: appTheme(Brightness.dark),
-      builder: (context, child) => LinuxExpressive(child: child!),
+      builder: (context, child) => LinuxExpressive(
+        child: MediaQuery.removePadding(
+          context: context,
+          removeTop: externalDisplay,
+          child: child!,
+        ),
+      ),
       localizationsDelegates: const [
         AppLocalizations.delegate,
         GlobalMaterialLocalizations.delegate,

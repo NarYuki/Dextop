@@ -19,6 +19,20 @@ internal object LinuxSteam {
         if [ ! -x "${'$'}root/steamrtarm64/steam" ]; then
             $INSTALLER
         fi
+        exec 9>"${'$'}root/.dextop-launch.lock"
+        if ! flock -n 9; then
+            echo 'Steam is already starting or running.' >&2
+            exit 0
+        fi
+        # Restore only the exact helper edit made by the earlier Dextop launcher.
+        helper="${'$'}root/steamrtarm64/steamwebhelper.sh"
+        if [ -f "${'$'}helper" ] && [ "${'$'}(wc -c <"${'$'}helper")" -eq 392 ] &&
+            grep -qx 'unset LIBGL_KOPPER_DISABLE' "${'$'}helper" &&
+            grep -q '^echo "setting LIBGL_KOPPER_DISABLE=true for steamwebhelper' "${'$'}helper"; then
+            sed 's/^unset LIBGL_KOPPER_DISABLE$/export LIBGL_KOPPER_DISABLE=true/' "${'$'}helper" > "${'$'}helper.dextop-restore"
+            chmod --reference="${'$'}helper" "${'$'}helper.dextop-restore"
+            mv -f "${'$'}helper.dextop-restore" "${'$'}helper"
+        fi
         if [ ! -r ${LinuxSessionCompatibility.GUEST_PRELOAD} ] && [ ! -r $PRELOAD ]; then
             echo 'Steam requires the Dextop session compatibility library; update Dextop and restart Linux.' >&2
             exit 1
@@ -26,24 +40,32 @@ internal object LinuxSteam {
         export STEAM_RUNTIME=1 SDL_VIDEO_X11_DGAMOUSE=0
         export GLIBC_TUNABLES=glibc.pthread.rseq=0${'$'}{GLIBC_TUNABLES:+:${'$'}GLIBC_TUNABLES}
         export LD_LIBRARY_PATH=${'$'}root/steamrtarm64:${'$'}root/steamrtarm64/panorama${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}
+        # Resolve VGUI's legacy GLX entry points through the system GL dispatcher.
+        export LD_PRELOAD=libGL.so.1${'$'}{LD_PRELOAD:+:${'$'}LD_PRELOAD}
+        if [ "${'$'}{GALLIUM_DRIVER:-}" = zink ]; then
+            export MESA_VK_WSI_DEBUG=sw LIBGL_KOPPER_DRI2=true
+        fi
         # Older containers without the global preload can still use this launcher.
         [ -r ${LinuxSessionCompatibility.GUEST_PRELOAD} ] || export LD_PRELOAD=$PRELOAD${'$'}{LD_PRELOAD:+:${'$'}LD_PRELOAD}
         # Like Valve's steam.sh, honor the client's update/restart request (42).
         # An exec here exits after the first bootstrap update without opening the client.
+        steam_updates=0
         while :; do
-            # Read the installed manifest from the same branch as -clientbeta.
-            printf '%s\n' steamdeck_publicbeta > "${'$'}root/package/beta.staged"
-            mv -f "${'$'}root/package/beta.staged" "${'$'}root/package/beta"
-            /usr/local/bin/dextop-proton-arm64 prepare
+            steam_channel=${'$'}(cat "${'$'}root/package/beta" 2>/dev/null || true)
+            /usr/local/bin/dextop-steam-state "${'$'}root"
+            /usr/local/bin/dextop-proton-arm64 prepare 9>&-
+            steam_started=${'$'}(date +%s)
             status=0
-            "${'$'}root/steamrtarm64/steam" -nobigpicture -clientbeta steamdeck_publicbeta -no-cef-sandbox -cef-ozone-platform=x11 -cef-disable-gpu "${'$'}@" || status=${'$'}?
+            "${'$'}root/steamrtarm64/steam" -nobigpicture -clientbeta "${'$'}steam_channel" -no-cef-sandbox -cef-ozone-platform=x11 -cef-force-gpu -cef-use-gl=angle -cef-use-angle=gl "${'$'}@" 9>&- || status=${'$'}?
             [ "${'$'}status" -eq 42 ] || exit "${'$'}status"
-            echo "== STEP ${'$'}(date -u +%H:%M:%S) checking the ARM64 Steam client update" >&2
-            $INSTALLER --sync steamdeck_publicbeta || {
-                echo 'Steam client update failed; keeping the existing installation. Retry after checking the connection.' >&2
+            steam_ran=${'$'}((${'$'}(date +%s) - steam_started))
+            [ "${'$'}steam_ran" -lt 60 ] || steam_updates=0
+            steam_updates=${'$'}((steam_updates + 1))
+            if [ "${'$'}steam_updates" -ge 3 ]; then
+                echo 'Steam repeatedly requested an update restart; stopped the loop. See the Steam launch log.' >&2
                 exit 1
-            }
-            sleep 1
+            fi
+            set --
         done
     """.trimIndent() + "\n"
 
@@ -55,6 +77,7 @@ internal object LinuxSteam {
         Icon=steam
         Categories=Game;
         StartupWMClass=steam
+        X-Dextop-DisplayBackend=x11
     """.trimIndent() + "\n"
 
     /** Registers existing ARM64 clients too, including containers installed before Steam setup. */
@@ -67,11 +90,24 @@ internal object LinuxSteam {
             if (!isFile || readText() != launcherScript) writeText(launcherScript)
             check(setExecutable(true, false)) { "Cannot make Steam launcher executable" }
         }
+        stageCommandAlias(root)
         java.io.File(root, "root/.local/share/applications/dextop-steam.desktop").apply {
             parentFile?.mkdirs()
             if (!isFile || readText() != desktopEntry) writeText(desktopEntry)
         }
         stageSteamMode(root)
+    }
+
+    /** Steam-generated game shortcuts invoke `steam`, while our ARM64 client
+     * launcher is named dextop-steam. Preserve any user or distribution command. */
+    internal fun stageCommandAlias(root: java.io.File) {
+        if (!java.io.File(root, "root/.local/share/Steam/steamrtarm64/steam").isFile) return
+        val alias = java.io.File(root, "usr/local/bin/steam").toPath()
+        val vendor = java.io.File(root, "usr/bin/steam").toPath()
+        if (java.nio.file.Files.exists(alias, java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
+            java.nio.file.Files.exists(vendor, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return
+        java.nio.file.Files.createDirectories(alias.parent)
+        java.nio.file.Files.createSymbolicLink(alias, java.nio.file.Paths.get("dextop-steam"))
     }
 
     fun stageIcon(root: java.io.File) {
@@ -87,6 +123,7 @@ internal object LinuxSteam {
 
     private val gamingResources = mapOf(
         "dextop-gaming" to "usr/local/bin/dextop-gaming",
+        "dextop-steam-state" to "usr/local/bin/dextop-steam-state",
         "dextop-deck-gamescope" to "usr/local/bin/dextop-deck-gamescope",
         "dextop-dd-stock-session" to "usr/local/bin/dextop-dd-stock-session",
         "gaming/deck-gamescope.tar.xz" to "usr/local/lib/dextop-gaming/deck-gamescope.tar.xz",
@@ -133,7 +170,7 @@ internal object LinuxSteam {
     /** The x86 compatibility libraries must match the guest, not Android's ARM64 ABI. */
     private fun stageGaming(root: java.io.File) {
         gamingResources.forEach { (resource, relative) ->
-            val bytes = gamingResource(resource).use { it.readBytes() }
+            val bytes = gamingResource(resource).use { LinuxScript.resource(it.readBytes()) }
             java.io.File(root, relative).apply {
                 parentFile?.mkdirs()
                 if (!isFile || !readBytes().contentEquals(bytes)) {
@@ -156,12 +193,12 @@ internal object LinuxSteam {
     private val installer: String by lazy {
         requireNotNull(LinuxSteam::class.java.getResourceAsStream("/moe/n4tsu/dextop/linux/droiddeck-steam-install")) {
             "droiddeck-steam-install is not packaged"
-        }.bufferedReader().use { it.readText() }
+        }.bufferedReader().use { LinuxScript.text(it.readText()) }
     }
 
     /** Libraries the client and its web helper load that minimal images lack. */
     private fun dependencies(apt: Boolean) = if (apt) listOf(
-        "curl", "unzip", "python3", "zstd", "ca-certificates", "lsof", "libgtk2.0-0t64", "libibus-1.0-5", "libnm0", "libopenal1",
+        "curl", "unzip", "python3", "zstd", "ca-certificates", "lsof", "util-linux", "libgtk2.0-0t64", "libibus-1.0-5", "libnm0", "libopenal1",
         "libpipewire-0.3-0t64", "libsdl2-2.0-0", "libnss3", "libxss1", "libgbm1", "libvulkan1",
         // The Steam mode's system bus and the stand-ins' GLib bindings.
         "dbus-daemon", "python3-gi", "gir1.2-glib-2.0", "libxtst6",
@@ -192,7 +229,7 @@ internal object LinuxSteam {
         appendLine("chmod 755 $INSTALLER; }")
         appendLine("HOME=/root bash $INSTALLER")
         gamingResources.forEach { (resource, relative) ->
-            val encoded = gamingResource(resource).use { java.util.Base64.getEncoder().encodeToString(it.readBytes()) }
+            val encoded = gamingResource(resource).use { java.util.Base64.getEncoder().encodeToString(LinuxScript.resource(it.readBytes())) }
             appendLine("mkdir -p /${relative.substringBeforeLast('/')}")
             // Repair can run while a game still maps a compatibility library.
             // Preserve that inode until readers exit, just like stageGaming().
@@ -306,11 +343,17 @@ internal object LinuxSteam {
             audio_port=0
             [ -r /tmp/dextop-deck-audio.conf ] && read -r audio_port < /tmp/dextop-deck-audio.conf
             case "${'$'}audio_port" in ''|*[!0-9]*) audio_port=0 ;; esac
+            if [ "${'$'}audio_port" -ge 1024 ] && [ "${'$'}audio_port" -le 65535 ]; then
+                dextop_cookie=/tmp/dextop-deck-pulse.cookie
+                (umask 077; sed -n '2p' /tmp/dextop-deck-audio.conf | base64 -d > "${'$'}dextop_cookie")
+                export PULSE_COOKIE="${'$'}dextop_cookie"
+            fi
             if [ "${'$'}audio_port" -ge 1024 ] && [ "${'$'}audio_port" -le 65535 ] &&
                 PULSE_SERVER="tcp:127.0.0.1:${'$'}audio_port" timeout 2 pactl info >/dev/null 2>&1; then
                 export PULSE_SERVER="tcp:127.0.0.1:${'$'}audio_port"
                 echo "Deck audio: DirectAudio"
             else
+                export PULSE_COOKIE=/root/.config/pulse/dextop-cookie
                 echo "Deck audio: container fallback"
             fi
             export DEXTOP_STEAM_INSIDE=1 GAMESCOPE_FORCE_GENERAL_QUEUE=1 gamescope_cursor_composite=2
@@ -439,11 +482,10 @@ internal object LinuxSteam {
         export BL_CDP_GUARD=${'$'}cdp_port
         printf '%s\n' "${'$'}cdp_port" >/tmp/dextop-steam-cdp-port
         retry=/tmp/dextop-steam-cef-retry
+        steam_updates=0
         while :; do
-            # Steam's settings may rewrite beta while running. Its bootstrap reads
-            # this file before -clientbeta, so align it on every restart too.
-            printf '%s\n' steamdeck_publicbeta > "${'$'}steam_root/package/beta.staged"
-            mv -f "${'$'}steam_root/package/beta.staged" "${'$'}steam_root/package/beta"
+            steam_channel=${'$'}(cat "${'$'}steam_root/package/beta" 2>/dev/null || true)
+            /usr/local/bin/dextop-steam-state "${'$'}steam_root"
             rm -f "${'$'}STEAMOS_STEAM_SHUTDOWN_SENTINEL" "${'$'}STEAMOS_STEAM_REBOOT_SENTINEL" "${'$'}retry"
             cef=(-cef-force-gpu -cef-use-gl=angle -cef-use-angle=vulkan)
             [ "${'$'}{DEXTOP_STEAM_CEF_GPU:-}" = 0 ] && cef=(-cef-disable-gpu)
@@ -465,11 +507,13 @@ internal object LinuxSteam {
                 done
             ) &
             watcher=${'$'}!
+            steam_started=${'$'}SECONDS
             status=0
             # Match Deck's network/settings UI. The common runtime protocol bridge
             # unwraps SteamLinuxRuntime/FEX commands without Android mount namespaces.
-            "${'$'}steam_root/steamrtarm64/steam" -gamepadui -steamdeck -steamos3 -clientbeta steamdeck_publicbeta \
+            "${'$'}steam_root/steamrtarm64/steam" -gamepadui -steamdeck -steamos3 -clientbeta "${'$'}steam_channel" \
                 -no-cef-sandbox -cef-ozone-platform=x11 -cef-enable-debugging -devtools-port "${'$'}cdp_port" "${'$'}{cef[@]}" "${'$'}@" || status=${'$'}?
+            steam_ran=${'$'}((SECONDS - steam_started))
             kill "${'$'}watcher" 2>/dev/null
             echo "== steam exited ${'$'}status"
             [ -e "${'$'}retry" ] && { sleep 1; continue; }
@@ -477,10 +521,14 @@ internal object LinuxSteam {
             [ -e "${'$'}STEAMOS_STEAM_SHUTDOWN_SENTINEL" ] && exit 0
             [ -e "${'$'}STEAMOS_STEAM_REBOOT_SENTINEL" ] || [ "${'$'}status" -eq 42 ] || exit "${'$'}status"
             if [ "${'$'}status" -eq 42 ]; then
-                echo "== STEP ${'$'}(date -u +%H:%M:%S) synchronizing the ARM64 Steam client update"
-                $INSTALLER --sync steamdeck_publicbeta || exit ${'$'}?
+                [ "${'$'}steam_ran" -lt 60 ] || steam_updates=0
+                steam_updates=${'$'}((steam_updates + 1))
+                if [ "${'$'}steam_updates" -ge 3 ]; then
+                    echo 'Steam repeatedly requested an update restart; stopped the loop.' >&2
+                    exit 1
+                fi
             fi
-            sleep 1
+            set --
         done
     """.trimIndent() + "\n"
 

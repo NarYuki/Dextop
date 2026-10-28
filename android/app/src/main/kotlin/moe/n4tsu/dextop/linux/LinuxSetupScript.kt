@@ -8,7 +8,7 @@ internal object LinuxSetupScript {
         val directory = File(root, "tmp").apply { mkdirs() }
         val file = File.createTempFile("dextop-setup-", ".sh", directory)
         try {
-            file.writeText(script)
+            file.writeText(LinuxScript.text(script))
             // The random basename is generated here, never taken from user input.
             return execute("exec /bin/sh /tmp/${file.name}")
         } finally {

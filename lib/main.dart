@@ -6,6 +6,7 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:material_3_expressive/material_3_expressive.dart' show M3ESafeArea;
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/l10n/current_localizations.dart';
 import 'package:free_dextop/analytics_service.dart';

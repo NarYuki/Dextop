@@ -20,6 +20,7 @@ internal class X11Clipboard(private val x: X11Client, private val onText: (Strin
         private const val SELECTION_NOTIFY = 31
         private const val ATOM_ATOM = 4
         private const val ATOM_STRING = 31
+        private const val ATOM_PRIMARY = 1
     }
 
     private val window = x.createHiddenWindow()
@@ -31,6 +32,8 @@ internal class X11Clipboard(private val x: X11Client, private val onText: (Strin
     private val incr = x.internAtom("INCR")
     private val queue = LinkedBlockingQueue<Pair<Int, ByteBuffer>>()
     @Volatile private var owned: ByteArray? = null
+    /** Selections Dextop owns with [owned] (CLIPBOARD and PRIMARY). */
+    private val owning = java.util.Collections.synchronizedSet(HashSet<Int>())
     @Volatile private var running = true
     /** Last text seen in either direction, so a change is reported once. */
     @Volatile private var last: String? = null
@@ -54,7 +57,10 @@ internal class X11Clipboard(private val x: X11Client, private val onText: (Strin
         val bytes = value.toByteArray(Charsets.UTF_8)
         owned = if (bytes.size + 64 <= x.maxRequestBytes) bytes else bytes.copyOf(x.maxRequestBytes - 64)
         last = value
+        owning += clipboard
+        owning += ATOM_PRIMARY
         x.setSelectionOwner(window, clipboard)
+        x.setSelectionOwner(window, ATOM_PRIMARY)
     }
 
     fun stop() {
@@ -76,7 +82,7 @@ internal class X11Clipboard(private val x: X11Client, private val onText: (Strin
                 // XFixesSelectionNotify: window@4, owner@8, selection@12.
                 val owner = event.getInt(8)
                 if (event.getInt(12) == clipboard && owner != 0 && owner != window) {
-                    owned = null
+                    owning -= clipboard
                     x.convertSelection(window, clipboard, utf8, transfer)
                 }
             }
@@ -92,7 +98,11 @@ internal class X11Clipboard(private val x: X11Client, private val onText: (Strin
                 }
             }
             SELECTION_REQUEST -> serve(event)
-            SELECTION_CLEAR -> if (event.getInt(8) == window) owned = null
+            // time@4, owner@8, selection@12.
+            SELECTION_CLEAR -> if (event.getInt(8) == window) {
+                owning -= event.getInt(12)
+                if (owning.isEmpty()) owned = null
+            }
         }
     }
 
@@ -105,7 +115,7 @@ internal class X11Clipboard(private val x: X11Client, private val onText: (Strin
         val property = event.getInt(24).takeIf { it != 0 } ?: target
         val data = owned
         val answered = when {
-            selection != clipboard || data == null -> 0
+            selection !in owning || data == null -> 0
             target == targets -> {
                 val list = ByteBuffer.allocate(16).order(ByteOrder.LITTLE_ENDIAN)
                     .putInt(targets).putInt(utf8).putInt(ATOM_STRING).putInt(text).array()

@@ -15,6 +15,8 @@ class StoreApp {
     required this.categories,
     required this.icon,
     required this.desktopIds,
+    this.source = 'apt',
+    this.architecture = 'ARM64',
   });
 
   factory StoreApp.fromJson(Map<String, Object?> json) => StoreApp(
@@ -26,6 +28,8 @@ class StoreApp {
     categories: (json['categories'] as List?)?.cast<String>() ?? const [],
     icon: json['icon'] as String? ?? '',
     desktopIds: (json['desktopIds'] as List?)?.cast<String>() ?? const [],
+    source: json['source'] as String? ?? 'apt',
+    architecture: json['architecture'] as String? ?? 'ARM64',
   );
 
   /// AppStream component ID.
@@ -33,6 +37,15 @@ class StoreApp {
 
   /// The Debian/Ubuntu package that installs it.
   final String package;
+  final String source;
+  final String architecture;
+
+  String label(String distro) =>
+      '$architecture / ${distro == 'ubuntu' ? 'Ubuntu' : 'Debian'} / ${switch (source) {
+        'flathub' => 'Flathub',
+        'deb-get' => 'deb-get',
+        _ => 'APT',
+      }}';
   final String name;
   final String summary;
 
@@ -57,6 +70,8 @@ class StoreApp {
     'categories': categories,
     'icon': icon,
     'desktopIds': desktopIds,
+    'source': source,
+    'architecture': architecture,
   };
 
   /// Whether [desktopId] (a Linux app list entry) belongs to this application.
@@ -83,13 +98,14 @@ class StoreSource {
 
   static StoreSource forDistro(String distro) => switch (distro) {
     'ubuntu' => const StoreSource('ubuntu-noble', 'ARM64 / Ubuntu', [
-      'http://ports.ubuntu.com/ubuntu-ports/dists/noble/main/dep11/Components-arm64.yml.gz',
-      'http://ports.ubuntu.com/ubuntu-ports/dists/noble/universe/dep11/Components-arm64.yml.gz',
+      'https://ports.ubuntu.com/ubuntu-ports/dists/noble/main/dep11/Components-arm64.yml.gz',
+      'https://ports.ubuntu.com/ubuntu-ports/dists/noble/universe/dep11/Components-arm64.yml.gz',
     ]),
-    _ => const StoreSource('debian-trixie', 'ARM64 / Debian', [
+    'debian' => const StoreSource('debian-trixie', 'ARM64 / Debian', [
       'https://deb.debian.org/debian/dists/trixie/main/dep11/Components-arm64.yml.gz',
       'https://deb.debian.org/debian/dists/trixie/contrib/dep11/Components-arm64.yml.gz',
     ]),
+    _ => throw UnsupportedError('Store supports Debian and Ubuntu only'),
   };
 }
 
@@ -136,6 +152,7 @@ class StoreCatalog {
   StoreCatalog._();
 
   static final _memory = <String, List<StoreApp>>{};
+  static final _savedAt = <String, DateTime>{};
   static const _maxAge = Duration(days: 3);
 
   /// The applications of [source], from memory, the disk cache or the network.
@@ -145,7 +162,12 @@ class StoreCatalog {
     bool refresh = false,
   }) async {
     final key = '${source.key}-$language';
-    if (!refresh && _memory[key] != null) return _memory[key]!;
+    if (!refresh &&
+        _memory[key] != null &&
+        _savedAt[key] != null &&
+        DateTime.now().difference(_savedAt[key]!) < _maxAge) {
+      return _memory[key]!;
+    }
     final cache = File('${Directory.systemTemp.path}/linux_store_$key.json');
     if (!refresh && await cache.exists()) {
       final age = DateTime.now().difference(await cache.lastModified());
@@ -154,8 +176,7 @@ class StoreCatalog {
           final apps = await Isolate.run(
             () => _decode(cache.readAsStringSync()),
           );
-          // Catalogs cached before the 64-pixel icons were kept still need them.
-          await _fetchIcons(source);
+          _savedAt[key] = await cache.lastModified();
           return _memory[key] = apps;
         } catch (_) {}
       }
@@ -177,11 +198,19 @@ class StoreCatalog {
         }
         documents.add(bytes);
       }
+    } catch (_) {
+      if (await cache.exists()) {
+        final apps = await Isolate.run(() => _decode(cache.readAsStringSync()));
+        _savedAt[key] = await cache.lastModified();
+        return _memory[key] = apps;
+      }
+      rethrow;
     } finally {
       client.close();
     }
     if (documents.isEmpty) {
       if (await cache.exists()) {
+        _savedAt[key] = await cache.lastModified();
         return _memory[key] = await Isolate.run(
           () => _decode(cache.readAsStringSync()),
         );
@@ -195,6 +224,7 @@ class StoreCatalog {
     await cache.writeAsString(
       jsonEncode([for (final app in apps) app.toJson()]),
     );
+    _savedAt[key] = await cache.lastModified();
     return _memory[key] = apps;
   }
 
@@ -253,9 +283,8 @@ class StoreCatalog {
             );
             for (final file in archive.files) {
               if (!file.isFile || !file.name.endsWith('.png')) continue;
-              File(
-                '$path/${file.name.split('/').last}',
-              ).writeAsBytesSync(file.content as List<int>);
+              File('$path/${file.name.split('/').last}')
+                  .writeAsBytesSync(file.content as List<int>);
             }
           });
         }

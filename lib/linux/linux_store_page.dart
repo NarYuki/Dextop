@@ -4,10 +4,15 @@ import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
+import '../linux_settings_page.dart';
+
 import 'linux_apps.dart';
+import 'linux_installations.dart';
 import 'linux_expressive.dart';
 import 'linux_store_catalog.dart';
+import 'linux_store_cache.dart';
 import 'linux_widgets.dart';
+import 'windows_store.dart';
 
 /// A container the Store can install into.
 class StoreContainer {
@@ -20,10 +25,18 @@ class StoreContainer {
 
 /// A package job the Store started with apt.
 class StoreJob {
-  const StoreJob(this.action, this.line, [this.percent = -1]);
+  const StoreJob(
+    this.action,
+    this.line, [
+    this.percent = -1,
+    this.queued = false,
+  ]);
 
   final String action;
   final String line;
+
+  /// Waiting for the jobs before it in the queue.
+  final bool queued;
 
   /// 0–100 from apt's progress reports, or -1 before the first one.
   final int percent;
@@ -60,9 +73,8 @@ class StoreProgressCircle extends StatelessWidget {
         strokeWidth: 2.5,
         trackStrokeWidth: 2.5,
         // The default track matches the list rows' surface and disappears into it.
-        trackColor: Theme.of(
-          context,
-        ).colorScheme.primary.withValues(alpha: .22),
+        trackColor: Theme.of(context).colorScheme.primary
+            .withValues(alpha: .22),
         value: v,
       ),
     ),
@@ -74,6 +86,7 @@ class LinuxStore extends ChangeNotifier {
   LinuxStore(this.containers, StoreContainer initial) : container = initial;
 
   static const _channel = MethodChannel('app.freedextop/linux');
+  static final _catalogCache = StoreSnapshotCache();
 
   final List<StoreContainer> containers;
   StoreContainer container;
@@ -84,26 +97,114 @@ class LinuxStore extends ChangeNotifier {
   Set<String> upgradable = const {};
   List<StoreUpdate> updates = const [];
   final Map<String, StoreJob> jobs = {};
+
+  /// Windows applications installed in the container (winget ids), and the names of
+  /// Windows jobs (`win:<id>`) for their messages.
+  Set<String> windowsInstalled = const {};
+
+  /// Search options: also list every apt package, and Windows applications (winget).
+  bool searchAllPackages = false;
+  bool searchWindows = false;
+  final Map<String, String> windowsNames = {};
   bool loading = true;
+  Map<String, bool> sources = const {'apt': true};
+  final List<String> sourceErrors = [];
+  bool get supported => const ['debian', 'ubuntu'].contains(container.distro);
+  bool flatpakCompatibility = false;
   String? error;
   Timer? _poll;
   String _language = 'en';
 
   /// Desktop entries of the container, to open installed applications.
-  final entries = LinuxAppList();
+  final entries = LinuxAppList(trackInstallations: false);
 
   Future<void> load({bool refresh = false, String? language}) async {
     if (language != null) _language = language;
     loading = true;
     error = null;
+    sourceErrors.clear();
     notifyListeners();
     try {
-      apps = await StoreCatalog.load(
-        source,
-        language: _language,
-        refresh: refresh,
+      if (!supported) {
+        apps = const [];
+        throw StateError(
+          'Store supports Debian and Ubuntu only. Arch is not supported.',
+        );
+      }
+      sources =
+          ((await _channel.invokeMapMethod<String, bool>('storeSources')) ??
+          const {'apt': true});
+      final settings = await _channel.invokeMapMethod<Object?, Object?>(
+        'settings',
       );
-      await refreshPackages();
+      flatpakCompatibility = settings?['flatpakCompatibility'] == true;
+      final loaded = <StoreApp>[];
+      void publishCatalog() {
+        apps = List.of(loaded);
+        LinuxInstallations.instance.remember(container.id, source, apps);
+        if (apps.isNotEmpty) loading = false;
+        notifyListeners();
+      }
+
+      if (sources['apt'] == true) {
+        try {
+          loaded.addAll(
+            await StoreCatalog.load(
+              source,
+              language: _language,
+              refresh: refresh,
+            ),
+          );
+        } catch (e) {
+          sourceErrors.add('APT: $e');
+        }
+        publishCatalog();
+      }
+      for (final name in ['deb-get', 'flathub']) {
+        if (sources[name] != true) continue;
+        try {
+          loaded.addAll(
+            await _catalogCache.load(
+              '${container.id}/${container.distro}/$name/$_language/arm64',
+              () async {
+                final snapshot = <StoreApp>[];
+                var offset = 0;
+                while (true) {
+                  final page = await _channel.invokeMapMethod<Object?, Object?>(
+                    'storeSourceCatalog',
+                    {'id': container.id, 'source': name, 'offset': offset},
+                  );
+                  final batch = (page?['apps'] as List? ?? const [])
+                      .map(
+                        (item) => StoreApp.fromJson(
+                          Map<String, Object?>.from(item as Map),
+                        ),
+                      )
+                      .toList();
+                  snapshot.addAll(batch);
+                  if (page == null) throw StateError('Missing catalog page');
+                  if (page['more'] != true) break;
+                  if (batch.isEmpty) throw StateError('Incomplete catalog');
+                  offset += batch.length;
+                }
+                return snapshot;
+              },
+              refresh: refresh,
+            ),
+          );
+        } catch (e) {
+          sourceErrors.add('$name: $e');
+        }
+        publishCatalog();
+      }
+      apps = loaded;
+      LinuxInstallations.instance.remember(container.id, source, apps);
+      if (loaded.isEmpty && sourceErrors.isNotEmpty) {
+        error = sourceErrors.join('\n');
+      }
+      loading = false;
+      notifyListeners();
+      await refreshPackages(refresh: refresh);
     } catch (e) {
       error = '$e';
     }
@@ -117,7 +218,8 @@ class LinuxStore extends ChangeNotifier {
     await load();
   }
 
-  Future<void> refreshPackages() async {
+  Future<void> refreshPackages({bool refresh = false}) async {
+    if (!supported) return;
     try {
       final result = await _channel.invokeMapMethod<Object?, Object?>(
         'storePackages',
@@ -142,8 +244,59 @@ class LinuxStore extends ChangeNotifier {
     } on PlatformException catch (e) {
       error = e.message;
     }
+    try {
+      final extra = await _channel.invokeMapMethod<Object?, Object?>(
+        'storeSourceStatus',
+        {'id': container.id, 'refresh': refresh},
+      );
+      final nativeUpdates = upgradable;
+      installed = {
+        ...installed,
+        ...(extra?['installed'] as List? ?? const []).cast<String>(),
+      };
+      final externalInstalled = (extra?['installed'] as List? ?? const [])
+          .cast<String>();
+      upgradable = {
+        ...upgradable,
+        ...(extra?['upgradable'] as List? ?? const []).cast<String>(),
+        for (final name in externalInstalled)
+          if (name.startsWith('deb-get:') &&
+              nativeUpdates.contains(name.substring(8)))
+            name,
+      };
+    } on PlatformException catch (e) {
+      sourceErrors.add('Installed sources: ${e.message}');
+    }
+    try {
+      windowsInstalled =
+          ((await _channel.invokeListMethod<Object?>('winInstalled', {
+                    'id': container.id,
+                  })) ??
+                  const [])
+              .cast<String>()
+              .toSet();
+    } on PlatformException {
+      windowsInstalled = const {};
+    }
     await entries.load(container.id);
     notifyListeners();
+  }
+
+  /// Installs ([spec] from the catalogue) or removes Windows application [id].
+  Future<bool> runWindows(String action, String id, String? spec) async {
+    await _prepareJobMetadata(['$windowsJobPrefix$id']);
+    final started = await _channel.invokeMethod<bool>('winRun', {
+      'id': container.id,
+      'action': action,
+      'package': id,
+      'spec': spec,
+    });
+    if (started != true) return false;
+    jobs['$windowsJobPrefix$id'] = StoreJob(action, '');
+    _queueInstallations(action, ['$windowsJobPrefix$id']);
+    notifyListeners();
+    _poll ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollJobs());
+    return true;
   }
 
   StoreApp? byPackage(String package) {
@@ -161,24 +314,171 @@ class LinuxStore extends ChangeNotifier {
     return null;
   }
 
+  /// What keeps apt from working: (kind, detail) with kind "interrupted", "broken" or "locked".
+  Future<List<(String, String)>> diagnose() async {
+    try {
+      final list =
+          await _channel.invokeListMethod<Object?>('aptDiagnose', {
+            'id': container.id,
+          }) ??
+          const [];
+      return [
+        for (final item in list.cast<Map<Object?, Object?>>())
+          (item['kind'] as String? ?? '', item['detail'] as String? ?? ''),
+      ];
+    } on PlatformException {
+      return const [];
+    }
+  }
+
+  /// Asks whether to repair what [diagnose] found before going on; set by the Store page.
+  Future<bool> Function(List<(String, String)> issues, {bool failed})?
+  confirmRepair;
+
+  /// Runs apt [action] on [packages]. Problems apt has (a cut-off dpkg run, broken
+  /// dependencies) are shown first, and repaired before it when the user agrees.
   Future<bool> run(
     String action,
     List<String> packages, {
     String? onDone,
+    bool repair = false,
   }) async {
+    try {
+      return await _run(action, packages, onDone: onDone, repair: repair);
+    } on PlatformException catch (exception) {
+      error = exception.message ?? '$exception';
+      sourceErrors.add(error!);
+      notifyListeners();
+      return false;
+    }
+  }
+
+  bool _notificationPermissionRequested = false;
+
+  Future<void> _prepareJobMetadata(List<String> packages) async {
+    if (!_notificationPermissionRequested) {
+      _notificationPermissionRequested = true;
+      try {
+        await const MethodChannel('app.freedextop/display')
+            .invokeMethod<bool>('requestStoreNotificationPermission');
+      } on PlatformException {
+        /* Installation does not depend on notification permission. */
+      }
+    }
+    LinuxInstallations.instance.remember(container.id, source, apps);
+    await _channel.invokeMethod<void>('storeJobMetadata', {
+      'id': container.id,
+      'apps': [
+        for (final package in packages)
+          {
+            'package': package,
+            'name':
+                windowsNames[package] ??
+                byPackage(package)?.name ??
+                package.split(':').last,
+          },
+      ],
+    });
+  }
+
+  void _queueInstallations(String action, List<String> packages) {
+    if (action != 'install') return;
+    for (final package in packages) {
+      LinuxInstallations.instance.enqueue(
+        container.id,
+        package,
+        name: windowsNames[package],
+      );
+    }
+  }
+
+  Future<bool> _run(
+    String action,
+    List<String> packages, {
+    String? onDone,
+    bool repair = false,
+  }) async {
+    await _prepareJobMetadata(packages);
+    final external = packages
+        .where((p) => p.startsWith('deb-get:') || p.startsWith('flathub:'))
+        .toList();
+    if (external.isNotEmpty) {
+      if (external.length != packages.length) {
+        var ok = true;
+        for (final package in packages) {
+          ok = await run(action, [package]) && ok;
+        }
+        return ok;
+      }
+      var ok = true;
+      for (final package in external) {
+        final colon = package.indexOf(':');
+        final started = await _channel.invokeMethod<bool>('storeSourceRun', {
+          'id': container.id,
+          'source': package.substring(0, colon),
+          'action': action,
+          'package': package.substring(colon + 1),
+        });
+        if (started == true) {
+          jobs[package] = StoreJob(action, '');
+          _queueInstallations(action, [package]);
+        } else {
+          ok = false;
+        }
+      }
+      notifyListeners();
+      _poll ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollJobs());
+      return ok;
+    }
+    if (packages.isEmpty && action == 'upgrade') {
+      final externalUpdates = upgradable.where((p) => p.contains(':')).toList();
+      if (externalUpdates.isNotEmpty) await run(action, externalUpdates);
+      if (sources['apt'] != true) return externalUpdates.isNotEmpty;
+    }
+    if (!repair) {
+      final issues = await diagnose();
+      if (issues.isNotEmpty) {
+        final agreed = await confirmRepair?.call(issues) ?? false;
+        if (!agreed) return false;
+        repair = issues.any((issue) => issue.$1 != 'locked');
+      }
+    }
     final started = await _channel.invokeMethod<bool>('storeRun', {
       'id': container.id,
       'action': action,
       'packages': packages,
+      'repair': repair,
     });
     if (started != true) return false;
     for (final package in packages) {
       jobs[package] = StoreJob(action, '');
     }
+    _queueInstallations(action, packages);
     if (packages.isEmpty) jobs['*'] = StoreJob(action, '');
     notifyListeners();
     _poll ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollJobs());
     return true;
+  }
+
+  /// Takes a job that still waits out of the queue.
+  Future<void> cancel(String name) async {
+    final done = await _channel.invokeMethod<bool>('storeCancel', {
+      'id': container.id,
+      'name': name,
+    });
+    if (done == true) {
+      jobs.remove(name);
+      notifyListeners();
+    }
+  }
+
+  /// The name of a job's package or application, for the queue.
+  String jobName(String key, {String all = '*'}) {
+    if (key == '*') return all;
+    if (key.startsWith(windowsJobPrefix)) {
+      return windowsNames[key] ?? key.replaceFirst(windowsJobPrefix, '');
+    }
+    return byPackage(key)?.name ?? key;
   }
 
   /// Finished jobs, reported to [onFinished] once each.
@@ -197,14 +497,17 @@ class LinuxStore extends ChangeNotifier {
       final keys = packages.isEmpty ? const ['*'] : packages;
       final state = item['state'] as String? ?? 'failed';
       final action = item['action'] as String? ?? 'install';
-      if (state == 'running') {
+      if (state == 'running' || state == 'queued') {
         for (final key in keys) {
           jobs[key] = StoreJob(
             action,
             item['line'] as String? ?? '',
             (item['percent'] as num?)?.toInt() ?? -1,
+            state == 'queued',
           );
         }
+      } else if (state == 'cancelled') {
+        keys.forEach(jobs.remove);
       } else {
         keys.forEach(jobs.remove);
         finished = true;
@@ -259,6 +562,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
   void initState() {
     super.initState();
     store.onFinished = _finished;
+    store.confirmRepair = _confirmRepair;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         store.load(language: Localizations.localeOf(context).languageCode);
@@ -274,13 +578,209 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
     super.dispose();
   }
 
+  /// The install queue: downloads and installations running now, and those waiting for them.
+  Future<void> _showQueue() => M3EBottomSheet.show<void>(
+    context,
+    builder: (sheet) => ListenableBuilder(
+      listenable: store,
+      builder: (context, _) {
+        String t(String ja, String en) => linuxText(context, ja, en);
+        final theme = Theme.of(context);
+        final entries = store.jobs.entries.toList();
+        String action(String value) => switch (value) {
+          'remove' => t('削除', 'Remove'),
+          'upgrade' => t('アップデート', 'Update'),
+          'repair' => t('修復', 'Repair'),
+          _ => t('インストール', 'Install'),
+        };
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(24, 0, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                t('インストールキュー', 'Install queue'),
+                style: theme.textTheme.titleLarge,
+              ),
+              const SizedBox(height: 12),
+              if (entries.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    t('実行中・待機中の処理はありません', 'Nothing is running or waiting'),
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                ),
+              for (final (index, entry) in entries.indexed)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 6),
+                  child: Row(
+                    children: [
+                      entry.value.queued
+                          ? Icon(
+                              M3EIcons.schedule_rounded,
+                              color: theme.colorScheme.onSurfaceVariant,
+                            )
+                          : StoreProgressCircle(value: entry.value.value),
+                      const SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              store.jobName(
+                                entry.key,
+                                all: t('すべてのパッケージ', 'All packages'),
+                              ),
+                              style: theme.textTheme.titleSmall,
+                            ),
+                            Text(
+                              [
+                                action(entry.value.action),
+                                if (entry.value.queued)
+                                  t(
+                                    '待機中 (${index + 1} 番目)',
+                                    'Waiting (#${index + 1})',
+                                  )
+                                else if (entry.value.percent >= 0)
+                                  '${entry.value.percent}%',
+                                if (!entry.value.queued &&
+                                    entry.value.line.isNotEmpty)
+                                  entry.value.line,
+                                if (!entry.value.queued &&
+                                    entry.value.percent < 0 &&
+                                    entry.value.line.isEmpty)
+                                  t('準備しています', 'Preparing'),
+                              ].join(' · '),
+                              style: theme.textTheme.bodySmall,
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      if (entry.value.queued)
+                        M3EIconButton(
+                          variant: M3EIconButtonVariant.standard,
+                          icon: const Icon(M3EIcons.close_rounded),
+                          tooltip: t('取り消す', 'Cancel'),
+                          onPressed: () => store.cancel(entry.key),
+                        ),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
+    ),
+  );
+
+  /// A failed apt job: when apt itself is in trouble, the problem is shown with a repair
+  /// that runs the job again; otherwise its log.
+  Future<void> _failed(
+    String action,
+    List<String> packages,
+    String output,
+  ) async {
+    String t(String ja, String en) => linuxText(context, ja, en);
+    final external = packages.any((p) => p.contains(':'));
+    final issues = external
+        ? const <(String, String)>[]
+        : await store.diagnose();
+    if (!mounted) return;
+    if (issues.any((issue) => issue.$1 != 'locked')) {
+      if (await _confirmRepair(issues, failed: true)) {
+        await store.run(action, packages, repair: true);
+      }
+      return;
+    }
+    showStoreLog(context, t('失敗しました', 'Failed'), output);
+  }
+
+  /// "What is in which state; repair it?" for what [LinuxStore.diagnose] found.
+  Future<bool> _confirmRepair(
+    List<(String, String)> issues, {
+    bool failed = false,
+  }) async {
+    if (!mounted) return false;
+    String t(String ja, String en) => linuxText(context, ja, en);
+    final onlyLocked = issues.every((issue) => issue.$1 == 'locked');
+    String describe((String, String) issue) {
+      final detail = issue.$2.trim();
+      return switch (issue.$1) {
+        'interrupted' => t(
+          '前回のパッケージ処理が途中で止まっています${detail.isEmpty ? '' : '(未完了: $detail)'}。',
+          'An earlier package operation was cut off${detail.isEmpty ? '' : ' (unfinished: $detail)'}.',
+        ),
+        'broken' => t(
+          'パッケージの依存関係が壊れています${detail.isEmpty ? '' : '($detail)'}。',
+          'Package dependencies are broken${detail.isEmpty ? '' : ' ($detail)'}.',
+        ),
+        _ => t(
+          '別のパッケージ管理(ソフトウェアセンターなど)が動作中です。終わるまで待ってから続けます。',
+          'Another package manager (a software centre, for example) is working. Dextop waits for it to finish.',
+        ),
+      };
+    }
+
+    final agreed = await M3EDialog.show<bool>(
+      context,
+      dialog: Builder(
+        builder: (dialog) => M3EDialog(
+          icon: const Icon(M3EIcons.build_rounded),
+          title: failed
+              ? t('インストールできませんでした', 'The installation failed')
+              : onlyLocked
+              ? t('パッケージ管理が使用中です', 'The package manager is busy')
+              : t('パッケージの修復が必要です', 'Packages need a repair'),
+          content: Text(
+            [
+              for (final issue in issues) describe(issue),
+              if (!onlyLocked)
+                t(
+                  '修復(中断した処理の完了と依存関係の修正)をしてから続けますか？',
+                  'Repair them (finish the cut-off operation and fix dependencies) and go on?',
+                ),
+            ].join('\n\n'),
+          ),
+          actions: [
+            M3EButton.text(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: Text(t('キャンセル', 'Cancel')),
+            ),
+            M3EButton.filled(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: Text(
+                onlyLocked
+                    ? t('待って続ける', 'Wait and go on')
+                    : failed
+                    ? t('修復して再試行', 'Repair and retry')
+                    : t('修復して続ける', 'Repair and go on'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    return agreed == true;
+  }
+
   void _finished(String action, List<String> packages, bool ok, String output) {
     if (!mounted) return;
     String t(String ja, String en) => linuxText(context, ja, en);
     final app = packages.length == 1 ? store.byPackage(packages.first) : null;
-    final name = app?.name ?? packages.join(', ');
+    final name =
+        app?.name ??
+        packages
+            .map(
+              (p) =>
+                  store.windowsNames[p] ?? p.replaceFirst(windowsJobPrefix, ''),
+            )
+            .join(', ');
     if (!ok) {
-      showStoreLog(context, t('失敗しました', 'Failed'), output);
+      _failed(action, packages, output);
       return;
     }
     switch (action) {
@@ -310,6 +810,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
         final updates = store.apps
             .where((a) => store.upgradable.contains(a.package))
             .toList();
+        final wide = linuxWide(context);
         return Scaffold(
           backgroundColor: scheme.surface,
           appBar: M3EAppBar.top(
@@ -323,16 +824,43 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
             actions: [
               M3EIconButton(
                 variant: M3EIconButtonVariant.standard,
-                icon: Icon(
-                  searching ? M3EIcons.close_rounded : M3EIcons.search_rounded,
+                icon: const Icon(M3EIcons.settings_rounded),
+                tooltip: t('信頼するストアソース', 'Trusted Store sources'),
+                onPressed: () async {
+                  await Navigator.of(context).push(
+                    MaterialPageRoute<void>(
+                      builder: (_) => const LinuxSettingsPage(),
+                    ),
+                  );
+                  if (mounted) await store.load();
+                },
+              ),
+              if (!wide)
+                M3EIconButton(
+                  variant: M3EIconButtonVariant.standard,
+                  icon: Icon(
+                    searching
+                        ? M3EIcons.close_rounded
+                        : M3EIcons.search_rounded,
+                  ),
+                  tooltip: searching
+                      ? t('検索を閉じる', 'Close search')
+                      : t('検索', 'Search'),
+                  onPressed: () => setState(() {
+                    searching = !searching;
+                    if (!searching) search.clear();
+                  }),
                 ),
-                tooltip: searching
-                    ? t('検索を閉じる', 'Close search')
-                    : t('検索', 'Search'),
-                onPressed: () => setState(() {
-                  searching = !searching;
-                  if (!searching) search.clear();
-                }),
+              // The install queue: what runs and what waits for it.
+              M3EIconButton(
+                variant: M3EIconButtonVariant.standard,
+                icon: Badge(
+                  isLabelVisible: store.jobs.isNotEmpty,
+                  label: Text('${store.jobs.length}'),
+                  child: const Icon(M3EIcons.download_rounded),
+                ),
+                tooltip: t('インストールキュー', 'Install queue'),
+                onPressed: _showQueue,
               ),
               if (widget.containers.length > 1)
                 M3EIconButton(
@@ -343,73 +871,206 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                 ),
             ],
           ),
-          body: Column(
-            children: [
-              AnimatedSize(
-                duration: const Duration(milliseconds: 260),
-                curve: Curves.easeOutCubic,
-                alignment: Alignment.topCenter,
-                child: searching
-                    ? Padding(
-                        padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-                        // Full width, and it keeps its width when focused.
-                        child: M3ESearchBar(
-                          controller: search,
-                          autoFocus: true,
-                          expandOnFocus: false,
-                          margin: 0,
-                          focusedMargin: 0,
-                          hintText: t('Linuxアプリを検索', 'Search Linux apps'),
-                          leading: const Icon(M3EIcons.search_rounded),
-                          showClearButton: true,
-                        ),
-                      )
-                    : const SizedBox(width: double.infinity),
-              ),
-              M3ETabs(
-                selectedIndex: tab,
-                onTabSelected: (i) => setState(() => tab = i),
-                tabs: [
-                  M3ETab(
-                    label: t('おすすめ', 'Recommended'),
-                    icon: const Icon(M3EIcons.storefront_rounded),
-                  ),
-                  M3ETab(
-                    label: t('インストール済み', 'Installed'),
-                    icon: const Icon(M3EIcons.download_done_rounded),
-                  ),
-                  M3ETab(
-                    label: t('アップデート', 'Updates'),
-                    icon: const Icon(M3EIcons.system_update_rounded),
-                    badgeCount: updates.isEmpty ? null : updates.length,
-                  ),
-                ],
-              ),
-              Expanded(
-                child: AnimatedSwitcher(
-                  duration: const Duration(milliseconds: 260),
-                  switchInCurve: Curves.easeOutCubic,
-                  child: KeyedSubtree(
-                    key: ValueKey('$tab/${store.loading}'),
-                    // The tabs sit between the list and the app bar, so the list's
-                    // scrolling must not tint the app bar as if content ran under it.
-                    // M3EAppBar reads the primary scroll controller's offset, so the
-                    // lists must not attach to it.
-                    child: PrimaryScrollController.none(
-                      child: NotificationListener<ScrollNotification>(
-                        onNotification: (_) => true,
-                        child: _body(updates),
-                      ),
+          body: wide
+              ? Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _sidebar(updates.length),
+                    Expanded(child: _content(updates)),
+                  ],
+                )
+              : Column(
+                  children: [
+                    AnimatedSize(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: searching
+                          ? Padding(
+                              padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                              // Full width, and it keeps its width when focused.
+                              child: M3ESearchBar(
+                                controller: search,
+                                autoFocus: true,
+                                expandOnFocus: false,
+                                margin: 0,
+                                focusedMargin: 0,
+                                hintText: t('Linuxアプリを検索', 'Search Linux apps'),
+                                leading: const Icon(M3EIcons.search_rounded),
+                                showClearButton: true,
+                              ),
+                            )
+                          : const SizedBox(width: double.infinity),
                     ),
-                  ),
+                    M3ETabs(
+                      selectedIndex: tab,
+                      onTabSelected: (i) => setState(() => tab = i),
+                      tabs: [
+                        M3ETab(
+                          label: t('おすすめ', 'Recommended'),
+                          icon: const Icon(M3EIcons.storefront_rounded),
+                        ),
+                        M3ETab(
+                          label: t('インストール済み', 'Installed'),
+                          icon: const Icon(M3EIcons.download_done_rounded),
+                        ),
+                        M3ETab(
+                          label: t('アップデート', 'Updates'),
+                          icon: const Icon(M3EIcons.system_update_rounded),
+                          badgeCount: updates.isEmpty ? null : updates.length,
+                        ),
+                        M3ETab(
+                          label: 'Windows',
+                          icon: const Icon(M3EIcons.window_rounded),
+                        ),
+                      ],
+                    ),
+                    Expanded(child: _content(updates)),
+                  ],
                 ),
-              ),
-            ],
-          ),
         );
       },
     );
   }
+
+  Widget _content(List<StoreApp> updates) => AnimatedSwitcher(
+    duration: const Duration(milliseconds: 260),
+    switchInCurve: Curves.easeOutCubic,
+    child: KeyedSubtree(
+      key: ValueKey('$tab/$category/${store.loading}'),
+      // The tabs sit between the list and the app bar, so the list's
+      // scrolling must not tint the app bar as if content ran under it.
+      // M3EAppBar reads the primary scroll controller's offset, so the
+      // lists must not attach to it.
+      child: PrimaryScrollController.none(
+        child: NotificationListener<ScrollNotification>(
+          onNotification: (_) => true,
+          child: Column(
+            children: [
+              if (store.sourceErrors.isNotEmpty)
+                M3EListItem(
+                  headline: linuxText(
+                    context,
+                    '一部のソースを読み込めません',
+                    'Some sources could not be loaded',
+                  ),
+                  supportingText: store.sourceErrors.join('\n'),
+                  onTap: () => showStoreLog(
+                    context,
+                    'Store sources',
+                    store.sourceErrors.join('\n'),
+                  ),
+                ),
+              Expanded(
+                child: M3ERefreshIndicator.contained(
+                  onRefresh: () => store.load(refresh: true),
+                  child: _body(updates),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+
+  /// The sidebar of a tablet-sized window: search, the sections and the categories.
+  Widget _sidebar(int updateCount) {
+    String t(String ja, String en) => linuxText(context, ja, en);
+    final theme = Theme.of(context);
+    Widget item(
+      IconData icon,
+      String label, {
+      required bool selected,
+      required VoidCallback onTap,
+      int? badge,
+    }) => _SideItem(
+      icon: icon,
+      label: label,
+      selected: selected,
+      onTap: onTap,
+      badge: badge,
+    );
+    return SizedBox(
+      width: 280,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 8, 24),
+        children: [
+          M3ESearchBar(
+            controller: search,
+            expandOnFocus: false,
+            margin: 0,
+            focusedMargin: 0,
+            hintText: t('Linuxアプリを検索', 'Search Linux apps'),
+            leading: const Icon(M3EIcons.search_rounded),
+            showClearButton: true,
+          ),
+          const SizedBox(height: 16),
+          item(
+            M3EIcons.storefront_rounded,
+            t('おすすめ', 'Recommended'),
+            selected: tab == 0 && category == null,
+            onTap: () => setState(() {
+              tab = 0;
+              category = null;
+            }),
+          ),
+          item(
+            M3EIcons.download_done_rounded,
+            t('インストール済み', 'Installed'),
+            selected: tab == 1,
+            onTap: () => setState(() => tab = 1),
+          ),
+          item(
+            M3EIcons.system_update_rounded,
+            t('アップデート', 'Updates'),
+            selected: tab == 2,
+            badge: updateCount == 0 ? null : updateCount,
+            onTap: () => setState(() => tab = 2),
+          ),
+          item(
+            M3EIcons.window_rounded,
+            t('Windows アプリ', 'Windows apps'),
+            selected: tab == 3,
+            onTap: () => setState(() => tab = 3),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+            child: Text(
+              t('カテゴリ', 'Categories'),
+              style: theme.textTheme.titleSmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          for (final c in storeCategories)
+            item(
+              _categoryIcon(c),
+              categoryName(context, c),
+              selected: tab == 0 && category == c,
+              onTap: () => setState(() {
+                tab = 0;
+                category = c;
+              }),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static IconData _categoryIcon(String category) => switch (category) {
+    'Office' => M3EIcons.description_rounded,
+    'Graphics' => M3EIcons.palette_rounded,
+    'AudioVideo' => M3EIcons.movie_rounded,
+    'Development' => M3EIcons.code_rounded,
+    'Network' => M3EIcons.public_rounded,
+    'Game' => M3EIcons.sports_esports_rounded,
+    'Education' => M3EIcons.school_rounded,
+    'Science' => M3EIcons.science_rounded,
+    'Utility' => M3EIcons.build_rounded,
+    'System' => M3EIcons.settings_rounded,
+    _ => M3EIcons.category_rounded,
+  };
 
   Widget _body(List<StoreApp> updates) {
     String t(String ja, String en) => linuxText(context, ja, en);
@@ -438,6 +1099,8 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
         a.package.contains(query) ||
         a.summary.toLowerCase().contains(query);
     switch (tab) {
+      case 3:
+        return WindowsStoreView(store: store, query: search.text.trim());
       case 1:
         final list = store.apps
             .where((a) => store.installed.contains(a.package) && matches(a))
@@ -461,6 +1124,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
             .toList();
         final all = store.jobs['*'];
         return CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
               child: Padding(
@@ -539,43 +1203,49 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                   (category == null || a.categories.contains(category)),
             )
             .toList();
+        final wide = linuxWide(context);
         return CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
-                child: Text(
-                  t('カテゴリ', 'Categories'),
-                  style: Theme.of(context).textTheme.titleMedium,
+            if (wide && category != null)
+              _header(categoryName(context, category!)),
+            if (!wide)
+              SliverToBoxAdapter(
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  child: Text(
+                    t('カテゴリ', 'Categories'),
+                    style: Theme.of(context).textTheme.titleMedium,
+                  ),
                 ),
               ),
-            ),
-            SliverToBoxAdapter(
-              child: SizedBox(
-                height: 56,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 8,
-                  ),
-                  children: [
-                    for (final c in storeCategories)
-                      Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: M3EChip(
-                          label: categoryName(context, c),
-                          type: M3EChipType.filter,
-                          selected: category == c,
-                          onPressed: () => setState(
-                            () => category = category == c ? null : c,
+            if (!wide)
+              SliverToBoxAdapter(
+                child: SizedBox(
+                  height: 56,
+                  child: ListView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                    children: [
+                      for (final c in storeCategories)
+                        Padding(
+                          padding: const EdgeInsets.only(right: 8),
+                          child: M3EChip(
+                            label: categoryName(context, c),
+                            type: M3EChipType.filter,
+                            selected: category == c,
+                            onPressed: () => setState(
+                              () => category = category == c ? null : c,
+                            ),
                           ),
                         ),
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
-            ),
             if (query.isEmpty &&
                 category == null &&
                 recommended.isNotEmpty) ...[
@@ -583,34 +1253,112 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
               _sliverList(recommended),
               _header(t('すべてのアプリ', 'All apps')),
             ],
+            if (query.isNotEmpty) _searchOptions(),
             _sliverList(filtered),
+            if (query.isNotEmpty && store.searchAllPackages) ...[
+              _header(t('その他の apt パッケージ', 'Other apt packages')),
+              AptPackagesSliver(
+                store: store,
+                query: query,
+                exclude: {for (final app in filtered) app.package},
+              ),
+            ],
+            if (query.isNotEmpty && store.searchWindows) ...[
+              _header(t('Windows アプリ', 'Windows apps')),
+              WindowsResultsSliver(store: store, query: query, limit: 10),
+            ],
           ],
         );
     }
   }
 
+  /// What a search also covers besides the distribution's applications.
+  Widget _searchOptions() {
+    String t(String ja, String en) => linuxText(context, ja, en);
+    final side = linuxWide(context) ? 24.0 : 16.0;
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(side, 12, side, 0),
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            if (store.sources['apt'] == true)
+              M3EChip(
+                label: t('すべての apt パッケージ', 'All apt packages'),
+                type: M3EChipType.filter,
+                selected: store.searchAllPackages,
+                onPressed: () => setState(
+                  () => store.searchAllPackages = !store.searchAllPackages,
+                ),
+              ),
+            M3EChip(
+              label: t('Windows アプリ (winget)', 'Windows apps (winget)'),
+              type: M3EChipType.filter,
+              selected: store.searchWindows,
+              onPressed: () =>
+                  setState(() => store.searchWindows = !store.searchWindows),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _header(String text) => SliverToBoxAdapter(
     child: Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 4),
+      padding: EdgeInsets.fromLTRB(linuxWide(context) ? 24 : 16, 20, 16, 4),
       child: Text(text, style: Theme.of(context).textTheme.titleMedium),
     ),
   );
 
   /// A list right under the tabs keeps the same 16 from them as from the sides.
-  Widget _list(List<StoreApp> apps) =>
-      CustomScrollView(slivers: [_sliverList(apps, top: 16)]);
-
-  Widget _sliverList(List<StoreApp> apps, {double top = 4}) => SliverPadding(
-    padding: EdgeInsets.fromLTRB(16, top, 16, 32),
-    sliver: M3EList.sliver(
-      itemCount: apps.length,
-      onTap: (index) => Navigator.of(
-        context,
-      ).push(StoreAppRoute(StoreAppPage(store: store, app: apps[index]))),
-      itemBuilder: (context, index) =>
-          StoreAppTile(store: store, app: apps[index]),
-    ),
+  Widget _list(List<StoreApp> apps) => CustomScrollView(
+    physics: const AlwaysScrollableScrollPhysics(),
+    slivers: [_sliverList(apps, top: 16)],
   );
+
+  Widget _sliverList(List<StoreApp> apps, {double top = 4}) {
+    if (linuxWide(context)) return _sliverGrid(apps, top: top);
+    return SliverPadding(
+      padding: EdgeInsets.fromLTRB(16, top, 16, 32),
+      sliver: M3EList.sliver(
+        itemCount: apps.length,
+        onTap: (index) => Navigator.of(context)
+            .push(StoreAppRoute(StoreAppPage(store: store, app: apps[index]))),
+        itemBuilder: (context, index) =>
+            StoreAppTile(store: store, app: apps[index]),
+      ),
+    );
+  }
+
+  /// Apps in two side-by-side lists across a wide window, each grouped like the phone list.
+  Widget _sliverGrid(List<StoreApp> apps, {double top = 4}) {
+    final half = (apps.length + 1) ~/ 2;
+    Widget column(List<StoreApp> part, EdgeInsets padding) => SliverPadding(
+      padding: padding,
+      sliver: M3EList.sliver(
+        itemCount: part.length,
+        onTap: (index) => Navigator.of(context)
+            .push(StoreAppRoute(StoreAppPage(store: store, app: part[index]))),
+        itemBuilder: (context, index) =>
+            StoreAppTile(store: store, app: part[index]),
+      ),
+    );
+    return SliverCrossAxisGroup(
+      slivers: [
+        // The columns sit as close together as the rows (the list's own gap).
+        column(
+          apps.sublist(0, half),
+          EdgeInsets.fromLTRB(16, top, M3EListCardListTheme.defaultGap / 2, 32),
+        ),
+        column(
+          apps.sublist(half),
+          EdgeInsets.fromLTRB(M3EListCardListTheme.defaultGap / 2, top, 24, 32),
+        ),
+      ],
+    );
+  }
 
   Future<void> _chooseContainer() async {
     final next = await M3EBottomSheet.show<StoreContainer>(
@@ -729,16 +1477,16 @@ class StoreAppTile extends StatelessWidget {
     }
     return M3EListItem(
       headline: app.name,
-      supportingText: '${store.source.label} · ${app.summary}',
+      supportingText: '${app.label(store.container.distro)} · ${app.summary}',
       leading: Hero(
         tag: 'store-${app.package}-${app.id}',
         transitionOnUserGestures: true,
         child: StoreIcon(source: store.source, app: app),
       ),
       trailing: trailing,
-      onTap: () => Navigator.of(
-        context,
-      ).push(StoreAppRoute(StoreAppPage(store: store, app: app))),
+      onTap: () =>
+          Navigator.of(context)
+              .push(StoreAppRoute(StoreAppPage(store: store, app: app))),
     );
   }
 }
@@ -840,7 +1588,13 @@ class StoreAppPage extends StatelessWidget {
           backgroundColor: theme.colorScheme.surface,
           appBar: M3EAppBar.top(automaticallyImplyLeading: true, titleText: ''),
           body: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 40),
+            // In a wide window the page keeps a readable width, centred.
+            padding: EdgeInsets.symmetric(
+              horizontal: ((MediaQuery.sizeOf(context).width - 880) / 2).clamp(
+                20.0,
+                double.infinity,
+              ),
+            ).copyWith(top: 8, bottom: 40),
             children: [
               Row(
                 children: [
@@ -864,7 +1618,7 @@ class StoreAppPage extends StatelessWidget {
                         ),
                         const SizedBox(height: 6),
                         Text(
-                          store.source.label,
+                          app.label(store.container.distro),
                           style: theme.textTheme.bodyMedium?.copyWith(
                             color: theme.colorScheme.onSurfaceVariant,
                           ),
@@ -926,12 +1680,14 @@ class StoreAppPage extends StatelessWidget {
                           const SizedBox(height: 16),
                           LinuxGroup(
                             children: [
-                              if (upgradable)
+                              if (upgradable || app.source == 'deb-get')
                                 M3EListItem(
-                                  headline: t(
-                                    'アップデートがあります',
-                                    'Update available',
-                                  ),
+                                  headline: upgradable
+                                      ? t('アップデートがあります', 'Update available')
+                                      : t(
+                                          '開発元の最新版に更新',
+                                          'Update to the latest upstream version',
+                                        ),
                                   supportingText: t(
                                     '新しいバージョンをインストールします',
                                     'Installs the newer version',
@@ -975,6 +1731,20 @@ class StoreAppPage extends StatelessWidget {
               if (app.summary.isNotEmpty) ...[
                 const SizedBox(height: 28),
                 Text(app.summary, style: theme.textTheme.titleMedium),
+              ],
+              if (app.source == 'flathub') ...[
+                const SizedBox(height: 16),
+                Text(
+                  store.flatpakCompatibility
+                      ? t(
+                          '互換実行モード：Flatpak のサンドボックス・権限制限は適用されません。ソフトウェア描画を使用します。',
+                          'Compatibility mode: Flatpak sandbox and permission restrictions are not enforced. Uses software rendering.',
+                        )
+                      : t(
+                          '標準 Flatpak で起動します。名前空間が使えない端末では Linux 設定の「Flatpak の互換実行」を有効にしてください。',
+                          'Uses standard Flatpak execution. On devices without namespaces, enable Flatpak compatibility execution in Linux settings.',
+                        ),
+                ),
               ],
               if (app.categories.isNotEmpty) ...[
                 const SizedBox(height: 12),
@@ -1048,22 +1818,30 @@ class _Empty extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 48, color: scheme.outline),
-            const SizedBox(height: 12),
-            Text(
-              text,
-              textAlign: TextAlign.center,
-              style: TextStyle(color: scheme.onSurfaceVariant),
+    return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
+      slivers: [
+        SliverFillRemaining(
+          hasScrollBody: false,
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 48, color: scheme.outline),
+                  const SizedBox(height: 12),
+                  Text(
+                    text,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: scheme.onSurfaceVariant),
+                  ),
+                ],
+              ),
             ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }
@@ -1143,6 +1921,72 @@ class _Progress extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One entry of the Store's sidebar: icon, label and an optional count, filled when selected.
+class _SideItem extends StatelessWidget {
+  const _SideItem({
+    required this.icon,
+    required this.label,
+    required this.selected,
+    required this.onTap,
+    this.badge,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+  final int? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final text = Theme.of(context).textTheme;
+    final color = selected
+        ? scheme.onSecondaryContainer
+        : scheme.onSurfaceVariant;
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Material(
+        color: selected ? scheme.secondaryContainer : const Color(0x00000000),
+        borderRadius: BorderRadius.circular(28),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          child: SizedBox(
+            height: 48,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: Row(
+                children: [
+                  Icon(icon, size: 22, color: color),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      label,
+                      overflow: TextOverflow.ellipsis,
+                      style: text.labelLarge?.copyWith(
+                        color: color,
+                        fontWeight: selected
+                            ? FontWeight.w700
+                            : FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                  if (badge != null)
+                    Text(
+                      '$badge',
+                      style: text.labelLarge?.copyWith(color: color),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

@@ -1,7 +1,9 @@
 package moe.n4tsu.dextop.linux
 
 import java.io.File
-import java.net.ServerSocket
+import android.os.ParcelFileDescriptor
+import java.security.SecureRandom
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -9,7 +11,7 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * Each container gets a PulseAudio daemon (installed on first use) whose
  * default sink is a null sink. Its monitor is streamed as raw 48 kHz stereo
- * PCM over a loopback TCP socket (module-simple-protocol-tcp). Dextop's
+ * PCM over an anonymous descriptor handed to the app through Binder. Dextop's
  * app process plays it (LinuxAudioPlayer): the shell user may not create
  * an AudioTrack.
  * Applications reach PulseAudio at unix:/tmp/dextop-pulse/native (an
@@ -18,26 +20,39 @@ import java.util.concurrent.ConcurrentHashMap
 internal class LinuxAudio(
     private val proot: () -> LinuxProot,
     private val log: (String, String) -> Unit,
-    /** The set of playing containers changed; the app reads [port] from the container list. */
+    /** The set of playing containers changed; the app reads [generation] from the container list. */
     private val onChanged: () -> Unit,
 ) {
     companion object {
         const val PULSE_SERVER = "unix:/tmp/dextop-pulse/native"
     }
 
-    private class Output(val process: Process, val port: Int)
+    private class Output(val process: Process, val generation: Int)
+    private val sequence = AtomicInteger(SecureRandom().nextInt(Int.MAX_VALUE / 2) + 1)
 
     private val outputs = ConcurrentHashMap<String, Output>()
     private val installing = ConcurrentHashMap.newKeySet<String>()
 
     fun running(containerId: String) = outputs[containerId]?.process?.isAlive == true
 
-    /** Loopback TCP port streaming the container's sound as 48 kHz stereo s16le, or 0. */
-    fun port(containerId: String) = outputs[containerId]?.takeIf { it.process.isAlive }?.port ?: 0
+    fun generation(containerId: String) = outputs[containerId]?.takeIf { it.process.isAlive }?.generation ?: 0
 
-    /** NAME=value entries for container processes while its sound server runs. */
-    fun environment(containerId: String): List<String> =
-        listOf("PULSE_SERVER=$PULSE_SERVER")
+    private fun cookie(containerId: String): File = File(LinuxPaths.rootfs(containerId), "root/.config/pulse/dextop-cookie")
+    fun environment(containerId: String): List<String> = listOf(
+        "PULSE_SERVER=$PULSE_SERVER", "PULSE_COOKIE=/root/.config/pulse/dextop-cookie")
+
+    @Synchronized fun openStream(containerId: String): ParcelFileDescriptor {
+        check(running(containerId)) { "Container audio is not running" }
+        val builder = proot().guest(containerId,
+            "exec parec --raw --device=dextop.monitor --format=s16le --rate=48000 --channels=2 " +
+                "--latency-msec=20 --process-time-msec=5 --client-name='Dextop audio output'")
+        val pid = IntArray(1)
+        val descriptor = LinuxPty.nativeSpawnPipe(builder.command().toTypedArray(),
+            builder.environment().map { "${it.key}=${it.value}" }.toTypedArray(), pid)
+        check(descriptor >= 0) { "Cannot open audio pipe: ${-descriptor}" }
+        Thread({ LinuxPty.nativeWaitFor(pid[0]) }, "DextopAudioWait").apply { isDaemon = true; start() }
+        return ParcelFileDescriptor.adoptFd(descriptor)
+    }
 
     /** Starts sound for [containerId] in the background, installing PulseAudio first when it is missing. */
     fun ensure(containerId: String, family: LinuxPackageFamily?, install: Boolean = true) {
@@ -54,7 +69,9 @@ internal class LinuxAudio(
         }, "DextopLinuxAudio-$containerId").apply { isDaemon = true; start() }
     }
 
-    private fun installed(containerId: String) = File(LinuxPaths.rootfs(containerId), "usr/bin/pulseaudio").exists()
+    private fun installed(containerId: String) = listOf("pulseaudio", "parec").all {
+        File(LinuxPaths.rootfs(containerId), "usr/bin/$it").exists()
+    }
 
     private fun install(containerId: String, family: LinuxPackageFamily) {
         log(containerId, "Installing PulseAudio for Linux sound output")
@@ -69,29 +86,35 @@ internal class LinuxAudio(
         if (result.exitCode != 0) log(containerId, "PulseAudio installation failed (exit ${result.exitCode})")
     }
 
-    private fun freePort(): Int = ServerSocket(0, 1, java.net.InetAddress.getLoopbackAddress()).use { it.localPort }
-
     @Synchronized
     private fun start(containerId: String) {
         if (running(containerId)) return
         stop(containerId)
-        val port = freePort()
+        val auth = cookie(containerId)
+        auth.parentFile?.mkdirs()
+        if (!auth.isFile || auth.length() != 256L) auth.writeBytes(ByteArray(256).also { SecureRandom().nextBytes(it) })
+        android.system.Os.chmod(auth.path, 0x180) // 0600
         val script = """
+            set -e
             mkdir -p /tmp/dextop-pulse
             rm -rf /tmp/dextop-pulse/native /root/.config/pulse/*-runtime
             exec pulseaudio --daemonize=no --exit-idle-time=-1 --disallow-exit -n --use-pid-file=no \
                 --log-target=stderr --log-level=warning \
                 --load="module-null-sink sink_name=dextop rate=48000 channels=2 sink_properties=device.description=Dextop" \
-                --load="module-native-protocol-unix socket=/tmp/dextop-pulse/native auth-anonymous=1" \
-                --load="module-simple-protocol-tcp listen=127.0.0.1 port=$port source=dextop.monitor record=true playback=false format=s16le rate=48000 channels=2" \
+                --load="module-native-protocol-unix socket=/tmp/dextop-pulse/native auth-anonymous=0 auth-cookie-enabled=1 auth-cookie=/root/.config/pulse/dextop-cookie" \
                 --load="module-always-sink" >/tmp/dextop-pulse.log 2>&1
         """.trimIndent() + "\n"
         val process = proot().guest(containerId, script).redirectErrorStream(true).start()
         process.outputStream.close()
         Thread { runCatching { process.inputStream.copyTo(java.io.OutputStream.nullOutputStream()) } }
             .apply { isDaemon = true; start() }
-        outputs[containerId] = Output(process, port)
-        log(containerId, "Linux sound output started (PulseAudio, port $port)")
+        val output = Output(process, sequence.incrementAndGet())
+        outputs[containerId] = output
+        Thread({
+            process.waitFor()
+            if (outputs.remove(containerId, output)) onChanged()
+        }, "DextopAudioServerWait").apply { isDaemon = true; start() }
+        log(containerId, "Linux sound output started (authenticated PulseAudio, Binder PCM descriptor)")
         onChanged()
     }
 

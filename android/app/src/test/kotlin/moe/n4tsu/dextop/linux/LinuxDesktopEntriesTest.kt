@@ -104,6 +104,7 @@ class LinuxDesktopEntriesTest {
                 Exec=editor %U
                 Icon=org.example.Editor
                 StartupWMClass=EditorWindow
+                X-Dextop-DisplayBackend=x11
                 [Desktop Action New]
                 Name=New window
                 Icon=wrong-action-icon
@@ -111,6 +112,8 @@ class LinuxDesktopEntriesTest {
             val entry = LinuxDesktopEntries.list(root, "ja-JP").single()
             assertEquals("エディター", entry.name)
             assertEquals("org.example.Editor", entry.icon)
+            assertEquals("x11", entry.displayBackend)
+            assertEquals("x11", LinuxDesktopEntries.find(root, entry.id)?.displayBackend)
             assertEquals("EditorWindow", entry.startupWMClass)
             assertEquals("editor", LinuxDesktopEntries.command(entry))
             assertEquals("EditorWindow", LinuxDesktopEntries.find(root, entry.id)?.startupWMClass)

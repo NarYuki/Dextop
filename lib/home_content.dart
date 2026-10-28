@@ -2,46 +2,120 @@ part of 'main.dart';
 
 extension _HomeContent on _HomeScreenState {
   Widget overview() {
+    final wide = wideLayout;
+    final session = <Widget>[
+      heroPanel(),
+      SizedBox(height: 16),
+      if (!active &&
+          !autoActive &&
+          !stopping &&
+          recovery['recoverable'] == true) ...[
+        recoveryPanel(),
+        SizedBox(height: 16),
+      ],
+      workspacePanel(),
+      SizedBox(height: 16),
+      if (!loading &&
+          !(secureSettingsGranted && shizukuRunning && shizukuGranted)) ...[
+        shizukuPanel(),
+        SizedBox(height: wide ? 16 : 28),
+      ],
+    ];
+    final display = <Widget>[
+      sectionTitle(currentLocalizations().display),
+      SizedBox(height: 12),
+      profileGrid(),
+      SizedBox(height: 12),
+      orientationControl(),
+      if (error != null) ...[SizedBox(height: 16), errorPanel()],
+    ];
+    final actions = [
+      IconButton(onPressed: refresh, icon: Icon(Icons.refresh_rounded)),
+      SizedBox(width: 8),
+    ];
     return CustomScrollView(
       key: ValueKey('overview'),
       slivers: [
-        SliverAppBar.large(
-          title: Text(currentLocalizations().appName),
-          actions: [
-            IconButton(onPressed: refresh, icon: Icon(Icons.refresh_rounded)),
-            SizedBox(width: 8),
-          ],
-        ),
-        SliverPadding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 32),
-          sliver: SliverList.list(
-            children: [
-              heroPanel(),
-              SizedBox(height: 16),
-              if (!active &&
-                  !autoActive &&
-                  !stopping &&
-                  recovery['recoverable'] == true) ...[
-                recoveryPanel(),
-                SizedBox(height: 16),
-              ],
-              workspacePanel(),
-              SizedBox(height: 16),
-              if (!loading &&
-                  !(secureSettingsGranted &&
-                      shizukuRunning &&
-                      shizukuGranted)) ...[
-                shizukuPanel(),
-                SizedBox(height: 28),
-              ],
-              sectionTitle(currentLocalizations().display),
-              SizedBox(height: 12),
-              profileGrid(),
-              SizedBox(height: 12),
-              orientationControl(),
-              if (error != null) ...[SizedBox(height: 16), errorPanel()],
-            ],
+        // A window has its own title bar; a compact bar keeps the content near the top.
+        if (wide)
+          SliverAppBar(
+            pinned: true,
+            toolbarHeight: 64,
+            titleSpacing: 24,
+            title: Text(currentLocalizations().appName),
+            actions: actions,
+          )
+        else
+          SliverAppBar.large(
+            title: Text(currentLocalizations().appName),
+            actions: actions,
           ),
+        SliverPadding(
+          padding: wide
+              ? EdgeInsets.fromLTRB(24, 8, 24, 32)
+              : EdgeInsets.fromLTRB(16, 0, 16, 32),
+          sliver: wide
+              ? SliverToBoxAdapter(
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        flex: 5,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: session,
+                        ),
+                      ),
+                      SizedBox(width: 24),
+                      // The display settings sit in a card level with the session card.
+                      Expanded(
+                        flex: 4,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            Card(
+                              child: Padding(
+                                padding: EdgeInsets.all(20),
+                                child: Column(
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.stretch,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Icon(
+                                          Icons.monitor_rounded,
+                                          color: Theme.of(
+                                            context,
+                                          ).colorScheme.primary,
+                                        ),
+                                        SizedBox(width: 12),
+                                        Text(
+                                          currentLocalizations().display,
+                                          style: Theme.of(
+                                            context,
+                                          ).textTheme.titleMedium,
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 16),
+                                    profileGrid(),
+                                    SizedBox(height: 12),
+                                    orientationControl(),
+                                  ],
+                                ),
+                              ),
+                            ),
+                            if (error != null) ...[
+                              SizedBox(height: 16),
+                              errorPanel(),
+                            ],
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : SliverList.list(children: [...session, ...display]),
         ),
       ],
     );
@@ -111,9 +185,15 @@ extension _HomeContent on _HomeScreenState {
                         : loading
                         ? currentLocalizations().uiChecking
                         : autoPlus
-                        ? currentLocalizations().uiRunningAutoPlus.replaceFirst('Auto+', autoMode.isEmpty ? 'Auto+' : 'Auto+/$autoMode')
+                        ? currentLocalizations().uiRunningAutoPlus.replaceFirst(
+                            'Auto+',
+                            autoMode.isEmpty ? 'Auto+' : 'Auto+/$autoMode',
+                          )
                         : autoOnly
-                        ? currentLocalizations().uiRunningAuto.replaceFirst('Auto', autoMode.isEmpty ? 'Auto' : 'Auto/$autoMode')
+                        ? currentLocalizations().uiRunningAuto.replaceFirst(
+                            'Auto',
+                            autoMode.isEmpty ? 'Auto' : 'Auto/$autoMode',
+                          )
                         : active
                         ? currentLocalizations().running
                         : needsAndroidRepair
@@ -135,9 +215,8 @@ extension _HomeContent on _HomeScreenState {
                       height: 1.15,
                       forceStrutHeight: true,
                     ),
-                    style: Theme.of(
-                      context,
-                    ).textTheme.titleLarge?.copyWith(height: 1.15),
+                    style: Theme.of(context).textTheme.titleLarge
+                        ?.copyWith(height: 1.15),
                   ),
                 ),
               ],

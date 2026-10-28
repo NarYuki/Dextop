@@ -22,6 +22,8 @@
     <!-- Home-screen launchers for Linux applications are tiny generated APKs. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-permission android:name="android.permission.REQUEST_DELETE_PACKAGES" />
+    <!-- Brings Linux windows hosted in the launchers' tasks to the front. -->
+    <uses-permission android:name="android.permission.REORDER_TASKS" />
     <permission
         android:name="moe.n4tsu.dextop.permission.CARDEX_RELAY"
         android:protectionLevel="normal" />
@@ -246,6 +248,25 @@
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
             android:windowSoftInputMode="adjustResize" />
+        <!-- A Linux window inside its launcher APK's task (opened by that launcher's Window
+             activity), so the task carries the application's name and icon. -->
+        <activity
+            android:name=".linux.LinuxHostedWindowActivity"
+            android:exported="true"
+            android:resizeableActivity="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
+            android:windowSoftInputMode="adjustResize" />
+        <!-- A container's interactive shell (xterm.js on a PTY of the shell-side service). -->
+        <activity
+            android:name=".linux.LinuxTerminalActivity"
+            android:exported="false"
+            android:documentLaunchMode="always"
+            android:autoRemoveFromRecents="true"
+            android:resizeableActivity="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
+            android:windowSoftInputMode="adjustResize" />
         <!-- A Linux dialog whose parent window is gone: floating, at its own size. -->
         <activity
             android:name=".linux.LinuxDialogActivity"
@@ -255,6 +276,19 @@
             android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
             android:windowSoftInputMode="adjustResize" />
+        <!-- Keeps Linux applications running in the background, with an ongoing notification;
+             forwards Linux notifications as Android notifications. -->
+        <service
+            android:name=".linux.LinuxSessionService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Linux container session" />
+        </service>
+        <receiver
+            android:name=".linux.LinuxSessionService$NotificationAction"
+            android:exported="false" />
         <!-- Opened by the generated Linux launcher APKs and the Linux tab. -->
         <activity
             android:name=".linux.LinuxLaunchActivity"

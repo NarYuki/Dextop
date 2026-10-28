@@ -321,6 +321,7 @@ open class MainActivity : FlutterActivity() {
                     val launchDisplayId = display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
                     result.success(mapOf(
                         "displayId" to launchDisplayId,
+                        "externalDisplay" to (launchDisplayId != android.view.Display.DEFAULT_DISPLAY),
                         "desktopWindow" to (
                             MirrorService.isActive() &&
                                 launchDisplayId != android.view.Display.DEFAULT_DISPLAY
@@ -670,6 +671,7 @@ open class MainActivity : FlutterActivity() {
                 "openWirelessDebugging" -> openWirelessDebuggingSettings(result)
                 "openWirelessDebuggingSettingsOnly" -> openSystemWirelessDebuggingSettings(result)
                 "requestEmbeddedNotificationPermission" -> requestEmbeddedNotificationPermission(result)
+                "requestStoreNotificationPermission" -> requestEmbeddedNotificationPermission(result, forStore = true)
                 "prepareEmbeddedPairingNotification" -> prepareEmbeddedPairingNotification(result)
                 "openUrl" -> {
                     startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(call.argument<String>("url"))))
@@ -1327,8 +1329,8 @@ open class MainActivity : FlutterActivity() {
         launchWirelessDebuggingSettings(result)
     }
 
-    private fun requestEmbeddedNotificationPermission(result: MethodChannel.Result) {
-        if (!DistributionPrivilegeBootstrap.included) {
+    private fun requestEmbeddedNotificationPermission(result: MethodChannel.Result, forStore: Boolean = false) {
+        if (!forStore && !DistributionPrivilegeBootstrap.included) {
             result.success(false)
             return
         }

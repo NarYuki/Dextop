@@ -1,0 +1,41 @@
+#!/bin/sh
+# Clears what an interrupted package operation leaves behind (a killed apt or dpkg), before
+# the next one. Run by Dextop's Store and by the container's apt, apt-get and aptitude.
+# Lock files are never removed: the kernel releases apt's locks when their holder ends, and
+# a held lock means another package manager is working (apt then waits for it, see
+# /etc/apt/apt.conf.d/99dextop).
+
+# Whether lock file $1 is free (no process holds it).
+free() {
+    [ -e "$1" ] || return 0
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 -c 'import fcntl, sys
+f = open(sys.argv[1], "a")
+fcntl.lockf(f, fcntl.LOCK_EX | fcntl.LOCK_NB)' "$1" 2>/dev/null
+}
+
+mkdir -p /etc/apt/apt.conf.d
+[ -f /etc/apt/apt.conf.d/99dextop ] || printf '%s\n' \
+    '// Dextop: wait for another package manager instead of failing on its lock.' \
+    'DPkg::Lock::Timeout "300";' >/etc/apt/apt.conf.d/99dextop
+
+# Downloads a killed run left half done.
+if free /var/lib/apt/lists/lock; then
+    rm -rf /var/lib/apt/lists/partial/* 2>/dev/null
+fi
+if free /var/cache/apt/archives/lock; then
+    rm -rf /var/cache/apt/archives/partial/* 2>/dev/null
+fi
+# Package caches that no longer read.
+if free /var/lib/dpkg/lock-frontend && ! apt-cache stats >/dev/null 2>&1; then
+    rm -f /var/cache/apt/*.bin
+fi
+
+# An interrupted dpkg: packages unpacked but not configured, pending triggers.
+if free /var/lib/dpkg/lock-frontend && free /var/lib/dpkg/lock; then
+    if [ -n "$(ls -A /var/lib/dpkg/updates 2>/dev/null)" ] || [ -n "$(dpkg --audit 2>/dev/null)" ]; then
+        echo 'Dextop: finishing an interrupted package operation' >&2
+        DEBIAN_FRONTEND=noninteractive dpkg --configure -a --force-confdef --force-confold >&2
+    fi
+fi
+exit 0

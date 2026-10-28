@@ -47,6 +47,10 @@ class LinuxExpressive extends StatelessWidget {
   }
 }
 
+/// Whether the window is tablet-sized (DeX, a tablet, an unfolded phone): the Linux
+/// pages then use a compact header and lay their content out across the width.
+bool linuxWide(BuildContext context) => MediaQuery.sizeOf(context).width >= 840;
+
 /// Opens [page] as a route of the expressive Linux pages.
 Route<T> linuxRoute<T>(Widget page) =>
     mui.MaterialPageRoute<T>(builder: (_) => page);
