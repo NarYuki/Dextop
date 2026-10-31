@@ -82,6 +82,8 @@ class LinuxChoice<T> extends StatelessWidget implements LinuxTappable {
     return M3EListItem(
       headline: title,
       supportingText: subtitle,
+      // Choices explain themselves; their notes are shown in full.
+      supportingMaxLines: null,
       enabled: enabled,
       leading: icon == null ? null : Icon(icon),
       trailing: M3ERadio<T>(
@@ -118,6 +120,7 @@ class LinuxToggle extends StatelessWidget implements LinuxTappable {
   Widget build(BuildContext context) => M3EListItem(
     headline: title,
     supportingText: subtitle,
+    supportingMaxLines: null,
     leading: icon == null ? null : Icon(icon),
     trailing: M3ESwitch(value: value, onChanged: onChanged),
     onTap: tap,

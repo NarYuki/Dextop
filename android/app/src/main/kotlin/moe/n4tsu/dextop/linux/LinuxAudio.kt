@@ -102,7 +102,10 @@ internal class LinuxAudio(
                 --log-target=stderr --log-level=warning \
                 --load="module-null-sink sink_name=dextop rate=48000 channels=2 sink_properties=device.description=Dextop" \
                 --load="module-native-protocol-unix socket=/tmp/dextop-pulse/native auth-anonymous=0 auth-cookie-enabled=1 auth-cookie=/root/.config/pulse/dextop-cookie" \
-                --load="module-always-sink" >/tmp/dextop-pulse.log 2>&1
+                --load="module-always-sink" \
+                --load="module-null-sink sink_name=dextop_mic rate=48000 channels=1 sink_properties=device.description=Dextop-Microphone-Input" \
+                --load="module-remap-source master=dextop_mic.monitor source_name=dextop_microphone channels=1 source_properties=device.description=Android-Microphone" \
+                >/tmp/dextop-pulse.log 2>&1
         """.trimIndent() + "\n"
         val process = proot().guest(containerId, script).redirectErrorStream(true).start()
         process.outputStream.close()
@@ -114,8 +117,57 @@ internal class LinuxAudio(
             process.waitFor()
             if (outputs.remove(containerId, output)) onChanged()
         }, "DextopAudioServerWait").apply { isDaemon = true; start() }
+        watchMicrophone(containerId, output)
         log(containerId, "Linux sound output started (authenticated PulseAudio, Binder PCM descriptor)")
         onChanged()
+    }
+
+    /** Linux applications recording now, per container; the module's own reader is not one. */
+    private val recorders = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
+    fun microphoneWanted(containerId: String) = (recorders[containerId] ?: 0) > 0
+
+    /** Makes the Android microphone the default source and follows who records from it. */
+    private fun watchMicrophone(containerId: String, output: Output) {
+        val script = """
+            i=0
+            until pactl info >/dev/null 2>&1 || [ ${'$'}i -ge 100 ]; do sleep 0.1; i=${'$'}((i + 1)); done
+            pactl set-default-source dextop_microphone 2>/dev/null
+            count() { pactl list short source-outputs 2>/dev/null | awk '${'$'}3 != "-"' | wc -l; }
+            count
+            pactl subscribe 2>/dev/null | while read -r line; do
+                case "${'$'}line" in *source-output*) count ;; esac
+            done
+        """.trimIndent() + "\n"
+        Thread({
+            runCatching {
+                val process = proot().guest(containerId, script).start()
+                process.outputStream.close()
+                process.inputStream.bufferedReader().forEachLine { line ->
+                    if (outputs[containerId] !== output) { LinuxRuntime.terminate(process); return@forEachLine }
+                    line.trim().toIntOrNull()?.let { recorders[containerId] = it }
+                }
+            }
+            recorders.remove(containerId)
+        }, "DextopMicrophoneWatch").apply { isDaemon = true; start() }
+    }
+
+    /** Write end of the container's microphone; Android's recording is played into its input sink. */
+    @Synchronized fun openMicrophone(containerId: String): ParcelFileDescriptor {
+        check(running(containerId)) { "Container audio is not running" }
+        val process = proot().guest(containerId,
+            "exec pacat --playback --raw --device=dextop_mic --format=s16le --rate=48000 --channels=1 " +
+                "--latency-msec=30 --client-name='Android microphone'").redirectErrorStream(true).start()
+        Thread { runCatching { process.inputStream.copyTo(java.io.OutputStream.nullOutputStream()) } }
+            .apply { isDaemon = true; start() }
+        val (read, write) = ParcelFileDescriptor.createPipe()
+        Thread({
+            try {
+                ParcelFileDescriptor.AutoCloseInputStream(read).use { input -> process.outputStream.use { input.copyTo(it, 1920) } }
+            } catch (_: Exception) {
+            } finally { LinuxRuntime.terminate(process) }
+        }, "DextopMicrophonePipe").apply { isDaemon = true; start() }
+        return write
     }
 
     fun stop(containerId: String) {

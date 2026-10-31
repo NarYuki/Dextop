@@ -17,6 +17,9 @@
   }
   #keys button.on { background: var(--accent); color: #003258; }
   #keys button:active { filter: brightness(1.3); }
+  #term { position: relative; }
+  #selection { position: absolute; inset: 0; z-index: 10; display: none; touch-action: none; }
+  #selection.active { display: block; }
   #compose {
     position: absolute; left: 12px; bottom: 56px; padding: 4px 10px; border-radius: 8px; display: none;
     background: #3b4b5e; color: var(--text); font: 15px "Noto Sans Mono CJK JP", monospace; text-decoration: underline;
@@ -24,7 +27,7 @@
 </style>
 </head>
 <body>
-<div id="term"></div>
+<div id="term"><div id="selection"></div></div>
 <div id="compose"></div>
 <div id="keys">
   <button data-send="\x1b">Esc</button>
@@ -41,6 +44,8 @@
   <button data-send="~">~</button>
   <button data-send="/">/</button>
   <button data-send="-">-</button>
+  <button id="select" aria-pressed="false">Select</button>
+  <button id="all">All</button>
   <button id="copy">Copy</button>
   <button id="paste">Paste</button>
 </div>
@@ -82,8 +87,65 @@
       term.focus();
     };
   }
-  document.getElementById('copy').onclick = () => { Dextop.copy(term.getSelection()); term.focus(); };
-  document.getElementById('paste').onclick = () => { term.paste(Dextop.paste()); term.focus(); };
+  // xterm's mouse selection does not provide touch selection handles. In Select mode,
+  // dragging a finger selects cells instead of scrolling or sending terminal mouse input.
+  const selection = document.getElementById('selection');
+  const selectButton = document.getElementById('select');
+  let selecting = false, anchor = null, pointer = null, scrollTimer = null;
+  function selectMode(enabled) {
+    selecting = enabled;
+    selection.classList.toggle('active', enabled);
+    selectButton.classList.toggle('on', enabled);
+    selectButton.setAttribute('aria-pressed', String(enabled));
+    Dextop.selecting(enabled);
+    if (!enabled) { stopSelection(); term.focus(); }
+  }
+  function cell(x, y) {
+    const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+    const col = Math.max(0, Math.min(term.cols - 1, Math.floor((x - rect.left) * term.cols / rect.width)));
+    const row = Math.max(0, Math.min(term.rows - 1, Math.floor((y - rect.top) * term.rows / rect.height)));
+    return { col, row: term.buffer.active.viewportY + row };
+  }
+  function extendSelection() {
+    if (!anchor || !pointer) return;
+    const end = cell(pointer.x, pointer.y);
+    const a = anchor.row * term.cols + anchor.col;
+    const b = end.row * term.cols + end.col;
+    const start = Math.min(a, b);
+    term.select(start % term.cols, Math.floor(start / term.cols), Math.abs(b - a) + 1);
+  }
+  function stopSelection() {
+    clearInterval(scrollTimer);
+    scrollTimer = null;
+    anchor = pointer = null;
+  }
+  selectButton.onclick = () => selectMode(!selecting);
+  document.getElementById('all').onclick = () => { selectMode(true); term.selectAll(); };
+  selection.addEventListener('pointerdown', e => {
+    if (!e.isPrimary || e.button !== 0) return;
+    e.preventDefault();
+    selection.setPointerCapture(e.pointerId);
+    anchor = cell(e.clientX, e.clientY);
+    pointer = { x: e.clientX, y: e.clientY };
+    extendSelection();
+    scrollTimer = setInterval(() => {
+      if (!pointer) return;
+      const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
+      if (pointer.y < rect.top + 16) term.scrollLines(-1);
+      else if (pointer.y > rect.bottom - 16) term.scrollLines(1);
+      extendSelection();
+    }, 60);
+  });
+  selection.addEventListener('pointermove', e => {
+    if (!anchor) return;
+    pointer = { x: e.clientX, y: e.clientY };
+    extendSelection();
+  });
+  selection.addEventListener('pointerup', stopSelection);
+  selection.addEventListener('pointercancel', stopSelection);
+  selection.addEventListener('lostpointercapture', stopSelection);
+  document.getElementById('copy').onclick = () => window.dextopCopy();
+  document.getElementById('paste').onclick = () => window.dextopPaste();
   // Keep the soft keyboard up when the bar is tapped.
   for (const key of document.querySelectorAll('#keys button')) key.onmousedown = e => e.preventDefault();
 
@@ -91,8 +153,11 @@
   window.dextopKey = (normal, application) => {
     term.input(application !== null && term.modes.applicationCursorKeysMode ? application : normal, true);
   };
-  window.dextopCopy = () => Dextop.copy(term.getSelection());
-  window.dextopPaste = () => term.paste(Dextop.paste());
+  window.dextopCopy = () => { Dextop.copy(term.getSelection()); };
+  window.dextopPaste = () => { selectMode(false); Dextop.paste(); };
+  // xterm handles bracketed paste and newline normalization for the active shell.
+  window.dextopPasteText = text => { term.paste(text); term.focus(); };
+  window.dextopSelectAll = () => { selectMode(true); term.selectAll(); };
   const compose = document.getElementById('compose');
   window.dextopCompose = text => {
     compose.textContent = text;

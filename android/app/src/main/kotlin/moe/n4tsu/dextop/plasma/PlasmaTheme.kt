@@ -170,6 +170,8 @@ internal object WindowManagerSelection {
     const val DEXTOP_PLASMA = "dextop_plasma"
     /** Compositing v2: every app on its own display, drawn inside Dextop's windows. */
     const val DEXTOP_PLASMA_V2 = "dextop_plasma_v2"
+    /** Dextop Book: the compositor with Material 3 Expressive chrome. */
+    const val DEXTOP_BOOK = "dextop_book"
     private const val KEY = "flutter.window_manager"
     private const val EXPERIMENTAL_ENABLED_KEY = "flutter.experimental_dextop_window_manager"
 
@@ -178,6 +180,7 @@ internal object WindowManagerSelection {
         // Plasma v2 is a regular option; the v1 freeform shell stays experimental.
         return when (preferences.getString(KEY, SYSTEM)) {
             DEXTOP_PLASMA_V2 -> DEXTOP_PLASMA_V2
+            DEXTOP_BOOK -> DEXTOP_BOOK
             DEXTOP_PLASMA -> if (preferences.getBoolean(EXPERIMENTAL_ENABLED_KEY, false)) DEXTOP_PLASMA else SYSTEM
             else -> SYSTEM
         }

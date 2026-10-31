@@ -601,6 +601,7 @@ extension _SettingsContent on _HomeScreenState {
       switch (value) {
         'dextop_plasma' => l.windowManagerPlasma,
         'dextop_plasma_v2' => l.windowManagerPlasmaV2,
+        'dextop_book' => 'Dextop Book',
         _ => l.windowManagerSystem,
       };
 
@@ -629,6 +630,17 @@ extension _SettingsContent on _HomeScreenState {
                   value: 'dextop_plasma_v2',
                   title: Text(l.windowManagerPlasmaV2),
                   subtitle: Text(l.windowManagerPlasmaV2Description),
+                ),
+                RadioListTile<String>(
+                  value: 'dextop_book',
+                  title: const Text('Dextop Book'),
+                  subtitle: Text(
+                    localText(
+                      context,
+                      'Material 3 Expressive のデスクトップ。上に日付と状態、下中央にドック',
+                      'A Material 3 Expressive desktop: date and status on top, a dock at the bottom centre',
+                    ),
+                  ),
                 ),
                 if (experimentalWindowManagerEnabled)
                   RadioListTile<String>(
@@ -1281,11 +1293,10 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    final japanese = Localizations.localeOf(context).languageCode == 'ja';
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
-        _settingsSection(japanese ? 'Autoのホーム画面' : 'Auto home screen', [
+        _settingsSection(localText(context, 'Autoのホーム画面', 'Auto home screen'), [
           RadioGroup<bool>(
             groupValue: autoShell,
             onChanged: (value) async {
@@ -1304,9 +1315,7 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
                   enabled: !loading,
                   title: const Text('Android Desktop'),
                   subtitle: Text(
-                    japanese
-                        ? 'Androidのデスクトップを表示します。'
-                        : 'Show the Android desktop.',
+                    localText(context, 'Androidのデスクトップを表示します。', 'Show the Android desktop.'),
                   ),
                 ),
                 const Divider(height: 1),
@@ -1315,9 +1324,7 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
                   enabled: !loading,
                   title: const Text('Dextop Auto'),
                   subtitle: Text(
-                    japanese
-                        ? '車向けホームと大きな操作ボタンを使う試作版。Autoを再接続すると反映されます。'
-                        : 'Prototype car home with large controls. Reconnect Auto to apply.',
+                    localText(context, '車向けホームと大きな操作ボタンを使う試作版。Autoを再接続すると反映されます。', 'Prototype car home with large controls. Reconnect Auto to apply.'),
                   ),
                 ),
               ],
@@ -1328,12 +1335,10 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
           SwitchListTile(
             secondary: const Icon(Icons.speed),
             title: Text(
-              japanese ? 'Deck Modeを30fpsに制限' : 'Limit Deck Mode to 30 fps',
+              localText(context, 'Deck Modeを30fpsに制限', 'Limit Deck Mode to 30 fps'),
             ),
             subtitle: Text(
-              japanese
-                  ? '30fpsの描画制限と低遅延提出を適用します。入力頻度は制限しません。Deck Modeを開き直すと反映されます。'
-                  : 'Apply 30 fps pacing and low-latency submission. Input remains unrestricted. Reopen Deck Mode to apply.',
+              localText(context, '30fpsの描画制限と低遅延提出を適用します。入力頻度は制限しません。Deck Modeを開き直すと反映されます。', 'Apply 30 fps pacing and low-latency submission. Input remains unrestricted. Reopen Deck Mode to apply.'),
             ),
             value: deck30Fps,
             onChanged: loading
@@ -1349,9 +1354,7 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
             secondary: const Icon(Icons.sync),
             title: const Text('Deck Mode VSync'),
             subtitle: Text(
-              japanese
-                  ? 'オフにするとDeckの描画でVSync待ちを省きます。Autoの映像転送周期は変更しません。Deck Modeを開き直すと反映されます。'
-                  : 'Disable VSync waits for Deck rendering. Auto video cadence is unchanged. Reopen Deck Mode to apply.',
+              localText(context, 'オフにするとDeckの描画でVSync待ちを省きます。Autoの映像転送周期は変更しません。Deck Modeを開き直すと反映されます。', 'Disable VSync waits for Deck rendering. Auto video cadence is unchanged. Reopen Deck Mode to apply.'),
             ),
             value: deckVsync,
             onChanged: loading
@@ -1366,14 +1369,10 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
           SwitchListTile(
             secondary: const Icon(Icons.vertical_split_outlined),
             title: Text(
-              japanese
-                  ? '分割操作のスマホ転送を補正'
-                  : 'Correct split-screen transfer to phone',
+              localText(context, '分割操作のスマホ転送を補正', 'Correct split-screen transfer to phone'),
             ),
             subtitle: Text(
-              japanese
-                  ? '2.1の分割操作でスマホへ移動したアプリをAuto画面へ戻し、左右に配置します。'
-                  : 'Returns Auto apps sent to phone split-screen to a side-by-side layout in 2.1.',
+              localText(context, '2.1の分割操作でスマホへ移動したアプリをAuto画面へ戻し、左右に配置します。', 'Returns Auto apps sent to phone split-screen to a side-by-side layout in 2.1.'),
             ),
             value: correctAutoSplit,
             onChanged: loading
@@ -1391,14 +1390,10 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
           SwitchListTile(
             secondary: const Icon(Icons.fit_screen_outlined),
             title: Text(
-              japanese
-                  ? '全画面アプリのタスクバー重なり補正'
-                  : 'Correct fullscreen taskbar overlap',
+              localText(context, '全画面アプリのタスクバー重なり補正', 'Correct fullscreen taskbar overlap'),
             ),
             subtitle: Text(
-              japanese
-                  ? '全画面・最大化したアプリをタスクバーに重ならない領域へ調整します。必要に応じてウィンドウ表示に切り替えます。'
-                  : 'Fits fullscreen and maximized apps above the taskbar, switching to windowed mode when needed.',
+              localText(context, '全画面・最大化したアプリをタスクバーに重ならない領域へ調整します。必要に応じてウィンドウ表示に切り替えます。', 'Fits fullscreen and maximized apps above the taskbar, switching to windowed mode when needed.'),
             ),
             value: correctFullscreenOverlap,
             onChanged: loading
@@ -1427,7 +1422,7 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
             subtitle: Text(l.autoDisplayModeDescription),
           ),
         ]),
-        _settingsSection(japanese ? 'Car Companion方式' : 'Car Companion mode', [
+        _settingsSection(localText(context, 'Car Companion方式', 'Car Companion mode'), [
           RadioGroup<int>(
             groupValue: scrcpyStreaming ? 2 : (hiddenAutoDisplay ? 1 : 0),
             onChanged: (value) {
@@ -1438,14 +1433,10 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
                 RadioListTile<int>(
                   secondary: const Icon(Icons.layers_outlined),
                   title: Text(
-                    japanese
-                        ? 'Car Companion 1.1.3（レガシー）'
-                        : 'Car Companion 1.1.3 (legacy)',
+                    localText(context, 'Car Companion 1.1.3（レガシー）', 'Car Companion 1.1.3 (legacy)'),
                   ),
                   subtitle: Text(
-                    japanese
-                        ? '従来のOverlayDisplayを作成し、Android Autoへミラーリングします。'
-                        : 'Uses the original OverlayDisplay and mirrors it to Android Auto.',
+                    localText(context, '従来のOverlayDisplayを作成し、Android Autoへミラーリングします。', 'Uses the original OverlayDisplay and mirrors it to Android Auto.'),
                   ),
                   value: 0,
                   enabled: !loading,
@@ -1454,14 +1445,10 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
                 RadioListTile<int>(
                   secondary: const Icon(Icons.stream_rounded),
                   title: Text(
-                    japanese
-                        ? 'Car Companion 2.1（安定版）'
-                        : 'Car Companion 2.1 (stable)',
+                    localText(context, 'Car Companion 2.1（安定版）', 'Car Companion 2.1 (stable)'),
                   ),
                   subtitle: Text(
-                    japanese
-                        ? '装飾付きVirtualDisplayをAndroid AutoのSurfaceへ直接接続します。'
-                        : 'Connects a decorated VirtualDisplay directly to the Android Auto surface.',
+                    localText(context, '装飾付きVirtualDisplayをAndroid AutoのSurfaceへ直接接続します。', 'Connects a decorated VirtualDisplay directly to the Android Auto surface.'),
                   ),
                   value: 2,
                   enabled: !loading,

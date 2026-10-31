@@ -94,6 +94,8 @@ internal interface V2WindowHost {
     val windowShadows: Boolean get() = true
     /** Corner radius of the window outline in pixels, or a negative value for the desktop default. */
     fun windowCornerRadius(): Float = -1f
+    /** Dextop Book: Material 3 title bars (tonal circular buttons, title at the start). */
+    val bookStyle: Boolean get() = false
 }
 
 /**
@@ -617,10 +619,11 @@ internal class V2TitleBar(
     }
 
     private fun buttonRect(button: Button): RectF {
-        val size = dp(20f)
-        val gap = dp(6f)
+        val book = host.bookStyle
+        val size = dp(if (book) 28f else 20f)
+        val gap = dp(if (book) 8f else 6f)
         val index = when (button) { Button.CLOSE -> 0; Button.MAXIMIZE -> 1; Button.MINIMIZE -> 2 }
-        val cx = width - dp(7f) - size / 2f - index * (size + gap)
+        val cx = width - dp(if (book) 10f else 7f) - size / 2f - index * (size + gap)
         val cy = height / 2f
         return RectF(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy + size / 2f)
     }
@@ -662,6 +665,10 @@ internal class V2TitleBar(
         lastActive = active
         val w = width.toFloat()
         val h = height.toFloat()
+        if (host.bookStyle) {
+            drawBook(canvas, palette, active, w, h)
+            return
+        }
         background.color = PlasmaTheme.blend(palette.headerInactive, palette.headerActive, activeFraction)
         canvas.drawRect(0f, 0f, w, h, background)
         line.color = PlasmaTheme.withAlpha(palette.text, 0x18)
@@ -695,6 +702,40 @@ internal class V2TitleBar(
             glyph.draw(canvas)
         }
         path.reset()
+    }
+
+    /** Material 3: one tonal surface with the window, title at the start, tonal circular buttons. */
+    private fun drawBook(canvas: Canvas, palette: PlasmaPalette, active: Boolean, w: Float, h: Float) {
+        background.color = PlasmaTheme.blend(palette.headerInactive, palette.headerActive, activeFraction)
+        canvas.drawRect(0f, 0f, w, h, background)
+        val iconSize = dp(20f)
+        rect.set(dp(12f), (h - iconSize) / 2f, dp(12f) + iconSize, (h + iconSize) / 2f)
+        canvas.drawIcon(window.icon, rect, if (active) 255 else 170)
+        titlePaint.textAlign = Paint.Align.LEFT
+        titlePaint.typeface = PlasmaTheme.sansMedium
+        titlePaint.textSize = dp(14f)
+        titlePaint.color = PlasmaTheme.blend(palette.inactiveText, palette.text, activeFraction)
+        val left = dp(42f)
+        val right = buttonRect(Button.MINIMIZE).left - dp(8f)
+        val title = TextUtilsCompat.ellipsize(window.title, titlePaint, (right - left).coerceAtLeast(0f))
+        canvas.drawText(title, left, h / 2f - (titlePaint.descent() + titlePaint.ascent()) / 2f, titlePaint)
+        titlePaint.textAlign = Paint.Align.CENTER
+        titlePaint.typeface = PlasmaTheme.sans
+        Button.entries.forEach { button ->
+            val r = buttonRect(button)
+            val hover = hoverProgress[button] ?: 0f
+            val isPressed = pressed == button
+            val glyph = if (button == Button.MAXIMIZE && window.maximized) restoreGlyph else glyphs.getValue(button)
+            // Tonal container; close turns to the error container under the pointer.
+            val base = PlasmaTheme.withAlpha(palette.text, if (active) 0x1A else 0x0F)
+            val lit = if (button == Button.CLOSE) palette.negative else palette.accent
+            buttonPaint.color = PlasmaTheme.blend(base, PlasmaTheme.withAlpha(lit, 0x55), if (isPressed) 1f else hover)
+            canvas.drawOval(r, buttonPaint)
+            glyph.color = PlasmaTheme.blend(palette.inactiveText, palette.text, activeFraction)
+            val inset = r.width() * .22f
+            glyph.setBounds((r.left + inset).toInt(), (r.top + inset).toInt(), (r.right - inset).toInt(), (r.bottom - inset).toInt())
+            glyph.draw(canvas)
+        }
     }
 
     @SuppressLint("ClickableViewAccessibility")

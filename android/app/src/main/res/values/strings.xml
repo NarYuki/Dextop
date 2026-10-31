@@ -10,8 +10,8 @@
     <string name="embedded_pairing_notification_text">ワイヤレスデバッグに表示された6桁のコードを入力してください</string>
     <string name="embedded_pairing_code">6桁のペア設定コード</string>
     <string name="embedded_pairing_enter_code">ペア設定コードを入力</string>
-    <string name="embedded_pairing_success">Dextopの接続が完了しました</string>
-    <string name="embedded_pairing_success_message">ペア設定が完了しました。Dextopに戻ってください。</string>
+    <string name="embedded_pairing_success">ペア設定に成功しました</string>
+    <string name="embedded_pairing_success_message">Dextop アクセスに接続しました。Dextop に戻ってください。</string>
     <string name="embedded_pairing_failed">Dextopを接続できませんでした</string>
     <string name="embedded_pairing_invalid_code">6桁のコードを入力してください</string>
     <string name="embedded_pairing_searching">ペア設定サービスを検索中</string>

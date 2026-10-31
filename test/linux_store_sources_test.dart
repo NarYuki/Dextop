@@ -101,6 +101,12 @@ void main() {
                 ],
                 'more': false,
               };
+            case 'storeState':
+              return {
+                'installed': <String>[],
+                'external': <String>[],
+                'ready': {'deb-get': true, 'flathub': true},
+              };
             case 'storePackages':
               packageQueryStarted = true;
               return slowPackages.future;

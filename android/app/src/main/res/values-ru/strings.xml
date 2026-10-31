@@ -7,8 +7,8 @@
     <string name="embedded_pairing_notification_text">Введите шестизначный код из меню беспроводной отладки</string>
     <string name="embedded_pairing_code">Шестизначный код сопряжения</string>
     <string name="embedded_pairing_enter_code">Ввести код сопряжения</string>
-    <string name="embedded_pairing_success">Dextop подключён</string>
-    <string name="embedded_pairing_success_message">Сопряжение завершено. Вернитесь в Dextop.</string>
+    <string name="embedded_pairing_success">Сопряжение выполнено</string>
+    <string name="embedded_pairing_success_message">Доступ Dextop подключён. Вернитесь в Dextop.</string>
     <string name="embedded_pairing_failed">Не удалось подключить Dextop</string>
     <string name="embedded_pairing_invalid_code">Введите шестизначный код</string>
     <string name="embedded_pairing_searching">Поиск службы сопряжения</string>

@@ -290,9 +290,10 @@ internal class KickoffView(
                 add(Triple("favorites", Glyph.STAR, t("nativePlasmaFavorites")))
                 add(Triple("all", Glyph.APPS, t("nativePlasmaAllApplications")))
                 val present = host.apps().map { it.category }.toSet()
+                // Linux right after All Applications, not below every Android category.
+                if (LINUX_APP_CATEGORY in present) add(Triple("cat:$LINUX_APP_CATEGORY", Glyph.COMPUTER, t("nativePlasmaCategoryLinux")))
                 PlasmaAppRepository.categories.filter { it in present || it == ApplicationInfo.CATEGORY_UNDEFINED }
                     .forEach { add(Triple("cat:$it", categoryGlyph(it), categoryName(it))) }
-                if (LINUX_APP_CATEGORY in present) add(Triple("cat:$LINUX_APP_CATEGORY", Glyph.COMPUTER, t("nativePlasmaCategoryLinux")))
             }
         }
         entries.forEach { (id, glyph, label) ->
@@ -331,6 +332,12 @@ internal class KickoffView(
         ApplicationInfo.CATEGORY_PRODUCTIVITY -> t("nativePlasmaCategoryOffice")
         ApplicationInfo.CATEGORY_ACCESSIBILITY -> t("nativePlasmaCategorySystem")
         else -> t("nativePlasmaCategoryLost")
+    }
+
+    /** The app list changed while Kickoff is open (Linux apps arrive after the Android ones). */
+    fun appsChanged() {
+        buildSidebar()
+        if (search.text.isNullOrBlank()) showCategory(category)
     }
 
     private fun showCategory(id: String) {

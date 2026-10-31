@@ -1,6 +1,7 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <queries>
         <package android:name="moe.n4tsu.dextop" />
+        <package android:name="moe.n4tsu.gpdextop" />
     </queries>
 
     <application

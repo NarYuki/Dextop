@@ -77,9 +77,12 @@ internal object LinuxNetworkMonitor {
                 val manager = context.getSystemService(ConnectivityManager::class.java)
                 if (network != manager.activeNetwork) return@runCatching
                 val access = PrivilegedAccess("LinuxNetworkState")
+                // Android mode without the privileged service: only what ordinary app APIs report.
+                val privileged = LinuxExecutionMode.privilegeAllowed(context)
+                fun run(vararg args: String) = if (privileged) access.execute(*args) else null
                 var wifiStatus: String? = null
                 val controls = PlasmaSystemControls(context) { args ->
-                    access.execute(*args).takeIf { it.succeeded }?.output.also {
+                    run(*args)?.takeIf { it.succeeded }?.output.also {
                         if (args.toList() == listOf("cmd", "wifi", "status")) wifiStatus = it
                     }
                 }
@@ -95,8 +98,8 @@ internal object LinuxNetworkMonitor {
                 val mobileLevel = if (cellular) runCatching { phone?.signalStrength?.level?.div(4f) }.getOrNull()
                     ?: run {
                         val slot = SubscriptionManager.getSlotIndex(dataSub)
-                        val registry = access.execute("sh", "-c", "dumpsys telephony.registry | grep -E 'Phone Id=|mSignalStrength='")
-                        if (registry.succeeded) LinuxMobileSignal.level(registry.output, slot) else null
+                        val registry = run("sh", "-c", "dumpsys telephony.registry | grep -E 'Phone Id=|mSignalStrength='")
+                        if (registry?.succeeded == true) LinuxMobileSignal.level(registry.output, slot) else null
                     } else null
                 val level = if (cellular) mobileLevel else rssi?.let { ((it + 100) / 45f).coerceIn(0f, 1f) }
                     ?: caps?.signalStrength?.takeIf { it != NetworkCapabilities.SIGNAL_STRENGTH_UNSPECIFIED }
@@ -104,9 +107,9 @@ internal object LinuxNetworkMonitor {
                 val scanRequest = runCatching { scanRequested() }.getOrDefault(false)
                 val now = android.os.SystemClock.elapsedRealtime()
                 if (status.wifiEnabled && (scanRequest || now - lastScanAt > 30_000) && now - lastScanAt > 5_000) {
-                    if (access.execute("cmd", "wifi", "start-scan").succeeded) lastScanAt = now
+                    if (run("cmd", "wifi", "start-scan")?.succeeded == true) lastScanAt = now
                 }
-                val scan = if (status.wifiEnabled) access.execute("cmd", "wifi", "list-scan-results") else null
+                val scan = if (status.wifiEnabled) run("cmd", "wifi", "list-scan-results") else null
                 val points = LinuxWifiScan.parse(scan?.takeIf { it.succeeded }?.output.orEmpty())
                 val bssid = if (cellular) "02:00:00:00:00:01" else
                     Regex("BSSID: ([0-9a-fA-F:]{17})").find(wifiStatus.orEmpty())?.groupValues?.get(1)

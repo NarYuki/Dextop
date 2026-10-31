@@ -1,3 +1,5 @@
+import '../l10n/inline_text.dart';
+
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
@@ -6,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'linux_app_mode.dart';
 import 'linux_expressive.dart';
 import 'linux_installations.dart';
 import 'linux_installation_icon.dart';
@@ -328,13 +331,13 @@ class LinuxAppList extends ChangeNotifier {
                 'Allow installing unknown apps, then add it again',
               )
             : status == 'installed'
-            ? t(
-                '${entry.name} をホーム画面に追加しました',
-                'Added ${entry.name} to the home screen',
+            ? inlineFormat(
+                t('{0} をホーム画面に追加しました', 'Added {0} to the home screen'),
+                [entry.name],
               )
-            : t(
-                '${entry.name} をホーム画面に追加しています',
-                'Adding ${entry.name} to the home screen',
+            : inlineFormat(
+                t('{0} をホーム画面に追加しています', 'Adding {0} to the home screen'),
+                [entry.name],
               ),
       );
     } on PlatformException catch (e) {
@@ -353,7 +356,7 @@ class LinuxAppList extends ChangeNotifier {
         const {};
     final available = info['silentAvailable'] == true;
     final mode = info['mode'] as String? ?? 'ask';
-    if (!available || mode == 'manual') return false;
+    if (info['pinned'] == true || !available || mode == 'manual') return false;
     if (mode == 'auto') return true;
     if (!context.mounted) return null;
     String t(String ja, String en) => linuxText(context, ja, en);
@@ -365,7 +368,7 @@ class LinuxAppList extends ChangeNotifier {
           title: t('ランチャーを自動でインストールしますか？', 'Install launchers automatically?'),
           content: Text(
             t(
-              'Shizuku・Stellar または Dextop の内蔵アクセスを使って、ホーム画面用の小さな APK を確認なしでインストールします。'
+              'Shizuku・Stellar・内蔵バインダで、ホーム画面のランチャーを確認なしでインストールします。'
                   '「手動」を選ぶと、Android のインストール画面で毎回確認します。あとで Linux の設定から変更できます。',
               'Dextop installs the small home-screen APK without confirmation through Shizuku, Stellar or its built-in access. '
                   'With "Manually", Android asks each time. You can change this later in the Linux settings.',
@@ -750,7 +753,10 @@ class _AppCellState extends State<_AppCell>
                         ),
                         if (count > 0)
                           Text(
-                            t('$count 個のセッションが開いています', '$count sessions open'),
+                            inlineFormat(
+                              t('{0} 個のセッションが開いています', '{0} sessions open'),
+                              [count],
+                            ),
                             style: Theme.of(sheet).textTheme.bodySmall,
                           ),
                       ],
@@ -781,6 +787,15 @@ class _AppCellState extends State<_AppCell>
                   ? M3EIcons.delete_outline_rounded
                   : M3EIcons.add_to_home_screen_rounded,
               onTap: () => Navigator.pop(sheet, 'home'),
+            ),
+            LinuxMenuRow(
+              title: t('動作方式', 'How it runs'),
+              subtitle: t(
+                '表示方式・描画方式・OpenGL のバージョン',
+                'Display system, renderer and OpenGL version',
+              ),
+              icon: M3EIcons.tune_rounded,
+              onTap: () => Navigator.pop(sheet, 'mode'),
             ),
             if (count > 0)
               LinuxMenuRow(
@@ -814,6 +829,16 @@ class _AppCellState extends State<_AppCell>
         await LinuxAppList.close(entry);
         await Future<void>.delayed(const Duration(milliseconds: 600));
         await widget.list.refreshSessions();
+      case 'mode':
+        await Navigator.of(context).push<void>(
+          MaterialPageRoute(
+            builder: (_) => LinuxAppModePage(
+              container: entry.container,
+              desktopId: entry.desktopId,
+              name: entry.name,
+            ),
+          ),
+        );
       case 'uninstall':
         await _uninstall(context, theme);
     }
@@ -825,7 +850,9 @@ class _AppCellState extends State<_AppCell>
       context,
       dialog: Builder(
         builder: (dialog) => M3EDialog(
-          title: t('${entry.name} をアンインストールしますか？', 'Uninstall ${entry.name}?'),
+          title: inlineFormat(t('{0} をアンインストールしますか？', 'Uninstall {0}?'), [
+            entry.name,
+          ]),
           icon: const Icon(M3EIcons.delete_forever_rounded),
           content: Text(
             t(
@@ -849,17 +876,21 @@ class _AppCellState extends State<_AppCell>
     if (ok != true || !context.mounted) return;
     M3ESnackbar.show(
       context,
-      message: t('${entry.name} をアンインストールしています', 'Uninstalling ${entry.name}'),
+      message: inlineFormat(t('{0} をアンインストールしています', 'Uninstalling {0}'), [
+        entry.name,
+      ]),
     );
     final done = await LinuxAppList.uninstall(entry);
     if (!context.mounted) return;
     M3ESnackbar.show(
       context,
       message: done
-          ? t('${entry.name} をアンインストールしました', '${entry.name} uninstalled')
-          : t(
-              '${entry.name} をアンインストールできませんでした',
-              'Could not uninstall ${entry.name}',
+          ? inlineFormat(t('{0} をアンインストールしました', '{0} uninstalled'), [
+              entry.name,
+            ])
+          : inlineFormat(
+              t('{0} をアンインストールできませんでした', 'Could not uninstall {0}'),
+              [entry.name],
             ),
     );
     if (done) await widget.onReload();

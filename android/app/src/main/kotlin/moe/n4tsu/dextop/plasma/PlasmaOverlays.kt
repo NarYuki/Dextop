@@ -225,7 +225,6 @@ internal class PlasmaAppRepository(private val context: Context) {
             val query = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
             val loaded = manager.queryIntentActivities(query, PackageManager.MATCH_ALL)
                 .asSequence()
-                .filter { it.activityInfo.packageName != context.packageName }
                 .distinctBy { it.activityInfo.packageName }
                 .map {
                     PlasmaApp(

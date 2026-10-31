@@ -89,6 +89,13 @@ internal open class LinuxWindowActivity : Activity() {
     /** Light grey veil right under the topmost dialog; it keeps touches from the windows below. */
     private lateinit var scrim: View
     private val lastPlace = Rect()
+    /** A main window whose application keeps a size of its own, shown scaled to fit (see [actualSize]). */
+    private var scaled = false
+    /** The differing size the application reported last; the same one twice means it keeps it. */
+    private var kept: android.util.Size? = null
+    /** When this window was last resized (by the user or Android), so a client request does not undo it. */
+    private var resizedAt = 0L
+    private var taskRequest: android.util.Size? = null
     /** The X window this activity shows, with its size as the application last reported it. */
     private var bound: LinuxAndroidWindows.Info? = null
     private var capturePollBusy = false
@@ -206,7 +213,7 @@ internal open class LinuxWindowActivity : Activity() {
             setImageResource(android.R.drawable.ic_menu_edit)
             alpha = .55f
             setBackgroundColor(0x66000000)
-            contentDescription = "Keyboard"
+            contentDescription = text("キーボード", "Keyboard")
             setOnClickListener { toggleKeyboard() }
         }, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.BOTTOM or Gravity.END).apply {
             setMargins(0, 0, dp(12), dp(12))
@@ -224,12 +231,8 @@ internal open class LinuxWindowActivity : Activity() {
             if (floating) {
                 bound?.bounds?.let { windowSized(it.width(), it.height()) }
             } else if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
-                val params = content.layoutParams as FrameLayout.LayoutParams
-                if (params.width != -1 || params.height != -1) {
-                    params.width = -1
-                    params.height = -1
-                    content.layoutParams = params
-                }
+                resizedAt = android.os.SystemClock.uptimeMillis()
+                unscale()
             }
             place()
         }
@@ -320,6 +323,9 @@ internal open class LinuxWindowActivity : Activity() {
         val availableWidth = root.width - root.paddingLeft - root.paddingRight
         val availableHeight = root.height - root.paddingTop - root.paddingBottom
         if (availableWidth <= 0 || availableHeight <= 0) return
+        // The surface keeps the application's pixels; SurfaceFlinger scales them to the view,
+        // which has the same aspect ratio, so the picture fills the window without distortion.
+        content.holder.setFixedSize(width, height)
         val params = content.layoutParams as FrameLayout.LayoutParams
         val fitted = LinuxDialogViewport.fit(width, height, availableWidth, availableHeight)
         val wantWidth = fitted.width
@@ -329,6 +335,47 @@ internal open class LinuxWindowActivity : Activity() {
         params.height = wantHeight
         params.gravity = Gravity.CENTER
         content.layoutParams = params
+    }
+
+    /** Back to filling the window at its own resolution. */
+    private fun unscale() {
+        scaled = false
+        kept = null
+        content.holder.setSizeFromLayout()
+        val params = content.layoutParams as FrameLayout.LayoutParams
+        if (params.width != -1 || params.height != -1) {
+            params.width = -1
+            params.height = -1
+            content.layoutParams = params
+        }
+    }
+
+    /**
+     * The application asked for a size of its own: with privileged access the Android window
+     * is resized so its content area is exactly that, once per size and never right after the
+     * user resized the window. Android-mode Linux cannot resize tasks and keeps the window.
+     */
+    private fun requestTaskSize(width: Int, height: Int) {
+        if (!isInMultiWindowMode || !LinuxExecutionMode.privilegeAllowed(this)) return
+        if (android.os.SystemClock.uptimeMillis() - resizedAt < 1000) return
+        val wanted = android.util.Size(width, height)
+        if (taskRequest == wanted) return
+        val availableWidth = root.width - root.paddingLeft - root.paddingRight
+        val availableHeight = root.height - root.paddingTop - root.paddingBottom
+        if (availableWidth <= 0 || availableHeight <= 0 || (availableWidth == width && availableHeight == height)) return
+        taskRequest = wanted
+        val task = windowManager.currentWindowMetrics.bounds
+        val screen = windowManager.maximumWindowMetrics.bounds
+        val target = Rect(task.left, task.top, task.right + width - availableWidth, task.bottom + height - availableHeight)
+        if (target.width() > screen.width() || target.height() > screen.height()) return
+        target.offset(minOf(0, screen.right - target.right), minOf(0, screen.bottom - target.bottom))
+        val id = taskId
+        Thread({
+            runCatching {
+                moe.n4tsu.dextop.PrivilegedAccess("DextopLinuxWindow").execute("/system/bin/am", "task", "resize",
+                    id.toString(), target.left.toString(), target.top.toString(), target.right.toString(), target.bottom.toString())
+            }
+        }, "DextopLinuxTaskResize").start()
     }
 
     private val reconcileSize = Runnable {
@@ -346,6 +393,7 @@ internal open class LinuxWindowActivity : Activity() {
             windowSized(width, height)
             return
         }
+        requestTaskSize(width, height)
         // Configure notifications can lag behind an Android resize. Repeated stale
         // sizes do not mean a client is fixed-size: that inference shrank the surface
         // back and left black margins. Dialogs have their own sizing path.
@@ -358,7 +406,21 @@ internal open class LinuxWindowActivity : Activity() {
      * for came from the application (its own request), and is undone like one.
      */
     fun actualSize(width: Int, height: Int) {
-        if (lastPlace.isEmpty || (width == lastPlace.width() && height == lastPlace.height())) return
+        if (lastPlace.isEmpty) return
+        if (width == lastPlace.width() && height == lastPlace.height()) {
+            if (scaled) unscale()
+            kept = null
+            return
+        }
+        // The same other size twice, after the window was offered again: the application
+        // keeps its own resolution. It is not changed; it is scaled to fit instead.
+        val size = android.util.Size(width, height)
+        if (!floating && kept == size) {
+            scaled = true
+            windowSized(width, height)
+            return
+        }
+        kept = size
         clientRequested(width, height)
     }
 
@@ -391,7 +453,7 @@ internal open class LinuxWindowActivity : Activity() {
         true
     }.getOrDefault(false)
 
-    private fun text(ja: String, en: String) = if (java.util.Locale.getDefault().language == "ja") ja else en
+    private fun text(ja: String, en: String) = moe.n4tsu.dextop.localText(ja, en)
 
     /** The launch's current step ("Starting the container"…), timed while it lasts. */
     fun setPhase(value: String) {
@@ -436,7 +498,13 @@ internal open class LinuxWindowActivity : Activity() {
         // A GTK dialog can reject configure sizes. Do not turn its letterboxed/scaled
         // viewport into another client-size request (or race its pending layout).
         if (floating && content.isLayoutRequested) return
-        val bounds = screenBounds()
+        // A scaled window still offers the application the whole window, which it may accept later.
+        val bounds = if (scaled) Rect(screenBounds()).also { content ->
+            val location = IntArray(2)
+            root.getLocationOnScreen(location)
+            content.set(location[0] + root.paddingLeft, location[1] + root.paddingTop,
+                location[0] + root.width - root.paddingRight, location[1] + root.height - root.paddingBottom)
+        } else screenBounds()
         if (bounds == lastPlace) return
         lastPlace.set(bounds)
         LinuxContainerClient.service()?.runCatching {
@@ -742,7 +810,10 @@ internal open class LinuxWindowActivity : Activity() {
     }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean =
-        forwardKey(event) || super.dispatchKeyEvent(event)
+        LinuxAndroidPads.dispatch(this, container, event) || forwardKey(event) || super.dispatchKeyEvent(event)
+
+    override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =
+        LinuxAndroidPads.dispatch(this, container, event) || super.dispatchGenericMotionEvent(event)
 
     override fun onPause() {
         root.removeCallbacks(capturePoll)

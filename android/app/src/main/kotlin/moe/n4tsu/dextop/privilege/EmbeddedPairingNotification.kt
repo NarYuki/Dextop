@@ -16,6 +16,11 @@ import kotlinx.coroutines.runBlocking
 internal object EmbeddedPairingNotification {
     private const val CHANNEL_ID = "dextop_embedded_pairing"
     const val notificationId = 0xD37
+    /**
+     * The outcome has a notification of its own: the pairing service stops right after it,
+     * and stopping a foreground service removes the notification it was started with.
+     */
+    private const val RESULT_ID = 0xD38
     const val ACTION_PAIR = "moe.n4tsu.dextop.action.PAIR_EMBEDDED_BINDER"
     const val ACTION_RETRY = "moe.n4tsu.dextop.action.RETRY_EMBEDDED_BINDER_PAIRING"
     const val REMOTE_INPUT_CODE = "pairing_code"
@@ -132,14 +137,21 @@ internal object EmbeddedPairingNotification {
     fun dismiss(context: Context) {
         state = "idle"
         manager(context).cancel(notificationId)
+        manager(context).cancel(RESULT_ID)
     }
 
     fun finish(context: Context, success: Boolean, detail: String?) {
         state = if (success) "connected" else "failed"
         ensureChannel(context)
+        manager(context).cancel(notificationId)
+        // Tapping it returns to Dextop, where the setup page shows the result.
+        val open = context.packageManager.getLaunchIntentForPackage(context.packageName)?.let {
+            PendingIntent.getActivity(context, 2, it.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK), PendingIntent.FLAG_IMMUTABLE)
+        }
         manager(context).notify(
-            notificationId,
+            RESULT_ID,
             base(context)
+                .setContentIntent(open)
                 .setContentTitle(
                     context.getString(
                         if (success) moe.n4tsu.dextop.R.string.embedded_pairing_success

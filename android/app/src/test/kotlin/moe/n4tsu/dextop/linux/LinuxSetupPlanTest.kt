@@ -123,7 +123,7 @@ class LinuxSetupPlanTest {
     }
     private val debian = LinuxCatalog.find("debian")!!
     private fun scripts(distro: LinuxDistro, options: LinuxSetupOptions) =
-        LinuxSetupPlan.steps(distro, options).joinToString("\n") { it.script }
+        LinuxSetupPlan.steps(distro, options, turnip = true).joinToString("\n") { it.script }
 
     @Test fun rejectsShellFragmentsAndUnknownOptions() {
         assertFailsWith<IllegalArgumentException> { LinuxSetupOptions(locale = "ja_JP; touch /tmp/injected") }
@@ -140,8 +140,14 @@ class LinuxSetupPlanTest {
         assertContains(scripts(ubuntu, LinuxSetupOptions(apps = setOf("chrome"))), "google-chrome-stable_current_arm64.deb")
     }
 
+    @Test fun gpusOtherThanAdrenoSkipTurnip() {
+        val options = LinuxSetupOptions(graphics = true)
+        assertTrue(LinuxSetupPlan.steps(debian, options, turnip = true).any { it.phase == "gpu" })
+        assertFalse(LinuxSetupPlan.steps(debian, options, turnip = false).any { it.phase == "gpu" })
+    }
+
     @Test fun minimalSetupDoesNotInstallOptionalDesktopOrBrowserPackages() {
-        val plan = LinuxSetupPlan.steps(debian, LinuxSetupOptions(cjkFonts = false))
+        val plan = LinuxSetupPlan.steps(debian, LinuxSetupOptions(cjkFonts = false), turnip = true)
         assertFalse(plan.any { it.phase in setOf("input", "desktop", "graphics", "applications") })
         val script = plan.joinToString("\n") { it.script }
         assertFalse(script.contains("fonts-noto-cjk"))
@@ -193,7 +199,7 @@ class LinuxSetupPlanTest {
                 else if (distro.id == "ubuntu") setOf("chrome", "files", "editor", "office")
                 else if (distro.family == LinuxPackageFamily.PACMAN) setOf("firefox", "chromium", "files", "editor", "office", "steam")
                 else LinuxSetupOptions.APPS
-            val plan = LinuxSetupPlan.steps(distro, LinuxSetupOptions("complete", "ja_JP", true, ime, true, true, apps))
+            val plan = LinuxSetupPlan.steps(distro, LinuxSetupOptions("complete", "ja_JP", true, ime, true, true, apps), turnip = true)
             assertTrue(plan.last().phase == "integration")
             plan.forEachIndexed { i, step -> directory?.let {
                 File(it, "${distro.id}-$ime-$i.sh").writeText(step.script)

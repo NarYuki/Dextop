@@ -150,6 +150,9 @@ def main() -> None:
     for path, contents in android_outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents, encoding="utf-8", newline="\n")
+    # Text written in place as Japanese/English pairs (lib/l10n/inline).
+    import generate_inline_strings
+    generate_inline_strings.generate()
 
 
 if __name__ == "__main__":

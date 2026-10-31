@@ -116,50 +116,74 @@ static int adopt(const char *path, int fd, int flags) {
   return fd;
 }
 
+/* Controllers streamed from Android in the Android execution mode (linux_android_pads.c). */
+int dextop_pad_open(const char *path, int flags);
+/* USB serial ports streamed from Android (linux_android_usb.c, also linked here). */
+int dextop_serial_open(const char *path, int flags);
+int dextop_usb_open(const char *path, int flags);
+int dextop_camera_open(const char *path, int flags);
+#define PAD(path, flags) do { int pad_fd = dextop_pad_open(path, flags); if (pad_fd != -2) return pad_fd; \
+    pad_fd = dextop_serial_open(path, flags); if (pad_fd != -2) return pad_fd; \
+    pad_fd = dextop_camera_open(path, flags); if (pad_fd != -2) return pad_fd; } while (0)
+/* USB passthrough: a refused /dev/bus/usb node comes from Dextop instead. */
+static int usb_fallback(const char *path, int flags, int fd) {
+    if (fd >= 0 || (errno != EACCES && errno != EPERM) || path == NULL || strncmp(path, "/dev/bus/usb/", 13) != 0) return fd;
+    int saved = errno;
+    int device = dextop_usb_open(path, flags);
+    if (device < 0) errno = saved;
+    return device < 0 ? fd : device;
+}
+
 static int mode_of(int flags, va_list args) { return (flags & (O_CREAT | O_TMPFILE)) ? va_arg(args, int) : 0; }
 
 int open(const char *path, int flags, ...) {
   resolve();
+  PAD(path, flags);
   va_list args;
   va_start(args, flags);
   int mode = mode_of(flags, args);
   va_end(args);
-  return adopt(path, next_open(path, flags, mode), flags);
+  return usb_fallback(path, flags, adopt(path, next_open(path, flags, mode), flags));
 }
 
 int open64(const char *path, int flags, ...) {
   resolve();
+  PAD(path, flags);
   va_list args;
   va_start(args, flags);
   int mode = mode_of(flags, args);
   va_end(args);
-  return adopt(path, (next_open64 ? next_open64 : next_open)(path, flags, mode), flags);
+  return usb_fallback(path, flags, adopt(path, (next_open64 ? next_open64 : next_open)(path, flags, mode), flags));
 }
 
 int openat(int dir, const char *path, int flags, ...) {
   resolve();
+  PAD(path, flags);
   va_list args;
   va_start(args, flags);
   int mode = mode_of(flags, args);
   va_end(args);
-  return adopt(path, next_openat(dir, path, flags, mode), flags);
+  return usb_fallback(path, flags, adopt(path, next_openat(dir, path, flags, mode), flags));
 }
 
 int openat64(int dir, const char *path, int flags, ...) {
   resolve();
+  PAD(path, flags);
   va_list args;
   va_start(args, flags);
   int mode = mode_of(flags, args);
   va_end(args);
-  return adopt(path, (next_openat64 ? next_openat64 : next_openat)(dir, path, flags, mode), flags);
+  return usb_fallback(path, flags, adopt(path, (next_openat64 ? next_openat64 : next_openat)(dir, path, flags, mode), flags));
 }
 
 int __open_2(const char *path, int flags) {
   resolve();
-  return adopt(path, next_open_2 ? next_open_2(path, flags) : next_open(path, flags), flags);
+  PAD(path, flags);
+  return usb_fallback(path, flags, adopt(path, next_open_2 ? next_open_2(path, flags) : next_open(path, flags), flags));
 }
 
 int __open64_2(const char *path, int flags) {
   resolve();
-  return adopt(path, next_open64_2 ? next_open64_2(path, flags) : next_open(path, flags), flags);
+  PAD(path, flags);
+  return usb_fallback(path, flags, adopt(path, next_open64_2 ? next_open64_2(path, flags) : next_open(path, flags), flags));
 }
