@@ -28,11 +28,14 @@ import kotlin.system.exitProcess
  * Context is available here.
  */
 @Keep
-class LinuxContainerService : ILinuxContainerService.Stub() {
+class LinuxContainerService(context: android.content.Context? = null) : ILinuxContainerService.Stub() {
+    // Shizuku/Stellar can also supply a Context to a shell-owned UserService.
+    // Only an ordinary Android UID selects the in-app runtime.
+    private val androidContext = context?.takeUnless { Os.getuid() in setOf(0, 2000) }
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes guest state files (AIDL transaction 47).
-        const val PROTOCOL_VERSION = 23
+        const val PROTOCOL_VERSION = 24
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         private val GUEST_LOG = Regex("""[A-Za-z0-9._-]+\.log""")
@@ -42,6 +45,14 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
 
     @Volatile private var proot: LinuxProot? = null
     @Volatile private var audioClientUid = -1
+    override fun openMicrophoneStream(containerId: String): android.os.ParcelFileDescriptor {
+        check(android.os.Binder.getCallingUid() == audioClientUid) { "Audio caller is not the connected application" }
+        return checkNotNull(audio) { "Audio unavailable" }.openMicrophone(containerId)
+    }
+    override fun microphoneWanted(containerId: String): Boolean {
+        check(android.os.Binder.getCallingUid() == audioClientUid) { "Audio caller is not the connected application" }
+        return audio?.microphoneWanted(containerId) == true
+    }
     override fun openAudioStream(containerId: String): android.os.ParcelFileDescriptor {
         check(android.os.Binder.getCallingUid() == audioClientUid) { "Audio caller is not the connected application" }
         return checkNotNull(audio) { "Audio unavailable" }.openStream(containerId)
@@ -53,7 +64,75 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
 
     override fun protocolVersion(): Int = PROTOCOL_VERSION
 
+    override fun ownsProcess(pid: Int): Boolean {
+        val self = android.os.Process.myPid()
+        var current = pid
+        repeat(256) {
+            if (current == self) return true
+            if (current <= 1) return false
+            val status = runCatching { java.io.File("/proc/$current/status").readText() }.getOrNull() ?: return false
+            current = Regex("(?m)^PPid:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toIntOrNull() ?: return false
+        }
+        return false
+    }
+
+    override fun resources(): String =
+        LinuxResources.status(graphics, containerIds().mapNotNull(::readConfig)).toString()
+
+    override fun stopProcess(pid: Int, start: String): Boolean = LinuxResources.stop(pid, start)
+
+    override fun storeState(containerId: String): String {
+        val root = LinuxPaths.rootfs(containerId)
+        val installed = LinkedHashSet<String>()
+        // dpkg's own database: a paragraph per package, "Status: install ok installed" when installed.
+        File(root, "var/lib/dpkg/status").takeIf { it.isFile }?.bufferedReader()?.use { reader ->
+            var name: String? = null
+            var ok = false
+            fun end() { name?.takeIf { ok }?.let(installed::add); name = null; ok = false }
+            reader.forEachLine { line ->
+                when {
+                    line.isEmpty() -> end()
+                    line.startsWith("Package: ") -> name = line.substring(9).trim()
+                    line.startsWith("Status: ") -> ok = line.trim() == "Status: install ok installed"
+                }
+            }
+            end()
+        }
+        val safe = Regex("[A-Za-z0-9][A-Za-z0-9._+-]{0,127}")
+        val external = ArrayList<String>()
+        // deb-get installs recorded by dextop-store, still installed in dpkg.
+        File(root, "etc/dextop-deb-get/installed").takeIf { it.isFile }?.readLines()?.forEach { line ->
+            val name = line.trim().split(Regex("\\s+")).firstOrNull().orEmpty()
+            if (name.matches(safe) && name in installed) external += "deb-get:$name"
+        }
+        // Flatpak apps of the user installation that came from Flathub.
+        val flatpak = File(root, "root/.local/share/flatpak")
+        File(flatpak, "app").listFiles()?.sortedBy { it.name }?.forEach { app ->
+            if (app.name.matches(safe) && File(app, "current").exists() &&
+                File(flatpak, "repo/refs/remotes/flathub/app/${app.name}").exists()) external += "flathub:${app.name}"
+        }
+        val flathub = File(root, "usr/bin/flatpak").exists() &&
+            File(flatpak, "repo/config").takeIf { it.isFile }?.readText()?.contains("[remote \"flathub\"]") == true
+        return JSONObject()
+            .put("installed", org.json.JSONArray(installed))
+            .put("external", org.json.JSONArray(external))
+            .put("ready", JSONObject().put("deb-get", File(root, "opt/dextop/deb-get/revision").isFile).put("flathub", flathub))
+            .toString()
+    }
+
+    override fun uninstallLauncher(packageName: String) {
+        if (androidContext != null) throw SecurityException("Package removal belongs to the explicit privilege broker")
+        require(packageName.matches(Regex(Regex.escape(LinuxShortcutInstaller.PACKAGE_PREFIX) + "a[0-9a-f]{20}")))
+        val process = ProcessBuilder("/system/bin/pm", "uninstall", "--user", "current", packageName).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText().trim()
+        check(process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0) { "Launcher removal failed: $output" }
+    }
+
     override fun installLauncher(apk: android.os.ParcelFileDescriptor, size: Long, installerPackage: String): String {
+        if (androidContext != null) {
+            apk.close()
+            throw SecurityException("Silent package installation belongs to the explicit privilege broker")
+        }
         require(installerPackage == "moe.n4tsu.dextop" || installerPackage == "moe.n4tsu.gpdextop")
         require(size in 1..(32L * 1024 * 1024))
         // PackageManager cannot open an APK in /sdcard/Android/data under its SELinux
@@ -125,9 +204,16 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     @Synchronized
     override fun initialize(nativeLibraryDir: String, callback: ILinuxContainerCallback?) {
         val caller = android.os.Binder.getCallingUid()
+        // Wayland clients name the compositor after the process serving their socket (fastfetch's WM).
+        runCatching {
+            android.os.Process::class.java.getMethod("setArgV0", String::class.java).invoke(null, LinuxAppSession.WM_NAME)
+        }
         check(audioClientUid == -1 || audioClientUid == caller) { "Linux service already belongs to another application" }
         audioClientUid = caller
-        LinuxServiceHost.initializeFonts()
+        if (androidContext != null) {
+            check(caller == Os.getuid() && Os.getuid() !in setOf(0, 2000))
+            require(nativeLibraryDir == androidContext.applicationInfo.nativeLibraryDir)
+        } else LinuxServiceHost.initializeFonts()
         // Rebinding the app must retain the running servers and their audio ports.
         // APK changes are handled by the client's code-path/version check.
         this.callback = callback
@@ -137,6 +223,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         val sound = LinuxAudio({ requireProot() }, { id, line -> log(id, line) }) { notifyChanged() }
         audio = sound
         proot = LinuxProot(nativeLibraryDir).apply {
+            androidMode = androidContext != null
             guestEnvironment = { id -> renderer.environment(id) + sound.environment(id) }
         }
         this.callback = callback
@@ -157,7 +244,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
             val killed = runCatching { LinuxRuntime.forceStopAll() }.getOrDefault(0)
             if (killed > 0) Log.i("DextopLinux", "Stopped $killed processes left by an earlier Linux service")
         }
-        bluetoothBridge = LinuxBluetoothBridge {
+        if (androidContext == null) bluetoothBridge = LinuxBluetoothBridge {
             containerIds().filter { readConfig(it)?.optString("state") == "installed" }.map(LinuxPaths::rootfs)
         }.also { it.start() }
     }
@@ -259,6 +346,8 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     override fun runCommand(containerId: String, command: String, timeoutSeconds: Int): String {
         val runner = requireProot()
         check(LinuxPaths.rootfs(containerId).isDirectory) { "Container $containerId is not installed" }
+        // Store jobs: an Android-mode container set up before these steps gets DNS and apt fixed first.
+        prepareAndroid(containerId)
         val result = runner.run(runner.guest(containerId, command, fakeRoot = true), timeoutSeconds.toLong().coerceIn(1, 3_600))
         return JSONObject().put("exitCode", result.exitCode).put("output", result.output).toString()
     }
@@ -473,13 +562,15 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     }
 
     override fun launchApp(containerId: String, desktopId: String) = launchApp(containerId, desktopId, software = false)
+    override fun launchFramedApp(containerId: String, desktopId: String) =
+        launchApp(containerId, desktopId, software = false, framed = true)
 
     /**
      * Starts [desktopId]. One that crashes right away in the GPU driver (SIGSEGV or SIGABRT
      * within [GPU_CRASH_WINDOW_MS]) is started once more with software rendering, so an
      * application the GPU path cannot run still opens.
      */
-    private fun launchApp(containerId: String, desktopId: String, software: Boolean, x11: Boolean = false) {
+    private fun launchApp(containerId: String, desktopId: String, software: Boolean, x11: Boolean = false, framed: Boolean = false) {
         val session = appSessions[containerId]?.takeIf { it.alive } ?: error("Application display is not running")
         val entry = LinuxDesktopEntries.find(LinuxPaths.rootfs(containerId), desktopId) ?: error("Unknown application $desktopId")
         val droidDeck = LinuxSettings.windowManager(containerId) == LinuxWindowManager.DROIDDECK
@@ -489,7 +580,15 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
             log(containerId, "Flatpak compatibility mode: no Flatpak sandbox or portal permission enforcement")
             LinuxFlatpak.plan(LinuxPaths.rootfs(containerId), entry.flatpakId)
         } else null
-        val command = (if (software) "env DEXTOP_SOFTWARE_RENDERING=1 LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe " else "") +
+        // The application's own choices (its app menu → How it runs).
+        val mode = LinuxSettings.appMode(containerId, entry.id)
+        val softwareRendering = software || mode.optString("renderer") == "software"
+        val glOverride = if (mode.optString("gl") == "override" && !softwareRendering) {
+            if (LinuxSettings.gpuMode(containerId) == LinuxGpuMode.TURNIP) "MESA_GL_VERSION_OVERRIDE=4.6 MESA_GLSL_VERSION_OVERRIDE=460 "
+            else "MESA_GL_VERSION_OVERRIDE=4.3 MESA_GLSL_VERSION_OVERRIDE=430 "
+        } else ""
+        val command = (if (softwareRendering) "env DEXTOP_SOFTWARE_RENDERING=1 LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe "
+            else if (glOverride.isNotEmpty()) "env $glOverride" else "") +
             (if (sized) "DEXTOP_WIDTH=${session.screenWidth} DEXTOP_HEIGHT=${session.screenHeight} " else "") +
             (flatpak?.command ?: LinuxDesktopEntries.command(entry))
         val started = android.os.SystemClock.elapsedRealtime()
@@ -507,12 +606,13 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         // process/connection success cannot trigger the existing failure retry.
         // Keep GPU rendering through Xwayland until the Wayland driver is installed.
         val toolkitAvailable = droidDeck || gpuMode != LinuxGpuMode.TURNIP || waylandGpu
-        val wayland = !x11 && entry.displayBackend != "x11" && toolkitAvailable && session.wayland?.running == true &&
-            (droidDeck || backend == "wayland" || backend.isEmpty() && waylandGpu)
+        val display = mode.optString("display")
+        val wayland = !x11 && display != "x11" && session.wayland?.running == true && (display == "wayland" ||
+            entry.displayBackend != "x11" && toolkitAvailable && (droidDeck || backend == "wayland" || backend.isEmpty() && waylandGpu))
         if (!toolkitAvailable && !x11) log(containerId, "${entry.name}: using X11 + Zink; native Wayland GPU driver is not installed")
         val appLog = "app-${entry.id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.log"
         val process = requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command, wayland = wayland,
-            waylandGpu = droidDeck || waylandGpu, appLog = appLog),
+            waylandGpu = droidDeck || waylandGpu, appLog = appLog, androidWindows = !framed),
             extraBinds = flatpak?.binds.orEmpty(), extraEnvironment = flatpak?.environment.orEmpty())
             .redirectErrorStream(true).start()
         process.outputStream.close()
@@ -539,7 +639,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
                 if (current && wayland && !droidDeck && !chromiumGpuFailure && (gpuCrash || displayFailure)) {
                     log(containerId, "${entry.name} failed on Wayland (exit $code); retrying on X11 with GPU rendering preserved")
                     status("launch-status") { put("line", "Wayland startup failed; retrying on X11") }
-                    runCatching { launchApp(containerId, desktopId, software = software, x11 = true) }
+                    runCatching { launchApp(containerId, desktopId, software = software, x11 = true, framed = framed) }
                         .onFailure { log(containerId, "X11 retry of ${entry.id} failed: ${it.message}") }
                     return
                 }
@@ -648,13 +748,57 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         check(hardware || LinuxSettings.gpuMode(containerId) == LinuxGpuMode.SOFTWARE) {
             "The selected GPU renderer is unavailable. Repair the graphics runtime or select another hardware renderer in Linux settings."
         }
+        prepareAndroid(containerId)
         ensureFakeroot(containerId, distro?.family)
+        ensureAndroidTools(containerId, distro?.family)
         audio?.ensure(containerId, distro?.family)
+    }
+
+    /**
+     * Android execution mode: what the shell-UID setup got from the device, an app UID must be given.
+     * Images ship /etc/resolv.conf as a link to systemd's resolver, which does not run here, and apt's
+     * _apt sandbox user cannot drop privileges under fake root.
+     */
+    private fun prepareAndroid(id: String) {
+        if (androidContext == null) return
+        val root = LinuxPaths.rootfs(id)
+        val apt = File(root, "etc/apt/apt.conf.d")
+        if (apt.isDirectory) File(apt, "00dextop-android").writeText("APT::Sandbox::User \"root\";\n")
+        val resolv = File(root, "etc/resolv.conf")
+        if (java.nio.file.Files.isSymbolicLink(resolv.toPath()) && !resolv.exists()) resolv.delete()
+        if (!resolv.isFile || resolv.readText().lines().none { it.startsWith("nameserver") }) {
+            LinuxNetworkLink.stageResolver(root, networkResolver ?: androidResolver())
+        }
+    }
+
+    private fun androidResolver(): String {
+        val servers = runCatching {
+            val manager = androidContext!!.getSystemService(android.net.ConnectivityManager::class.java)
+            manager.getLinkProperties(manager.activeNetwork)?.dnsServers.orEmpty().mapNotNull { it.hostAddress }
+        }.getOrDefault(emptyList()).ifEmpty { listOf("1.1.1.1", "8.8.8.8") }
+        return servers.joinToString("") { "nameserver ${it.substringBefore('%')}\n" }
+    }
+
+    /** xz for tar -J (the Store and Steam), missing from minimal images set up before it was provisioned. */
+    private fun ensureAndroidTools(containerId: String, family: LinuxPackageFamily?) {
+        if (java.nio.file.Files.exists(File(LinuxPaths.rootfs(containerId), "usr/bin/xz").toPath(),
+                java.nio.file.LinkOption.NOFOLLOW_LINKS)) return
+        val install = when (family ?: LinuxPackageFamily.APT) {
+            LinuxPackageFamily.APT -> "export DEBIAN_FRONTEND=noninteractive\n" +
+                "apt-get install -y --no-install-recommends xz-utils || " +
+                "{ apt-get update && apt-get install -y --no-install-recommends xz-utils; }\n"
+            LinuxPackageFamily.PACMAN -> "pacman -S --noconfirm --needed xz\n"
+        }
+        val runner = proot ?: return
+        runCatching { runner.run(runner.guest(containerId, install, fakeRoot = true), 600) { line -> log(containerId, line) } }
     }
 
     /** Containers set up before real-uid sessions lack fakeroot, which sessions use for apt and sudo. */
     private fun ensureFakeroot(containerId: String, family: LinuxPackageFamily?) {
-        if (File(LinuxPaths.rootfs(containerId), "usr/bin/fakeroot").exists()) return
+        // Debian's fakeroot is an alternatives link to an absolute guest path, which File.exists()
+        // would follow on Android's side and miss, so apt ran at every session start.
+        if (java.nio.file.Files.exists(File(LinuxPaths.rootfs(containerId), "usr/bin/fakeroot").toPath(),
+                java.nio.file.LinkOption.NOFOLLOW_LINKS)) return
         val install = when (family ?: LinuxPackageFamily.APT) {
             LinuxPackageFamily.APT -> "export DEBIAN_FRONTEND=noninteractive\n" +
                 "apt-get install -y --no-install-recommends fakeroot || " +
@@ -680,6 +824,8 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
      * Saves settings. A changed renderer applies to applications started
      * afterwards; running sessions keep theirs until restarted.
      */
+    override fun resetSettings() = LinuxSettings.reset()
+
     override fun setLinuxSettings(json: String): String {
         val update = JSONObject(json)
         val active = (sessions.keys + appSessions.keys).toSet()
@@ -728,7 +874,10 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
             } else if (application?.usesXwayland == true || desktop?.usesXwayland == true) {
                 application?.updateDisplay(config); desktop?.updateDisplay(config)
             } else {
+                val began = android.os.SystemClock.uptimeMillis()
                 val result = requireProot().run(requireProot().guest(containerId, LinuxCatalog.updateDisplayScript(display, config, apps)), 15)
+                android.util.Log.i("DextopLaunch", "updateDisplay script ${config.width}x${config.height}@${config.refreshMilliHz} " +
+                    "took ${android.os.SystemClock.uptimeMillis() - began}ms")
                 check(result.exitCode == 0) { "Linux display update failed: ${result.output.takeLast(2000)}" }
                 application?.updateDisplay(config); desktop?.updateDisplay(config)
             }
@@ -759,6 +908,12 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
     // endregion
 
     override fun destroy() {
+        close()
+        if (androidContext == null) exitProcess(0)
+        androidContext.stopService(android.content.Intent(androidContext, LinuxRuntimeService::class.java))
+    }
+
+    @Synchronized internal fun close() {
         sessions.values.forEach { runCatching { it.stop() } }
         appSessions.keys.toList().forEach { runCatching { stopApps(it) } }
         graphics?.stopAll()
@@ -770,7 +925,6 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         installer.shutdownNow()
         // A killed proot cannot take its tracees (Firefox, the session bus) down with it.
         runCatching { LinuxRuntime.forceStopAll() }
-        exitProcess(0)
     }
 
     // region install pipeline
@@ -989,6 +1143,7 @@ class LinuxContainerService : ILinuxContainerService.Stub() {
         checkCancelled(id)
         val options = LinuxSetupOptions.fromJson(readConfig(id)?.optJSONObject("setupOptions")).validate(distro)
         progress(id, "configure", -1, "")
+        prepareAndroid(id)
         val runtime = distro.id == LinuxCatalog.DROIDDECK_RUNTIME
         val configureScript = if (runtime) LinuxCatalog.runtimeConfigureScript() else LinuxCatalog.configureScript(distro.family)
         val configured = runner.run(runner.guest(id, configureScript, fakeRoot = true), 600, onProcess = { activeProcesses[id] = it }) { log(id, it) }

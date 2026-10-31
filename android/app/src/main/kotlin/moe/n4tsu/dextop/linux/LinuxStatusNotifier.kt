@@ -42,7 +42,7 @@ internal class LinuxStatusNotifier(private val display: Int, private val root: F
 
     private fun run() {
         while (running) {
-            val bus = runCatching { DBusConnection.connect("/tmp/dextop-dbus-$display", listOf(0, 2000)) }.getOrNull()
+            val bus = runCatching { DBusConnection.connect("/tmp/dextop-dbus-$display", listOf(0, android.os.Process.myUid())) }.getOrNull()
             if (bus == null) { SystemClock.sleep(500); continue }
             connection = bus
             try {

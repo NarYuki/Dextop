@@ -8,6 +8,7 @@
         <meta-data android:name="dextop.target" android:value="LXSTUB_TARGET_PLACEHOLDER" />
         <meta-data android:name="dextop.container" android:value="LXSTUB_CONTAINER_PLACEHOLDER" />
         <meta-data android:name="dextop.desktop" android:value="LXSTUB_DESKTOP_PLACEHOLDER" />
+        <meta-data android:name="dextop.token" android:value="LXSTUB_TOKEN_PLACEHOLDER" />
         <activity
             android:name="moe.n4tsu.dextop.lxstub.Launch"
             android:exported="true"

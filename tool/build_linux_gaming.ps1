@@ -34,9 +34,14 @@ if ($LASTEXITCODE) { throw 'Failed to build ARM64 Wine socket compatibility' }
 
 foreach ($pair in @(@('aarch64', 'aarch64-linux-gnu.2.31'), @('x86_64', 'x86_64-linux-gnu.2.31'), @('i386', 'x86-linux-gnu.2.31'))) {
     & $Zig cc -target $pair[1] -shared -fPIC -O2 -pthread -s -o "$out/libdextop_padgrab-$($pair[0]).bin" `
-        "$repo/android/app/src/main/cpp/linux_pad_grab.c" -ldl
+        "$repo/android/app/src/main/cpp/linux_pad_grab.c" "$repo/android/app/src/main/cpp/linux_android_pads.c" "$repo/android/app/src/main/cpp/linux_android_usb.c" "$repo/android/app/src/main/cpp/linux_android_camera.c" -ldl
     if ($LASTEXITCODE) { throw "Failed to build $($pair[0]) controller grab" }
 }
+
+# /proc/stat, uptime and loadavg stand-ins, controllers, USB, cameras and picked folders for the Android execution mode.
+& $Zig cc -target aarch64-linux-gnu.2.31 -shared -fPIC -O2 -pthread -s -o "$repo/android/app/src/main/jniLibs/arm64-v8a/libdextop_androidproc.so" `
+    "$repo/android/app/src/main/cpp/linux_android_proc.c" "$repo/android/app/src/main/cpp/linux_android_folders.c" "$repo/android/app/src/main/cpp/linux_android_pads.c" "$repo/android/app/src/main/cpp/linux_android_usb.c" "$repo/android/app/src/main/cpp/linux_android_camera.c" -ldl
+if ($LASTEXITCODE) { throw 'Failed to build Android-mode /proc stand-ins' }
 
 & $Zig cc -target x86_64-windows-gnu -O2 -s -o "$out/dextop-wine-tray-x86_64.exe" `
     "$repo/android/app/src/main/cpp/linux_wine_tray_metadata.c" -luser32

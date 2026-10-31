@@ -32,6 +32,8 @@ internal class LinuxAppSession(
 
     companion object {
         private const val TAG = "DextopLinuxApps"
+        /** The name Linux sees for Dextop's window manager and compositor. */
+        const val WM_NAME = "Dextop Fusion"
         private const val DEFAULT_FRAME_INTERVAL_NS = 16_666_667L
 
         fun start(
@@ -291,6 +293,13 @@ internal class LinuxAppSession(
         val bytes = ByteBuffer.allocate(supported.size * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         supported.forEach(bytes::putInt)
         x.changeProperty(x.root, x.internAtom("_NET_SUPPORTED"), 4, 32, bytes.array())
+        // The window manager's identity (EWMH): what fastfetch, xprop and toolkits report as the WM.
+        val check = x.internAtom("_NET_SUPPORTING_WM_CHECK")
+        val identity = x.createHiddenWindow()
+        val window = ByteBuffer.allocate(4).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(identity).array()
+        x.changeProperty(x.root, check, 33, 32, window)
+        x.changeProperty(identity, check, 33, 32, window)
+        x.changeProperty(identity, atomNetWmName, atomUtf8, 8, WM_NAME.toByteArray())
         x.onEvent = { code, event -> if (clipboard?.offer(code, event) != true) queue.offer(code to event) }
         x.onClosed = { stop() }
         x.redirectSubwindows(x.root)

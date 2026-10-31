@@ -47,7 +47,7 @@ internal object LinuxShortcutInstaller {
     const val PACKAGE_PREFIX = "moe.n4tsu.dextop.lx."
     private const val TEMPLATE_PACKAGE = "moe.n4tsu.dextop.lxstub"
     /** The template's versionCode; older launchers cannot host windows yet and are rebuilt. */
-    const val VERSION = 2
+    const val VERSION = 3
     /** The launcher's activity that roots each window's task. */
     const val WINDOW_ACTIVITY = "moe.n4tsu.dextop.lxstub.Window"
     private const val MODE_KEY = "install_mode"
@@ -65,8 +65,100 @@ internal object LinuxShortcutInstaller {
 
     private const val PREFS_SETTINGS = "linux_shortcut_settings"
 
+    private fun message(ja: String, en: String) = moe.n4tsu.dextop.localText(ja, en)
+
+    /** The Google Play build declares neither REQUEST_INSTALL_PACKAGES nor REQUEST_DELETE_PACKAGES. */
+    val play: Boolean get() = moe.n4tsu.dextop.BuildConfig.DISTRIBUTION_CHANNEL == "play"
+
+    /**
+     * Whether launchers are pinned shortcuts to LinuxLaunchActivity, with the same label and
+     * icon, which open the application in Dextop's own window rather than a task of their own.
+     * The Google Play build uses them in the Android mode; the full privilege mode installs and
+     * removes launcher packages as the shell user, which needs neither permission. The mode
+     * alone decides, so a launcher added before the service connects is not a shortcut.
+     */
+    fun pinned(context: Context): Boolean = play && LinuxExecutionMode.android(context)
+
+    private fun privilegedRoute(context: Context) = LinuxContainerClient.privilegedService() != null ||
+        (LinuxExecutionMode.privilegeAllowed(context) && moe.n4tsu.dextop.PrivilegedAccess(TAG).isAvailable())
+
+    private fun shortcutId(container: String, desktopId: String) = "linux:$container:$desktopId"
+
+    private const val LAUNCH_KEY = "launch_key"
+
+    /**
+     * Proof that a launch request for [desktopId] of [container] comes from a launcher or
+     * shortcut Dextop made: LinuxLaunchActivity is exported, so any app could ask otherwise.
+     * An HMAC under a random key kept in Dextop's private storage.
+     */
+    @Synchronized fun launchToken(context: Context, container: String, desktopId: String): String {
+        val prefs = context.getSharedPreferences(PREFS_SETTINGS, Context.MODE_PRIVATE)
+        val key = prefs.getString(LAUNCH_KEY, null)?.let { android.util.Base64.decode(it, android.util.Base64.NO_WRAP) }
+            ?: ByteArray(32).also { bytes ->
+                java.security.SecureRandom().nextBytes(bytes)
+                prefs.edit().putString(LAUNCH_KEY, android.util.Base64.encodeToString(bytes, android.util.Base64.NO_WRAP)).commit()
+            }
+        val mac = javax.crypto.Mac.getInstance("HmacSHA256").apply { init(javax.crypto.spec.SecretKeySpec(key, "HmacSHA256")) }
+        return mac.doFinal("$container\u0000$desktopId".toByteArray()).joinToString("") { "%02x".format(it) }
+    }
+
+    fun validLaunch(context: Context, container: String, desktopId: String, token: String?): Boolean =
+        token != null && MessageDigest.isEqual(token.toByteArray(), launchToken(context, container, desktopId).toByteArray())
+
+    /** A launcher package made from a template older than the launch proof. */
+    fun outdatedLauncher(context: Context, container: String, desktopId: String): Boolean =
+        (installedVersion(context, packageName(container, desktopId)) ?: VERSION.toLong()) < VERSION
+
+    /** Gives shortcuts pinned before the launch proof existed their proof. */
+    fun refreshPinned(context: Context) {
+        if (!play) return
+        runCatching {
+            val manager = context.getSystemService(android.content.pm.ShortcutManager::class.java)
+            val updates = manager.pinnedShortcuts.mapNotNull { shortcut ->
+                val parts = shortcut.id.split(':', limit = 3).takeIf { it.size == 3 && it[0] == "linux" } ?: return@mapNotNull null
+                val intent = shortcut.intent ?: return@mapNotNull null
+                if (validLaunch(context, parts[1], parts[2], intent.getStringExtra(LinuxLaunchActivity.EXTRA_TOKEN))) return@mapNotNull null
+                android.content.pm.ShortcutInfo.Builder(context, shortcut.id)
+                    .setIntent(Intent(intent).putExtra(LinuxLaunchActivity.EXTRA_TOKEN, launchToken(context, parts[1], parts[2])))
+                    .build()
+            }
+            if (updates.isNotEmpty()) manager.updateShortcuts(updates)
+        }.onFailure { Log.w(TAG, "Cannot refresh pinned shortcuts", it) }
+    }
+
+    private fun pinnedIds(context: Context): Set<String> = runCatching {
+        context.getSystemService(android.content.pm.ShortcutManager::class.java).pinnedShortcuts
+            .filter { it.isEnabled }.map { it.id }.toSet()
+    }.getOrDefault(emptySet())
+
+    /** Asks the home screen to pin [desktopId]; "pending" while it shows its confirmation. */
+    private fun pin(context: Context, container: String, desktopId: String, label: String, iconPng: ByteArray?, iconReady: Boolean): String {
+        val manager = context.getSystemService(android.content.pm.ShortcutManager::class.java)
+        check(manager.isRequestPinShortcutSupported) { "This home screen does not accept shortcuts" }
+        val png = if (iconReady && iconPng != null) iconPng else iconFor(iconPng)
+        val icon = android.graphics.drawable.Icon.createWithAdaptiveBitmap(BitmapFactory.decodeByteArray(png, 0, png.size))
+        val name = label.ifBlank { desktopId.removeSuffix(".desktop") }
+        val info = android.content.pm.ShortcutInfo.Builder(context, shortcutId(container, desktopId))
+            .setShortLabel(name.take(25))
+            .setLongLabel(name)
+            .setIcon(icon)
+            .setIntent(Intent(context, LinuxLaunchActivity::class.java)
+                .setAction("moe.n4tsu.dextop.action.LAUNCH_LINUX_APP")
+                .putExtra(LinuxLaunchActivity.EXTRA_CONTAINER, container)
+                .putExtra(LinuxLaunchActivity.EXTRA_DESKTOP, desktopId)
+                .putExtra(LinuxLaunchActivity.EXTRA_LABEL, name)
+                .putExtra(LinuxLaunchActivity.EXTRA_TOKEN, launchToken(context, container, desktopId)))
+            .build()
+        val id = shortcutId(container, desktopId)
+        // A shortcut removed earlier is disabled; it is pinned again as a new one.
+        if (manager.pinnedShortcuts.any { it.id == id }) runCatching { manager.enableShortcuts(listOf(id)); manager.updateShortcuts(listOf(info)) }
+        else manager.requestPinShortcut(info, null)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putString("$container:$desktopId", id).apply()
+        return "pending"
+    }
+
     /** Whether launchers can be installed without Android asking (Shizuku, Stellar or built-in access). */
-    fun silentAvailable(): Boolean = LinuxContainerClient.service() != null || moe.n4tsu.dextop.PrivilegedAccess(TAG).isAvailable()
+    fun silentAvailable(context: Context): Boolean = !pinned(context) && privilegedRoute(context)
 
     /** The launcher package for [desktopId] of [container]; stable, so a new build replaces the old one. */
     fun packageName(container: String, desktopId: String): String {
@@ -74,7 +166,11 @@ internal object LinuxShortcutInstaller {
         return PACKAGE_PREFIX + "a" + digest.take(10).joinToString("") { "%02x".format(it) }
     }
 
-    fun installed(context: Context, container: String, desktopId: String): Boolean = runCatching {
+    /** Either kind counts: the execution mode, and with it the kind, may have changed since. */
+    fun installed(context: Context, container: String, desktopId: String): Boolean =
+        packageInstalled(context, container, desktopId) || (play && shortcutId(container, desktopId) in pinnedIds(context))
+
+    private fun packageInstalled(context: Context, container: String, desktopId: String) = runCatching {
         context.packageManager.getPackageInfo(packageName(container, desktopId), 0); true
     }.getOrDefault(false)
 
@@ -112,6 +208,7 @@ internal object LinuxShortcutInstaller {
      * Silent when the user chose automatic installs and privileged access is available.
      */
     fun upgradeIfOld(context: Context, container: String, desktopId: String) {
+        if (play && !silentAvailable(context)) return
         val target = packageName(container, desktopId)
         val version = installedVersion(context, target) ?: return
         if (version >= VERSION || !upgrading.add(target)) return
@@ -145,8 +242,13 @@ internal object LinuxShortcutInstaller {
      */
     fun install(context: Context, container: String, desktopId: String, label: String, iconPng: ByteArray?,
                 silent: Boolean = false, iconReady: Boolean = false): String {
-        val quiet = silent || mode(context) == "auto"
-        check(!quiet || silentAvailable()) { "Automatic installation requires a running Stellar, Shizuku or built-in connection" }
+        if (pinned(context)) return pin(context, container, desktopId, label, iconPng, iconReady)
+        // The automatic setting falls back to Android's confirmation when no privileged route is
+        // allowed (Android mode without the privileged service); an explicit silent request fails.
+        // The Google Play build has no confirmed route: only the privileged one.
+        val quiet = (play || silent || mode(context) == "auto") && silentAvailable(context)
+        check((!silent && !play) || quiet) { message("ランチャーの追加には、Shizuku・Stellar・内蔵バインダへの接続が必要です",
+            "Adding a launcher needs Shizuku, Stellar or the built-in binder connected") }
         if (!quiet && !context.packageManager.canRequestPackageInstalls()) {
             context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -164,6 +266,7 @@ internal object LinuxShortcutInstaller {
             "LXSTUB_TARGET_PLACEHOLDER" to context.packageName,
             "LXSTUB_CONTAINER_PLACEHOLDER" to container,
             "LXSTUB_DESKTOP_PLACEHOLDER" to desktopId,
+            "LXSTUB_TOKEN_PLACEHOLDER" to launchToken(context, container, desktopId),
         ), if (iconReady && iconPng != null) iconPng else iconFor(iconPng))
         val (key, certificate) = signingKey()
         ApkSigner.Builder(listOf(ApkSigner.SignerConfig.Builder("DEXTOPLX", key, listOf(certificate)).build()))
@@ -188,7 +291,29 @@ internal object LinuxShortcutInstaller {
     /** Asks Android to remove the launcher of [desktopId]. */
     fun uninstall(context: Context, container: String, desktopId: String) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().remove("$container:$desktopId").apply()
+        if (play && shortcutId(container, desktopId) in pinnedIds(context)) {
+            // Apps cannot unpin; a disabled shortcut stays on the home screen greyed out until removed.
+            runCatching {
+                context.getSystemService(android.content.pm.ShortcutManager::class.java)
+                    .disableShortcuts(listOf(shortcutId(container, desktopId)), "Removed in Dextop")
+            }
+        }
+        if (!packageInstalled(context, container, desktopId)) return
         val target = packageName(container, desktopId)
+        // Without REQUEST_DELETE_PACKAGES the shell user removes it.
+        if (play) {
+            val linux = LinuxContainerClient.service()
+            val removed = (linux != null && !LinuxExecutionMode.android(context) &&
+                runCatching { linux.uninstallLauncher(target) }.isSuccess) ||
+                (LinuxExecutionMode.privilegeAllowed(context) && runCatching {
+                    moe.n4tsu.dextop.PrivilegedAccess(TAG).execute("/system/bin/pm", "uninstall", "--user", "current", target).succeeded
+                }.getOrDefault(false))
+            check(removed) {
+                message("ランチャーの削除には、Shizuku・Stellar・内蔵バインダへの接続が必要です",
+                    "Removing a launcher needs Shizuku, Stellar or the built-in binder connected")
+            }
+            return
+        }
         context.startActivity(Intent(Intent.ACTION_DELETE, Uri.parse("package:$target")).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -198,7 +323,7 @@ internal object LinuxShortcutInstaller {
      */
     private fun installQuietly(context: Context, apk: File, target: String) {
         val linux = LinuxContainerClient.service()
-        if (linux != null) {
+        if (linux != null && !LinuxExecutionMode.android(context)) {
             android.os.ParcelFileDescriptor.open(apk, android.os.ParcelFileDescriptor.MODE_READ_ONLY).use { fd ->
                 linux.installLauncher(fd, apk.length(), context.packageName)
             }
@@ -206,6 +331,8 @@ internal object LinuxShortcutInstaller {
             Log.i(TAG, "Installed launcher $target through Linux privilege service")
             return
         }
+        // In the Android mode Dextop's privileged service installs only when the user allowed its use.
+        check(LinuxExecutionMode.privilegeAllowed(context)) { "Quiet installation needs the privileged service, which is off for Linux" }
         val shared = File(checkNotNull(context.getExternalFilesDir("launchers")), "$target.apk")
         try {
             apk.copyTo(shared, overwrite = true)

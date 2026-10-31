@@ -1033,10 +1033,10 @@ class AppLocalizationsZh extends AppLocalizations {
   String get uiIdle => '空闲';
 
   @override
-  String get uiAvailable => 'Available';
+  String get uiAvailable => '可用';
 
   @override
-  String get uiUnavailable => 'Unavailable';
+  String get uiUnavailable => '不可用';
 
   @override
   String get appName => 'Dextop';
@@ -1619,6 +1619,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get setupEmbeddedPairingServiceNotFound => '未找到配对服务';
 
   @override
+  String get setupEmbeddedPairingComplete => '配对已完成';
+
+  @override
   String get setupEmbeddedRetryPairing => '重试配对';
 
   @override
@@ -2137,10 +2140,11 @@ class AppLocalizationsZh extends AppLocalizations {
   String get androidEmbeddedPairingEnterCode => '输入配对代码';
 
   @override
-  String get androidEmbeddedPairingSuccess => 'Dextop 已连接';
+  String get androidEmbeddedPairingSuccess => '配对成功';
 
   @override
-  String get androidEmbeddedPairingSuccessMessage => '配对已完成。请返回 Dextop。';
+  String get androidEmbeddedPairingSuccessMessage =>
+      '已连接 Dextop 访问服务。请返回 Dextop。';
 
   @override
   String get androidEmbeddedPairingFailed => '无法连接 Dextop';
@@ -2588,10 +2592,6 @@ class AppLocalizationsZh extends AppLocalizations {
   String get nativePlasmaApplying => '正在切换…';
 
   @override
-  String get linuxDescription =>
-      '无需 root 运行 Linux（Debian、Ubuntu、Arch Linux ARM），并以 Plasma 窗口打开其应用。';
-
-  @override
   String get linuxUnsupportedDevice => 'Linux 仅支持 arm64 设备。';
 
   @override
@@ -2602,7 +2602,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      'Linux 使用 Dextop 内置的访问服务。请通过“设置 Dextop 访问权限”连接。无需另行安装 Stellar 或 Shizuku。';
+      '完全特权方式需要特权访问，例如 Shizuku、Stellar 或内置 Binder。请启动 Shizuku 或 Stellar，或设置内置 Binder。';
 
   @override
   String get linuxEnable => '启用 Linux';
@@ -2712,162 +2712,155 @@ class AppLocalizationsZh extends AppLocalizations {
   }
 
   @override
-  String get linuxSetupTitle => 'Linux setup';
+  String get linuxSetupTitle => 'Linux 设置';
 
   @override
-  String get linuxSetupIntro =>
-      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+  String get linuxSetupIntro => '按照你的使用方式准备 Linux。依次选择桌面、语言、输入法和应用。';
 
   @override
   String get linuxSetupExisting =>
-      'Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.';
+      '为此 Linux 环境添加功能。现有的文件和应用会保留。完成后重新打开桌面即可应用设置。';
 
   @override
-  String get linuxSetupSystem => 'Your Linux environment';
+  String get linuxSetupSystem => '选择 Linux 环境';
 
   @override
-  String get linuxSetupDesktop => 'Make it your desktop';
+  String get linuxSetupDesktop => '准备桌面';
 
   @override
-  String get linuxSetupLanguage => 'Language and fonts';
+  String get linuxSetupLanguage => '语言与字体';
 
   @override
-  String get linuxSetupInput => 'Typing in your language';
+  String get linuxSetupInput => '文字输入设置';
 
   @override
-  String get linuxSetupApps => 'Choose your applications';
+  String get linuxSetupApps => '选择应用';
 
   @override
-  String get linuxSetupReview => 'Ready to set up';
+  String get linuxSetupReview => '确认设置内容';
 
   @override
-  String get linuxSetupProgress => 'Preparing your workspace';
+  String get linuxSetupProgress => '正在准备工作区';
 
   @override
-  String get linuxSetupDone => 'Your Linux workspace is ready';
+  String get linuxSetupDone => 'Linux 已准备就绪';
 
   @override
   String get linuxSetupDoneDetail =>
-      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+      '可在 Linux 标签页打开桌面，或从 Plasma 启动单个 Linux 应用。Fcitx 5 用 Ctrl+Space 切换输入法。';
 
   @override
-  String get linuxSetupNext => 'Continue';
+  String get linuxSetupNext => '下一步';
 
   @override
-  String get linuxSetupBack => 'Back';
+  String get linuxSetupBack => '返回';
 
   @override
-  String get linuxSetupApply => 'Start setup';
+  String get linuxSetupApply => '开始设置';
 
   @override
-  String get linuxSetupCustomize => 'Set up / add features';
+  String get linuxSetupCustomize => '设置 / 添加功能';
 
   @override
-  String get linuxSetupMinimal => 'Minimal IceWM';
+  String get linuxSetupMinimal => '最小化 IceWM';
 
   @override
   String get linuxSetupMinimalDetail =>
-      'A lightweight desktop with Xvfb, IceWM and a terminal. Choose any extras in the following steps.';
+      '由 Xvfb、IceWM 和终端组成的轻量桌面。可在后续步骤中选择额外功能。';
 
   @override
-  String get linuxSetupComplete => 'Everyday IceWM';
+  String get linuxSetupComplete => '日常使用的 IceWM';
 
   @override
   String get linuxSetupCompleteDetail =>
-      'Starts with themes, icons, Mesa software rendering, a file manager and a text editor selected. You can adjust each choice.';
+      '预先选中主题、图标、Mesa 软件渲染、文件管理器和文本编辑器。每项都可调整。';
 
   @override
-  String get linuxSetupThemes => 'Themes and icons';
+  String get linuxSetupThemes => '主题与图标';
 
   @override
-  String get linuxSetupThemesDetail =>
-      'IceWM themes and Adwaita styling for GTK apps.';
+  String get linuxSetupThemesDetail => 'IceWM 主题以及适用于 GTK 应用的 Adwaita 样式。';
 
   @override
-  String get linuxSetupGraphics => 'Mesa graphics support';
+  String get linuxSetupGraphics => 'Mesa 图形支持';
 
   @override
   String get linuxSetupGraphicsDetail =>
-      'Install OpenGL / EGL libraries and software rendering. This Xvfb desktop does not provide hardware GPU acceleration.';
+      '安装 OpenGL / EGL 库和软件渲染。此 Xvfb 桌面不提供 GPU 硬件加速。';
 
   @override
-  String get linuxSetupLocale => 'Linux display language';
+  String get linuxSetupLocale => 'Linux 显示语言';
 
   @override
-  String get linuxSetupLocaleDetail =>
-      'Generate the selected UTF-8 locale and apply it to the desktop and apps that support it.';
+  String get linuxSetupLocaleDetail => '生成所选的 UTF-8 区域设置，并应用到支持它的桌面和应用。';
 
   @override
-  String get linuxSetupFonts => 'Japanese, Chinese and Korean fonts';
+  String get linuxSetupFonts => '日文、中文和韩文字体';
 
   @override
   String get linuxSetupFontsDetail =>
-      'Install Noto CJK fonts. Noto general-purpose and emoji fonts are included with every setup.';
+      '安装 Noto CJK 字体。通用 Noto 字体和表情符号字体在所有配置中都包含。';
 
   @override
-  String get linuxSetupNoIme => 'Use the Android keyboard only';
+  String get linuxSetupNoIme => '仅使用 Android 键盘';
 
   @override
   String get linuxSetupNoImeDetail =>
-      'Do not start a Linux input method. The Android keyboard remains available in Plasma.';
+      '不启动 Linux 输入法。在 Plasma 中仍可使用 Android 键盘。';
 
   @override
   String get linuxSetupImeDetail =>
-      'Fcitx 5 starts with the Linux session, including GTK / Qt integration. Input methods with CJK text also install CJK fonts.';
+      'Fcitx 5 随 Linux 会话启动，并与 GTK / Qt 应用集成。选择 CJK 输入法时也会安装 CJK 字体。';
 
   @override
-  String get linuxSetupMozc => 'Japanese — Mozc';
+  String get linuxSetupMozc => '日语 — Mozc';
 
   @override
-  String get linuxSetupPinyin => 'Chinese — Pinyin';
+  String get linuxSetupPinyin => '中文 — 拼音';
 
   @override
-  String get linuxSetupHangul => 'Korean — Hangul';
+  String get linuxSetupHangul => '韩语 — 韩文';
 
   @override
   String get linuxSetupFirefoxDetail =>
-      'Firefox ESR on Debian; Firefox on Arch.';
+      'Debian 上为 Firefox ESR，Arch 上为 Firefox。';
 
   @override
   String get linuxSetupChromeDetail =>
-      'Official Google Chrome for ARM64, downloaded from Google. Available on Debian and Ubuntu.';
+      '从 Google 下载官方 ARM64 版 Google Chrome，适用于 Debian 和 Ubuntu。';
 
   @override
-  String get linuxSetupChromiumDetail =>
-      'Open-source Chromium from the distribution repository.';
+  String get linuxSetupChromiumDetail => '来自发行版软件源的开源 Chromium。';
 
   @override
   String get linuxSetupSnapUnavailable =>
-      'Unavailable on this Ubuntu image: this package requires Snap. Choose Debian / Arch, or select Google Chrome.';
+      '此 Ubuntu 镜像无法使用：该软件包需要 Snap。请选择 Debian / Arch，或选择 Google Chrome。';
 
   @override
-  String get linuxSetupChromeUnavailable =>
-      'The official installer is available here for Debian and Ubuntu.';
+  String get linuxSetupChromeUnavailable => '此处提供适用于 Debian 和 Ubuntu 的官方安装程序。';
 
   @override
   String get linuxSetupBrowserNote =>
-      'Browsers use PRoot-compatible launchers with their sandbox disabled. Install only browsers you want to use in this environment.';
+      '浏览器使用禁用沙盒的 PRoot 兼容启动器运行。请只安装要在此环境中使用的浏览器。';
 
   @override
-  String get linuxSetupFiles => 'File manager';
+  String get linuxSetupFiles => '文件管理器';
 
   @override
-  String get linuxSetupFilesDetail =>
-      'PCManFM — browse folders and manage files.';
+  String get linuxSetupFilesDetail => 'PCManFM — 浏览文件夹并管理文件。';
 
   @override
-  String get linuxSetupEditor => 'Text editor';
+  String get linuxSetupEditor => '文本编辑器';
 
   @override
-  String get linuxSetupEditorDetail =>
-      'Mousepad — a lightweight graphical editor.';
+  String get linuxSetupEditorDetail => 'Mousepad — 轻量级图形编辑器。';
 
   @override
-  String get linuxSetupOffice => 'Office suite';
+  String get linuxSetupOffice => '办公套件';
 
   @override
   String get linuxSetupOfficeDetail =>
-      'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
+      'LibreOffice — 文档、电子表格和演示文稿。需要下载更多内容并占用更多存储空间。';
 
   @override
   String get linuxSetupSteamDetail =>
@@ -2879,63 +2872,62 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get linuxSetupStorage =>
-      'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
+      '请预留数 GB 可用存储空间。下载量和安装大小取决于发行版和所选应用。离开此界面后安装仍会继续。';
 
   @override
-  String get linuxSetupAdditive =>
-      'Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.';
+  String get linuxSetupAdditive => '未选择的应用不会被删除。设置会添加所选软件包，并更新语言和会话设置。';
 
   @override
-  String get linuxSetupNothingExtra => 'No optional applications';
+  String get linuxSetupNothingExtra => '无可选应用';
 
   @override
-  String get linuxSetupRetry => 'Review and retry';
+  String get linuxSetupRetry => '检查后重试';
 
   @override
-  String get linuxSetupBackground => 'Continue in background';
+  String get linuxSetupBackground => '在后台继续';
 
   @override
-  String get linuxSetupLog => 'Installation details';
+  String get linuxSetupLog => '安装详情';
 
   @override
-  String get linuxSetupFailed => 'Setup could not finish';
+  String get linuxSetupFailed => '设置未能完成';
 
   @override
-  String get linuxSetupPhaseLanguage => 'Setting up language and fonts';
+  String get linuxSetupPhaseLanguage => '正在设置语言和字体';
 
   @override
-  String get linuxSetupPhaseInput => 'Installing the input method';
+  String get linuxSetupPhaseInput => '正在安装输入法';
 
   @override
-  String get linuxSetupPhaseDesktop => 'Setting up themes and icons';
+  String get linuxSetupPhaseDesktop => '正在设置主题和图标';
 
   @override
-  String get linuxSetupPhaseGraphics => 'Installing graphics libraries';
+  String get linuxSetupPhaseGraphics => '正在安装图形库';
 
   @override
-  String get linuxSetupPhaseApps => 'Installing your applications';
+  String get linuxSetupPhaseApps => '正在安装所选应用';
 
   @override
-  String get linuxSetupPhaseIntegration => 'Connecting apps to the desktop';
+  String get linuxSetupPhaseIntegration => '正在将应用接入桌面';
 
   @override
-  String get linuxRuntimeStarting => 'Starting Linux…';
+  String get linuxRuntimeStarting => '正在启动 Linux…';
 
   @override
-  String get linuxRuntimeRunning => 'Linux is running';
+  String get linuxRuntimeRunning => 'Linux 正在运行';
 
   @override
-  String get linuxRuntimeStopped => 'Linux is stopped';
+  String get linuxRuntimeStopped => 'Linux 已停止';
 
   @override
-  String get linuxSessionReset => 'Reset session';
+  String get linuxSessionReset => '重置会话';
 
   @override
-  String get linuxForceStop => 'Force stop PRoot';
+  String get linuxForceStop => '强制停止 PRoot';
 
   @override
   String get linuxForceStopConfirm =>
-      'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+      '要强制停止此环境的所有 Linux 进程吗？未保存的工作将会丢失。已安装的应用和文件会保留。';
 
   @override
   String get linuxSettingsTitle => 'Linux 设置';
@@ -3043,15 +3035,14 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linuxSetupPhaseGpu => '正在构建 GPU 驱动（Turnip）';
 
   @override
-  String get linuxSetupDisplayBackend => 'Display system';
+  String get linuxSetupDisplayBackend => '显示系统';
 
   @override
-  String get linuxSetupXvfbDetail =>
-      'Use X11 for applications and the IceWM desktop.';
+  String get linuxSetupXvfbDetail => '应用和 IceWM 桌面使用 X11 显示。';
 
   @override
   String get linuxSetupWaylandDetail =>
-      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+      '支持的应用使用 Wayland，X11 应用和 IceWM 桌面使用 Xwayland。';
 
   @override
   String get nativeSteamModeTitle => 'Steam Deck Mode';

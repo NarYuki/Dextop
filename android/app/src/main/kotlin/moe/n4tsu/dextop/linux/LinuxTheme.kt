@@ -66,7 +66,19 @@ internal object LinuxTheme {
             done
             # Applications that read the desktop's setting (GNOME, libadwaita).
             if command -v gsettings >/dev/null 2>&1; then
-                for bus in ${'$'}(grep -o '@/tmp/dextop-dbus-[0-9][0-9]*' /proc/net/unix 2>/dev/null | sort -u); do
+                buses=${'$'}(grep -o '@/tmp/dextop-dbus-[0-9][0-9]*' /proc/net/unix 2>/dev/null | sort -u)
+                # The Android mode may not read /proc/net/unix: each session leaves /tmp/dbus-<display>.log,
+                # and a bus that answers a ping is running.
+                if [ -z "${'$'}buses" ]; then
+                    for log in /tmp/dbus-[0-9]*.log; do
+                        [ -f "${'$'}log" ] || continue
+                        display=${'$'}{log#/tmp/dbus-}; display=${'$'}{display%.log}
+                        dbus-send --bus=unix:abstract=/tmp/dextop-dbus-${'$'}display --dest=org.freedesktop.DBus \
+                            /org/freedesktop/DBus org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1 \
+                            && buses="${'$'}buses @/tmp/dextop-dbus-${'$'}display"
+                    done
+                fi
+                for bus in ${'$'}buses; do
                     DBUS_SESSION_BUS_ADDRESS=unix:abstract=${'$'}{bus#@} timeout 5 gsettings set org.gnome.desktop.interface color-scheme $scheme 2>/dev/null
                     DBUS_SESSION_BUS_ADDRESS=unix:abstract=${'$'}{bus#@} timeout 5 gsettings set org.gnome.desktop.interface gtk-theme $theme 2>/dev/null
                 done

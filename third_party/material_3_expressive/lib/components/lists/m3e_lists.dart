@@ -85,6 +85,7 @@ class M3EListItem extends StatelessWidget {
   const M3EListItem({
     required this.headline,
     this.supportingText,
+    this.supportingMaxLines = 2,
     this.overline,
     this.trailingText,
     this.leading,
@@ -108,6 +109,9 @@ class M3EListItem extends StatelessWidget {
 
   /// supportingText.
   final String? supportingText;
+
+  /// Lines of [supportingText] before it is cut off; null shows all of it (Dextop change).
+  final int? supportingMaxLines;
 
   /// overline.
   final String? overline;
@@ -520,8 +524,8 @@ class M3EListItem extends StatelessWidget {
               scheme,
               selected: rowSelected,
             ),
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
+            maxLines: supportingMaxLines,
+            overflow: supportingMaxLines == null ? null : TextOverflow.ellipsis,
           ),
       ],
     );

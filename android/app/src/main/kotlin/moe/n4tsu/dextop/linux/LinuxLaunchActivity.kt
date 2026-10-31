@@ -15,6 +15,8 @@ class LinuxLaunchActivity : Activity() {
         const val EXTRA_CONTAINER = "container"
         const val EXTRA_DESKTOP = "desktop"
         const val EXTRA_LABEL = "label"
+        /** LinuxShortcutInstaller.launchToken: only Dextop's own launchers and shortcuts open apps. */
+        const val EXTRA_TOKEN = "token"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -22,7 +24,13 @@ class LinuxLaunchActivity : Activity() {
         val container = intent.getStringExtra(EXTRA_CONTAINER)
         val desktop = intent.getStringExtra(EXTRA_DESKTOP)
         if (!container.isNullOrBlank() && !desktop.isNullOrBlank()) {
-            LinuxAndroidWindows.launch(this, container, desktop, intent.getStringExtra(EXTRA_LABEL), launcherIcon(container, desktop))
+            if (LinuxShortcutInstaller.validLaunch(this, container, desktop, intent.getStringExtra(EXTRA_TOKEN))) {
+                LinuxAndroidWindows.launch(this, container, desktop, intent.getStringExtra(EXTRA_LABEL), launcherIcon(container, desktop))
+            } else if (LinuxShortcutInstaller.outdatedLauncher(this, container, desktop)) {
+                // A launcher made before the launch proof: rebuilt with it, then tapped again.
+                LinuxShortcutInstaller.upgradeIfOld(this, container, desktop)
+                android.widget.Toast.makeText(this, moe.n4tsu.dextop.localText("ランチャーを更新しています。更新後にもう一度開いてください", "Updating this launcher. Open it again once it is updated"), android.widget.Toast.LENGTH_LONG).show()
+            }
         }
         finish()
     }

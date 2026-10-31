@@ -58,9 +58,12 @@ internal object LinuxSettings {
         temp.renameTo(file)
     }
 
+    @Synchronized fun reset() { file.delete() }
+
     @Synchronized
     fun read(): JSONObject = load(file).also {
-        if (!it.has("gpu")) it.put("gpu", LinuxGpuMode.TURNIP.id)
+        // Turnip on Adreno 6xx–8xx; VirGL, which runs on any GPU, elsewhere.
+        if (!it.has("gpu")) it.put("gpu", (if (LinuxGraphics.turnipCapable) LinuxGpuMode.TURNIP else LinuxGpuMode.HARDWARE).id)
         if (!it.has("defaultContainer")) it.put("defaultContainer", "")
     }
 
@@ -81,6 +84,16 @@ internal object LinuxSettings {
     @Synchronized
     fun readContainer(id: String): JSONObject = load(containerFile(id))
 
+    private val APP_MODES = mapOf(
+        "display" to setOf("x11", "wayland"),
+        "renderer" to setOf("software"),
+        "gl" to setOf("override"),
+    )
+
+    /** How [desktopId] of [id] is to run, as chosen in its app menu; empty for automatic. */
+    fun appMode(id: String, desktopId: String): JSONObject =
+        readContainer(id).optJSONObject("apps")?.optJSONObject(desktopId) ?: JSONObject()
+
     /** Merges [update] into [id]'s settings; "gpu": "" returns it to the global default. */
     @Synchronized
     fun writeContainer(id: String, update: JSONObject): JSONObject {
@@ -93,6 +106,17 @@ internal object LinuxSettings {
             val wm = update.optString("wm")
             if (wm.isEmpty()) merged.remove("wm") else merged.put("wm", LinuxWindowManager.of(wm).id)
         }
+        // One application's way of running ({"app": desktop id, "appSettings": {...}}); see [appMode].
+        val app = update.optString("app")
+        if (app.isNotEmpty() && '/' !in app && update.has("appSettings")) {
+            val choices = JSONObject()
+            update.optJSONObject("appSettings")?.let { given ->
+                for ((key, allowed) in APP_MODES) given.optString(key).takeIf { it in allowed }?.let { choices.put(key, it) }
+            }
+            val apps = merged.optJSONObject("apps") ?: JSONObject()
+            if (choices.length() == 0) apps.remove(app) else apps.put(app, choices)
+            if (apps.length() == 0) merged.remove("apps") else merged.put("apps", apps)
+        }
         save(containerFile(id), merged)
         return merged
     }
@@ -103,10 +127,14 @@ internal object LinuxSettings {
             ?: if (load(LinuxPaths.config(id)).optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME) LinuxWindowManager.DROIDDECK
             else LinuxWindowManager.DEXTOP
 
-    val gpuMode: LinuxGpuMode get() = LinuxGpuMode.of(read().optString("gpu"))
+    val gpuMode: LinuxGpuMode get() = supported(LinuxGpuMode.of(read().optString("gpu")))
 
     fun gpuMode(id: String): LinuxGpuMode =
-        readContainer(id).optString("gpu").takeIf { it.isNotEmpty() }?.let(LinuxGpuMode::of) ?: gpuMode
+        readContainer(id).optString("gpu").takeIf { it.isNotEmpty() }?.let { supported(LinuxGpuMode.of(it)) } ?: gpuMode
+
+    /** Turnip, the default, on a GPU other than Adreno 6xx–8xx is VirGL instead. */
+    private fun supported(mode: LinuxGpuMode) =
+        if (mode == LinuxGpuMode.TURNIP && !LinuxGraphics.turnipCapable) LinuxGpuMode.HARDWARE else mode
 }
 
 /**
@@ -123,6 +151,9 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
 
         private fun adrenoModel(): String? =
             runCatching { File("/sys/class/kgsl/kgsl-3d0/gpu_model").readText().trim() }.getOrNull()
+
+        /** The packaged KGSL Turnip driver supports Adreno 6xx through 8xx; nothing else can select it. */
+        val turnipCapable: Boolean by lazy { LinuxCatalog.turnipSupports(adrenoModel()) }
     }
 
     private val servers = ConcurrentHashMap<String, Process>()
@@ -130,13 +161,17 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
 
     val available: Boolean get() = server.canExecute()
 
-    /** The packaged KGSL Turnip driver supports Adreno 6xx through 8xx. */
-    val turnipSupported: Boolean by lazy { LinuxCatalog.turnipSupports(adrenoModel()) }
+    val turnipSupported: Boolean get() = turnipCapable
 
     private fun socketName(containerId: String) = "${LinuxProot.socketNamespace(containerId)}$GUEST_SOCKET"
 
     private fun listening(containerId: String): Boolean = runCatching {
-        File("/proc/net/unix").readText().contains("@${socketName(containerId)}")
+        if (android.system.Os.getuid() in setOf(0, 2000)) {
+            File("/proc/net/unix").readText().contains("@${socketName(containerId)}")
+        } else android.net.LocalSocket().use { socket ->
+            socket.connect(android.net.LocalSocketAddress(socketName(containerId), android.net.LocalSocketAddress.Namespace.ABSTRACT))
+            true
+        }
     }.getOrDefault(false)
 
     fun running(containerId: String): Boolean = servers[containerId]?.isAlive == true && listening(containerId)
@@ -245,6 +280,7 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
             }
         })
         .put("hardwareAvailable", available)
+        .put("turnipSupported", turnipSupported)
         .put("rendererRunning", org.json.JSONArray(servers.keys.filter(::running)))
         .put("turnipInstalled", org.json.JSONArray(
             LinuxPaths.containers.listFiles().orEmpty().map { it.name }.filter { runCatching { turnipInstalled(it) }.getOrDefault(false) }))

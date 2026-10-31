@@ -103,4 +103,26 @@ interface ILinuxContainerService {
     String installLauncher(in ParcelFileDescriptor apk, long size, String installerPackage) = 51;
     /** A fresh PCM recording over an anonymous descriptor, never a public TCP listener. */
     ParcelFileDescriptor openAudioStream(String containerId) = 52;
+    /** Linux settings back to their defaults (part of resetting Linux to before its first setup). */
+    void resetSettings() = 54;
+    /** Write end of the container's microphone: 48 kHz mono s16le PCM recorded on Android. */
+    ParcelFileDescriptor openMicrophoneStream(String containerId) = 55;
+    /** Whether a Linux application is recording, so Android records only then. */
+    boolean microphoneWanted(String containerId) = 56;
+    /** Removes a launcher package Dextop made, as the privileged user (no REQUEST_DELETE_PACKAGES). */
+    void uninstallLauncher(String packageName) = 57;
+    /** Whether [pid] descends from this service, i.e. is part of Linux (the device bridge's peer check). */
+    boolean ownsProcess(int pid) = 58;
+    /**
+     * What the Store needs at once, read from the container's files instead of running
+     * commands in it: installed apt packages, installed deb-get and Flathub apps, and which
+     * of those sources are set up. JSON {installed, external, ready}.
+     */
+    String storeState(String containerId) = 59;
+    /** Linux settings → Resources: Linux processes, CPU/memory/GPU use, containers and drivers (JSON). */
+    String resources() = 60;
+    /** Ends a Linux process and what it started; [start] is its start time from [resources]. */
+    boolean stopProcess(int pid, String start) = 61;
+    /** [launchApp] for a window Dextop's own window manager frames: GTK keeps its title bar buttons. */
+    void launchFramedApp(String containerId, String desktopId) = 62;
 }

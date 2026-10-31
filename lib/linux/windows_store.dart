@@ -1,3 +1,4 @@
+import '../l10n/inline_text.dart';
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -57,10 +58,7 @@ Future<bool> runWindowsJob(
       if (context.mounted) {
         M3ESnackbar.show(
           context,
-          message: t(
-            '${package.name} には Wine で使えるインストーラーがありません',
-            '${package.name} has no installer that works with Wine',
-          ),
+          message: inlineFormat(t('{0} には Wine で使えるインストーラーがありません', '{0} has no installer that works with Wine'), [package.name]),
         );
       }
       return false;

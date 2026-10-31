@@ -1,3 +1,5 @@
+import '../l10n/inline_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -109,6 +111,61 @@ class LinuxStore extends ChangeNotifier {
   bool loading = true;
   Map<String, bool> sources = const {'apt': true};
   final List<String> sourceErrors = [];
+
+  /// Enabled sources whose tools are not in this container yet, and their running setup lines.
+  List<String> unprepared = const [];
+  final Map<String, String> preparing = {};
+  bool setupSkipped = false;
+  Timer? _preparePoll;
+
+  Future<void> prepareSource(String name) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('storeSourcePrepare', {
+        'id': container.id,
+        'source': name,
+      });
+      if (ok != true) return;
+      preparing[name] = '';
+      notifyListeners();
+      _preparePoll ??= Timer.periodic(
+        const Duration(seconds: 2),
+        (_) => _pollPreparations(),
+      );
+    } on PlatformException catch (e) {
+      sourceErrors.add('$name: ${e.message}');
+      notifyListeners();
+    }
+  }
+
+  Future<void> _pollPreparations() async {
+    final jobs =
+        await _channel.invokeListMethod<Object?>('storeSourcePrepareJobs', {
+          'id': container.id,
+        }) ??
+        const [];
+    var finished = false;
+    for (final raw in jobs) {
+      final job = raw as Map;
+      final name = ((job['packages'] as List).first as String).split(':').first;
+      final state = job['state'];
+      if (state == 'running' || state == 'queued') {
+        preparing[name] = job['line'] as String? ?? '';
+      } else {
+        preparing.remove(name);
+        finished = true;
+        if (state != 'done') {
+          sourceErrors.add('$name: ${job['output'] ?? 'setup failed'}');
+        }
+      }
+    }
+    if (preparing.isEmpty) {
+      _preparePoll?.cancel();
+      _preparePoll = null;
+    }
+    notifyListeners();
+    if (finished && preparing.isEmpty) await load(refresh: true);
+  }
+
   bool get supported => const ['debian', 'ubuntu'].contains(container.distro);
   bool flatpakCompatibility = false;
   String? error;
@@ -131,13 +188,25 @@ class LinuxStore extends ChangeNotifier {
           'Store supports Debian and Ubuntu only. Arch is not supported.',
         );
       }
+      // The cached catalog and the installed state do not wait for each other or for the
+      // Linux service's settings: Android-mode Linux answers slowly while it starts.
+      final aptCatalog = StoreCatalog.load(
+        source,
+        language: _language,
+        refresh: refresh,
+      );
+      // Awaited below when APT is enabled; never an unhandled error otherwise.
+      unawaited(aptCatalog.then((_) {}, onError: (_) {}));
+      final state = loadState();
+      final settings = _channel
+          .invokeMapMethod<Object?, Object?>('settings')
+          .then((value) {
+            flatpakCompatibility = value?['flatpakCompatibility'] == true;
+          })
+          .catchError((_) {});
       sources =
           ((await _channel.invokeMapMethod<String, bool>('storeSources')) ??
           const {'apt': true});
-      final settings = await _channel.invokeMapMethod<Object?, Object?>(
-        'settings',
-      );
-      flatpakCompatibility = settings?['flatpakCompatibility'] == true;
       final loaded = <StoreApp>[];
       void publishCatalog() {
         apps = List.of(loaded);
@@ -148,20 +217,26 @@ class LinuxStore extends ChangeNotifier {
 
       if (sources['apt'] == true) {
         try {
-          loaded.addAll(
-            await StoreCatalog.load(
-              source,
-              language: _language,
-              refresh: refresh,
-            ),
-          );
+          loaded.addAll(await aptCatalog);
         } catch (e) {
           sourceErrors.add('APT: $e');
         }
         publishCatalog();
       }
+      unprepared = [];
+      if (sources['deb-get'] == true || sources['flathub'] == true) {
+        // Without the state (an older Linux service) the sources are tried as they are.
+        final ready = (await state)?['ready'] as Map?;
+        unprepared = [
+          if (ready != null)
+            for (final name in ['deb-get', 'flathub'])
+              if (sources[name] == true && ready[name] != true) name,
+        ];
+      }
+      await settings;
       for (final name in ['deb-get', 'flathub']) {
-        if (sources[name] != true) continue;
+        // Sources not set up in this container are offered on the setup screen instead.
+        if (sources[name] != true || unprepared.contains(name)) continue;
         try {
           loaded.addAll(
             await _catalogCache.load(
@@ -218,16 +293,38 @@ class LinuxStore extends ChangeNotifier {
     await load();
   }
 
+  /// Installed packages and set-up sources, read from the container's files (immediate);
+  /// [refreshPackages] adds the update checks, which run commands in the container.
+  Future<Map<Object?, Object?>?> loadState() async {
+    if (!supported) return null;
+    try {
+      final state = await _channel.invokeMapMethod<Object?, Object?>(
+        'storeState',
+        {'id': container.id},
+      );
+      installed = {
+        ...((state?['installed'] as List?) ?? const []).cast<String>(),
+        ...((state?['external'] as List?) ?? const []).cast<String>(),
+      };
+      notifyListeners();
+      return state;
+    } catch (_) {
+      return null;
+    }
+  }
+
   Future<void> refreshPackages({bool refresh = false}) async {
     if (!supported) return;
+    final known = installed;
     try {
       final result = await _channel.invokeMapMethod<Object?, Object?>(
         'storePackages',
         {'id': container.id},
       );
-      installed = ((result?['installed'] as List?) ?? const [])
-          .cast<String>()
-          .toSet();
+      installed = {
+        ...known.where((name) => name.contains(':')),
+        ...((result?['installed'] as List?) ?? const []).cast<String>(),
+      };
       updates = [
         for (final item
             in ((result?['updates'] as List?) ?? const [])
@@ -530,6 +627,7 @@ class LinuxStore extends ChangeNotifier {
   @override
   void dispose() {
     _poll?.cancel();
+    _preparePoll?.cancel();
     super.dispose();
   }
 }
@@ -639,9 +737,9 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                               [
                                 action(entry.value.action),
                                 if (entry.value.queued)
-                                  t(
-                                    '待機中 (${index + 1} 番目)',
-                                    'Waiting (#${index + 1})',
+                                  inlineFormat(
+                                    t('待機中 ({0} 番目)', 'Waiting (#{0})'),
+                                    [index + 1],
                                   )
                                 else if (entry.value.percent >= 0)
                                   '${entry.value.percent}%',
@@ -710,14 +808,29 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
     String describe((String, String) issue) {
       final detail = issue.$2.trim();
       return switch (issue.$1) {
-        'interrupted' => t(
-          '前回のパッケージ処理が途中で止まっています${detail.isEmpty ? '' : '(未完了: $detail)'}。',
-          'An earlier package operation was cut off${detail.isEmpty ? '' : ' (unfinished: $detail)'}.',
-        ),
-        'broken' => t(
-          'パッケージの依存関係が壊れています${detail.isEmpty ? '' : '($detail)'}。',
-          'Package dependencies are broken${detail.isEmpty ? '' : ' ($detail)'}.',
-        ),
+        'interrupted' =>
+          detail.isEmpty
+              ? t(
+                  '前回のパッケージ処理が途中で止まっています。',
+                  'An earlier package operation was cut off.',
+                )
+              : inlineFormat(
+                  t(
+                    '前回のパッケージ処理が途中で止まっています（未完了: {0}）。',
+                    'An earlier package operation was cut off (unfinished: {0}).',
+                  ),
+                  [detail],
+                ),
+        'broken' =>
+          detail.isEmpty
+              ? t('パッケージの依存関係が壊れています。', 'Package dependencies are broken.')
+              : inlineFormat(
+                  t(
+                    'パッケージの依存関係が壊れています（{0}）。',
+                    'Package dependencies are broken ({0}).',
+                  ),
+                  [detail],
+                ),
         _ => t(
           '別のパッケージ管理(ソフトウェアセンターなど)が動作中です。終わるまで待ってから続けます。',
           'Another package manager (a software centre, for example) is working. Dextop waits for it to finish.',
@@ -787,14 +900,17 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
       case 'install':
         M3ESnackbar.show(
           context,
-          message: t('$name をインストールしました', '$name installed'),
+          message: inlineFormat(t('{0} をインストールしました', '{0} installed'), [name]),
           actionLabel: app == null ? null : t('ホーム画面に追加', 'Add to Home'),
           onAction: app == null ? null : () => addToHome(context, store, app),
           // With an action the snackbar would otherwise stay until dismissed.
           duration: const Duration(seconds: 6),
         );
       case 'remove':
-        M3ESnackbar.show(context, message: t('$name を削除しました', '$name removed'));
+        M3ESnackbar.show(
+          context,
+          message: inlineFormat(t('{0} を削除しました', '{0} removed'), [name]),
+        );
       default:
         M3ESnackbar.show(context, message: t('アップデートしました', 'Updated'));
     }
@@ -949,6 +1065,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
             children: [
               if (store.sourceErrors.isNotEmpty)
                 M3EListItem(
+                  supportingMaxLines: null,
                   headline: linuxText(
                     context,
                     '一部のソースを読み込めません',
@@ -1072,8 +1189,86 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
     _ => M3EIcons.category_rounded,
   };
 
+  /// Shown before the catalog while enabled sources still need their tools in this container.
+  Widget _setup() {
+    String t(String ja, String en) => linuxText(context, ja, en);
+    final theme = Theme.of(context);
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Icon(
+          M3EIcons.download_rounded,
+          size: 48,
+          color: theme.colorScheme.primary,
+        ),
+        const SizedBox(height: 16),
+        Text(
+          t('ストアのセットアップ', 'Store setup'),
+          style: theme.textTheme.headlineSmall,
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 8),
+        Text(
+          t(
+            '有効にした配布元のツールがこの Linux にまだありません。準備すると、そのアプリが Store に表示されます。',
+            'The tools of the enabled sources are not in this Linux yet. Set them up to list their apps.',
+          ),
+          textAlign: TextAlign.center,
+        ),
+        const SizedBox(height: 24),
+        for (final name in store.unprepared)
+          M3EListItem(
+            supportingMaxLines: null,
+            headline: name == 'flathub' ? 'Flathub' : 'deb-get',
+            supportingText: store.preparing.containsKey(name)
+                ? (store.preparing[name]!.isEmpty
+                      ? t('準備しています…', 'Setting up…')
+                      : store.preparing[name]!)
+                : name == 'flathub'
+                ? t(
+                    'Flatpak をインストールし Flathub を追加',
+                    'Install Flatpak and add Flathub',
+                  )
+                : t('deb-get の定義を取得', 'Fetch deb-get definitions'),
+            leading: Icon(
+              name == 'flathub'
+                  ? M3EIcons.apps_rounded
+                  : M3EIcons.download_rounded,
+            ),
+            trailing: store.preparing.containsKey(name)
+                ? const SizedBox(
+                    width: 24,
+                    height: 24,
+                    child: M3EProgressIndicator.circularWavy(),
+                  )
+                : M3EButton.filled(
+                    onPressed: () => store.prepareSource(name),
+                    child: Text(t('準備', 'Set up')),
+                  ),
+          ),
+        const SizedBox(height: 16),
+        if (store.unprepared.length > 1)
+          M3EButton.tonal(
+            onPressed: store.preparing.isNotEmpty
+                ? null
+                : () {
+                    for (final name in store.unprepared) {
+                      store.prepareSource(name);
+                    }
+                  },
+            child: Text(t('すべて準備', 'Set up all')),
+          ),
+        M3EButton.text(
+          onPressed: () => setState(() => store.setupSkipped = true),
+          child: Text(t('APT だけで続ける', 'Continue with APT only')),
+        ),
+      ],
+    );
+  }
+
   Widget _body(List<StoreApp> updates) {
     String t(String ja, String en) => linuxText(context, ja, en);
+    if (store.unprepared.isNotEmpty && !store.setupSkipped) return _setup();
     if (store.loading && store.apps.isEmpty) {
       return Center(
         child: Column(
@@ -1386,18 +1581,17 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
 }
 
 String categoryName(BuildContext context, String category) {
-  final ja = Localizations.localeOf(context).languageCode == 'ja';
   return switch (category) {
-    'Office' => ja ? 'オフィス' : 'Office',
-    'Graphics' => ja ? 'グラフィックス' : 'Graphics',
-    'AudioVideo' => ja ? '音楽と動画' : 'Audio & Video',
-    'Network' => ja ? 'インターネット' : 'Internet',
-    'Development' => ja ? '開発' : 'Development',
-    'Education' => ja ? '教育' : 'Education',
-    'Game' => ja ? 'ゲーム' : 'Games',
-    'Science' => ja ? '科学' : 'Science',
-    'Utility' => ja ? 'ユーティリティ' : 'Utilities',
-    'System' => ja ? 'システム' : 'System',
+    'Office' => localText(context, 'オフィス', 'Office'),
+    'Graphics' => localText(context, 'グラフィックス', 'Graphics'),
+    'AudioVideo' => localText(context, '音楽と動画', 'Audio & Video'),
+    'Network' => localText(context, 'インターネット', 'Internet'),
+    'Development' => localText(context, '開発', 'Development'),
+    'Education' => localText(context, '教育', 'Education'),
+    'Game' => localText(context, 'ゲーム', 'Games'),
+    'Science' => localText(context, '科学', 'Science'),
+    'Utility' => localText(context, 'ユーティリティ', 'Utilities'),
+    'System' => localText(context, 'システム', 'System'),
     _ => category,
   };
 }
@@ -1682,6 +1876,7 @@ class StoreAppPage extends StatelessWidget {
                             children: [
                               if (upgradable || app.source == 'deb-get')
                                 M3EListItem(
+                                  supportingMaxLines: null,
                                   headline: upgradable
                                       ? t('アップデートがあります', 'Update available')
                                       : t(
@@ -1702,6 +1897,7 @@ class StoreAppPage extends StatelessWidget {
                                   ),
                                 ),
                               M3EListItem(
+                                supportingMaxLines: null,
                                 headline: t('アンインストール', 'Uninstall'),
                                 supportingText: t(
                                   'コンテナから削除します',
@@ -1785,12 +1981,14 @@ class StoreAppPage extends StatelessWidget {
     final ok = await M3EDialog.show<bool>(
       context,
       dialog: M3EDialog(
-        title: t('${app.name} をアンインストールしますか？', 'Uninstall ${app.name}?'),
+        title: inlineFormat(t('{0} をアンインストールしますか？', 'Uninstall {0}?'), [
+          app.name,
+        ]),
         icon: const Icon(M3EIcons.delete_outline_rounded),
         content: Text(
-          t(
-            'コンテナから ${app.package} を削除します。',
-            'Removes ${app.package} from the container.',
+          inlineFormat(
+            t('コンテナから {0} を削除します。', 'Removes {0} from the container.'),
+            [app.package],
           ),
         ),
         actions: [

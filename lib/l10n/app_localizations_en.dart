@@ -1693,6 +1693,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get setupEmbeddedPairingServiceNotFound => 'Pairing service not found';
 
   @override
+  String get setupEmbeddedPairingComplete => 'Paired';
+
+  @override
   String get setupEmbeddedRetryPairing => 'Retry pairing';
 
   @override
@@ -2254,11 +2257,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get androidEmbeddedPairingEnterCode => 'Enter pairing code';
 
   @override
-  String get androidEmbeddedPairingSuccess => 'Dextop is connected';
+  String get androidEmbeddedPairingSuccess => 'Pairing succeeded';
 
   @override
   String get androidEmbeddedPairingSuccessMessage =>
-      'Pairing is complete. Return to Dextop.';
+      'Dextop access is connected. Return to Dextop.';
 
   @override
   String get androidEmbeddedPairingFailed => 'Dextop could not connect';
@@ -2711,10 +2714,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get nativePlasmaApplying => 'Applying…';
 
   @override
-  String get linuxDescription =>
-      'Run Linux (Debian, Ubuntu, Arch Linux ARM) without root and open its apps as Plasma windows.';
-
-  @override
   String get linuxUnsupportedDevice => 'Linux requires an arm64 device.';
 
   @override
@@ -2726,7 +2725,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      'Linux uses Dextop’s built-in access service. Connect it with Set up Dextop access. External Stellar or Shizuku apps are optional.';
+      'Full privilege needs privileged access such as Shizuku, Stellar or the built-in binder. Start Shizuku or Stellar, or set up the built-in binder.';
 
   @override
   String get linuxEnable => 'Enable Linux';

@@ -5,10 +5,18 @@ import java.util.concurrent.TimeUnit
 
 /** Filesystem layout under the shell-owned /data/local/tmp. */
 internal object LinuxPaths {
-    val base = File("/data/local/tmp/dextop/linux")
-    val containers = File(base, "containers")
+    @Volatile private var androidBase: File? = null
+    val base get() = androidBase ?: File("/data/local/tmp/dextop/linux")
+    val containers get() = File(base, "containers")
     /** PROOT_TMP_DIR; must be writable and executable by the shell user. */
-    val prootTmp = File(base, ".tmp")
+    val prootTmp get() = File(base, ".tmp")
+
+    @Synchronized fun initializeAndroid(context: android.content.Context) {
+        check(android.system.Os.getuid() !in setOf(0, 2000))
+        val selected = File(context.noBackupFilesDir, "linux-android")
+        check(androidBase == null || androidBase == selected)
+        androidBase = selected
+    }
 
     fun container(id: String): File {
         require(id.matches(Regex("c[a-zA-Z0-9]+"))) { "Invalid container id" }
@@ -40,6 +48,8 @@ internal class LinuxProot(val nativeLibraryDir: String) {
 
     /** Extra NAME=value entries for container [id]'s processes (the renderer settings). */
     @Volatile var guestEnvironment: (String) -> List<String> = { emptyList() }
+    /** Linux runs as this app (the Android execution mode), not as the shell user. */
+    @Volatile var androidMode = false
 
     fun available(): Boolean = proot.canExecute() && loader.canRead()
 
@@ -76,6 +86,19 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         add("/proc/self/fd/0:/dev/stdin"); add("/proc/self/fd/1:/dev/stdout"); add("/proc/self/fd/2:/dev/stderr")
         // Android has no /dev/shm; POSIX shared memory (Firefox, wlroots) needs one.
         add("${sharedMemory(id)}:/dev/shm")
+        // The Android mode cannot read /dev/input; Dextop's controller placeholders take its place.
+        if (androidMode) add("${File(runtime, "input").apply { mkdirs() }.absolutePath}:/dev/input")
+        // /proc files Android denies to apps ("/proc is not mounted" from procps and others): stand-ins
+        // generated at each launch are bound over them, as proot-distro does, so even programs that
+        // bypass libc see them.
+        if (androidMode) addAll(LinuxProcStandIns.binds(File(runtime, "proc")))
+        // Android's shared storage and mounted USB volumes; later mounts appear under it too. The
+        // Android mode sees the folders picked in Linux settings (LinuxFolders) instead.
+        if (androidMode) {
+            add("${File(LinuxPaths.base, "folders").apply { mkdirs() }.absolutePath}:${LinuxFolders.GUEST}")
+            // With "All files access", the whole storage as well.
+            if (File("/storage").isDirectory && android.os.Environment.isExternalStorageManager()) add("/storage:/media/storage")
+        } else if (File("/storage").isDirectory) add("/storage:/media/android")
         File(runtime, "empty").apply { mkdirs() }.let {
             add("${it.absolutePath}:/sys/fs/selinux")
             // Android exposes PCI entries whose attributes the shell cannot read.
@@ -190,7 +213,8 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             "-w", "/root",
             *sessionBinds.flatMap { listOf("-b", it) }.toTypedArray(),
             "/usr/bin/env", "-i",
-            "HOME=/root", "USER=root", "LOGNAME=root", "TERM=xterm-256color", "LANG=C.UTF-8",
+            "HOME=/root", "USER=root", "LOGNAME=root",
+            "TERM=xterm-256color", "LANG=C.UTF-8",
             // Android's time zone (images default to UTC); sites compare it with the network location.
             *timeZone(id)?.let { arrayOf("TZ=$it") }.orEmpty(),
             "TMPDIR=/tmp", "PATH=$GUEST_PATH",
@@ -198,6 +222,8 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             // DD's bind/connect hooks must run before the socket shim: its udev
             // stand-in sockets need bind() emulation before the real syscall.
             *(if (shim.isFile) arrayOf("LD_PRELOAD=" +
+                // Devices from Android (USB, serial, controllers) in both modes; /proc stand-ins where denied.
+                "$GUEST_LIBRARY_DIR/libdextop_androidproc.so:" +
                 (if (File(LinuxPaths.rootfs(id), LinuxSessionCompatibility.GUEST_PRELOAD.removePrefix("/")).isFile)
                     "${LinuxSessionCompatibility.GUEST_PRELOAD}:" else "") +
                 "$GUEST_LIBRARY_DIR/$SOCKET_SHIM", "DEXTOP_SOCKET_NS=${socketNamespace(id)}") else emptyArray()),

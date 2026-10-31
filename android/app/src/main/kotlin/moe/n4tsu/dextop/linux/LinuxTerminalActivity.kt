@@ -37,7 +37,7 @@ internal class LinuxTerminalActivity : Activity() {
         private const val TAG = "DextopLinuxTerminal"
         private const val EXTRA_CONTAINER = "container"
         private const val EXTRA_NAME = "name"
-
+        private val openTerminals = LinkedHashSet<LinuxTerminalActivity>()
         fun open(context: Context, container: String, name: String?) {
             context.startActivity(Intent(context, LinuxTerminalActivity::class.java)
                 .putExtra(EXTRA_CONTAINER, container)
@@ -54,11 +54,13 @@ internal class LinuxTerminalActivity : Activity() {
     private var output: FileOutputStream? = null
     private val writer = Executors.newSingleThreadExecutor()
     @Volatile private var closed = false
+    @Volatile private var selecting = false
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         container = intent.getStringExtra(EXTRA_CONTAINER).orEmpty()
+        openTerminals += this
         name = intent.getStringExtra(EXTRA_NAME) ?: container
         if (container.isEmpty()) return finish()
         describe(name)
@@ -90,6 +92,9 @@ internal class LinuxTerminalActivity : Activity() {
     /** Opens the shell once the page knows its size. */
     private fun start(rows: Int, cols: Int) {
         LinuxContainerClient.connect(this)
+        // The foreground service keeps a running shell alive and online once Dextop is in the
+        // background (an Android-mode runtime is an ordinary app process then).
+        LinuxSessionService.start(this)
         LinuxContainerClient.call(this, { it.openTerminal(container, rows, cols) }, { descriptor ->
             if (closed) { descriptor.close(); return@call }
             pty = descriptor
@@ -115,7 +120,7 @@ internal class LinuxTerminalActivity : Activity() {
         }.onFailure { if (!closed) Log.i(TAG, "terminal ended: ${it.message}") }
         // The shell exited (EIO on the master side).
         if (!closed) runOnUiThread {
-            notice(if (java.util.Locale.getDefault().language == "ja") "シェルが終了しました" else "The shell exited")
+            notice(moe.n4tsu.dextop.localText("シェルが終了しました", "The shell exited"))
         }
     }
 
@@ -144,6 +149,12 @@ internal class LinuxTerminalActivity : Activity() {
                 KeyEvent.KEYCODE_C -> { web.evaluateJavascript("dextopCopy()", null); return true }
                 KeyEvent.KEYCODE_V -> { web.evaluateJavascript("dextopPaste()", null); return true }
             }
+        }
+        if (event.keyCode == KeyEvent.KEYCODE_INSERT && (event.isCtrlPressed || event.isShiftPressed)) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                web.evaluateJavascript(if (event.isShiftPressed) "dextopPaste()" else "dextopCopy()", null)
+            }
+            return true
         }
         LinuxTerminalKeys.encode(event)?.let(::type)
         // Modifier and unmapped keys are consumed too, so the page never sees them.
@@ -183,6 +194,13 @@ internal class LinuxTerminalActivity : Activity() {
 
                 override fun sendKeyEvent(event: KeyEvent): Boolean = key(event)
 
+                override fun performContextMenuAction(id: Int): Boolean = when (id) {
+                    android.R.id.copy -> { web.evaluateJavascript("dextopCopy()", null); true }
+                    android.R.id.paste -> { web.evaluateJavascript("dextopPaste()", null); true }
+                    android.R.id.selectAll -> { web.evaluateJavascript("dextopSelectAll()", null); true }
+                    else -> super.performContextMenuAction(id)
+                }
+
                 override fun performEditorAction(actionCode: Int): Boolean {
                     type("\r")
                     return true
@@ -202,7 +220,7 @@ internal class LinuxTerminalActivity : Activity() {
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val handled = super.onTouchEvent(event)
             // A tap with a finger brings up the soft keyboard.
-            if (event.actionMasked == MotionEvent.ACTION_UP && !event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
+            if (!selecting && event.actionMasked == MotionEvent.ACTION_UP && !event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
                 requestFocus()
                 context.getSystemService(InputMethodManager::class.java)?.showSoftInput(this, 0)
             }
@@ -248,14 +266,22 @@ internal class LinuxTerminalActivity : Activity() {
         @JavascriptInterface
         fun copy(text: String) {
             if (text.isEmpty()) return
-            getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Linux terminal", text))
+            runOnUiThread {
+                getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Linux terminal", text))
+            }
         }
 
         @JavascriptInterface
-        fun paste(): String = runCatching {
-            getSystemService(ClipboardManager::class.java)?.primaryClip
-                ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@LinuxTerminalActivity)?.toString()
-        }.getOrNull().orEmpty()
+        fun selecting(enabled: Boolean) { selecting = enabled }
+
+        @JavascriptInterface
+        fun paste() = runOnUiThread {
+            val text = runCatching {
+                getSystemService(ClipboardManager::class.java)?.primaryClip
+                    ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@LinuxTerminalActivity)?.toString()
+            }.getOrNull().orEmpty()
+            if (!closed) web.evaluateJavascript("dextopPasteText(${org.json.JSONObject.quote(text)})", null)
+        }
     }
 
     override fun onBackPressed() {
@@ -264,6 +290,7 @@ internal class LinuxTerminalActivity : Activity() {
     }
 
     override fun onDestroy() {
+        openTerminals -= this
         closed = true
         // Closing the master side hangs up the shell.
         runCatching { pty?.close() }

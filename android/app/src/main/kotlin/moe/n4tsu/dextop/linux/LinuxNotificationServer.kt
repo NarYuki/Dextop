@@ -20,7 +20,7 @@ internal class LinuxNotificationServer(
         private const val PATH = "/org/freedesktop/Notifications"
         private const val BUS = "org.freedesktop.DBus"
         /** Proot reports root inside the container; the kernel sees the shell user. */
-        private val UIDS = listOf(0, 2000)
+        private val UIDS = listOf(0, android.os.Process.myUid())
     }
 
     @Volatile private var running = true

@@ -34,6 +34,15 @@ internal data class LinuxImage(val url: String, val sha256: String, val size: Lo
 
 internal object LinuxCatalog {
     const val SYSTEM_BUS_ADDRESS = "unix:abstract=/tmp/dextop-dbus-system"
+    /**
+     * Shell function: whether the Dextop bus named $1 (a display number or "system") runs.
+     * Android denies /proc/net/unix to app UIDs (the Android execution mode); there a
+     * connection attempt answers instead of waiting out the whole timeout.
+     */
+    val BUS_PROBE = "dextop_bus() { if cat /proc/net/unix >/dev/null 2>&1; then " +
+        "grep -q \"@/tmp/dextop-dbus-${'$'}1${'$'}\" /proc/net/unix; else " +
+        "dbus-send --bus=unix:abstract=/tmp/dextop-dbus-${'$'}1 --dest=org.freedesktop.DBus " +
+        "/org/freedesktop/DBus org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; fi; }"
     /** Xvfb's default mode has no clock. Wine caches that as 0 Hz, which
      * leaves clients polling raster status before their first visible frame.
      * Publish timing before any desktop or application initializes Wine. */
@@ -169,7 +178,7 @@ internal object LinuxCatalog {
             fi
             apt-get install -y --no-install-recommends \
                 xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
-                fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme
+                fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme xz-utils procps
             if apt-cache show adwaita-icon-theme-legacy >/dev/null 2>&1; then
                 apt-get install -y --no-install-recommends adwaita-icon-theme-legacy
             fi
@@ -178,7 +187,7 @@ internal object LinuxCatalog {
             set -e
             pacman -S --noconfirm --needed \
                 xorg-server-xvfb xorg-xrdb xorg-xrandr xorg-xauth icewm xterm dbus pulseaudio \
-                ttf-dejavu xdg-utils ca-certificates fakeroot adwaita-icon-theme
+                ttf-dejavu xdg-utils ca-certificates fakeroot adwaita-icon-theme xz procps-ng
             if pacman -Si adwaita-icon-theme-legacy >/dev/null 2>&1; then
                 pacman -S --noconfirm --needed adwaita-icon-theme-legacy
             fi
@@ -284,7 +293,8 @@ internal object LinuxCatalog {
             # switches to the messagebus user, which PRoot's shell user cannot.
             export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
             mkdir -p /run/dbus
-            if ! grep -q '@/tmp/dextop-dbus-system${'$'}' /proc/net/unix 2>/dev/null; then
+            $BUS_PROBE
+            if ! dextop_bus system; then
             # No bus runs: a socket file left by an earlier session would make its bind fail.
             rm -f /run/dbus/system_bus_socket
             printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
@@ -305,7 +315,7 @@ internal object LinuxCatalog {
 
     /** Runs [command] (a desktop entry's Exec line) as an application of display [display]. */
     fun launchScript(display: Int, command: String, wayland: Boolean = false, waylandGpu: Boolean = true,
-        appLog: String? = null): String {
+        appLog: String? = null, androidWindows: Boolean = true): String {
         require(appLog == null || appLog.matches(Regex("[A-Za-z0-9._-]+\\.log")))
         val logs = "/tmp/apps-$display.log" + (appLog?.let { " /tmp/$it" } ?: "")
         return """
@@ -317,7 +327,8 @@ internal object LinuxCatalog {
         # An application started before the session bus misses it for good (Firefox then
         # cannot take over URLs from later launches: "Firefox is already running").
         i=0
-        while ! grep -q '@/tmp/dextop-dbus-$display${'$'}' /proc/net/unix 2>/dev/null && [ ${'$'}i -lt 150 ]; do
+        $BUS_PROBE
+        while ! dextop_bus $display && [ ${'$'}i -lt 150 ]; do
             sleep 0.1; i=${'$'}((i + 1))
         done
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
@@ -328,6 +339,7 @@ internal object LinuxCatalog {
         # AWT otherwise waits for a reparent event and leaves its content at
         # the initial size (Arduino/Swing appears blank after window resize).
         export _JAVA_AWT_WM_NONREPARENTING=${'$'}{_JAVA_AWT_WM_NONREPARENTING:-1}
+        ${if (androidWindows) ANDROID_WINDOW_DECORATIONS else ""}
         $RENDERER_OVERRIDE
         $GTK_FONT_SCHEMA_FIX
         ${if (wayland) (if (waylandGpu) WAYLAND_ENVIRONMENT else WAYLAND_TOOLKIT_ENVIRONMENT) else "unset WAYLAND_DISPLAY DEXTOP_WAYLAND_KGSL MESA_LOADER_DRIVER_OVERRIDE; export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11 SDL_VIDEO_DRIVER=x11 MOZ_ENABLE_WAYLAND=0 ELECTRON_OZONE_PLATFORM_HINT=x11"}
@@ -340,6 +352,22 @@ internal object LinuxCatalog {
         { printf '\n[dextop-launch] %s\n' "$(date -Iseconds)"; sh -c "${'$'}cmd" 2>&1; echo "$LAUNCH_EXIT_MARKER${'$'}?"; } | tee -a $logs
     """.trimIndent() + "\n"
     }
+
+    /**
+     * As Android windows, Android draws each window's caption with its own close and minimize
+     * buttons, so GTK's client-side title bars leave theirs out. A system settings file only for
+     * these launches; Dextop Plasma and Book keep them, since they leave client-decorated windows
+     * unframed, and so does the desktop session for its window manager.
+     */
+    private val ANDROID_WINDOW_DECORATIONS = """
+        if [ ! -f /etc/dextop/app-xdg/gtk-4.0/settings.ini ]; then
+            for version in 3.0 4.0; do
+                mkdir -p /etc/dextop/app-xdg/gtk-${'$'}version
+                printf '[Settings]\ngtk-decoration-layout=menu:\n' >/etc/dextop/app-xdg/gtk-${'$'}version/settings.ini
+            done
+        fi
+        export XDG_CONFIG_DIRS=/etc/dextop/app-xdg:${'$'}{XDG_CONFIG_DIRS:-/etc/xdg}
+    """.trimIndent()
 
     /** Printed after a launched command ends, followed by its exit code. */
     const val LAUNCH_EXIT_MARKER = "dextop-launch-exit:"
@@ -441,7 +469,8 @@ internal object LinuxCatalog {
             # switches to the messagebus user, which PRoot's shell user cannot.
             export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
             mkdir -p /run/dbus
-            if ! grep -q '@/tmp/dextop-dbus-system${'$'}' /proc/net/unix 2>/dev/null; then
+            $BUS_PROBE
+            if ! dextop_bus system; then
             # No bus runs: a socket file left by an earlier session would make its bind fail.
             rm -f /run/dbus/system_bus_socket
             printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \

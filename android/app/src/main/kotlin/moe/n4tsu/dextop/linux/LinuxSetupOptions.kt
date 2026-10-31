@@ -61,9 +61,17 @@ internal data class LinuxSetupOptions(
 internal object LinuxSetupPlan {
     data class Step(val phase: String, val script: String)
 
-    fun steps(distro: LinuxDistro, options: LinuxSetupOptions): List<Step> {
+    /** IceWM's Materia Manjaro Dark theme as shipped in resources/…/linux/icewm, for the setup script. */
+    private val MATERIA_THEME: String by lazy {
+        java.util.Base64.getEncoder().encodeToString(checkNotNull(
+            javaClass.getResourceAsStream("/moe/n4tsu/dextop/linux/icewm/Materia-Manjaro-Dark-1.0.tar.bz2")
+        ) { "Missing IceWM theme" }.use { it.readBytes() })
+    }
+
+    /** [turnip]: the GPU can run Turnip (Adreno 6xx–8xx), so the setup builds it. */
+    fun steps(distro: LinuxDistro, options: LinuxSetupOptions, turnip: Boolean = LinuxGraphics.turnipCapable): List<Step> {
         options.validate(distro)
-        if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) return runtimeSteps(options)
+        if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) return runtimeSteps(options, turnip)
         val apt = distro.family == LinuxPackageFamily.APT
         fun install(packages: List<String>): String = if (packages.isEmpty()) "" else if (apt)
             "export DEBIAN_FRONTEND=noninteractive\napt-get install -y --no-install-recommends ${packages.joinToString(" ")}\n"
@@ -95,19 +103,20 @@ internal object LinuxSetupPlan {
             if (input.isNotEmpty()) add(Step("input", "set -e\n" + install(input)))
 
             if (options.themes) add(Step("desktop", "set -e\n" + install(if (apt)
-                listOf("icewm-common", "adwaita-icon-theme", "gnome-themes-extra", "gtk2-engines-pixbuf")
-                else listOf("adwaita-icon-theme", "gnome-themes-extra")) + """
-                mkdir -p /root/.icewm /root/.config/gtk-3.0
+                listOf("icewm-common", "adwaita-icon-theme", "gnome-themes-extra", "gtk2-engines-pixbuf", "bzip2")
+                else listOf("adwaita-icon-theme", "gnome-themes-extra", "bzip2")) + """
+                mkdir -p /root/.icewm /root/.config/gtk-3.0 /usr/share/icewm/themes
                 # Keep the user's theme once chosen; the setup only supplies an initial theme.
                 if [ ! -f /root/.config/gtk-3.0/settings.ini ]; then
                     printf '[Settings]\ngtk-theme-name=Adwaita\ngtk-icon-theme-name=Adwaita\ngtk-font-name=Noto Sans 10\n' >/root/.config/gtk-3.0/settings.ini
                 fi
-                if [ ! -f /root/.icewm/theme ]; then
-                    for theme in /usr/share/icewm/themes/*/default.theme; do
-                        [ -f "${'$'}theme" ] || continue
-                        printf 'Theme="%s/default.theme"\n' "${'$'}(basename "${'$'}(dirname "${'$'}theme")")" >/root/.icewm/theme
-                        break
-                    done
+                # IceWM's default look: Materia Manjaro Dark (rainerhg7, GPL-3.0,
+                # opendesktop.org/p/1393603), shipped with Dextop.
+                printf '%s' '$MATERIA_THEME' | base64 -d | tar -xjf - -C /usr/share/icewm/themes
+                # Earlier setups picked the first installed theme by name; that is replaced once.
+                if [ ! -f /root/.icewm/theme ] || [ ! -f /root/.icewm/.dextop-theme ]; then
+                    printf 'Theme="Materia-Manjaro-Dark/default.theme"\n' >/root/.icewm/theme
+                    : >/root/.icewm/.dextop-theme
                 fi
             """.trimIndent() + "\n"))
 
@@ -115,9 +124,10 @@ internal object LinuxSetupPlan {
                 listOf("libgl1-mesa-dri", "libegl-mesa0", "libglx-mesa0", "mesa-utils", "mesa-vulkan-drivers", "vulkan-tools")
                 else listOf("mesa", "mesa-utils"))))
             // Turnip for the device's Adreno GPU through Android's KGSL driver; OpenGL runs on it through Zink.
-            if (options.graphics && apt) add(Step("gpu", LinuxCatalog.turnipScript()))
+            // Only where it can run (Adreno 6xx–8xx); other GPUs use VirGL, which needs no driver in the container.
+            if (options.graphics && apt && turnip) add(Step("gpu", LinuxCatalog.turnipScript()))
             // DroidDeck's runtime brings Turnip for KGSL in its own Mesa.
-            if (options.graphics && distro.id == LinuxCatalog.DROIDDECK_RUNTIME) add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
+            if (options.graphics && distro.id == LinuxCatalog.DROIDDECK_RUNTIME && turnip) add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
             // DroidDeck's desktop (Plasma, KWin nested in Dextop's compositor) for its window manager choice.
             if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) add(Step("droiddeck-desktop", LinuxSteam.droidDeckDesktopScript()))
 
@@ -155,8 +165,8 @@ internal object LinuxSetupPlan {
      * launcher of DroidDeck's desktop and, when asked, fetches Steam with the
      * runtime's own droiddeck-steam-install.
      */
-    private fun runtimeSteps(options: LinuxSetupOptions): List<Step> = buildList {
-        add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
+    private fun runtimeSteps(options: LinuxSetupOptions, turnip: Boolean): List<Step> = buildList {
+        if (turnip) add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
         add(Step("droiddeck-desktop", LinuxSteam.droidDeckDesktopScript()))
         if ("steam" in options.apps) add(Step("steam", LinuxSteam.installScript(apt = false, steamMode = false) { "" }))
         add(Step("integration", """

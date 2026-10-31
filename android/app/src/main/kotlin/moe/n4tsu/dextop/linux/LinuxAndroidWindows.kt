@@ -124,23 +124,28 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
         host.waitingSince = android.os.SystemClock.elapsedRealtime()
         waiting += host
         host.window.decorView.postDelayed({
-            if (host in waiting) host.showError(if (java.util.Locale.getDefault().language == "ja")
-                "アプリのウィンドウがまだ開いていません。起動ログを確認してください"
-                else "The application has not opened a window yet. Check its launch log")
+            if (host in waiting) host.showError(moe.n4tsu.dextop.localText("アプリのウィンドウがまだ開いていません。起動ログを確認してください", "The application has not opened a window yet. Check its launch log"))
         }, 30_000)
         val metrics = host.windowManager.maximumWindowMetrics.bounds
         val dpi = host.resources.displayMetrics.densityDpi
         val refresh = host.display?.refreshRate ?: 60f
         fun phase(ja: String, en: String) = host.runOnUiThread {
-            host.setPhase(if (java.util.Locale.getDefault().language == "ja") ja else en)
+            host.setPhase(moe.n4tsu.dextop.localText(ja, en))
         }
         phase("Linux サービスに接続しています", "Connecting to the Linux service")
         LinuxContainerClient.connect(host)
+        val clicked = android.os.SystemClock.uptimeMillis()
         LinuxContainerClient.call(host, { linux ->
+            val queued = android.os.SystemClock.uptimeMillis()
             phase("コンテナとアプリ表示を起動しています", "Starting the container and its display")
             linux.startApps(container, metrics.width(), metrics.height(), dpi)
+            val started = android.os.SystemClock.uptimeMillis()
             linux.updateDisplay(container, true, metrics.width(), metrics.height(), dpi, refresh)
-            phase("${host.launchLabel ?: "アプリ"} を起動しています", "Starting ${host.launchLabel ?: "the app"}")
+            android.util.Log.i("DextopLaunch", "android $desktopId queue=${queued - clicked}ms startApps=${started - queued}ms " +
+                "updateDisplay=${android.os.SystemClock.uptimeMillis() - started}ms")
+            host.launchLabel?.let { label ->
+                host.runOnUiThread { host.setPhase(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} を起動しています", "Starting {0}"), label)) }
+            } ?: phase("アプリを起動しています", "Starting the app")
             LinuxTheme.apply(host.applicationContext, linux, container)
             linux.launchApp(container, desktopId)
             phase("ウィンドウが開くのを待っています", "Waiting for its window")
@@ -271,8 +276,7 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
             // reuse a window) leaves its launch window waiting: after a grace period it gives
             // way to the application's window.
             "launch-exit" -> if (event.optInt("code") == 0) waitingFor(containerId, event).forEach { host ->
-                host.setPhase(if (java.util.Locale.getDefault().language == "ja") "既存のウィンドウを確認しています"
-                    else "Looking for its existing window")
+                host.setPhase(moe.n4tsu.dextop.localText("既存のウィンドウを確認しています", "Looking for its existing window"))
                 host.window.decorView.postDelayed({ if (host in waiting) handOff(host) }, HANDOFF_GRACE_MS)
             }
             // An application's failure reaches only the windows waiting for it.
@@ -385,9 +389,10 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
                 return
             }
             waiting -= host
-            host.showError(if (java.util.Locale.getDefault().language == "ja")
-                "${host.launchLabel ?: "アプリ"} は終了しました。ウィンドウは開かれませんでした"
-                else "${host.launchLabel ?: "The app"} ended without opening a window")
+            host.showError(host.launchLabel?.let {
+                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} は終了しました。ウィンドウは開かれませんでした",
+                    "{0} ended without opening a window"), it)
+            } ?: moe.n4tsu.dextop.localText("アプリは終了しました。ウィンドウは開かれませんでした", "The app ended without opening a window"))
             return
         }
         waiting -= host

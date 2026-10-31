@@ -7,8 +7,8 @@
     <string name="embedded_pairing_notification_text">Digite o código de seis dígitos exibido na depuração sem fio</string>
     <string name="embedded_pairing_code">Código de pareamento de seis dígitos</string>
     <string name="embedded_pairing_enter_code">Digitar código de pareamento</string>
-    <string name="embedded_pairing_success">O Dextop está conectado</string>
-    <string name="embedded_pairing_success_message">O pareamento foi concluído. Volte ao Dextop.</string>
+    <string name="embedded_pairing_success">Pareamento concluído</string>
+    <string name="embedded_pairing_success_message">O acesso do Dextop está conectado. Volte ao Dextop.</string>
     <string name="embedded_pairing_failed">Não foi possível conectar o Dextop</string>
     <string name="embedded_pairing_invalid_code">Digite um código de seis dígitos</string>
     <string name="embedded_pairing_searching">Procurando serviço de pareamento</string>

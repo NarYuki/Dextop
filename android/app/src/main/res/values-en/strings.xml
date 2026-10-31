@@ -7,8 +7,8 @@
     <string name="embedded_pairing_notification_text">Enter the six-digit code shown in Wireless debugging</string>
     <string name="embedded_pairing_code">Six-digit pairing code</string>
     <string name="embedded_pairing_enter_code">Enter pairing code</string>
-    <string name="embedded_pairing_success">Dextop is connected</string>
-    <string name="embedded_pairing_success_message">Pairing is complete. Return to Dextop.</string>
+    <string name="embedded_pairing_success">Pairing succeeded</string>
+    <string name="embedded_pairing_success_message">Dextop access is connected. Return to Dextop.</string>
     <string name="embedded_pairing_failed">Dextop could not connect</string>
     <string name="embedded_pairing_invalid_code">Enter a six-digit code</string>
     <string name="embedded_pairing_searching">Searching for pairing service</string>

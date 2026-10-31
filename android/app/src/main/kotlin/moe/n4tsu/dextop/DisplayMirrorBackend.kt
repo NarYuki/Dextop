@@ -36,7 +36,9 @@ internal data class MirrorAttachRequest(
     val hostHeight: Int,
     val contentWidth: Int,
     val contentHeight: Int,
-    val contentDensity: Int
+    val contentDensity: Int,
+    /** The part of the display this host shows (an extended desktop's screen); null for all of it. */
+    val crop: android.graphics.Rect? = null,
 )
 
 internal interface MirrorAttachment {
@@ -148,21 +150,28 @@ internal class DisplayMirrorBackend(
         strategyOverride: String? = null,
         /** Recreate the recording display instead of updating it in place. */
         rebuild: Boolean = false,
+        crop: android.graphics.Rect? = null,
     ): List<StrategyAttempt> {
         val request = MirrorAttachRequest(
             displayId, host, host.holder.surface, hostWidth, hostHeight,
-            contentWidth, contentHeight, contentDensity
+            contentWidth, contentHeight, contentDensity, crop
         )
         OperationLog.i(
             context,
             "DisplayBackend",
             "mirror attach host=${hostWidth}x$hostHeight content=${contentWidth}x$contentHeight/$contentDensity"
         )
-        val strategies = strategyOverride?.let(::listOf) ?: environment.mirrorStrategies
+        val chosen = strategyOverride?.let(::listOf) ?: environment.mirrorStrategies
+        // An extended desktop is seen only through these mirrors. A recording
+        // VirtualDisplay carries the whole display, Display Overlays (where
+        // Android draws the mouse pointer) included; WindowManager's layer mirror
+        // has only the windowing layer, so it stays the fallback.
+        val strategies = if (crop == null) chosen
+            else listOf("virtual_display", "surface_control", "window_manager")
         // Resizing/rebinding an existing recording VirtualDisplay keeps its
         // display id stable. Releasing it on every fold or laptop-pane change
         // leaves stale AOSP desktop desks behind until Shell refuses launches.
-        if (!rebuild && activeStrategy == "virtual_display" && "virtual_display" in strategies &&
+        if (!rebuild && crop == null && activeStrategy == "virtual_display" && "virtual_display" in strategies &&
             attachment?.update(request) == true) {
             OperationLog.i(
                 context,
@@ -264,12 +273,13 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
     // Preserve the Auto desktop aspect ratio and keep every edge visible.
     // The Auto tile can be nearly square while the phone is ultrawide, so
     // center-cropping would cut away a large part of the desktop.
+    val area = request.crop ?: android.graphics.Rect(0, 0, request.contentWidth, request.contentHeight)
     val scale = minOf(
-        request.hostWidth.toFloat() / request.contentWidth,
-        request.hostHeight.toFloat() / request.contentHeight,
+        request.hostWidth.toFloat() / area.width(),
+        request.hostHeight.toFloat() / area.height(),
     )
-    val offsetX = (request.hostWidth - request.contentWidth * scale) / 2f
-    val offsetY = (request.hostHeight - request.contentHeight * scale) / 2f
+    val offsetX = (request.hostWidth - area.width() * scale) / 2f - area.left * scale
+    val offsetY = (request.hostHeight - area.height() * scale) / 2f - area.top * scale
     SurfaceControl.Transaction::class.java.getMethod(
         "setMatrix", SurfaceControl::class.java, Float::class.javaPrimitiveType,
         Float::class.javaPrimitiveType, Float::class.javaPrimitiveType, Float::class.javaPrimitiveType
@@ -278,9 +288,14 @@ private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): Mi
         scale, 0f, 0f, scale
     )
     transaction.setPosition(layer, offsetX, offsetY)
-    SurfaceControl.Transaction::class.java.getMethod(
-        "setWindowCrop", SurfaceControl::class.java, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
-    ).invoke(transaction, layer, request.contentWidth, request.contentHeight)
+    if (request.crop != null) {
+        // An extended desktop's screen: only its part of the display, in the layer's own space.
+        transaction.setCrop(layer, request.crop)
+    } else {
+        SurfaceControl.Transaction::class.java.getMethod(
+            "setWindowCrop", SurfaceControl::class.java, Int::class.javaPrimitiveType, Int::class.javaPrimitiveType
+        ).invoke(transaction, layer, request.contentWidth, request.contentHeight)
+    }
     SurfaceControl.Transaction::class.java.getMethod("show", SurfaceControl::class.java).invoke(transaction, layer)
     transaction.apply()
     return object : MirrorAttachment {
@@ -313,6 +328,7 @@ private class VirtualDisplayMirrorBackend(
     override fun isSupported(): Boolean = runCatching { platform }.isSuccess
 
     override fun attach(request: MirrorAttachRequest): MirrorAttachment {
+        if (request.crop != null) return attachCropped(request)
         val surface = request.destinationSurface
         check(surface.isValid) { "The destination surface is unavailable" }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
@@ -331,6 +347,42 @@ private class VirtualDisplayMirrorBackend(
             )
         }
         return platform.open(service, request, surface, requestMaximumRefreshRate)
+    }
+
+    /**
+     * One screen of an extended desktop. The recording fills a buffer layer the
+     * size of the whole display, and that layer is placed and cropped in the
+     * host like the layer mirrors.
+     */
+    private fun attachCropped(request: MirrorAttachRequest): MirrorAttachment {
+        val host = checkNotNull(request.host) { "A SurfaceView host is required for a cropped mirror" }
+        val parent = SurfaceView::class.java.getMethod("getSurfaceControl").invoke(host) as SurfaceControl
+        val layer = SurfaceControl.Builder()
+            .setName("DextopExtendedMirror-${request.displayId}")
+            .setBufferSize(request.contentWidth, request.contentHeight)
+            .setParent(parent)
+            .build()
+        val surface = Surface(layer)
+        val recording = runCatching {
+            val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
+            val whole = request.copy(destinationSurface = surface, hostWidth = request.contentWidth,
+                hostHeight = request.contentHeight, crop = null)
+            val maximumRate = DisplayEnvironmentSettings(context).maximumMirrorRefreshRateEnabled()
+            (if (preferUntrusted) runCatching { platform.open(service, whole, surface, maximumRate, trusted = false) }.getOrNull() else null)
+                ?: platform.open(service, whole, surface, maximumRate)
+        }.getOrElse { error ->
+            surface.release()
+            layer.release()
+            throw error
+        }
+        val placement = attachLayer(layer, request)
+        return object : MirrorAttachment {
+            override fun release() {
+                runCatching { recording.release() }
+                surface.release()
+                placement.release()
+            }
+        }
     }
 }
 

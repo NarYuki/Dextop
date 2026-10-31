@@ -39,6 +39,18 @@ internal object LinuxRuntime {
         }.getOrNull()
     }
 
+    /** Every process of every container (PRoot and what runs under it), with its container id. */
+    internal fun linuxProcesses(): List<Pair<Entry, String>> {
+        val entries = snapshot()
+        return entries.mapNotNull { entry -> rootOf(entry)?.let { entry to it } }.flatMap { (root, path) ->
+            val container = path.removeSuffix("/rootfs").substringAfterLast('/')
+            descendants(entries, setOf(root.pid)).map { it to container }
+        }.distinctBy { it.first.pid }
+    }
+
+    /** Kills [entry] and everything it started, as of now. */
+    internal fun stopTree(entry: Entry): Int = kill(descendants(snapshot(), setOf(entry.pid)))
+
     internal fun rootOf(entry: Entry): String? {
         if (entry.command.firstOrNull()?.substringAfterLast('/') != "libproot.so") return null
         val index = entry.command.indexOf("-r")
@@ -93,7 +105,7 @@ internal object LinuxRuntime {
         if (process.isAlive) process.destroyForcibly()
     }
 
-    fun freeDisplay(used: Set<Int>, sockets: String = File("/proc/net/unix").readText()): Int {
+    fun freeDisplay(used: Set<Int>, sockets: String = runCatching { File("/proc/net/unix").readText() }.getOrDefault("")): Int {
         return (10..63).firstOrNull { display -> display !in used &&
             !Regex("(?m)(?:@)?/tmp/\\.X11-unix/X$display$").containsMatchIn(sockets) }
             ?: error("No free X display (10–63); stop stale Linux sessions")

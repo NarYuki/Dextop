@@ -148,8 +148,160 @@ class DisplaySettingsPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(currentLocalizations().displaySettingsTitle)),
-    body: DisplayTopologyEditor(bridge: bridge, showSettingsHeader: true),
+    body: DisplayTopologyEditor(
+      bridge: bridge,
+      showSettingsHeader: true,
+      belowArrangement: ExternalDisplayModeCard(bridge: bridge),
+    ),
   );
+}
+
+/// How a connected external screen shows the Dextop desktop, as in a desktop OS's display
+/// settings: the phone only, the external screen only, duplicated, or extended across both.
+/// Nothing changes until the user picks here.
+class ExternalDisplayModeCard extends StatefulWidget {
+  const ExternalDisplayModeCard({required this.bridge, super.key});
+
+  final NativeBridge bridge;
+
+  @override
+  State<ExternalDisplayModeCard> createState() => _ExternalDisplayModeCardState();
+}
+
+class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
+  Map<String, dynamic> state = const {};
+  String position = 'right';
+  String main = '2';
+  bool busy = false;
+  Timer? monitor;
+  String t(String ja, String en) => localText(context, ja, en);
+
+  @override
+  void initState() {
+    super.initState();
+    load();
+    // Plugging the screen in or starting the desktop shows up while the page is open.
+    monitor = Timer.periodic(const Duration(seconds: 2), (_) {
+      if (!busy) load();
+    });
+  }
+
+  @override
+  void dispose() {
+    monitor?.cancel();
+    super.dispose();
+  }
+
+  Future<void> load() async {
+    final next = await widget.bridge.externalDisplayState();
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      state = next;
+      position = preferences.getString('external_display_position') ?? 'right';
+      main = preferences.getString('external_display_main') ?? '2';
+    });
+  }
+
+  Future<void> choose(String mode) async {
+    if (busy) return;
+    setState(() => busy = true);
+    final outcome = await widget.bridge.setExternalDisplay(mode);
+    await load();
+    if (!mounted) return;
+    setState(() => busy = false);
+    if (outcome == 'ok') return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(switch (outcome) {
+          'no_session' => t('デスクトップを開始してから選んでください', 'Start the desktop first'),
+          'no_display' => t('外部ディスプレイが見つかりません', 'The external display is gone'),
+          _ => t('外部ディスプレイに表示できませんでした', 'Could not show the desktop on the external display'),
+        }),
+      ),
+    );
+  }
+
+  /// Saves an extended-desktop preference; a running extended desktop takes it at once.
+  Future<void> setArrangement(String key, String value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setString(key, value);
+    setState(() {
+      if (key == 'external_display_position') {
+        position = value;
+      } else {
+        main = value;
+      }
+    });
+    if (state['mode'] == 'extend') await choose('extend');
+  }
+
+  Widget dropdown(String value, Map<String, String> items, ValueChanged<String>? onChanged) =>
+      DropdownButton<String>(
+        value: value,
+        underline: const SizedBox.shrink(),
+        borderRadius: BorderRadius.circular(16),
+        onChanged: onChanged == null ? null : (next) {
+          if (next != null && next != value) onChanged(next);
+        },
+        items: [
+          for (final entry in items.entries)
+            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+        ],
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    if (state['connected'] != true) return const SizedBox.shrink();
+    final mode = state['mode'] as String? ?? 'off';
+    final running = state['running'] == true;
+    final enabled = running && !busy;
+    final name = state['name'] as String? ?? t('外部ディスプレイ', 'External display');
+    return Padding(
+      padding: const EdgeInsets.only(top: 12),
+      child: Card(
+        margin: EdgeInsets.zero,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.connected_tv_outlined),
+              title: Text(t('複数のディスプレイ', 'Multiple displays')),
+              subtitle: Text(
+                running
+                    ? inlineFormat(t('1: スマホ / 2: {0}', '1: Phone / 2: {0}'), [name])
+                    : t('デスクトップを開始すると選べます', 'Start the desktop to choose'),
+              ),
+              trailing: dropdown(mode, {
+                'mirror': t('表示画面を複製する', 'Duplicate these displays'),
+                'extend': t('表示画面を拡張する', 'Extend these displays'),
+                'off': t('1 のみに表示する', 'Show only on 1'),
+                'external': t('2 のみに表示する', 'Show only on 2'),
+              }, enabled ? choose : null),
+            ),
+            if (mode == 'extend') ...[
+              const Divider(height: 1),
+              ListTile(
+                title: Text(t('2 の位置', 'Position of 2')),
+                trailing: dropdown(position, {
+                  'left': t('1 の左', 'Left of 1'),
+                  'right': t('1 の右', 'Right of 1'),
+                }, enabled ? (value) => setArrangement('external_display_position', value) : null),
+              ),
+              ListTile(
+                title: Text(t('メインディスプレイ', 'Main display')),
+                subtitle: Text(t('タスクバーを表示する画面です', 'The screen that shows the taskbar')),
+                trailing: dropdown(main, {
+                  '1': t('1（スマホ）', '1 (phone)'),
+                  '2': inlineFormat(t('2（{0}）', '2 ({0})'), [name]),
+                }, enabled ? (value) => setArrangement('external_display_main', value) : null),
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class DisplayTopologyPage extends StatelessWidget {
@@ -472,11 +624,15 @@ class DisplayTopologyEditor extends StatefulWidget {
     required this.bridge,
     this.onDisplaySelected,
     this.showSettingsHeader = false,
+    this.belowArrangement,
     super.key,
   });
   final NativeBridge bridge;
   final ValueChanged<int>? onDisplaySelected;
   final bool showSettingsHeader;
+
+  /// Shown between the arrangement and the selected display's settings.
+  final Widget? belowArrangement;
 
   @override
   State<DisplayTopologyEditor> createState() => _DisplayTopologyEditorState();
@@ -492,12 +648,16 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
   var topologyPollInFlight = false;
   String? lastNativeSignature;
   int? selectedDisplayId;
+  final physicalDensities = <int, int>{};
 
+  /// The display whose settings show: the chosen one, else the first real screen.
   _TopologyDisplay? get selectedDisplay {
     final id = selectedDisplayId;
-    if (id == null) return null;
     for (final display in displays) {
       if (display.id == id) return display;
+    }
+    for (final display in displays) {
+      if (!display.dextopOverlay) return display;
     }
     return null;
   }
@@ -702,18 +862,67 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
     }
   }
 
-  Widget _selectedDisplayModes(BuildContext context) {
-    final display = selectedDisplay;
-    if (display == null) {
-      return Card(
-        margin: EdgeInsets.zero,
-        child: ListTile(
-          leading: const Icon(Icons.touch_app_rounded),
-          title: Text(currentLocalizations().displayResolutionListTitle),
-          subtitle: Text(currentLocalizations().displayResolutionListSummary),
-        ),
-      );
+  String t(String ja, String en) => localText(context, ja, en);
+
+  Future<void> applyDisplaySetting(Future<void> Function() change) async {
+    if (applying) return;
+    setState(() => applying = true);
+    try {
+      await change();
+      await load();
+    } catch (exception) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(exception.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => applying = false);
     }
+  }
+
+  Future<int?> physicalDensity(_TopologyDisplay display) async {
+    final known = physicalDensities[display.id];
+    if (known != null) return known;
+    final value = await widget.bridge.displayPhysicalDensity(display.id);
+    if (value != null && mounted) setState(() => physicalDensities[display.id] = value);
+    return value;
+  }
+
+  Widget _settingRow({
+    required IconData icon,
+    required String title,
+    String? subtitle,
+    required Widget trailing,
+  }) => Card(
+    margin: const EdgeInsets.only(top: 8),
+    child: ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      subtitle: subtitle == null ? null : Text(subtitle),
+      trailing: trailing,
+    ),
+  );
+
+  Widget _dropdown<T>(T value, List<(T, String)> items, ValueChanged<T>? onChanged) =>
+      DropdownButton<T>(
+        value: value,
+        underline: const SizedBox.shrink(),
+        borderRadius: BorderRadius.circular(16),
+        onChanged: onChanged == null
+            ? null
+            : (next) {
+                if (next != null && next != value) onChanged(next);
+              },
+        items: [
+          for (final (item, label) in items)
+            DropdownMenuItem(value: item, child: Text(label)),
+        ],
+      );
+
+  Widget _selectedDisplaySettings(BuildContext context) {
+    final display = selectedDisplay;
+    if (display == null) return const SizedBox.shrink();
     if (display.dextopOverlay) {
       return Card(
         margin: EdgeInsets.zero,
@@ -724,51 +933,126 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         ),
       );
     }
-    void onModeChanged(int? id) {
-      if (applying || id == null) return;
-      final mode = display.supportedModes
-          .where((item) => item.id == id)
-          .firstOrNull;
-      if (mode != null) unawaited(selectMode(mode));
-    }
+    if (!physicalDensities.containsKey(display.id)) unawaited(physicalDensity(display));
+    final enabled = !applying;
 
-    return Card(
-      margin: EdgeInsets.zero,
-      clipBehavior: Clip.antiAlias,
-      child: ExpansionTile(
-        initiallyExpanded: true,
-        leading: const Icon(Icons.monitor_rounded),
-        title: Text(display.name),
-        subtitle: Text(
-          '${display.widthPx} × ${display.heightPx} · '
-          '${display.densityDpi} dpi · ${display.refreshRate.toStringAsFixed(display.refreshRate == display.refreshRate.roundToDouble() ? 0 : 1)} Hz',
+    // Scale: Android's 160 dpi is 100 %.
+    final recommendedDpi = physicalDensities[display.id];
+    final currentPercent = (display.densityDpi * 100 / 160).round();
+    final recommendedPercent = recommendedDpi == null ? null : (recommendedDpi * 100 / 160).round();
+    final percents = {
+      ...[100, 125, 150, 175, 200, 225, 250, 300, 350, 400],
+      currentPercent,
+      ?recommendedPercent,
+    }.toList()..sort();
+    String percentLabel(int value) => value == recommendedPercent
+        ? inlineFormat(t('{0}%（推奨）', '{0}% (Recommended)'), [value])
+        : '$value%';
+
+    // Resolution: each size once, at its highest refresh rate; the largest is recommended.
+    final bySize = <String, _DisplayMode>{};
+    for (final mode in display.supportedModes) {
+      final key = '${mode.width}x${mode.height}';
+      final known = bySize[key];
+      if (known == null || mode.refreshRate > known.refreshRate) bySize[key] = mode;
+    }
+    final sizes = bySize.values.toList()
+      ..sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
+    final active = display.supportedModes.where((mode) => mode.id == display.activeModeId).firstOrNull;
+    final activeSize = active == null ? null : '${active.width}x${active.height}';
+    String sizeLabel(_DisplayMode mode) => mode == sizes.first
+        ? inlineFormat(t('{0} × {1}（推奨）', '{0} × {1} (Recommended)'), [mode.width, mode.height])
+        : '${mode.width} × ${mode.height}';
+    final rates = display.supportedModes
+        .where((mode) => '${mode.width}x${mode.height}' == activeSize)
+        .toList()
+      ..sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
+    String rateLabel(double value) =>
+        '${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 2)} Hz';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 4, bottom: 4),
+          child: Text(display.name, style: Theme.of(context).textTheme.titleMedium),
         ),
-        children: [
-          RadioGroup<int>(
-            groupValue: display.activeModeId,
-            onChanged: onModeChanged,
-            child: Column(
-              children: [
-                for (
-                  var index = 0;
-                  index < display.supportedModes.length;
-                  index++
-                ) ...[
-                  if (index > 0) const Divider(height: 1),
-                  RadioListTile<int>(
-                    value: display.supportedModes[index].id,
-                    title: Text(display.supportedModes[index].label),
-                    subtitle:
-                        display.supportedModes[index].id == display.activeModeId
-                        ? Text(currentLocalizations().displayCurrentMode)
-                        : null,
-                  ),
-                ],
-              ],
+        _settingRow(
+          icon: Icons.aspect_ratio_rounded,
+          title: t('拡大縮小', 'Scale'),
+          subtitle: t('テキスト、アプリ、その他の項目のサイズを変更する', 'Change the size of text, apps, and other items'),
+          trailing: _dropdown<int>(
+            currentPercent,
+            [for (final value in percents) (value, percentLabel(value))],
+            !enabled
+                ? null
+                : (value) => applyDisplaySetting(() => widget.bridge.setDisplayDensity(
+                    display.id,
+                    value == recommendedPercent ? 0 : (value * 160 / 100).round(),
+                  )),
+          ),
+        ),
+        if (sizes.isNotEmpty && activeSize != null)
+          _settingRow(
+            icon: Icons.fit_screen_rounded,
+            title: t('ディスプレイの解像度', 'Display resolution'),
+            subtitle: t('接続されたディスプレイに合うように解像度を調整する',
+                'Adjust the resolution to fit your connected display'),
+            trailing: _dropdown<String>(
+              activeSize,
+              [for (final mode in sizes) ('${mode.width}x${mode.height}', sizeLabel(mode))],
+              !enabled
+                  ? null
+                  : (value) => applyDisplaySetting(() async {
+                      final mode = bySize[value]!;
+                      await widget.bridge.setDisplayPreferredMode(
+                        displayId: display.id,
+                        width: mode.width,
+                        height: mode.height,
+                        refreshRate: mode.refreshRate,
+                      );
+                    }),
             ),
           ),
-        ],
-      ),
+        if (active != null && rates.length > 1)
+          _settingRow(
+            icon: Icons.speed_rounded,
+            title: t('リフレッシュレート', 'Refresh rate'),
+            trailing: _dropdown<int>(
+              active.id,
+              [for (final mode in rates) (mode.id, rateLabel(mode.refreshRate))],
+              !enabled
+                  ? null
+                  : (id) => applyDisplaySetting(() async {
+                      final mode = rates.firstWhere((item) => item.id == id);
+                      await widget.bridge.setDisplayPreferredMode(
+                        displayId: display.id,
+                        width: mode.width,
+                        height: mode.height,
+                        refreshRate: mode.refreshRate,
+                      );
+                    }),
+            ),
+          ),
+        _settingRow(
+          icon: Icons.screen_rotation_alt_rounded,
+          title: t('画面の向き', 'Display orientation'),
+          trailing: _dropdown<int>(
+            display.rotation,
+            [
+              (0, t('横', 'Landscape')),
+              (1, t('縦', 'Portrait')),
+              (2, t('横（反対向き）', 'Landscape (flipped)')),
+              (3, t('縦（反対向き）', 'Portrait (flipped)')),
+            ],
+            !enabled
+                ? null
+                : (value) => applyDisplaySetting(
+                    () => widget.bridge.setDisplayRotation(display.id, value),
+                  ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -840,8 +1124,6 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
             ),
           ),
           const SizedBox(height: 12),
-          _selectedDisplayModes(context),
-          const SizedBox(height: 12),
           LayoutBuilder(
             builder: (context, constraints) {
               final columns = constraints.maxWidth >= 600 ? 4 : 2;
@@ -895,6 +1177,9 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
               );
             },
           ),
+          ?widget.belowArrangement,
+          const SizedBox(height: 12),
+          _selectedDisplaySettings(context),
         ],
       ),
     );
@@ -1152,6 +1437,7 @@ class _TopologyDisplay {
     required this.widthPx,
     required this.heightPx,
     required this.densityDpi,
+    this.rotation = 0,
     required this.activeModeId,
     required this.refreshRate,
     required this.supportedModes,
@@ -1166,6 +1452,7 @@ class _TopologyDisplay {
   final int widthPx;
   final int heightPx;
   final int densityDpi;
+  final int rotation;
   final int activeModeId;
   final double refreshRate;
   final List<_DisplayMode> supportedModes;
@@ -1190,6 +1477,7 @@ class _TopologyDisplay {
         widthPx: (map['widthPx'] as num?)?.toInt() ?? 0,
         heightPx: (map['heightPx'] as num?)?.toInt() ?? 0,
         densityDpi: (map['densityDpi'] as num?)?.toInt() ?? 0,
+        rotation: (map['rotation'] as num?)?.toInt() ?? 0,
         activeModeId: (map['activeModeId'] as num?)?.toInt() ?? -1,
         refreshRate: (map['refreshRate'] as num?)?.toDouble() ?? 0,
         supportedModes: (map['supportedModes'] as List? ?? const [])
@@ -1211,6 +1499,7 @@ class _TopologyDisplay {
     widthPx: widthPx,
     heightPx: heightPx,
     densityDpi: densityDpi,
+    rotation: rotation,
     activeModeId: activeModeId,
     refreshRate: refreshRate,
     supportedModes: supportedModes,

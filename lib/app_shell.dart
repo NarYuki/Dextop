@@ -338,6 +338,12 @@ class NativeBridge {
         },
       ) ??
       {};
+  Future<void> setDisplayDensity(int displayId, int dpi) =>
+      channel.invokeMethod('setDisplayDensity', {'displayId': displayId, 'dpi': dpi});
+  Future<void> setDisplayRotation(int displayId, int rotation) =>
+      channel.invokeMethod('setDisplayRotation', {'displayId': displayId, 'rotation': rotation});
+  Future<int?> displayPhysicalDensity(int displayId) =>
+      channel.invokeMethod<int>('displayPhysicalDensity', {'displayId': displayId});
   Future<Map<String, dynamic>> displayEnvironmentSettings() async =>
       await channel.invokeMapMethod<String, dynamic>(
         'displayEnvironmentSettings',
@@ -355,6 +361,16 @@ class NativeBridge {
 
   /// Applies the saved `window_manager` preference to a running session.
   Future<void> setWindowManager() => channel.invokeMethod('setWindowManager');
+
+  /// Whether an external screen that can take the desktop is connected, and its use now.
+  Future<Map<String, dynamic>> externalDisplayState() async =>
+      await channel.invokeMapMethod<String, dynamic>('externalDisplayState') ??
+      {};
+
+  /// Shows the desktop on the external screen: "off", "external" or "mirror".
+  Future<String> setExternalDisplay(String mode) async =>
+      await channel.invokeMethod<String>('setExternalDisplay', {'mode': mode}) ??
+      'failed';
 
   /// Re-reads Dextop Plasma appearance preferences on the running desktop.
   Future<void> plasmaSettingsChanged() =>

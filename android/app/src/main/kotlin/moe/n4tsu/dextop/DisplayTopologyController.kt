@@ -6,6 +6,7 @@ import android.graphics.RectF
 import android.hardware.display.DisplayManager
 import android.os.IBinder
 import android.os.Parcel
+import kotlin.math.roundToInt
 import android.util.Base64
 import moe.n4tsu.dextop.privilege.DistributionPrivilegeRuntime
 import org.json.JSONObject
@@ -230,6 +231,7 @@ class DisplayTopologyController(private val context: Context) {
             "widthPx" to metrics.widthPixels,
             "heightPx" to metrics.heightPixels,
             "densityDpi" to metrics.densityDpi,
+            "rotation" to display.rotation,
             "activeModeId" to display.mode.modeId,
             "refreshRate" to display.refreshRate.toDouble(),
             "supportedModes" to display.supportedModes.map { mode ->
@@ -365,6 +367,41 @@ class DisplayTopologyController(private val context: Context) {
             "preferred mode display=$displayId ${mode.physicalWidth}x${mode.physicalHeight}@${mode.refreshRate}"
         )
         return availableDisplays()
+    }
+
+    /** Scales a physical display's content; [dpi] <= 0 returns it to the panel's own density. */
+    fun setDensity(displayId: Int, dpi: Int): Map<String, Any> {
+        checkPhysical(displayId)
+        val result = privilegedAccess.execute("wm", "density", if (dpi > 0) dpi.toString() else "reset", "-d", displayId.toString())
+        check(result.succeeded) { result.error.ifBlank { result.output.ifBlank { "The scale could not be applied" } } }
+        OperationLog.i(context, "DisplayTopology", "density display=$displayId dpi=$dpi")
+        return availableDisplays()
+    }
+
+    /** The density the panel reports without an override. */
+    fun physicalDensity(displayId: Int): Int? {
+        val result = privilegedAccess.execute("wm", "density", "-d", displayId.toString())
+        return Regex("Physical density: (\\d+)").find(result.output)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    /** Turns a physical display's content: 0 landscape, 1 portrait, 2 and 3 flipped. */
+    fun setRotation(displayId: Int, rotation: Int): Map<String, Any> {
+        checkPhysical(displayId)
+        require(rotation in 0..3)
+        val result = privilegedAccess.execute("wm", "user-rotation", "-d", displayId.toString(), "lock", rotation.toString())
+        check(result.succeeded) { result.error.ifBlank { result.output.ifBlank { "The orientation could not be applied" } } }
+        OperationLog.i(context, "DisplayTopology", "rotation display=$displayId rotation=$rotation")
+        Thread.sleep(250)
+        return availableDisplays()
+    }
+
+    private fun checkPhysical(displayId: Int) {
+        check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
+        context.getSystemService(DisplayManager::class.java).getDisplay(displayId)
+            ?: error("The selected display is no longer connected")
+        check(displayId != MirrorService.topologyOverlayDisplayId()) {
+            "Change the Dextop session resolution from the home screen"
+        }
     }
 
     private fun saveArrangement(
@@ -561,9 +598,14 @@ class DisplayTopologyController(private val context: Context) {
 
         fun write(parcel: Parcel) {
             parcel.writeInt(displayId)
-            parcel.writeInt(logicalWidth)
-            parcel.writeInt(logicalHeight)
-            parcel.writeInt(logicalDensity)
+            if (DP_NODES) {
+                parcel.writeFloat(widthDp)
+                parcel.writeFloat(heightDp)
+            } else {
+                parcel.writeInt(logicalWidth)
+                parcel.writeInt(logicalHeight)
+                parcel.writeInt(logicalDensity)
+            }
             parcel.writeInt(position)
             parcel.writeFloat(offset)
             parcel.writeInt(children.size)
@@ -575,7 +617,14 @@ class DisplayTopologyController(private val context: Context) {
 
         companion object {
             fun read(parcel: Parcel): Node {
-                val node = Node(
+                val node = if (DP_NODES) {
+                    // Sizes are dp here; a density of 160 keeps widthDp/heightDp exact.
+                    val id = parcel.readInt()
+                    val width = parcel.readFloat()
+                    val height = parcel.readFloat()
+                    Node(id, width.roundToInt(), height.roundToInt(), 160,
+                        parcel.readInt(), parcel.readFloat(), mutableListOf())
+                } else Node(
                     parcel.readInt(), parcel.readInt(), parcel.readInt(), parcel.readInt(),
                     parcel.readInt(), parcel.readFloat(), mutableListOf()
                 )
@@ -588,6 +637,19 @@ class DisplayTopologyController(private val context: Context) {
     }
 
     companion object {
+        /**
+         * The first Android 16 release (HyperOS on Xiaomi among them) parcels a
+         * node as id, width and height in dp floats, position and offset. Later
+         * builds send pixel sizes and the density instead. Writing the wrong
+         * layout makes DisplayManagerService reject the topology outright.
+         */
+        private val DP_NODES: Boolean by lazy {
+            runCatching {
+                HiddenApiBypass.addHiddenApiExemptions("")
+                Class.forName("android.hardware.display.DisplayTopology\$TreeNode")
+                    .getDeclaredField("mWidth").type == Float::class.javaPrimitiveType
+            }.getOrDefault(false)
+        }
         private const val KEY_SAVED_ARRANGEMENT = "saved_arrangement_v1"
         private const val DISPLAY_INTERFACE = "android.hardware.display.IDisplayManager"
         private const val POSITION_LEFT = 0

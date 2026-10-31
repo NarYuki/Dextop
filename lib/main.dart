@@ -22,6 +22,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
+import 'l10n/inline_text.dart';
 
 part 'app_info.dart';
 part 'samsung_desktop_settings.dart';

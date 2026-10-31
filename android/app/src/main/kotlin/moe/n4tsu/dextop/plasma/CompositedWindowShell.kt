@@ -77,6 +77,8 @@ internal abstract class CompositedWindowShell(
     /** See DesktopEnvironment.privateApplicationDisplays. */
     private val privateAppDisplays: Boolean = false,
     private val autoMode: Boolean,
+    /** Dextop Book: Material 3 Expressive chrome (see Book.kt) instead of Plasma's. */
+    private val book: Boolean = false,
 ) : DesktopShell, V2WindowHost, PanelHost, LauncherHost, AutoUiHost {
 
     companion object {
@@ -243,6 +245,7 @@ internal abstract class CompositedWindowShell(
         return true
     }
     private fun resolveAutoPalette(): PlasmaPalette {
+        if (book) return BookTheme.palette(service, settings)
         if (!autoMode) return PlasmaTheme.resolve(service, settings)
         val scheme = service.getSharedPreferences("dextop_auto_ui", Context.MODE_PRIVATE).getString("theme","dark") ?: "dark"
         return PlasmaTheme.resolve(service, settings.copy(colorScheme=scheme))
@@ -362,17 +365,19 @@ internal abstract class CompositedWindowShell(
                     pendingAutoPane = pane.takeIf { it >= 0 }
                     val task = alive.firstOrNull { it.taskId == taskId }
                         ?: alive.firstOrNull { it.packageName == packageName && it.taskId !in adoptedTaskIds }
+                    // createWindow, not launch(): launch() closes the open page, which would undo
+                    // whatever the user opened in the moments since connecting.
                     if (task != null) {
                         adoptedTaskIds += task.taskId
                         createWindow(packageName, smartPlacement(), adoptTask = task)
-                    } else launch(packageName)
+                    } else createWindow(packageName, smartPlacement())
                     pendingAutoPane = null
                 }
                 if (!state.optBoolean("split") && workspace.split) workspace.single()
                 workspace.focus(state.optInt("focus", 0))
                 layoutAutoWorkspace()
-                // Connecting always lands on Home; the restored apps wait behind it in their panes.
-                autoUi?.showHome()
+                // Connecting lands on Home (shown when the shell was built); the restored apps wait
+                // behind whatever page the user has open by now.
                 autoUi?.updateTasks()
                 saveAutoSession()
             }
@@ -431,7 +436,8 @@ internal abstract class CompositedWindowShell(
     }
 
     override val windowShadows get() = !autoMode
-    override fun windowCornerRadius(): Float = if (autoMode) autoUi?.cornerRadius() ?: -1f else -1f
+    override fun windowCornerRadius(): Float = if (autoMode) autoUi?.cornerRadius() ?: -1f else if (book) dp(16).toFloat() else -1f
+    override val bookStyle get() = book
     override val autoControls get() = systemControls
     override fun <T> autoLoad(owner: View, work: () -> T, done: (T) -> Unit) = trayWorker.load(owner, work, done)
     override fun autoOpenNotification(item: DextopNotification) { openNotification(item); autoUi?.hidePage() }
@@ -599,13 +605,20 @@ internal abstract class CompositedWindowShell(
     private var lastHotCornerAt = 0L
 
     private fun dp(value: Int) = layer.dp(value)
-    private val shellTitle get() = if (autoMode) "Dextop Auto" else "Dextop Plasma v2"
-    private val titleHeight get() = if (autoMode) 0 else dp(30)
+    private val shellTitle get() = if (autoMode) "Dextop Auto" else if (book) "Dextop Book" else "Dextop Plasma v2"
+    private val titleHeight get() = if (autoMode) 0 else if (book) dp(40) else dp(30)
+    /** Book's status bar and dock (Compose); null for Plasma and Auto. */
+    private var bookUi: BookUi? = null
+
+    /** The top of the panel (or Book's dock) as it is now. */
+    private fun chromeBottom(): Int = bookUi?.let { height - it.bottomInset }
+        ?: (height - panel.thickness - 2 * (panel.floatMargin * panelFloat).roundToInt())
     private val grip get() = if (autoMode) 0 else dp(7)
     // endregion
 
     private fun invalidateDesktopPanel() {
         if (::panel.isInitialized) panel.invalidate()
+        bookUi?.refresh()
         // Auto's task bar shows the same titles and icons.
         if (autoMode) autoUi?.updateTasks()
     }
@@ -624,6 +637,7 @@ internal abstract class CompositedWindowShell(
         buildRoot()
         LinuxContainerClient.addListener(linuxListener)
         // Auto lists the Linux applications but does not start every container's apps on connect.
+        loadLinuxAppsCache()
         refreshLinuxApps(resumeWindows = !autoMode)
         NotificationCenter.addListener(notificationsChanged)
         enableNotificationAccess()
@@ -674,6 +688,7 @@ internal abstract class CompositedWindowShell(
         inputExecutor.shutdown()
         systemExecutor.shutdown()
         runCatching { service.unregisterReceiver(trayReceiver) }
+        bookUi?.destroy()
         layer.clear()
         appRepository.shutdown()
         host.log("Plasma v2 compositor stopped display=$displayId")
@@ -760,6 +775,11 @@ internal abstract class CompositedWindowShell(
                 ((event.keyCode in setOf(KeyEvent.KEYCODE_VOLUME_UP, KeyEvent.KEYCODE_VOLUME_DOWN,
                     KeyEvent.KEYCODE_VOLUME_MUTE) || activeLinuxContainer() != null) && handleKey(event)) ||
                     super.dispatchKeyEvent(event)
+
+            // Controller sticks reach the focused window here, not through the pointer paths.
+            override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =
+                activeLinuxContainer()?.let { moe.n4tsu.dextop.linux.LinuxAndroidPads.dispatch(service, it, event) } == true ||
+                    super.dispatchGenericMotionEvent(event)
         }.apply {
             clipChildren = false
             isFocusable = true
@@ -808,7 +828,9 @@ internal abstract class CompositedWindowShell(
         panelFloat = if (settings.floatingPanel) 1f else 0f
         panelFloatTarget = panelFloat
         panel.floatFraction = panelFloat
-        root.addView(panel, FrameLayout.LayoutParams(-1, panel.thickness + panel.floatMargin * 2, Gravity.BOTTOM))
+        // Book keeps the panel model (task list, icons) but shows its own status bar and dock.
+        if (book) BookUi(displayContext, this, this).also { bookUi = it; it.install(root) }
+        else root.addView(panel, FrameLayout.LayoutParams(-1, panel.thickness + panel.floatMargin * 2, Gravity.BOTTOM))
         // Desktop chrome stays behind transient menus and Linux popups.
         popupLayer.bringToFront()
         linuxPopupLayer.bringToFront()
@@ -1183,6 +1205,8 @@ internal abstract class CompositedWindowShell(
     private val linuxListener = object : LinuxContainerClient.Listener {
         override fun onConnectionChanged(connected: Boolean) {
             if (!connected) { linuxTrayItems.clear(); updateLinuxTray() }
+            // A connection made (or remade) after the shell started brings the Linux category.
+            else if (running) refreshLinuxApps(resumeWindows = false)
         }
 
         override fun onWindowEvent(containerId: String, event: JSONObject) {
@@ -1273,17 +1297,100 @@ internal abstract class CompositedWindowShell(
         LinuxContainerClient.service()?.runCatching { setClipboard(containerId, text) }
     }
 
+    /** Linux is set up: its first setup ran, or (before that existed) the old Linux switch was on. */
     private fun linuxEnabled(): Boolean =
-        service.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).getBoolean("flutter.linux_enabled", false)
+        service.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).let {
+            it.getBoolean("flutter.linux_first_run_done", false) || it.getBoolean("flutter.linux_enabled", false)
+        } ||
+            // Containers outlive Dextop's own settings (reinstalled, data cleared): a running Linux
+            // service or a list from an earlier session means Linux is in use.
+            LinuxContainerClient.service() != null || linuxAppsCache.isFile
 
     /**
      * Loads the applications of every installed container for Kickoff. With
      * [resumeWindows], application displays still running from an earlier
      * Plasma session send their windows again.
      */
+    private var linuxAppsRetries = 0
+
+    /** The last Linux app list from the service (container files are not readable from here). */
+    private val linuxAppsCache get() = java.io.File(service.filesDir, "plasma-linux-apps.json")
+
+    private fun linuxAppsFrom(listing: JSONArray, resources: android.content.res.Resources, fallback: Int): List<PlasmaApp> {
+        val multiple = listing.length() > 1
+        return (0 until listing.length()).map(listing::getJSONObject).flatMap { container ->
+            val id = container.getString("id")
+            val entries = container.optJSONArray("entries") ?: JSONArray()
+            (0 until entries.length()).map(entries::getJSONObject).map { entry ->
+                val name = entry.optString("name")
+                val icon = entry.optString("icon").takeIf { it.isNotEmpty() }?.let { encoded ->
+                    runCatching {
+                        val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
+                        android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                            ?.let { android.graphics.drawable.BitmapDrawable(resources, it) }
+                    }.getOrNull()
+                } ?: GlyphDrawable(Glyph.WINDOW, fallback)
+                PlasmaApp(
+                    "$LINUX_APP_PREFIX$id:${entry.optString("id")}",
+                    if (multiple) "$name (${container.optString("name")})" else name,
+                    icon, LINUX_APP_CATEGORY, entry.optString("startupWMClass"),
+                )
+            }
+        }
+    }
+
+    /** The menu gets the last known Linux apps at once; the service's answer replaces them later. */
+    private fun loadLinuxAppsCache() {
+        if (!linuxEnabled()) return
+        val resources = service.resources
+        val fallback = palette.text
+        Thread({
+            val apps = runCatching { linuxAppsFrom(JSONArray(linuxAppsCache.readText()), resources, fallback) }.getOrNull()
+            if (!apps.isNullOrEmpty()) handler.post {
+                if (!running || linuxApps.isNotEmpty()) return@post
+                linuxApps = apps
+                kickoff?.appsChanged()
+                if (autoMode) autoUi?.refreshPage()
+                invalidateDesktopPanel()
+            }
+        }, "DextopPlasmaLinuxApps").apply { isDaemon = true; start() }
+    }
+
+    /**
+     * Starts the default container's application display once the menu has its apps, so the
+     * first Linux app opens as fast as later ones instead of waiting seconds for the display.
+     */
+    private fun prewarmLinux() {
+        val screenWidth = width
+        val screenHeight = height
+        val dpi = densityDpi
+        LinuxContainerClient.call(service, { linux ->
+            val containers = JSONArray(linux.listContainers())
+            val installed = (0 until containers.length()).map(containers::getJSONObject)
+                .filter { it.optString("state") == "installed" }
+            val preferred = runCatching { JSONObject(linux.linuxSettings()).optString("defaultContainer") }.getOrDefault("")
+            (installed.firstOrNull { it.optString("id") == preferred } ?: installed.singleOrNull())
+                ?.takeIf { !it.optBoolean("appsRunning") }?.let { container ->
+                    val id = container.getString("id")
+                    linux.startApps(id, screenWidth, screenHeight, dpi)
+                    linux.updateDisplay(id, true, screenWidth, screenHeight, dpi, linuxRefreshRate())
+                }
+        }, {}) { error -> host.log("Plasma v2 Linux prewarm failed: ${error.message}") }
+    }
+
     private fun refreshLinuxApps(resumeWindows: Boolean) {
-        if (!linuxEnabled() || !LinuxContainerClient.privilegeAvailable()) {
+        // The Android execution mode needs no privilege; ask with this context, not the client's
+        // last one, which is unset until something has connected.
+        if (!linuxEnabled()) {
+            host.log("Plasma v2 Linux applications: Linux is not set up")
             linuxApps = emptyList()
+            return
+        }
+        if (!LinuxContainerClient.privilegeAvailable(service)) {
+            // Built-in access may arrive moments after the desktop starts; the cached list stays.
+            host.log("Plasma v2 Linux applications: access not available yet")
+            if (linuxAppsRetries++ < 6) handler.postDelayed({ if (running) refreshLinuxApps(resumeWindows) },
+                1_000L shl linuxAppsRetries.coerceAtMost(4))
             return
         }
         val locale = java.util.Locale.getDefault().toLanguageTag()
@@ -1309,38 +1416,42 @@ internal abstract class CompositedWindowShell(
             val preferred = runCatching { JSONObject(linux.linuxSettings()).optString("defaultContainer") }.getOrDefault("")
             val shown = installed.filter { preferred.isEmpty() || it.optString("id") == preferred }
                 .ifEmpty { installed }
-            val multiple = shown.size > 1
-            shown.flatMap { container ->
+
+            val listing = JSONArray()
+            shown.forEach { container ->
                 val id = container.getString("id")
-                val entries = runCatching { JSONArray(linux.listApps(id, locale)) }.getOrNull() ?: return@flatMap emptyList()
-                (0 until entries.length()).map(entries::getJSONObject).map { entry ->
-                    val name = entry.optString("name")
-                    val icon = entry.optString("icon").takeIf { it.isNotEmpty() }?.let { encoded ->
-                        runCatching {
-                            val bytes = android.util.Base64.decode(encoded, android.util.Base64.DEFAULT)
-                            android.graphics.BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
-                                ?.let { android.graphics.drawable.BitmapDrawable(resources, it) }
-                        }.getOrNull()
-                    } ?: GlyphDrawable(Glyph.WINDOW, fallback)
-                    PlasmaApp(
-                        "$LINUX_APP_PREFIX$id:${entry.optString("id")}",
-                        if (multiple) "$name (${container.optString("name")})" else name,
-                        icon, LINUX_APP_CATEGORY, entry.optString("startupWMClass"),
-                    )
-                }
+                val entries = runCatching { JSONArray(linux.listApps(id, locale)) }.getOrNull() ?: return@forEach
+                listing.put(JSONObject().put("id", id).put("name", container.optString("name")).put("entries", entries))
             }
+            // Kept for the next start, which then shows the menu without waiting for the service.
+            runCatching { linuxAppsCache.writeText(listing.toString()) }
+            linuxAppsFrom(listing, resources, fallback)
         }, { apps ->
             linuxApps = apps
+            linuxAppsRetries = 0
+            kickoff?.appsChanged()
+            if (resumeWindows) prewarmLinux()
             if (autoMode) autoUi?.refreshPage()
             windows.filter { it.linuxXid != 0 }.forEach { window ->
                 window.icon = window.linuxWindowIcon ?: linuxIcon(window.linuxContainer ?: return@forEach, window.linuxWMClass)
                 window.view.titleBar.invalidate()
             }
             invalidateDesktopPanel()
-        }) { error -> host.log("Plasma v2 Linux applications unavailable: ${error.message}") }
+        }) { error ->
+            host.log("Plasma v2 Linux applications unavailable: ${error.message}")
+            // The Linux service may still be connecting (or switching mode) when the shell
+            // starts; without a retry the menu would lack the Linux category until a container
+            // changes.
+            if (linuxAppsRetries++ < 6) handler.postDelayed({ if (running) refreshLinuxApps(resumeWindows) },
+                1_000L shl linuxAppsRetries.coerceAtMost(4))
+        }
     }
 
+    private val linuxLaunchClicked = HashMap<String, Long>()
+
     private fun launchLinuxApp(packageName: String) {
+        // As for Android-window launches: the foreground service keeps the session alive and online.
+        moe.n4tsu.dextop.linux.LinuxSessionService.start(service)
         val (containerId, desktopId) = packageName.removePrefix(LINUX_APP_PREFIX).split(':', limit = 2)
             .takeIf { it.size == 2 } ?: return
         if (desktopId == LinuxSteam.STEAM_MODE_ENTRY) {
@@ -1354,17 +1465,25 @@ internal abstract class CompositedWindowShell(
         root.postDelayed({
             if (!placeholder.closing && windows.contains(placeholder)) {
                 LinuxContainerClient.call(service, { it.runtimeLogs(containerId) }, { logs ->
-                    if (!placeholder.closing) placeholder.view.showError("Application did not open a window within 30 seconds.\n$logs")
+                    if (!placeholder.closing) placeholder.view.showError(moe.n4tsu.dextop.localText("アプリが 30 秒以内にウィンドウを開きませんでした。", "Application did not open a window within 30 seconds.") + "\n$logs")
                 }) { error -> if (!placeholder.closing) placeholder.view.showError(error.message ?: error.toString()) }
             }
         }, 30_000)
         val screenWidth = width
         val screenHeight = height
         val dpi = densityDpi
+        // Where the time goes between the click and the window (logcat DextopLaunch).
+        val clicked = SystemClock.uptimeMillis()
+        linuxLaunchClicked[containerId] = clicked
         LinuxContainerClient.call(service, { linux ->
+            val queued = SystemClock.uptimeMillis()
             linux.startApps(containerId, screenWidth, screenHeight, dpi)
+            val started = SystemClock.uptimeMillis()
             linux.updateDisplay(containerId, true, screenWidth, screenHeight, dpi, linuxRefreshRate())
-            linux.launchApp(containerId, desktopId)
+            val updated = SystemClock.uptimeMillis()
+            linux.launchFramedApp(containerId, desktopId)
+            Log.i("DextopLaunch", "plasma $desktopId queue=${queued - clicked}ms startApps=${started - queued}ms " +
+                "updateDisplay=${updated - started}ms launch=${SystemClock.uptimeMillis() - updated}ms")
         }, {}) { error -> showLinuxError(containerId, error.message ?: error.toString(), false) }
     }
 
@@ -1476,7 +1595,7 @@ internal abstract class CompositedWindowShell(
             LinuxContainerClient.prepareDeckAudio(linux, containerId)
             linux.startApps(containerId, screenWidth, screenHeight, dpi)
             linux.updateDisplay(containerId, true, screenWidth, screenHeight, dpi, linuxRefreshRate())
-            linux.launchApp(containerId, LinuxSteam.STEAM_MODE_ENTRY)
+            linux.launchFramedApp(containerId, LinuxSteam.STEAM_MODE_ENTRY)
         }, { steamStarting -= window.id }) { error ->
             LinuxContainerClient.releaseDeckAudio(containerId)
             steamStarting -= window.id
@@ -1694,6 +1813,9 @@ internal abstract class CompositedWindowShell(
             "map" -> {
                 val steamMode = if (popup) null else steamModeWindow(containerId)
                 if (steamMode != null && adoptSteamModeClient(steamMode, containerId, xid, event, bounds)) return
+                if (!popup) linuxLaunchClicked.remove(containerId)?.let { clicked ->
+                    Log.i("DextopLaunch", "plasma window mapped ${SystemClock.uptimeMillis() - clicked}ms after the click")
+                }
                 if (!popup) windows.filter { it.packageName.startsWith("linux-launch:$containerId:") }.toList().forEach(::closeWindowNow)
                 if (popup) linuxPopupLayer.show(containerId, xid, bounds) else mapLinuxWindow(containerId, xid, event, bounds)
             }
@@ -2055,7 +2177,7 @@ internal abstract class CompositedWindowShell(
                     val state = runCatching { linux?.desktopState(id) }.getOrNull() ?: 0
                     if (state == 0) {
                         val logs = runCatching { linux?.runtimeLogs(id) }.getOrNull().orEmpty()
-                        root.post { if (!window.closing) window.view.showError("Linux session stopped.\n$logs") }
+                        root.post { if (!window.closing) window.view.showError(moe.n4tsu.dextop.localText("Linux セッションが停止しました。", "Linux session stopped.") + "\n$logs") }
                         break
                     }
                     if (state == 2) status(null)
@@ -2190,6 +2312,7 @@ internal abstract class CompositedWindowShell(
     private var keyLoggedFor: String? = null
 
     private fun forwardLinuxKey(id: String, event: KeyEvent) {
+        if (moe.n4tsu.dextop.linux.LinuxAndroidPads.dispatch(service, id, event)) return
         val linux = LinuxContainerClient.service() ?: return
         val down = event.action == KeyEvent.ACTION_DOWN
         val paste = (event.isCtrlPressed && event.keyCode == KeyEvent.KEYCODE_V) ||
@@ -2293,9 +2416,41 @@ internal abstract class CompositedWindowShell(
     // endregion
 
     // region geometry
+    /** An extended desktop's screens (see DesktopShell.setOutputs); the first has the panel. */
+    private var outputs: List<Rect> = emptyList()
+
+    private fun primaryOutput(): Rect = outputs.firstOrNull() ?: Rect(0, 0, width, height)
+
+    /** The screen the active window is on (new windows open there too). */
+    private fun currentOutput(): Rect {
+        if (outputs.isEmpty()) return Rect(0, 0, width, height)
+        val frame = windows.firstOrNull { it.id == activeId && isShown(it) }?.frame ?: return primaryOutput()
+        return outputs.firstOrNull { it.contains(frame.centerX(), frame.centerY()) } ?: primaryOutput()
+    }
+
+    override fun setOutputs(outputs: List<Rect>) {
+        this.outputs = outputs.map(::Rect)
+        if (!running || autoMode) return
+        bookUi?.place(primaryOutput())
+        if (bookUi == null) layoutPanel()
+        // Maximized and tiled windows follow their screen.
+        windows.filter { it.maximized }.forEach { window ->
+            setFrame(window, workAreaOf(outputs.firstOrNull { it.contains(window.frame.centerX(), window.frame.centerY()) } ?: primaryOutput()), resizeDisplay = true)
+        }
+    }
+
+    /** [output] less the panel (or Book's bars), which only the first screen has. */
+    private fun workAreaOf(output: Rect): Rect {
+        val primary = output == primaryOutput()
+        return bookUi?.let {
+            val top = output.top + if (primary) it.topInset else 0
+            Rect(output.left, top, output.right, (output.bottom - if (primary) it.bottomInset else 0).coerceAtLeast(top + 1))
+        } ?: Rect(output.left, output.top, output.right, (output.bottom - if (primary) panel.thickness else 0).coerceAtLeast(output.top + 1))
+    }
+
     private fun workArea(): Rect = if (autoMode) {
         autoUi?.takeIf { it.width>0 && it.height>0 }?.appBounds()?.firstOrNull() ?: Rect(0,0,width,height)
-    } else Rect(0,0,width,(height-panel.thickness).coerceAtLeast(1))
+    } else workAreaOf(currentOutput())
 
     private fun smartPlacement(): Rect {
         val area = workArea()
@@ -2610,7 +2765,7 @@ internal abstract class CompositedWindowShell(
         window.minimized = true
         if (autoMode) { workspace.remove(window.id);layoutAutoWorkspace();autoUi?.updateTasks() }
         syncLinuxWindowState(window)
-        val icon = if (autoMode) null else panel.taskIconRect(window.packageName)
+        val icon = if (autoMode) null else bookUi?.iconRect(window.packageName) ?: panel.taskIconRect(window.packageName)
         val view = window.view
         val targetX = icon?.centerX() ?: (width / 2f)
         val targetY = icon?.centerY() ?: height.toFloat()
@@ -2942,12 +3097,18 @@ internal abstract class CompositedWindowShell(
 
     // region panel host
     private fun layoutPanel() {
-        if (autoMode) return
+        if (autoMode || book) return
         val margin = (panel.floatMargin * panelFloat).roundToInt()
         val params = panel.layoutParams as FrameLayout.LayoutParams
         val wanted = panel.thickness + margin * 2
-        if (params.height != wanted) {
+        // On an extended desktop the panel spans its first screen only.
+        val output = primaryOutput()
+        val wantedWidth = if (outputs.isEmpty()) -1 else output.width()
+        if (params.height != wanted || params.width != wantedWidth || params.leftMargin != output.left) {
             params.height = wanted
+            params.width = wantedWidth
+            params.leftMargin = if (outputs.isEmpty()) 0 else output.left
+            params.gravity = Gravity.BOTTOM or Gravity.START
             panel.layoutParams = params
         }
     }
@@ -2955,6 +3116,10 @@ internal abstract class CompositedWindowShell(
     private fun updatePanelFloat(force: Boolean = false) {
         if (!running) return
         if (autoMode) return
+        bookUi?.let { ui ->
+            ui.setVisible(overviewActive || peeking || !windows.any { it.id == activeId && it.linuxFullscreen && isShown(it) })
+            return
+        }
         panel.visibility = if (!overviewActive && !peeking && kickoff == null && krunner == null &&
             windows.any { it.id == activeId && it.linuxFullscreen && isShown(it) }) View.INVISIBLE else View.VISIBLE
         val floatZone = height - panel.thickness - panel.floatMargin * 2
@@ -3211,7 +3376,8 @@ internal abstract class CompositedWindowShell(
             true
         }
         popupLayer.addView(scrim, FrameLayout.LayoutParams(-1, -1))
-        val frame = PlasmaPopupFrame(displayContext, palette, onOutside = { dismissPopup() })
+        // Book's popups are Material 3 surfaces: extra-large corners.
+        val frame = PlasmaPopupFrame(displayContext, palette, if (book) 28f else 8f, onOutside = { dismissPopup() })
         frame.addView(content, FrameLayout.LayoutParams(-1, -1))
         popupLayer.addView(frame, FrameLayout.LayoutParams(bounds.width(), bounds.height()).apply {
             leftMargin = bounds.left
@@ -3246,9 +3412,11 @@ internal abstract class CompositedWindowShell(
                 View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST))
             content.measuredHeight
         }
-        val panelTop = height - panel.thickness - (panel.floatMargin * panelFloat).roundToInt() * 2
+        val panelTop = chromeBottom()
         val left = (anchor.centerX() - popupWidth / 2f).roundToInt().coerceIn(dp(6), width - popupWidth - dp(6))
-        val top = (panelTop - h - dp(6)).coerceAtLeast(dp(6))
+        val below = bookUi != null && anchor.centerY() < height / 2f
+        val top = if (below) (anchor.bottom.roundToInt() + dp(6)).coerceAtMost((height - h - dp(6)).coerceAtLeast(dp(6)))
+            else (panelTop - h - dp(6)).coerceAtLeast(dp(6))
         showPopup(kind, content, Rect(left, top, left + popupWidth, top + h))
     }
 
@@ -3256,7 +3424,7 @@ internal abstract class CompositedWindowShell(
         val view = PlasmaMenuView(displayContext, palette, items) { dismissPopup() }
         val (w, h) = view.desiredSize()
         var left = rawX.roundToInt()
-        var top = if (above) height - panel.thickness - (panel.floatMargin * panelFloat).roundToInt() * 2 - h - dp(6) else rawY.roundToInt()
+        var top = if (above) chromeBottom() - h - dp(6) else rawY.roundToInt()
         if (left + w > width) left = width - w - dp(4)
         if (top + h > height) top = (rawY - h).roundToInt()
         showPopup(kind, view, Rect(left.coerceAtLeast(dp(4)), top.coerceAtLeast(dp(4)), left.coerceAtLeast(dp(4)) + w, top.coerceAtLeast(dp(4)) + h), fromBelow = above)
@@ -3272,6 +3440,7 @@ internal abstract class CompositedWindowShell(
         popupKind = null
         kickoff = null
         krunner = null
+        bookUi?.launcherOpen = false
         updateShellFocus()
         frame.animate().alpha(0f).translationY(dp(8).toFloat()).setDuration(settings.duration(PlasmaTheme.SHORT_MS + 40))
             .withEndAction { popupLayer.removeAllViews() }.start()
@@ -3307,13 +3476,26 @@ internal abstract class CompositedWindowShell(
             dismissPopup()
             return
         }
+        // Linux may have become available since the last load (set up, connected, mode switched).
+        if (linuxApps.isEmpty()) refreshLinuxApps(resumeWindows = false)
+        bookUi?.let { ui ->
+            // Book's launcher opens above the dock, centred.
+            val output = primaryOutput()
+            val w = minOf(dp(760), (output.width() * .8f).roundToInt())
+            val h = minOf(dp(600), chromeBottom() - ui.topInset - dp(16))
+            val left = output.left + (output.width() - w) / 2
+            val top = chromeBottom() - h - dp(8)
+            showPopup("kickoff", ui.launcherView(), Rect(left, top, left + w, top + h))
+            ui.launcherOpen = true
+            return
+        }
         val view = KickoffView(displayContext, this)
         kickoff = view
         val w = minOf(dp(680), (width * .9f).roundToInt())
         val h = minOf(dp(560), (height * .8f).roundToInt())
         val anchor = panel.launcherRect()
         val left = (anchor?.left ?: 0f).roundToInt().coerceIn(dp(6), width - w - dp(6))
-        val panelTop = height - panel.thickness - (panel.floatMargin * panelFloat).roundToInt() * 2
+        val panelTop = chromeBottom()
         showPopup("kickoff", view, Rect(left, (panelTop - h - dp(6)).coerceAtLeast(dp(6)), left + w, (panelTop - h - dp(6)).coerceAtLeast(dp(6)) + h))
         view.post { view.focusSearch() }
     }
@@ -3374,7 +3556,7 @@ internal abstract class CompositedWindowShell(
         }
         view.bind(entry)
         val (w, h) = view.desiredSize()
-        val panelTop = height - panel.thickness - (panel.floatMargin * panelFloat).roundToInt() * 2
+        val panelTop = chromeBottom()
         val params = view.layoutParams as FrameLayout.LayoutParams
         params.width = w
         params.height = h
@@ -3675,7 +3857,8 @@ internal abstract class CompositedWindowShell(
             if (settings.wallpaper == "system") {
                 canvas.drawColor(0xFF101418.toInt())
             }
-            val current = bitmap ?: PlasmaWallpaper.render(width.coerceAtLeast(1), height.coerceAtLeast(1)).also { bitmap = it }
+            val current = bitmap ?: (if (book) BookTheme.wallpaper(width.coerceAtLeast(1), height.coerceAtLeast(1), palette.dark)
+                else PlasmaWallpaper.render(width.coerceAtLeast(1), height.coerceAtLeast(1))).also { bitmap = it }
             if (settings.wallpaper != "system") canvas.drawBitmap(current, 0f, 0f, null)
         }
 

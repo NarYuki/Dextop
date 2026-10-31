@@ -1046,10 +1046,10 @@ class AppLocalizationsJa extends AppLocalizations {
   String get uiIdle => '待機中';
 
   @override
-  String get uiAvailable => 'Available';
+  String get uiAvailable => '利用可能';
 
   @override
-  String get uiUnavailable => 'Unavailable';
+  String get uiUnavailable => '利用不可';
 
   @override
   String get appName => 'Dextop';
@@ -1633,6 +1633,9 @@ class AppLocalizationsJa extends AppLocalizations {
   String get setupEmbeddedPairingServiceNotFound => 'ペア設定サービスが見つかりません';
 
   @override
+  String get setupEmbeddedPairingComplete => 'ペア設定が完了しました';
+
+  @override
   String get setupEmbeddedRetryPairing => 'ペア設定を再試行';
 
   @override
@@ -2163,11 +2166,11 @@ class AppLocalizationsJa extends AppLocalizations {
   String get androidEmbeddedPairingEnterCode => 'ペア設定コードを入力';
 
   @override
-  String get androidEmbeddedPairingSuccess => 'Dextopの接続が完了しました';
+  String get androidEmbeddedPairingSuccess => 'ペア設定に成功しました';
 
   @override
   String get androidEmbeddedPairingSuccessMessage =>
-      'ペア設定が完了しました。Dextopに戻ってください。';
+      'Dextop アクセスに接続しました。Dextop に戻ってください。';
 
   @override
   String get androidEmbeddedPairingFailed => 'Dextopを接続できませんでした';
@@ -2615,10 +2618,6 @@ class AppLocalizationsJa extends AppLocalizations {
   String get nativePlasmaApplying => '切り替え中…';
 
   @override
-  String get linuxDescription =>
-      'root なしで Linux（Debian・Ubuntu・Arch Linux ARM）を動かし、アプリを Plasma のウィンドウとして開きます。';
-
-  @override
   String get linuxUnsupportedDevice => 'Linux は arm64 端末でのみ使えます。';
 
   @override
@@ -2629,7 +2628,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      'Linux は Dextop 内蔵のアクセス機能を使います。「Dextopアクセスを設定」から接続してください。外部の Stellar や Shizuku は必須ではありません。';
+      '完全特権方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。';
 
   @override
   String get linuxEnable => 'Linux を有効にする';

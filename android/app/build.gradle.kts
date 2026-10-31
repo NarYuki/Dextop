@@ -1,6 +1,8 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
+    // Dextop Book's shell is built with Jetpack Compose's Material 3 Expressive.
+    id("org.jetbrains.kotlin.plugin.compose")
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -83,6 +85,7 @@ android {
     buildFeatures {
         buildConfig = true
         aidl = true
+        compose = true
     }
 
     packaging {
@@ -145,9 +148,11 @@ val generateNativeStrings by tasks.registering(Exec::class) {
     inputs.files(
         fileTree(rootProject.file("../lib/l10n")) {
             include("app_*.arb")
+            include("inline/*.json")
         }
     )
     outputs.file(file("src/main/kotlin/moe/n4tsu/dextop/NativeStrings.kt"))
+    outputs.dir(file("src/main/resources/moe/n4tsu/dextop/l10n"))
 }
 
 tasks.configureEach {
@@ -174,6 +179,8 @@ dependencies {
     implementation("com.caverock:androidsvg-aar:1.4")
     implementation("androidx.window:window:1.5.1")
     implementation("androidx.appcompat:appcompat:1.7.1")
+    // Material 3 Expressive (MaterialExpressiveTheme, floating toolbar, MaterialShapes) for Dextop Book.
+    implementation("androidx.compose.material3:material3:1.5.0-alpha18")
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("androidx.media3:media3-muxer:1.10.1")
     implementation("dev.rikka.shizuku:api:13.1.5")
@@ -188,6 +195,8 @@ dependencies {
     implementation("com.android.tools.build:apksig:8.11.1")
     // Reads winget package manifests (YAML) for the Store's Windows applications.
     implementation("org.snakeyaml:snakeyaml-engine:2.10")
+    // USB serial adapters for Linux (CDC-ACM, FTDI, CP210x, CH34x, PL2303) without a kernel driver.
+    implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
     testImplementation(kotlin("test"))
 }
 

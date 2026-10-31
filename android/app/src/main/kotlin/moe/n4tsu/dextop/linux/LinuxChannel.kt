@@ -19,6 +19,11 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
 
     init {
         LinuxStoreJobs.attach(context)
+        Thread({ LinuxShortcutInstaller.refreshPinned(context) }, "DextopLinuxShortcuts").start()
+        // Linux settings → Compatibility and permissions follows USB devices without polling.
+        val usb = MethodChannel(messenger, "app.freedextop/linux/usb")
+        LinuxUsb.onChange { main.post { usb.invokeMethod("changed", null) } }
+        LinuxUsb.watch(context)
         LinuxContainerClient.addListener(this)
         channel.setMethodCallHandler { call, result ->
             fun <T> remote(action: (ILinuxContainerService) -> T, map: (T) -> Any? = { it }) =
@@ -28,19 +33,62 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
             when (call.method) {
                 "status" -> result.success(mapOf(
                     "supportedDevice" to Build.SUPPORTED_ABIS.contains("arm64-v8a"),
-                    "privilege" to LinuxContainerClient.privilegeAvailable(),
+                    "privilege" to LinuxContainerClient.privilegeAvailable(context),
                     "connected" to LinuxContainerClient.connected,
-                    "plasmaV2" to (WindowManagerSelection.current(context) == WindowManagerSelection.DEXTOP_PLASMA_V2),
+                    "plasmaV2" to (WindowManagerSelection.current(context) in setOf(WindowManagerSelection.DEXTOP_PLASMA_V2, WindowManagerSelection.DEXTOP_BOOK)),
                 ))
+                "executionMode" -> result.success(LinuxExecutionMode.read(context))
+                "compatStatus" -> result.success(LinuxCompat.status(context) + mapOf(
+                    "usbPolicy" to LinuxUsb.policy(context),
+                    "usbDevices" to LinuxUsb.list(context).also { LinuxUsb.watch(context) },
+                    "foldersActive" to LinuxFolders.active(context),
+                    "folders" to LinuxFolders.list(context),
+                ))
+                "addFolder" -> { LinuxFolders.pick(context); result.success(null) }
+                "removeFolder" -> Thread {
+                    runCatching { LinuxFolders.remove(context, call.argument<String>("name")!!) }
+                    main.post { result.success(null) }
+                }.start()
+                // Granting through the privileged service blocks; these run off the main thread.
+                "setUsbPolicy", "setUsbForLinux" -> Thread {
+                    val outcome = runCatching {
+                        if (call.method == "setUsbPolicy") LinuxUsb.setPolicy(context, call.argument<String>("policy")!!)
+                        else LinuxUsb.setForLinux(context, call.argument<String>("id")!!, call.argument<Boolean>("enabled") == true)
+                    }
+                    android.os.Handler(android.os.Looper.getMainLooper()).post {
+                        outcome.onSuccess { result.success(null) }.onFailure { result.error("linux", it.message, null) }
+                    }
+                }.start()
+                "openStorageAccess" -> { LinuxCompat.openStorageAccess(context); result.success(null) }
+                "liftPhantomLimit" -> Thread {
+                    val lifted = LinuxCompat.liftPhantomLimit(context)
+                    android.os.Handler(android.os.Looper.getMainLooper()).post { result.success(lifted) }
+                }.start()
+                "requestPermission" -> {
+                    val kind = call.argument<String>("kind")!!
+                    Thread {
+                        val granted = runCatching { LinuxCompat.grantSilently(context, kind) }.getOrDefault(false)
+                        android.os.Handler(android.os.Looper.getMainLooper()).post {
+                            runCatching { if (!granted) LinuxCompat.request(context, kind) }
+                                .onSuccess { result.success(null) }.onFailure { result.error("linux", it.message, null) }
+                        }
+                    }.start()
+                }
+                "setExecutionMode" -> LinuxContainerClient.switchExecution(context,
+                    call.argument<String>("mode")!!, call.argument<Boolean>("stop") == true,
+                    { result.success(LinuxExecutionMode.read(context)) },
+                    { result.error("linux", it.message, null) })
                 "connect" -> {
                     LinuxContainerClient.connect(context)
                     result.success(null)
                 }
-                "openDesktop" -> result.success(
-                    moe.n4tsu.dextop.MirrorService.openLinuxDesktop(
-                        call.argument<String>("id")!!, call.argument<String>("name").orEmpty(),
-                    ),
-                )
+                // In Plasma v2 when it runs; otherwise as an Android window of its own (phone, DeX).
+                "openDesktop" -> {
+                    val id = call.argument<String>("id")!!
+                    val name = call.argument<String>("name").orEmpty()
+                    if (!moe.n4tsu.dextop.MirrorService.openLinuxDesktop(id, name)) LinuxDesktopActivity.open(context, id, name)
+                    result.success(true)
+                }
                 "runtimeLogs" -> remote({ it.runtimeLogs(call.argument<String>("id")!!) })
                 "resetSession" -> remote({ it.resetSession(call.argument<String>("id")!!, call.argument<Boolean>("force") == true) })
                 "catalog" -> remote({ it.catalog() }) { jsonList(it) }
@@ -64,6 +112,12 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     val offset = (call.argument<Int>("offset") ?: 0).coerceIn(0, 100000)
                     LinuxStoreSources.result(service.runCommand(id,
                         LinuxStoreSources.helper() + "dextop-store catalog '$source' $offset 80", 600))
+                }) { jsonMap(it) }
+                // Which enabled sources have their tools in the container; the Store asks to set up the rest first.
+                "storeSourceReady" -> remote({ service ->
+                    val id = call.argument<String>("id")!!
+                    LinuxStoreSources.requireApt(service, id)
+                    JSONObject(service.storeState(id)).getJSONObject("ready").toString()
                 }) { jsonMap(it) }
                 "storeSourceStatus" -> remote({ service ->
                     val id = call.argument<String>("id")!!
@@ -90,6 +144,25 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     JSONObject(call.argument<Map<String, Any?>>("options") ?: emptyMap<String, Any?>()).toString()) })
                 "cancel" -> remote({ it.cancelInstall(call.argument<String>("id")!!) })
                 "remove" -> remote({ it.remove(call.argument<String>("id")!!) })
+                // Back to before the first setup: every container, the Linux settings and Dextop's Linux choices.
+                "resetLinux" -> remote({ service ->
+                    val list = org.json.JSONArray(service.listContainers())
+                    for (i in 0 until list.length()) service.remove(list.getJSONObject(i).getString("id"))
+                    service.resetSettings()
+                    for (name in listOf("linux-store-sources", "linux-android-app-grants", "dextop_linux_controllers"))
+                        context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE).edit().clear().commit()
+                    LinuxFolders.clear(context)
+                    // All data, not only the selected mode's: the other mode's storage goes too.
+                    val android = java.io.File(context.noBackupFilesDir, "linux-android").absolutePath
+                    runCatching {
+                        ProcessBuilder("/system/bin/sh", "-c", "chmod -R u+rwx '$android' 2>/dev/null; rm -rf '$android'")
+                            .redirectErrorStream(true).start().waitFor()
+                    }
+                    val privileged = moe.n4tsu.dextop.PrivilegedAccess("DextopLinuxReset")
+                    val privilegedCleared = privileged.isAvailable() &&
+                        privileged.execute("/system/bin/rm", "-rf", "/data/local/tmp/dextop/linux").succeeded
+                    mapOf("privilegedLeft" to !privilegedCleared)
+                })
                 "repair" -> remote({ it.repair(call.argument<String>("id")!!) })
                 "run" -> remote({
                     it.runCommand(call.argument<String>("id")!!, call.argument<String>("command")!!,
@@ -149,8 +222,12 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     }.start()
                 }
                 "launcherInstall" -> Thread {
-                    val available = LinuxShortcutInstaller.silentAvailable()
-                    main.post { result.success(mapOf("mode" to LinuxShortcutInstaller.mode(context), "silentAvailable" to available)) }
+                    val available = LinuxShortcutInstaller.silentAvailable(context)
+                    val pinned = LinuxShortcutInstaller.pinned(context)
+                    val play = LinuxShortcutInstaller.play
+                    // The Google Play build installs launcher packages only through privilege, never asking.
+                    main.post { result.success(mapOf("mode" to (if (play) "auto" else LinuxShortcutInstaller.mode(context)),
+                        "silentAvailable" to available, "pinned" to pinned, "privilegedOnly" to (play && !pinned))) }
                 }.start()
                 "setLauncherInstall" -> {
                     LinuxShortcutInstaller.setMode(context, call.argument<String>("mode") ?: "ask")
@@ -178,14 +255,46 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     val keys = LinuxShortcutInstaller.installedKeys(context)
                     main.post { result.success(keys) }
                 }.start()
+                // Installed packages and set-up sources come from the container's files, which is
+                // immediate; the Store shows them before the slower update checks below finish.
+                // Linux settings → Resources: the service's view of Linux, plus the device and its grants.
+                "resources" -> remote({ it.resources() }) { json ->
+                    val memory = android.app.ActivityManager.MemoryInfo().also {
+                        context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(it)
+                    }
+                    val controllers = android.view.InputDevice.getDeviceIds().toList()
+                        .mapNotNull(android.view.InputDevice::getDevice)
+                        .filter { !it.isVirtual && (it.supportsSource(android.view.InputDevice.SOURCE_GAMEPAD) ||
+                            it.supportsSource(android.view.InputDevice.SOURCE_JOYSTICK)) }
+                        .map { it.name }.distinct()
+                    jsonMap(json) + mapOf(
+                        "cores" to Runtime.getRuntime().availableProcessors(),
+                        "memoryTotal" to memory.totalMem,
+                        "memoryAvailable" to memory.availMem,
+                        "soc" to listOf(Build.SOC_MANUFACTURER, Build.SOC_MODEL).filter { it.isNotBlank() && it != Build.UNKNOWN }.joinToString(" "),
+                        "device" to "${Build.MANUFACTURER} ${Build.MODEL}",
+                        "android" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+                        "executionMode" to LinuxExecutionMode.read(context),
+                        "compat" to LinuxCompat.status(context),
+                        "usbDevices" to LinuxUsb.list(context),
+                        "folders" to LinuxFolders.list(context),
+                        "controllers" to controllers,
+                    )
+                }
+                "stopProcess" -> remote({ it.stopProcess(call.argument<Int>("pid")!!, call.argument<String>("start").orEmpty()) })
+                "storeState" -> remote({ service ->
+                    val id = call.argument<String>("id")!!
+                    LinuxStoreSources.requireApt(service, id)
+                    service.storeState(id)
+                }) { jsonMap(it) }
                 "storePackages" -> remote({
-                    LinuxStoreSources.requireApt(it, call.argument<String>("id")!!)
-                    it.runCommand(call.argument<String>("id")!!,
-                        "dpkg-query -W -f='\${db:Status-Abbrev} \${Package}\\n' 2>/dev/null | awk '\$1==\"ii\"{print \$2}'; " +
-                            "echo '--upgradable--'; apt list --upgradable 2>/dev/null | grep -v '^Listing'", 120)
-                }) { json ->
-                    val output = org.json.JSONObject(json).optString("output")
-                    val (installed, upgradable) = output.split("--upgradable--").let { it[0] to it.getOrElse(1) { "" } }
+                    val id = call.argument<String>("id")!!
+                    LinuxStoreSources.requireApt(it, id)
+                    it.storeState(id) to it.runCommand(id, "apt list --upgradable 2>/dev/null | grep -v '^Listing'", 120)
+                }) { (state, json) ->
+                    val installed = org.json.JSONObject(state).optJSONArray("installed")
+                        ?.let { list -> (0 until list.length()).map(list::getString) }.orEmpty()
+                    val upgradable = org.json.JSONObject(json).optString("output")
                     // "name/suite 2.0-1 arm64 [upgradable from: 1.0-1]"
                     val updates = upgradable.lines().map(String::trim).filter { it.contains('/') }.map { line ->
                         val name = line.substringBefore('/')
@@ -193,8 +302,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                         mapOf("name" to name, "to" to fields.firstOrNull().orEmpty(),
                             "from" to line.substringAfter("upgradable from: ", "").removeSuffix("]"))
                     }
-                    mapOf("installed" to installed.lines().map(String::trim).filter(String::isNotEmpty),
-                        "upgradable" to updates.map { it["name"] }, "updates" to updates)
+                    mapOf("installed" to installed, "upgradable" to updates.map { it["name"] }, "updates" to updates)
                 }
                 "storeJobMetadata" -> {
                     LinuxStoreJobs.metadata(call.argument<String>("id")!!,

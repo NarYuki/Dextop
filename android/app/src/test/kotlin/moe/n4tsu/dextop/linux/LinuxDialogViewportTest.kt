@@ -4,8 +4,9 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 
 class LinuxDialogViewportTest {
-    @Test fun smallFixedGtkDialogIsNotMagnifiedToDesktopTaskBounds() {
-        assertEquals(LinuxDialogViewport.Size(480, 200), LinuxDialogViewport.fit(480, 200, 1384, 895))
+    @Test fun smallFixedClientFillsItsWindowKeepingItsAspectRatio() {
+        assertEquals(LinuxDialogViewport.Size(1384, 577), LinuxDialogViewport.fit(480, 200, 1384, 895))
+        assertEquals(LinuxDialogViewport.Size(1600, 900), LinuxDialogViewport.fit(960, 540, 1600, 1000))
     }
 
     @Test fun oversizedDialogFitsWithoutChangingAspectRatio() {

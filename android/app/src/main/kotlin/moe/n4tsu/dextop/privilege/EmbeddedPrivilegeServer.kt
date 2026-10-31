@@ -64,7 +64,7 @@ object EmbeddedPrivilegeServer {
 
     internal fun publishBinder(
         authority: String, binder: Binder,
-        method: String = EmbeddedPrivilegeProtocol.providerMethod, argument: String? = null,
+        method: String = EmbeddedPrivilegeProtocol.providerMethod, argument: String? = null, payload: Bundle? = null,
     ): Bundle? {
         val activityManager = Class.forName("android.app.ActivityManager")
             .getDeclaredMethod("getService")
@@ -77,7 +77,7 @@ object EmbeddedPrivilegeServer {
         val provider = runCatching {
             acquired.javaClass.getDeclaredField("provider").apply { isAccessible = true }.get(acquired)
         }.getOrElse { acquired }
-        val extras = Bundle().apply { putBinder(EmbeddedPrivilegeProtocol.providerBinder, binder) }
+        val extras = Bundle(payload ?: Bundle()).apply { putBinder(EmbeddedPrivilegeProtocol.providerBinder, binder) }
         val call = Class.forName("android.content.IContentProvider").methods
             .filter { it.name == "call" }
             .maxBy { it.parameterTypes.size }

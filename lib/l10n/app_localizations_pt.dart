@@ -520,7 +520,7 @@ class AppLocalizationsPt extends AppLocalizations {
   String get uiCreateADextopSession => 'Criar uma sessão Dextop';
 
   @override
-  String get uiDextopWorkspaceJson => 'Dextop workspace JSON';
+  String get uiDextopWorkspaceJson => 'JSON do espaço de trabalho do Dextop';
 
   @override
   String get uiPerformanceDisplayOnDextop =>
@@ -676,7 +676,7 @@ class AppLocalizationsPt extends AppLocalizations {
       'Usar o cursor de software anterior quando activado';
 
   @override
-  String get mouseSettingsTitle => 'Mouse';
+  String get mouseSettingsTitle => 'Rato';
 
   @override
   String get mouseSettingsDescription =>
@@ -1718,6 +1718,9 @@ class AppLocalizationsPt extends AppLocalizations {
       'O serviço de pareamento não foi encontrado';
 
   @override
+  String get setupEmbeddedPairingComplete => 'Emparelhamento concluído';
+
+  @override
   String get setupEmbeddedRetryPairing => 'Repetir o pareamento';
 
   @override
@@ -1866,7 +1869,7 @@ class AppLocalizationsPt extends AppLocalizations {
       '%1\$.1f FPS  |  %2\$d MB\\nBateria: %3\$d%%  |  %4\$s\\nCPU: %6\$s  |  Entrada: %5\$s';
 
   @override
-  String get nativeInputMouse => 'Mouse';
+  String get nativeInputMouse => 'Rato';
 
   @override
   String get nativeInputTouch => 'Toque';
@@ -2288,11 +2291,11 @@ class AppLocalizationsPt extends AppLocalizations {
       'Digitar código de emparelhamento';
 
   @override
-  String get androidEmbeddedPairingSuccess => 'O Dextop está conectado';
+  String get androidEmbeddedPairingSuccess => 'Emparelhamento concluído';
 
   @override
   String get androidEmbeddedPairingSuccessMessage =>
-      'O emparelhamento foi concluído. Volte ao Dextop.';
+      'O acesso do Dextop está ligado. Volte ao Dextop.';
 
   @override
   String get androidEmbeddedPairingFailed =>
@@ -2755,10 +2758,6 @@ class AppLocalizationsPt extends AppLocalizations {
   String get nativePlasmaApplying => 'A aplicar…';
 
   @override
-  String get linuxDescription =>
-      'Executa Linux (Debian, Ubuntu, Arch Linux ARM) sem root e abre as aplicações em janelas do Plasma.';
-
-  @override
   String get linuxUnsupportedDevice => 'O Linux requer um dispositivo arm64.';
 
   @override
@@ -2770,7 +2769,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      'O Linux usa o serviço de acesso integrado do Dextop. Conecte-o na configuração de acesso do Dextop. Aplicativos externos Stellar ou Shizuku são opcionais.';
+      'O privilégio total requer acesso privilegiado, como Shizuku, Stellar ou o binder integrado. Inicie o Shizuku ou o Stellar, ou configure o binder integrado.';
 
   @override
   String get linuxEnable => 'Ativar Linux';
@@ -2884,162 +2883,161 @@ class AppLocalizationsPt extends AppLocalizations {
   }
 
   @override
-  String get linuxSetupTitle => 'Linux setup';
+  String get linuxSetupTitle => 'Configuração do Linux';
 
   @override
   String get linuxSetupIntro =>
-      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+      'Crie um espaço de trabalho Linux à sua medida. Escolha um ambiente de trabalho, o idioma, o método de introdução e as aplicações.';
 
   @override
   String get linuxSetupExisting =>
-      'Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.';
+      'Adicione funcionalidades a este ambiente Linux. Os ficheiros e as aplicações existentes são mantidos. Reabra o ambiente de trabalho depois da configuração para aplicar as definições.';
 
   @override
-  String get linuxSetupSystem => 'Your Linux environment';
+  String get linuxSetupSystem => 'O seu ambiente Linux';
 
   @override
-  String get linuxSetupDesktop => 'Make it your desktop';
+  String get linuxSetupDesktop => 'Prepare o ambiente de trabalho';
 
   @override
-  String get linuxSetupLanguage => 'Language and fonts';
+  String get linuxSetupLanguage => 'Idioma e tipos de letra';
 
   @override
-  String get linuxSetupInput => 'Typing in your language';
+  String get linuxSetupInput => 'Escrever no seu idioma';
 
   @override
-  String get linuxSetupApps => 'Choose your applications';
+  String get linuxSetupApps => 'Escolha as aplicações';
 
   @override
-  String get linuxSetupReview => 'Ready to set up';
+  String get linuxSetupReview => 'Pronto para configurar';
 
   @override
-  String get linuxSetupProgress => 'Preparing your workspace';
+  String get linuxSetupProgress => 'A preparar o espaço de trabalho';
 
   @override
-  String get linuxSetupDone => 'Your Linux workspace is ready';
+  String get linuxSetupDone => 'O seu espaço de trabalho Linux está pronto';
 
   @override
   String get linuxSetupDoneDetail =>
-      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+      'Abra o ambiente de trabalho no separador Linux ou inicie aplicações Linux individuais a partir do Plasma. No Fcitx 5, use Ctrl+Espaço para mudar de método de introdução.';
 
   @override
-  String get linuxSetupNext => 'Continue';
+  String get linuxSetupNext => 'Continuar';
 
   @override
-  String get linuxSetupBack => 'Back';
+  String get linuxSetupBack => 'Voltar';
 
   @override
-  String get linuxSetupApply => 'Start setup';
+  String get linuxSetupApply => 'Iniciar a configuração';
 
   @override
-  String get linuxSetupCustomize => 'Set up / add features';
+  String get linuxSetupCustomize => 'Configurar / adicionar funcionalidades';
 
   @override
-  String get linuxSetupMinimal => 'Minimal IceWM';
+  String get linuxSetupMinimal => 'IceWM mínimo';
 
   @override
   String get linuxSetupMinimalDetail =>
-      'A lightweight desktop with Xvfb, IceWM and a terminal. Choose any extras in the following steps.';
+      'Um ambiente leve com Xvfb, IceWM e um terminal. Escolha os extras nos passos seguintes.';
 
   @override
-  String get linuxSetupComplete => 'Everyday IceWM';
+  String get linuxSetupComplete => 'IceWM para o dia a dia';
 
   @override
   String get linuxSetupCompleteDetail =>
-      'Starts with themes, icons, Mesa software rendering, a file manager and a text editor selected. You can adjust each choice.';
+      'Começa com temas, ícones, renderização por software Mesa, um gestor de ficheiros e um editor de texto selecionados. Pode ajustar cada opção.';
 
   @override
-  String get linuxSetupThemes => 'Themes and icons';
+  String get linuxSetupThemes => 'Temas e ícones';
 
   @override
   String get linuxSetupThemesDetail =>
-      'IceWM themes and Adwaita styling for GTK apps.';
+      'Temas do IceWM e estilo Adwaita para as aplicações GTK.';
 
   @override
-  String get linuxSetupGraphics => 'Mesa graphics support';
+  String get linuxSetupGraphics => 'Suporte gráfico Mesa';
 
   @override
   String get linuxSetupGraphicsDetail =>
-      'Install OpenGL / EGL libraries and software rendering. This Xvfb desktop does not provide hardware GPU acceleration.';
+      'Instala as bibliotecas OpenGL / EGL e a renderização por software. Este ambiente Xvfb não tem aceleração por hardware da GPU.';
 
   @override
-  String get linuxSetupLocale => 'Linux display language';
+  String get linuxSetupLocale => 'Idioma de apresentação do Linux';
 
   @override
   String get linuxSetupLocaleDetail =>
-      'Generate the selected UTF-8 locale and apply it to the desktop and apps that support it.';
+      'Gera a locale UTF-8 escolhida e aplica-a ao ambiente de trabalho e às aplicações compatíveis.';
 
   @override
-  String get linuxSetupFonts => 'Japanese, Chinese and Korean fonts';
+  String get linuxSetupFonts => 'Tipos de letra japoneses, chineses e coreanos';
 
   @override
   String get linuxSetupFontsDetail =>
-      'Install Noto CJK fonts. Noto general-purpose and emoji fonts are included with every setup.';
+      'Instala os tipos de letra Noto CJK. Os tipos de letra Noto gerais e de emojis estão incluídos em todas as configurações.';
 
   @override
-  String get linuxSetupNoIme => 'Use the Android keyboard only';
+  String get linuxSetupNoIme => 'Usar só o teclado do Android';
 
   @override
   String get linuxSetupNoImeDetail =>
-      'Do not start a Linux input method. The Android keyboard remains available in Plasma.';
+      'Não inicia nenhum método de introdução do Linux. O teclado do Android continua disponível no Plasma.';
 
   @override
   String get linuxSetupImeDetail =>
-      'Fcitx 5 starts with the Linux session, including GTK / Qt integration. Input methods with CJK text also install CJK fonts.';
+      'O Fcitx 5 inicia com a sessão Linux, com integração GTK / Qt. Os métodos de introdução CJK instalam também os tipos de letra CJK.';
 
   @override
-  String get linuxSetupMozc => 'Japanese — Mozc';
+  String get linuxSetupMozc => 'Japonês — Mozc';
 
   @override
-  String get linuxSetupPinyin => 'Chinese — Pinyin';
+  String get linuxSetupPinyin => 'Chinês — Pinyin';
 
   @override
-  String get linuxSetupHangul => 'Korean — Hangul';
+  String get linuxSetupHangul => 'Coreano — Hangul';
 
   @override
   String get linuxSetupFirefoxDetail =>
-      'Firefox ESR on Debian; Firefox on Arch.';
+      'Firefox ESR no Debian; Firefox no Arch.';
 
   @override
   String get linuxSetupChromeDetail =>
-      'Official Google Chrome for ARM64, downloaded from Google. Available on Debian and Ubuntu.';
+      'Google Chrome oficial para ARM64, transferido da Google. Disponível no Debian e no Ubuntu.';
 
   @override
   String get linuxSetupChromiumDetail =>
-      'Open-source Chromium from the distribution repository.';
+      'Chromium de código aberto do repositório da distribuição.';
 
   @override
   String get linuxSetupSnapUnavailable =>
-      'Unavailable on this Ubuntu image: this package requires Snap. Choose Debian / Arch, or select Google Chrome.';
+      'Indisponível nesta imagem do Ubuntu: este pacote requer o Snap. Escolha Debian / Arch ou selecione o Google Chrome.';
 
   @override
   String get linuxSetupChromeUnavailable =>
-      'The official installer is available here for Debian and Ubuntu.';
+      'O instalador oficial está disponível aqui para Debian e Ubuntu.';
 
   @override
   String get linuxSetupBrowserNote =>
-      'Browsers use PRoot-compatible launchers with their sandbox disabled. Install only browsers you want to use in this environment.';
+      'Os navegadores usam lançadores compatíveis com o PRoot, com a sandbox desativada. Instale só os navegadores que quer usar neste ambiente.';
 
   @override
-  String get linuxSetupFiles => 'File manager';
+  String get linuxSetupFiles => 'Gestor de ficheiros';
 
   @override
   String get linuxSetupFilesDetail =>
-      'PCManFM — browse folders and manage files.';
+      'PCManFM — explore pastas e faça a gestão de ficheiros.';
 
   @override
-  String get linuxSetupEditor => 'Text editor';
+  String get linuxSetupEditor => 'Editor de texto';
 
   @override
-  String get linuxSetupEditorDetail =>
-      'Mousepad — a lightweight graphical editor.';
+  String get linuxSetupEditorDetail => 'Mousepad — um editor gráfico leve.';
 
   @override
-  String get linuxSetupOffice => 'Office suite';
+  String get linuxSetupOffice => 'Pacote de escritório';
 
   @override
   String get linuxSetupOfficeDetail =>
-      'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
+      'LibreOffice — documentos, folhas de cálculo e apresentações. Requer uma transferência maior e mais espaço de armazenamento.';
 
   @override
   String get linuxSetupSteamDetail =>
@@ -3051,63 +3049,65 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get linuxSetupStorage =>
-      'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
+      'Mantenha vários GB de armazenamento livre. O tamanho da transferência e da instalação depende da distribuição e das aplicações escolhidas. A instalação continua se sair deste ecrã.';
 
   @override
   String get linuxSetupAdditive =>
-      'Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.';
+      'As aplicações não selecionadas não são removidas. A configuração adiciona os pacotes escolhidos e atualiza as definições de idioma e de sessão.';
 
   @override
-  String get linuxSetupNothingExtra => 'No optional applications';
+  String get linuxSetupNothingExtra => 'Sem aplicações opcionais';
 
   @override
-  String get linuxSetupRetry => 'Review and retry';
+  String get linuxSetupRetry => 'Rever e tentar novamente';
 
   @override
-  String get linuxSetupBackground => 'Continue in background';
+  String get linuxSetupBackground => 'Continuar em segundo plano';
 
   @override
-  String get linuxSetupLog => 'Installation details';
+  String get linuxSetupLog => 'Detalhes da instalação';
 
   @override
-  String get linuxSetupFailed => 'Setup could not finish';
+  String get linuxSetupFailed => 'Não foi possível concluir a configuração';
 
   @override
-  String get linuxSetupPhaseLanguage => 'Setting up language and fonts';
+  String get linuxSetupPhaseLanguage =>
+      'A configurar o idioma e os tipos de letra';
 
   @override
-  String get linuxSetupPhaseInput => 'Installing the input method';
+  String get linuxSetupPhaseInput => 'A instalar o método de introdução';
 
   @override
-  String get linuxSetupPhaseDesktop => 'Setting up themes and icons';
+  String get linuxSetupPhaseDesktop => 'A configurar temas e ícones';
 
   @override
-  String get linuxSetupPhaseGraphics => 'Installing graphics libraries';
+  String get linuxSetupPhaseGraphics => 'A instalar as bibliotecas gráficas';
 
   @override
-  String get linuxSetupPhaseApps => 'Installing your applications';
+  String get linuxSetupPhaseApps => 'A instalar as suas aplicações';
 
   @override
-  String get linuxSetupPhaseIntegration => 'Connecting apps to the desktop';
+  String get linuxSetupPhaseIntegration =>
+      'A ligar as aplicações ao ambiente de trabalho';
 
   @override
-  String get linuxRuntimeStarting => 'Starting Linux…';
+  String get linuxRuntimeStarting => 'A iniciar o Linux…';
 
   @override
-  String get linuxRuntimeRunning => 'Linux is running';
+  String get linuxRuntimeRunning => 'O Linux está em execução';
 
   @override
-  String get linuxRuntimeStopped => 'Linux is stopped';
+  String get linuxRuntimeStopped => 'O Linux está parado';
 
   @override
-  String get linuxSessionReset => 'Reset session';
+  String get linuxSessionReset => 'Repor a sessão';
 
   @override
-  String get linuxForceStop => 'Force stop PRoot';
+  String get linuxForceStop => 'Forçar a paragem do PRoot';
 
   @override
   String get linuxForceStopConfirm =>
-      'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+      'Parar todos os processos Linux deste ambiente? O trabalho não guardado será perdido. As aplicações instaladas e os ficheiros são mantidos.';
 
   @override
   String get linuxSettingsTitle => 'Definições do Linux';
@@ -3221,15 +3221,15 @@ class AppLocalizationsPt extends AppLocalizations {
   String get linuxSetupPhaseGpu => 'A compilar o controlador da GPU (Turnip)';
 
   @override
-  String get linuxSetupDisplayBackend => 'Display system';
+  String get linuxSetupDisplayBackend => 'Sistema de apresentação';
 
   @override
   String get linuxSetupXvfbDetail =>
-      'Use X11 for applications and the IceWM desktop.';
+      'Usa o X11 para as aplicações e o ambiente IceWM.';
 
   @override
   String get linuxSetupWaylandDetail =>
-      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+      'Usa o Wayland nas aplicações compatíveis e o Xwayland nas aplicações X11 e no ambiente IceWM.';
 
   @override
   String get nativeSteamModeTitle => 'Steam Deck Mode';
@@ -3828,7 +3828,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get uiCreateADextopSession => 'Criar uma sessão Dextop';
 
   @override
-  String get uiDextopWorkspaceJson => 'Dextop workspace JSON';
+  String get uiDextopWorkspaceJson => 'JSON do espaço de trabalho do Dextop';
 
   @override
   String get uiPerformanceDisplayOnDextop =>
@@ -5026,6 +5026,9 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
       'O serviço de pareamento não foi encontrado';
 
   @override
+  String get setupEmbeddedPairingComplete => 'Pareamento concluído';
+
+  @override
   String get setupEmbeddedRetryPairing => 'Repetir o pareamento';
 
   @override
@@ -5596,11 +5599,11 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get androidEmbeddedPairingEnterCode => 'Digitar código de pareamento';
 
   @override
-  String get androidEmbeddedPairingSuccess => 'O Dextop está conectado';
+  String get androidEmbeddedPairingSuccess => 'Pareamento concluído';
 
   @override
   String get androidEmbeddedPairingSuccessMessage =>
-      'O pareamento foi concluído. Volte ao Dextop.';
+      'O acesso do Dextop está conectado. Volte ao Dextop.';
 
   @override
   String get androidEmbeddedPairingFailed =>
@@ -6063,10 +6066,6 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get nativePlasmaApplying => 'Aplicando…';
 
   @override
-  String get linuxDescription =>
-      'Execute Linux (Debian, Ubuntu, Arch Linux ARM) sem root e abra os apps em janelas do Plasma.';
-
-  @override
   String get linuxUnsupportedDevice => 'O Linux requer um dispositivo arm64.';
 
   @override
@@ -6078,7 +6077,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get linuxRequiresPrivilege =>
-      'O Linux usa o serviço de acesso integrado do Dextop. Conecte-o na configuração de acesso do Dextop. Os aplicativos externos Stellar ou Shizuku são opcionais.';
+      'O privilégio total requer acesso privilegiado, como Shizuku, Stellar ou o binder integrado. Inicie o Shizuku ou o Stellar, ou configure o binder integrado.';
 
   @override
   String get linuxEnable => 'Ativar Linux';
@@ -6193,162 +6192,161 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   }
 
   @override
-  String get linuxSetupTitle => 'Linux setup';
+  String get linuxSetupTitle => 'Configuração do Linux';
 
   @override
   String get linuxSetupIntro =>
-      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+      'Crie um espaço de trabalho Linux do seu jeito. Escolha uma área de trabalho, o idioma, o método de entrada e os apps.';
 
   @override
   String get linuxSetupExisting =>
-      'Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.';
+      'Adicione recursos a este ambiente Linux. Os arquivos e apps existentes são mantidos. Reabra a área de trabalho após a configuração para aplicar as configurações.';
 
   @override
-  String get linuxSetupSystem => 'Your Linux environment';
+  String get linuxSetupSystem => 'Seu ambiente Linux';
 
   @override
-  String get linuxSetupDesktop => 'Make it your desktop';
+  String get linuxSetupDesktop => 'Prepare a área de trabalho';
 
   @override
-  String get linuxSetupLanguage => 'Language and fonts';
+  String get linuxSetupLanguage => 'Idioma e fontes';
 
   @override
-  String get linuxSetupInput => 'Typing in your language';
+  String get linuxSetupInput => 'Digitar no seu idioma';
 
   @override
-  String get linuxSetupApps => 'Choose your applications';
+  String get linuxSetupApps => 'Escolha os apps';
 
   @override
-  String get linuxSetupReview => 'Ready to set up';
+  String get linuxSetupReview => 'Pronto para configurar';
 
   @override
-  String get linuxSetupProgress => 'Preparing your workspace';
+  String get linuxSetupProgress => 'Preparando o espaço de trabalho';
 
   @override
-  String get linuxSetupDone => 'Your Linux workspace is ready';
+  String get linuxSetupDone => 'Seu espaço de trabalho Linux está pronto';
 
   @override
   String get linuxSetupDoneDetail =>
-      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+      'Abra a área de trabalho na guia Linux ou inicie apps Linux individuais pelo Plasma. No Fcitx 5, use Ctrl+Espaço para alternar o método de entrada.';
 
   @override
-  String get linuxSetupNext => 'Continue';
+  String get linuxSetupNext => 'Continuar';
 
   @override
-  String get linuxSetupBack => 'Back';
+  String get linuxSetupBack => 'Voltar';
 
   @override
-  String get linuxSetupApply => 'Start setup';
+  String get linuxSetupApply => 'Iniciar a configuração';
 
   @override
-  String get linuxSetupCustomize => 'Set up / add features';
+  String get linuxSetupCustomize => 'Configurar / adicionar recursos';
 
   @override
-  String get linuxSetupMinimal => 'Minimal IceWM';
+  String get linuxSetupMinimal => 'IceWM mínimo';
 
   @override
   String get linuxSetupMinimalDetail =>
-      'A lightweight desktop with Xvfb, IceWM and a terminal. Choose any extras in the following steps.';
+      'Uma área de trabalho leve com Xvfb, IceWM e um terminal. Escolha os extras nas próximas etapas.';
 
   @override
-  String get linuxSetupComplete => 'Everyday IceWM';
+  String get linuxSetupComplete => 'IceWM para o dia a dia';
 
   @override
   String get linuxSetupCompleteDetail =>
-      'Starts with themes, icons, Mesa software rendering, a file manager and a text editor selected. You can adjust each choice.';
+      'Começa com temas, ícones, renderização por software Mesa, um gerenciador de arquivos e um editor de texto selecionados. Você pode ajustar cada opção.';
 
   @override
-  String get linuxSetupThemes => 'Themes and icons';
+  String get linuxSetupThemes => 'Temas e ícones';
 
   @override
   String get linuxSetupThemesDetail =>
-      'IceWM themes and Adwaita styling for GTK apps.';
+      'Temas do IceWM e estilo Adwaita para os apps GTK.';
 
   @override
-  String get linuxSetupGraphics => 'Mesa graphics support';
+  String get linuxSetupGraphics => 'Suporte gráfico Mesa';
 
   @override
   String get linuxSetupGraphicsDetail =>
-      'Install OpenGL / EGL libraries and software rendering. This Xvfb desktop does not provide hardware GPU acceleration.';
+      'Instala as bibliotecas OpenGL / EGL e a renderização por software. Esta área de trabalho Xvfb não oferece aceleração de hardware da GPU.';
 
   @override
-  String get linuxSetupLocale => 'Linux display language';
+  String get linuxSetupLocale => 'Idioma de exibição do Linux';
 
   @override
   String get linuxSetupLocaleDetail =>
-      'Generate the selected UTF-8 locale and apply it to the desktop and apps that support it.';
+      'Gera a localidade UTF-8 escolhida e a aplica à área de trabalho e aos apps compatíveis.';
 
   @override
-  String get linuxSetupFonts => 'Japanese, Chinese and Korean fonts';
+  String get linuxSetupFonts => 'Fontes japonesas, chinesas e coreanas';
 
   @override
   String get linuxSetupFontsDetail =>
-      'Install Noto CJK fonts. Noto general-purpose and emoji fonts are included with every setup.';
+      'Instala as fontes Noto CJK. As fontes Noto gerais e de emojis estão incluídas em todas as configurações.';
 
   @override
-  String get linuxSetupNoIme => 'Use the Android keyboard only';
+  String get linuxSetupNoIme => 'Usar só o teclado do Android';
 
   @override
   String get linuxSetupNoImeDetail =>
-      'Do not start a Linux input method. The Android keyboard remains available in Plasma.';
+      'Não inicia nenhum método de entrada do Linux. O teclado do Android continua disponível no Plasma.';
 
   @override
   String get linuxSetupImeDetail =>
-      'Fcitx 5 starts with the Linux session, including GTK / Qt integration. Input methods with CJK text also install CJK fonts.';
+      'O Fcitx 5 inicia com a sessão Linux, com integração GTK / Qt. Os métodos de entrada CJK também instalam as fontes CJK.';
 
   @override
-  String get linuxSetupMozc => 'Japanese — Mozc';
+  String get linuxSetupMozc => 'Japonês — Mozc';
 
   @override
-  String get linuxSetupPinyin => 'Chinese — Pinyin';
+  String get linuxSetupPinyin => 'Chinês — Pinyin';
 
   @override
-  String get linuxSetupHangul => 'Korean — Hangul';
+  String get linuxSetupHangul => 'Coreano — Hangul';
 
   @override
   String get linuxSetupFirefoxDetail =>
-      'Firefox ESR on Debian; Firefox on Arch.';
+      'Firefox ESR no Debian; Firefox no Arch.';
 
   @override
   String get linuxSetupChromeDetail =>
-      'Official Google Chrome for ARM64, downloaded from Google. Available on Debian and Ubuntu.';
+      'Google Chrome oficial para ARM64, baixado do Google. Disponível no Debian e no Ubuntu.';
 
   @override
   String get linuxSetupChromiumDetail =>
-      'Open-source Chromium from the distribution repository.';
+      'Chromium de código aberto do repositório da distribuição.';
 
   @override
   String get linuxSetupSnapUnavailable =>
-      'Unavailable on this Ubuntu image: this package requires Snap. Choose Debian / Arch, or select Google Chrome.';
+      'Indisponível nesta imagem do Ubuntu: este pacote requer o Snap. Escolha Debian / Arch ou selecione o Google Chrome.';
 
   @override
   String get linuxSetupChromeUnavailable =>
-      'The official installer is available here for Debian and Ubuntu.';
+      'O instalador oficial está disponível aqui para Debian e Ubuntu.';
 
   @override
   String get linuxSetupBrowserNote =>
-      'Browsers use PRoot-compatible launchers with their sandbox disabled. Install only browsers you want to use in this environment.';
+      'Os navegadores usam inicializadores compatíveis com o PRoot, com o sandbox desativado. Instale só os navegadores que você quer usar neste ambiente.';
 
   @override
-  String get linuxSetupFiles => 'File manager';
+  String get linuxSetupFiles => 'Gerenciador de arquivos';
 
   @override
   String get linuxSetupFilesDetail =>
-      'PCManFM — browse folders and manage files.';
+      'PCManFM — navegue por pastas e gerencie arquivos.';
 
   @override
-  String get linuxSetupEditor => 'Text editor';
+  String get linuxSetupEditor => 'Editor de texto';
 
   @override
-  String get linuxSetupEditorDetail =>
-      'Mousepad — a lightweight graphical editor.';
+  String get linuxSetupEditorDetail => 'Mousepad — um editor gráfico leve.';
 
   @override
-  String get linuxSetupOffice => 'Office suite';
+  String get linuxSetupOffice => 'Pacote de escritório';
 
   @override
   String get linuxSetupOfficeDetail =>
-      'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
+      'LibreOffice — documentos, planilhas e apresentações. Requer um download maior e mais espaço de armazenamento.';
 
   @override
   String get linuxSetupSteamDetail =>
@@ -6360,63 +6358,64 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get linuxSetupStorage =>
-      'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
+      'Mantenha vários GB de armazenamento livre. O tamanho do download e da instalação depende da distribuição e dos apps escolhidos. A instalação continua se você sair desta tela.';
 
   @override
   String get linuxSetupAdditive =>
-      'Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.';
+      'Os apps não selecionados não são removidos. A configuração adiciona os pacotes escolhidos e atualiza as configurações de idioma e de sessão.';
 
   @override
-  String get linuxSetupNothingExtra => 'No optional applications';
+  String get linuxSetupNothingExtra => 'Nenhum app opcional';
 
   @override
-  String get linuxSetupRetry => 'Review and retry';
+  String get linuxSetupRetry => 'Revisar e tentar novamente';
 
   @override
-  String get linuxSetupBackground => 'Continue in background';
+  String get linuxSetupBackground => 'Continuar em segundo plano';
 
   @override
-  String get linuxSetupLog => 'Installation details';
+  String get linuxSetupLog => 'Detalhes da instalação';
 
   @override
-  String get linuxSetupFailed => 'Setup could not finish';
+  String get linuxSetupFailed => 'Não foi possível concluir a configuração';
 
   @override
-  String get linuxSetupPhaseLanguage => 'Setting up language and fonts';
+  String get linuxSetupPhaseLanguage => 'Configurando o idioma e as fontes';
 
   @override
-  String get linuxSetupPhaseInput => 'Installing the input method';
+  String get linuxSetupPhaseInput => 'Instalando o método de entrada';
 
   @override
-  String get linuxSetupPhaseDesktop => 'Setting up themes and icons';
+  String get linuxSetupPhaseDesktop => 'Configurando temas e ícones';
 
   @override
-  String get linuxSetupPhaseGraphics => 'Installing graphics libraries';
+  String get linuxSetupPhaseGraphics => 'Instalando as bibliotecas gráficas';
 
   @override
-  String get linuxSetupPhaseApps => 'Installing your applications';
+  String get linuxSetupPhaseApps => 'Instalando seus apps';
 
   @override
-  String get linuxSetupPhaseIntegration => 'Connecting apps to the desktop';
+  String get linuxSetupPhaseIntegration =>
+      'Conectando os apps à área de trabalho';
 
   @override
-  String get linuxRuntimeStarting => 'Starting Linux…';
+  String get linuxRuntimeStarting => 'Iniciando o Linux…';
 
   @override
-  String get linuxRuntimeRunning => 'Linux is running';
+  String get linuxRuntimeRunning => 'O Linux está em execução';
 
   @override
-  String get linuxRuntimeStopped => 'Linux is stopped';
+  String get linuxRuntimeStopped => 'O Linux está parado';
 
   @override
-  String get linuxSessionReset => 'Reset session';
+  String get linuxSessionReset => 'Redefinir a sessão';
 
   @override
-  String get linuxForceStop => 'Force stop PRoot';
+  String get linuxForceStop => 'Forçar a parada do PRoot';
 
   @override
   String get linuxForceStopConfirm =>
-      'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+      'Parar todos os processos Linux deste ambiente? O trabalho não salvo será perdido. Os apps instalados e os arquivos são mantidos.';
 
   @override
   String get linuxSettingsTitle => 'Configurações do Linux';
@@ -6530,15 +6529,15 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get linuxSetupPhaseGpu => 'Compilando o driver da GPU (Turnip)';
 
   @override
-  String get linuxSetupDisplayBackend => 'Display system';
+  String get linuxSetupDisplayBackend => 'Sistema de exibição';
 
   @override
   String get linuxSetupXvfbDetail =>
-      'Use X11 for applications and the IceWM desktop.';
+      'Usa o X11 para os apps e a área de trabalho IceWM.';
 
   @override
   String get linuxSetupWaylandDetail =>
-      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+      'Usa o Wayland nos apps compatíveis e o Xwayland nos apps X11 e na área de trabalho IceWM.';
 
   @override
   String get nativeSteamModeTitle => 'Steam Deck Mode';

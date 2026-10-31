@@ -3,9 +3,11 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux/linux_apps.dart';
+import 'package:free_dextop/linux/linux_first_run.dart';
 import 'package:free_dextop/linux/linux_expressive.dart';
 import 'package:free_dextop/linux/linux_store_page.dart';
 import 'package:free_dextop/linux/linux_widgets.dart';
+import 'package:free_dextop/linux/linux_advanced_settings.dart';
 import 'package:free_dextop/linux_settings_page.dart';
 import 'package:free_dextop/linux_setup_page.dart';
 import 'package:free_dextop/penguin_icon.dart';
@@ -77,7 +79,6 @@ class _Progress {
 
 class _LinuxPageState extends State<LinuxPage> {
   static const _channel = MethodChannel('app.freedextop/linux');
-  static const _enabledKey = 'linux_enabled';
   static const _tabKey = 'linux_tab';
 
   Timer? _runtimePoll;
@@ -190,18 +191,57 @@ class _LinuxPageState extends State<LinuxPage> {
   }
 
   Future<void> _load() async {
-    final preferences = await SharedPreferences.getInstance();
     final next =
         await _channel.invokeMapMethod<Object?, Object?>('status') ?? const {};
     if (!mounted) return;
     setState(() {
-      enabled = preferences.getBool(_enabledKey) ?? false;
+      // No on/off switch: Linux is either set up (first setup done) or offers its setup.
+      enabled = true;
       status = next;
       loading = false;
     });
     if (enabled && usable) {
       await _channel.invokeMethod('connect');
       await _refreshContainers();
+      await _maybeFirstRun();
+    }
+  }
+
+  /// Linux is not set up yet: the tab offers the first setup instead of its apps and containers.
+  bool firstRun = false;
+
+  /// Whether the first setup (execution mode, Store sources, then a container) is still due.
+  Future<void> _maybeFirstRun() async {
+    final preferences = await SharedPreferences.getInstance();
+    final due =
+        containers.isEmpty &&
+        preferences.getBool(LinuxFirstRun.doneKey) != true;
+    if (mounted && due != firstRun) setState(() => firstRun = due);
+  }
+
+  Future<void> _startFirstRun() async {
+    await _openSetup(firstRun: true);
+    await _maybeFirstRun();
+  }
+
+  /// Prepares the Store sources chosen in the first setup once a container can take them.
+  Future<void> _prepareFirstRunSources() async {
+    final preferences = await SharedPreferences.getInstance();
+    final sources =
+        preferences.getStringList(LinuxFirstRun.prepareKey) ?? const [];
+    if (sources.isEmpty) return;
+    final target = installedContainers
+        .where((c) => const ['debian', 'ubuntu'].contains(c.distro))
+        .firstOrNull;
+    if (target == null) return;
+    await preferences.remove(LinuxFirstRun.prepareKey);
+    for (final source in sources) {
+      try {
+        await _channel.invokeMethod<bool>('storeSourcePrepare', {
+          'id': target.id,
+          'source': source,
+        });
+      } on PlatformException catch (_) {}
     }
   }
 
@@ -228,6 +268,7 @@ class _LinuxPageState extends State<LinuxPage> {
         error = null;
       });
       _publishSetupProgress();
+      unawaited(_prepareFirstRunSources());
       // The application list follows the installed containers.
       final signature = appContainers.map((c) => c.id).join(',');
       if (signature != _appsSignature) {
@@ -247,13 +288,6 @@ class _LinuxPageState extends State<LinuxPage> {
   Future<void> _reload() async {
     await _load();
     await _loadApps();
-  }
-
-  Future<void> _setEnabled(bool value) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool(_enabledKey, value);
-    setState(() => enabled = value);
-    if (value) await _load();
   }
 
   Future<void> _setTab(int value) async {
@@ -330,7 +364,10 @@ class _LinuxPageState extends State<LinuxPage> {
 
   Future<void> _addContainer() => _openSetup();
 
-  Future<void> _openSetup([_LinuxContainer? container]) async {
+  Future<void> _openSetup({
+    _LinuxContainer? container,
+    bool firstRun = false,
+  }) async {
     if (catalog.isEmpty) await _refreshContainers();
     if (!mounted || catalog.isEmpty) return;
     await Navigator.of(context).push<void>(
@@ -344,6 +381,7 @@ class _LinuxPageState extends State<LinuxPage> {
           resume:
               container?.state == 'installing' ||
               container?.state == 'updating',
+          firstRun: firstRun,
           progress: setupProgress,
           refresh: _refreshContainers,
           install: (name, distro, options, targetId) async {
@@ -484,6 +522,8 @@ class _LinuxPageState extends State<LinuxPage> {
       ),
     );
     await _refreshContainers();
+    // Resetting Linux in its settings brings the first setup back.
+    await _maybeFirstRun();
   }
 
   @override
@@ -497,7 +537,7 @@ class _LinuxPageState extends State<LinuxPage> {
         ),
       );
     }
-    final ready = enabled && usable;
+    final ready = enabled && usable && !firstRun;
     final wide = linuxWide(context);
     final tabs = M3ESegmentedButton<int>(
       segments: [
@@ -545,7 +585,8 @@ class _LinuxPageState extends State<LinuxPage> {
                     ? _wideHeader(l, theme, ready ? tabs : null)
                     : _header(l, theme),
               ),
-              if (!ready) ..._setupNotices(l, theme),
+              if (!enabled || !usable) ..._setupNotices(l, theme),
+              if (enabled && usable && firstRun) _firstRunCard(theme),
               if (error != null)
                 SliverToBoxAdapter(
                   child: _notice(M3EIcons.error_outline_rounded, error!),
@@ -585,11 +626,12 @@ class _LinuxPageState extends State<LinuxPage> {
           ),
         ),
         if (enabled && usable) ...[
-          M3EButton.tonal(
-            icon: const Icon(M3EIcons.storefront_rounded),
-            onPressed: _openStore,
-            label: const Text('Store'),
-          ),
+          if (!firstRun)
+            M3EButton.tonal(
+              icon: const Icon(M3EIcons.storefront_rounded),
+              onPressed: _openStore,
+              label: const Text('Store'),
+            ),
           const SizedBox(width: 4),
           M3EIconButton(
             variant: M3EIconButtonVariant.standard,
@@ -625,11 +667,12 @@ class _LinuxPageState extends State<LinuxPage> {
             if (tabs != null) SizedBox(width: 340, child: tabs),
             const Spacer(),
             if (enabled && usable) ...[
-              M3EButton.tonal(
-                icon: const Icon(M3EIcons.storefront_rounded),
-                onPressed: _openStore,
-                label: const Text('Store'),
-              ),
+              if (!firstRun)
+                M3EButton.tonal(
+                  icon: const Icon(M3EIcons.storefront_rounded),
+                  onPressed: _openStore,
+                  label: const Text('Store'),
+                ),
               const SizedBox(width: 4),
               M3EIconButton(
                 variant: M3EIconButtonVariant.standard,
@@ -642,13 +685,51 @@ class _LinuxPageState extends State<LinuxPage> {
         ),
       );
 
-  List<Widget> _setupNotices(AppLocalizations l, ThemeData theme) => [
-    SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 12),
-        child: Text(l.linuxDescription, style: theme.textTheme.bodyMedium),
+  /// Before the first setup: what it does, and the button that starts it.
+  Widget _firstRunCard(ThemeData theme) => SliverToBoxAdapter(
+    child: Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: linuxWide(context) ? 24 : 16,
+        vertical: 8,
+      ),
+      child: M3ECard(
+        variant: M3ECardVariant.filled,
+        child: Padding(
+          padding: const EdgeInsets.all(8),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              PenguinIcon(
+                filled: true,
+                size: 48,
+                color: theme.colorScheme.primary,
+              ),
+              const SizedBox(height: 16),
+              Text(
+                t('Linux をセットアップ', 'Set up Linux'),
+                style: theme.textTheme.headlineSmall,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                t(
+                  'Linux の動かし方、Store の配布元、Linux 環境の中身を順に選んで、最初の Linux 環境を作成します。',
+                  'Choose how Linux runs, the Store sources and what the environment contains, then create your first Linux environment.',
+                ),
+              ),
+              const SizedBox(height: 20),
+              M3EButton.filled(
+                icon: const Icon(M3EIcons.arrow_forward_rounded),
+                onPressed: _startFirstRun,
+                label: Text(t('セットアップする', 'Set up')),
+              ),
+            ],
+          ),
+        ),
       ),
     ),
+  );
+
+  List<Widget> _setupNotices(AppLocalizations l, ThemeData theme) => [
     if (!supportedDevice)
       SliverToBoxAdapter(
         child: _notice(M3EIcons.block_rounded, l.linuxUnsupportedDevice),
@@ -662,6 +743,19 @@ class _LinuxPageState extends State<LinuxPage> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(l.linuxRequiresPrivilege),
+                const SizedBox(height: 12),
+                M3EButton.tonal(
+                  icon: const Icon(Icons.security_rounded),
+                  onPressed: () async {
+                    await Navigator.of(context).push<void>(
+                      MaterialPageRoute(
+                        builder: (_) => const LinuxAdvancedSettingsPage(),
+                      ),
+                    );
+                    if (mounted) await _load();
+                  },
+                  label: Text(t('実行方式を変更', 'Change the execution mode')),
+                ),
                 if (widget.onSetupPrivilege != null) ...[
                   const SizedBox(height: 12),
                   M3EButton.tonal(
@@ -670,7 +764,9 @@ class _LinuxPageState extends State<LinuxPage> {
                       await widget.onSetupPrivilege!();
                       if (mounted) await _load();
                     },
-                    label: Text(l.setupEmbeddedTitle),
+                    label: Text(
+                      t('内蔵バインダをセットアップ', 'Set up the built-in binder'),
+                    ),
                   ),
                 ],
               ],
@@ -678,19 +774,6 @@ class _LinuxPageState extends State<LinuxPage> {
           ),
         ),
       ),
-    SliverToBoxAdapter(
-      child: _card(
-        M3EListItem(
-          headline: l.linuxEnable,
-          supportingText: l.linuxEnableDescription,
-          leading: const PenguinIcon(),
-          trailing: M3ESwitch(
-            value: enabled,
-            onChanged: usable ? _setEnabled : null,
-          ),
-        ),
-      ),
-    ),
   ];
 
   /// One list item on its own, as a single-row expressive list.
@@ -845,14 +928,6 @@ class _LinuxPageState extends State<LinuxPage> {
           children: [
             for (final container in containers)
               _containerCard(l, theme, container),
-            _card(
-              M3EListItem(
-                headline: l.linuxEnable,
-                supportingText: l.linuxEnableDescription,
-                leading: const PenguinIcon(),
-                trailing: M3ESwitch(value: enabled, onChanged: _setEnabled),
-              ),
-            ),
           ],
         ),
       ),
@@ -959,7 +1034,7 @@ class _LinuxPageState extends State<LinuxPage> {
               Align(
                 alignment: Alignment.centerRight,
                 child: M3EButton.text(
-                  onPressed: () => _openSetup(container),
+                  onPressed: () => _openSetup(container: container),
                   child: Text(l.linuxSetupLog),
                 ),
               ),
@@ -1056,7 +1131,7 @@ class _LinuxPageState extends State<LinuxPage> {
         case 'cancel':
           await _channel.invokeMethod('cancel', {'id': container.id});
         case 'setup':
-          await _openSetup(container);
+          await _openSetup(container: container);
         case 'settings':
           await _openSettings(container);
         case 'repair':

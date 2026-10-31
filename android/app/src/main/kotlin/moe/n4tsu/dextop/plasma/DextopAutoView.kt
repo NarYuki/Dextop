@@ -154,7 +154,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
     private var colors = AutoColors(host.autoPalette)
     private var colorSource: PlasmaPalette? = null
     private val japanese get() = resources.configuration.locales[0].language == "ja"
-    private fun tr(ja: String, en: String) = if (japanese) ja else en
+    private fun tr(ja: String, en: String) = moe.n4tsu.dextop.InlineStrings.pick(resources.configuration.locales[0], ja, en)
 
     private val unit: Float get() {
         val area = viewport()
@@ -181,6 +181,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
     val pageDiagnostic get() = if (page == null) "none" else pageKind
     private var pageKind = "home"
     override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+        tutorial?.observe(event)
         val handled = super.dispatchTouchEvent(event)
         if (event.actionMasked == MotionEvent.ACTION_DOWN || event.actionMasked == MotionEvent.ACTION_UP ||
             event.actionMasked == MotionEvent.ACTION_CANCEL) {
@@ -558,9 +559,13 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
     private val railSelectedNow = HashSet<String>()
     private var railTasksBefore = emptySet<Int>()
 
+    /** Rail parts the landing tutorial points at (see [tutorialTarget]). */
+    private val tutorialTargets = HashMap<String, View>()
+
     private fun buildRail(g: Geometry) {
         rail.removeAllViews()
         railSelectedNow.clear()
+        tutorialTargets.clear()
         rail.orientation = if (g.landscape) LinearLayout.VERTICAL else LinearLayout.HORIZONTAL
         rail.gravity = Gravity.CENTER
         rail.setBackgroundColor(colors.rail)
@@ -578,11 +583,12 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
         status.contentDescription = tray?.let(::statusDescription) ?: tr("時刻と状態。押すと設定", "Time and status. Opens settings")
         (status.parent as? LinearLayout)?.removeView(status)
         add(status, if (g.landscape) dp(STATUS) else dp(STATUS + 16))
+        tutorialTargets["status"] = status
 
         add(railTap(Glyph.HOME, tr("ホーム。もう一度押すとアプリ一覧", "Home. Press again for all apps"),
             selected = pageOpen && (pageKind == "home" || pageKind == "apps"), key = "home") {
             if (page != null && pageKind == "home") showPage("apps") else showPage("home")
-        })
+        }.also { tutorialTargets["home"] = it })
 
         // Applications in a stable order so their places do not move under the driver's finger.
         val length = if (g.landscape) g.rail.height() else g.rail.width()
@@ -596,6 +602,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
         for (task in chosen.sortedBy { it.id }) {
             val tap = taskTap(task, pageOpen)
             add(tap)
+            if ("task" !in tutorialTargets) tutorialTargets["task"] = tap
             if (railBuilt && task.id !in railTasksBefore) {
                 // A newly opened application pops into its place.
                 tap.alpha = 0f; tap.scaleX = .4f; tap.scaleY = .4f
@@ -604,7 +611,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             }
         }
         if (tasks.size > chosen.size && slots > 0) {
-            add(Tap(tr("ほかの使用中アプリ ${tasks.size - chosen.size}件", "${tasks.size - chosen.size} more running apps"),
+            add(Tap(moe.n4tsu.dextop.InlineStrings.format(tr("ほかの使用中アプリ {0}件", "{0} more running apps"), tasks.size - chosen.size),
                 shape = dp(44), iconPx = dp(18), circle = false, action = { showPage("tasks") }).apply {
                 text = "+${tasks.size - chosen.size}"
                 tint = colors.secondary
@@ -614,10 +621,11 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
         add(View(context), 0, 1f)
 
         add(railTap(Glyph.TILE, tr("画面: 1画面・2画面、拡大率、全画面表示、すべて閉じる", "Screen: split, zoom, full screen and close all"),
-            selected = ws.split || (page != null && pageKind == "display"), key = "display") { showPage("display") })
+            selected = ws.split || (page != null && pageKind == "display"), key = "display") { showPage("display") }
+            .also { tutorialTargets["display"] = it })
         add(railTap(Glyph.BACK, tr("戻る", "Back")) {
             if (page != null && host.workspace.primary != null) hidePage() else host.autoBack()
-        })
+        }.also { tutorialTargets["back"] = it })
         railSelectedBefore = railSelectedNow.toSet()
         railTasksBefore = tasks.map { it.id }.toSet()
         railBuilt = true
@@ -644,8 +652,8 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
         val other = if (ws.split && ws.secondary == task.id) 0 else 1
         var tap: Tap? = null
         return Tap(
-            if (visible && !pageOpen) tr("${task.label}。表示中。押すとメニュー", "${task.label}. On screen. Opens its menu")
-            else tr("${task.label}。長押しでもう一方の画面に表示", "${task.label}. Long press to show on the other side"),
+            if (visible && !pageOpen) moe.n4tsu.dextop.InlineStrings.format(tr("{0}。表示中。押すとメニュー", "{0}. On screen. Opens its menu"), task.label)
+            else moe.n4tsu.dextop.InlineStrings.format(tr("{0}。長押しでもう一方の画面に表示", "{0}. Long press to show on the other side"), task.label),
             shape = dp(44), iconPx = dp(30), circle = false,
             action = {
                 val anchor = tap
@@ -677,7 +685,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        box.addView(Tap(tr("${paneName(1, g.landscape)}の画面にアプリを表示", "Choose an app for the ${paneName(1, g.landscape)} side"),
+        box.addView(Tap(moe.n4tsu.dextop.InlineStrings.format(tr("{0}の画面にアプリを表示", "Choose an app for the {0} side"), paneName(1, g.landscape)),
             shape = dp(56), iconPx = dp(28), action = { showPage("apps", 1) }).apply {
             glyph = Glyph.PLUS
             fill = colors.accent
@@ -691,7 +699,10 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
     }
 
     fun updateStatus(mode: String, media: PlasmaSystemControls.MediaInfo?, artwork: android.graphics.Bitmap? = null) {
+        val firstMode = this.mode.isEmpty() && mode.isNotEmpty()
         this.mode = mode
+        // The landing tutorial, once per source (Driving and Parking handle touch differently).
+        if (firstMode && !prefs.getBoolean(tutorialKey(), false)) post { showTutorial() }
         this.media = media
         this.artwork = artwork
         status.invalidate()
@@ -717,7 +728,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             t.cellularVisible && !t.cellularNoService && t.networkConnected -> t.cellularType ?: tr("モバイル", "Mobile")
             else -> tr("未接続", "Offline")
         }
-        return tr("電池 $battery、$network。押すと設定", "Battery $battery, $network. Opens settings")
+        return moe.n4tsu.dextop.InlineStrings.format(tr("電池 {0}、{1}。押すと設定", "Battery {0}, {1}. Opens settings"), battery, network)
     }
 
     fun updateTasks() {
@@ -748,6 +759,42 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
     }
 
     fun showHome() = showPage("home")
+
+    private var tutorial: AutoTutorial? = null
+    private fun tutorialKey() = "tutorial_seen_" + if (mode.equals("parking", ignoreCase = true)) "parking" else "driving"
+
+    /** Where a part the landing tutorial explains is, in this view's coordinates; null when not shown. */
+    private fun tutorialTarget(name: String): Rect? {
+        val view = when (name) {
+            "page" -> page
+            "rail" -> rail.takeIf { it.visibility == VISIBLE }
+            else -> tutorialTargets[name]
+        } ?: return null
+        if (!view.isAttachedToWindow || view.width <= 0 || view.height <= 0 || !view.isShown) return null
+        val at = IntArray(2)
+        val origin = IntArray(2)
+        view.getLocationInWindow(at)
+        getLocationInWindow(origin)
+        val left = at[0] - origin[0]
+        val top = at[1] - origin[1]
+        return Rect(left, top, left + view.width, top + view.height)
+    }
+
+    /** The landing tutorial over the real interface, until Start or Skip. */
+    fun showTutorial() {
+        if (tutorial != null) return
+        dismissBubble()
+        val view = AutoTutorial(context, colors, unit, japanese, !mode.equals("parking", ignoreCase = true),
+            target = ::tutorialTarget,
+            show = { kind -> if (kind == "home") showHome() else showPage(kind) }) {
+            prefs.edit().putBoolean(tutorialKey(), true).apply()
+            tutorial?.let(::removeView)
+            tutorial = null
+            if (host.workspace.primary != null) hidePage()
+        }
+        tutorial = view
+        addView(view, LayoutParams(-1, -1))
+    }
 
     /** Rebuilds the open page, for example after the application list or theme changed. */
     fun refreshPage() {
@@ -1110,7 +1157,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
         }
         val title = when {
             pickFavorites -> tr("お気に入りを選ぶ", "Choose favourites")
-            pane != null && host.workspace.split -> tr("${paneName(pane, landscape)}に表示", "Show on the ${paneName(pane, landscape)}")
+            pane != null && host.workspace.split -> moe.n4tsu.dextop.InlineStrings.format(tr("{0}に表示", "Show on the {0}"), paneName(pane, landscape))
             else -> tr("アプリ", "Apps")
         }
         val hasLinux = host.applications().any { it.category == LINUX_APP_CATEGORY }
@@ -1231,7 +1278,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
                 addView(label(if (visible) tr("表示中", "On screen") else tr("バックグラウンド", "In background"), 11f, colors.secondary))
             }
             row.addView(text, LinearLayout.LayoutParams(0, -2, 1f))
-            row.addView(Tap(tr("${task.label}を閉じる", "Close ${task.label}"), shape = dp(36), iconPx = dp(20),
+            row.addView(Tap(moe.n4tsu.dextop.InlineStrings.format(tr("{0}を閉じる", "Close {0}"), task.label), shape = dp(36), iconPx = dp(20),
                 action = { leave(row) { host.closeAuto(task.id) } }).apply { glyph = Glyph.CLOSE; fill = colors.background },
                 LinearLayout.LayoutParams(dp(TOUCH), dp(TOUCH)))
             rows += row
@@ -1354,7 +1401,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             "" -> ""
             "driving" -> tr("接続元: Driving", "Connected from Driving")
             "parking" -> tr("接続元: Parking", "Connected from Parking")
-            else -> tr("接続元: $mode", "Connected from $mode")
+            else -> moe.n4tsu.dextop.InlineStrings.format(tr("接続元: {0}", "Connected from {0}"), mode)
         }
         body.addView(header(tr("設定", "Settings"), if (source.isEmpty()) null
             else label(source, 12f, colors.secondary).apply { gravity = Gravity.CENTER_VERTICAL }),
@@ -1375,11 +1422,10 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             Triple(tr("ネットワーク", "Network"), network, if (t?.wifiConnected == true) Glyph.WIFI else Glyph.NETWORK) to "qs:network",
             Triple(tr("サウンド", "Sound"), volume, Glyph.VOLUME) to "qs:sound",
             Triple(tr("バッテリー", "Battery"), battery, if (t?.charging == true) Glyph.BATTERY_CHARGING else Glyph.BATTERY) to "qs:battery",
-            Triple(tr("通知", "Notifications"), if (unread > 0) tr("${unread}件", "$unread") else tr("なし", "None"), Glyph.NOTIFICATIONS) to "qs:notifications",
+            Triple(tr("通知", "Notifications"), if (unread > 0) moe.n4tsu.dextop.InlineStrings.format(tr("{0}件", "{0}"), unread) else tr("なし", "None"), Glyph.NOTIFICATIONS) to "qs:notifications",
         ) + listOfNotNull(host.autoControllers()?.let { pads ->
             val linux = pads.count { it.linux }
-            Triple(tr("コントローラー", "Controllers"), tr("Linux ${linux}台・Android ${pads.size - linux}台",
-                "Linux $linux · Android ${pads.size - linux}"), Glyph.GAMEPAD) to "qs:controllers"
+            Triple(tr("コントローラー", "Controllers"), moe.n4tsu.dextop.InlineStrings.format(tr("Linux {0}台・Android {1}台", "Linux {0} · Android {1}"), linux, pads.size - linux), Glyph.GAMEPAD) to "qs:controllers"
         })
         section(body, tr("クイックコントロール", "Quick controls"))
         val columns = if (area.width() >= dp(520)) 4 else 2
@@ -1394,6 +1440,10 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
                 })
         }
         body.addView(grid, LinearLayout.LayoutParams(-1, -2))
+        group(body, listOf(
+            settingRow(tr("チュートリアルを再生", "Play tutorial"), tr("基本操作と、タップ・スクロール・ピンチの練習",
+                "The basics, with tap, scroll and pinch practice"), Glyph.PLAY) { hidePage(); showTutorial() },
+        ))
 
         section(body, tr("表示", "Display"))
         group(body, listOf(
@@ -1606,11 +1656,11 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             host.autoLoad(box, { controls.setStreamVolume(volume.stream, slider.level) }) { host.autoTrayChanged() }
         }
         val line = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-        line.addView(Tap(tr("${name}を下げる", "Lower $name"), shape = dp(40), iconPx = dp(20), action = { step(-1f / 15f) }).apply {
+        line.addView(Tap(moe.n4tsu.dextop.InlineStrings.format(tr("{0}を下げる", "Lower {0}"), name), shape = dp(40), iconPx = dp(20), action = { step(-1f / 15f) }).apply {
             text = "−"; fill = colors.raised
         }, LinearLayout.LayoutParams(dp(MIN_TOUCH), dp(MIN_TOUCH)))
         line.addView(slider, LinearLayout.LayoutParams(0, dp(MIN_TOUCH), 1f))
-        line.addView(Tap(tr("${name}を上げる", "Raise $name"), shape = dp(40), iconPx = dp(20), action = { step(1f / 15f) }).apply {
+        line.addView(Tap(moe.n4tsu.dextop.InlineStrings.format(tr("{0}を上げる", "Raise {0}"), name), shape = dp(40), iconPx = dp(20), action = { step(1f / 15f) }).apply {
             text = "+"; fill = colors.raised
         }, LinearLayout.LayoutParams(dp(MIN_TOUCH), dp(MIN_TOUCH)))
         box.addView(line, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
@@ -1656,7 +1706,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             power.chargeTimeRemainingMs?.takeIf { power.charging && it > 0 }?.let { ms ->
                 val minutes = (ms / 60_000L).toInt()
                 rows += settingRow(tr("充電完了まで", "Until full"),
-                    if (minutes >= 60) tr("${minutes / 60}時間${minutes % 60}分", "${minutes / 60} h ${minutes % 60} min") else tr("${minutes}分", "$minutes min"),
+                    if (minutes >= 60) moe.n4tsu.dextop.InlineStrings.format(tr("{0}時間{1}分", "{0} h {1} min"), minutes / 60, minutes % 60) else moe.n4tsu.dextop.InlineStrings.format(tr("{0}分", "{0} min"), minutes),
                     Glyph.SCHEDULE)
             }
             power.temperatureCelsius?.let { rows += settingRow(tr("温度", "Temperature"), "%.1f °C".format(it), Glyph.THERMOMETER) }
@@ -1765,15 +1815,15 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
             val second = paneName(1, landscape)
             layout.addView(actions(
                 Triple(tr("入れ替え", "Swap"), Glyph.REFRESH, { host.swapAuto(); hidePage() }),
-                Triple(tr("${first}を変更", "Change $first"), Glyph.APPS, { showPage("apps", 0) }),
-                Triple(tr("${second}を変更", "Change $second"), Glyph.APPS, { showPage("apps", 1) }),
+                Triple(moe.n4tsu.dextop.InlineStrings.format(tr("{0}を変更", "Change {0}"), first), Glyph.APPS, { showPage("apps", 0) }),
+                Triple(moe.n4tsu.dextop.InlineStrings.format(tr("{0}を変更", "Change {0}"), second), Glyph.APPS, { showPage("apps", 1) }),
             ), LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = gap })
         }
 
         val view = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
         val active = host.tasks().firstOrNull { it.id == ws.active() }
         val scale = host.autoScale()
-        view.addView(caption(if (active != null) tr("拡大率 · ${active.label}", "Zoom · ${active.label}") else tr("拡大率", "Zoom")),
+        view.addView(caption(if (active != null) moe.n4tsu.dextop.InlineStrings.format(tr("拡大率 · {0}", "Zoom · {0}"), active.label) else tr("拡大率", "Zoom")),
             LinearLayout.LayoutParams(-1, -2))
         if (active != null && scale != null) {
             val steps = listOf(.75f, .9f, 1f, 1.15f, 1.3f, 1.5f)
@@ -1793,7 +1843,7 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
         if (ws.primary != null) view.addView(actions(Triple(tr("全画面表示", "Full screen"), Glyph.MAXIMIZE, { hidePage(); setFullscreen(true) })),
             LinearLayout.LayoutParams(-1, dp(56)).apply { topMargin = gap })
         if (all.isNotEmpty()) {
-            view.addView(caption(tr("使用中のアプリ ${all.size}件", "${all.size} running apps")),
+            view.addView(caption(moe.n4tsu.dextop.InlineStrings.format(tr("使用中のアプリ {0}件", "{0} running apps"), all.size)),
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(12) })
             val closing = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             if (hidden.isNotEmpty()) closing.addView(tile(tr("表示中以外を閉じる", "Close hidden"), "", null, Glyph.CLOSE, compact = true) {
@@ -2162,8 +2212,8 @@ internal class DextopAutoView(context: Context, private val host: AutoUiHost) : 
         cell.addView(label(app.label, textSize).apply { gravity = Gravity.CENTER },
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(5) })
         val description = if (long == null) app.label
-            else app.label + tr("。長押しでお気に入り${if (favorite) "から削除" else "に追加"}",
-                if (favorite) ". Long press to remove from favorites" else ". Long press to add to favorites")
+            else app.label + if (favorite) tr("。長押しでお気に入りから削除", ". Long press to remove from favorites")
+                else tr("。長押しでお気に入りに追加", ". Long press to add to favorites")
         pressable(cell, description, 14, long, action)
         return cell
     }

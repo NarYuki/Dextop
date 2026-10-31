@@ -1,10 +1,19 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <queries>
         <package android:name="moe.shizuku.privileged.api" />
         <package android:name="moe.shizuku.manager" />
         <package android:name="roro.stellar.manager" />
     </queries>
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" />
+    <!-- Linux settings → Compatibility and permissions: the whole storage, camera and microphone for Linux apps. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <uses-feature android:name="android.hardware.microphone" android:required="false" />
+    <uses-feature android:name="android.hardware.usb.host" android:required="false" />
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.SET_WALLPAPER_HINTS" />
     <uses-permission android:name="android.permission.INTERNET" />
@@ -33,6 +42,8 @@
         android:resizeableActivity="true"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <service android:name=".linux.LinuxRuntimeService" android:exported="false"
+            android:process=":linux_runtime" />
         <meta-data
             android:name="google_analytics_automatic_screen_reporting_enabled"
             android:value="false" />
@@ -104,6 +115,9 @@
             android:label="@string/app_name"
             android:exported="true"
             android:documentLaunchMode="always"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:autoRemoveFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN"/>
@@ -257,6 +271,15 @@
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
             android:windowSoftInputMode="adjustResize" />
+        <!-- A container's Linux desktop outside Plasma v2: on the phone, in DeX or any desktop mode. -->
+        <activity
+            android:name=".linux.LinuxDesktopActivity"
+            android:exported="false"
+            android:autoRemoveFromRecents="true"
+            android:resizeableActivity="true"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
+            android:windowSoftInputMode="adjustResize" />
         <!-- A container's interactive shell (xterm.js on a PTY of the shell-side service). -->
         <activity
             android:name=".linux.LinuxTerminalActivity"
@@ -289,6 +312,12 @@
         <receiver
             android:name=".linux.LinuxSessionService$NotificationAction"
             android:exported="false" />
+        <!-- Android's folder picker for the folders Linux may use (Linux settings → Compatibility and permissions). -->
+        <activity
+            android:name=".linux.LinuxFolderPickerActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Opened by the generated Linux launcher APKs and the Linux tab. -->
         <activity
             android:name=".linux.LinuxLaunchActivity"

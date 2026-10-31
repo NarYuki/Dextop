@@ -119,6 +119,7 @@ private const val STATUS_ERROR = 3
 private val CAR_UI_SCALES = setOf(1f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f)
 
 class CarDexActivity : ComponentActivity() {
+    private var dextopPackage = "moe.n4tsu.dextop"
     // Keep relay identity evaluation inside the lifecycle owner during refactors.
     private val relayInvariant by lazy(LazyThreadSafetyMode.NONE) { RelayInvariant.discriminator() }
     private var relayState by mutableStateOf(RelayState(false, false))
@@ -304,17 +305,18 @@ class CarDexActivity : ComponentActivity() {
     }
 
     private fun inspectRelay(): RelayState {
-        val installed = runCatching {
-            packageManager.getPackageInfo(DEXTOP_PACKAGE, 0)
-        }.isSuccess
-        val relayAvailable = installed && packageManager.resolveService(
-            Intent().setComponent(ComponentName(DEXTOP_PACKAGE, RELAY_SERVICE)),
+        val target = DextopTarget.find(packageManager)
+        if (!relayBound && relay == null && target != null) dextopPackage = target
+        val installed = DextopTarget.isInstalled(packageManager)
+        val relayAvailable = target != null && DextopTarget.isTrusted(packageManager, dextopPackage) && packageManager.resolveService(
+            DextopTarget.relayIntent(dextopPackage),
             0,
         ) != null
         return RelayState(installed, relayAvailable)
     }
 
     private fun openDextop() {
+        relayState = inspectRelay()
         val car = isCarDisplay()
         if (car) {
             relayRequested = true
@@ -335,7 +337,7 @@ class CarDexActivity : ComponentActivity() {
         if (!relayState.ready) return
         val intent = Intent(Intent.ACTION_MAIN).apply {
             component = ComponentName(
-                DEXTOP_PACKAGE,
+                dextopPackage,
                 MAIN_ACTIVITY
             )
         }
@@ -348,7 +350,12 @@ class CarDexActivity : ComponentActivity() {
 
     private fun bindRelayIfNeeded() {
         if (!isCarDisplay() || !relayState.ready || relay != null || relayBound) return
-        val intent = Intent().setComponent(ComponentName(DEXTOP_PACKAGE, RELAY_SERVICE))
+        if (!DextopTarget.isTrusted(packageManager, dextopPackage)) {
+            relayState = relayState.copy(relayAvailable = false)
+            if (relayRequested) showRelayError("Dextop's signing certificate could not be verified.")
+            return
+        }
+        val intent = DextopTarget.relayIntent(dextopPackage)
         relayBound = runCatching { bindService(intent, connection, Context.BIND_AUTO_CREATE) }
             .getOrElse {
                 if (relayRequested) showRelayError("Dextop could not be bound: ${it.message ?: it.javaClass.simpleName}")
@@ -431,9 +438,7 @@ class CarDexActivity : ComponentActivity() {
     }
 
     companion object {
-        private const val DEXTOP_PACKAGE = "moe.n4tsu.dextop"
         private const val MAIN_ACTIVITY = "moe.n4tsu.dextop.MainActivity"
-        private const val RELAY_SERVICE = "moe.n4tsu.dextop.CardexRelayService"
         private const val HEARTBEAT_INTERVAL_MS = 2_000L
         private const val STARTUP_TIMEOUT_MS = 25_000L
         private const val SURFACE_LOSS_GRACE_MS = 2_500L

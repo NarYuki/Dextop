@@ -1,11 +1,16 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
+import 'package:free_dextop/l10n/inline_text.dart';
+import 'package:free_dextop/linux/linux_expressive.dart';
+import 'package:free_dextop/linux/linux_first_run.dart';
 import 'package:free_dextop/linux/linux_widgets.dart';
 import 'package:free_dextop/penguin_icon.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// One setup operation, supplied by the Linux tab so it keeps running off-route.
 class LinuxSetupProgress {
@@ -57,6 +62,7 @@ class LinuxSetupPage extends StatefulWidget {
     this.distroId,
     this.initialOptions = const {},
     this.resume = false,
+    this.firstRun = false,
   });
 
   final List<Map<Object?, Object?>> catalog;
@@ -74,6 +80,9 @@ class LinuxSetupPage extends StatefulWidget {
   final String? distroId;
   final Map<Object?, Object?> initialOptions;
   final bool resume;
+
+  /// The very first setup: how Linux runs and the Store sources come first, in the same flow.
+  final bool firstRun;
 
   @override
   State<LinuxSetupPage> createState() => _LinuxSetupPageState();
@@ -95,7 +104,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   final name = TextEditingController();
   late String distro;
   String profile = 'complete';
-  String displayBackend = 'xvfb';
+  String displayBackend = 'wayland';
   String locale = 'en_US';
   String ime = 'none';
   bool cjkFonts = false;
@@ -104,6 +113,13 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   final apps = <String>{'files', 'editor'};
   int step = 0;
   bool movingForward = true;
+
+  // First setup only (steps 7 and 8).
+  static const _channel = MethodChannel('app.freedextop/linux');
+  String executionMode = 'privileged';
+  bool debGet = false;
+  bool flathub = false;
+  String t(String ja, String en) => linuxText(context, ja, en);
 
   void moveTo(int next) => setState(() {
     movingForward = next > step;
@@ -121,7 +137,10 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   /// DroidDeck's runtime brings its own desktop, fonts and input methods,
   /// so only the system and app choices apply.
   bool get runtime => distro == 'droiddeck';
-  List<int> get flow => runtime ? const [0, 4, 5] : const [0, 1, 2, 3, 4, 5];
+  List<int> get flow => [
+    if (widget.firstRun) ...[7, 8],
+    ...(runtime ? const [0, 4, 5] : const [0, 1, 2, 3, 4, 5]),
+  ];
   int get position => flow.indexOf(step);
 
   @override
@@ -129,6 +148,12 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     super.initState();
     distro = widget.distroId ?? widget.catalog.first['id'] as String;
     name.text = widget.containerName ?? '';
+    if (widget.firstRun) {
+      step = 7;
+      _channel.invokeMethod<String>('executionMode').then((value) {
+        if (mounted && value != null) setState(() => executionMode = value);
+      });
+    }
     if (widget.resume) {
       step = 6;
       operationId = widget.containerId;
@@ -147,12 +172,8 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       orElse: () => 'en_US',
     );
     cjkFonts = ['ja', 'zh', 'ko'].contains(language);
-    ime = switch (language) {
-      'ja' => 'mozc',
-      'zh' => 'pinyin',
-      'ko' => 'hangul',
-      _ => 'none',
-    };
+    // The Android keyboard by default; Linux input methods are experimental.
+    ime = 'none';
     if (distro != 'ubuntu') apps.add('firefox');
     final saved = widget.initialOptions;
     if (saved.isNotEmpty) {
@@ -204,30 +225,70 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   Future<void> start() async {
     if (submitting) return;
+    // The progress screen comes at once; switching the execution mode and connecting
+    // to its runtime first can take a while.
     setState(() {
       submitting = true;
       failure = null;
+      movingForward = true;
+      step = 6;
     });
     try {
-      final id = await widget.install(
+      if (widget.firstRun) await applyFirstRun();
+      Future<String> install() => widget.install(
         name.text.trim(),
         distro,
         options,
         operationId ?? widget.containerId,
       );
+      String id;
+      try {
+        id = await install();
+      } on PlatformException catch (error) {
+        // The first call after a mode switch can meet the old connection; once more on the new one.
+        if (!(error.message ?? '').contains('retry')) rethrow;
+        id = await install();
+      }
       if (!mounted) return;
-      setState(() {
-        operationId = id;
-        step = 6;
-      });
+      setState(() => operationId = id);
       timer?.cancel();
       timer = Timer.periodic(const Duration(seconds: 2), (_) => refresh());
       await refresh();
     } catch (error) {
-      if (mounted) setState(() => failure = error.toString());
+      if (mounted) {
+        setState(() {
+          failure = error is PlatformException
+              ? error.message ?? '$error'
+              : '$error';
+          step = 5;
+        });
+      }
     } finally {
       if (mounted) setState(() => submitting = false);
     }
+  }
+
+  /// Applies the first setup's choices before the container is created in that mode.
+  Future<void> applyFirstRun() async {
+    final current = await _channel.invokeMethod<String>('executionMode');
+    if (current != executionMode) {
+      await _channel.invokeMethod<String>('setExecutionMode', {
+        'mode': executionMode,
+        'stop': true,
+      });
+    }
+    for (final (source, value) in [('deb-get', debGet), ('flathub', flathub)]) {
+      await _channel.invokeMapMethod<String, bool>('setStoreSource', {
+        'source': source,
+        'enabled': value,
+      });
+    }
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setStringList(LinuxFirstRun.prepareKey, [
+      if (debGet && distro != 'archlinux') 'deb-get',
+      if (flathub && distro != 'archlinux') 'flathub',
+    ]);
+    await preferences.setBool(LinuxFirstRun.doneKey, true);
   }
 
   Future<void> refresh() async {
@@ -267,14 +328,16 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    final titles = [
-      l.linuxSetupSystem,
-      l.linuxSetupDesktop,
-      l.linuxSetupLanguage,
-      l.linuxSetupInput,
-      l.linuxSetupApps,
-      l.linuxSetupReview,
-    ];
+    final titles = {
+      0: l.linuxSetupSystem,
+      1: l.linuxSetupDesktop,
+      2: l.linuxSetupLanguage,
+      3: l.linuxSetupInput,
+      4: l.linuxSetupApps,
+      5: l.linuxSetupReview,
+      7: t('Linux の動かし方', 'How Linux runs'),
+      8: t('Store の配布元', 'Store sources'),
+    };
     final theme = Theme.of(context);
     return PopScope(
       canPop: !submitting,
@@ -359,7 +422,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
                                 ),
                                 const SizedBox(height: 12),
                                 Text(
-                                  titles[step],
+                                  titles[step]!,
                                   style: theme.textTheme.headlineMedium,
                                 ),
                                 const SizedBox(height: 20),
@@ -382,7 +445,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
                           padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
                           child: Row(
                             children: [
-                              if (step > 0)
+                              if (position > 0)
                                 M3EButton.outlined(
                                   icon: const Icon(M3EIcons.arrow_back_rounded),
                                   onPressed: submitting
@@ -429,6 +492,89 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   Widget optionGroup(List<Widget> children) => LinuxGroup(children: children);
 
   List<Widget> stepContent() => switch (step) {
+    7 => [
+      const Align(
+        alignment: Alignment.centerLeft,
+        child: PenguinIcon(size: 64, filled: true),
+      ),
+      const SizedBox(height: 16),
+      Text(
+        t(
+          'Dextop で Linux を使うための初期セットアップです。Linux の動かし方、Store の配布元、Linux 環境の中身を順に選びます。どれもあとから Linux 設定で変更できます。',
+          'This first setup prepares Linux in Dextop: how it runs, the Store sources, then what the Linux environment contains. Everything can be changed later in Linux settings.',
+        ),
+      ),
+      const SizedBox(height: 24),
+      optionGroup([
+        LinuxChoice<String>(
+          value: 'privileged',
+          groupValue: executionMode,
+          onChanged: (value) => setState(() => executionMode = value),
+          icon: M3EIcons.admin_panel_settings_rounded,
+          title: t('完全特権', 'Full privilege'),
+          subtitle: t(
+            'Shizuku・Stellar・内蔵バインダなどの特権アクセスで動かします。Android のファイル領域やコントローラー・音声デバイスを直接扱えます。',
+            'Runs through privileged access such as Shizuku, Stellar or the built-in binder. Reaches Android files, controllers and audio devices directly.',
+          ),
+        ),
+        LinuxChoice<String>(
+          value: 'android',
+          groupValue: executionMode,
+          onChanged: (value) => setState(() => executionMode = value),
+          icon: M3EIcons.security_rounded,
+          title: t('Android（試験的）', 'Android (experimental)'),
+          subtitle: t(
+            '通常のアプリ権限で動かします。開発・ブラウザ・ゲームも動きます。Android のシステム領域には触れません。',
+            'Runs with ordinary app permissions. Development, browsers and games work. Android system storage stays out of reach.',
+          ),
+        ),
+      ]),
+    ],
+    8 => [
+      Text(
+        t(
+          'Store に並べるアプリの入手先です。APT は常に使えます。deb-get と Flathub は、Linux 環境のインストール後に自動で準備します。',
+          'Where Store apps come from. APT is always available; deb-get and Flathub are set up automatically after the Linux environment is installed.',
+        ),
+      ),
+      const SizedBox(height: 24),
+      optionGroup([
+        LinuxToggle(
+          value: true,
+          onChanged: null,
+          icon: M3EIcons.inventory_2_rounded,
+          title: 'Debian / Ubuntu APT',
+          subtitle: t('ディストリビューションの公式パッケージ', 'Official distribution packages'),
+        ),
+        LinuxToggle(
+          value: debGet,
+          onChanged: (value) => setState(() => debGet = value),
+          icon: M3EIcons.download_rounded,
+          title: 'deb-get',
+          subtitle: t(
+            '開発元が配布する DEB パッケージ（Chrome・VS Code など）',
+            'DEB packages from app developers (Chrome, VS Code and more)',
+          ),
+        ),
+        LinuxToggle(
+          value: flathub,
+          onChanged: (value) => setState(() => flathub = value),
+          icon: M3EIcons.apps_rounded,
+          title: 'Flathub',
+          subtitle: t('Flatpak アプリ', 'Flatpak applications'),
+        ),
+      ]),
+      Padding(
+        padding: const EdgeInsets.all(12),
+        child: Text(
+          t(
+            'Store は Debian と Ubuntu に対応しています。',
+            'The Store supports Debian and Ubuntu.',
+          ),
+          style: Theme.of(context).textTheme.bodySmall,
+        ),
+      ),
+    ],
     0 => [
       const Align(
         alignment: Alignment.centerLeft,
@@ -469,18 +615,18 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       const SizedBox(height: 12),
       optionGroup([
         LinuxChoice<String>(
-          value: 'xvfb',
-          groupValue: displayBackend,
-          onChanged: (value) => setState(() => displayBackend = value),
-          title: 'Xvfb',
-          subtitle: l.linuxSetupXvfbDetail,
-        ),
-        LinuxChoice<String>(
           value: 'wayland',
           groupValue: displayBackend,
           onChanged: (value) => setState(() => displayBackend = value),
           title: 'Wayland',
           subtitle: l.linuxSetupWaylandDetail,
+        ),
+        LinuxChoice<String>(
+          value: 'xvfb',
+          groupValue: displayBackend,
+          onChanged: (value) => setState(() => displayBackend = value),
+          title: 'Xvfb',
+          subtitle: l.linuxSetupXvfbDetail,
         ),
       ]),
       const SizedBox(height: 24),
@@ -571,7 +717,11 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
             value: entry.key,
             groupValue: ime,
             onChanged: (value) => setState(() => ime = value),
-            title: entry.value,
+            title: entry.key == 'none'
+                ? entry.value
+                : inlineFormat(t('{0}（試験的）', '{0} (experimental)'), [
+                    entry.value,
+                  ]),
             subtitle: entry.key == 'none' ? l.linuxSetupNoImeDetail : null,
           ),
       ]),
@@ -620,6 +770,20 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     ],
     _ => [
       optionGroup([
+        if (widget.firstRun) ...[
+          summary(
+            M3EIcons.security_rounded,
+            t('Linux の動かし方', 'How Linux runs'),
+            executionMode == 'android'
+                ? t('Android（試験的）', 'Android (experimental)')
+                : t('完全特権', 'Full privilege'),
+          ),
+          summary(
+            M3EIcons.storefront_rounded,
+            t('Store の配布元', 'Store sources'),
+            ['APT', if (debGet) 'deb-get', if (flathub) 'Flathub'].join(' · '),
+          ),
+        ],
         summary(
           M3EIcons.computer_rounded,
           name.text.trim().isEmpty ? distroName : name.text.trim(),
@@ -698,6 +862,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       }
     });
     return M3EListItem(
+      supportingMaxLines: null,
       headline: appName(app),
       supportingText: available ? subtitle : unavailable ?? '',
       enabled: available,
@@ -710,6 +875,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   }
 
   Widget summary(IconData icon, String title, String detail) => M3EListItem(
+    supportingMaxLines: null,
     headline: title,
     supportingText: detail.isEmpty ? null : detail,
     leading: Icon(icon),
