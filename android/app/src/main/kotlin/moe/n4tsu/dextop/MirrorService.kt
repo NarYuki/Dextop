@@ -537,6 +537,31 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun activeDisplayId(): Int = instance?.targetDisplayId ?: -1
 
+        /** Shows the desktop on the external screen as the user chose in the app (see setExternalDisplay). */
+        fun setExternalDisplay(mode: String, done: (String) -> Unit) {
+            val service = instance ?: return done("no_session")
+            Handler(Looper.getMainLooper()).post { done(runCatching { service.setExternalDisplay(mode) }.getOrDefault("failed")) }
+        }
+
+        /** Whether an external screen that can take the desktop is connected, and how it is used now. */
+        /** A connected screen the desktop can be shown on, found without a running session. */
+        fun externalOutputDisplay(context: Context): Display? {
+            val manager = context.getSystemService(DisplayManager::class.java)
+            return ExternalDisplayDetector(context).snapshot().displayIds.mapNotNull(manager::getDisplay)
+                .firstOrNull { it.flags and Display.FLAG_PRESENTATION != 0 }
+        }
+
+        fun externalDisplayState(context: Context): Map<String, Any?> {
+            val service = instance
+            val display = externalOutputDisplay(context)
+            return mapOf(
+                "connected" to (display != null),
+                "name" to display?.name,
+                "running" to (active && service != null),
+                "mode" to (service?.externalOutput?.mode ?: "off"),
+            )
+        }
+
         /** Applies the "window manager" display setting to a running session. */
         fun updateWindowManager() {
             val service = instance ?: return
@@ -552,6 +577,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         fun activeWindowManager(): String =
             when (instance?.plasmaShell) {
                 is moe.n4tsu.dextop.plasma.PlasmaV2Shell -> moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
+                is moe.n4tsu.dextop.plasma.BookShell -> moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_BOOK
                 null -> moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
                 else -> moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA
             }
@@ -1284,6 +1310,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var topologyReapplyGeneration = 0
     private val physicalInputRoutingSupported: Boolean
         get() = !Build.MANUFACTURER.equals("samsung", ignoreCase = true)
+    /**
+     * An unassociated mouse follows Android's focused display. A Plasma window's
+     * own display takes focus when its app opens, so the cursor moved into that
+     * window's display and could not leave it. Plasma forwards the pointer to its
+     * windows itself, so physical mice stay on the desktop display.
+     */
+    private val routePhysicalMice: Boolean
+        get() = routePhysicalMouseToDextop || (phoneOwnedDisplay != null && !autoOnlySession)
     @Volatile
     private var touchscreenReaderRunning = false
     @Volatile
@@ -2682,8 +2716,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 activatePhysicalMouse()
                 val view = surfaceView ?: return
                 if (view.width > 0 && view.height > 0) {
-                    cursorX = (event.x / view.width * targetWidth).coerceIn(0f, targetWidth - 1f)
-                    cursorY = (event.y / view.height * targetHeight).coerceIn(0f, targetHeight - 1f)
+                    val region = regionFor(view)
+                    cursorX = (region.left + event.x / view.width * region.width()).coerceIn(0f, targetWidth - 1f)
+                    cursorY = (region.top + event.y / view.height * region.height()).coerceIn(0f, targetHeight - 1f)
                 }
             }
         }
@@ -3032,7 +3067,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (!active || (autoOnlySession && !carShell) || targetDisplayId < 0) return false
         val selection = moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this)
         val wantPlasma = carShell || selection != moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
-        val wantV2 = carShell || selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
+        val wantBook = !carShell && selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_BOOK
+        val wantV2 = carShell || wantBook || selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
         val existing = plasmaShell
         if (!wantPlasma) {
             if (existing != null) {
@@ -3044,14 +3080,25 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         val existingIsV2 = existing is moe.n4tsu.dextop.plasma.CompositedWindowShell
         val existingIsAuto = existing is moe.n4tsu.dextop.plasma.DextopAutoShell
-        if (existing != null && existing.displayId == targetDisplayId && existingIsV2 == wantV2 && existingIsAuto == carShell) return true
-        // Switching between v1 and v2 hands windows back to the display first.
-        if (existing != null) stopPlasmaShell(restoreWindows = existingIsV2 != wantV2)
+        val existingIsBook = existing is moe.n4tsu.dextop.plasma.BookShell
+        if (existing != null && existing.displayId == targetDisplayId && existingIsV2 == wantV2 &&
+            existingIsAuto == carShell && existingIsBook == wantBook) return true
+        // Switching between v1, v2 and Book hands windows back to the display first.
+        if (existing != null) stopPlasmaShell(restoreWindows = existingIsV2 != wantV2 || existingIsBook != wantBook)
         return runCatching {
             (if (carShell) {
                 moe.n4tsu.dextop.plasma.DextopAutoShell(
                     this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
                     fullscreenAppDisplays = true,
+                    passiveShellFocus = desktopEnvironment.passivePlasmaShellFocus,
+                    maxRateAppDisplays = desktopEnvironment.maxRateApplicationDisplays,
+                    applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
+                    privateAppDisplays = desktopEnvironment.privateApplicationDisplays,
+                )
+            } else if (wantBook) {
+                moe.n4tsu.dextop.plasma.BookShell(
+                    this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
+                    fullscreenAppDisplays = desktopEnvironment.fullscreenApplicationDisplays,
                     passiveShellFocus = desktopEnvironment.passivePlasmaShellFocus,
                     maxRateAppDisplays = desktopEnvironment.maxRateApplicationDisplays,
                     applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
@@ -4661,7 +4708,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         kotlin.math.abs(x.max - (targetWidth - 1)) <= 1f &&
                         kotlin.math.abs(y.max - (targetHeight - 1)) <= 1f
                     if (!matches) {
-                        if (attempt < 30) {
+                        // An extended desktop never matches the phone's touchpad range; go relative at once.
+                        if (attempt < 30 && externalOutput?.mode != "extend") {
                             scheduleVirtualMouseReadyCheck(generation, profile, attempt + 1)
                         } else {
                             Log.w(logTag, "Xiaomi touchpad viewport does not match desktop; retrying as relative mouse")
@@ -9445,7 +9493,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             .apply()
         val display = getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId)
         if (display != null) runCatching {
-            physicalInputRouter.apply(display, routePhysicalMouseToDextop, routePhysicalKeyboardToDextop)
+            physicalInputRouter.apply(display, routePhysicalMice, routePhysicalKeyboardToDextop)
         }.onFailure { OperationLog.w(this, "InputRouting", "overlay routing change failed", it) }
         if (!routePhysicalMouseToDextop) activateTouchInput()
         root?.postDelayed({
@@ -9454,8 +9502,237 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }, 350)
     }
 
+    // region external display output
+    /**
+     * Shows the Dextop desktop on a connected external screen, only when the user asks for it
+     * from the app ([setExternalDisplay]). On phones whose external display only takes
+     * presentations (HyperOS: no desktop windowing, so no app can open there) this is the way
+     * to use it: a full-screen window on that display hosts the desktop's image.
+     * - "external": that window becomes the desktop's host Surface and the desktop takes the
+     *   screen's size; the phone keeps its own input mode.
+     * - "mirror": the phone keeps showing the desktop and the external screen shows it too.
+     * - "extend": one desktop spans both screens side by side (the external one on the side
+     *   chosen in the app); each shows its part, and Plasma treats them as two outputs.
+     * Unplugging the screen returns to the phone alone.
+     */
+    private var externalOutput: ExternalOutput? = null
+    private val externalBackend by lazy {
+        DisplayMirrorBackend(this, contentResolver, getSystemService(DisplayManager::class.java),
+            privilegedAccess, desktopEnvironment)
+    }
+
+    private inner class ExternalOutput(
+        val mode: String,
+        val displayId: Int,
+        val windowManager: WindowManager,
+        val frame: View,
+        val surface: SurfaceView,
+        val phoneSurface: SurfaceView,
+        val phoneConfig: Config,
+    ) : SurfaceHolder.Callback {
+        override fun surfaceCreated(holder: SurfaceHolder) = attachExternalMirror()
+        override fun surfaceChanged(holder: SurfaceHolder, format: Int, width: Int, height: Int) = attachExternalMirror()
+        override fun surfaceDestroyed(holder: SurfaceHolder) = externalBackend.releaseLayer()
+    }
+
+    /** The external screen that can take the desktop, if one is connected. */
+    private fun externalOutputDisplay(): Display? = externalOutputDisplay(this)
+
+    /** In "extend": the parts of the desktop the phone and the external screen show. */
+    private var phoneRegion: Rect? = null
+    private var externalRegion: Rect? = null
+    private var externalCursor: CursorView? = null
+
+    /** The part of the desktop (in its own pixels) that [view] shows. */
+    private fun regionFor(view: View?): RectF {
+        val output = externalOutput
+        val region = when {
+            output == null -> null
+            view === output.surface -> externalRegion
+            else -> phoneRegion
+        }
+        return region?.let(::RectF) ?: RectF(0f, 0f, targetWidth.toFloat(), targetHeight.toFloat())
+    }
+
+    /** Desktop logical density for a screen's real one (as for a host Surface). */
+    private fun desktopDensityFor(screenDpi: Int) = (160 + screenDpi / 160f * 24).toInt().coerceIn(160, 320)
+
+    /** The user's choice from the app: "off", "external", "mirror" or "extend". */
+    fun setExternalDisplay(mode: String): String {
+        require(mode in setOf("off", "external", "mirror", "extend"))
+        if (!active || autoOnlySession || targetDisplayId < 0 || surfaceView == null) return "no_session"
+        if (mode == "extend" && externalOutput?.mode == "extend") {
+            rearrangeExtended()
+            return "ok"
+        }
+        externalOutput?.let { hideExternalOutput("user") }
+        if (mode == "off") return "ok"
+        val display = externalOutputDisplay() ?: return "no_display"
+        return if (showExternalOutput(display, mode)) "ok" else "failed"
+    }
+
+    private fun showExternalOutput(display: Display, mode: String): Boolean {
+        val phone = surfaceView ?: return false
+        return runCatching {
+            val context = createDisplayContext(display)
+            val manager = context.getSystemService(WindowManager::class.java)
+            val surface = SurfaceView(context).apply {
+                // Physical mice on the external screen act on the desktop like the phone's surface.
+                setOnGenericMotionListener { _, event -> handlePhysicalMouseEvent(event, this) }
+                setOnHoverListener { _, event -> handlePhysicalMouseEvent(event, this) }
+            }
+            val frame = FrameLayout(context).apply {
+                setBackgroundColor(Color.BLACK)
+                addView(surface, FrameLayout.LayoutParams(-1, -1))
+            }
+            val params = WindowManager.LayoutParams(
+                -1, -1,
+                WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or
+                    WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS or
+                    WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED or
+                    WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                    WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON,
+                PixelFormat.OPAQUE,
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
+                layoutInDisplayCutoutMode = WindowManager.LayoutParams.LAYOUT_IN_DISPLAY_CUTOUT_MODE_ALWAYS
+                fitInsetsTypes = 0
+                title = "Dextop External"
+            }
+            val output = ExternalOutput(mode, display.displayId, manager, frame, surface, phone,
+                Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations))
+            externalOutput = output
+            val metrics = android.util.DisplayMetrics().also {
+                @Suppress("DEPRECATION") display.getRealMetrics(it)
+            }
+            if (mode == "external") {
+                // The external window becomes the host Surface; the phone's stops driving the desktop.
+                phone.holder.removeCallback(this)
+                releaseMirror()
+                surfaceView = surface
+                surface.holder.addCallback(this)
+            } else {
+                surface.holder.addCallback(output)
+            }
+            if (mode == "extend") {
+                // The external screen's part, at the phone desktop's height, beside the phone's.
+                val height = targetHeight
+                val externalWidth = (metrics.widthPixels.toFloat() * height / metrics.heightPixels).roundToInt() and -2
+                val left = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                    .getString("flutter.external_display_position", "right") == "left"
+                arrangeExtended(targetWidth, externalWidth, height, left)
+                externalCursor = CursorView(context).also { cursor ->
+                    cursor.visibility = cursorView?.visibility ?: View.GONE
+                    frame.addView(cursor, FrameLayout.LayoutParams(-1, -1))
+                }
+            }
+            manager.addView(frame, params)
+            when (mode) {
+                // The desktop takes the external screen's size and pixel density.
+                "external" -> runCatching {
+                    resizeActiveDisplay(Config(metrics.widthPixels and -2, metrics.heightPixels and -2,
+                        desktopDensityFor(metrics.densityDpi), secureDisplay, showSystemDecorations), "external display")
+                }.onFailure { OperationLog.e(this, "ExternalOutput", "external resize failed", it) }
+                "extend" -> {
+                    runCatching {
+                        resizeActiveDisplay(Config(phoneRegion!!.width() + externalRegion!!.width(), targetHeight,
+                            density, secureDisplay, showSystemDecorations), "extended desktop")
+                    }.onFailure { OperationLog.e(this, "ExternalOutput", "extended resize failed", it) }
+                    // The phone shows only its part now.
+                    releaseMirror()
+                    surfaceView?.takeIf { it.width > 0 }?.let { reattachExistingDisplay(it.width, it.height) }
+                    applyDesktopOutputs()
+                }
+            }
+            OperationLog.i(this, "ExternalOutput", "desktop $mode on display=${display.displayId}")
+        }.onFailure { error ->
+            OperationLog.e(this, "ExternalOutput", "external display output failed", error)
+            hideExternalOutput("failed")
+        }.isSuccess
+    }
+
+    /** Mirror and extend: the external window shows the desktop, or its part of it. */
+    private fun attachExternalMirror() {
+        val output = externalOutput?.takeIf { it.mode == "mirror" || it.mode == "extend" } ?: return
+        val surface = output.surface
+        if (!surface.holder.surface.isValid || surface.width <= 0 || targetDisplayId < 0) return
+        runCatching {
+            externalBackend.attach(targetDisplayId, surface, surface.width, surface.height,
+                targetWidth, targetHeight, density, configuredMirrorStrategyOverride(), rebuild = true,
+                crop = if (output.mode == "extend") externalRegion else null)
+        }.onFailure { OperationLog.e(this, "ExternalOutput", "external mirror failed", it) }
+    }
+
+    private fun externalDisplayPreference(key: String, fallback: String): String =
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).getString("flutter.$key", fallback) ?: fallback
+
+    /** Places the phone's and the external screen's parts side by side. */
+    private fun arrangeExtended(phoneWidth: Int, externalWidth: Int, height: Int, externalOnLeft: Boolean) {
+        phoneRegion = if (externalOnLeft) Rect(externalWidth, 0, externalWidth + phoneWidth, height) else Rect(0, 0, phoneWidth, height)
+        externalRegion = if (externalOnLeft) Rect(0, 0, externalWidth, height) else Rect(phoneWidth, 0, phoneWidth + externalWidth, height)
+    }
+
+    /** The arrangement or main display changed while extended: same size, so no resize. */
+    private fun rearrangeExtended() {
+        val phone = phoneRegion ?: return
+        val external = externalRegion ?: return
+        val left = externalDisplayPreference("external_display_position", "right") == "left"
+        arrangeExtended(phone.width(), external.width(), phone.height(), left)
+        releaseMirror()
+        surfaceView?.takeIf { it.width > 0 }?.let { reattachExistingDisplay(it.width, it.height) }
+        attachExternalMirror()
+        applyDesktopOutputs()
+        updateCursorPosition()
+        OperationLog.i(this, "ExternalOutput", "extended desktop rearranged phone=$phoneRegion external=$externalRegion")
+    }
+
+    /** Tells Dextop's window manager where each screen is: the main one (its taskbar) first. */
+    private fun applyDesktopOutputs() {
+        val phoneMain = externalDisplayPreference("external_display_main", "2") == "1"
+        val outputs = if (phoneMain) listOfNotNull(phoneRegion, externalRegion) else listOfNotNull(externalRegion, phoneRegion)
+        plasmaShell?.setOutputs(outputs)
+    }
+
+    private fun hideExternalOutput(reason: String) {
+        val output = externalOutput ?: return
+        externalOutput = null
+        output.surface.holder.removeCallback(output)
+        externalBackend.releaseLayer()
+        if (output.mode == "external") {
+            output.surface.holder.removeCallback(this)
+            releaseMirror()
+        }
+        runCatching { output.windowManager.removeView(output.frame) }
+        externalCursor = null
+        if (output.mode == "external") {
+            if (surfaceView === output.surface) surfaceView = output.phoneSurface
+            runCatching { resizeActiveDisplay(output.phoneConfig, "external display removed") }
+            val phone = output.phoneSurface
+            phone.holder.addCallback(this)
+            if (phone.holder.surface.isValid) surfaceCreated(phone.holder)
+        }
+        if (output.mode == "extend") {
+            phoneRegion = null
+            externalRegion = null
+            releaseMirror()
+            runCatching { resizeActiveDisplay(output.phoneConfig, "extended desktop ended") }
+                .onFailure { OperationLog.e(this, "ExternalOutput", "extended desktop shrink failed", it) }
+            plasmaShell?.setOutputs(emptyList())
+            surfaceView?.takeIf { it.width > 0 }?.let { reattachExistingDisplay(it.width, it.height) }
+            cursorX = cursorX.coerceIn(0f, targetWidth - 1f)
+            cursorY = cursorY.coerceIn(0f, targetHeight - 1f)
+            updateCursorPosition()
+        }
+        OperationLog.i(this, "ExternalOutput", "external output ${output.mode} ended reason=$reason")
+    }
+    // endregion
+
     private fun refreshExternalDisplayState() {
         root?.post {
+            externalOutput?.let { output ->
+                if (getSystemService(DisplayManager::class.java).getDisplay(output.displayId) == null) hideExternalOutput("unplugged")
+            }
             val externalState = externalDisplayDetector.snapshot()
             knownPhysicalExternalDisplayIds = externalState.displayIds.toSet()
             val connected = physicalInputRoutingSupported && externalState.connected
@@ -9464,7 +9741,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val display = getSystemService(DisplayManager::class.java).getDisplay(targetDisplayId)
             if (connected && active && display != null) {
                 runCatching {
-                    physicalInputRouter.apply(display, routePhysicalMouseToDextop, routePhysicalKeyboardToDextop)
+                    physicalInputRouter.apply(display, routePhysicalMice, routePhysicalKeyboardToDextop)
                 }.onFailure { OperationLog.w(this, "InputRouting", "external display routing failed", it) }
                 if (routePhysicalMouseToDextop) startRawMouseReader()
             } else {
@@ -9481,6 +9758,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 activateTouchInput()
                 mouseActuallyRouted = false
                 keyboardActuallyRouted = false
+                // Unplugging must not hand the mice back to the focused window display.
+                if (active && display != null && routePhysicalMice) refreshPhysicalInputState()
             }
             refreshActualRoutingState(display)
             menuPrimary?.let(::showMainMenu)
@@ -9568,9 +9847,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun displayRotationFor(@Suppress("UNUSED_PARAMETER") portrait: Boolean = requestedPortrait): Int = 0
 
     private fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY) {
-        val normalizedX = x / targetWidth.coerceAtLeast(1)
-        val normalizedY = y / targetHeight.coerceAtLeast(1)
-        cursorView?.update(normalizedX, normalizedY)
+        // Each screen draws the cursor while it is over its part of the desktop.
+        fun place(cursor: CursorView?, region: RectF) {
+            cursor ?: return
+            val nx = (x - region.left) / region.width().coerceAtLeast(1f)
+            val ny = (y - region.top) / region.height().coerceAtLeast(1f)
+            cursor.alpha = if (nx in 0f..1f && ny in 0f..1f) 1f else 0f
+            cursor.update(nx.coerceIn(0f, 1f), ny.coerceIn(0f, 1f))
+        }
+        place(cursorView, regionFor(externalOutput?.phoneSurface ?: surfaceView))
+        externalOutput?.let { place(externalCursor, regionFor(it.surface)) }
     }
 
     private fun toggleDisplayRotation180() {
@@ -10266,8 +10552,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun moveCursorToTouch(x: Float, y: Float) {
         val view = surfaceView ?: return
         if (view.width <= 0 || view.height <= 0) return
-        cursorX = x / view.width * targetWidth
-        cursorY = y / view.height * targetHeight
+        val region = regionFor(view)
+        cursorX = region.left + x / view.width * region.width()
+        cursorY = region.top + y / view.height * region.height()
         if (!directTouch && !virtualMouseInputActive()) {
             updateCursorPosition()
         }
@@ -10702,13 +10989,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun refreshPhysicalInputState() {
         refreshPhysicalMouseState()
-        if (!physicalInputRoutingSupported || !physicalExternalDisplayConnected) return
+        if (!physicalInputRoutingSupported || !(physicalExternalDisplayConnected || routePhysicalMice)) return
         val id = targetDisplayId
         if (!active || id < 0) return
         val display = getSystemService(DisplayManager::class.java).getDisplay(id) ?: return
         root?.post {
             val routed = runCatching {
-                physicalInputRouter.refresh(display, routePhysicalMouseToDextop, routePhysicalKeyboardToDextop)
+                physicalInputRouter.refresh(display, routePhysicalMice, routePhysicalKeyboardToDextop)
             }
                 .onFailure { OperationLog.w(this, "InputRouting", "input routing refresh failed", it) }
                 .getOrDefault(0)
@@ -11228,8 +11515,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (!routePhysicalMouseToDextop || targetDisplayId < 0 || view.width <= 0 || view.height <= 0) return false
         return runCatching {
             val event = MotionEvent.obtain(source)
+            val region = regionFor(view)
             event.transform(Matrix().apply {
-                setScale(targetWidth.toFloat() / view.width, targetHeight.toFloat() / view.height)
+                setScale(region.width() / view.width, region.height() / view.height)
+                postTranslate(region.left, region.top)
             })
             check(inputDispatcher.send(event, targetDisplayId))
 
@@ -11305,8 +11594,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 return (directInjectionDownTime + relative).coerceAtMost(now)
             }
 
-            val scaleX = targetWidth.toFloat() / view.width
-            val scaleY = targetHeight.toFloat() / view.height
+            val region = regionFor(view)
+            val scaleX = region.width() / view.width
+            val scaleY = region.height() / view.height
             val properties = Array(source.pointerCount) { index ->
                 MotionEvent.PointerProperties().apply {
                     source.getPointerProperties(index, this)
@@ -11322,8 +11612,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         } else {
                             source.getHistoricalPointerCoords(index, historyIndex, this)
                         }
-                        x *= scaleX
-                        y *= scaleY
+                        x = region.left + x * scaleX
+                        y = region.top + y * scaleY
                     }
                 }
 
@@ -11521,6 +11811,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }.onSuccess {
             displayCreationInProgress = false
             startVirtualMouse()
+            // releaseMirror() stopped the physical mouse reader.
+            if (physicalExternalDisplayConnected && routePhysicalMouseToDextop) startRawMouseReader()
             requestImeRegionProbe("surface_reattached", force = true)
             updateVirtualCursorVisibility()
             scheduleHostDisplayReconfiguration("host Surface recreated", width, height)
@@ -11593,8 +11885,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun useDirectPlasmaDisplay(): Boolean =
         desktopEnvironment.directPlasmaDisplay && !autoOnlySession && !laptopModeActive &&
-            moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this) ==
-            moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
+            moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this) in setOf(
+                moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2,
+                moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_BOOK)
 
     /**
      * Creates the phone desktop as a public VirtualDisplay that renders
@@ -11953,10 +12246,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             )
             val externalDisplays = externalDisplayDetector.snapshot()
             physicalExternalDisplayConnected = physicalInputRoutingSupported && externalDisplays.connected
-            val routedInputCount = if (!autoOnlySession && physicalExternalDisplayConnected) runCatching {
+            val routedInputCount = if (!autoOnlySession && (physicalExternalDisplayConnected || routePhysicalMice)) runCatching {
                 physicalInputRouter.routeConnectedDevices(
                     display,
-                    routePhysicalMouseToDextop,
+                    routePhysicalMice,
                     routePhysicalKeyboardToDextop
                 )
             }
@@ -12374,11 +12667,33 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }.onFailure { Log.e(logTag, "unable to pin phone control activity", it) }
     }
 
+    /**
+     * Where the direct display renders while the desktop is extended: nobody looks at it, the
+     * screens mirror their parts. Frames are dropped as they arrive.
+     */
+    private var extendSink: android.media.ImageReader? = null
+
+    private fun directDisplaySurface(): Surface {
+        extendSink?.takeIf { it.width == targetWidth && it.height == targetHeight }?.let { return it.surface }
+        closeExtendSink()
+        val sink = android.media.ImageReader.newInstance(targetWidth, targetHeight, android.graphics.PixelFormat.RGBA_8888, 2)
+        sink.setOnImageAvailableListener({ reader -> runCatching { reader.acquireLatestImage()?.close() } }, Handler(mainLooper))
+        extendSink = sink
+        return sink.surface
+    }
+
+    private fun closeExtendSink() {
+        val sink = extendSink ?: return
+        extendSink = null
+        runCatching { sink.close() }
+    }
+
     private fun releasePhoneOwnedDisplay(reason: String) {
         val owned = phoneOwnedDisplay ?: return
         phoneOwnedDisplay = null
         runCatching { owned.attachment.release() }
             .onFailure { Log.e(logTag, "direct Plasma display release failed", it) }
+        closeExtendSink()
         OperationLog.i(this, "DisplayBackend", "direct Plasma display released display=${owned.displayId} reason=$reason")
     }
 
@@ -12405,6 +12720,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     ) {
         val host = surfaceView ?: error(NativeStrings.text("nativeMirrorSurfaceUnavailable"))
         phoneOwnedDisplay?.let { owned ->
+            if (phoneRegion != null) {
+                // Extended: the display renders off screen and the phone mirrors its part,
+                // as the external screen does.
+                check(owned.resize(directDisplaySurface(), targetWidth, targetHeight, density)) {
+                    "Unable to move the direct Dextop display off screen"
+                }
+                OperationLog.i(this, "DisplayBackend", "direct Plasma display off screen for extended desktop " +
+                    "desktop=${targetWidth}x$targetHeight phone=$phoneRegion")
+                return@let
+            }
+            closeExtendSink()
             val surface = host.holder.surface
             check(surface.isValid) { NativeStrings.text("nativeMirrorSurfaceUnavailable") }
             check(owned.resize(surface, targetWidth, targetHeight, density)) {
@@ -12430,6 +12756,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             density,
             strategyOverride,
             rebuild,
+            crop = phoneRegion,
         )
         mirrorHostWidth = hostWidth
         mirrorHostHeight = hostHeight
@@ -12590,6 +12917,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         densityDpi: Int? = null
     ) {
         if (!shouldFollowHostDisplay()) return
+        if (externalOutput?.mode == "external" || externalOutput?.mode == "extend") return
         val generation = ++hostReconfigurationGeneration
         root?.postDelayed({
             if (!active || suspendedForLockScreen || generation != hostReconfigurationGeneration ||
@@ -12685,12 +13013,14 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         targetWidth = next.width
         targetHeight = next.height
         density = next.density
+        attachExternalMirror()
         if (sizeChanged) {
             synchronizeDesktopWallpaperDimensions(targetWidth, targetHeight, reason)
             plasmaShell?.onDisplayResized(targetWidth, targetHeight)
         }
         phoneOwnedDisplay?.takeIf { sizeChanged || densityChanged }?.let { owned ->
-            val surface = surfaceView?.holder?.surface?.takeIf { it.isValid }
+            val surface = if (phoneRegion != null) directDisplaySurface()
+                else surfaceView?.holder?.surface?.takeIf { it.isValid }
             val updated = surface != null && owned.resize(surface, targetWidth, targetHeight, density)
             check(updated) { "Unable to resize the direct Dextop display" }
             OperationLog.i(
@@ -12698,8 +13028,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "DisplayBackend",
                 "direct Plasma display resized applied=$updated desktop=${targetWidth}x$targetHeight/$density"
             )
-            type.getMethod("clearForcedDisplaySize", Int::class.javaPrimitiveType)
-                .invoke(service, targetDisplayId)
+            if (desktopEnvironment.id == XIAOMI_PROFILE) {
+                // HyperOS falls back to the phone's portrait size once the
+                // override is cleared, which shrinks the pointer viewport to a
+                // strip of the desktop. Pin the new size as at creation.
+                type.getMethod("setForcedDisplaySize", Int::class.javaPrimitiveType,
+                    Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+                    .invoke(service, targetDisplayId, targetWidth, targetHeight)
+            } else {
+                type.getMethod("clearForcedDisplaySize", Int::class.javaPrimitiveType)
+                    .invoke(service, targetDisplayId)
+            }
         }
         if (autoOnlySession && sizeChanged) {
             val destination = autoDestinationSurface
@@ -12979,8 +13318,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (region.displayId != targetDisplayId) return false
         val view = surfaceView ?: return false
         if (view.width <= 0 || view.height <= 0) return false
-        val targetX = x / view.width * targetWidth
-        val targetY = y / view.height * targetHeight
+        val shown = regionFor(view)
+        val targetX = shown.left + x / view.width * shown.width()
+        val targetY = shown.top + y / view.height * shown.height()
         return targetX >= region.bounds.left && targetX < region.bounds.right &&
                 targetY >= region.bounds.top && targetY < region.bounds.bottom
     }
@@ -13406,6 +13746,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Prevent surfaceDestroyed() from releasing the mirrored display before
         // WindowManager has removed this host and its gesture registrations.
         surfaceView?.holder?.removeCallback(this)
+        externalOutput?.let { output ->
+            externalOutput = null
+            output.surface.holder.removeCallback(this)
+            output.surface.holder.removeCallback(output)
+            externalBackend.releaseLayer()
+            runCatching { output.windowManager.removeView(output.frame) }
+        }
         cursorView?.let { runCatching { windowManager?.removeView(it) } }
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null

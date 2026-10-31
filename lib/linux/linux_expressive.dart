@@ -4,6 +4,8 @@ import 'package:flutter/widgets.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart' as mui;
 
+import '../l10n/inline_text.dart';
+
 /// Hosts Material 3 Expressive widgets inside Dextop's app.
 ///
 /// material_3_expressive builds on `material_ui`, a Material library separate
@@ -77,4 +79,4 @@ linuxMaterialUiLocalizations = _MaterialUiLocalizationsDelegate();
 
 /// Japanese or English, like the rest of Dextop's untranslated new screens.
 String linuxText(BuildContext context, String ja, String en) =>
-    Localizations.localeOf(context).languageCode == 'ja' ? ja : en;
+    localText(context, ja, en);

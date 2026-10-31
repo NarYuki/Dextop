@@ -144,9 +144,7 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                           },
                           icon: const Icon(Icons.arrow_back_rounded),
                           label: Text(
-                            Localizations.localeOf(context).languageCode == 'ja'
-                                ? '戻る'
-                                : 'Back',
+                            localText(context, '戻る', 'Back'),
                           ),
                         ),
                         const SizedBox(width: 16),
@@ -172,10 +170,7 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                         ),
                         label: Text(
                           horizontal
-                              ? (Localizations.localeOf(context).languageCode ==
-                                        'ja'
-                                    ? '次へ'
-                                    : 'Next')
+                              ? (localText(context, '次へ', 'Next'))
                               : copy.close,
                         ),
                       ),
@@ -486,7 +481,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     String value,
     bool experimentalEnabled,
   ) => switch (value) {
-    'dextop_plasma_v2' => value,
+    'dextop_plasma_v2' || 'dextop_book' => value,
     'dextop_plasma' => experimentalEnabled ? value : 'system',
     _ => 'system',
   };

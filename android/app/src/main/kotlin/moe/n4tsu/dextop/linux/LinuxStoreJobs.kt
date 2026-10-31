@@ -63,7 +63,7 @@ internal object LinuxStoreJobs {
         runCatching {
             val manager = context.getSystemService(android.app.NotificationManager::class.java)
             val japanese = context.resources.configuration.locales[0].language == "ja"
-            fun text(ja: String, en: String) = if (japanese) ja else en
+            fun text(ja: String, en: String) = moe.n4tsu.dextop.InlineStrings.pick(context.resources.configuration.locales[0], ja, en)
             val channel = "linux_store_installs"
             manager.createNotificationChannel(android.app.NotificationChannel(channel,
                 text("アプリのインストール", "App installations"), android.app.NotificationManager.IMPORTANCE_LOW))
@@ -102,6 +102,7 @@ internal object LinuxStoreJobs {
     }
 
     private val jobs = ConcurrentHashMap<String, Job>()
+    fun hasActiveJobs(): Boolean = jobs.values.any { it.state == "queued" || it.state == "running" }
     private val packageName = Regex("^[a-z0-9][a-z0-9+.-]+$")
     private val windowsId = Regex("^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$")
     private const val LOG_DIR = "/var/tmp/dextop-store"
@@ -269,6 +270,8 @@ internal object LinuxStoreJobs {
             job.state = "failed"
         }
         poller.interrupt()
+        // Failures are diagnosed from logcat; the container's own log is private to the app.
+        if (job.state == "failed") android.util.Log.w("DextopStore", "${job.action} ${job.packages} failed:\n${job.output.takeLast(4000)}")
     }
 
     /** Running and finished jobs of [container]; finished ones are reported once and forgotten. */

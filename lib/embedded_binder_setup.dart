@@ -198,7 +198,8 @@ class _EmbeddedBinderSetupPageState extends State<EmbeddedBinderSetupPage>
           const SizedBox(height: 12),
           _StepCard(
             icon: _pairingBusy ? Icons.sync_rounded : Icons.password_rounded,
-            title: _pairingTitle,
+            // Once connected the search states no longer apply.
+            title: _connected ? l.setupEmbeddedPairingComplete : _pairingTitle,
             complete: _connected,
             active: _notificationGranted && !_connected,
             last: true,

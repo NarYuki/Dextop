@@ -15,9 +15,12 @@ internal object LinuxDesktopEntries {
     private val ICON_SIZES = listOf("48x48", "64x64", "96x96", "128x128", "32x32", "256x256", "512x512")
     private val FIELD_CODE = Regex("%[fFuUdDnNickvm]")
     private val ICON_ROOTS = listOf("/root/.icons", "/root/.local/share/icons", "/usr/local/share/icons", "/usr/share/icons",
-        "/root/.local/share/flatpak/exports/share/icons")
+        "/root/.local/share/flatpak/exports/share/icons", "/var/lib/flatpak/exports/share/icons")
     private val APPLICATION_ROOTS = listOf("/usr/share/applications", "/usr/local/share/applications",
-        "/root/.local/share/flatpak/exports/share/applications", "/root/.local/share/applications")
+        "/root/.local/share/flatpak/exports/share/applications", "/var/lib/flatpak/exports/share/applications",
+        "/root/.local/share/applications")
+    /** Flatpak installations (user, then system): their apps' own icons when the exported link does not resolve. */
+    private val FLATPAK_ROOTS = listOf("/root/.local/share/flatpak", "/var/lib/flatpak")
     private val ICON_DIRECTORY_SIZE = Regex("(?:^|/)(\\d+)(?:x\\d+)?(?:@\\d+)?(?:/|$)")
 
     data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "", val flatpakId: String = "", val displayBackend: String = "")
@@ -49,7 +52,10 @@ internal object LinuxDesktopEntries {
                 .put("name", entry.name)
                 .put("categories", entry.categories)
                 .put("startupWMClass", entry.startupWMClass)
-                .put("icon", icons.getOrPut(entry.icon) { iconPng(rootfs, entry.icon)?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty() }))
+                .put("icon", icons.getOrPut(entry.icon) {
+                    (iconPng(rootfs, entry.icon) ?: flatpakIconPng(rootfs, entry.flatpakId, entry.icon))
+                        ?.let { Base64.encodeToString(it, Base64.NO_WRAP) }.orEmpty()
+                }))
         }
     }.toString()
 
@@ -80,6 +86,32 @@ internal object LinuxDesktopEntries {
         val language = locale.substringBefore('-').substringBefore('_')
         val name = values["Name[${locale.replace('-', '_')}]"] ?: values["Name[$language]"] ?: values["Name"] ?: return null
         return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty(), values["X-Flatpak"].orEmpty(), values["X-Dextop-DisplayBackend"].orEmpty())
+    }
+
+    /**
+     * A Flatpak application's icon from the app itself: its exported and its own icon
+     * directories, then the icon Flathub's catalog (appstream) ships for it. Used when the
+     * exported icon link (exports/share/icons) does not lead to a readable file.
+     */
+    internal fun flatpakIconPng(rootfs: File, appId: String, icon: String): ByteArray? {
+        val id = appId.ifEmpty { icon }
+        if (!id.matches(Regex("[A-Za-z0-9._-]+")) || icon.isBlank() || icon.startsWith("/")) return null
+        val names = listOf("$icon.png", "$icon.svg")
+        val candidates = sequence {
+            for (root in FLATPAK_ROOTS) for (tree in listOf("export/share/icons", "files/share/icons")) {
+                for (size in ICON_SIZES + "scalable") for (name in names) yield("$root/app/$id/current/active/$tree/hicolor/$size/apps/$name")
+            }
+            for (root in FLATPAK_ROOTS) for (name in names) yield("$root/app/$id/current/active/files/share/pixmaps/$name")
+            for (root in FLATPAK_ROOTS) for (size in listOf("128x128", "64x64")) {
+                yield("$root/appstream/flathub/aarch64/active/icons/$size/$id.png")
+            }
+        }
+        for (path in candidates) {
+            val file = resolve(rootfs, path) ?: continue
+            if (!file.isFile || file.length() !in 1..MAX_ICON_BYTES) continue
+            runCatching { LinuxIconDecoder.png(file) }.getOrNull()?.let { return it }
+        }
+        return null
     }
 
     internal fun iconPng(rootfs: File, icon: String): ByteArray? {

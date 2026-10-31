@@ -20,10 +20,11 @@ public class Launch extends Activity {
                 .setComponent(new ComponentName(target, "moe.n4tsu.dextop.linux.LinuxLaunchActivity"))
                 .putExtra("container", info.metaData.getString("dextop.container"))
                 .putExtra("desktop", info.metaData.getString("dextop.desktop"))
+                .putExtra("token", info.metaData.getString("dextop.token"))
                 .putExtra("label", String.valueOf(info.loadLabel(getPackageManager())));
             startActivity(intent);
         } catch (Exception error) {
-            Toast.makeText(this, "Dextop is not installed", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.lxstub_dextop_missing, Toast.LENGTH_LONG).show();
         }
         finish();
     }

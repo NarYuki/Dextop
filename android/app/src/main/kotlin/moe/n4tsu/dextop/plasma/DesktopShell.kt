@@ -14,4 +14,9 @@ internal interface DesktopShell {
     fun onWindowsChanged()
     fun onDisplayResized(newWidth: Int, newHeight: Int)
     fun reloadSettings()
+    /**
+     * The screens of an extended desktop, as parts of this display: the first one carries the
+     * panel. Empty: the display is one screen.
+     */
+    fun setOutputs(outputs: List<android.graphics.Rect>) {}
 }

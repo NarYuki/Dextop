@@ -34,7 +34,7 @@ public class Window extends Activity {
                 .putExtra("desktop", info.metaData.getString("dextop.desktop"));
             startActivityForResult(intent, HOST);
         } catch (Exception error) {
-            Toast.makeText(this, "Dextop is not installed", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.lxstub_dextop_missing, Toast.LENGTH_LONG).show();
             finishAndRemoveTask();
         }
     }

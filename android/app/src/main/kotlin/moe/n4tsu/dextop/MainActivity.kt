@@ -396,6 +396,10 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.updateWindowManager()
                     result.success(null)
                 }
+                "externalDisplayState" -> result.success(MirrorService.externalDisplayState(this))
+                "setExternalDisplay" -> MirrorService.setExternalDisplay(call.argument<String>("mode") ?: "off") { outcome ->
+                    result.success(outcome)
+                }
                 "plasmaSettingsChanged" -> {
                     MirrorService.reloadPlasmaSettings()
                     result.success(null)
@@ -507,6 +511,18 @@ open class MainActivity : FlutterActivity() {
                             result.error("DISPLAY_TOPOLOGY_WRITE", error.cause?.message ?: error.message, null)
                         }
                     }
+                }.start()
+                "setDisplayDensity", "setDisplayRotation", "displayPhysicalDensity" -> Thread {
+                    runCatching {
+                        val displayId = call.argument<Int>("displayId") ?: error("A display id is required")
+                        val controller = DisplayTopologyController(this)
+                        when (call.method) {
+                            "setDisplayDensity" -> controller.setDensity(displayId, call.argument<Int>("dpi") ?: 0)
+                            "setDisplayRotation" -> controller.setRotation(displayId, call.argument<Int>("rotation") ?: 0)
+                            else -> controller.physicalDensity(displayId)
+                        }
+                    }.onSuccess { value -> runOnUiThread { result.success(value) } }
+                        .onFailure { error -> runOnUiThread { result.error("display_setting", error.message, null) } }
                 }.start()
                 "setDisplayPreferredMode" -> Thread {
                     runCatching {

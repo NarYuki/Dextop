@@ -63,7 +63,10 @@ internal class PhysicalInputRouter(
     }
 
     fun refresh(display: Display, mouse: Boolean = true, keyboard: Boolean = true): Int {
-        val uniqueId = routedDisplayUniqueId ?: displayUniqueId(display) ?: return routedKeys.size
+        val uniqueId = displayUniqueId(display) ?: routedDisplayUniqueId ?: return routedKeys.size
+        // A recreated Dextop display has a new unique id; move every device to it.
+        if (uniqueId != routedDisplayUniqueId) routedKeys.clear()
+        routedDisplayUniqueId = uniqueId
         val eligible = eligibleDevices(mouse, keyboard)
         eligible.forEach { device ->
             val key = associationKey(device) ?: return@forEach

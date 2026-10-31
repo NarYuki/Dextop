@@ -421,10 +421,8 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
                         controller.selectSource(SOURCE_AUTO)
                         startProjection()
                     }.onFailure { error ->
-                        menuStatus?.text = localized(
-                            "Dextopを準備できませんでした: ${error.message ?: "不明なエラー"}",
-                            "Dextop could not be prepared: ${error.message ?: "unknown error"}"
-                        )
+                        menuStatus?.text = InlineStrings.format(localized("Dextopを準備できませんでした: {0}", "Dextop could not be prepared: {0}"),
+                            error.message ?: localized("不明なエラー", "unknown error"))
                     }
                 }
             }
@@ -505,7 +503,7 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
         (value * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
 
     private fun localized(japanese: String, english: String): String =
-        if (resources.configuration.locales[0].language.equals("ja", ignoreCase = true)) japanese else english
+        InlineStrings.pick(resources.configuration.locales[0], japanese, english)
 }
 
 /**

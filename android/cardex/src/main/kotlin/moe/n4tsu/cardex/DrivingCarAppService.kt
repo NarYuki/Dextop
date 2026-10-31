@@ -468,12 +468,12 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
 
     private fun bindRelay() {
         if (relayBound || relay != null) return
-        val installed = runCatching { carContext.packageManager.getPackageInfo(DEXTOP_PACKAGE, 0) }.isSuccess
-        if (!installed) {
-            if (desktopRequested) showError("Dextop is not installed on this phone.")
+        val target = DextopTarget.find(carContext.packageManager)
+        if (target == null) {
+            if (desktopRequested) showError("An official Dextop installation with a supported signing certificate is required.")
             return
         }
-        val intent = Intent().setComponent(ComponentName(DEXTOP_PACKAGE, RELAY_SERVICE))
+        val intent = DextopTarget.relayIntent(target)
         val available = carContext.packageManager.resolveService(intent, 0) != null
         if (!available) {
             if (desktopRequested) showError("This Dextop build does not include the Car Companion relay service. Update Dextop and try again.")
@@ -573,8 +573,6 @@ private class DrivingScreen(context: androidx.car.app.CarContext) : Screen(conte
     }
 
     companion object {
-        private const val DEXTOP_PACKAGE = "moe.n4tsu.dextop"
-        private const val RELAY_SERVICE = "moe.n4tsu.dextop.CardexRelayService"
         private const val MSG_START = 1
         private const val MSG_TOUCH = 2
         private const val MSG_STOP = 3

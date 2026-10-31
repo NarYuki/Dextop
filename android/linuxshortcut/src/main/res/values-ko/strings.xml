@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="lxstub_dextop_missing">Dextop이 설치되어 있지 않습니다</string>
+</resources>

@@ -61,7 +61,7 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
     private val icons = ConcurrentHashMap<String, Map<String, Bitmap>>()
 
     private val japanese get() = Locale.getDefault().language == "ja"
-    private fun t(ja: String, en: String) = if (japanese) ja else en
+    private fun t(ja: String, en: String) = moe.n4tsu.dextop.localText(ja, en)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -128,11 +128,11 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
         val containers = runningContainers
         val title = when (containers.size) {
             0 -> t("Linux コンテナ実行中", "Linux container running")
-            1 -> t("Linux コンテナ実行中・${containers[0]}", "Linux container running · ${containers[0]}")
-            else -> t("Linux コンテナ ${containers.size} 個が実行中", "${containers.size} Linux containers running")
+            1 -> moe.n4tsu.dextop.InlineStrings.format(t("Linux コンテナ実行中・{0}", "Linux container running · {0}"), containers[0])
+            else -> moe.n4tsu.dextop.InlineStrings.format(t("Linux コンテナ {0} 個が実行中", "{0} Linux containers running"), containers.size)
         }
         val text = if (apps.isEmpty()) t("実行中のアプリはありません", "No apps running")
-            else t("実行中のアプリ ${apps.size} 個: ", "${apps.size} apps running: ") + apps.joinToString(", ")
+            else moe.n4tsu.dextop.InlineStrings.format(t("実行中のアプリ {0} 個: ", "{0} apps running: "), apps.size) + apps.joinToString(", ")
         val open = PendingIntent.getActivity(this, 0,
             packageManager.getLaunchIntentForPackage(packageName)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 ?: Intent(), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

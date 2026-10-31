@@ -18,10 +18,15 @@ class DextopLauncherActivity : Activity() {
                 Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
                 Intent.FLAG_ACTIVITY_LAUNCH_ADJACENT
         } else {
-            Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
+            // Its own task (the ".phone" affinity), never this trampoline's: DeX decorates a
+            // window from its task's root, and this translucent, untitled one left the first
+            // open without a proper window frame until Dextop was opened a second time.
+            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP
         }
         val options = ActivityOptions.makeBasic().setLaunchDisplayId(launchDisplayId)
         startActivity(Intent(this, destination).addFlags(flags), options.toBundle())
         finish()
+        @Suppress("DEPRECATION")
+        overridePendingTransition(0, 0)
     }
 }

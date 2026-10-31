@@ -1094,10 +1094,10 @@ class AppLocalizationsRu extends AppLocalizations {
   String get uiIdle => 'Ожидание';
 
   @override
-  String get uiAvailable => 'Available';
+  String get uiAvailable => 'Доступно';
 
   @override
-  String get uiUnavailable => 'Unavailable';
+  String get uiUnavailable => 'Недоступно';
 
   @override
   String get appName => 'Dextop';
@@ -1711,6 +1711,9 @@ class AppLocalizationsRu extends AppLocalizations {
       'Служба сопряжения не найдена';
 
   @override
+  String get setupEmbeddedPairingComplete => 'Сопряжение выполнено';
+
+  @override
   String get setupEmbeddedRetryPairing => 'Повторить сопряжение';
 
   @override
@@ -2279,11 +2282,11 @@ class AppLocalizationsRu extends AppLocalizations {
   String get androidEmbeddedPairingEnterCode => 'Ввести код сопряжения';
 
   @override
-  String get androidEmbeddedPairingSuccess => 'Dextop подключён';
+  String get androidEmbeddedPairingSuccess => 'Сопряжение выполнено';
 
   @override
   String get androidEmbeddedPairingSuccessMessage =>
-      'Сопряжение завершено. Вернитесь в Dextop.';
+      'Доступ Dextop подключён. Вернитесь в Dextop.';
 
   @override
   String get androidEmbeddedPairingFailed => 'Не удалось подключить Dextop';
@@ -2737,10 +2740,6 @@ class AppLocalizationsRu extends AppLocalizations {
   String get nativePlasmaApplying => 'Применение…';
 
   @override
-  String get linuxDescription =>
-      'Запуск Linux (Debian, Ubuntu, Arch Linux ARM) без root с приложениями в окнах Plasma.';
-
-  @override
   String get linuxUnsupportedDevice =>
       'Linux работает только на устройствах arm64.';
 
@@ -2752,7 +2751,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      'Linux использует встроенную службу доступа Dextop. Подключите её через настройку доступа Dextop. Внешние приложения Stellar и Shizuku необязательны.';
+      'Для полного привилегированного режима нужен привилегированный доступ: Shizuku, Stellar или встроенный binder. Запустите Shizuku или Stellar либо настройте встроенный binder.';
 
   @override
   String get linuxEnable => 'Включить Linux';
@@ -2865,162 +2864,161 @@ class AppLocalizationsRu extends AppLocalizations {
   }
 
   @override
-  String get linuxSetupTitle => 'Linux setup';
+  String get linuxSetupTitle => 'Настройка Linux';
 
   @override
   String get linuxSetupIntro =>
-      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+      'Создайте рабочее пространство Linux под себя: выберите рабочий стол, язык, способ ввода и приложения.';
 
   @override
   String get linuxSetupExisting =>
-      'Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.';
+      'Добавьте возможности в это окружение Linux. Существующие файлы и приложения сохраняются. Чтобы применить настройки, после завершения откройте рабочий стол заново.';
 
   @override
-  String get linuxSetupSystem => 'Your Linux environment';
+  String get linuxSetupSystem => 'Ваше окружение Linux';
 
   @override
-  String get linuxSetupDesktop => 'Make it your desktop';
+  String get linuxSetupDesktop => 'Настройте рабочий стол';
 
   @override
-  String get linuxSetupLanguage => 'Language and fonts';
+  String get linuxSetupLanguage => 'Язык и шрифты';
 
   @override
-  String get linuxSetupInput => 'Typing in your language';
+  String get linuxSetupInput => 'Ввод на вашем языке';
 
   @override
-  String get linuxSetupApps => 'Choose your applications';
+  String get linuxSetupApps => 'Выберите приложения';
 
   @override
-  String get linuxSetupReview => 'Ready to set up';
+  String get linuxSetupReview => 'Готово к настройке';
 
   @override
-  String get linuxSetupProgress => 'Preparing your workspace';
+  String get linuxSetupProgress => 'Подготовка рабочего пространства';
 
   @override
-  String get linuxSetupDone => 'Your Linux workspace is ready';
+  String get linuxSetupDone => 'Рабочее пространство Linux готово';
 
   @override
   String get linuxSetupDoneDetail =>
-      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+      'Откройте рабочий стол на вкладке Linux или запускайте отдельные приложения Linux из Plasma. В Fcitx 5 способы ввода переключаются сочетанием Ctrl+Space.';
 
   @override
-  String get linuxSetupNext => 'Continue';
+  String get linuxSetupNext => 'Далее';
 
   @override
-  String get linuxSetupBack => 'Back';
+  String get linuxSetupBack => 'Назад';
 
   @override
-  String get linuxSetupApply => 'Start setup';
+  String get linuxSetupApply => 'Начать настройку';
 
   @override
-  String get linuxSetupCustomize => 'Set up / add features';
+  String get linuxSetupCustomize => 'Настроить / добавить возможности';
 
   @override
-  String get linuxSetupMinimal => 'Minimal IceWM';
+  String get linuxSetupMinimal => 'Минимальный IceWM';
 
   @override
   String get linuxSetupMinimalDetail =>
-      'A lightweight desktop with Xvfb, IceWM and a terminal. Choose any extras in the following steps.';
+      'Лёгкий рабочий стол с Xvfb, IceWM и терминалом. Дополнения можно выбрать на следующих шагах.';
 
   @override
-  String get linuxSetupComplete => 'Everyday IceWM';
+  String get linuxSetupComplete => 'IceWM для повседневной работы';
 
   @override
   String get linuxSetupCompleteDetail =>
-      'Starts with themes, icons, Mesa software rendering, a file manager and a text editor selected. You can adjust each choice.';
+      'Сразу выбраны темы, значки, программная отрисовка Mesa, файловый менеджер и текстовый редактор. Каждый пункт можно изменить.';
 
   @override
-  String get linuxSetupThemes => 'Themes and icons';
+  String get linuxSetupThemes => 'Темы и значки';
 
   @override
   String get linuxSetupThemesDetail =>
-      'IceWM themes and Adwaita styling for GTK apps.';
+      'Темы IceWM и стиль Adwaita для приложений GTK.';
 
   @override
-  String get linuxSetupGraphics => 'Mesa graphics support';
+  String get linuxSetupGraphics => 'Поддержка графики Mesa';
 
   @override
   String get linuxSetupGraphicsDetail =>
-      'Install OpenGL / EGL libraries and software rendering. This Xvfb desktop does not provide hardware GPU acceleration.';
+      'Устанавливает библиотеки OpenGL / EGL и программную отрисовку. Этот рабочий стол Xvfb не даёт аппаратного ускорения GPU.';
 
   @override
-  String get linuxSetupLocale => 'Linux display language';
+  String get linuxSetupLocale => 'Язык интерфейса Linux';
 
   @override
   String get linuxSetupLocaleDetail =>
-      'Generate the selected UTF-8 locale and apply it to the desktop and apps that support it.';
+      'Создаёт выбранную локаль UTF-8 и применяет её к рабочему столу и поддерживающим её приложениям.';
 
   @override
-  String get linuxSetupFonts => 'Japanese, Chinese and Korean fonts';
+  String get linuxSetupFonts => 'Японские, китайские и корейские шрифты';
 
   @override
   String get linuxSetupFontsDetail =>
-      'Install Noto CJK fonts. Noto general-purpose and emoji fonts are included with every setup.';
+      'Устанавливает шрифты Noto CJK. Обычные шрифты Noto и шрифты эмодзи входят в любую конфигурацию.';
 
   @override
-  String get linuxSetupNoIme => 'Use the Android keyboard only';
+  String get linuxSetupNoIme => 'Только клавиатура Android';
 
   @override
   String get linuxSetupNoImeDetail =>
-      'Do not start a Linux input method. The Android keyboard remains available in Plasma.';
+      'Способ ввода Linux не запускается. В Plasma по-прежнему доступна клавиатура Android.';
 
   @override
   String get linuxSetupImeDetail =>
-      'Fcitx 5 starts with the Linux session, including GTK / Qt integration. Input methods with CJK text also install CJK fonts.';
+      'Fcitx 5 запускается вместе с сеансом Linux и интегрируется с GTK / Qt. Для способов ввода CJK устанавливаются и шрифты CJK.';
 
   @override
-  String get linuxSetupMozc => 'Japanese — Mozc';
+  String get linuxSetupMozc => 'Японский — Mozc';
 
   @override
-  String get linuxSetupPinyin => 'Chinese — Pinyin';
+  String get linuxSetupPinyin => 'Китайский — пиньинь';
 
   @override
-  String get linuxSetupHangul => 'Korean — Hangul';
+  String get linuxSetupHangul => 'Корейский — хангыль';
 
   @override
-  String get linuxSetupFirefoxDetail =>
-      'Firefox ESR on Debian; Firefox on Arch.';
+  String get linuxSetupFirefoxDetail => 'Firefox ESR в Debian; Firefox в Arch.';
 
   @override
   String get linuxSetupChromeDetail =>
-      'Official Google Chrome for ARM64, downloaded from Google. Available on Debian and Ubuntu.';
+      'Официальный Google Chrome для ARM64, загружается с сайта Google. Доступен в Debian и Ubuntu.';
 
   @override
   String get linuxSetupChromiumDetail =>
-      'Open-source Chromium from the distribution repository.';
+      'Chromium с открытым кодом из репозитория дистрибутива.';
 
   @override
   String get linuxSetupSnapUnavailable =>
-      'Unavailable on this Ubuntu image: this package requires Snap. Choose Debian / Arch, or select Google Chrome.';
+      'Недоступно в этом образе Ubuntu: пакету нужен Snap. Выберите Debian / Arch или Google Chrome.';
 
   @override
   String get linuxSetupChromeUnavailable =>
-      'The official installer is available here for Debian and Ubuntu.';
+      'Здесь доступен официальный установщик для Debian и Ubuntu.';
 
   @override
   String get linuxSetupBrowserNote =>
-      'Browsers use PRoot-compatible launchers with their sandbox disabled. Install only browsers you want to use in this environment.';
+      'Браузеры запускаются совместимыми с PRoot ярлыками с отключённой песочницей. Устанавливайте только те браузеры, которыми будете пользоваться в этом окружении.';
 
   @override
-  String get linuxSetupFiles => 'File manager';
+  String get linuxSetupFiles => 'Файловый менеджер';
 
   @override
   String get linuxSetupFilesDetail =>
-      'PCManFM — browse folders and manage files.';
+      'PCManFM — просмотр папок и управление файлами.';
 
   @override
-  String get linuxSetupEditor => 'Text editor';
+  String get linuxSetupEditor => 'Текстовый редактор';
 
   @override
   String get linuxSetupEditorDetail =>
-      'Mousepad — a lightweight graphical editor.';
+      'Mousepad — лёгкий графический редактор.';
 
   @override
-  String get linuxSetupOffice => 'Office suite';
+  String get linuxSetupOffice => 'Офисный пакет';
 
   @override
   String get linuxSetupOfficeDetail =>
-      'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
+      'LibreOffice — документы, таблицы и презентации. Требует большей загрузки и больше места.';
 
   @override
   String get linuxSetupSteamDetail =>
@@ -3032,63 +3030,64 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get linuxSetupStorage =>
-      'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
+      'Оставьте несколько ГБ свободного места. Объём загрузки и установки зависит от дистрибутива и выбранных приложений. Установка продолжится, даже если покинуть этот экран.';
 
   @override
   String get linuxSetupAdditive =>
-      'Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.';
+      'Невыбранные приложения не удаляются. Настройка добавляет выбранные пакеты и обновляет параметры языка и сеанса.';
 
   @override
-  String get linuxSetupNothingExtra => 'No optional applications';
+  String get linuxSetupNothingExtra => 'Без дополнительных приложений';
 
   @override
-  String get linuxSetupRetry => 'Review and retry';
+  String get linuxSetupRetry => 'Проверить и повторить';
 
   @override
-  String get linuxSetupBackground => 'Continue in background';
+  String get linuxSetupBackground => 'Продолжить в фоне';
 
   @override
-  String get linuxSetupLog => 'Installation details';
+  String get linuxSetupLog => 'Подробности установки';
 
   @override
-  String get linuxSetupFailed => 'Setup could not finish';
+  String get linuxSetupFailed => 'Не удалось завершить настройку';
 
   @override
-  String get linuxSetupPhaseLanguage => 'Setting up language and fonts';
+  String get linuxSetupPhaseLanguage => 'Настройка языка и шрифтов';
 
   @override
-  String get linuxSetupPhaseInput => 'Installing the input method';
+  String get linuxSetupPhaseInput => 'Установка способа ввода';
 
   @override
-  String get linuxSetupPhaseDesktop => 'Setting up themes and icons';
+  String get linuxSetupPhaseDesktop => 'Настройка тем и значков';
 
   @override
-  String get linuxSetupPhaseGraphics => 'Installing graphics libraries';
+  String get linuxSetupPhaseGraphics => 'Установка графических библиотек';
 
   @override
-  String get linuxSetupPhaseApps => 'Installing your applications';
+  String get linuxSetupPhaseApps => 'Установка выбранных приложений';
 
   @override
-  String get linuxSetupPhaseIntegration => 'Connecting apps to the desktop';
+  String get linuxSetupPhaseIntegration =>
+      'Подключение приложений к рабочему столу';
 
   @override
-  String get linuxRuntimeStarting => 'Starting Linux…';
+  String get linuxRuntimeStarting => 'Запуск Linux…';
 
   @override
-  String get linuxRuntimeRunning => 'Linux is running';
+  String get linuxRuntimeRunning => 'Linux запущен';
 
   @override
-  String get linuxRuntimeStopped => 'Linux is stopped';
+  String get linuxRuntimeStopped => 'Linux остановлен';
 
   @override
-  String get linuxSessionReset => 'Reset session';
+  String get linuxSessionReset => 'Сбросить сеанс';
 
   @override
-  String get linuxForceStop => 'Force stop PRoot';
+  String get linuxForceStop => 'Принудительно остановить PRoot';
 
   @override
   String get linuxForceStopConfirm =>
-      'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+      'Остановить все процессы Linux этого окружения? Несохранённая работа будет потеряна. Установленные приложения и файлы сохранятся.';
 
   @override
   String get linuxSettingsTitle => 'Настройки Linux';
@@ -3201,15 +3200,15 @@ class AppLocalizationsRu extends AppLocalizations {
   String get linuxSetupPhaseGpu => 'Сборка драйвера GPU (Turnip)';
 
   @override
-  String get linuxSetupDisplayBackend => 'Display system';
+  String get linuxSetupDisplayBackend => 'Система отображения';
 
   @override
   String get linuxSetupXvfbDetail =>
-      'Use X11 for applications and the IceWM desktop.';
+      'X11 для приложений и рабочего стола IceWM.';
 
   @override
   String get linuxSetupWaylandDetail =>
-      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+      'Wayland для поддерживающих его приложений и Xwayland для приложений X11 и рабочего стола IceWM.';
 
   @override
   String get nativeSteamModeTitle => 'Steam Deck Mode';

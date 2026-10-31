@@ -2138,13 +2138,13 @@ abstract class AppLocalizations {
   /// No description provided for @uiAvailable.
   ///
   /// In ja, this message translates to:
-  /// **'Available'**
+  /// **'利用可能'**
   String get uiAvailable;
 
   /// No description provided for @uiUnavailable.
   ///
   /// In ja, this message translates to:
-  /// **'Unavailable'**
+  /// **'利用不可'**
   String get uiUnavailable;
 
   /// No description provided for @appName.
@@ -3251,6 +3251,12 @@ abstract class AppLocalizations {
   /// **'ペア設定サービスが見つかりません'**
   String get setupEmbeddedPairingServiceNotFound;
 
+  /// No description provided for @setupEmbeddedPairingComplete.
+  ///
+  /// In ja, this message translates to:
+  /// **'ペア設定が完了しました'**
+  String get setupEmbeddedPairingComplete;
+
   /// No description provided for @setupEmbeddedRetryPairing.
   ///
   /// In ja, this message translates to:
@@ -4256,13 +4262,13 @@ abstract class AppLocalizations {
   /// No description provided for @androidEmbeddedPairingSuccess.
   ///
   /// In ja, this message translates to:
-  /// **'Dextopの接続が完了しました'**
+  /// **'ペア設定に成功しました'**
   String get androidEmbeddedPairingSuccess;
 
   /// No description provided for @androidEmbeddedPairingSuccessMessage.
   ///
   /// In ja, this message translates to:
-  /// **'ペア設定が完了しました。Dextopに戻ってください。'**
+  /// **'Dextop アクセスに接続しました。Dextop に戻ってください。'**
   String get androidEmbeddedPairingSuccessMessage;
 
   /// No description provided for @androidEmbeddedPairingFailed.
@@ -5147,12 +5153,6 @@ abstract class AppLocalizations {
   /// **'切り替え中…'**
   String get nativePlasmaApplying;
 
-  /// No description provided for @linuxDescription.
-  ///
-  /// In ja, this message translates to:
-  /// **'root なしで Linux（Debian・Ubuntu・Arch Linux ARM）を動かし、アプリを Plasma のウィンドウとして開きます。'**
-  String get linuxDescription;
-
   /// No description provided for @linuxUnsupportedDevice.
   ///
   /// In ja, this message translates to:
@@ -5174,7 +5174,7 @@ abstract class AppLocalizations {
   /// No description provided for @linuxRequiresPrivilege.
   ///
   /// In ja, this message translates to:
-  /// **'Linux は Dextop 内蔵のアクセス機能を使います。「Dextopアクセスを設定」から接続してください。外部の Stellar や Shizuku は必須ではありません。'**
+  /// **'完全特権方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。'**
   String get linuxRequiresPrivilege;
 
   /// No description provided for @linuxEnable.

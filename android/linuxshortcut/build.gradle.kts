@@ -16,8 +16,8 @@ android {
         // visibility does not hide Dextop from the launcher.
         targetSdk = 29
         // Dextop reinstalls launchers older than its own template (LinuxShortcutInstaller.VERSION).
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "3.0"
     }
 
     compileOptions {

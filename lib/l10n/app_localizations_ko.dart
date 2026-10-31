@@ -1052,10 +1052,10 @@ class AppLocalizationsKo extends AppLocalizations {
   String get uiIdle => '대기 중';
 
   @override
-  String get uiAvailable => 'Available';
+  String get uiAvailable => '사용 가능';
 
   @override
-  String get uiUnavailable => 'Unavailable';
+  String get uiUnavailable => '사용 불가';
 
   @override
   String get appName => 'Dextop';
@@ -1643,6 +1643,9 @@ class AppLocalizationsKo extends AppLocalizations {
   String get setupEmbeddedPairingServiceNotFound => '페어링 서비스를 찾을 수 없습니다';
 
   @override
+  String get setupEmbeddedPairingComplete => '페어링 완료';
+
+  @override
   String get setupEmbeddedRetryPairing => '페어링 다시 시도';
 
   @override
@@ -2176,11 +2179,11 @@ class AppLocalizationsKo extends AppLocalizations {
   String get androidEmbeddedPairingEnterCode => '페어링 코드 입력';
 
   @override
-  String get androidEmbeddedPairingSuccess => 'Dextop이 연결되었습니다';
+  String get androidEmbeddedPairingSuccess => '페어링에 성공했습니다';
 
   @override
   String get androidEmbeddedPairingSuccessMessage =>
-      '페어링이 완료되었습니다. Dextop으로 돌아가세요.';
+      'Dextop 액세스에 연결되었습니다. Dextop으로 돌아가세요.';
 
   @override
   String get androidEmbeddedPairingFailed => 'Dextop을 연결할 수 없습니다';
@@ -2422,7 +2425,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get nativePlasmaOpen => '열기';
 
   @override
-  String get nativePlasmaOverview => 'Overview';
+  String get nativePlasmaOverview => '개요';
 
   @override
   String get nativePlasmaOverviewSearch => '입력하여 검색…';
@@ -2629,10 +2632,6 @@ class AppLocalizationsKo extends AppLocalizations {
   String get nativePlasmaApplying => '전환 중…';
 
   @override
-  String get linuxDescription =>
-      '루트 없이 Linux(Debian, Ubuntu, Arch Linux ARM)를 실행하고 앱을 Plasma 창으로 엽니다.';
-
-  @override
   String get linuxUnsupportedDevice => 'Linux는 arm64 기기에서만 사용할 수 있습니다.';
 
   @override
@@ -2643,7 +2642,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      'Linux는 Dextop 내장 접근 서비스를 사용합니다. Dextop 접근 설정에서 연결하세요. 외부 Stellar 또는 Shizuku 앱은 필수가 아닙니다.';
+      '완전 권한 방식에는 Shizuku, Stellar, 내장 바인더 같은 권한 접근이 필요합니다. Shizuku나 Stellar를 실행하거나 내장 바인더를 설정하세요.';
 
   @override
   String get linuxEnable => 'Linux 사용';
@@ -2753,162 +2752,157 @@ class AppLocalizationsKo extends AppLocalizations {
   }
 
   @override
-  String get linuxSetupTitle => 'Linux setup';
+  String get linuxSetupTitle => 'Linux 설정';
 
   @override
   String get linuxSetupIntro =>
-      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+      '사용 방식에 맞게 Linux를 준비합니다. 데스크톱, 언어, 입력 방법, 앱을 차례로 고르세요.';
 
   @override
   String get linuxSetupExisting =>
-      'Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.';
+      '이 Linux 환경에 기능을 추가합니다. 기존 파일과 앱은 유지됩니다. 설정을 적용하려면 완료 후 데스크톱을 다시 여세요.';
 
   @override
-  String get linuxSetupSystem => 'Your Linux environment';
+  String get linuxSetupSystem => 'Linux 환경 선택';
 
   @override
-  String get linuxSetupDesktop => 'Make it your desktop';
+  String get linuxSetupDesktop => '데스크톱 준비';
 
   @override
-  String get linuxSetupLanguage => 'Language and fonts';
+  String get linuxSetupLanguage => '언어와 글꼴';
 
   @override
-  String get linuxSetupInput => 'Typing in your language';
+  String get linuxSetupInput => '문자 입력 설정';
 
   @override
-  String get linuxSetupApps => 'Choose your applications';
+  String get linuxSetupApps => '앱 선택';
 
   @override
-  String get linuxSetupReview => 'Ready to set up';
+  String get linuxSetupReview => '설정 내용 확인';
 
   @override
-  String get linuxSetupProgress => 'Preparing your workspace';
+  String get linuxSetupProgress => '작업 공간 준비 중';
 
   @override
-  String get linuxSetupDone => 'Your Linux workspace is ready';
+  String get linuxSetupDone => 'Linux 준비가 끝났습니다';
 
   @override
   String get linuxSetupDoneDetail =>
-      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+      'Linux 탭에서 데스크톱을 열거나 Plasma에서 Linux 앱을 개별 실행할 수 있습니다. Fcitx 5의 입력 전환은 Ctrl+Space입니다.';
 
   @override
-  String get linuxSetupNext => 'Continue';
+  String get linuxSetupNext => '다음';
 
   @override
-  String get linuxSetupBack => 'Back';
+  String get linuxSetupBack => '뒤로';
 
   @override
-  String get linuxSetupApply => 'Start setup';
+  String get linuxSetupApply => '설정 시작';
 
   @override
-  String get linuxSetupCustomize => 'Set up / add features';
+  String get linuxSetupCustomize => '설정·기능 추가';
 
   @override
-  String get linuxSetupMinimal => 'Minimal IceWM';
+  String get linuxSetupMinimal => '최소 구성 IceWM';
 
   @override
   String get linuxSetupMinimalDetail =>
-      'A lightweight desktop with Xvfb, IceWM and a terminal. Choose any extras in the following steps.';
+      'Xvfb, IceWM, 터미널로 이루어진 가벼운 구성입니다. 추가 기능은 다음 단계에서 고를 수 있습니다.';
 
   @override
-  String get linuxSetupComplete => 'Everyday IceWM';
+  String get linuxSetupComplete => '일상용 IceWM';
 
   @override
   String get linuxSetupCompleteDetail =>
-      'Starts with themes, icons, Mesa software rendering, a file manager and a text editor selected. You can adjust each choice.';
+      '테마, 아이콘, Mesa 소프트웨어 렌더링, 파일 관리자, 텍스트 편집기를 선택한 구성입니다. 각 항목은 바꿀 수 있습니다.';
 
   @override
-  String get linuxSetupThemes => 'Themes and icons';
+  String get linuxSetupThemes => '테마와 아이콘';
 
   @override
-  String get linuxSetupThemesDetail =>
-      'IceWM themes and Adwaita styling for GTK apps.';
+  String get linuxSetupThemesDetail => 'IceWM 테마와 GTK 앱용 Adwaita 스타일을 준비합니다.';
 
   @override
-  String get linuxSetupGraphics => 'Mesa graphics support';
+  String get linuxSetupGraphics => 'Mesa 그래픽 지원';
 
   @override
   String get linuxSetupGraphicsDetail =>
-      'Install OpenGL / EGL libraries and software rendering. This Xvfb desktop does not provide hardware GPU acceleration.';
+      'OpenGL·EGL 라이브러리와 소프트웨어 렌더링을 설치합니다. 이 Xvfb 데스크톱은 GPU 하드웨어 가속을 지원하지 않습니다.';
 
   @override
-  String get linuxSetupLocale => 'Linux display language';
+  String get linuxSetupLocale => 'Linux 표시 언어';
 
   @override
-  String get linuxSetupLocaleDetail =>
-      'Generate the selected UTF-8 locale and apply it to the desktop and apps that support it.';
+  String get linuxSetupLocaleDetail => '선택한 UTF-8 로캘을 생성해 지원하는 데스크톱과 앱에 적용합니다.';
 
   @override
-  String get linuxSetupFonts => 'Japanese, Chinese and Korean fonts';
+  String get linuxSetupFonts => '일본어·중국어·한국어 글꼴';
 
   @override
   String get linuxSetupFontsDetail =>
-      'Install Noto CJK fonts. Noto general-purpose and emoji fonts are included with every setup.';
+      'Noto CJK 글꼴을 설치합니다. 일반 Noto 글꼴과 이모지 글꼴은 모든 구성에 포함됩니다.';
 
   @override
-  String get linuxSetupNoIme => 'Use the Android keyboard only';
+  String get linuxSetupNoIme => 'Android 키보드만 사용';
 
   @override
   String get linuxSetupNoImeDetail =>
-      'Do not start a Linux input method. The Android keyboard remains available in Plasma.';
+      'Linux 입력기를 시작하지 않습니다. Plasma에서는 Android 키보드를 계속 쓸 수 있습니다.';
 
   @override
   String get linuxSetupImeDetail =>
-      'Fcitx 5 starts with the Linux session, including GTK / Qt integration. Input methods with CJK text also install CJK fonts.';
+      'Linux 세션과 함께 Fcitx 5를 시작하며 GTK·Qt 앱과 연동합니다. CJK 입력기를 고르면 CJK 글꼴도 설치합니다.';
 
   @override
-  String get linuxSetupMozc => 'Japanese — Mozc';
+  String get linuxSetupMozc => '일본어 — Mozc';
 
   @override
-  String get linuxSetupPinyin => 'Chinese — Pinyin';
+  String get linuxSetupPinyin => '중국어 — 병음';
 
   @override
-  String get linuxSetupHangul => 'Korean — Hangul';
+  String get linuxSetupHangul => '한국어 — 한글';
 
   @override
   String get linuxSetupFirefoxDetail =>
-      'Firefox ESR on Debian; Firefox on Arch.';
+      'Debian에서는 Firefox ESR, Arch에서는 Firefox를 설치합니다.';
 
   @override
   String get linuxSetupChromeDetail =>
-      'Official Google Chrome for ARM64, downloaded from Google. Available on Debian and Ubuntu.';
+      'Google 공식 ARM64용 Chrome을 Google에서 받습니다. Debian과 Ubuntu에서 쓸 수 있습니다.';
 
   @override
-  String get linuxSetupChromiumDetail =>
-      'Open-source Chromium from the distribution repository.';
+  String get linuxSetupChromiumDetail => '배포판 저장소의 오픈 소스 Chromium입니다.';
 
   @override
   String get linuxSetupSnapUnavailable =>
-      'Unavailable on this Ubuntu image: this package requires Snap. Choose Debian / Arch, or select Google Chrome.';
+      '이 Ubuntu 이미지에서는 Snap이 필요해 선택할 수 없습니다. Debian·Arch를 고르거나 Google Chrome을 선택하세요.';
 
   @override
   String get linuxSetupChromeUnavailable =>
-      'The official installer is available here for Debian and Ubuntu.';
+      '이 설정에서는 Debian과 Ubuntu용 공식 설치 프로그램을 씁니다.';
 
   @override
   String get linuxSetupBrowserNote =>
-      'Browsers use PRoot-compatible launchers with their sandbox disabled. Install only browsers you want to use in this environment.';
+      '브라우저는 샌드박스를 끈 PRoot 호환 실행기로 시작합니다. 이 환경에서 쓸 브라우저만 설치하세요.';
 
   @override
-  String get linuxSetupFiles => 'File manager';
+  String get linuxSetupFiles => '파일 관리자';
 
   @override
-  String get linuxSetupFilesDetail =>
-      'PCManFM — browse folders and manage files.';
+  String get linuxSetupFilesDetail => 'PCManFM — 폴더를 탐색하고 파일을 관리합니다.';
 
   @override
-  String get linuxSetupEditor => 'Text editor';
+  String get linuxSetupEditor => '텍스트 편집기';
 
   @override
-  String get linuxSetupEditorDetail =>
-      'Mousepad — a lightweight graphical editor.';
+  String get linuxSetupEditorDetail => 'Mousepad — 가벼운 그래픽 편집기입니다.';
 
   @override
-  String get linuxSetupOffice => 'Office suite';
+  String get linuxSetupOffice => '오피스 제품군';
 
   @override
   String get linuxSetupOfficeDetail =>
-      'LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.';
+      'LibreOffice — 문서, 스프레드시트, 프레젠테이션. 다운로드 용량과 필요한 저장 공간이 커집니다.';
 
   @override
   String get linuxSetupSteamDetail =>
@@ -2920,63 +2914,63 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get linuxSetupStorage =>
-      'Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.';
+      '여유 공간을 몇 GB 이상 확보하세요. 다운로드 용량과 설치 크기는 배포판과 고른 앱에 따라 다릅니다. 이 화면을 나가도 설치는 계속됩니다.';
 
   @override
   String get linuxSetupAdditive =>
-      'Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.';
+      '선택을 해제한 앱은 삭제되지 않습니다. 고른 패키지를 추가하고 언어와 세션 설정을 업데이트합니다.';
 
   @override
-  String get linuxSetupNothingExtra => 'No optional applications';
+  String get linuxSetupNothingExtra => '추가 앱 없음';
 
   @override
-  String get linuxSetupRetry => 'Review and retry';
+  String get linuxSetupRetry => '내용 확인 후 다시 시도';
 
   @override
-  String get linuxSetupBackground => 'Continue in background';
+  String get linuxSetupBackground => '백그라운드에서 계속';
 
   @override
-  String get linuxSetupLog => 'Installation details';
+  String get linuxSetupLog => '설치 세부 정보';
 
   @override
-  String get linuxSetupFailed => 'Setup could not finish';
+  String get linuxSetupFailed => '설정을 완료하지 못했습니다';
 
   @override
-  String get linuxSetupPhaseLanguage => 'Setting up language and fonts';
+  String get linuxSetupPhaseLanguage => '언어와 글꼴 설정 중';
 
   @override
-  String get linuxSetupPhaseInput => 'Installing the input method';
+  String get linuxSetupPhaseInput => '입력기 설치 중';
 
   @override
-  String get linuxSetupPhaseDesktop => 'Setting up themes and icons';
+  String get linuxSetupPhaseDesktop => '테마와 아이콘 설정 중';
 
   @override
-  String get linuxSetupPhaseGraphics => 'Installing graphics libraries';
+  String get linuxSetupPhaseGraphics => '그래픽 라이브러리 설치 중';
 
   @override
-  String get linuxSetupPhaseApps => 'Installing your applications';
+  String get linuxSetupPhaseApps => '선택한 앱 설치 중';
 
   @override
-  String get linuxSetupPhaseIntegration => 'Connecting apps to the desktop';
+  String get linuxSetupPhaseIntegration => '앱과 데스크톱 연동 중';
 
   @override
-  String get linuxRuntimeStarting => 'Starting Linux…';
+  String get linuxRuntimeStarting => 'Linux 시작 중…';
 
   @override
-  String get linuxRuntimeRunning => 'Linux is running';
+  String get linuxRuntimeRunning => 'Linux 실행 중';
 
   @override
-  String get linuxRuntimeStopped => 'Linux is stopped';
+  String get linuxRuntimeStopped => 'Linux 중지됨';
 
   @override
-  String get linuxSessionReset => 'Reset session';
+  String get linuxSessionReset => '세션 초기화';
 
   @override
-  String get linuxForceStop => 'Force stop PRoot';
+  String get linuxForceStop => 'PRoot 강제 종료';
 
   @override
   String get linuxForceStopConfirm =>
-      'Stop all Linux processes for this environment? Unsaved work will be lost. Installed applications and files are kept.';
+      '이 환경의 Linux 프로세스를 모두 강제 종료할까요? 저장하지 않은 작업은 사라집니다. 설치한 앱과 파일은 유지됩니다.';
 
   @override
   String get linuxSettingsTitle => 'Linux 설정';
@@ -3084,15 +3078,14 @@ class AppLocalizationsKo extends AppLocalizations {
   String get linuxSetupPhaseGpu => 'GPU 드라이버(Turnip) 빌드 중';
 
   @override
-  String get linuxSetupDisplayBackend => 'Display system';
+  String get linuxSetupDisplayBackend => '표시 방식';
 
   @override
-  String get linuxSetupXvfbDetail =>
-      'Use X11 for applications and the IceWM desktop.';
+  String get linuxSetupXvfbDetail => '앱과 IceWM 데스크톱을 X11로 표시합니다.';
 
   @override
   String get linuxSetupWaylandDetail =>
-      'Use Wayland for supported applications and Xwayland for X11 applications and the IceWM desktop.';
+      '지원하는 앱은 Wayland로, X11 전용 앱과 IceWM 데스크톱은 Xwayland로 표시합니다.';
 
   @override
   String get nativeSteamModeTitle => 'Steam Deck Mode';

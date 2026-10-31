@@ -25,12 +25,13 @@ internal object LinuxGpuRuntime {
     @Synchronized
     fun prepare(root: File, execute: (String) -> Unit) {
         if (installed(root)) return
-        val archive = File(root, "var/cache/dextop/mesa-$SHA256.tar.xz")
+        val archive = File(root, "var/cache/dextop/mesa-$SHA256.tar")
         archive.parentFile?.mkdirs()
         val bytes = requireNotNull(javaClass.getResourceAsStream(RESOURCE)).use { it.readBytes() }
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
         check(digest == SHA256) { "Packaged Mesa runtime checksum mismatch" }
-        archive.writeBytes(bytes)
+        // Decompressed here: a fresh image has no xz for tar -J (the Android mode sets up new ones).
+        org.tukaani.xz.XZInputStream(bytes.inputStream()).use { input -> archive.outputStream().use { input.copyTo(it) } }
         execute(installScript())
     }
 
@@ -42,7 +43,8 @@ internal object LinuxGpuRuntime {
             exit 0
         fi
         mkdir -p '$PREFIX'
-        tar -xJf '/var/cache/dextop/mesa-$SHA256.tar.xz' -C '$PREFIX'
+        tar -xf '/var/cache/dextop/mesa-$SHA256.tar' -C '$PREFIX'
+        rm -f '/var/cache/dextop/mesa-$SHA256.tar'
         test -f '$LIB/libEGL_mesa.so.0.0.0'
         test -f '$LIB/libgallium-27.0.0-devel.so'
         test -f '$LIB/libgbm.so.1.0.0'
