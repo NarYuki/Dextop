@@ -14,9 +14,12 @@ def main():
     compiler.add_argument("--zig", type=Path)
     compiler.add_argument("--clang", type=Path)
     parser.add_argument("--linker", type=Path, help="Mach-O linker for the Clang build")
-    parser.add_argument("--probe", choices=("hello", "posix"), default="hello")
+    parser.add_argument("--probe", choices=("hello", "posix", "socket"), default="hello")
+    parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
     parser.add_argument("--output", type=Path, default=HERE.parent.parent / "build/macos/smoke")
     args = parser.parse_args()
+    if args.linker and not args.linker.is_file():
+        parser.error(f"Mach-O linker not found: {args.linker}")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Interface-only declarations; no Apple implementation is embedded.
@@ -24,20 +27,24 @@ def main():
     if args.probe == "posix":
         symbols += ["_read", "_lseek", "_close", "_unlink", "_mkstemp", "_pthread_create",
                     "_pthread_join", "_fork", "_waitpid", "__exit"]
+    elif args.probe == "socket":
+        symbols += ["_read", "_close", "_unlink", "_mkstemp", "_socket", "_bind", "_listen", "_connect", "_accept"]
+    architecture = "arm64" if args.architecture == "aarch64" else "x86_64"
     (output / "libSystem.tbd").write_text("""--- !tapi-tbd
 tbd-version: 4
-targets: [ arm64-macos ]
+targets: [ ARCH-macos ]
 install-name: '/usr/lib/libSystem.B.dylib'
 exports:
-  - targets: [ arm64-macos ]
+  - targets: [ ARCH-macos ]
     symbols: [ SYMBOLS ]
 ...
-""".replace("SYMBOLS", ", ".join(symbols)), encoding="utf-8")
-    binary = output / f"{args.probe}-macos-arm64"
-    command = ([str(args.zig.resolve()), "cc", "-target", "aarch64-macos.11.0"] if args.zig else
-               [str(args.clang.resolve()), "-target", "arm64-apple-macos11.0"])
+""".replace("SYMBOLS", ", ".join(symbols)).replace("ARCH", architecture), encoding="utf-8")
+    binary = output / f"{args.probe}-macos-{architecture}"
+    command = ([str(args.zig.resolve()), "cc", "-target", f"{args.architecture}-macos.11.0"] if args.zig else
+               [str(args.clang.resolve()), "-target", f"{architecture}-apple-macos11.0"])
     if args.clang and args.linker:
-        command.append(f"-fuse-ld={args.linker.resolve()}")
+        # LLD selects the Mach-O driver using argv[0]; preserve ld64.lld symlinks.
+        command.append(f"-fuse-ld={args.linker.absolute()}")
     subprocess.run(command + [
         "-nostdlib", "-fno-stack-protector", "-O2", str(HERE / f"smoke/{args.probe}.c"), "-L", str(output), "-lSystem",
         "-Wl,-e,_main", "-o", str(binary),
