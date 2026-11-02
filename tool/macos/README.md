@@ -132,6 +132,16 @@ display and Darling prefix, types into the probe, clicks its report button,
 resizes its window, closes it normally, checks the diagnostic events and exit
 status, and requests scoped shutdown. It saves PNG captures for visual review.
 Xvfb does not establish hardware GPU acceleration or Android presentation.
+
+The ARM64 GUI builder also bundles the pinned native JPEG ABI from
+`native-deps.lock.json`. `bundle_native.py` verifies the official package's
+SHA-256 and architecture, extracts its library and copyright notice, and stages
+them atomically under `runtime/lib/dextop-native` without installing system
+packages. It refuses to replace an existing bundle. The MLDR patch searches
+this directory for bare ELF SONAMEs before the system loader; explicit paths
+keep their original behavior. This is separate from Darwin's dyld search path:
+the launcher intentionally filters the host's `LD_LIBRARY_PATH`, and Debian's
+`libjpeg.so.62` does not provide Ubuntu's `libjpeg.so.8` ABI.
 With the current probe, add `--persistence` to verify that Foundation atomically
 saves the entered text plus a Japanese UTF-8 suffix, then reloads it after the
 app closes and restarts in the same private prefix. Review `reopened.png` for
