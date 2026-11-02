@@ -12,7 +12,7 @@ import java.nio.ByteOrder
 /** freedesktop system-tray / XEmbed manager, shared by Wine and native X11 apps. */
 internal class LinuxX11Tray(private val x: X11Client, private val events: (JSONObject) -> Unit,
     private val forgetWindow: (Int) -> Unit) {
-    private data class Icon(val id: Int, val host: Int, var width: Int, var height: Int, var pixmap: Int = 0, var visible: Boolean = true, var snapshot: String = "")
+    private data class Icon(val id: Int, val host: Int, var width: Int, var height: Int, var pixmap: Int = 0, var visible: Boolean = true, var snapshot: String = "", var contentHash: Int = 0)
     private val icons = LinkedHashMap<Int, Icon>()
     private val selection = x.internAtom("_NET_SYSTEM_TRAY_S0")
     private val opcode = x.internAtom("_NET_SYSTEM_TRAY_OPCODE")
@@ -36,7 +36,7 @@ internal class LinuxX11Tray(private val x: X11Client, private val events: (JSONO
             .put(33).put(32).putShort(0).putInt(x.root).putInt(x.internAtom("MANAGER"))
             .putInt(0).putInt(selection).putInt(owner).putInt(0).putInt(0)
         x.sendEvent(x.root, X11Client.EVENT_STRUCTURE_NOTIFY, event)
-        Thread({ while (running) { runCatching { refresh() }; SystemClock.sleep(250) } }, "DextopLinuxTray").apply { isDaemon = true; start() }
+        Thread({ while (running) { runCatching { refresh() }; SystemClock.sleep(500) } }, "DextopLinuxTray").apply { isDaemon = true; start() }
     }
 
     @Synchronized fun contains(id: Int) = id == owner || id in icons || icons.values.any { it.host == id }
@@ -137,11 +137,15 @@ internal class LinuxX11Tray(private val x: X11Client, private val events: (JSONO
                         ((argb and 255) * 255 / a).coerceAtMost(255)
                 }
             }
-            val bitmap = Bitmap.createBitmap(pixels, icon.width, icon.height, Bitmap.Config.ARGB_8888)
-            val png = try { ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it); Base64.encodeToString(it.toByteArray(), Base64.NO_WRAP) } } finally { bitmap.recycle() }
             val title = sequenceOf(name, X11Client.ATOM_WM_NAME, X11Client.ATOM_WM_CLASS).mapNotNull { atom ->
                 x.property(icon.id, atom)?.third?.toString(Charsets.UTF_8)?.replace('\u0000', ' ')?.trim()?.takeIf { it.isNotBlank() }
             }.firstOrNull() ?: "Linux"
+            // Most polls find the same picture: encode and send it only when its pixels or title change.
+            val contentHash = 31 * pixels.contentHashCode() + title.hashCode()
+            if (icon.snapshot.isNotEmpty() && contentHash == icon.contentHash) return@forEach
+            icon.contentHash = contentHash
+            val bitmap = Bitmap.createBitmap(pixels, icon.width, icon.height, Bitmap.Config.ARGB_8888)
+            val png = try { ByteArrayOutputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it); Base64.encodeToString(it.toByteArray(), Base64.NO_WRAP) } } finally { bitmap.recycle() }
             val event = JSONObject().put("type", "tray").put("key", "x11:${icon.id}").put("title", title.take(512)).put("icon", png)
             val snapshot = event.toString()
             if (snapshot != icon.snapshot) { icon.snapshot = snapshot; events(event) }

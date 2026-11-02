@@ -255,6 +255,13 @@ internal class X11Client private constructor(
         return true
     }
 
+    /** Normal toolkit grabs (menus, drags) keep a visible cursor and must not capture Android. */
+    fun pointerCursorHidden(): Boolean {
+        if (xfixesOpcode < 0) return false
+        val image = request(le(4).put(xfixesOpcode.toByte()).put(4).putShort(1), reply = true) ?: return false
+        return LinuxPointerCursor.hidden(image)
+    }
+
     fun relativeMotion(dx: Int, dy: Int) = fakeInput(MOTION_NOTIFY, 1, dx, dy)
 
     fun close() {
@@ -340,6 +347,14 @@ internal class X11Client private constructor(
 
     fun mapWindow(window: Int) {
         request(le(8).put(8).put(0).putShort(2).putInt(window))
+    }
+
+    /** Includes unmapped top-levels kept alive by applications that close to the tray. */
+    fun childWindows(window: Int): List<Int> {
+        val reply = request(le(8).put(15).put(0).putShort(2).putInt(window), reply = true) ?: return emptyList()
+        val count = reply.getShort(16).toInt() and 65535
+        if (32L + count * 4L > reply.limit()) return emptyList()
+        return (0 until count).map { reply.getInt(32 + it * 4) }
     }
 
     /** QueryTree's parent, including child surfaces used by SDL/Wine pointer grabs. */

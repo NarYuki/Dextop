@@ -126,7 +126,7 @@ class LinuxSteamTest {
         assertFalse("-cef-disable-gpu" in script)
         assertTrue("export MESA_VK_WSI_DEBUG=sw LIBGL_KOPPER_DRI2=true" in script)
         assertFalse("s/^export LIBGL_KOPPER_DISABLE=true" in script)
-        assertTrue("flock -n 9" in script)
+        assertTrue("flock -n -E 73 9" in script)
         assertTrue("steam_updates\" -ge 3" in script)
         assertFalse("-skipinitialbootstrap" in script)
         assertFalse("--sync steamdeck_publicbeta" in script)

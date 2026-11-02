@@ -143,9 +143,7 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                             await applyOrientation();
                           },
                           icon: const Icon(Icons.arrow_back_rounded),
-                          label: Text(
-                            localText(context, '戻る', 'Back'),
-                          ),
+                          label: Text(localText(context, '戻る', 'Back')),
                         ),
                         const SizedBox(width: 16),
                       ],
@@ -331,7 +329,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   var secure = false;
   String mirrorBackend = 'virtual_display';
   String castMode = 'simple';
-  String windowManager = 'system';
+  String windowManager = 'dextop_book';
   bool experimentalWindowManagerEnabled = false;
   var loading = true;
   var active = false;
@@ -431,7 +429,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         experimentalWindowManagerEnabled =
             preferences.getBool('experimental_dextop_window_manager') ?? false;
         windowManager = effectiveWindowManager(
-          preferences.getString('window_manager') ?? 'system',
+          preferences.getString('window_manager') ?? 'dextop_book',
           experimentalWindowManagerEnabled,
         );
         workspaceMagnificationPercent =
@@ -476,15 +474,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     await preferences.setString('mirror_backend', value);
   }
 
-  /// Plasma v2 is always available; the v1 shell needs the experimental switch.
+  /// Retired Plasma choices use Book. Preserve an explicitly selected Android desktop.
   static String effectiveWindowManager(
     String value,
     bool experimentalEnabled,
-  ) => switch (value) {
-    'dextop_plasma_v2' || 'dextop_book' => value,
-    'dextop_plasma' => experimentalEnabled ? value : 'system',
-    _ => 'system',
-  };
+  ) => value == 'system' ? 'system' : 'dextop_book';
 
   Future<void> setWindowManager(String value) async {
     final preferences = await SharedPreferences.getInstance();
@@ -1511,7 +1505,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       0 => overview(),
       1 => LinuxPage(
         key: const ValueKey('linux'),
-        onSwitchToPlasmaV2: () => setWindowManager('dextop_plasma_v2'),
+        onSwitchToPlasmaV2: () => setWindowManager('dextop_book'),
         onSetupPrivilege: _showEmbeddedPrivilegeSetup,
       ),
       _ => settings(),

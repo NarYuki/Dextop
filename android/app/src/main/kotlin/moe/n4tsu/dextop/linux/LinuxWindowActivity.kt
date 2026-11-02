@@ -886,7 +886,8 @@ internal open class LinuxWindowActivity : Activity() {
             LinuxPointerForwarder.forward(event, lastPointerX, lastPointerY, state,
                 resources.displayMetrics.density,
                 send = { action, x, y, button -> linux.windowPointer(container, id, action, x, y, button) },
-                scroll = { dx, dy -> linux.scroll(input, dx, dy) },
+                // The window under the pointer scrolls, focused or not.
+                scroll = { dx, dy -> linux.windowScroll(container, id, lastPointerX, lastPointerY, dx, dy) },
                 key = { code, down -> linux.key(input, code, down) },
             )
         }

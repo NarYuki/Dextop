@@ -4,11 +4,11 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart' as mui;
 
-import '../lib/linux/linux_apps.dart';
-import '../lib/linux/linux_expressive.dart';
-import '../lib/linux/linux_installation_icon.dart';
-import '../lib/linux/linux_installations.dart';
-import '../lib/linux/linux_store_catalog.dart';
+import 'package:free_dextop/linux/linux_apps.dart';
+import 'package:free_dextop/linux/linux_expressive.dart';
+import 'package:free_dextop/linux/linux_installation_icon.dart';
+import 'package:free_dextop/linux/linux_installations.dart';
+import 'package:free_dextop/linux/linux_store_catalog.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

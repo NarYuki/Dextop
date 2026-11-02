@@ -232,7 +232,7 @@ internal class LinuxDesktopSession(
     private val pointerGrabs = LinuxPointerGrabs(display)
     fun pointerCaptureRequested(): Boolean {
         x.sync()
-        return pointerGrabs.requested
+        return pointerGrabs.requested && x.pointerCursorHidden()
     }
     fun relativePointer(action: Int, dx: Int, dy: Int, button: Int) {
         if (dx != 0 || dy != 0) x.relativeMotion(dx, dy)

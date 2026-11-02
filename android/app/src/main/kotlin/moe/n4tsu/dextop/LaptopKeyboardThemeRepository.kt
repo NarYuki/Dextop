@@ -23,10 +23,24 @@ internal data class LaptopPalette(
 
 /** Reads keyboard themes without coupling persistence and JSON parsing to the service. */
 internal class LaptopKeyboardThemeRepository(private val context: Context) {
+    private val prefs by lazy { context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE) }
+
+    /** Parsed palettes by theme id, with the stored JSON they were parsed from. */
+    private val cache = HashMap<String, Pair<String?, LaptopPalette>>()
+
+    /**
+     * The palette of theme [id]. Keys ask for it many times per build and on every press, so it
+     * is parsed only when the stored theme changes.
+     */
     fun palette(id: String): LaptopPalette {
+        val raw = prefs.getString("flutter.dextop_keyboard_theme_$id", null)
+        cache[id]?.let { (cachedRaw, palette) -> if (cachedRaw == raw) return palette }
+        return parse(id, raw).also { cache[id] = raw to it }
+    }
+
+    private fun parse(id: String, raw: String?): LaptopPalette {
         val fallback = builtInPalette(id)
-        val raw = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-            .getString("flutter.dextop_keyboard_theme_$id", null) ?: return fallback
+        raw ?: return fallback
         if (id in BUILT_IN_IDS) {
             return runCatching {
                 val json = JSONObject(raw)

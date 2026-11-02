@@ -406,9 +406,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             l.setupPhaseDevice,
             l.setupPhaseDemo,
           ][page],
-          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-            color: Theme.of(context).colorScheme.primary,
-          ),
+          style: Theme.of(context).textTheme.titleMedium
+              ?.copyWith(color: Theme.of(context).colorScheme.primary),
         ),
         const SizedBox(height: 16),
         Expanded(
@@ -825,8 +824,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             info('Android', '${status['androidVersion'] ?? l.loadingLabel}'),
             info(
               l.desktopUi,
-              status['defaultWindowManager'] == 'dextop_plasma_v2'
-                  ? l.windowManagerPlasmaV2
+              status['defaultWindowManager'] == 'dextop_book'
+                  ? 'Dextop Book'
                   : '${status['desktopMode'] ?? l.loadingLabel}',
             ),
             info(l.detectedResolution, detectedResolution()),
@@ -1054,9 +1053,9 @@ class _GestureDemoFlowState extends State<GestureDemoFlow>
                                   decoration: BoxDecoration(
                                     shape: BoxShape.circle,
                                     border: Border.all(
-                                      color: Theme.of(
-                                        context,
-                                      ).colorScheme.primary,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .primary,
                                       width: 3,
                                     ),
                                     color: Theme.of(context)

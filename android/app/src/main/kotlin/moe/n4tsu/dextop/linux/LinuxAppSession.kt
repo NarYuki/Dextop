@@ -123,6 +123,8 @@ internal class LinuxAppSession(
     private val waylandPointerPositions = ConcurrentHashMap<Int, Pair<Int, Int>>()
     /** Keyboard input goes to Wayland while a Wayland window is the active one. */
     @Volatile private var waylandFocused = false
+    /** The X window last given the focus ([activate]); 0 for none. */
+    @Volatile private var xFocus = 0
 
     private fun startWayland(width: Int, height: Int, nativeLibraryDir: String) {
         statusTray = LinuxStatusNotifier(display, LinuxPaths.rootfs(containerId), events)
@@ -466,6 +468,7 @@ internal class LinuxAppSession(
     }
 
     private fun forget(id: Int) {
+        promptWindows.remove(id)
         val window = windows.remove(id) ?: return
         synchronized(renderLock) {
             if (window.surfaceHandle != 0L) LinuxFrameBridge.nativeDetach(window.surfaceHandle)
@@ -733,15 +736,50 @@ internal class LinuxAppSession(
     }
 
     private var pointerGrabs: LinuxPointerGrabs? = null
+
+    /** Whether each window is a dialog or a password prompter, which never get pointer capture. */
+    private val promptWindows = ConcurrentHashMap<Int, Boolean>()
+    private val PROMPTERS = listOf("gcr-prompter", "gnome-keyring", "pinentry", "polkit", "ssh-askpass", "kwalletd", "seahorse")
+
+    private fun isPrompt(client: X11Client, id: Int): Boolean = runCatching {
+        val type = client.propertyAtoms(id, client.internAtom("_NET_WM_WINDOW_TYPE"))
+        val dialog = client.internAtom("_NET_WM_WINDOW_TYPE_DIALOG")
+        val wmClass = client.property(id, X11Client.ATOM_WM_CLASS)?.third?.toString(Charsets.UTF_8).orEmpty().lowercase()
+        dialog in type || PROMPTERS.any { it in wmClass }
+    }.getOrDefault(false)
     fun pointerCaptureRequested(id: Int): Boolean {
         if (isWayland(id)) return id in waylandPointerCaptured
         // Flush RECORD's buffered disconnect notification even when rendering is idle.
         val client = xClient ?: return false
+        // Password prompts (the keyring's, polkit's, pinentry) grab the pointer and keyboard so
+        // nothing else reads the typing; they want the pointer free, unlike a game.
+        if (promptWindows.getOrPut(id) { isPrompt(client, id) }) return false
         val focus = client.inputFocus() // also flushes earlier X requests
-        return pointerGrabs?.requestedFor(id, client.root, focus, client::parentWindow) { grab ->
+        val grabbed = pointerGrabs?.requestedFor(id, client.root, focus, client::parentWindow) { grab ->
             client.windowAttributes(grab)?.let { !it.inputOutput && it.mapState == 2 && it.overrideRedirect } == true
         } == true
+        return grabbed && client.pointerCursorHidden()
     }
+    /** Restore a real hidden application window without relying on its single-instance IPC. */
+    fun restoreHiddenApplication(startupClass: String): Boolean {
+        val client = xClient ?: return false
+        if (startupClass.isBlank()) return false
+        val dialog = client.internAtom("_NET_WM_WINDOW_TYPE_DIALOG")
+        val candidate = client.childWindows(client.root).filter { id ->
+            val attributes = client.windowAttributes(id)
+            val geometry = client.geometry(id)
+            attributes?.inputOutput == true && !attributes.overrideRedirect && attributes.mapState == 0 &&
+                geometry != null && geometry.width() >= 80 && geometry.height() >= 60 &&
+                readClass(id).equals(startupClass, ignoreCase = true) &&
+                dialog !in client.propertyAtoms(id, atomWindowType)
+        }.maxByOrNull { id -> client.geometry(id)?.let { it.width().toLong() * it.height() } ?: 0L } ?: return false
+        // A WM's own MapWindow bypasses MapRequest: register the restored surface as well.
+        manage(candidate)
+        client.raise(candidate)
+        client.sync()
+        return true
+    }
+
     fun relativePointer(id: Int, action: Int, dx: Int, dy: Int, button: Int) {
         if (isWayland(id)) { wayland?.pointer(id and WAYLAND_ID.inv(), action + 10, dx, dy, button); return }
         xClient?.let { x ->
@@ -754,6 +792,7 @@ internal class LinuxAppSession(
             // Leaving a Linux app must send FocusOut so Wine can release ClipCursor/grabs.
             wayland?.activate(0)
             waylandFocused = false
+            xFocus = 0
             xClient?.let { it.setInputFocus(it.root) }
             return
         }
@@ -763,6 +802,7 @@ internal class LinuxAppSession(
         if (!windows.containsKey(id)) return
         x.raise(id)
         x.setInputFocus(id)
+        xFocus = id
         // As a window manager does: clients with WM_TAKE_FOCUS (Wine, Java) take the keyboard
         // when asked, and toolkits learn the active window from the root.
         if (atomTakeFocus in x.propertyAtoms(id, atomProtocols)) x.clientMessage(id, atomProtocols, intArrayOf(atomTakeFocus, 0))
@@ -822,6 +862,29 @@ internal class LinuxAppSession(
         else windows[id]?.popup ?: false
 
     fun scroll(dx: Int, dy: Int) { wayland?.takeIf { waylandFocused }?.scroll(dx, dy) ?: xClient?.let { input.scroll(dx, dy) } }
+
+    /**
+     * Wheel steps over window [id] at ([localX], [localY]), as on a desktop: the window under the
+     * pointer scrolls whether or not it has the focus, and the focus stays where it is.
+     */
+    fun scrollAt(id: Int, localX: Int, localY: Int, dx: Int, dy: Int) {
+        if (isWayland(id)) {
+            // The compositor sends wheel steps to the surface the pointer is over.
+            waylandPointerPositions[id] = localX to localY
+            wayland?.pointer(id and WAYLAND_ID.inv(), 0, localX, localY, 0)
+            wayland?.scroll(dx, dy)
+            return
+        }
+        if (xClient == null) return
+        val window = windows[id] ?: return
+        // X windows can overlap in the root (each shows in its own Android window): the target
+        // comes up for the steps, and the focused window goes back on top after them.
+        val focused = xFocus
+        if (focused != id) x.raise(id)
+        input.pointer(0, window.bounds.left + localX, window.bounds.top + localY, 0)
+        input.scroll(dx, dy)
+        if (focused != id && focused != 0 && windows.containsKey(focused)) x.raise(focused)
+    }
     fun key(evdevCode: Int, down: Boolean) { wayland?.takeIf { waylandFocused }?.key(evdevCode, down) ?: xClient?.let { input.key(evdevCode, down) } }
     fun text(text: String) { wayland?.takeIf { waylandFocused }?.text(text) ?: xClient?.let { input.text(text) } }
 
