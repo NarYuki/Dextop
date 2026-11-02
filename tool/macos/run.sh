@@ -29,6 +29,7 @@ fi
 
 case "${HOME:-}" in /*) ;; *) printf '%s\n' 'An absolute HOME is required' >&2; exit 64;; esac
 export DARLING_NONROOT=1
+export DEXTOP_DARLING_ABSTRACT_RPC=${DEXTOP_DARLING_ABSTRACT_RPC:-1}
 export DARLING_INSTALL_PREFIX="$runtime"
 export DPREFIX="$HOME/.local/share/dextop/macos/default"
 unset DARLING_PROFILE
