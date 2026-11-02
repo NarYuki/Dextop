@@ -1,13 +1,15 @@
 /* Own-source GUI probe using the public AppKit interface headers. */
 #import <AppKit/AppKit.h>
 #include <stdio.h>
+#include <stdlib.h>
 
-static NSString *const documentPath = @"/tmp/dextop-appkit-probe.txt";
+static NSString *documentPath;
 
 @interface DextopProbeDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate> {
     NSTextField *input;
 }
 - (void)reportInput:(id)sender;
+- (void)showDialog:(id)sender;
 @end
 
 @implementation DextopProbeDelegate
@@ -29,7 +31,7 @@ static NSString *const documentPath = @"/tmp/dextop-appkit-probe.txt";
     [[window contentView] addSubview:label];
     input = [[NSTextField alloc] initWithFrame:NSMakeRect(24, 70, 300, 28)];
     [input setStringValue:@"Type here"];
-    if ([[NSFileManager defaultManager] fileExistsAtPath:documentPath]) {
+    if (documentPath && [[NSFileManager defaultManager] fileExistsAtPath:documentPath]) {
         NSError *error = nil;
         NSString *saved = [NSString stringWithContentsOfFile:documentPath
                                                   encoding:NSUTF8StringEncoding error:&error];
@@ -51,6 +53,11 @@ static NSString *const documentPath = @"/tmp/dextop-appkit-probe.txt";
     [closeButton setTarget:window];
     [closeButton setAction:@selector(performClose:)];
     [[window contentView] addSubview:closeButton];
+    NSButton *dialogButton = [[NSButton alloc] initWithFrame:NSMakeRect(180, 24, 120, 28)];
+    [dialogButton setTitle:@"Dialog"];
+    [dialogButton setTarget:self];
+    [dialogButton setAction:@selector(showDialog:)];
+    [[window contentView] addSubview:dialogButton];
     [window makeKeyAndOrderFront:nil];
     puts("appkit: window requested");
     fflush(stdout);
@@ -60,9 +67,9 @@ static NSString *const documentPath = @"/tmp/dextop-appkit-probe.txt";
     printf("appkit: input=%s\n", [[input stringValue] UTF8String]);
     NSString *document = [[input stringValue] stringByAppendingString:@" 日本語"];
     NSError *error = nil;
-    if ([document writeToFile:documentPath atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
+    if (documentPath && [document writeToFile:documentPath atomically:YES encoding:NSUTF8StringEncoding error:&error]) {
         printf("appkit: saved=%s\n", [document UTF8String]);
-    } else {
+    } else if (documentPath) {
         fprintf(stderr, "appkit: save failed: %s\n", [[error description] UTF8String]);
     }
     fflush(stdout);
@@ -72,6 +79,36 @@ static NSString *const documentPath = @"/tmp/dextop-appkit-probe.txt";
     printf("appkit: resized=%.0fx%.0f\n", size.size.width, size.size.height);
     fflush(stdout);
 }
+- (void)showDialog:(id)sender {
+    (void)sender;
+    NSAlert *alert = [[NSAlert alloc] init];
+    [alert setMessageText:@"Dextop modal dialog"];
+    [alert setInformativeText:@"Confirm this dialog to return to the main window."];
+    [alert addButtonWithTitle:@"OK"];
+    [[alert window] setTitle:@"Dextop dialog probe"];
+    [alert layout];
+    NSView *content = [[alert window] contentView];
+    NSRect bounds = [content bounds];
+    BOOL layoutValid = YES;
+    printf("appkit: dialog bounds=%.0f,%.0f %.0fx%.0f\n", bounds.origin.x, bounds.origin.y,
+           bounds.size.width, bounds.size.height);
+    for (NSView *child in [content subviews]) {
+        NSRect frame = [child frame];
+        printf("appkit: dialog child=%.0f,%.0f %.0fx%.0f\n", frame.origin.x, frame.origin.y,
+               frame.size.width, frame.size.height);
+        if (!NSContainsRect(bounds, frame)) layoutValid = NO;
+    }
+    puts(layoutValid ? "appkit: dialog layout OK" : "appkit: dialog layout INVALID");
+    fflush(stdout);
+    NSInteger result = [alert runModal];
+    if (result == NSAlertFirstButtonReturn) {
+        puts("appkit: dialog accepted");
+    } else {
+        fprintf(stderr, "appkit: unexpected dialog result=%ld\n", (long)result);
+    }
+    fflush(stdout);
+    [alert release];
+}
 - (BOOL)applicationShouldTerminateAfterLastWindowClosed:(NSApplication *)sender {
     (void)sender;
     return YES;
@@ -80,6 +117,8 @@ static NSString *const documentPath = @"/tmp/dextop-appkit-probe.txt";
 
 int main(void) {
     NSAutoreleasePool *pool = [[NSAutoreleasePool alloc] init];
+    const char *path = getenv("DEXTOP_GUI_DOCUMENT");
+    if (path) documentPath = [NSString stringWithUTF8String:path];
     NSApplication *application = [NSApplication sharedApplication];
     DextopProbeDelegate *delegate = [[DextopProbeDelegate alloc] init];
     [application setDelegate:delegate];
