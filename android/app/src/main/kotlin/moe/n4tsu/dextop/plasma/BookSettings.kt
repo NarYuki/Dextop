@@ -284,7 +284,7 @@ internal class BookSettingsContent(
                 shape, summary = tr("オフにすると、ウィンドウと重なるときに隠れ、画面の下端で表示されます",
                     "When off, it hides while a window overlaps it and comes back at the bottom edge"), symbol = "dock_to_bottom") },
         ))
-        val pinned = host.apps().filter { host.isPinned(it.packageName) }.distinctBy { it.packageName }
+        val pinned = host.pinnedApps()
         Section(tr("固定したアプリ", "Pinned apps"))
         if (pinned.isEmpty()) Text(tr("ランチャーからアプリをタスクバーへドラッグすると固定できます", "Drag apps from the launcher onto the taskbar to pin them"),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp))

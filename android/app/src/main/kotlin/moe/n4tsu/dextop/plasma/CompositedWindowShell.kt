@@ -89,6 +89,11 @@ internal abstract class CompositedWindowShell(
         private val BOOK_ACCELERATE = android.view.animation.PathInterpolator(.3f, 0f, .8f, .15f)
         private const val PREFS = "dextop_plasma"
         private const val POLL_INTERVAL_MS = 500L
+        /** A minimized window's scale at its taskbar icon. */
+        private const val MINIMIZED_SCALE = .08f
+        private const val IDLE_POLL_INTERVAL_MS = 1_500L
+        /** Unchanged polls (3 s at the full rate) before slowing down. */
+        private const val QUIET_POLLS = 6
         private const val EMPTY_CLOSE_MS = 900L
         private const val LAUNCH_TIMEOUT_MS = 7_000L
         /** How long a task must stay over a window's own before it gets a window of its own. */
@@ -461,6 +466,8 @@ internal abstract class CompositedWindowShell(
             injectKey(KeyEvent(now, now, action, KeyEvent.KEYCODE_BACK, 0, 0, android.view.KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
                 KeyEvent.FLAG_FROM_SYSTEM or KeyEvent.FLAG_VIRTUAL_HARD_KEY, InputDevice.SOURCE_KEYBOARD), window.displayId)
         }
+        // If Back left the app, its window closes before the display's home shows for long.
+        listOf(150L, 450L).forEach { delay -> handler.postDelayed({ if (running) onWindowsChanged() }, delay) }
     }
 
     /** Book: two windows split side by side drop their shadows; one tiled window alone keeps its own. */
@@ -783,6 +790,7 @@ internal abstract class CompositedWindowShell(
     }
 
     override fun onWindowsChanged() {
+        quietPolls = 0
         handler.removeCallbacks(pollRunnable)
         handler.postDelayed(pollRunnable, 80L)
     }
@@ -1064,9 +1072,15 @@ internal abstract class CompositedWindowShell(
             if (!running) return
             pollTasks()
             syncLinuxDisplays()
-            handler.postDelayed(this, POLL_INTERVAL_MS)
+            // While nothing changes the tasks are read less often; any change, or a window
+            // event, returns to the full rate.
+            handler.postDelayed(this, if (quietPolls >= QUIET_POLLS) IDLE_POLL_INTERVAL_MS else POLL_INTERVAL_MS)
         }
     }
+
+    /** Polls in a row that found the same tasks as the one before; main thread. */
+    private var quietPolls = 0
+    private var lastTaskSignature: List<Any>? = null
 
     /** Tracks tasks per window display and adopts tasks that appear on the Dextop display itself. */
     private fun pollTasks() {
@@ -1081,7 +1095,14 @@ internal abstract class CompositedWindowShell(
                         task.activityType in setOf(TaskBridge.ACTIVITY_TYPE_UNDEFINED, TaskBridge.ACTIVITY_TYPE_STANDARD)
                 }
             }.getOrDefault(emptyList())
-            handler.post { if (running) applyTasks(perWindow, strays) }
+            val signature = perWindow.map { (id, tasks) -> listOf(id, tasks?.map { "${it.taskId}/${it.packageName}/${it.displayId}" }) } +
+                strays.map { "${it.taskId}/${it.packageName}" }
+            handler.post {
+                if (!running) return@post
+                quietPolls = if (signature == lastTaskSignature) quietPolls + 1 else 0
+                lastTaskSignature = signature
+                applyTasks(perWindow, strays)
+            }
         }
     }
 
@@ -1089,7 +1110,16 @@ internal abstract class CompositedWindowShell(
         val now = SystemClock.uptimeMillis()
         windows.toList().forEach { window ->
             val tasks = perWindow[window.id] ?: return@forEach
-            var top = tasks.firstOrNull { it.packageName.isNotEmpty() }
+            // Back from an app's first screen sends its task behind the display's home, which
+            // HyperOS and Xperia start there (SecondaryDisplayLauncher). The window doesn't show
+            // the launcher: the app was left, as Back on a desktop closes it.
+            val front = tasks.firstOrNull { it.packageName.isNotEmpty() }
+            if (front?.activityType == TaskBridge.ACTIVITY_TYPE_HOME && window.hadTask &&
+                front.packageName != window.packageName) {
+                leaveToHome(window)
+                return@forEach
+            }
+            var top = tasks.firstOrNull { it.packageName.isNotEmpty() && it.activityType != TaskBridge.ACTIVITY_TYPE_HOME }
             // A task started from inside this window (a Linux app from Dextop, a link into another
             // app) lands on the same display, over the window's own task. Once it has stayed there
             // (a trampoline finishes its own task at once), it moves to a window of its own.
@@ -1488,6 +1518,7 @@ internal abstract class CompositedWindowShell(
         if (!linuxEnabled()) {
             host.log("Plasma v2 Linux applications: Linux is not set up")
             linuxApps = emptyList()
+            desktopContainerId = null
             return
         }
         if (!LinuxContainerClient.privilegeAvailable(service)) {
@@ -1521,6 +1552,8 @@ internal abstract class CompositedWindowShell(
             val shown = installed.filter { preferred.isEmpty() || it.optString("id") == preferred }
                 .ifEmpty { installed }
 
+            desktopContainerId = (shown.firstOrNull { it.optString("id") == preferred } ?: shown.firstOrNull())?.getString("id")
+            BookStore.pruneLinuxDesktopCache(service, installed.map { it.getString("id") }.toSet())
             val listing = JSONArray()
             shown.forEach { container ->
                 val id = container.getString("id")
@@ -1532,6 +1565,7 @@ internal abstract class CompositedWindowShell(
             linuxAppsFrom(listing, resources, fallback)
         }, { apps ->
             linuxApps = apps
+            bookUi?.refreshLinuxDesktop()
             linuxAppsRetries = 0
             kickoff?.appsChanged()
             if (resumeWindows) prewarmLinux()
@@ -1580,33 +1614,49 @@ internal abstract class CompositedWindowShell(
         return pending.singleOrNull()?.takeIf { !classTaken }
     }
 
-    private fun launchLinuxApp(packageName: String, label: String? = null) {
+    private fun launchLinuxApp(packageName: String, label: String? = null, newInstance: Boolean = false, showLaunchStatus: Boolean = true) {
         // As for Android-window launches: the foreground service keeps the session alive and online.
         moe.n4tsu.dextop.linux.LinuxSessionService.start(service)
         val (containerId, desktopId) = packageName.removePrefix(LINUX_APP_PREFIX).split(':', limit = 2)
             .takeIf { it.size == 2 } ?: return
+        if (!newInstance) {
+            val app = linuxApps.firstOrNull { it.packageName == packageName }
+            windows.filter { !it.closing && taskKey(it) == packageName }
+                .maxWithOrNull(compareBy<V2Window> {
+                    moe.n4tsu.dextop.linux.LinuxWindowIdentity.score(it.linuxWMClass, it.title, desktopId, app?.label, app?.startupWMClass.orEmpty())
+                }.thenBy { it.lastActivated })?.let { activate(it); return }
+        }
         if (desktopId == LinuxSteam.STEAM_MODE_ENTRY) {
             launchSteamMode(containerId, packageName)
             return
         }
-        // Every launch shows its window at once, whether the container still has to start or not.
-        val app = linuxApps.firstOrNull { it.packageName == packageName }
-        val placeholder = createWindow("linux-launch:$containerId:$desktopId", Rect(workArea()).apply { inset(width() / 12, height() / 12) })
-        val name = label ?: app?.label ?: desktopId
-        placeholder.title = name
-        placeholder.icon = app?.icon ?: placeholder.icon
-        placeholder.linuxLaunchKey = packageName
-        placeholder.view.titleBar.invalidate()
-        placeholder.view.showStatus(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} を起動しています", "Starting {0}"), name))
-        linuxLaunches += LinuxLaunch(packageName, containerId, desktopId, placeholder)
-        invalidateDesktopPanel()
-        root.postDelayed({
-            if (!placeholder.closing && windows.contains(placeholder) && placeholder.linuxXid == 0) {
-                LinuxContainerClient.call(service, { it.runtimeLogs(containerId) }, { logs ->
-                    if (!placeholder.closing) placeholder.view.showError(moe.n4tsu.dextop.localText("アプリが 30 秒以内にウィンドウを開きませんでした。", "Application did not open a window within 30 seconds.") + "\n$logs")
-                }) { error -> if (!placeholder.closing) placeholder.view.showError(error.message ?: error.toString()) }
-            }
-        }, 30_000)
+        // File-open requests may be handled by an existing file-manager window.
+        var launchWindow: V2Window? = null
+        if (showLaunchStatus) {
+            val app = linuxApps.firstOrNull { it.packageName == packageName }
+            val placeholder = createWindow("linux-launch:$containerId:$desktopId", Rect(workArea()).apply { inset(width() / 12, height() / 12) })
+            val name = label ?: app?.label ?: desktopId
+            launchWindow = placeholder
+            placeholder.title = name
+            placeholder.icon = app?.icon ?: placeholder.icon
+            placeholder.linuxLaunchKey = packageName
+            placeholder.view.titleBar.invalidate()
+            placeholder.view.showStatus(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} を起動しています", "Starting {0}"), name))
+            linuxLaunches += LinuxLaunch(packageName, containerId, desktopId, placeholder)
+            invalidateDesktopPanel()
+            root.postDelayed({
+                if (!placeholder.closing && windows.contains(placeholder) && placeholder.linuxXid == 0) {
+                    LinuxContainerClient.call(service, { it.runtimeLogs(containerId) }, { logs ->
+                        if (!placeholder.closing && placeholder.linuxXid == 0) placeholder.view.showError(moe.n4tsu.dextop.localText("アプリが 30 秒以内にウィンドウを開きませんでした。", "Application did not open a window within 30 seconds.") + "\n$logs")
+                    }) { error -> if (!placeholder.closing && placeholder.linuxXid == 0) placeholder.view.showError(error.message ?: error.toString()) }
+                }
+            }, 30_000)
+        }
+        fun phase(ja: String, en: String) = root.post {
+            launchWindow?.takeIf { !it.closing && it.linuxXid == 0 }?.view
+                ?.showStatus(moe.n4tsu.dextop.localText(ja, en))
+        }
+        phase("Linuxサービスに接続しています", "Connecting to the Linux service")
         val screenWidth = width
         val screenHeight = height
         val dpi = densityDpi
@@ -1615,11 +1665,15 @@ internal abstract class CompositedWindowShell(
         linuxLaunchClicked[containerId] = clicked
         LinuxContainerClient.call(service, { linux ->
             val queued = SystemClock.uptimeMillis()
+            phase("コンテナを起動しています", "Starting the container")
             linux.startApps(containerId, screenWidth, screenHeight, dpi)
             val started = SystemClock.uptimeMillis()
+            phase("ディスプレイを設定しています", "Configuring the display")
             linux.updateDisplay(containerId, true, screenWidth, screenHeight, dpi, linuxRefreshRate())
             val updated = SystemClock.uptimeMillis()
+            phase("アプリを起動しています", "Starting the app")
             linux.launchFramedApp(containerId, desktopId)
+            phase("アプリのウィンドウを待っています", "Waiting for the application window")
             Log.i("DextopLaunch", "plasma $desktopId queue=${queued - clicked}ms startApps=${started - queued}ms " +
                 "updateDisplay=${updated - started}ms launch=${SystemClock.uptimeMillis() - updated}ms")
         }, {}) { error -> showLinuxError(containerId, error.message ?: error.toString(), false) }
@@ -1653,6 +1707,10 @@ internal abstract class CompositedWindowShell(
     private val steamFrameCounts = HashMap<Int, Long>()
     private val steamDiagnosticAt = HashMap<Int, Long>()
     override fun onContentFrame(window: V2Window) {
+        if (window.linuxAwaitingFirstFrame && window.linuxXid != 0) {
+            window.linuxAwaitingFirstFrame = false
+            window.view.showStatus(null)
+        }
         if (window.steamMode == null) return
         steamReady += window.id
         steamCovers[window.id]?.takeIf { !it.ended }?.dismiss()
@@ -1856,7 +1914,7 @@ internal abstract class CompositedWindowShell(
                         forwardLinuxPointer(
                             event, (event.x * bufferWidth / width).roundToInt(), (event.y * bufferHeight / height).roundToInt(), pointer,
                             send = { action, x, y, button -> linux.windowPointer(containerId, xid, action, x, y, button) },
-                            scroll = { dx, dy -> linux.scroll("$containerId#apps", dx, dy) },
+                            scroll = { dx, dy -> linux.windowScroll(containerId, xid, (event.x * bufferWidth / width).roundToInt(), (event.y * bufferHeight / height).roundToInt(), dx, dy) },
                             key = { code, down -> linux.key("$containerId#apps", code, down) },
                         )
                     }
@@ -1931,6 +1989,9 @@ internal abstract class CompositedWindowShell(
         }
         if (!popup && event.optString("type") != "map" && steamModeChildEvent(containerId, xid, event.optString("type"), bounds)) return
         when (event.optString("type")) {
+            "launch-status" -> linuxLaunches.filter {
+                it.containerId == containerId && it.desktopId == event.optString("desktop") && !it.window.closing && it.window.linuxXid == 0
+            }.forEach { it.window.view.appendStatusLog(event.optString("line")) }
             "frame" -> linuxWindow(containerId, xid)?.takeIf { it.steamMode != null }?.let { window ->
                 steamReady += window.id
                 steamCovers[window.id]?.takeIf { !it.ended }?.dismiss()
@@ -2049,7 +2110,8 @@ internal abstract class CompositedWindowShell(
             // The launch's window takes the application: same window, entry and place; it only
             // takes the application's size, around its own centre.
             into.packageName = "linuxwin:$containerId:${wmClass.lowercase()}"
-            into.view.showStatus(null)
+            into.linuxAwaitingFirstFrame = true
+            into.view.showStatus(moe.n4tsu.dextop.localText("ウィンドウを接続しています", "Connecting the window"))
             into
         } else {
             createWindow("linuxwin:$containerId:${wmClass.lowercase()}", clampFrame(Rect(origin.left, origin.top, origin.left + w, origin.top + h)))
@@ -2132,7 +2194,12 @@ internal abstract class CompositedWindowShell(
         syncLinuxWindow(window)
         LinuxContainerClient.call(service, { linux -> if (window.view.usesDeckSurface) linux.attachDeckWindow(id, xid, surface)
             else linux.attachWindow(id, xid, surface) }, { attached ->
-            if (!attached) host.log("Plasma v2 Linux window 0x${xid.toString(16)} could not be drawn")
+            if (!attached) {
+                host.log("Plasma v2 Linux window 0x${xid.toString(16)} could not be drawn")
+                if (window.linuxAwaitingFirstFrame) window.view.showError(moe.n4tsu.dextop.localText("ウィンドウを接続できませんでした", "Could not connect the window"))
+            } else if (window.linuxAwaitingFirstFrame && !window.closing) {
+                window.view.showStatus(moe.n4tsu.dextop.localText("最初のフレームを待っています", "Waiting for the first frame"))
+            }
         }) { error -> host.log("Plasma v2 Linux window attach failed: ${error.message}") }
     }
 
@@ -2210,8 +2277,34 @@ internal abstract class CompositedWindowShell(
             val pointer = LinuxPointerState()
             var surface: Surface? = null
 
+            /** The menu's own round corners (LinuxCornerProbe), clipped to; measured from its first frames. */
+            private var corners: FloatArray? = null
+            private var cornersDue = true
+            private val cornerPath = android.graphics.Path()
+            private val probe = Runnable {
+                if (width <= 0 || height <= 0) return@Runnable
+                cornersDue = false
+                val bitmap = runCatching { getBitmap(width, height) }.getOrNull() ?: return@Runnable
+                val radii = try { LinuxCornerProbe.radii(bitmap, dp(32)) } finally { bitmap.recycle() }
+                if (radii.all { it == 0f } || corners?.contentEquals(radii) == true) return@Runnable
+                corners = radii
+                clipToOutline = true
+                invalidateOutline()
+            }
+
             init {
-                isOpaque = true
+                // Menus and tooltips are often round with transparent corners (ARGB windows).
+                isOpaque = false
+                outlineProvider = object : android.view.ViewOutlineProvider() {
+                    override fun getOutline(view: View, outline: android.graphics.Outline) {
+                        val radii = corners ?: return outline.setRect(0, 0, view.width, view.height)
+                        cornerPath.reset()
+                        cornerPath.addRoundRect(0f, 0f, view.width.toFloat(), view.height.toFloat(), floatArrayOf(
+                            radii[0], radii[0], radii[1], radii[1], radii[2], radii[2], radii[3], radii[3],
+                        ), android.graphics.Path.Direction.CW)
+                        outline.setPath(cornerPath)
+                    }
+                }
                 surfaceTextureListener = object : SurfaceTextureListener {
                     override fun onSurfaceTextureAvailable(texture: android.graphics.SurfaceTexture, w: Int, h: Int) {
                         val created = Surface(texture)
@@ -2219,7 +2312,9 @@ internal abstract class CompositedWindowShell(
                         LinuxContainerClient.call(service, { it.attachWindow(containerId, xid, created) }, {}) {}
                     }
 
-                    override fun onSurfaceTextureSizeChanged(texture: android.graphics.SurfaceTexture, w: Int, h: Int) = Unit
+                    override fun onSurfaceTextureSizeChanged(texture: android.graphics.SurfaceTexture, w: Int, h: Int) {
+                        cornersDue = true
+                    }
 
                     override fun onSurfaceTextureDestroyed(texture: android.graphics.SurfaceTexture): Boolean {
                         LinuxContainerClient.service()?.runCatching { detachWindow(containerId, xid) }
@@ -2228,7 +2323,11 @@ internal abstract class CompositedWindowShell(
                         return true
                     }
 
-                    override fun onSurfaceTextureUpdated(texture: android.graphics.SurfaceTexture) = Unit
+                    override fun onSurfaceTextureUpdated(texture: android.graphics.SurfaceTexture) {
+                        if (!cornersDue) return
+                        removeCallbacks(probe)
+                        postDelayed(probe, 120L)
+                    }
                 }
                 val forward = { event: MotionEvent ->
                     val linux = LinuxContainerClient.service()
@@ -2236,7 +2335,7 @@ internal abstract class CompositedWindowShell(
                         forwardLinuxPointer(
                             event, event.x.roundToInt(), event.y.roundToInt(), pointer,
                             send = { action, x, y, button -> linux.windowPointer(containerId, xid, action, x, y, button) },
-                            scroll = { dx, dy -> linux.scroll("$containerId#apps", dx, dy) },
+                            scroll = { dx, dy -> linux.windowScroll(containerId, xid, event.x.roundToInt(), event.y.roundToInt(), dx, dy) },
                             key = { code, down -> linux.key("$containerId#apps", code, down) },
                         )
                     }
@@ -2382,6 +2481,17 @@ internal abstract class CompositedWindowShell(
         }
     }
 
+    private fun captureBlockedByShell(): Boolean = overviewActive || popup != null || switcher != null ||
+        bookUi?.launcherOpen == true || bookUi?.openPanel != null
+
+    /** Mirroring the desktop must capture its physical mouse only for an explicit game grab. */
+    fun hostPointerCaptureRequested(): Boolean {
+        if (!running || captureBlockedByShell()) return false
+        val window = windows.firstOrNull { it.id == activeId && !it.closing && !it.minimized } ?: return false
+        return window.linuxContainer != null && !window.linuxCaptureSuppressed &&
+            (window.linuxCaptureRequested || window.linuxManualCapture) && window.linuxMousePresent
+    }
+
     private val capturePollRunnable = object : Runnable {
         override fun run() {
             if (!running) return
@@ -2402,10 +2512,10 @@ internal abstract class CompositedWindowShell(
                 if (!running || window.closing || window.id != activeId) return@post
                 if (!requested) window.linuxCaptureSuppressed = false
                 window.linuxCaptureRequested = requested
-                if ((requested || window.linuxManualCapture) && !window.linuxCaptureSuppressed && window.linuxMousePresent && window.view.content.hasWindowFocus()) {
+                if (!captureBlockedByShell() && (requested || window.linuxManualCapture) && !window.linuxCaptureSuppressed && window.linuxMousePresent && window.view.content.hasWindowFocus()) {
                     window.view.content.requestFocus()
                     window.view.content.requestPointerCapture()
-                } else if (!requested && !window.linuxManualCapture && window.view.content.hasPointerCapture()) window.view.content.releasePointerCapture()
+                } else if (window.view.content.hasPointerCapture()) window.view.content.releasePointerCapture()
             }
         }
     }
@@ -2433,8 +2543,12 @@ internal abstract class CompositedWindowShell(
         val id = window.linuxContainer ?: return
         val linux = LinuxContainerClient.service() ?: return
         if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
+            if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT) {
+                if (!source.hasPointerCapture()) window.linuxMousePresent = false
+                return
+            }
             window.linuxMousePresent = true
-            if (window.linuxCaptureRequested && !window.linuxCaptureSuppressed) {
+            if (window.id == activeId && !captureBlockedByShell() && window.linuxCaptureRequested && !window.linuxCaptureSuppressed) {
                 source.requestFocus(); source.requestPointerCapture()
             }
         }
@@ -2470,7 +2584,8 @@ internal abstract class CompositedWindowShell(
             forwardLinuxPointer(
                 event, viewport.bufferX(event.x), viewport.bufferY(event.y), window.linuxPointer,
                 send = { action, x, y, button -> linux.windowPointer(id, xid, action, x, y, button) },
-                scroll = { dx, dy -> linux.scroll("$id#apps", dx, dy) },
+                // The window under the pointer scrolls, focused or not.
+                scroll = { dx, dy -> linux.windowScroll(id, xid, viewport.bufferX(event.x), viewport.bufferY(event.y), dx, dy) },
                 key = { code, down -> linux.key("$id#apps", code, down) },
             )
             return
@@ -2588,9 +2703,17 @@ internal abstract class CompositedWindowShell(
         }
         val target = window.displayId
         if (target < 0 || source.width <= 0 || source.height <= 0 || overviewActive) return
-        val copy = MotionEvent.obtain(event)
         val matrix = android.graphics.Matrix()
         matrix.setScale(window.displayWidth / source.width.toFloat(), window.displayHeight / source.height.toFloat())
+        if (event.actionMasked == MotionEvent.ACTION_SCROLL && activeId != window.id) {
+            // A window that is not focused scrolls too, as on a desktop: the app first gets the
+            // pointer over the place, so the view under it (not one it last saw) takes the wheel.
+            val hover = MotionEvent.obtain(event.downTime, event.eventTime, MotionEvent.ACTION_HOVER_MOVE,
+                event.x, event.y, event.metaState).also { it.setSource(event.source) }
+            hover.transform(matrix)
+            injectAsync(hover, target)
+        }
+        val copy = MotionEvent.obtain(event)
         copy.transform(matrix)
         injectAsync(copy, target)
     }
@@ -3053,13 +3176,11 @@ internal abstract class CompositedWindowShell(
         window.minimized = true
         if (autoMode) { workspace.remove(window.id);layoutAutoWorkspace();autoUi?.updateTasks() }
         syncLinuxWindowState(window)
-        val icon = if (autoMode) null else bookUi?.iconRect(taskKey(window)) ?: panel.taskIconRect(taskKey(window))
         val view = window.view
-        val targetX = icon?.centerX() ?: (width / 2f)
-        val targetY = icon?.centerY() ?: height.toFloat()
+        val (targetX, targetY) = minimizeAnchor(window)
         view.pivotX = 0f
         view.pivotY = 0f
-        val scale = .08f
+        val scale = MINIMIZED_SCALE
         view.animate()
             .x(targetX - view.width * scale / 2f)
             .y(targetY - view.height * scale / 2f)
@@ -3076,11 +3197,41 @@ internal abstract class CompositedWindowShell(
         invalidateDesktopPanel()
     }
 
+    /**
+     * Where [window] goes when minimized and comes from when restored: the centre of its taskbar
+     * icon (Book's dock, or Plasma's task manager), in the coordinates the window moves in. The
+     * taskbars report screen coordinates; the window is placed in its parent's.
+     */
+    private fun minimizeAnchor(window: V2Window): Pair<Float, Float> {
+        val key = taskKey(window)
+        val icon = when {
+            autoMode -> null
+            book -> bookUi?.iconRect(key)
+            else -> panel.taskIconRect(key)
+        }
+        val parent = window.view.parent as? View ?: root
+        val origin = IntArray(2).also(parent::getLocationOnScreen)
+        if (icon == null || icon.isEmpty) return parent.width / 2f to parent.height.toFloat()
+        return icon.centerX() - origin[0] to icon.centerY() - origin[1]
+    }
+
     private fun restoreFromMinimize(window: V2Window) {
         window.minimized = false
         syncLinuxWindowState(window)
         if (!window.onAllDesktops && window.desktop != currentDesktop) switchDesktop(window.desktop)
         val view = window.view
+        view.animate().cancel()
+        // It grows out of its taskbar icon, wherever the icon is now.
+        val (fromX, fromY) = minimizeAnchor(window)
+        view.pivotX = 0f
+        view.pivotY = 0f
+        if (view.visibility != View.VISIBLE || view.alpha == 0f) {
+            view.scaleX = MINIMIZED_SCALE
+            view.scaleY = MINIMIZED_SCALE
+            view.x = fromX - view.width * MINIMIZED_SCALE / 2f
+            view.y = fromY - view.height * MINIMIZED_SCALE / 2f
+            view.alpha = 0f
+        }
         view.visibility = View.VISIBLE
         view.animate()
             .x((window.frame.left - grip).toFloat()).y((window.frame.top - grip).toFloat())
@@ -3108,6 +3259,17 @@ internal abstract class CompositedWindowShell(
         val display = window.displayId
         if (display >= 0) {
             wmExecutor.execute { runCatching { bridge.tasks(display).forEach(bridge::close) } }
+        }
+        closeWindowNow(window)
+    }
+
+    /** Closes [window] whose app went behind its display's home: its tasks end, the home stays the system's. */
+    private fun leaveToHome(window: V2Window) {
+        val display = window.displayId
+        if (display >= 0) wmExecutor.execute {
+            runCatching { bridge.tasks(display) }.getOrDefault(emptyList())
+                .filter { it.activityType != TaskBridge.ACTIVITY_TYPE_HOME }
+                .forEach { task -> runCatching { bridge.close(task) } }
         }
         closeWindowNow(window)
     }
@@ -3612,10 +3774,40 @@ internal abstract class CompositedWindowShell(
                 }
             }
         }
+        // Network and power take many Binder calls (and may run a privileged command): read them
+        // off the main thread, one read at a time; changes arriving meanwhile get one more read.
+        if (trayReading) trayReadAgain = true else {
+            trayReading = true
+            systemExecutor.execute {
+                val network = runCatching { systemControls.networkStatus() }.getOrNull()
+                val power = runCatching { systemControls.powerStatus() }.getOrNull()
+                handler.post {
+                    trayReading = false
+                    trayNetwork = network
+                    trayPower = power
+                    if (!running) return@post
+                    applyTray()
+                    if (trayReadAgain) {
+                        trayReadAgain = false
+                        refreshTray()
+                    }
+                }
+            }
+        }
+        // Volume is cheap and should follow the keys at once; the rest shows the last read.
+        applyTray()
+    }
+
+    private var trayReading = false
+    private var trayReadAgain = false
+    private var trayNetwork: PlasmaSystemControls.NetworkStatus? = null
+    private var trayPower: PlasmaSystemControls.PowerStatus? = null
+
+    private fun applyTray() {
         val audio = service.getSystemService(AudioManager::class.java)
         val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
-        val network = runCatching { systemControls.networkStatus() }.getOrNull()
-        val power = runCatching { systemControls.powerStatus() }.getOrNull()
+        val network = trayNetwork
+        val power = trayPower
         val (networkGlyph, networkLevel) = when {
             network == null -> Glyph.NETWORK to 1f
             network.airplaneMode && network.transport == PlasmaSystemControls.Transport.NONE -> Glyph.AIRPLANE to 1f
@@ -3937,8 +4129,10 @@ internal abstract class CompositedWindowShell(
 
     override fun log(message: String) = host.log("Book: $message")
 
-    /** The first installed container, which has Linux applications listed. */
-    override fun installedContainer(): String? =
+    private var desktopContainerId: String? = null
+
+    /** The selected installed container, even when its application list is empty. */
+    override fun installedContainer(): String? = desktopContainerId ?:
         linuxApps.firstOrNull { it.packageName.startsWith(LINUX_APP_PREFIX) }?.packageName
             ?.removePrefix(LINUX_APP_PREFIX)?.substringBefore(':')
 
@@ -3953,21 +4147,27 @@ internal abstract class CompositedWindowShell(
         }) { onDone(null) }
     }
 
-    /**
-     * Opens ~/Desktop/[name] with the container's handler (its file manager for a folder): a
-     * hidden desktop entry runs xdg-open, launched like any Linux app so its window is framed.
-     */
+    /** Opens a Desktop item in the guest, without creating an application-launch placeholder. */
     override fun openLinuxDesktopItem(name: String) {
         val id = desktopContainer() ?: return
+        if (!BookDesktopFiles.validName(name)) return
         val encoded = android.util.Base64.encodeToString(name.toByteArray(), android.util.Base64.NO_WRAP)
         // The name stays base64 until the guest's shell decodes it: no quoting to get wrong.
+        val token = java.util.UUID.randomUUID().toString()
+        val opener = android.util.Base64.encodeToString(BookDesktopFiles.openScript.toByteArray(), android.util.Base64.NO_WRAP)
         val setup = """
             S="${'$'}{HOME:-/root}/.local/share/dextop"; A="${'$'}{HOME:-/root}/.local/share/applications"; mkdir -p "${'$'}S" "${'$'}A"
-            printf '%s\n' 'exec xdg-open "${'$'}{HOME:-/root}/Desktop/${'$'}(printf %s $encoded | base64 -d)"' > "${'$'}S/open.sh"
-            printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Dextop' 'NoDisplay=true' 'Exec=sh -c "sh ~/.local/share/dextop/open.sh"' > "${'$'}A/dextop-open.desktop"
+            ${BookDesktopFiles.directoryScript}
+            printf '%s\n' 'D="${'$'}(xdg-user-dir DESKTOP 2>/dev/null)"; [ -n "${'$'}D" ] || D="${'$'}{HOME:-/root}/Desktop"' 'rm -f -- "${'$'}0" "${'$'}{HOME:-/root}/.local/share/applications/dextop-open-$token.desktop"' 'P="${'$'}D/${'$'}(printf %s $encoded | base64 -d)"' > "${'$'}S/open-$token.sh"
+            printf %s $opener | base64 -d >> "${'$'}S/open-$token.sh"
+            printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Dextop' 'NoDisplay=true' 'Exec=sh -c "sh ~/.local/share/dextop/open-$token.sh"' > "${'$'}A/dextop-open-$token.desktop"
         """.trimIndent()
         LinuxContainerClient.call(service, { linux -> linux.runCommand(id, setup, 15) },
-            { launchLinuxApp("${LINUX_APP_PREFIX}$id:dextop-open.desktop", label = name) }) { error ->
+            { json ->
+                if (runCatching { JSONObject(json).optInt("exitCode", 1) == 0 }.getOrDefault(false))
+                    launchLinuxApp("${LINUX_APP_PREFIX}$id:dextop-open-$token.desktop", label = name, newInstance = true, showLaunchStatus = false)
+                else showLinuxError(id, "Could not open Linux Desktop item", false)
+            }) { error ->
             showLinuxError(id, error.message ?: error.toString(), false)
         }
     }
@@ -4115,6 +4315,7 @@ internal abstract class CompositedWindowShell(
     override fun favorites(): List<String> = csv("favorites")
     override fun recent(): List<String> = csv("recent")
     override fun isFavorite(packageName: String) = packageName in favorites()
+    override fun pinnedApps(): List<PanelTask> = panelEntries().filter { it.pinned }
     override fun isPinned(packageName: String) = packageName in pinnedList()
     private fun pinnedList() = csv("pinned")
     private fun csv(key: String): List<String> = prefs.getString(key, "").orEmpty().split(',').filter { it.isNotBlank() }
@@ -4140,7 +4341,7 @@ internal abstract class CompositedWindowShell(
         dismissPopup()
         editCsv("recent") { list -> list.remove(packageName); list.add(0, packageName); while (list.size > 12) list.removeAt(list.lastIndex) }
         if (packageName.startsWith(LINUX_APP_PREFIX)) {
-            launchLinuxApp(packageName)
+            launchLinuxApp(packageName, newInstance = newInstance)
             return
         }
         if (packageName.startsWith(BookUi.LINUX_DESKTOP_PREFIX)) {

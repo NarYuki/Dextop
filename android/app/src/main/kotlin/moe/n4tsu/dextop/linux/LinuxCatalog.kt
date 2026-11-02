@@ -316,6 +316,7 @@ internal object LinuxCatalog {
             dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf --fork >/tmp/dbus-system-${'$'}D.log 2>&1
             fi
         fi
+        $KEYRING_UNLOCK
         echo dextop-wayland-ready
         while :; do sleep 3600 || exit; done
     """.trimIndent() + "\n"
@@ -346,7 +347,7 @@ internal object LinuxCatalog {
         # AWT otherwise waits for a reparent event and leaves its content at
         # the initial size (Arduino/Swing appears blank after window resize).
         export _JAVA_AWT_WM_NONREPARENTING=${'$'}{_JAVA_AWT_WM_NONREPARENTING:-1}
-        ${if (androidWindows) ANDROID_WINDOW_DECORATIONS else ""}
+        ${if (androidWindows) ANDROID_WINDOW_DECORATIONS else FRAMED_WINDOW_DECORATIONS}
         $RENDERER_OVERRIDE
         $GTK_FONT_SCHEMA_FIX
         ${if (wayland) (if (waylandGpu) WAYLAND_ENVIRONMENT else WAYLAND_TOOLKIT_ENVIRONMENT) else "unset WAYLAND_DISPLAY DEXTOP_WAYLAND_KGSL MESA_LOADER_DRIVER_OVERRIDE; export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11 SDL_VIDEO_DRIVER=x11 MOZ_ENABLE_WAYLAND=0 ELECTRON_OZONE_PLATFORM_HINT=x11"}
@@ -374,6 +375,27 @@ internal object LinuxCatalog {
             done
         fi
         export XDG_CONFIG_DIRS=/etc/dextop/app-xdg:${'$'}{XDG_CONFIG_DIRS:-/etc/xdg}
+    """.trimIndent()
+
+    /**
+     * Dextop Plasma and Book leave client-decorated windows unframed, so their own title bars
+     * need all their buttons. On Wayland, GTK (and Chrome through it) takes the button layout
+     * from GSettings, whose default is "appmenu:close": a close button only. Without a dconf
+     * backend GSettings forgets everything anyway, so these launches use GIO's keyfile backend
+     * holding the full layout (the user's own value, once set, stays); with dconf the value is
+     * set there when the user has none.
+     */
+    private val FRAMED_WINDOW_DECORATIONS = """
+        DEXTOP_LAYOUT="'appmenu:minimize,maximize,close'"
+        if ! ls /usr/lib/*/gio/modules/libdconfsettings.so /usr/lib/gio/modules/libdconfsettings.so >/dev/null 2>&1; then
+            KF="${'$'}{HOME:-/root}/.config/glib-2.0/settings/keyfile"
+            mkdir -p "${'$'}{KF%/*}"
+            grep -q '^button-layout=' "${'$'}KF" 2>/dev/null ||
+                printf '%s\n' '[org/gnome/desktop/wm/preferences]' "button-layout=${'$'}DEXTOP_LAYOUT" >>"${'$'}KF"
+            export GSETTINGS_BACKEND=keyfile
+        elif command -v dconf >/dev/null 2>&1 && [ -z "${'$'}(dconf read /org/gnome/desktop/wm/preferences/button-layout 2>/dev/null)" ]; then
+            dconf write /org/gnome/desktop/wm/preferences/button-layout "${'$'}DEXTOP_LAYOUT" 2>/dev/null
+        fi
     """.trimIndent()
 
     /** Printed after a launched command ends, followed by its exit code. */
@@ -498,7 +520,27 @@ internal object LinuxCatalog {
             'XTerm*faceSize: 11' 'XTerm*locale: true' \
             'XTerm*VT100.translations: #override \n Ctrl Shift <Key>C: copy-selection(CLIPBOARD) \n Ctrl Shift <Key>V: insert-selection(CLIPBOARD)' \
             | xrdb -nocpp -merge
+        $KEYRING_UNLOCK
         [ ! -f /etc/dextop/start-session.sh ] || sh /etc/dextop/start-session.sh
+    """.trimIndent()
+
+    /**
+     * The keyring Dextop set up (LinuxKeyring): its password, handed over for this session
+     * only, creates the login keyring the first time (as the default one) and unlocks it, so
+     * applications store secrets encrypted without asking for a password at every start.
+     * Expects the session bus to run.
+     */
+    private val KEYRING_UNLOCK = """
+        if [ -f /var/lib/dextop/keyring-unlock ]; then
+            DEXTOP_KR=${'$'}(cat /var/lib/dextop/keyring-unlock); rm -f /var/lib/dextop/keyring-unlock
+            if command -v gnome-keyring-daemon >/dev/null 2>&1; then
+                KD="${'$'}{HOME:-/root}/.local/share/keyrings"
+                mkdir -p "${'$'}KD" && chmod 700 "${'$'}KD"
+                [ -s "${'$'}KD/default" ] || printf 'login\n' >"${'$'}KD/default"
+                printf '%s' "${'$'}DEXTOP_KR" | gnome-keyring-daemon --replace --unlock --daemonize --components=secrets >/dev/null 2>&1
+            fi
+            unset DEXTOP_KR
+        fi
     """.trimIndent()
 
     /** Where the GPU package installs its Vulkan driver manifest (see [turnipScript]). */

@@ -21,6 +21,8 @@ firebase-debug.*.log
 
 # Internal project setup notes
 /docs/internal/
+/docs/*audit*.md
+/docs/*research*.md
 /docs/FIREBASE_ANALYTICS_SETUP.md
 /docs/container-development.md
 /docs/controller-touchpad.md

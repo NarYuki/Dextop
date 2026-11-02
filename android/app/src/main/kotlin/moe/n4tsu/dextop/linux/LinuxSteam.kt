@@ -19,11 +19,6 @@ internal object LinuxSteam {
         if [ ! -x "${'$'}root/steamrtarm64/steam" ]; then
             $INSTALLER
         fi
-        exec 9>"${'$'}root/.dextop-launch.lock"
-        if ! flock -n 9; then
-            echo 'Steam is already starting or running.' >&2
-            exit 0
-        fi
         # Restore only the exact helper edit made by the earlier Dextop launcher.
         helper="${'$'}root/steamrtarm64/steamwebhelper.sh"
         if [ -f "${'$'}helper" ] && [ "${'$'}(wc -c <"${'$'}helper")" -eq 392 ] &&
@@ -47,6 +42,25 @@ internal object LinuxSteam {
         fi
         # Older containers without the global preload can still use this launcher.
         [ -r ${LinuxSessionCompatibility.GUEST_PRELOAD} ] || export LD_PRELOAD=$PRELOAD${'$'}{LD_PRELOAD:+:${'$'}LD_PRELOAD}
+        # A second launch is an IPC request, not a reason to discard the user's click.
+        # In particular, Steam can stay running after its last window has been closed.
+        [ "${'$'}#" -ne 0 ] || set -- steam://open/main
+        exec 9>"${'$'}root/.dextop-launch.lock"
+        if flock -n -E 73 9; then
+            :
+        else
+            lock_status=${'$'}?
+            if [ "${'$'}lock_status" -ne 73 ]; then
+                echo "Steam launch lock failed (exit ${'$'}lock_status)." >&2
+                exit "${'$'}lock_status"
+            fi
+            echo 'Forwarding request to the running Steam client.' >&2
+            if [ ! -p "${'$'}HOME/.steam/steam.pipe" ]; then
+                echo 'Steam single-instance IPC is unavailable; restore its existing window from the desktop.' >&2
+                exit 1
+            fi
+            exec "${'$'}root/steamrtarm64/steam" "${'$'}@" 9>&-
+        fi
         # Like Valve's steam.sh, honor the client's update/restart request (42).
         # An exec here exits after the first bootstrap update without opening the client.
         steam_updates=0

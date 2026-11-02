@@ -23,16 +23,16 @@ class DeviceMatchTest {
             assertTrue(profile.directPlasmaDisplay)
             assertTrue(profile.untrustedMirrorDisplay)
             assertTrue(profile.fullscreenApplicationDisplays)
-            assertTrue(profile.privateApplicationDisplays)
+            assertFalse(profile.privateApplicationDisplays) // Public displays allow Gboard candidate windows.
             assertTrue(profile.passivePlasmaShellFocus)
-            assertEquals("dextop_plasma_v2", profile.defaultWindowManager)
+            assertEquals("dextop_book", profile.defaultWindowManager)
         }
     }
 
-    @Test fun xperiaStartsOnTheDextopWindowManagerAndOthersKeepTheSystemOne() {
+    @Test fun bookIsTheDefaultOnXperiaAndOtherDevices() {
         val xperia = DeviceIdentity("Sony", "Sony", "A401SO", "A401SO", "A401SO", "Sony/A401SO/build", 36)
-        assertEquals("dextop_plasma_v2", DesktopEnvironmentRegistry.resolve(xperia).defaultWindowManager)
-        assertEquals("system", DesktopEnvironmentRegistry.resolve(pixel).defaultWindowManager)
+        assertEquals("dextop_book", DesktopEnvironmentRegistry.resolve(xperia).defaultWindowManager)
+        assertEquals("dextop_book", DesktopEnvironmentRegistry.resolve(pixel).defaultWindowManager)
     }
 
     private val pixel = DeviceIdentity("Google", "google", "Pixel 9", "tokay", "tokay", "google/tokay/build", 35)

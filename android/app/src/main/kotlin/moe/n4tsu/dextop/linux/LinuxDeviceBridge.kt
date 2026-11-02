@@ -16,7 +16,8 @@ import java.util.UUID
  * Serves the USB devices the user allowed for Linux (Linux settings → Compatibility and
  * permissions) to the guest's preload (linux_android_usb.c):
  *   "U <device>": the device's usbfs descriptor, for libusb and other direct USB users;
- *   "S <device>": a USB serial port run here, framed data / line settings / DTR-RTS.
+ *   "S <device>": a USB serial port run here, framed data / line settings / DTR-RTS;
+ *   "H <device>": a security key's FIDO reports (CTAP HID), framed data, for /dev/hidrawN.
  * Only this app's UID (the Android mode's Linux) and, in the full privilege mode, the shell
  * user that runs Linux may connect; the socket name is random and only Linux reads it.
  */
@@ -34,6 +35,8 @@ internal object LinuxDeviceBridge {
         if (started != null) return
         val app = context.applicationContext
         started = app
+        // Another device may get a departed one's name: security keys are read again.
+        LinuxUsb.onChange { hidKeys.clear() }
         val server = LocalServerSocket(socketName)
         Thread({
             while (true) {
@@ -73,6 +76,75 @@ internal object LinuxDeviceBridge {
             val tty = if (acmPort) "ttyACM${acm++}" else "ttyUSB${usb++}"
             append("serial $tty ${device.deviceName}\n")
         }
+        // Security keys, numbered as hidraw nodes; LinuxHidSysfs lists them for udev.
+        var hidraw = 0
+        manager(context)?.deviceList.orEmpty().values.sortedBy { it.deviceName }.forEach { device ->
+            if (!LinuxUsb.enabled(context, device) || manager(context)?.hasPermission(device) != true) return@forEach
+            val key = hidKey(context, device) ?: return@forEach
+            val name = listOfNotNull(device.manufacturerName, device.productName).joinToString(" ").ifBlank { "Security key" }
+            append("hid hidraw${hidraw++} ${device.deviceName} %04x %04x ".format(device.vendorId, device.productId))
+            append(key.descriptor.joinToString("") { "%02x".format(it) })
+            append(' ').append(android.util.Base64.encodeToString(name.toByteArray(), android.util.Base64.NO_WRAP)).append('\n')
+        }
+    }
+
+    /** A security key's FIDO interface and its HID report descriptor. */
+    private class HidKey(val interfaceIndex: Int, val descriptor: ByteArray)
+
+    /** Read once per plugged-in device (by Android device name); empty when it is no security key. */
+    private val hidKeys = java.util.concurrent.ConcurrentHashMap<String, java.util.Optional<HidKey>>()
+
+    /**
+     * The FIDO interface of [device]: a HID interface whose report descriptor has the FIDO
+     * Alliance usage page (0xF1D0), read from the device itself.
+     */
+    private fun hidKey(context: Context, device: UsbDevice): HidKey? {
+        hidKeys[device.deviceName]?.let { return it.orElse(null) }
+        // Only a security key maker's FIDO interface is ever claimed: claiming takes the interface
+        // from Android's own HID driver, which would take a mouse or keyboard away from Android.
+        val fido = LinuxUsb.fidoInterface(device)
+        val candidates = (0 until device.interfaceCount).filter { index -> device.getInterface(index) == fido }
+        if (candidates.isEmpty()) {
+            hidKeys[device.deviceName] = java.util.Optional.empty()
+            return null
+        }
+        val connection = manager(context)?.openDevice(device) ?: run {
+            Log.w(TAG, "Security key ${device.deviceName}: cannot open the device")
+            return null
+        }
+        val index = candidates.first()
+        val usb = device.getInterface(index)
+        try {
+            // Android's own HID driver may hold it; Dextop takes it over while Linux uses the key.
+            // A failure (busy while a relay holds it) is not remembered: the next look tries again.
+            if (!connection.claimInterface(usb, true)) {
+                Log.w(TAG, "Security key ${device.deviceName}: interface ${usb.id} is busy")
+                return null
+            }
+            try {
+                val buffer = ByteArray(1024)
+                // GET_DESCRIPTOR (report) from the interface.
+                val n = connection.controlTransfer(0x81, 0x06, 0x2200, usb.id, buffer, buffer.size, 1000)
+                if (n <= 0) {
+                    Log.w(TAG, "Security key ${device.deviceName}: report descriptor unreadable ($n)")
+                    return null
+                }
+                val descriptor = buffer.copyOf(n)
+                val found = descriptor.takeIf(::fidoUsagePage)?.let { HidKey(index, it) }
+                Log.i(TAG, "Security key ${device.deviceName}: descriptor $n bytes, FIDO=${found != null}")
+                hidKeys[device.deviceName] = java.util.Optional.ofNullable(found)
+                return found
+            } finally {
+                connection.releaseInterface(usb)
+            }
+        } finally {
+            connection.close()
+        }
+    }
+
+    /** Whether a report descriptor declares the FIDO usage page (Usage Page item 0x06 0xD0 0xF1). */
+    private fun fidoUsagePage(descriptor: ByteArray): Boolean = (0 until descriptor.size - 2).any {
+        descriptor[it] == 0x06.toByte() && descriptor[it + 1] == 0xd0.toByte() && descriptor[it + 2] == 0xf1.toByte()
     }
 
     @Volatile private var publishing = false
@@ -143,6 +215,7 @@ internal object LinuxDeviceBridge {
             device == null -> socket.outputStream.write(1)
             request.startsWith("U ") -> passthrough(context, socket, device)
             request.startsWith("S ") -> serial(context, socket, input, device)
+            request.startsWith("H ") -> hid(context, socket, input, device)
             else -> socket.outputStream.write(1)
         }
     }
@@ -159,6 +232,63 @@ internal object LinuxDeviceBridge {
             // The guest holds its own reference to the device now; wait until it hangs up.
             runCatching { socket.soTimeout = 0; socket.inputStream.read() }
         } finally {
+            connection.close()
+        }
+    }
+
+    /** A security key's reports: from Linux to its OUT endpoint (or SET_REPORT), and from its IN endpoint back. */
+    private fun hid(context: Context, socket: LocalSocket, input: DataInputStream, device: UsbDevice) {
+        val key = hidKey(context, device) ?: run { socket.outputStream.write(1); return }
+        val connection = manager(context)?.openDevice(device) ?: run { socket.outputStream.write(1); return }
+        val usb = device.getInterface(key.interfaceIndex)
+        try {
+            if (!connection.claimInterface(usb, true)) { socket.outputStream.write(1); return }
+            val endpoints = (0 until usb.endpointCount).map(usb::getEndpoint)
+                .filter { it.type == android.hardware.usb.UsbConstants.USB_ENDPOINT_XFER_INT }
+            val inbound = endpoints.firstOrNull { it.direction == android.hardware.usb.UsbConstants.USB_DIR_IN }
+                ?: run { socket.outputStream.write(1); return }
+            val outbound = endpoints.firstOrNull { it.direction == android.hardware.usb.UsbConstants.USB_DIR_OUT }
+            socket.outputStream.write(0)
+            socket.soTimeout = 0
+            val output = socket.outputStream
+            val open = java.util.concurrent.atomic.AtomicBoolean(true)
+            val reader = Thread({
+                val buffer = ByteArray(inbound.maxPacketSize.coerceAtLeast(64))
+                try {
+                    while (open.get()) {
+                        val n = connection.bulkTransfer(inbound, buffer, buffer.size, 500)
+                        if (n > 0) synchronized(output) {
+                            output.write(byteArrayOf(FRAME_DATA.toByte(), (n and 0xff).toByte(), (n shr 8).toByte()))
+                            output.write(buffer, 0, n)
+                            output.flush()
+                        }
+                    }
+                } catch (_: Exception) {
+                    runCatching { socket.shutdownInput() }
+                }
+            }, "DextopLinuxHidRead").apply { isDaemon = true; start() }
+            try {
+                while (true) {
+                    val type = input.read()
+                    if (type < 0) break
+                    val length = input.readUnsignedByte() or (input.readUnsignedByte() shl 8)
+                    val payload = ByteArray(length).also(input::readFully)
+                    if (type != FRAME_DATA) continue
+                    if (outbound != null) {
+                        // Reports are of the endpoint's size; CTAP HID pads short ones with zeros.
+                        val report = payload.copyOf(maxOf(payload.size, outbound.maxPacketSize))
+                        connection.bulkTransfer(outbound, report, report.size, 2000)
+                    } else {
+                        // SET_REPORT (output) on the control pipe.
+                        connection.controlTransfer(0x21, 0x09, 0x0200, usb.id, payload, payload.size, 2000)
+                    }
+                }
+            } finally {
+                open.set(false)
+                reader.join(1000)
+            }
+        } finally {
+            runCatching { connection.releaseInterface(usb) }
             connection.close()
         }
     }

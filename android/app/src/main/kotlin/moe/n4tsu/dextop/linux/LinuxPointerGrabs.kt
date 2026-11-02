@@ -64,10 +64,23 @@ internal object LinuxPointerGrabTarget {
             return false
         }
         if (grab == 0 || window == 0) return false
-        if (grab == root || belongs(grab)) return true
+        if (grab == root) return belongs(focus)
+        if (belongs(grab)) return belongs(focus)
         // A visible helper's active grab already routes physical input at the
         // X server. Capture for the focused client, without activating helpers
         // or treating another ordinary application window as this game's child.
         return belongs(focus) && parent(grab) == root && inputOnly(grab)
+    }
+}
+
+/** XFixes GetCursorImage: only a valid, entirely transparent cursor means mouse look. */
+internal object LinuxPointerCursor {
+    fun hidden(image: ByteBuffer): Boolean {
+        if (image.limit() < 32) return false
+        val width = image.getShort(12).toInt() and 65535
+        val height = image.getShort(14).toInt() and 65535
+        val pixels = width.toLong() * height
+        if (pixels == 0L || pixels > (image.limit() - 32) / 4) return false
+        return (0 until pixels.toInt()).all { image.getInt(32 + it * 4) ushr 24 == 0 }
     }
 }

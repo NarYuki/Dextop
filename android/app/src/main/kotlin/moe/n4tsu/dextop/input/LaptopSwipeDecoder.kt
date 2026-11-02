@@ -27,6 +27,12 @@ internal class LaptopSwipeDecoder(context: Context) {
     private val appContext = context.applicationContext
     private val resources = context.applicationContext.resources
     private val learning = appContext.getSharedPreferences("swipe_decoder_learning", Context.MODE_PRIVATE)
+    /** The learned counts, read once: decoding looks one up for every candidate word. */
+    private val learnedCounts by lazy {
+        java.util.concurrent.ConcurrentHashMap<String, Int>().apply {
+            learning.all.forEach { (key, value) -> (value as? Int)?.let { put(key, it) } }
+        }
+    }
     private val assetLexicons = mutableMapOf<Language, List<Pair<String, String>>>()
     private val lexicons = mutableMapOf<Language, List<Lexeme>>()
     private val preparedTemplates = object : LinkedHashMap<TemplateKey, List<PreparedLexeme>>(4, .75f, true) {
@@ -94,7 +100,7 @@ internal class LaptopSwipeDecoder(context: Context) {
             }
             path /= SAMPLE_COUNT
             val length = abs(traceLength - lexeme.pathLength)
-            val learned = learning.getInt("${language.id}:${lexeme.value.lowercase(Locale.ROOT)}", 0)
+            val learned = learnedCounts["${language.id}:${lexeme.value.lowercase(Locale.ROOT)}"] ?: 0
             val contextBoost = contextualBoost(language, previousWord, lexeme.value)
             val candidate = Candidate(
                 lexeme.value,
@@ -111,7 +117,9 @@ internal class LaptopSwipeDecoder(context: Context) {
 
     fun learn(language: Language, value: String) {
         val key = "${language.id}:${value.lowercase(Locale.ROOT)}"
-        learning.edit().putInt(key, (learning.getInt(key, 0) + 1).coerceAtMost(10_000)).apply()
+        val count = ((learnedCounts[key] ?: 0) + 1).coerceAtMost(10_000)
+        learnedCounts[key] = count
+        learning.edit().putInt(key, count).apply()
     }
 
     private fun contextualBoost(language: Language, previousWord: String?, value: String): Float {

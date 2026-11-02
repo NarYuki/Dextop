@@ -194,19 +194,15 @@ internal object WindowManagerSelection {
     /** Dextop Book: the compositor with Material 3 Expressive chrome. */
     const val DEXTOP_BOOK = "dextop_book"
     private const val KEY = "flutter.window_manager"
-    private const val EXPERIMENTAL_ENABLED_KEY = "flutter.experimental_dextop_window_manager"
 
     fun current(context: Context): String {
         val preferences = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
-        // Plasma v2 is a regular option; the v1 freeform shell stays experimental.
-        return when (preferences.getString(KEY, SYSTEM)) {
-            DEXTOP_PLASMA_V2 -> DEXTOP_PLASMA_V2
-            DEXTOP_BOOK -> DEXTOP_BOOK
-            DEXTOP_PLASMA -> if (preferences.getBoolean(EXPERIMENTAL_ENABLED_KEY, false)) DEXTOP_PLASMA else SYSTEM
-            else -> SYSTEM
-        }
+        // Retired Plasma selections migrate to Book; an explicit system choice is preserved.
+        return normalize(preferences.getString(KEY, null))
     }
 
-    /** True for either Dextop shell (v1 freeform or v2 compositor). */
+    internal fun normalize(value: String?): String = if (value == SYSTEM) SYSTEM else DEXTOP_BOOK
+
+    /** Whether Dextop Book owns the display rather than the Android desktop. */
     fun isPlasma(context: Context): Boolean = current(context) != SYSTEM
 }

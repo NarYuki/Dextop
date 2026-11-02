@@ -22,9 +22,17 @@ internal object LinuxNetworkMonitor {
     private var polling = false
     private var scanRequested: () -> Boolean = { false }
     private var lastScanAt = 0L
+    // Worker thread only: the last scan results read, and the last state published.
+    private var scanPoints: List<LinuxWifiScan.AccessPoint>? = null
+    private var scanReadAt = 0L
+    private var lastPublished: String? = null
+    /** The newest state to fill in and publish; a queued job takes whichever is newest when it runs. */
+    private var pendingValue: Pair<JSONObject, Network?>? = null
 
     @Synchronized fun start(context: Context, scanRequested: () -> Boolean = { false }, publish: (String) -> Unit) {
         this.publish = publish
+        // A new listener has seen nothing yet.
+        worker.execute { lastPublished = null }
         this.scanRequested = scanRequested
         this.context = context.applicationContext
         val manager = context.getSystemService(ConnectivityManager::class.java)
@@ -71,11 +79,19 @@ internal object LinuxNetworkMonitor {
                     .forEach { put(it.hostAddress?.substringBefore('%')) }
             })
         val context = context ?: return
-        val network = active
+        // Callbacks arrive in bursts (each signal change is one): one job per burst, and it
+        // fills in the newest state.
+        val queued = pendingValue != null
+        pendingValue = value to active
+        if (queued) return
         worker.execute {
-            runCatching {
+            val (value, network) = synchronized(this@LinuxNetworkMonitor) {
+                pendingValue.also { pendingValue = null }
+            } ?: return@execute
+            val interfaceName = value.optString("name")
+            runCatching inner@{
                 val manager = context.getSystemService(ConnectivityManager::class.java)
-                if (network != manager.activeNetwork) return@runCatching
+                if (network != manager.activeNetwork) return@inner
                 val access = PrivilegedAccess("LinuxNetworkState")
                 // Android mode without the privileged service: only what ordinary app APIs report.
                 val privileged = LinuxExecutionMode.privilegeAllowed(context)
@@ -109,8 +125,15 @@ internal object LinuxNetworkMonitor {
                 if (status.wifiEnabled && (scanRequest || now - lastScanAt > 30_000) && now - lastScanAt > 5_000) {
                     if (run("cmd", "wifi", "start-scan")?.succeeded == true) lastScanAt = now
                 }
-                val scan = if (status.wifiEnabled) run("cmd", "wifi", "list-scan-results") else null
-                val points = LinuxWifiScan.parse(scan?.takeIf { it.succeeded }?.output.orEmpty())
+                // Results change only after a scan: read them for a while after one, else reuse them.
+                val readScan = status.wifiEnabled && (scanPoints == null || scanRequest || now - lastScanAt < 15_000 || now - scanReadAt > 60_000)
+                val scan = if (readScan) run("cmd", "wifi", "list-scan-results") else null
+                if (!status.wifiEnabled) scanPoints = null
+                else if (scan != null) {
+                    scanPoints = if (scan.succeeded) LinuxWifiScan.parse(scan.output) else null
+                    scanReadAt = now
+                }
+                val points = scanPoints.orEmpty()
                 val bssid = if (cellular) "02:00:00:00:00:01" else
                     Regex("BSSID: ([0-9a-fA-F:]{17})").find(wifiStatus.orEmpty())?.groupValues?.get(1)
                 value.put("accessPoints", JSONArray().apply {
@@ -119,18 +142,24 @@ internal object LinuxNetworkMonitor {
                             .put("frequency", ap.frequency).put("strength", ap.strength).put("capabilities", ap.capabilities))
                     }
                 }).put("lastScan", lastScanAt).put("bssid", bssid)
-                value.put("interface", name).put("connected", network != null)
+                value.put("interface", interfaceName).put("connected", network != null)
                     .put("transport", if (wireless) "wifi" else if (network == null) "none" else "ethernet")
                     .put("sourceTransport", status.transport.name.lowercase())
                     .put("validated", status.internet).put("metered", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false)
                     .put("captivePortal", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true)
-                    .put("wifiEnabled", wireless || status.wifiEnabled).put("scanAllowed", status.wifiEnabled && scan?.succeeded == true)
+                    .put("wifiEnabled", wireless || status.wifiEnabled).put("scanAllowed", status.wifiEnabled && scanPoints != null)
                     .put("ssid", if (cellular) carrier ?: "Mobile network" else wifi?.ssid ?: "Wi-Fi")
                     .put("strength", ((level ?: 0f) * 100).toInt().coerceIn(0, 100))
                     .put("signalKnown", level != null).put("frequency", wifi?.frequencyMhz ?: 0)
                     .put("bitrate", (wifi?.linkSpeedMbps ?: 0) * 1000)
+                // Unchanged states are not sent again: the periodic check mostly finds nothing new.
+                val text = value.toString()
+                if (text == lastPublished) return@inner
                 synchronized(this@LinuxNetworkMonitor) {
-                    if (active == network) publish?.invoke(value.toString())
+                    if (active == network) {
+                        publish?.invoke(text)
+                        lastPublished = text
+                    }
                 }
             }.onFailure { android.util.Log.w("LinuxNetworkState", "Cannot publish Android network status", it) }
         }

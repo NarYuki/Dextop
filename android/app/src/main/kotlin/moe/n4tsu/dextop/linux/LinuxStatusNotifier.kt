@@ -37,7 +37,8 @@ internal class LinuxStatusNotifier(private val display: Int, private val root: F
 
     init {
         Thread(::run, "DextopStatusNotifier-$display").apply { isDaemon = true; start() }
-        Thread({ while (running) { items.values.forEach(::refresh); SystemClock.sleep(1_000) } }, "DextopStatusIcons-$display").apply { isDaemon = true; start() }
+        // Items announce changes with signals (each refreshes them); this only catches items that don't.
+        Thread({ while (running) { items.values.forEach(::refresh); SystemClock.sleep(10_000) } }, "DextopStatusIcons-$display").apply { isDaemon = true; start() }
     }
 
     private fun run() {
@@ -184,9 +185,8 @@ internal class LinuxStatusNotifier(private val display: Int, private val root: F
                 entry.itemIsMenu = properties["ItemIsMenu"] == true
                 val attention = properties["Status"] == "NeedsAttention"
                 val prefix = if (attention) "AttentionIcon" else "Icon"
-                val encoded = pixmap(properties[prefix + "Pixmap"]) ?: (properties[prefix + "Name"] as? String)?.let {
-                    LinuxDesktopEntries.iconPng(root, it)?.let { png -> Base64.encodeToString(png, Base64.NO_WRAP) }
-                } ?: pixmap(properties["IconPixmap"]) ?: ""
+                val encoded = pixmap(properties[prefix + "Pixmap"]) ?: (properties[prefix + "Name"] as? String)?.let(::themeIcon)
+                    ?: pixmap(properties["IconPixmap"]) ?: ""
                 val tooltip = properties["ToolTip"] as? List<*>
                 val title = (properties["Title"] as? String)?.takeIf { it.isNotBlank() }
                     ?: (tooltip?.getOrNull(2) as? String)?.takeIf { it.isNotBlank() } ?: (properties["Id"] as? String) ?: "Linux"
@@ -196,6 +196,13 @@ internal class LinuxStatusNotifier(private val display: Int, private val root: F
             }
         }.onFailure { entry.fetching = false }
     }
+
+    /** Theme icons by name, encoded once: finding one searches the icon theme on disk. */
+    private val themeIcons = ConcurrentHashMap<String, String>()
+
+    private fun themeIcon(name: String): String? = themeIcons[name]
+        ?: LinuxDesktopEntries.iconPng(root, name)?.let { png -> Base64.encodeToString(png, Base64.NO_WRAP) }
+            ?.also { if (themeIcons.size < 256) themeIcons[name] = it }
 
     private fun pixmap(value: Any?): String? {
         val images = (value as? List<*>)?.filterIsInstance<List<*>>() ?: return null

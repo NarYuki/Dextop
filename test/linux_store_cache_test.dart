@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/linux/linux_store_cache.dart';
-import '../lib/linux/linux_store_catalog.dart';
+import 'package:free_dextop/linux/linux_store_cache.dart';
+import 'package:free_dextop/linux/linux_store_catalog.dart';
 
 void main() {
   test('snapshots survive reopening, expire at three days and allow forced refresh', () async {

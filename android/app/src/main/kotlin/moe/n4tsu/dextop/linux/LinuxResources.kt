@@ -44,6 +44,60 @@ internal object LinuxResources {
         }
     }.getOrDefault("")
 
+    /** Busy and total ticks of each core at the previous call, for its use since then. */
+    private val previousCores = ConcurrentHashMap<Int, Pair<Long, Long>>()
+
+    private fun readCpuFile(core: Int, name: String): Long =
+        runCatching { File("/sys/devices/system/cpu/cpu$core/cpufreq/$name").readText().trim().toLong() }.getOrDefault(-1L)
+
+    /**
+     * Each core of the device: its use since the last call (from /proc/stat; -1 where Android
+     * hides it, as from apps in the Android mode), its clock and maximum clock in kHz, and
+     * whether it is online. Linux shares these cores with Android.
+     */
+    private fun cores(): JSONArray {
+        val count = runCatching {
+            File("/sys/devices/system/cpu/possible").readText().trim().split(',').maxOf { range ->
+                range.substringAfter('-').toInt()
+            } + 1
+        }.getOrDefault(Runtime.getRuntime().availableProcessors())
+        val ticks = HashMap<Int, Pair<Long, Long>>()
+        runCatching {
+            File("/proc/stat").useLines { lines ->
+                lines.filter { it.startsWith("cpu") && it.length > 3 && it[3].isDigit() }.forEach { line ->
+                    val parts = line.trim().split(Regex("\\s+"))
+                    val core = parts[0].removePrefix("cpu").toInt()
+                    val values = parts.drop(1).mapNotNull(String::toLongOrNull)
+                    if (values.size < 4) return@forEach
+                    val idle = values[3] + (values.getOrNull(4) ?: 0)
+                    val total = values.take(8).sum()
+                    ticks[core] = (total - idle) to total
+                }
+            }
+        }
+        return JSONArray().apply {
+            for (core in 0 until count) {
+                val now = ticks[core]
+                val last = previousCores[core]
+                val usage = if (now != null && last != null && now.second > last.second)
+                    ((now.first - last.first).toDouble() / (now.second - last.second) * 100).coerceIn(0.0, 100.0) else -1.0
+                if (now != null) previousCores[core] = now
+                val online = runCatching { File("/sys/devices/system/cpu/cpu$core/online").readText().trim() != "0" }.getOrDefault(true)
+                put(JSONObject().put("core", core).put("usage", usage).put("online", online)
+                    .put("frequency", readCpuFile(core, "scaling_cur_freq"))
+                    .put("maxFrequency", readCpuFile(core, "cpuinfo_max_freq")))
+            }
+        }
+    }
+
+    /** Swap from /proc/meminfo, in bytes. */
+    private fun swap(): Pair<Long, Long> = runCatching {
+        val values = File("/proc/meminfo").readLines().associate { line ->
+            line.substringBefore(':') to (line.substringAfter(':').trim().substringBefore(' ').toLongOrNull() ?: 0L) * 1024
+        }
+        (values["SwapTotal"] ?: 0L) to (values["SwapFree"] ?: 0L)
+    }.getOrDefault(0L to 0L)
+
     private fun stat(pid: Int): List<String>? = runCatching {
         File("/proc/$pid/stat").readText().substringAfterLast(") ").split(' ')
     }.getOrNull()
@@ -76,6 +130,8 @@ internal object LinuxResources {
                 .put("command", command.joinToString(" ").take(300))
                 .put("cpu", cpu)
                 .put("memory", rss)
+                .put("state", fields.getOrNull(0).orEmpty())
+                .put("threads", fields.getOrNull(17)?.toIntOrNull() ?: 0)
                 .put("plumbing", name == "libproot.so"))
         }
         previous.keys.retainAll(seen)
@@ -101,6 +157,9 @@ internal object LinuxResources {
         return JSONObject()
             .put("processes", processes)
             .put("cpu", cpuTotal)
+            .put("cpuCores", cores())
+            .put("swapTotal", swap().first)
+            .put("swapFree", swap().second)
             .put("memory", memoryTotal)
             .put("gpuBusy", gpuBusy)
             .put("gpuModel", runCatching { File("/sys/class/kgsl/kgsl-3d0/gpu_model").readText().trim() }.getOrDefault(""))

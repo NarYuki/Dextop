@@ -38,7 +38,7 @@ internal object DeviceProfiles {
             DesktopEnvironmentRegistry.aospFreeform(identity)
                 .copy(
                     id = "sony_xperia",
-                    defaultWindowManager = "dextop_plasma_v2",
+                    defaultWindowManager = "dextop_book",
                     untrustedMirrorDisplay = true,
                     fullscreenApplicationDisplays = true,
                     passivePlasmaShellFocus = true,
@@ -65,7 +65,7 @@ internal object DeviceProfiles {
                     // Public: Gboard can draw its candidates and toolbar only on a display it may
                     // add windows to. System decorations are switched off on each one instead.
                     passivePlasmaShellFocus = true,
-                    defaultWindowManager = "dextop_plasma_v2",
+                    defaultWindowManager = "dextop_book",
                 )
         },
         vendor("coloros_family", setOf("oppo", "realme", "oneplus"), "nativeColorosDesktop"),

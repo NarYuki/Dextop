@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux_setup_page.dart';
@@ -16,6 +17,23 @@ Future<void> next(WidgetTester tester) async {
 }
 
 void main() {
+  const channel = MethodChannel('app.freedextop/linux');
+  final keyringCalls = <MethodCall>[];
+  setUp(() {
+    keyringCalls.clear();
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, (call) async {
+          if (call.method == 'setKeyring') {
+            keyringCalls.add(call);
+            return true;
+          }
+          return null;
+        });
+  });
+  tearDown(() {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(channel, null);
+  });
   testWidgets(
     'walks through choices and sends the selected options to installation',
     (tester) async {
@@ -51,8 +69,10 @@ void main() {
       await tester.tap(find.text('Minimal IceWM'));
       await next(tester);
       await next(tester);
-      await tester.tap(find.text('Japanese — Mozc'));
+      await tester.tap(find.text('Japanese — Mozc (experimental)'));
       await next(tester);
+      await next(tester);
+      expect(find.text('Automatic (recommended)'), findsOneWidget);
       await next(tester);
       await tester.tap(find.text('Start setup'));
       await tester.pump();
@@ -62,6 +82,7 @@ void main() {
       expect(selected?['themes'], false);
       expect(selected?['ime'], 'mozc');
       expect(selected?['apps'], isEmpty);
+      expect(keyringCalls.single.arguments, {'id': 'new', 'mode': 'auto'});
       expect(find.text('Setting up language and fonts'), findsOneWidget);
       progress.value = {'new': const LinuxSetupProgress(state: 'installed')};
       await tester.pumpAndSettle();
@@ -141,7 +162,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (var i = 0; i < 5; i++) {
+      for (var i = 0; i < 6; i++) {
         await next(tester);
       }
       await tester.tap(find.text('Start setup'));
@@ -152,6 +173,7 @@ void main() {
       await tester.tap(find.text('Start setup'));
       await tester.pumpAndSettle();
       expect(targets, [null, 'existing']);
+      expect(keyringCalls.length, 1);
       await tester.pumpWidget(const SizedBox());
     },
   );

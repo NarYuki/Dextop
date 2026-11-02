@@ -1896,6 +1896,23 @@ static void xdg_surface_get_toplevel(struct wl_client *client, struct wl_resourc
     struct xdg *xdg = wl_resource_get_user_data(resource);
     xdg->role = wl_resource_create(client, &xdg_toplevel_interface, wl_resource_get_version(resource), id);
     wl_resource_set_implementation(xdg->role, &toplevel_impl, xdg, role_resource_destroy);
+    /* xdg-shell 5: without wm_capabilities a client takes it that the compositor can neither
+     * maximize, minimize nor go full screen, and leaves those buttons out (Chrome, GTK 4).
+     * Dextop's windows do all of them; sent before the first configure. */
+    if (wl_resource_get_version(xdg->role) >= XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION) {
+        struct wl_array capabilities;
+        wl_array_init(&capabilities);
+        uint32_t values[] = {
+            XDG_TOPLEVEL_WM_CAPABILITIES_MAXIMIZE, XDG_TOPLEVEL_WM_CAPABILITIES_FULLSCREEN,
+            XDG_TOPLEVEL_WM_CAPABILITIES_MINIMIZE,
+        };
+        for (size_t i = 0; i < sizeof(values) / sizeof(*values); i++) {
+            uint32_t *slot = wl_array_add(&capabilities, sizeof(uint32_t));
+            if (slot) *slot = values[i];
+        }
+        xdg_toplevel_send_wm_capabilities(xdg->role, &capabilities);
+        wl_array_release(&capabilities);
+    }
     xdg_register(xdg);
 }
 
@@ -2362,7 +2379,9 @@ static void constraint_state(struct pointer_constraint *c, bool active) {
         else zwp_confined_pointer_v1_send_unconfined(c->resource);
     }
     if (!active && !c->persistent) c->spent = true;
-    if (c->surface && c->surface->xdg) {
+    /* Only a locked pointer (relative mouse look) hides the cursor and takes Android's pointer
+     * capture; a confined one keeps its cursor and moves as usual inside its region. */
+    if (c->locked && c->surface && c->surface->xdg) {
         char json[160];
         snprintf(json, sizeof(json), "{\"type\":\"pointer-capture\",\"id\":%u,\"capture\":%s}",
                  c->surface->xdg->window_id, active ? "true" : "false");

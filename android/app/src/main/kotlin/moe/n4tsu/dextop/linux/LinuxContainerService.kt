@@ -35,7 +35,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes guest state files (AIDL transaction 47).
-        const val PROTOCOL_VERSION = 24
+        const val PROTOCOL_VERSION = 25
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         private val GUEST_LOG = Regex("""[A-Za-z0-9._-]+\.log""")
@@ -438,6 +438,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
         val display = LinuxRuntime.freeDisplay(usedDisplays())
         startRenderer(containerId)
+        stageKeyring(containerId)
         val session = runtimeStart(containerId) { LinuxDesktopSession.start(
             requireProot(), containerId, display,
             width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 480),
@@ -520,6 +521,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val staged = File(directory, ".$name.staged")
         staged.writeText(content)
         check(staged.renameTo(File(directory, name))) { "Cannot write guest state $name" }
+        // Security keys in it get sysfs entries, for udev to find their hidraw nodes.
+        if (name == "dextop-devices.conf") runCatching { LinuxHidSysfs.update(containerId, content) }
+            .onFailure { log(containerId, "Security key entries failed: ${it.message}") }
     }
 
     override fun listApps(containerId: String, locale: String): String {
@@ -539,6 +543,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
         val display = LinuxRuntime.freeDisplay(usedDisplays())
         startRenderer(containerId)
+        stageKeyring(containerId)
         // DroidDeck's runtime has no Xvfb: its X clients go through KWin's Xwayland.
         val runtime = readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME
         if (runtime) stageDroidDeckFiles(containerId)
@@ -573,6 +578,10 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     private fun launchApp(containerId: String, desktopId: String, software: Boolean, x11: Boolean = false, framed: Boolean = false) {
         val session = appSessions[containerId]?.takeIf { it.alive } ?: error("Application display is not running")
         val entry = LinuxDesktopEntries.find(LinuxPaths.rootfs(containerId), desktopId) ?: error("Unknown application $desktopId")
+        if (session.restoreHiddenApplication(entry.startupWMClass)) {
+            log(containerId, "Restored hidden application window: ${entry.id}")
+            return
+        }
         val droidDeck = LinuxSettings.windowManager(containerId) == LinuxWindowManager.DROIDDECK
         // DroidDeck's desktop and the Steam mode size their nested output from the session's screen.
         val sized = entry.id == LinuxSteam.DROIDDECK_DESKTOP_ENTRY || entry.id == LinuxSteam.STEAM_MODE_ENTRY
@@ -763,7 +772,12 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         if (androidContext == null) return
         val root = LinuxPaths.rootfs(id)
         val apt = File(root, "etc/apt/apt.conf.d")
-        if (apt.isDirectory) File(apt, "00dextop-android").writeText("APT::Sandbox::User \"root\";\n")
+        if (apt.isDirectory) {
+            val sandbox = File(apt, "00dextop-android")
+            val content = "APT::Sandbox::User \"root\";\n"
+            // Every Store command passes here; write only when it is missing or differs.
+            if (sandbox.length() != content.length.toLong() || runCatching { sandbox.readText() }.getOrNull() != content) sandbox.writeText(content)
+        }
         val resolv = File(root, "etc/resolv.conf")
         if (java.nio.file.Files.isSymbolicLink(resolv.toPath()) && !resolv.exists()) resolv.delete()
         if (!resolv.isFile || resolv.readText().lines().none { it.startsWith("nameserver") }) {
@@ -912,6 +926,37 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun windowPointer(containerId: String, xid: Int, action: Int, x: Int, y: Int, button: Int) {
         appSessions[containerId]?.runCatching { pointer(xid, action, x, y, button) }
+    }
+
+    /** Keyring passwords by container, with whether they stay for later sessions; memory only. */
+    private val keyringSecrets = ConcurrentHashMap<String, Pair<String, Boolean>>()
+
+    override fun setKeyringSecret(containerId: String, secret: String, persistent: Boolean) {
+        LinuxPaths.container(containerId)
+        if (secret.isEmpty()) keyringSecrets.remove(containerId) else keyringSecrets[containerId] = secret to persistent
+    }
+
+    /**
+     * Hands the keyring password to the session about to start (LinuxCatalog's KEYRING_UNLOCK
+     * reads and removes the file): readable by Linux's own user only, and gone once read.
+     */
+    private fun stageKeyring(containerId: String) {
+        val (secret, persistent) = keyringSecrets[containerId] ?: return
+        runCatching {
+            val directory = File(LinuxPaths.rootfs(containerId), "var/lib/dextop").apply { mkdirs() }
+            val file = File(directory, "keyring-unlock")
+            val staged = File(directory, ".keyring-unlock.staged")
+            staged.delete()
+            staged.createNewFile()
+            android.system.Os.chmod(staged.path, "600".toInt(8))
+            staged.writeText(secret)
+            check(staged.renameTo(file))
+            if (!persistent) keyringSecrets.remove(containerId)
+        }.onFailure { log(containerId, "Keyring handover failed: ${it.javaClass.simpleName}") }
+    }
+
+    override fun windowScroll(containerId: String, xid: Int, x: Int, y: Int, dx: Int, dy: Int) {
+        appSessions[containerId]?.runCatching { scrollAt(xid, x, y, dx, dy) }
     }
     // endregion
 

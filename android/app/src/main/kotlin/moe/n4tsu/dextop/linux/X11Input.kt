@@ -53,24 +53,43 @@ internal class X11Input(private val x: X11Client) {
     /**
      * Types text the IME committed: each character's keysym is bound to a
      * spare keycode, which is then pressed (the technique xdotool uses).
+     * Characters go in runs as long as there are spare keycodes: the run's
+     * mappings are changed together, then one wait lets clients take them
+     * before its keys are pressed, instead of a wait for every character.
      */
     @Synchronized
     fun text(text: String) {
         if (spareKeycodes.isEmpty()) return
-        text.codePoints().forEach { codePoint ->
-            when (codePoint) {
-                '\n'.code -> { key(28, true); key(28, false); return@forEach }
-                '\t'.code -> { key(15, true); key(15, false); return@forEach }
-            }
-            val keysym = if (codePoint in 0x20..0x7e || codePoint in 0xa0..0xff) codePoint else XK_UNICODE or codePoint
-            val keycode = spareKeycodes.removeFirst().also(spareKeycodes::addLast)
-            x.changeKeyboardMapping(keycode, intArrayOf(keysym, keysym))
-            // Clients learn the new mapping from MappingNotify; let it land before the press.
+        val mapped = LinkedHashMap<Int, Int>() // keysym to its keycode in this run
+        val presses = ArrayList<Int>()
+        fun flush() {
+            if (presses.isEmpty()) return
+            // Clients learn the new mapping from MappingNotify; let it land before the presses.
             x.sync()
             SystemClock.sleep(8)
-            x.fakeInput(X11Client.KEY_PRESS, keycode)
-            x.fakeInput(X11Client.KEY_RELEASE, keycode)
+            presses.forEach { keycode ->
+                x.fakeInput(X11Client.KEY_PRESS, keycode)
+                x.fakeInput(X11Client.KEY_RELEASE, keycode)
+            }
+            mapped.clear()
+            presses.clear()
         }
+        text.codePoints().forEach { codePoint ->
+            when (codePoint) {
+                '\n'.code -> { flush(); key(28, true); key(28, false); return@forEach }
+                '\t'.code -> { flush(); key(15, true); key(15, false); return@forEach }
+            }
+            val keysym = if (codePoint in 0x20..0x7e || codePoint in 0xa0..0xff) codePoint else XK_UNICODE or codePoint
+            val keycode = mapped[keysym] ?: run {
+                if (mapped.size == spareKeycodes.size) flush()
+                spareKeycodes.removeFirst().also(spareKeycodes::addLast).also { keycode ->
+                    x.changeKeyboardMapping(keycode, intArrayOf(keysym, keysym))
+                    mapped[keysym] = keycode
+                }
+            }
+            presses += keycode
+        }
+        flush()
         x.sync()
     }
 }

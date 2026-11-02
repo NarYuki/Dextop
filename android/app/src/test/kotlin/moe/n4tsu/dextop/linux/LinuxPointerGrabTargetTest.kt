@@ -38,6 +38,12 @@ class LinuxPointerGrabTargetTest {
         assertFalse(matches(0))
     }
 
+    @Test fun rootAndDirectGrabsDoNotCaptureAnUnfocusedApp() {
+        assertFalse(matches(root, other))
+        assertFalse(matches(game, other))
+        assertFalse(matches(child, root))
+    }
+
     @Test fun malformedTreeCannotLoopForever() {
         assertFalse(LinuxPointerGrabTarget.matches(40, game, root, other, { 40 }, { true }))
     }

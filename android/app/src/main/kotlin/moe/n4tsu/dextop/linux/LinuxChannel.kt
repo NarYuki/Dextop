@@ -143,7 +143,16 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 "setup" -> remote({ it.setup(call.argument<String>("id")!!,
                     JSONObject(call.argument<Map<String, Any?>>("options") ?: emptyMap<String, Any?>()).toString()) })
                 "cancel" -> remote({ it.cancelInstall(call.argument<String>("id")!!) })
-                "remove" -> remote({ it.remove(call.argument<String>("id")!!) })
+                "remove" -> remote({
+                    val id = call.argument<String>("id")!!
+                    it.remove(id).also { LinuxKeyring.forget(context, id) }
+                })
+                // The keyring choice of setup: a stored random password, or the user's own once.
+                "setKeyring" -> remote({
+                    LinuxKeyring.setup(context, call.argument<String>("id")!!, call.argument<String>("mode")!!,
+                        call.argument<String>("password"), it)
+                    true
+                })
                 // Back to before the first setup: every container, the Linux settings and Dextop's Linux choices.
                 "resetLinux" -> remote({ service ->
                     val list = org.json.JSONArray(service.listContainers())

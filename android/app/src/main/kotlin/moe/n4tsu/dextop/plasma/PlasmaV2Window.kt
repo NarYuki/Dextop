@@ -175,6 +175,7 @@ internal class V2Window(
     var steamMode: String? = null
     /** X window id when this window shows one Linux application window (0: the whole desktop). */
     var linuxXid = 0
+    var linuxAwaitingFirstFrame = false
     var linuxWMClass = ""
     /** The Kickoff entry ("linuxapp:…") this Linux window was launched from, when known. */
     var linuxLaunchKey: String? = null
@@ -269,6 +270,10 @@ internal class V2WindowView(
 
     private var status: View? = null
     private var statusText: TextView? = null
+    private var statusLogText: TextView? = null
+    private var statusLogScroll: android.widget.ScrollView? = null
+    private val statusLog = LaunchLogTail()
+    private var contentFramePosted = false
     private var resizing = false
     private var contentMoving = false
     private var gripMoving = false
@@ -278,7 +283,6 @@ internal class V2WindowView(
     private var framePointerDevice = -1
     fun ownsFramePointer(event: MotionEvent) = capturesFramePointer && framePointerDevice == event.deviceId &&
         event.isFromSource(InputDevice.SOURCE_MOUSE)
-    private val moveGripPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val density = resources.displayMetrics.density
 
     init {
@@ -289,7 +293,7 @@ internal class V2WindowView(
         chrome.orientation = LinearLayout.VERTICAL
         chrome.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                val corners = shownCorners
+                val corners = clientCorners?.takeIf { window.linuxClientDecorated && !window.linuxFullscreen } ?: shownCorners
                 if (corners != null && corners.any { it != corners[0] }) {
                     // Different corners (a split window keeps its inner ones round): a path outline.
                     cornerPath.reset()
@@ -323,6 +327,7 @@ internal class V2WindowView(
             }
 
             override fun onSurfaceTextureSizeChanged(texture: SurfaceTexture, width: Int, height: Int) {
+                scheduleCornerProbe()
                 refreshLinuxViewport()
             }
 
@@ -334,7 +339,19 @@ internal class V2WindowView(
                 return true
             }
 
-            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) { if (!usesDeckSurface) host.onContentFrame(window) }
+            override fun onSurfaceTextureUpdated(texture: SurfaceTexture) {
+                if (usesDeckSurface) return
+                // TextureView invokes this while ViewGroup is drawing its children. The
+                // first-frame handler removes the launch cover: defer that tree mutation.
+                if (!contentFramePosted) {
+                    contentFramePosted = true
+                    post {
+                        contentFramePosted = false
+                        if (isAttachedToWindow && !window.closing) host.onContentFrame(window)
+                    }
+                }
+                if (cornerProbeDue) scheduleCornerProbe()
+            }
         }
         content.setOnTouchListener { view, event ->
             if (event.actionMasked == MotionEvent.ACTION_DOWN) host.activate(window)
@@ -380,9 +397,14 @@ internal class V2WindowView(
             status?.let(contentFrame::removeView)
             status = null
             statusText = null
+            statusLogText = null
+            statusLogScroll = null
+            statusLog.clear()
             return
         }
         statusText?.let { it.text = text; return }
+        status?.let(contentFrame::removeView)
+        statusLog.clear()
         val label = TextView(context).apply {
             this.text = text
             setTextColor(host.palette.text)
@@ -393,18 +415,52 @@ internal class V2WindowView(
             isIndeterminate = true
             indeterminateTintList = android.content.res.ColorStateList.valueOf(host.palette.accent)
         }
+        val details = TextView(context).apply {
+            setTextColor(host.palette.text)
+            alpha = .7f
+            textSize = 12f
+            typeface = android.graphics.Typeface.MONOSPACE
+            gravity = Gravity.CENTER
+            textAlignment = View.TEXT_ALIGNMENT_CENTER
+            setPadding((16 * density).toInt(), 0, (16 * density).toInt(), 0)
+        }
+        val logs = object : android.widget.ScrollView(context) {
+            override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+                val limit = details.lineHeight * 5 + details.compoundPaddingTop + details.compoundPaddingBottom
+                val available = if (MeasureSpec.getMode(heightMeasureSpec) == MeasureSpec.UNSPECIFIED) limit
+                    else minOf(limit, MeasureSpec.getSize(heightMeasureSpec))
+                super.onMeasure(widthMeasureSpec, MeasureSpec.makeMeasureSpec(available, MeasureSpec.AT_MOST))
+            }
+        }.apply {
+            addView(details, LayoutParams(-1, -2))
+            visibility = View.GONE
+        }
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
             setBackgroundColor(host.palette.windowBackground)
             addView(spinner, LinearLayout.LayoutParams((40 * density).toInt(), (40 * density).toInt()))
             addView(label, LinearLayout.LayoutParams(-2, -2).apply { topMargin = (12 * density).toInt() })
+            addView(logs, LinearLayout.LayoutParams(-1, -2).apply { topMargin = (12 * density).toInt() })
             // Input goes to the desktop only once it is shown.
             isClickable = true
         }
         contentFrame.addView(panel, LayoutParams(-1, -1))
         status = panel
         statusText = label
+        statusLogText = details
+        statusLogScroll = logs
+    }
+
+    fun appendStatusLog(line: String) {
+        val label = statusLogText ?: return
+        val text = statusLog.append(line)
+        if (label.text == text) return
+        label.text = text
+        statusLogScroll?.let { scroll ->
+            scroll.visibility = View.VISIBLE
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        }
     }
 
     /** Keep failures visible and allow selecting/copying diagnostics. */
@@ -428,6 +484,31 @@ internal class V2WindowView(
 
     /** The corners follow the window's state (square while maximized or tiled in Book). */
     private val cornerPath = android.graphics.Path()
+
+    /**
+     * The corners a Linux app with its own frame draws (LinuxCornerProbe), in view pixels; the
+     * window clips to them so the capture outside its round corners does not show. Measured
+     * once its frames arrive and again when its size changes (maximized apps square them).
+     */
+    private var clientCorners: FloatArray? = null
+    private var cornerProbeDue = true
+    private val cornerProbe = Runnable {
+        if (!window.linuxClientDecorated || window.linuxFullscreen || content.width <= 0 || content.height <= 0) return@Runnable
+        cornerProbeDue = false
+        val bitmap = runCatching { content.getBitmap(content.width, content.height) }.getOrNull() ?: return@Runnable
+        val radii = try { LinuxCornerProbe.radii(bitmap, (48 * density).toInt()) } finally { bitmap.recycle() }
+        if (clientCorners?.contentEquals(radii) == true) return@Runnable
+        clientCorners = radii
+        chrome.clipToOutline = true
+        chrome.invalidateOutline()
+    }
+
+    private fun scheduleCornerProbe() {
+        if (!window.linuxClientDecorated || window.linuxFullscreen) return
+        cornerProbeDue = true
+        removeCallbacks(cornerProbe)
+        postDelayed(cornerProbe, 250L)
+    }
     /** The corner radii drawn now, animated towards the host's; null without per-corner radii. */
     private var shownCorners: FloatArray? = null
     private var cornerTarget: FloatArray? = null
@@ -482,7 +563,8 @@ internal class V2WindowView(
     fun refreshDecorations() {
         content.isOpaque = window.linuxXid == 0
         titleBar.visibility = if (window.linuxClientDecorated || window.linuxFullscreen) View.GONE else View.VISIBLE
-        chrome.clipToOutline = !window.linuxClientDecorated && !window.linuxFullscreen
+        chrome.clipToOutline = !window.linuxFullscreen && (!window.linuxClientDecorated || clientCorners != null)
+        if (window.linuxClientDecorated) scheduleCornerProbe()
         chrome.setBackgroundColor(if (window.linuxFullscreen) android.graphics.Color.BLACK
             else if (window.linuxClientDecorated) android.graphics.Color.TRANSPARENT else host.palette.windowBackground)
         refreshLinuxViewport()
@@ -500,18 +582,12 @@ internal class V2WindowView(
         })
     }
 
-    private val moveGripTop get() = (grip - window.frame.top).coerceAtLeast(0).toFloat()
-    private fun isMoveGrip(x: Float, y: Float) = window.linuxClientDecorated && !window.linuxFullscreen &&
-        y >= moveGripTop && y < moveGripTop + grip && x > grip + 14 * density && x < width - grip - 14 * density
-
-    override fun dispatchDraw(canvas: Canvas) {
-        super.dispatchDraw(canvas)
-        if (!window.linuxClientDecorated || window.linuxFullscreen) return
-        moveGripPaint.color = host.palette.inactiveText
-        val half = 24 * density
-        canvas.drawRoundRect(width / 2f - half, moveGripTop + grip * .25f, width / 2f + half, moveGripTop + grip * .75f,
-            grip.toFloat(), grip.toFloat(), moveGripPaint)
-    }
+    /**
+     * Apps that draw their own frame are moved by it (_NET_WM_MOVERESIZE), or with Alt+drag
+     * ([moveClientWindow]); Dextop adds no bar of its own above them.
+     */
+    @Suppress("UNUSED_PARAMETER")
+    private fun isMoveGrip(x: Float, y: Float) = false
 
     private fun edgeAt(x: Float, y: Float): V2Edge? {
         if (window.linuxFullscreen) return null
