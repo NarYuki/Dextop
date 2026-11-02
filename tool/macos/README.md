@@ -46,6 +46,25 @@ exclude trailing padding for abstract sockets. Darwin bind/connect use
 appended, size-checked ELF bridge callbacks after normal sockaddr conversion.
 Existing ELF bridge fields retain their offsets.
 
+The original filesystem socket path is retained separately from the mapped RPC
+address. `execve` serializes the original path into `__mldr_sockpath`;
+serializing an abstract address as a C string loses its leading-NUL name.
+Both dyld's embedded kernel code and `libsystem_kernel.dylib` require rebuilding
+when the RPC bridge changes.
+
+For incremental ARM64 loader builds on WSL, configure the Darling build with
+`CMAKE_EXPORT_COMPILE_COMMANDS=ON`, build its generated headers, then run
+`build_loader.py --build <build> --zig <Linux Zig executable> --output <directory>`.
+The helper cross-compiles the six ELF loader/RPC sources using their configured
+include paths. The Mach-O libraries and dyld are separate build targets; this
+helper does not produce a complete runtime.
+
+Non-root shutdown uses prefix-validated pidfds and process ancestry. It does not
+require reading PID namespace links, which Android can deny even for the calling
+user. It never selects other processes merely because they share the host's PID
+namespace. The Linux baseline fixture tests abstract server RPC and denial of
+the launcher's namespace reads; it is not included in the installed payload.
+
 The wrapper enables `DEXTOP_DARLING_ABSTRACT_RPC=1`. Set it to `0` for a normal
 Linux ARM64 baseline without Dextop's socket shim. Dextop's existing namespace
 environment/file and socket-marker companion are required on Android.
