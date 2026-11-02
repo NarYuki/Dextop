@@ -1,4 +1,4 @@
-"""Build a pinned ARM64 Darling core in a dedicated Linux build directory."""
+"""Build a pinned Darling core on a matching Linux host in a dedicated directory."""
 
 import argparse
 import json
@@ -21,9 +21,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--work", type=Path, default=ROOT / "build/macos/runtime")
     parser.add_argument("--jobs", type=int, default=2)
+    parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
     args = parser.parse_args()
-    if platform.system() != "Linux" or platform.machine() not in ("aarch64", "arm64"):
-        parser.error("Use a Linux ARM64 build host; the Android app does not need rebuilding")
+    host = "aarch64" if platform.machine() == "arm64" else platform.machine()
+    if platform.system() != "Linux" or host != args.architecture:
+        parser.error("Use a Linux host matching --architecture; cross-compilation is not configured")
     if args.jobs < 1:
         parser.error("--jobs must be positive")
     lock = json.loads((HERE / "darling.lock.json").read_text(encoding="utf-8"))
@@ -46,7 +48,8 @@ def main():
     ]))
     run("cmake", "-S", source, "-B", build, "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={lock['install_prefix']}",
-        "-DCOMPONENTS=core", "-DTARGET_ARM64=ON", "-DTARGET_x86_64=OFF",
+        "-DCOMPONENTS=core", f"-DTARGET_ARM64={'ON' if host == 'aarch64' else 'OFF'}",
+        f"-DTARGET_x86_64={'ON' if host == 'x86_64' else 'OFF'}",
         "-DTARGET_i386=OFF", "-DANDROID=OFF", "-DENABLE_METAL=OFF",
         "-DCOMPILE_PY2_BYTECODE=OFF")
     run("cmake", "--build", build, "--parallel", args.jobs)
@@ -63,9 +66,11 @@ def main():
                 mode = path.stat().st_mode
                 if mode & 0o6000:
                     path.chmod(mode & ~0o6000)
-    run("sh", HERE / "run.sh", "--check", env=dict(env, DEXTOP_DARLING_ROOT=str(runtime)))
+    if host == "aarch64":
+        run("sh", HERE / "run.sh", "--check", env=dict(env, DEXTOP_DARLING_ROOT=str(runtime)))
     (work / "build-info.json").write_text(json.dumps({
-        **lock, "components": "core", "dextop_abstract_rpc": True,
+        **lock, "architecture": host, "build_host": platform.platform(),
+        "components": "core", "dextop_abstract_rpc": True,
         "dextop_anonymous_executable_segments": True,
         "android_execution_verified": False,
         "macos_application_verified": False,

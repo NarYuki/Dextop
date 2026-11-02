@@ -40,6 +40,7 @@ int main(void) {
     const char *environment[] = {"DEXTOP_DARLING_ANON_EXEC=1", 0};
     char *mapped = dextop_map_segment(reserved, page, PROT_READ | PROT_EXEC, fd, 0, environment);
     assert(mapped == reserved && mapped[0] == 42);
+    assert(mprotect(mapped, page, PROT_READ | PROT_WRITE) == 0);
     mapped[0] = 43; /* model the loader's private TLS adaptation */
     __builtin___clear_cache(mapped, mapped + page);
     assert(mprotect(mapped, page, PROT_READ | PROT_EXEC) == 0);

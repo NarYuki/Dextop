@@ -32,5 +32,12 @@ static void *dextop_map_segment(void *address, size_t length, int protection,
         }
         copied += count;
     }
+    __builtin___clear_cache((char *)mapped, (char *)mapped + length);
+    if (mprotect(mapped, length, protection)) {
+        int error = errno;
+        munmap(mapped, length);
+        errno = error;
+        return MAP_FAILED;
+    }
     return mapped;
 }

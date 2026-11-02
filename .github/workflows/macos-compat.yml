@@ -36,6 +36,12 @@ jobs:
             libavcodec-dev libavformat-dev libswresample-dev libavutil-dev \
             libpulse-dev libdbus-1-dev libxkbfile-dev libcap-dev libvulkan-dev \
             libwayland-dev libxkbcommon-dev
+      - name: Build own-source Mach-O probes
+        run: |
+          linker="$(llvm-config --bindir)/ld64.lld"
+          for probe in hello posix socket; do
+            python3 tool/macos/build_smoke.py --clang /usr/bin/clang --linker "$linker" --probe "$probe"
+          done
       - name: Build the pinned core
         run: |
           set -o pipefail
@@ -46,9 +52,6 @@ jobs:
           tar -C build/macos/runtime/stage/opt/dextop/macos -czf build/macos/darling-core-arm64.tar.gz .
       - name: Verify own-source Mach-O programs on Linux ARM64
         run: |
-          for probe in hello posix; do
-            python3 tool/macos/build_smoke.py --clang /usr/bin/clang --linker /usr/bin/ld64.lld --probe "$probe"
-          done
           python3 tool/macos/check_runtime.py \
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --probes build/macos/smoke --output build/macos/native-smoke

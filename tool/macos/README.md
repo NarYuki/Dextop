@@ -20,6 +20,12 @@ For a Linux ARM64 build host with the workflow's build dependencies:
 python3 tool/macos/build_runtime.py --jobs 2
 ```
 
+An x86_64 Linux host, including WSL, can build the native comparison runtime with
+`--architecture x86_64 --work /absolute/path/to/new/work --jobs 8`.
+Use the same architecture option for `build_smoke.py` and `check_runtime.py`.
+This provides a local baseline; it does not make Intel Mach-O programs run on
+an ARM64 Android device. Keep the build directory in WSL's Linux filesystem.
+
 The work directory must be new or empty. `build_launcher.py` builds only the
 ELF launcher; its output is insufficient to run a Mach-O application.
 
@@ -51,7 +57,7 @@ python3 tool/macos/build_smoke.py --zig /absolute/path/to/zig --probe hello
 python3 tool/macos/build_smoke.py --zig /absolute/path/to/zig --probe posix
 ```
 
-Alternatively, use `--clang /usr/bin/clang --linker /usr/bin/ld64.lld`.
+Alternatively, use `--clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld"`.
 The generated TAPI file contains interface declarations, not implementations.
 The hello probe checks output and exit status. The POSIX probe checks file
 contents, thread creation/join and fork/wait. Compilation success is distinct
@@ -65,7 +71,7 @@ python3 tool/macos/check_runtime.py \
 ```
 
 Add `--abstract-rpc --anonymous-exec` inside Dextop. The check creates its own temporary
-prefix, runs hello/POSIX/hello, and requests prefix-specific shutdown. It fails
+prefix, runs hello/POSIX/socket/hello, and requests prefix-specific shutdown. It fails
 on missing output, a nonzero exit, a timeout or a shutdown failure. GUI, input,
 GPU, audio and general application compatibility require separate validation.
 
