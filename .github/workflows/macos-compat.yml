@@ -1,0 +1,57 @@
+name: macOS compatibility ARM64 core
+
+on:
+  push:
+    branches: [feat/macos-compat]
+    paths:
+      - tool/macos/**
+      - .github/workflows/macos-compat.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-core-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Test the execution wrapper
+        run: python3 -m unittest discover -s tool/macos/tests -v
+      - name: Install ARM64 build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            git cmake ninja-build clang llvm-dev bison flex pkg-config python3 \
+            libfuse-dev libudev-dev libcairo2-dev libgl1-mesa-dev libtiff-dev \
+            libfreetype-dev libelf-dev libxml2-dev libegl1-mesa-dev libglu1-mesa-dev \
+            libfontconfig-dev libbsd-dev libxrandr-dev libxcursor-dev libgif-dev \
+            libavcodec-dev libavformat-dev libswresample-dev libavutil-dev \
+            libpulse-dev libdbus-1-dev libxkbfile-dev libcap-dev libvulkan-dev \
+            libwayland-dev libxkbcommon-dev
+      - name: Build the pinned core
+        run: |
+          set -o pipefail
+          mkdir -p build/macos
+          python3 tool/macos/build_runtime.py --jobs 2 2>&1 | tee build/macos/core-build.log
+      - name: Archive experimental runtime
+        run: |
+          tar -C build/macos/runtime/stage/opt/dextop/macos -czf build/macos/darling-core-arm64.tar.gz .
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: darling-core-arm64-${{ github.sha }}
+          retention-days: 1
+          if-no-files-found: warn
+          path: |
+            build/macos/core-build.log
+            build/macos/runtime/build-info.json
+            build/macos/runtime/submodules.txt
+            build/macos/darling-core-arm64.tar.gz
