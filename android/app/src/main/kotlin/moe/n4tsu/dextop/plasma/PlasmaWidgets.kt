@@ -162,12 +162,20 @@ internal class PlasmaRow(
         }
     }
 
+    private var secondaryGesture = false
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
         if (!enabledRow) return true
+        // The release of a right-click belongs to its menu, not to this row's click.
+        if (secondaryGesture) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) secondaryGesture = false
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 if (event.isButtonPressed(MotionEvent.BUTTON_SECONDARY)) {
+                    secondaryGesture = onRightClick != null
                     onRightClick?.invoke(event.rawX, event.rawY)
                     return true
                 }
@@ -240,10 +248,18 @@ internal class PlasmaGridTile(
         }
     }
 
+    /** The release of a right-click belongs to its menu, not to this item's click. */
+    private var secondaryGesture = false
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (secondaryGesture) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) secondaryGesture = false
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> if (event.isButtonPressed(MotionEvent.BUTTON_SECONDARY)) {
+                secondaryGesture = true
                 onRightClick(event.rawX, event.rawY); return true
             }
             MotionEvent.ACTION_UP -> if (event.x in 0f..width.toFloat() && event.y in 0f..height.toFloat()) {

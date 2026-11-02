@@ -17,6 +17,7 @@ import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Path
+import android.graphics.Point
 import android.graphics.PointF
 import android.graphics.Rect
 import android.graphics.RectF
@@ -186,6 +187,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val CAR_TAP_DRAG_MS = 1_500L
         /** HyperOS / MIUI device profile, see DeviceProfiles. */
         private const val XIAOMI_PROFILE = "xiaomi_hyperos"
+        /** Scales a screen of the extended desktop can take (percent; 100 is the recommended size). */
+        private val EXTENDED_SCALES = listOf(75, 100, 125, 150, 175, 200)
         /** Without new scroll deltas for this long, a car swipe is treated as lifted. */
         private const val CAR_SWIPE_IDLE_MS = 700L
         private const val NOTIFICATION_ROUTE_RETRY_DELAY_MS = 140L
@@ -551,6 +554,21 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 .firstOrNull { it.flags and Display.FLAG_PRESENTATION != 0 }
         }
 
+        /** The extended desktop's screens for the arrangement editor, or null when not extended. */
+        fun extendedDisplayArrangement(): Map<String, Any>? = instance?.extendedArrangement()
+
+        /** Applies the arrangement editor's positions to the extended desktop. */
+        fun arrangeExtendedDisplays(positions: Map<*, *>, done: (Boolean) -> Unit) {
+            val service = instance ?: return done(false)
+            Handler(Looper.getMainLooper()).post { done(runCatching { service.arrangeExtendedFromEditor(positions) }.getOrDefault(false)) }
+        }
+
+        /** Sets one screen's scale on the extended desktop. */
+        fun setExtendedDisplayScale(displayId: Int, percent: Int, done: (Boolean) -> Unit) {
+            val service = instance ?: return done(false)
+            Handler(Looper.getMainLooper()).post { done(runCatching { service.setExtendedScale(displayId, percent) }.getOrDefault(false)) }
+        }
+
         fun externalDisplayState(context: Context): Map<String, Any?> {
             val service = instance
             val display = externalOutputDisplay(context)
@@ -692,8 +710,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
          * Opens a Linux application in the running Plasma v2 desktop; false when no Plasma
          * desktop runs, so the caller shows it as Android windows instead.
          */
+        /** The composited desktop (Plasma v2 or Book) Linux applications open in, if one runs. */
+        private val compositedDesktop: moe.n4tsu.dextop.plasma.CompositedWindowShell?
+            get() = (instance?.plasmaShell as? moe.n4tsu.dextop.plasma.CompositedWindowShell)
+                ?.takeIf { it !is moe.n4tsu.dextop.plasma.DextopAutoShell }
+
+        /** Book's display scale changed: the external desktop takes it now. */
+        fun displayScaleChanged() {
+            instance?.let { service -> Handler(Looper.getMainLooper()).post { service.reapplyExternalScale() } }
+        }
+
         fun launchLinuxAppInPlasma(containerId: String, desktopId: String): Boolean {
-            val shell = instance?.plasmaShell as? moe.n4tsu.dextop.plasma.PlasmaV2Shell ?: return false
+            val shell = compositedDesktop ?: return false
             Handler(Looper.getMainLooper()).post {
                 shell.launch("${moe.n4tsu.dextop.plasma.LINUX_APP_PREFIX}$containerId:$desktopId")
             }
@@ -701,10 +729,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
         val plasmaDesktopRunning: Boolean
-            get() = instance?.plasmaShell is moe.n4tsu.dextop.plasma.PlasmaV2Shell
+            get() = compositedDesktop != null
 
         fun openLinuxDesktop(containerId: String, name: String): Boolean {
-            val shell = instance?.plasmaShell as? moe.n4tsu.dextop.plasma.PlasmaV2Shell ?: return false
+            val shell = compositedDesktop ?: return false
             shell.openLinuxDesktop(containerId, name)
             return true
         }
@@ -1964,7 +1992,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // unlock, recreated the session as a phone desktop that opened on the phone.
             if (autoOnlySession) return
             when (intent?.action) {
-                Intent.ACTION_SCREEN_OFF -> suspendForLockScreen()
+                Intent.ACTION_SCREEN_OFF -> if (externalOutput?.mode == "external") {
+                    OperationLog.i(this@MirrorService, "ExternalOutput", "phone screen off; the external desktop stays")
+                } else suspendForLockScreen()
                 Intent.ACTION_SCREEN_ON -> waitForConfirmedUnlock(screenLifecycleGeneration)
                 Intent.ACTION_USER_PRESENT -> resumeAfterUnlock("user_present")
             }
@@ -3272,6 +3302,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 flags = flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
             }
         }
+        // Started for an external screen only: the desktop never appears on the phone first.
+        externalStartPending = !autoOnlySession &&
+            externalDisplayPreference("external_display_mode", "off") == "external" &&
+            externalOutputDisplay() != null
+        if (externalStartPending) {
+            params.alpha = 0f
+            params.flags = params.flags or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE
+            frame.postDelayed({ revealPhoneWindow() }, 6_000L)
+        }
         root = frame
         rootWindowParams = params
         surfaceView = surface
@@ -4035,7 +4074,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             return
         }
-        if (enabled && !demoMode && requestedStyle == KeyboardDeckStyle.LAPTOP &&
+        if (enabled && !demoMode && !externalInputDeck && requestedStyle == KeyboardDeckStyle.LAPTOP &&
             !isLaptopCapableDevice()
         ) {
             OperationLog.i(
@@ -4052,7 +4091,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Keep the full-screen logical profile so leaving laptop mode restores
         // the user's original resolution instead of the half-height pane.
         val restoreConfig = if (!enabled) laptopBaseConfig else null
-        if (enabled && laptopBaseConfig == null) {
+        if (enabled && laptopBaseConfig == null && !externalInputDeck) {
             laptopBaseConfig = Config(
                 targetWidth,
                 targetHeight,
@@ -4159,7 +4198,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         surface.requestLayout()
         frame.requestLayout()
-        applyLaptopGeometryWhenLaidOut(enabled, baseOverride = restoreConfig)
+        // The external screen keeps its own size; only a foldable's desktop shrinks to the upper half.
+        if (!externalInputDeck) applyLaptopGeometryWhenLaidOut(enabled, baseOverride = restoreConfig)
         if (!enabled) {
             laptopBaseConfig = null
             laptopFullHostHeightPx = 0
@@ -5463,6 +5503,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun updateLaptopModeForHinge(angle: Float) {
         if (!active || root == null || suspendedForLockScreen) return
+        // The deck belongs to the external screen now; the hinge and the setting do not move it.
+        if (externalInputDeck) return
         if (!isLaptopAutoDetectionEnabled()) return
         // Hinge sensors on real devices are noisy around the flex posture
         // thresholds.  Filter small jumps and require the candidate state to
@@ -5496,6 +5538,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun evaluateLaptopModeForPosture(laptopPosture: Boolean, source: String) {
+        if (externalInputDeck) return
         // A manual overlay disable is scoped to the current posture. Once the
         // hinge is flat again, the next flex transition may be auto-detected
         // normally. Clear this before computing shouldShow so the same sample
@@ -5567,6 +5610,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun applyFlutterLaptopModeSetting(enabled: Boolean) {
+        // The deck belongs to the external screen now; the hinge and the setting do not move it.
+        if (externalInputDeck) return
         if (!enabled) {
             if (laptopAutoActivated && !laptopManualOverride) setLaptopMode(false)
             return
@@ -9557,12 +9602,49 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     /** Desktop logical density for a screen's real one (as for a host Surface). */
     private fun desktopDensityFor(screenDpi: Int) = (160 + screenDpi / 160f * 24).toInt().coerceIn(160, 320)
 
+    /**
+     * The desktop density for an external screen: the scale chosen in Book's settings, else from
+     * the screen's physical size as a desktop OS does (96 dpi is 100 %, in 25 % steps), else from
+     * Android's density for it. Android reports a high density for most monitors (213 for a
+     * 31-inch 1440p one), which made every window too large.
+     */
+    private fun externalDensityFor(metrics: android.util.DisplayMetrics): Int {
+        val chosen = moe.n4tsu.dextop.plasma.BookStore.displayScale(this)
+        if (chosen > 0) return (160 * chosen / 100).coerceIn(120, 480)
+        val physical = (metrics.xdpi + metrics.ydpi) / 2f
+        if (physical in 50f..400f) {
+            val scale = ((physical / 96f) * 4).roundToInt().coerceAtLeast(4) / 4f
+            return (160 * scale).roundToInt()
+        }
+        return desktopDensityFor(metrics.densityDpi)
+    }
+
+    /** Applies a changed display scale to the desktop on the external screen. */
+    private fun reapplyExternalScale() {
+        val output = externalOutput?.takeIf { it.mode == "external" } ?: return
+        val display = getSystemService(DisplayManager::class.java).getDisplay(output.displayId) ?: return
+        val metrics = android.util.DisplayMetrics().also {
+            @Suppress("DEPRECATION") display.getRealMetrics(it)
+        }
+        runCatching {
+            resizeActiveDisplay(Config(metrics.widthPixels and -2, metrics.heightPixels and -2,
+                externalDensityFor(metrics), secureDisplay, showSystemDecorations), "display scale")
+        }.onFailure { OperationLog.e(this, "ExternalOutput", "display scale change failed", it) }
+    }
+
     /** The user's choice from the app: "off", "external", "mirror" or "extend". */
     fun setExternalDisplay(mode: String): String {
         require(mode in setOf("off", "external", "mirror", "extend"))
         if (!active || autoOnlySession || targetDisplayId < 0 || surfaceView == null) return "no_session"
+        // The next session (or the next time the screen is plugged in) starts the same way.
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+            .putString("flutter.external_display_mode", mode).apply()
         if (mode == "extend" && externalOutput?.mode == "extend") {
             rearrangeExtended()
+            return "ok"
+        }
+        if (mode == "external" && externalOutput?.mode == "external") {
+            externalOutput?.let(::applyExternalPhoneRole)
             return "ok"
         }
         externalOutput?.let { hideExternalOutput("user") }
@@ -9616,28 +9698,26 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 surface.holder.addCallback(output)
             }
             if (mode == "extend") {
-                // The external screen's part, at the phone desktop's height, beside the phone's.
-                val height = targetHeight
-                val externalWidth = (metrics.widthPixels.toFloat() * height / metrics.heightPixels).roundToInt() and -2
-                val left = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                    .getString("flutter.external_display_position", "right") == "left"
-                arrangeExtended(targetWidth, externalWidth, height, left)
+                arrangeExtended(output, metrics)
                 externalCursor = CursorView(context).also { cursor ->
                     cursor.visibility = cursorView?.visibility ?: View.GONE
                     frame.addView(cursor, FrameLayout.LayoutParams(-1, -1))
                 }
             }
             manager.addView(frame, params)
+            updateCursorPosition()
             when (mode) {
                 // The desktop takes the external screen's size and pixel density.
-                "external" -> runCatching {
-                    resizeActiveDisplay(Config(metrics.widthPixels and -2, metrics.heightPixels and -2,
-                        desktopDensityFor(metrics.densityDpi), secureDisplay, showSystemDecorations), "external display")
-                }.onFailure { OperationLog.e(this, "ExternalOutput", "external resize failed", it) }
+                "external" -> {
+                    runCatching {
+                        resizeActiveDisplay(Config(metrics.widthPixels and -2, metrics.heightPixels and -2,
+                            externalDensityFor(metrics), secureDisplay, showSystemDecorations), "external display")
+                    }.onFailure { OperationLog.e(this, "ExternalOutput", "external resize failed", it) }
+                    applyExternalPhoneRole(output)
+                }
                 "extend" -> {
                     runCatching {
-                        resizeActiveDisplay(Config(phoneRegion!!.width() + externalRegion!!.width(), targetHeight,
-                            density, secureDisplay, showSystemDecorations), "extended desktop")
+                        resizeActiveDisplay(extendedDesktopConfig(), "extended desktop")
                     }.onFailure { OperationLog.e(this, "ExternalOutput", "extended resize failed", it) }
                     // The phone shows only its part now.
                     releaseMirror()
@@ -9667,24 +9747,165 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun externalDisplayPreference(key: String, fallback: String): String =
         getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).getString("flutter.$key", fallback) ?: fallback
 
-    /** Places the phone's and the external screen's parts side by side. */
-    private fun arrangeExtended(phoneWidth: Int, externalWidth: Int, height: Int, externalOnLeft: Boolean) {
-        phoneRegion = if (externalOnLeft) Rect(externalWidth, 0, externalWidth + phoneWidth, height) else Rect(0, 0, phoneWidth, height)
-        externalRegion = if (externalOnLeft) Rect(0, 0, externalWidth, height) else Rect(phoneWidth, 0, phoneWidth + externalWidth, height)
+    /** A screen's size in the desktop at its "scale" percentage (100 = [base] as is). */
+    private fun extendedScreenSize(base: Point, screen: Int): Point {
+        val percent = (externalDisplayPreference("external_display_scale_$screen", "100").toIntOrNull() ?: 100)
+            .coerceIn(EXTENDED_SCALES.first(), EXTENDED_SCALES.last())
+        return Point((base.x * 100f / percent).roundToInt() and -2, (base.y * 100f / percent).roundToInt() and -2)
     }
 
-    /** The arrangement or main display changed while extended: same size, so no resize. */
+    /**
+     * Places each screen's part of the desktop, as arranged in the app: the external screen
+     * touches one side of the phone's ("external_display_position": left/right/top/bottom),
+     * shifted along it by "external_display_along" desktop pixels. Each part is as large as
+     * its screen at its own scale, so both screens show the desktop at their own size; the
+     * desktop is the box around both (any corner outside them shows nothing).
+     */
+    private fun arrangeExtended(output: ExternalOutput, metrics: android.util.DisplayMetrics) {
+        val phone = extendedScreenSize(Point(output.phoneConfig.width, output.phoneConfig.height), 1)
+        // At 100 % the external screen looks as it does when it shows the desktop alone.
+        val externalDensity = externalDensityFor(metrics).toFloat()
+        val external = extendedScreenSize(Point(
+            (metrics.widthPixels * output.phoneConfig.density / externalDensity).roundToInt(),
+            (metrics.heightPixels * output.phoneConfig.density / externalDensity).roundToInt()), 2)
+        val side = externalDisplayPreference("external_display_position", "right")
+        val vertical = side == "top" || side == "bottom"
+        // At least a quarter of the shorter shared edge stays in contact, so the pointer can cross.
+        val contact = if (vertical) minOf(phone.x, external.x) / 4 else minOf(phone.y, external.y) / 4
+        val along = (externalDisplayPreference("external_display_along", "0").toIntOrNull() ?: 0).coerceIn(
+            -(if (vertical) external.x else external.y) + contact,
+            (if (vertical) phone.x else phone.y) - contact)
+        val externalRect = when (side) {
+            "left" -> Rect(-external.x, along, 0, along + external.y)
+            "top" -> Rect(along, -external.y, along + external.x, 0)
+            "bottom" -> Rect(along, phone.y, along + external.x, phone.y + external.y)
+            else -> Rect(phone.x, along, phone.x + external.x, along + external.y)
+        }
+        val phoneRect = Rect(0, 0, phone.x, phone.y)
+        val dx = -minOf(0, externalRect.left)
+        val dy = -minOf(0, externalRect.top)
+        phoneRect.offset(dx, dy)
+        externalRect.offset(dx, dy)
+        phoneRegion = phoneRect
+        externalRegion = externalRect
+    }
+
+    /** The extended desktop: the box around both screens' parts. */
+    private fun extendedDesktopConfig(): Config {
+        val phone = phoneRegion ?: return Config(targetWidth, targetHeight, density, secureDisplay, showSystemDecorations)
+        val external = externalRegion ?: phone
+        val box = Rect(phone).apply { union(external) }
+        return Config(box.right and -2, box.bottom and -2, externalOutput?.phoneConfig?.density ?: density,
+            secureDisplay, showSystemDecorations)
+    }
+
+    /** The arrangement, a scale or the main display changed while extended. */
     private fun rearrangeExtended() {
-        val phone = phoneRegion ?: return
-        val external = externalRegion ?: return
-        val left = externalDisplayPreference("external_display_position", "right") == "left"
-        arrangeExtended(phone.width(), external.width(), phone.height(), left)
+        val output = externalOutput?.takeIf { it.mode == "extend" } ?: return
+        val display = getSystemService(DisplayManager::class.java).getDisplay(output.displayId) ?: return
+        val metrics = android.util.DisplayMetrics().also {
+            @Suppress("DEPRECATION") display.getRealMetrics(it)
+        }
+        arrangeExtended(output, metrics)
+        runCatching { resizeActiveDisplay(extendedDesktopConfig(), "extended desktop rearranged") }
+            .onFailure { OperationLog.e(this, "ExternalOutput", "extended rearrange resize failed", it) }
         releaseMirror()
         surfaceView?.takeIf { it.width > 0 }?.let { reattachExistingDisplay(it.width, it.height) }
         attachExternalMirror()
         applyDesktopOutputs()
         updateCursorPosition()
         OperationLog.i(this, "ExternalOutput", "extended desktop rearranged phone=$phoneRegion external=$externalRegion")
+    }
+
+    /**
+     * The extended desktop for the app's arrangement editor, in place of Android's topology
+     * (which these phones do not apply to the pointer): one entry per screen, in desktop pixels.
+     */
+    fun extendedArrangement(): Map<String, Any>? {
+        val output = externalOutput?.takeIf { it.mode == "extend" } ?: return null
+        val phone = phoneRegion ?: return null
+        val external = externalRegion ?: return null
+        val manager = getSystemService(DisplayManager::class.java)
+        val phoneMain = externalDisplayPreference("external_display_main", "2") == "1"
+        fun screen(screen: Int, displayId: Int, region: Rect, primary: Boolean): Map<String, Any> {
+            val display = manager.getDisplay(displayId)
+            val metrics = android.util.DisplayMetrics().also {
+                @Suppress("DEPRECATION") display?.getRealMetrics(it)
+            }
+            return linkedMapOf(
+                "id" to displayId,
+                "name" to (display?.name ?: "Display $displayId"),
+                "x" to region.left.toDouble(),
+                "y" to region.top.toDouble(),
+                "widthDp" to region.width().toDouble(),
+                "heightDp" to region.height().toDouble(),
+                "widthPx" to metrics.widthPixels,
+                "heightPx" to metrics.heightPixels,
+                "densityDpi" to metrics.densityDpi,
+                "activeModeId" to (display?.mode?.modeId ?: -1),
+                "refreshRate" to (display?.refreshRate?.toDouble() ?: 0.0),
+                // The phone's own resolution belongs to Dextop's resolution settings.
+                "supportedModes" to if (screen == 1) emptyList() else display?.supportedModes?.map { mode ->
+                    linkedMapOf<String, Any>("id" to mode.modeId, "width" to mode.physicalWidth,
+                        "height" to mode.physicalHeight, "refreshRate" to mode.refreshRate.toDouble())
+                }.orEmpty(),
+                "primary" to primary,
+                "dextopOverlay" to false,
+                "extendedScreen" to screen,
+                "scalePercent" to (externalDisplayPreference("external_display_scale_$screen", "100").toIntOrNull() ?: 100),
+                "scalePercents" to EXTENDED_SCALES,
+            )
+        }
+        return linkedMapOf(
+            "supported" to true,
+            "extended" to true,
+            "displays" to listOf(
+                screen(1, Display.DEFAULT_DISPLAY, phone, phoneMain),
+                screen(2, output.displayId, external, !phoneMain),
+            ),
+        )
+    }
+
+    /** Takes positions from the arrangement editor: where the external screen touches the phone's. */
+    fun arrangeExtendedFromEditor(positions: Map<*, *>): Boolean {
+        val output = externalOutput?.takeIf { it.mode == "extend" } ?: return false
+        val phone = phoneRegion ?: return false
+        val external = externalRegion ?: return false
+        fun position(id: Int): PointF? = (positions["$id"] as? Map<*, *>)?.let {
+            PointF((it["x"] as? Number)?.toFloat() ?: return null, (it["y"] as? Number)?.toFloat() ?: return null)
+        }
+        val p = position(Display.DEFAULT_DISPLAY) ?: return false
+        val e = position(output.displayId) ?: return false
+        val x = (e.x - p.x).roundToInt()
+        val y = (e.y - p.y).roundToInt()
+        val (side, along) = when {
+            x >= phone.width() - 1 -> "right" to y
+            x + external.width() <= 1 -> "left" to y
+            y >= phone.height() - 1 -> "bottom" to x
+            else -> "top" to x
+        }
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+            .putString("flutter.external_display_position", side)
+            .putString("flutter.external_display_along", along.toString())
+            .apply()
+        rearrangeExtended()
+        return true
+    }
+
+    /** A screen's scale (percent, 100 = recommended) on the extended desktop. */
+    fun setExtendedScale(displayId: Int, percent: Int): Boolean {
+        val output = externalOutput?.takeIf { it.mode == "extend" } ?: return false
+        val screen = when (displayId) {
+            Display.DEFAULT_DISPLAY -> 1
+            output.displayId -> 2
+            else -> return false
+        }
+        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+            .putString("flutter.external_display_scale_$screen",
+                percent.coerceIn(EXTENDED_SCALES.first(), EXTENDED_SCALES.last()).toString())
+            .apply()
+        rearrangeExtended()
+        return true
     }
 
     /** Tells Dextop's window manager where each screen is: the main one (its taskbar) first. */
@@ -9705,6 +9926,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         runCatching { output.windowManager.removeView(output.frame) }
         externalCursor = null
+        if (output.mode == "external") releaseExternalPhoneRole(output)
         if (output.mode == "external") {
             if (surfaceView === output.surface) surfaceView = output.phoneSurface
             runCatching { resizeActiveDisplay(output.phoneConfig, "external display removed") }
@@ -9728,10 +9950,108 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
     // endregion
 
+    /**
+     * "External display only": the phone either stays a phone (Dextop's window on it shrinks
+     * away, rotation and navigation return to Android) or becomes the desktop's trackpad and
+     * keyboard (the laptop deck over the whole phone screen), as chosen in the app
+     * ("external_display_phone": "phone" / "touchpad").
+     */
+    private var externalPhoneRole: String? = null
+    /** The laptop deck is shown for the external screen, not as a foldable's laptop half. */
+    private var externalInputDeck = false
+
+    private fun applyExternalPhoneRole(output: ExternalOutput) {
+        val role = externalDisplayPreference("external_display_phone", "phone")
+        if (role == externalPhoneRole) return
+        releaseExternalPhoneRole(output)
+        externalPhoneRole = role
+        output.phoneSurface.visibility = View.GONE
+        if (role == "phone") {
+            setPhoneFreeForExternalOutput(true)
+        } else {
+            externalInputDeck = true
+            setLaptopMode(true, KeyboardDeckStyle.LAPTOP)
+        }
+        OperationLog.i(this, "ExternalOutput", "phone role while external only: $role")
+    }
+
+    private fun releaseExternalPhoneRole(output: ExternalOutput) {
+        when (externalPhoneRole) {
+            "phone" -> setPhoneFreeForExternalOutput(false)
+            "touchpad" -> if (laptopModeActive) setLaptopMode(false)
+        }
+        externalInputDeck = false
+        externalPhoneRole = null
+        output.phoneSurface.visibility = View.VISIBLE
+    }
+
+    /** Shrinks Dextop's phone window to nothing and gives the phone back to Android, or undoes it. */
+    private fun setPhoneFreeForExternalOutput(free: Boolean) {
+        val frame = root ?: return
+        val params = rootWindowParams ?: return
+        val untouchable = WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE
+        if (free) {
+            params.width = 1
+            params.height = 1
+            params.flags = (params.flags or untouchable) and WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON.inv()
+        } else {
+            params.width = -1
+            params.height = -1
+            params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+            if (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                    .getBoolean("flutter.keep_awake_during_session", true)
+            ) params.flags = params.flags or WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON
+        }
+        runCatching { windowManager?.updateViewLayout(frame, params) }
+            .onFailure { OperationLog.w(this, "ExternalOutput", "phone window update failed free=$free", it) }
+        setPhoneNavigationDisabled(!free)
+        if (free) {
+            releasePhoneRotation()
+            MainActivity.restoreOrientation()
+        } else {
+            applyHostDisplayOrientation(requestedPortrait)
+            forcePhoneRotation(requestedPortrait, force = true)
+        }
+    }
+
+    /** The external screen last chosen in the app, tried once per connected screen. */
+    private var externalAutoAttemptedFor = -1
+
+    /** Shows the desktop on a connected external screen as last chosen ("extend", "mirror", "external"). */
+    private fun restoreExternalDisplayMode(reason: String) {
+        if (!active || autoOnlySession || externalOutput != null || targetDisplayId < 0 || surfaceView == null) return
+        val display = externalOutputDisplay() ?: run { externalAutoAttemptedFor = -1; return }
+        if (display.displayId == externalAutoAttemptedFor) return
+        val mode = externalDisplayPreference("external_display_mode", "off")
+        if (mode !in setOf("extend", "mirror", "external")) return
+        externalAutoAttemptedFor = display.displayId
+        val shown = showExternalOutput(display, mode)
+        revealPhoneWindow()
+        OperationLog.i(this, "ExternalOutput", "restored $mode on display=${display.displayId} shown=$shown reason=$reason")
+    }
+
+    /** The phone window was hidden while the session started for an external screen only. */
+    private var externalStartPending = false
+
+    private fun revealPhoneWindow() {
+        if (!externalStartPending) return
+        externalStartPending = false
+        val frame = root ?: return
+        val params = rootWindowParams ?: return
+        params.alpha = 1f
+        // The phone role keeps the window untouchable (see setPhoneFreeForExternalOutput).
+        if (externalPhoneRole != "phone") params.flags = params.flags and WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE.inv()
+        runCatching { windowManager?.updateViewLayout(frame, params) }
+    }
+
     private fun refreshExternalDisplayState() {
         root?.post {
             externalOutput?.let { output ->
                 if (getSystemService(DisplayManager::class.java).getDisplay(output.displayId) == null) hideExternalOutput("unplugged")
+            }
+            if (externalOutput == null && active) {
+                if (externalOutputDisplay() == null) externalAutoAttemptedFor = -1
+                else root?.postDelayed({ restoreExternalDisplayMode("display_connected") }, 800)
             }
             val externalState = externalDisplayDetector.snapshot()
             knownPhysicalExternalDisplayIds = externalState.displayIds.toSet()
@@ -9855,8 +10175,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             cursor.alpha = if (nx in 0f..1f && ny in 0f..1f) 1f else 0f
             cursor.update(nx.coerceIn(0f, 1f), ny.coerceIn(0f, 1f))
         }
-        place(cursorView, regionFor(externalOutput?.phoneSurface ?: surfaceView))
-        externalOutput?.let { place(externalCursor, regionFor(it.surface)) }
+        // External only: the phone shows no desktop, and the system pointer is drawn on the external screen.
+        val output = externalOutput
+        if (output?.mode == "external") cursorView?.alpha = 0f
+        else place(cursorView, regionFor(output?.phoneSurface ?: surfaceView))
+        output?.let { place(externalCursor, regionFor(it.surface)) }
     }
 
     private fun toggleDisplayRotation180() {
@@ -12319,6 +12642,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // desktop display. Move the phone control activity back explicitly
             // before a separate DesktopActivity can be launched there.
             if (!autoOnlySession) root?.postDelayed({ ensurePhoneControlOnDefaultDisplay() }, 500)
+            if (!autoOnlySession) {
+                externalAutoAttemptedFor = -1
+                root?.postDelayed({ restoreExternalDisplayMode("session_started") }, if (externalStartPending) 150L else 1_500L)
+            }
             completeStart(
                 Result.success(
                     mapOf(
@@ -12847,6 +13174,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun shouldFollowHostDisplay(): Boolean {
         // The car display has its own size; folding or rotating the phone must not resize it.
         if (autoOnlySession) return false
+        // Nor does the external screen while it alone shows the desktop.
+        if (externalOutput?.mode == "external") return false
         val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
         val selectedDeviceResolution =
             preferences.getString("flutter.selected_resolution_id", "device") == "device"
@@ -13013,6 +13342,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         targetWidth = next.width
         targetHeight = next.height
         density = next.density
+        if (densityChanged && plasmaShell is moe.n4tsu.dextop.plasma.CompositedWindowShell) {
+            // Plasma and its application displays keep the density they were started with
+            // (the external screen alone would show the desktop at the phone's scale): start it
+            // again at the new one; its windows are handed back to the display and adopted.
+            root?.post {
+                if (!active || plasmaShell == null) return@post
+                stopPlasmaShell(restoreWindows = true)
+                applyWindowManagerSelection("desktop density changed")
+                if (externalOutput?.mode == "extend") applyDesktopOutputs()
+            }
+        }
         attachExternalMirror()
         if (sizeChanged) {
             synchronizeDesktopWallpaperDimensions(targetWidth, targetHeight, reason)
@@ -13021,7 +13361,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         phoneOwnedDisplay?.takeIf { sizeChanged || densityChanged }?.let { owned ->
             val surface = if (phoneRegion != null) directDisplaySurface()
                 else surfaceView?.holder?.surface?.takeIf { it.isValid }
-            val updated = surface != null && owned.resize(surface, targetWidth, targetHeight, density)
+            // A host Surface still being created (the external screen's window just added, or
+            // the phone's coming back) binds at the new size when it arrives (attachMirror);
+            // the forced size below must still change now.
+            val updated = surface == null || owned.resize(surface, targetWidth, targetHeight, density)
             check(updated) { "Unable to resize the direct Dextop display" }
             OperationLog.i(
                 this,
@@ -13067,7 +13410,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // Headless Car Companion sessions have no phone-side host. Their
             // logical desktop may resize for the connected car display, but
             // that must never rotate or otherwise alter the phone UI.
-            if (!autoOnlySession) {
+            if (!autoOnlySession && externalPhoneRole != "phone") {
                 applyHostDisplayOrientation(requestedPortrait)
                 forcePhoneRotation(requestedPortrait)
             }
@@ -13753,6 +14096,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             externalBackend.releaseLayer()
             runCatching { output.windowManager.removeView(output.frame) }
         }
+        // The next session's window is new; a role left from this one would skip shrinking it.
+        externalPhoneRole = null
+        externalInputDeck = false
         cursorView?.let { runCatching { windowManager?.removeView(it) } }
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null

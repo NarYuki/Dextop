@@ -138,6 +138,17 @@ internal class TaskBridge(
         return attempts.any { attempt -> runCatching { attempt() }.onFailure { log("focus", it) }.isSuccess }
     }
 
+    /**
+     * Makes [displayId] the top-focused display, so its focused window is the one the input
+     * method serves. Without this every application display keeps a focus of its own and the
+     * input method stays with whichever display was touched last.
+     */
+    fun focusDisplay(displayId: Int): Boolean =
+        runCatching {
+            checkNotNull(method("focusTopTask") { it.parameterTypes.size == 1 }).invoke(atm(), displayId)
+            true
+        }.onFailure { log("focusDisplay", it) }.getOrDefault(false)
+
     fun setBounds(task: TaskSnapshot, bounds: Rect): Boolean {
         val resize = method("resizeTask") { it.parameterTypes.size == 3 }
         // resizeTask reports "not allowed" (for example on a multi-window

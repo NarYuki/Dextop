@@ -459,7 +459,8 @@ open class MainActivity : FlutterActivity() {
                     result.error("SAMSUNG_SETTINGS_READ", it.message, null)
                 }
                 "displayTopology" -> Thread {
-                    val state = DisplayTopologyController(this).read()
+                    // An extended Dextop desktop is arranged by Dextop itself, not Android's topology.
+                    val state = MirrorService.extendedDisplayArrangement() ?: DisplayTopologyController(this).read()
                     runOnUiThread { result.success(state) }
                 }.start()
                 "displayModeDisplays" -> Thread {
@@ -498,7 +499,14 @@ open class MainActivity : FlutterActivity() {
                 }.onSuccess(result::success).onFailure {
                     result.error("VIRTUAL_POINTER_PROFILE_WRITE", it.message, null)
                 }
-                "setDisplayTopology" -> Thread {
+                "setDisplayTopology" -> if (MirrorService.extendedDisplayArrangement() != null) {
+                    val positions = call.argument<Map<*, *>>("positions") ?: emptyMap<Any, Any>()
+                    MirrorService.arrangeExtendedDisplays(positions) { applied ->
+                        val state = MirrorService.extendedDisplayArrangement()
+                        if (applied && state != null) result.success(state)
+                        else result.error("DISPLAY_TOPOLOGY_WRITE", "The extended desktop could not be arranged", null)
+                    }
+                } else Thread {
                     runCatching {
                         val positions = call.argument<Map<*, *>>("positions")
                             ?: error("Display positions are required")
@@ -512,6 +520,12 @@ open class MainActivity : FlutterActivity() {
                         }
                     }
                 }.start()
+                "setExtendedDisplayScale" -> MirrorService.setExtendedDisplayScale(
+                    call.argument<Int>("displayId") ?: -1, call.argument<Int>("percent") ?: 100,
+                ) { applied ->
+                    if (applied) result.success(null)
+                    else result.error("display_setting", "The extended desktop is not running", null)
+                }
                 "setDisplayDensity", "setDisplayRotation", "displayPhysicalDensity" -> Thread {
                     runCatching {
                         val displayId = call.argument<Int>("displayId") ?: error("A display id is required")

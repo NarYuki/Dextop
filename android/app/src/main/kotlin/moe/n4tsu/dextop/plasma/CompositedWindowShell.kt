@@ -79,16 +79,23 @@ internal abstract class CompositedWindowShell(
     private val autoMode: Boolean,
     /** Dextop Book: Material 3 Expressive chrome (see Book.kt) instead of Plasma's. */
     private val book: Boolean = false,
-) : DesktopShell, V2WindowHost, PanelHost, LauncherHost, AutoUiHost {
+) : DesktopShell, V2WindowHost, PanelHost, LauncherHost, AutoUiHost, BookHost, BookChrome {
 
     companion object {
         private const val TAG = "DextopPlasmaV2"
+        /** Material 3 motion curves for Book. */
+        private val BOOK_EMPHASIZED = android.view.animation.PathInterpolator(.2f, 0f, 0f, 1f)
+        private val BOOK_DECELERATE = android.view.animation.PathInterpolator(.05f, .7f, .1f, 1f)
+        private val BOOK_ACCELERATE = android.view.animation.PathInterpolator(.3f, 0f, .8f, .15f)
         private const val PREFS = "dextop_plasma"
         private const val POLL_INTERVAL_MS = 500L
         private const val EMPTY_CLOSE_MS = 900L
         private const val LAUNCH_TIMEOUT_MS = 7_000L
+        /** How long a task must stay over a window's own before it gets a window of its own. */
+        private const val STACKED_SPLIT_MS = 600L
         private const val INJECT_ASYNC = 0
         private const val DISPLAY_IME_POLICY_LOCAL = 0
+        private const val DISPLAY_IME_POLICY_FALLBACK_DISPLAY = 1
         /** MotionEvent button bits to X button numbers (left, middle, right, back, forward). */
 
         private val LINUX_BUTTONS = listOf(
@@ -197,6 +204,11 @@ internal abstract class CompositedWindowShell(
         val audio = service.getSystemService(AudioManager::class.java)
         val level = audio.getStreamVolume(AudioManager.STREAM_MUSIC).toFloat() /
             audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+        bookUi?.let { ui ->
+            ui.showVolume(level, audio.isStreamMute(AudioManager.STREAM_MUSIC))
+            refreshTray()
+            return
+        }
         val label = volumeOsd ?: android.widget.TextView(displayContext).apply {
             gravity = Gravity.CENTER
             textSize = 18f
@@ -437,6 +449,59 @@ internal abstract class CompositedWindowShell(
 
     override val windowShadows get() = !autoMode
     override fun windowCornerRadius(): Float = if (autoMode) autoUi?.cornerRadius() ?: -1f else if (book) dp(16).toFloat() else -1f
+    override fun hasBackButton(window: V2Window): Boolean =
+        !autoMode && window.linuxContainer == null && window.steamMode == null && window.displayId >= 0
+
+    /** Back, as the phone's Back key, to the application in [window]. */
+    override fun goBack(window: V2Window) {
+        if (window.displayId < 0) return
+        activate(window)
+        val now = SystemClock.uptimeMillis()
+        listOf(KeyEvent.ACTION_DOWN, KeyEvent.ACTION_UP).forEach { action ->
+            injectKey(KeyEvent(now, now, action, KeyEvent.KEYCODE_BACK, 0, 0, android.view.KeyCharacterMap.VIRTUAL_KEYBOARD, 0,
+                KeyEvent.FLAG_FROM_SYSTEM or KeyEvent.FLAG_VIRTUAL_HARD_KEY, InputDevice.SOURCE_KEYBOARD), window.displayId)
+        }
+    }
+
+    /** Book: two windows split side by side drop their shadows; one tiled window alone keeps its own. */
+    override fun flatWindow(window: V2Window): Boolean {
+        if (!book || !isShown(window)) return false
+        val partner = when (window.tile) {
+            TileZone.LEFT -> TileZone.RIGHT
+            TileZone.RIGHT -> TileZone.LEFT
+            else -> return false
+        }
+        val output = outputOf(window.frame)
+        return windows.any { it !== window && isShown(it) && it.tile == partner && outputOf(it.frame) == output }
+    }
+    /**
+     * Book's corners: square where the window meets its screen's work-area edges on both sides of
+     * the corner (maximized: all four; split left: the outer two), round elsewhere.
+     */
+    override fun windowCorners(window: V2Window): FloatArray? {
+        if (!book) return null
+        val round = dp(16).toFloat()
+        if (window.linuxFullscreen) return FloatArray(4)
+        if (window.maximized) return FloatArray(4)
+        // From the tile, not the frame, so the corners do not flicker while the frame animates.
+        val (top, left, bottom, right) = when (window.tile) {
+            TileZone.LEFT -> listOf(true, true, true, false)
+            TileZone.RIGHT -> listOf(true, false, true, true)
+            TileZone.TOP -> listOf(true, true, false, true)
+            TileZone.BOTTOM -> listOf(false, true, true, true)
+            TileZone.TOP_LEFT -> listOf(true, true, false, false)
+            TileZone.TOP_RIGHT -> listOf(true, false, false, true)
+            TileZone.BOTTOM_LEFT -> listOf(false, true, true, false)
+            TileZone.BOTTOM_RIGHT -> listOf(false, false, true, true)
+            TileZone.MAXIMIZE -> listOf(true, true, true, true)
+            TileZone.NONE -> return floatArrayOf(round, round, round, round)
+        }
+        fun corner(a: Boolean, b: Boolean) = if (a && b) 0f else round
+        return floatArrayOf(corner(top, left), corner(top, right), corner(bottom, right), corner(bottom, left))
+    }
+
+    override fun windowCornerRadius(window: V2Window): Float =
+        if (book && (window.maximized || window.tile != TileZone.NONE || window.linuxFullscreen)) 0f else windowCornerRadius()
     override val bookStyle get() = book
     override val autoControls get() = systemControls
     override fun <T> autoLoad(owner: View, work: () -> T, done: (T) -> Unit) = trayWorker.load(owner, work, done)
@@ -576,7 +641,7 @@ internal abstract class CompositedWindowShell(
     private var krunner: KRunnerView? = null
     private var tooltip: PanelTooltipView? = null
     private var tooltipRunnable: Runnable? = null
-    private var switcher: TaskSwitcherView? = null
+    private var switcher: TaskSwitcher? = null
     private var switcherRequested = false
     private var leaveScreen: LeaveScreen? = null
 
@@ -584,6 +649,8 @@ internal abstract class CompositedWindowShell(
     private var moving: V2Window? = null
     private val moveOffset = android.graphics.PointF()
     private var snapZone = TileZone.NONE
+    /** The work area [snapZone] refers to: the screen the window was dropped on. */
+    private var snapArea = Rect()
     private var resizing: V2Window? = null
     private var resizeEdge = V2Edge.BOTTOM
     private val resizeStartFrame = Rect()
@@ -617,6 +684,8 @@ internal abstract class CompositedWindowShell(
     // endregion
 
     private fun invalidateDesktopPanel() {
+        if (::root.isInitialized) updateShellFocus()
+        if (book) windows.forEach { it.view.refreshElevation(it.id == activeId) }
         if (::panel.isInitialized) panel.invalidate()
         bookUi?.refresh()
         // Auto's task bar shows the same titles and icons.
@@ -705,9 +774,9 @@ internal abstract class CompositedWindowShell(
         if (autoMode) { handler.post { layoutAutoWorkspace() }; return }
         windows.forEach { window ->
             when {
-                window.linuxFullscreen -> setFrame(window, Rect(0, 0, width, height), resizeDisplay = true)
-                window.maximized -> setFrame(window, workArea(), resizeDisplay = true)
-                window.tile != TileZone.NONE -> setFrame(window, tileRect(window.tile), resizeDisplay = true)
+                window.linuxFullscreen -> setFrame(window, outputOf(window.frame), resizeDisplay = true)
+                window.maximized -> setFrame(window, workAreaFor(window), resizeDisplay = true)
+                window.tile != TileZone.NONE -> setFrame(window, tileRect(window.tile, workAreaFor(window)), resizeDisplay = true)
                 else -> setFrame(window, clampFrame(Rect(window.frame)), resizeDisplay = true)
             }
         }
@@ -722,6 +791,7 @@ internal abstract class CompositedWindowShell(
         val previousDesktops = settings.virtualDesktops
         settings = PlasmaSettings.load(service)
         palette = resolveAutoPalette()
+        bookUi?.recolor()
         if (settings.virtualDesktops < previousDesktops) {
             val last = settings.virtualDesktops - 1
             windows.filter { it.desktop > last }.forEach { it.desktop = last }
@@ -733,6 +803,7 @@ internal abstract class CompositedWindowShell(
             it.view.titleBar.invalidate()
         }
         updatePanelFloat(force = true)
+        refreshTray()
         invalidateDesktopPanel()
         if (autoMode) { layoutAutoWorkspace();autoUi?.refreshPage() }
     }
@@ -829,7 +900,11 @@ internal abstract class CompositedWindowShell(
         panelFloatTarget = panelFloat
         panel.floatFraction = panelFloat
         // Book keeps the panel model (task list, icons) but shows its own status bar and dock.
-        if (book) BookUi(displayContext, this, this).also { bookUi = it; it.install(root) }
+        if (book) BookUi(displayContext, this, this, this, this, displayId).also { ui ->
+            bookUi = ui
+            ui.install(root, root.indexOfChild(wallpaper) + 1, windowsLayer)
+            ui.onInsetsChanged = { relayoutBookInsets() }
+        }
         else root.addView(panel, FrameLayout.LayoutParams(-1, panel.thickness + panel.floatMargin * 2, Gravity.BOTTOM))
         // Desktop chrome stays behind transient menus and Linux popups.
         popupLayer.bringToFront()
@@ -871,13 +946,13 @@ internal abstract class CompositedWindowShell(
         windowsLayer.addView(window.view, params)
         window.view.x = (frame.left - grip).toFloat()
         window.view.y = (frame.top - grip).toFloat()
-        // KWin "Scale" open effect, with live content.
+        // KWin "Scale" open effect, with live content; Book's is Material's emphasized decelerate.
         window.view.alpha = 0f
-        window.view.scaleX = .86f
-        window.view.scaleY = .86f
+        window.view.scaleX = if (book) .92f else .86f
+        window.view.scaleY = if (book) .92f else .86f
         window.view.animate().alpha(1f).scaleX(1f).scaleY(1f)
-            .setDuration(settings.duration(PlasmaTheme.LONG_MS + 60))
-            .setInterpolator(PlasmaTheme.outCubic).start()
+            .setDuration(settings.duration(if (book) 320L else PlasmaTheme.LONG_MS + 60))
+            .setInterpolator(if (book) BOOK_DECELERATE else PlasmaTheme.outCubic).start()
         activate(window)
         return window
     }
@@ -1014,7 +1089,22 @@ internal abstract class CompositedWindowShell(
         val now = SystemClock.uptimeMillis()
         windows.toList().forEach { window ->
             val tasks = perWindow[window.id] ?: return@forEach
-            val top = tasks.firstOrNull { it.packageName.isNotEmpty() }
+            var top = tasks.firstOrNull { it.packageName.isNotEmpty() }
+            // A task started from inside this window (a Linux app from Dextop, a link into another
+            // app) lands on the same display, over the window's own task. Once it has stayed there
+            // (a trampoline finishes its own task at once), it moves to a window of its own.
+            val own = tasks.firstOrNull { it.taskId == window.taskId }
+            if (!autoMode && top != null && own != null && top.taskId != own.taskId && top.taskId !in adoptedTaskIds) {
+                if (window.stackedTask != top.taskId) {
+                    window.stackedTask = top.taskId
+                    window.stackedSince = now
+                } else if (now - window.stackedSince >= STACKED_SPLIT_MS) {
+                    adoptedTaskIds += top.taskId
+                    window.stackedTask = -1
+                    createWindow(top.packageName, smartPlacement(), adoptTask = top)
+                }
+                top = own
+            } else window.stackedTask = -1
             if (top != null) {
                 window.hadTask = true
                 if (window.taskId != top.taskId) {
@@ -1025,6 +1115,11 @@ internal abstract class CompositedWindowShell(
                 if (top.packageName != window.packageName) {
                     window.packageName = top.packageName
                     window.icon = appRepository.icon(top.packageName)
+                }
+                // Book's own apps (Settings, Widgets) are activities of Dextop with icons of their own.
+                if (top.packageName == service.packageName && top.component != null && window.ownComponent != top.component) {
+                    window.ownComponent = top.component
+                    window.icon = runCatching { service.packageManager.getActivityIcon(top.component) }.getOrNull() ?: window.icon
                 }
                 val label = top.label?.takeIf { it.isNotBlank() } ?: appRepository.label(top.packageName)
                 if (label != window.title) {
@@ -1094,9 +1189,9 @@ internal abstract class CompositedWindowShell(
             if (workspace.primary==null) autoUi?.showHome()
         }
         if (activeId == window.id) activeId = windows.filter { isShown(it) }.maxByOrNull { it.lastActivated }?.id ?: -1
-        window.view.animate().alpha(0f).scaleX(.85f).scaleY(.85f)
-            .setDuration(settings.duration(PlasmaTheme.LONG_MS))
-            .setInterpolator(PlasmaTheme.inCubic)
+        window.view.animate().alpha(0f).scaleX(if (book) .94f else .85f).scaleY(if (book) .94f else .85f)
+            .setDuration(settings.duration(if (book) 200L else PlasmaTheme.LONG_MS))
+            .setInterpolator(if (book) BOOK_ACCELERATE else PlasmaTheme.inCubic)
             .withEndAction { removeWindowView(window) }
             .start()
         updatePanelFloat()
@@ -1124,13 +1219,22 @@ internal abstract class CompositedWindowShell(
      */
     private fun showImeInside(appDisplay: Int) {
         val type = Class.forName("android.view.IWindowManager")
+        // The input method cannot add its window to a private display (only Dextop may), so it
+        // never started and swallowed the keys (HyperOS: no typing in apps). It shows on the
+        // phone instead and serves the app from there.
+        val policy = if (privateAppDisplays) DISPLAY_IME_POLICY_FALLBACK_DISPLAY else DISPLAY_IME_POLICY_LOCAL
         runCatching {
             type.getMethod("setDisplayImePolicy", Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
-                .invoke(windowService, appDisplay, DISPLAY_IME_POLICY_LOCAL)
+                .invoke(windowService, appDisplay, policy)
         }.recoverCatching {
             type.getMethod("setShouldShowIme", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
                 .invoke(windowService, appDisplay, true)
         }.onFailure { host.log("Plasma v2 IME policy failed display=$appDisplay: ${it.message}") }
+        // A public display may otherwise get the launcher's secondary home behind its app.
+        if (!privateAppDisplays) runCatching {
+            type.getMethod("setShouldShowSystemDecors", Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType)
+                .invoke(windowService, appDisplay, false)
+        }.onFailure { host.log("Plasma v2 decorations off failed display=$appDisplay: ${it.message}") }
     }
 
     /**
@@ -1256,7 +1360,7 @@ internal abstract class CompositedWindowShell(
         }
     }
 
-    private fun openNotification(item: DextopNotification) {
+    override fun openNotification(item: DextopNotification) {
         dismissPopup()
         if (item.linux) {
             val (containerId, key) = item.key.removePrefix("linux:").split(':', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
@@ -1269,7 +1373,7 @@ internal abstract class CompositedWindowShell(
         }
     }
 
-    private fun dismissNotification(item: DextopNotification) {
+    override fun dismissNotification(item: DextopNotification) {
         if (item.linux) {
             val (containerId, key) = item.key.removePrefix("linux:").split(':', limit = 2).let { it[0] to it.getOrElse(1) { "" } }
             LinuxContainerClient.service()?.runCatching { notificationAction(containerId, key, "dismiss") }
@@ -1433,7 +1537,7 @@ internal abstract class CompositedWindowShell(
             if (resumeWindows) prewarmLinux()
             if (autoMode) autoUi?.refreshPage()
             windows.filter { it.linuxXid != 0 }.forEach { window ->
-                window.icon = window.linuxWindowIcon ?: linuxIcon(window.linuxContainer ?: return@forEach, window.linuxWMClass)
+                window.icon = linuxWindowIconFor(window)
                 window.view.titleBar.invalidate()
             }
             invalidateDesktopPanel()
@@ -1449,7 +1553,34 @@ internal abstract class CompositedWindowShell(
 
     private val linuxLaunchClicked = HashMap<String, Long>()
 
-    private fun launchLinuxApp(packageName: String) {
+    /**
+     * A Linux application being launched: its Kickoff entry and the window that shows it
+     * starting. That window becomes the application's own when its X window maps, so the
+     * window, its task-manager entry and icon stay the same from the click on.
+     */
+    private class LinuxLaunch(val key: String, val containerId: String, val desktopId: String, val window: V2Window)
+
+    private val linuxLaunches = ArrayList<LinuxLaunch>()
+
+    /**
+     * The launch a newly mapped top-level X window answers, or null (a window of an app already
+     * running, or of another app). It must be of the launched entry's class; with no class to go
+     * by, it answers the only pending launch of its container, unless a running window has its class.
+     */
+    private fun linuxLaunchFor(containerId: String, event: JSONObject): LinuxLaunch? {
+        linuxLaunches.removeAll { it.window.closing || !windows.contains(it.window) || it.window.linuxXid != 0 }
+        val pending = linuxLaunches.filter { it.containerId == containerId }
+        if (pending.isEmpty() || event.optInt("transientFor") != 0) return null
+        val wmClass = event.optString("class")
+        val entry = linuxAppFor(containerId, wmClass)?.packageName
+        if (entry != null) return pending.firstOrNull { it.key == entry }
+        val classTaken = wmClass.isNotEmpty() && windows.any {
+            it.linuxContainer == containerId && it.linuxXid != 0 && it.linuxWMClass.equals(wmClass, ignoreCase = true)
+        }
+        return pending.singleOrNull()?.takeIf { !classTaken }
+    }
+
+    private fun launchLinuxApp(packageName: String, label: String? = null) {
         // As for Android-window launches: the foreground service keeps the session alive and online.
         moe.n4tsu.dextop.linux.LinuxSessionService.start(service)
         val (containerId, desktopId) = packageName.removePrefix(LINUX_APP_PREFIX).split(':', limit = 2)
@@ -1458,12 +1589,19 @@ internal abstract class CompositedWindowShell(
             launchSteamMode(containerId, packageName)
             return
         }
+        // Every launch shows its window at once, whether the container still has to start or not.
+        val app = linuxApps.firstOrNull { it.packageName == packageName }
         val placeholder = createWindow("linux-launch:$containerId:$desktopId", Rect(workArea()).apply { inset(width() / 12, height() / 12) })
-        placeholder.title = linuxApps.firstOrNull { it.packageName == packageName }?.label ?: desktopId
+        val name = label ?: app?.label ?: desktopId
+        placeholder.title = name
+        placeholder.icon = app?.icon ?: placeholder.icon
+        placeholder.linuxLaunchKey = packageName
         placeholder.view.titleBar.invalidate()
-        placeholder.view.showStatus(t("nativeLinuxDesktopStartingContainer"))
+        placeholder.view.showStatus(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} を起動しています", "Starting {0}"), name))
+        linuxLaunches += LinuxLaunch(packageName, containerId, desktopId, placeholder)
+        invalidateDesktopPanel()
         root.postDelayed({
-            if (!placeholder.closing && windows.contains(placeholder)) {
+            if (!placeholder.closing && windows.contains(placeholder) && placeholder.linuxXid == 0) {
                 LinuxContainerClient.call(service, { it.runtimeLogs(containerId) }, { logs ->
                     if (!placeholder.closing) placeholder.view.showError(moe.n4tsu.dextop.localText("アプリが 30 秒以内にウィンドウを開きませんでした。", "Application did not open a window within 30 seconds.") + "\n$logs")
                 }) { error -> if (!placeholder.closing) placeholder.view.showError(error.message ?: error.toString()) }
@@ -1816,8 +1954,16 @@ internal abstract class CompositedWindowShell(
                 if (!popup) linuxLaunchClicked.remove(containerId)?.let { clicked ->
                     Log.i("DextopLaunch", "plasma window mapped ${SystemClock.uptimeMillis() - clicked}ms after the click")
                 }
-                if (!popup) windows.filter { it.packageName.startsWith("linux-launch:$containerId:") }.toList().forEach(::closeWindowNow)
-                if (popup) linuxPopupLayer.show(containerId, xid, bounds) else mapLinuxWindow(containerId, xid, event, bounds)
+                when {
+                    popup -> linuxPopupLayer.show(containerId, xid, bounds)
+                    else -> {
+                        val launch = linuxLaunchFor(containerId, event)
+                        if (launch != null) {
+                            linuxLaunches.remove(launch)
+                            mapLinuxWindow(containerId, xid, event, bounds, into = launch.window)
+                        } else mapLinuxWindow(containerId, xid, event, bounds)
+                    }
+                }
             }
             "display-config" -> if (!event.optBoolean("apps")) {
                 windows.filter { it.linuxContainer == containerId && it.linuxXid == 0 }.forEach { window ->
@@ -1838,13 +1984,13 @@ internal abstract class CompositedWindowShell(
             "class" -> linuxWindow(containerId, xid)?.takeIf { it.steamMode == null }?.let { window ->
                 window.linuxWMClass = event.optString("class")
                 window.packageName = "linuxwin:$containerId:${window.linuxWMClass.lowercase()}"
-                window.icon = window.linuxWindowIcon ?: linuxIcon(containerId, window.linuxWMClass)
+                window.icon = linuxWindowIconFor(window)
                 window.view.titleBar.invalidate()
                 invalidateDesktopPanel()
             }
             "icon" -> linuxWindow(containerId, xid)?.takeIf { it.steamMode == null }?.let { window ->
                 window.linuxWindowIcon = decodeLinuxWindowIcon(event.optString("icon"))
-                window.icon = window.linuxWindowIcon ?: linuxIcon(containerId, window.linuxWMClass)
+                window.icon = linuxWindowIconFor(window)
                 window.view.titleBar.invalidate()
                 invalidateDesktopPanel()
             }
@@ -1854,7 +2000,7 @@ internal abstract class CompositedWindowShell(
                 window.view.refreshDecorations()
                 val frame = Rect(window.frame)
                 frame.bottom += window.decorationHeight(titleHeight) - oldHeight
-                setFrame(window, if (window.linuxFullscreen) Rect(0, 0, width, height) else clampFrame(frame), resizeDisplay = true)
+                setFrame(window, if (window.linuxFullscreen) outputOf(window.frame) else clampFrame(frame), resizeDisplay = true)
             }
             "minimize" -> linuxWindow(containerId, xid)?.let(::minimize)
             "maximize" -> linuxWindow(containerId, xid)?.let { window ->
@@ -1885,7 +2031,8 @@ internal abstract class CompositedWindowShell(
         }
     }
 
-    private fun mapLinuxWindow(containerId: String, xid: Int, event: JSONObject, bounds: Rect) {
+    /** Shows a top-level X window: in [into] (its launch's window) when given, else in a new window. */
+    private fun mapLinuxWindow(containerId: String, xid: Int, event: JSONObject, bounds: Rect, into: V2Window? = null) {
         if (linuxWindow(containerId, xid) != null) return
         val area = workArea()
         val w = bounds.width().coerceIn(dp(160), area.width())
@@ -1897,9 +2044,16 @@ internal abstract class CompositedWindowShell(
         } else {
             smartPlacement()
         }
-        val frame = clampFrame(Rect(origin.left, origin.top, origin.left + w, origin.top + h))
         val wmClass = event.optString("class")
-        val window = createWindow("linuxwin:$containerId:${wmClass.lowercase()}", frame)
+        val window = if (into != null) {
+            // The launch's window takes the application: same window, entry and place; it only
+            // takes the application's size, around its own centre.
+            into.packageName = "linuxwin:$containerId:${wmClass.lowercase()}"
+            into.view.showStatus(null)
+            into
+        } else {
+            createWindow("linuxwin:$containerId:${wmClass.lowercase()}", clampFrame(Rect(origin.left, origin.top, origin.left + w, origin.top + h)))
+        }
         window.linuxContainer = containerId
         window.linuxXid = xid
         window.linuxWMClass = wmClass
@@ -1909,8 +2063,13 @@ internal abstract class CompositedWindowShell(
         window.view.refreshDecorations()
         window.title = event.optString("title").ifBlank { wmClass.ifBlank { "Linux" } }
         window.linuxWindowIcon = decodeLinuxWindowIcon(event.optString("icon"))
-        window.icon = window.linuxWindowIcon ?: linuxIcon(containerId, wmClass)
+        window.icon = linuxWindowIconFor(window)
         window.view.titleBar.invalidate()
+        if (into != null) {
+            val c = into.frame
+            animateFrame(window, clampFrame(Rect(c.centerX() - w / 2, c.centerY() - h / 2, c.centerX() - w / 2 + w, c.centerY() - h / 2 + h)))
+            window.surface?.let { attachLinuxWindow(window, it) }
+        }
         if (event.optBoolean("fullscreen")) setLinuxFullscreen(window, true)
         LinuxContainerClient.service()?.runCatching { activateWindow(containerId, xid) }
         invalidateDesktopPanel()
@@ -1923,18 +2082,48 @@ internal abstract class CompositedWindowShell(
             ?.let { android.graphics.drawable.BitmapDrawable(service.resources, it) }
     }.getOrNull()
 
-    /** The Kickoff icon of the application whose desktop entry or name matches [wmClass]. */
-    private fun linuxIcon(containerId: String, wmClass: String): android.graphics.drawable.Drawable {
+    /** The Kickoff entry of the application whose desktop entry or name matches [wmClass]. */
+    private fun linuxAppFor(containerId: String, wmClass: String): PlasmaApp? {
         val key = wmClass.lowercase()
+        if (key.isEmpty()) return null
         val prefix = "$LINUX_APP_PREFIX$containerId:"
-        val matchingClass = linuxApps.firstOrNull {
-            it.packageName.startsWith(prefix) && key.isNotEmpty() && it.startupWMClass.equals(wmClass, ignoreCase = true)
-        }
-        return (matchingClass ?: linuxApps.firstOrNull { app ->
-            app.packageName.startsWith(prefix) && key.isNotEmpty() &&
-                (app.packageName.removePrefix(prefix).removeSuffix(".desktop").lowercase().let { it == key || it.endsWith(".$key") || it.endsWith("-$key") } ||
-                    app.label.lowercase().startsWith(key))
-        })?.icon ?: GlyphDrawable(Glyph.WINDOW, palette.text)
+        return linuxApps.firstOrNull { it.packageName.startsWith(prefix) && it.startupWMClass.equals(wmClass, ignoreCase = true) }
+            ?: linuxApps.firstOrNull { app ->
+                app.packageName.startsWith(prefix) &&
+                    (app.packageName.removePrefix(prefix).removeSuffix(".desktop").lowercase().let { it == key || it.endsWith(".$key") || it.endsWith("-$key") } ||
+                        app.label.lowercase().startsWith(key))
+            }
+    }
+
+    /**
+     * A Linux window's icon: its own (_NET_WM_ICON), else that of the Kickoff entry it was
+     * launched from, else the entry matching its class, else a plain window glyph.
+     */
+    private fun linuxWindowIconFor(window: V2Window): android.graphics.drawable.Drawable? =
+        window.linuxWindowIcon
+            ?: window.linuxLaunchKey?.let { key -> linuxApps.firstOrNull { it.packageName == key }?.icon }
+            ?: window.linuxContainer?.let { linuxIcon(it, window.linuxWMClass) }
+
+    /** The Kickoff icon of the application whose desktop entry or name matches [wmClass]. */
+    private fun linuxIcon(containerId: String, wmClass: String): android.graphics.drawable.Drawable =
+        linuxAppFor(containerId, wmClass)?.icon ?: GlyphDrawable(Glyph.WINDOW, palette.text)
+
+    /**
+     * The task-manager entry a window belongs to: a Linux window to its application's Kickoff
+     * entry, so it can be pinned (and launched from the pin) and groups with that pin.
+     */
+    private fun taskKey(window: V2Window): String {
+        window.linuxLaunchKey?.let { key -> if (!key.endsWith(":dextop-open.desktop")) return key }
+        val pkg = window.packageName
+        // The "starting…" window of a launch is that entry's from the first moment.
+        if (pkg.startsWith("linux-launch:") && !pkg.endsWith(":dextop-open.desktop")) return LINUX_APP_PREFIX + pkg.removePrefix("linux-launch:")
+        if (!pkg.startsWith("linuxwin:")) return pkg
+        val container = window.linuxContainer ?: return pkg
+        // Another window of an application launched from Kickoff (same class) joins it too.
+        windows.firstOrNull { it !== window && it.linuxContainer == container && it.linuxLaunchKey != null &&
+            it.linuxWMClass.isNotEmpty() && it.linuxWMClass.equals(window.linuxWMClass, ignoreCase = true) }
+            ?.linuxLaunchKey?.let { return it }
+        return linuxAppFor(container, window.linuxWMClass)?.packageName ?: pkg
     }
 
     private fun attachLinuxWindow(window: V2Window, surface: Surface) {
@@ -1952,8 +2141,11 @@ internal abstract class CompositedWindowShell(
         val id = window.linuxContainer ?: return
         if (window.linuxXid == 0) return
         syncLinuxWindowState(window)
-        val w = (if (window.linuxFullscreen) window.linuxWidth else window.clientWidth()).coerceAtLeast(1)
-        val h = (if (window.linuxFullscreen) window.linuxHeight else window.clientHeight(titleHeight)).coerceAtLeast(1)
+        // A full-screen X client keeps the size it chose (the screen shows it scaled); a Wayland
+        // client is told the screen's size, as Wayland expects, and renders at full resolution.
+        val keepOwnSize = window.linuxFullscreen && !moe.n4tsu.dextop.linux.LinuxAppSession.isWayland(window.linuxXid)
+        val w = (if (keepOwnSize) window.linuxWidth else window.clientWidth()).coerceAtLeast(1)
+        val h = (if (keepOwnSize) window.linuxHeight else window.clientHeight(titleHeight)).coerceAtLeast(1)
         window.linuxConfiguredAt = SystemClock.uptimeMillis()
         LinuxContainerClient.service()?.runCatching {
             configureWindow(id, window.linuxXid, window.frame.left, window.frame.top + window.decorationHeight(titleHeight), w, h)
@@ -2002,7 +2194,7 @@ internal abstract class CompositedWindowShell(
         if (enabled) window.linuxFullscreenRestore = Rect(window.frame)
         window.linuxFullscreen = enabled
         window.view.refreshDecorations()
-        setFrame(window, if (enabled) Rect(0, 0, width, height)
+        setFrame(window, if (enabled) outputOf(window.frame)
             else clampFrame(window.linuxFullscreenRestore ?: window.frame), resizeDisplay = true)
         if (!enabled) window.linuxFullscreenRestore = null
         updatePanelFloat()
@@ -2384,6 +2576,7 @@ internal abstract class CompositedWindowShell(
         runCatching {
             wmExecutor.execute {
                 runCatching { bridge.tasks(appDisplay).firstOrNull()?.let(bridge::focus) }
+                bridge.focusDisplay(appDisplay)
             }
         }
     }
@@ -2425,18 +2618,44 @@ internal abstract class CompositedWindowShell(
     private fun currentOutput(): Rect {
         if (outputs.isEmpty()) return Rect(0, 0, width, height)
         val frame = windows.firstOrNull { it.id == activeId && isShown(it) }?.frame ?: return primaryOutput()
-        return outputs.firstOrNull { it.contains(frame.centerX(), frame.centerY()) } ?: primaryOutput()
+        return outputOf(frame)
     }
+
+    /** The screen at ([x], [y]); outside every screen (screens of different sizes), the nearest. */
+    private fun outputAt(x: Int, y: Int): Rect {
+        if (outputs.isEmpty()) return Rect(0, 0, width, height)
+        return Rect(outputs.firstOrNull { it.contains(x, y) } ?: outputs.minBy { output ->
+            val dx = maxOf(output.left - x, 0, x - output.right).toLong()
+            val dy = maxOf(output.top - y, 0, y - output.bottom).toLong()
+            dx * dx + dy * dy
+        })
+    }
+
+    /** The screen [frame] is on: the one holding its centre. */
+    private fun outputOf(frame: Rect): Rect = outputAt(frame.centerX(), frame.centerY())
+
+    /** Whether another screen continues at ([x], [y]), so the pointer crosses there instead of stopping. */
+    private fun onAnotherScreen(x: Int, y: Int) = outputs.any { it.contains(x, y) }
+
+    /** Where [window] maximizes and tiles: its own screen's work area. */
+    private fun workAreaFor(window: V2Window): Rect = if (autoMode) workArea() else workAreaOf(outputOf(window.frame))
 
     override fun setOutputs(outputs: List<Rect>) {
         this.outputs = outputs.map(::Rect)
         if (!running || autoMode) return
         bookUi?.place(primaryOutput())
         if (bookUi == null) layoutPanel()
-        // Maximized and tiled windows follow their screen.
-        windows.filter { it.maximized }.forEach { window ->
-            setFrame(window, workAreaOf(outputs.firstOrNull { it.contains(window.frame.centerX(), window.frame.centerY()) } ?: primaryOutput()), resizeDisplay = true)
+        wallpaper.refresh()
+        // Every window stays on its screen: maximized, tiled and full-screen ones fill it again.
+        windows.forEach { window ->
+            when {
+                window.linuxFullscreen -> setFrame(window, outputOf(window.frame), resizeDisplay = true)
+                window.maximized -> setFrame(window, workAreaFor(window), resizeDisplay = true)
+                window.tile != TileZone.NONE -> setFrame(window, tileRect(window.tile, workAreaFor(window)), resizeDisplay = true)
+                else -> setFrame(window, clampFrame(Rect(window.frame)), resizeDisplay = true)
+            }
         }
+        updatePanelFloat(force = true)
     }
 
     /** [output] less the panel (or Book's bars), which only the first screen has. */
@@ -2465,7 +2684,7 @@ internal abstract class CompositedWindowShell(
     }
 
     private fun clampFrame(frame: Rect): Rect {
-        val area = workArea()
+        val area = if (autoMode) workArea() else workAreaOf(outputOf(frame))
         if (frame.width() > area.width()) frame.right = frame.left + area.width()
         if (frame.height() > area.height()) frame.bottom = frame.top + area.height()
         if (frame.top < area.top) frame.offset(0, area.top - frame.top)
@@ -2476,8 +2695,7 @@ internal abstract class CompositedWindowShell(
         return frame
     }
 
-    private fun tileRect(zone: TileZone): Rect {
-        val a = workArea()
+    private fun tileRect(zone: TileZone, a: Rect = workArea()): Rect {
         val cx = a.centerX()
         val cy = a.centerY()
         return when (zone) {
@@ -2515,6 +2733,9 @@ internal abstract class CompositedWindowShell(
         }
         view.x = (frame.left - grip).toFloat()
         view.y = (frame.top - grip).toFloat()
+        view.refreshCorners()
+        // A split partner's shadow depends on this window too.
+        windows.forEach { it.view.refreshElevation(it.id == activeId) }
         if (window.linuxClientDecorated) view.invalidate()
         if (resizeDisplay) resizeWindowDisplay(window)
     }
@@ -2547,6 +2768,7 @@ internal abstract class CompositedWindowShell(
 
     /** Animates live window content between two frames, then resizes the application display. */
     private fun animateFrame(window: V2Window, target: Rect) {
+        if (book) { animateBookFrame(window, target); return }
         val from = Rect(window.frame)
         val to = Rect(target)
         val duration = settings.duration(PlasmaTheme.LONG_MS + 60)
@@ -2577,6 +2799,50 @@ internal abstract class CompositedWindowShell(
     }
     // endregion
 
+    private val bookFrameAnimators = HashMap<Int, ValueAnimator>()
+
+    /**
+     * Book's maximize, restore, snap and double-click: the frame itself (title bar, corners and
+     * live content) grows or shrinks every frame along Material's emphasized curve; the
+     * application display takes the final size when it lands.
+     */
+    private fun animateBookFrame(window: V2Window, target: Rect) {
+        val to = Rect(target)
+        val from = Rect(window.frame)
+        bookFrameAnimators.remove(window.id)?.cancel()
+        val duration = settings.duration(360L)
+        if (duration <= 0L || from.isEmpty) {
+            setFrame(window, to, resizeDisplay = true)
+            return
+        }
+        val step = Rect()
+        bookFrameAnimators[window.id] = ValueAnimator.ofFloat(0f, 1f).apply {
+            this.duration = duration
+            interpolator = BOOK_EMPHASIZED
+            addUpdateListener {
+                val t = it.animatedValue as Float
+                step.set(
+                    (from.left + (to.left - from.left) * t).roundToInt(),
+                    (from.top + (to.top - from.top) * t).roundToInt(),
+                    (from.right + (to.right - from.right) * t).roundToInt(),
+                    (from.bottom + (to.bottom - from.bottom) * t).roundToInt(),
+                )
+                setFrame(window, step, resizeDisplay = false)
+            }
+            addListener(object : AnimatorListenerAdapter() {
+                private var cancelled = false
+                override fun onAnimationCancel(animation: Animator) { cancelled = true }
+                override fun onAnimationEnd(animation: Animator) {
+                    if (bookFrameAnimators[window.id] === animation) bookFrameAnimators.remove(window.id)
+                    if (cancelled) return
+                    setFrame(window, to, resizeDisplay = true)
+                    updatePanelFloat()
+                }
+            })
+            start()
+        }
+    }
+
     // region V2WindowHost
     override fun isActive(window: V2Window) = window.id == activeId
 
@@ -2605,6 +2871,10 @@ internal abstract class CompositedWindowShell(
         if (previous != window.id) {
             windows.forEach { it.view.refreshElevation(it.id == activeId) }
             focusWindowDisplay(window)
+        } else if (window.displayId >= 0) {
+            // A click on the desktop or panel may have taken the top focus; take it back.
+            val appDisplay = window.displayId
+            runCatching { wmExecutor.execute { bridge.focusDisplay(appDisplay) } }
         }
         if (window.linuxXid != 0) {
             window.linuxContainer?.let { id -> LinuxContainerClient.service()?.runCatching { activateWindow(id, window.linuxXid) } }
@@ -2623,6 +2893,7 @@ internal abstract class CompositedWindowShell(
             val restore = window.restoreFrame ?: smartPlacement()
             val ratio = ((rawX - window.frame.left) / window.frame.width().coerceAtLeast(1)).coerceIn(0f, 1f)
             val left = (rawX - restore.width() * ratio).roundToInt()
+            bookFrameAnimators.remove(window.id)?.cancel()
             window.maximized = false
             window.tile = TileZone.NONE
             window.restoreFrame = null
@@ -2637,9 +2908,10 @@ internal abstract class CompositedWindowShell(
         if (moving !== window) return
         val w = window.frame.width()
         val h = window.frame.height()
+        val output = outputAt(rawX.roundToInt(), rawY.roundToInt())
+        val area = workAreaOf(output)
         var left = (rawX - moveOffset.x).roundToInt()
-        var top = (rawY - moveOffset.y).roundToInt().coerceIn(0, height - panel.thickness - titleHeight)
-        val area = workArea()
+        var top = (rawY - moveOffset.y).roundToInt().coerceIn(output.top, (area.bottom - titleHeight).coerceAtLeast(output.top))
         val snap = dp(10)
         if (kotlin.math.abs(left - area.left) < snap) left = area.left
         if (kotlin.math.abs(left + w - area.right) < snap) left = area.right - w
@@ -2649,19 +2921,27 @@ internal abstract class CompositedWindowShell(
         window.view.y = (top - grip).toFloat()
         if (window.linuxClientDecorated) window.view.invalidate()
         run {
+            // Edges of the screen under the pointer; where another screen continues, the
+            // pointer crosses instead and nothing snaps.
             val edge = dp(3).toFloat()
-            val corner = height * .25f
+            val corner = output.height() * .25f
+            val x = rawX.roundToInt()
+            val y = rawY.roundToInt()
+            val atTop = rawY <= output.top + edge && !onAnotherScreen(x, output.top - 1)
+            val atLeft = rawX <= output.left + edge && !onAnotherScreen(output.left - 1, y)
+            val atRight = rawX >= output.right - 1 - edge && !onAnotherScreen(output.right, y)
             snapZone = when {
-                rawY <= edge -> TileZone.MAXIMIZE
-                rawX <= edge && rawY < corner -> TileZone.TOP_LEFT
-                rawX <= edge && rawY > height - corner -> TileZone.BOTTOM_LEFT
-                rawX <= edge -> TileZone.LEFT
-                rawX >= width - 1 - edge && rawY < corner -> TileZone.TOP_RIGHT
-                rawX >= width - 1 - edge && rawY > height - corner -> TileZone.BOTTOM_RIGHT
-                rawX >= width - 1 - edge -> TileZone.RIGHT
+                atTop -> TileZone.MAXIMIZE
+                atLeft && rawY < output.top + corner -> TileZone.TOP_LEFT
+                atLeft && rawY > output.bottom - corner -> TileZone.BOTTOM_LEFT
+                atLeft -> TileZone.LEFT
+                atRight && rawY < output.top + corner -> TileZone.TOP_RIGHT
+                atRight && rawY > output.bottom - corner -> TileZone.BOTTOM_RIGHT
+                atRight -> TileZone.RIGHT
                 else -> TileZone.NONE
             }
-            snapPreview.show(if (snapZone == TileZone.NONE) null else RectF(tileRect(snapZone)).apply { inset(dp(6).toFloat(), dp(6).toFloat()) })
+            snapArea = area
+            snapPreview.show(if (snapZone == TileZone.NONE) null else RectF(tileRect(snapZone, area)).apply { inset(dp(6).toFloat(), dp(6).toFloat()) })
         }
         updatePanelFloat()
     }
@@ -2672,7 +2952,7 @@ internal abstract class CompositedWindowShell(
         snapPreview.show(null)
         val zone = snapZone
         snapZone = TileZone.NONE
-        if (zone != TileZone.NONE) tile(window, zone) else if (window.linuxXid != 0) syncLinuxWindow(window)
+        if (zone != TileZone.NONE) tile(window, zone, snapArea) else if (window.linuxXid != 0) syncLinuxWindow(window)
         updatePanelFloat()
     }
 
@@ -2735,23 +3015,31 @@ internal abstract class CompositedWindowShell(
             if (window.tile == TileZone.NONE) window.restoreFrame = Rect(window.frame)
             window.maximized = true
             window.tile = TileZone.NONE
-            animateFrame(window, workArea())
+            animateFrame(window, workAreaFor(window))
         }
         window.view.titleBar.invalidate()
         syncLinuxWindowState(window)
         activate(window)
     }
 
-    fun tile(window: V2Window, zone: TileZone) {
+    fun tile(window: V2Window, zone: TileZone, area: Rect = workAreaFor(window)) {
         if (autoMode) return
         if (zone == TileZone.MAXIMIZE) {
-            if (!window.maximized) toggleMaximize(window)
+            if (!window.maximized && !window.linuxFullscreen) {
+                if (window.tile == TileZone.NONE) window.restoreFrame = Rect(window.frame)
+                window.maximized = true
+                window.tile = TileZone.NONE
+                animateFrame(window, area)
+                window.view.titleBar.invalidate()
+                syncLinuxWindowState(window)
+                activate(window)
+            }
             return
         }
         if (!window.maximized && window.tile == TileZone.NONE) window.restoreFrame = Rect(window.frame)
         window.maximized = false
         window.tile = zone
-        animateFrame(window, tileRect(zone))
+        animateFrame(window, tileRect(zone, area))
         activate(window)
     }
 
@@ -2765,7 +3053,7 @@ internal abstract class CompositedWindowShell(
         window.minimized = true
         if (autoMode) { workspace.remove(window.id);layoutAutoWorkspace();autoUi?.updateTasks() }
         syncLinuxWindowState(window)
-        val icon = if (autoMode) null else bookUi?.iconRect(window.packageName) ?: panel.taskIconRect(window.packageName)
+        val icon = if (autoMode) null else bookUi?.iconRect(taskKey(window)) ?: panel.taskIconRect(taskKey(window))
         val view = window.view
         val targetX = icon?.centerX() ?: (width / 2f)
         val targetY = icon?.centerY() ?: height.toFloat()
@@ -2776,8 +3064,8 @@ internal abstract class CompositedWindowShell(
             .x(targetX - view.width * scale / 2f)
             .y(targetY - view.height * scale / 2f)
             .scaleX(scale).scaleY(scale).alpha(0f)
-            .setDuration(settings.duration(PlasmaTheme.LONG_MS + 120))
-            .setInterpolator(PlasmaTheme.inOutCubic)
+            .setDuration(settings.duration(if (book) 300L else PlasmaTheme.LONG_MS + 120))
+            .setInterpolator(if (book) BOOK_EMPHASIZED else PlasmaTheme.inOutCubic)
             .withEndAction { if (window.minimized) view.visibility = View.INVISIBLE }
             .start()
         if (activeId == window.id) {
@@ -2797,8 +3085,8 @@ internal abstract class CompositedWindowShell(
         view.animate()
             .x((window.frame.left - grip).toFloat()).y((window.frame.top - grip).toFloat())
             .scaleX(1f).scaleY(1f).alpha(1f)
-            .setDuration(settings.duration(PlasmaTheme.LONG_MS + 80))
-            .setInterpolator(PlasmaTheme.outCubic)
+            .setDuration(settings.duration(if (book) 340L else PlasmaTheme.LONG_MS + 80))
+            .setInterpolator(if (book) BOOK_DECELERATE else PlasmaTheme.outCubic)
             .start()
         activate(window)
     }
@@ -3104,10 +3392,13 @@ internal abstract class CompositedWindowShell(
         // On an extended desktop the panel spans its first screen only.
         val output = primaryOutput()
         val wantedWidth = if (outputs.isEmpty()) -1 else output.width()
-        if (params.height != wanted || params.width != wantedWidth || params.leftMargin != output.left) {
+        val wantedBottom = if (outputs.isEmpty()) 0 else height - output.bottom
+        if (params.height != wanted || params.width != wantedWidth || params.leftMargin != output.left ||
+            params.bottomMargin != wantedBottom) {
             params.height = wanted
             params.width = wantedWidth
             params.leftMargin = if (outputs.isEmpty()) 0 else output.left
+            params.bottomMargin = wantedBottom
             params.gravity = Gravity.BOTTOM or Gravity.START
             panel.layoutParams = params
         }
@@ -3122,7 +3413,7 @@ internal abstract class CompositedWindowShell(
         }
         panel.visibility = if (!overviewActive && !peeking && kickoff == null && krunner == null &&
             windows.any { it.id == activeId && it.linuxFullscreen && isShown(it) }) View.INVISIBLE else View.VISIBLE
-        val floatZone = height - panel.thickness - panel.floatMargin * 2
+        val floatZone = primaryOutput().bottom - panel.thickness - panel.floatMargin * 2
         val touching = windows.any { isShown(it) && (it.maximized || it.frame.bottom > floatZone) }
         val target = if (settings.floatingPanel && !touching && !peeking) 1f else 0f
         if (!force && panelFloatTarget == target) return
@@ -3144,16 +3435,22 @@ internal abstract class CompositedWindowShell(
         windows.forEach { it.syncModel(it.id == activeId) }
         val pinned = pinnedList()
         val shown = windows.filter { !it.closing && (it.onAllDesktops || it.desktop == currentDesktop) }
-        val byPackage = shown.groupBy { it.packageName }
+        val byPackage = shown.groupBy(::taskKey)
         val order = LinkedHashSet<String>()
         order += pinned
-        windows.sortedBy { it.id }.forEach { if (byPackage.containsKey(it.packageName)) order += it.packageName }
+        windows.sortedBy { it.id }.forEach { val key = taskKey(it); if (byPackage.containsKey(key)) order += key }
         return order.map { pkg ->
             val group = byPackage[pkg].orEmpty()
             val linuxWindow = group.filter { it.linuxContainer != null }.maxWithOrNull(
                 compareBy<V2Window>({ it.id == activeId && !it.minimized }, { it.lastActivated }))
             val linuxApp = linuxApps.firstOrNull { it.packageName == pkg }
-            PanelTask(pkg, linuxWindow?.title ?: linuxApp?.label ?: appRepository.label(pkg), linuxWindow?.icon ?: linuxApp?.icon ?: appRepository.icon(pkg),
+            // A Linux app's entry keeps its Kickoff icon and name whatever its windows report.
+            if (linuxApp != null) return@map PanelTask(pkg, linuxApp.label, linuxApp.icon, group.map { it.model }, pkg in pinned,
+                group.any { it.id == activeId && !it.minimized })
+            // Book's own apps show their window's name and icon rather than Dextop's.
+            val own = if (pkg == service.packageName) group.maxByOrNull { it.lastActivated } else null
+            PanelTask(pkg, own?.title ?: linuxWindow?.title ?: linuxApp?.label ?: appRepository.label(pkg),
+                own?.icon ?: linuxWindow?.icon ?: linuxApp?.icon ?: appRepository.icon(pkg),
                 group.map { it.model }, pkg in pinned,
                 group.any { it.id == activeId && !it.minimized })
         }
@@ -3217,10 +3514,23 @@ internal abstract class CompositedWindowShell(
         showMenu(items, anchor.left, anchor.top, above = true)
     }
 
+    /** The pointer is on the previews: they stay so a window can be picked or closed there. */
+    private var tooltipHovered = false
+
+    private fun hideTooltipSoon() {
+        tooltipRunnable?.let(handler::removeCallbacks)
+        tooltipRunnable = Runnable { if (!tooltipHovered) hideTooltip() }.also { handler.postDelayed(it, 300L) }
+    }
+
     override fun onTaskHover(entry: PanelTask?, anchor: RectF?) {
         tooltipRunnable?.let(handler::removeCallbacks)
-        if (entry == null || anchor == null || popup != null) {
+        if (popup != null) {
             hideTooltip()
+            return
+        }
+        if (entry == null || anchor == null) {
+            // A moment to reach the previews above the panel before they close.
+            if (tooltip != null) hideTooltipSoon()
             return
         }
         val delay = if (tooltip != null) 0L else 550L
@@ -3289,7 +3599,7 @@ internal abstract class CompositedWindowShell(
     private var cellularTypePending = false
     private var cellularTypeCheckedAt = 0L
 
-    private fun refreshTray() {
+    override fun refreshTray() {
         if (!cellularTypePending && SystemClock.uptimeMillis() - cellularTypeCheckedAt > 5000L) {
             cellularTypePending = true
             systemExecutor.execute {
@@ -3331,8 +3641,9 @@ internal abstract class CompositedWindowShell(
             cellularVisible = network?.simPresent == true && !network.airplaneMode,
             cellularLevel = network?.cellularLevel ?: 0f,
             cellularNoService = network?.cellularLevel == null,
-            cellularType = cellularType,
+            cellularType = cellularType.takeIf { settings.trayNetworkType },
             wifiConnected = network?.transport == PlasmaSystemControls.Transport.WIFI,
+            batteryPercentVisible = settings.trayBatteryPercent,
         )
         if (::panel.isInitialized) invalidateDesktopPanel()
         if (autoMode) autoUi?.updateTray(trayState)
@@ -3375,6 +3686,9 @@ internal abstract class CompositedWindowShell(
             if (event.actionMasked == MotionEvent.ACTION_DOWN) dismissPopup()
             true
         }
+        // Nothing under an open popup reacts to the pointer (hover highlights, scrolling).
+        scrim.setOnHoverListener { _, _ -> true }
+        scrim.setOnGenericMotionListener { _, _ -> true }
         popupLayer.addView(scrim, FrameLayout.LayoutParams(-1, -1))
         // Book's popups are Material 3 surfaces: extra-large corners.
         val frame = PlasmaPopupFrame(displayContext, palette, if (book) 28f else 8f, onOutside = { dismissPopup() })
@@ -3421,6 +3735,21 @@ internal abstract class CompositedWindowShell(
     }
 
     fun showMenu(items: List<MenuItem>, rawX: Float, rawY: Float, kind: String = "menu", above: Boolean = false) {
+        bookUi?.let { ui ->
+            val view = ui.menuView(items) { dismissPopup() }
+            val shadow = ui.panelShadowPx
+            val x = rawX.roundToInt()
+            val y = rawY.roundToInt()
+            // Opens away from the nearer screen edges.
+            val toLeft = x > width - dp(360)
+            val upward = above || y > height - dp(420)
+            showBookPopup(kind, view,
+                if (toLeft) null else x - shadow,
+                if (toLeft) width - x - shadow else null,
+                if (upward) null else y - shadow,
+                if (upward) (if (above) height - chromeBottom() + dp(6) else height - y) - shadow else null)
+            return
+        }
         val view = PlasmaMenuView(displayContext, palette, items) { dismissPopup() }
         val (w, h) = view.desiredSize()
         var left = rawX.roundToInt()
@@ -3441,9 +3770,12 @@ internal abstract class CompositedWindowShell(
         kickoff = null
         krunner = null
         bookUi?.launcherOpen = false
+        bookUi?.openPanel = null
         updateShellFocus()
         frame.animate().alpha(0f).translationY(dp(8).toFloat()).setDuration(settings.duration(PlasmaTheme.SHORT_MS + 40))
-            .withEndAction { popupLayer.removeAllViews() }.start()
+            // Only this popup: a menu item that opens another popup (settings) shows it before
+            // the menu has faded out, and clearing the layer here closed it at once.
+            .withEndAction { popupLayer.removeView(frame) }.start()
         // Remove the scrim immediately so the next click reaches the desktop.
         (0 until popupLayer.childCount).map { popupLayer.getChildAt(it) }.filter { it !== frame }.forEach(popupLayer::removeView)
     }
@@ -3452,6 +3784,8 @@ internal abstract class CompositedWindowShell(
         popupLayer.removeAllViews()
         popup = null
         popupKind = null
+        bookUi?.launcherOpen = false
+        bookUi?.openPanel = null
         kickoff = null
         krunner = null
     }
@@ -3464,11 +3798,20 @@ internal abstract class CompositedWindowShell(
      */
     private fun updateShellFocus() {
         if (!passiveShellFocus || !::root.isInitialized) return
-        val focusable = popup != null || overviewActive || leaveScreen != null || linuxKeyboardShown
+        // A Linux window in front takes the keyboard and may capture the pointer (games), which
+        // Android grants only to the focused window: the shell's.
+        val linuxInFront = windows.any { it.id == activeId && !it.minimized && !it.closing && it.linuxContainer != null }
+        val focusable = popup != null || overviewActive || leaveScreen != null || linuxKeyboardShown || bookFocus || linuxInFront
         if (focusable == shellFocusable) return
         shellFocusable = focusable
         layer.show(root, Rect(0, 0, width, height), focusable = focusable, title = shellTitle)
         if (!focusable) windows.firstOrNull { it.id == activeId && !it.minimized }?.let(::focusWindowDisplay)
+        // The shell's display becomes the top-focused one, or its window cannot hold focus.
+        if (linuxInFront) {
+            val shellDisplay = displayId
+            runCatching { wmExecutor.execute { bridge.focusDisplay(shellDisplay) } }
+            root.post { windows.firstOrNull { it.id == activeId }?.view?.content?.requestFocus() }
+        }
     }
 
     fun toggleKickoff() {
@@ -3479,13 +3822,16 @@ internal abstract class CompositedWindowShell(
         // Linux may have become available since the last load (set up, connected, mode switched).
         if (linuxApps.isEmpty()) refreshLinuxApps(resumeWindows = false)
         bookUi?.let { ui ->
-            // Book's launcher opens above the dock, centred.
+            // Book's launcher opens above the taskbar, from its button.
             val output = primaryOutput()
-            val w = minOf(dp(760), (output.width() * .8f).roundToInt())
-            val h = minOf(dp(600), chromeBottom() - ui.topInset - dp(16))
-            val left = output.left + (output.width() - w) / 2
-            val top = chromeBottom() - h - dp(8)
-            showPopup("kickoff", ui.launcherView(), Rect(left, top, left + w, top + h))
+            val anchor = ui.launcherRect() ?: RectF(output.centerX().toFloat(), (output.bottom - dp(60)).toFloat(),
+                output.centerX().toFloat(), (output.bottom - dp(60)).toFloat())
+            val maxHeight = minOf(dp(800), (anchor.top - output.top - ui.topInset - dp(8)).roundToInt()) + ui.panelShadowPx
+            val view = ui.launcherView(maxHeight)
+            // As wide as its screen (the launcher centres itself in it): a wrap-content popup was
+            // measured 0 wide here and never showed.
+            showBookPopup("kickoff", view, output.left, null, null, height - anchor.top.roundToInt() + dp(8) - ui.panelShadowPx,
+                width = output.width())
             ui.launcherOpen = true
             return
         }
@@ -3500,6 +3846,193 @@ internal abstract class CompositedWindowShell(
         view.post { view.focusSearch() }
     }
 
+    /**
+     * Book's panels and launcher: Compose surfaces that size themselves, pinned by one horizontal
+     * and one vertical edge (in root pixels; null leaves that edge free).
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private fun showBookPopup(kind: String, content: View, left: Int?, right: Int?, top: Int?, bottom: Int?, centerX: Int? = null,
+                              width: Int? = null) {
+        dismissPopupImmediately()
+        hideTooltip()
+        val scrim = View(displayContext)
+        scrim.setOnTouchListener { _, event ->
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) dismissPopup()
+            true
+        }
+        // Nothing under an open popup reacts to the pointer (hover highlights, scrolling).
+        scrim.setOnHoverListener { _, _ -> true }
+        scrim.setOnGenericMotionListener { _, _ -> true }
+        popupLayer.addView(scrim, FrameLayout.LayoutParams(-1, -1))
+        popupLayer.addView(content, FrameLayout.LayoutParams(width ?: -2, -2).apply {
+            gravity = (if (top != null) Gravity.TOP else Gravity.BOTTOM) or when {
+                left != null -> Gravity.START
+                right != null -> Gravity.END
+                else -> Gravity.CENTER_HORIZONTAL
+            }
+            // Centred on [centerX]: the layer centres it, the margins shift it to that screen.
+            val shift = centerX?.let { (it - this@CompositedWindowShell.width / 2) * 2 } ?: 0
+            leftMargin = left ?: shift.coerceAtLeast(0)
+            rightMargin = right ?: (-shift).coerceAtLeast(0)
+            topMargin = top ?: 0
+            bottomMargin = bottom ?: 0
+        })
+        popupLayer.bringToFront()
+        popup = content
+        popupKind = kind
+        updateShellFocus()
+        content.alpha = 0f
+        content.translationY = if (top != null) -dp(10).toFloat() else dp(10).toFloat()
+        content.animate().alpha(1f).translationY(0f).setDuration(settings.duration(PlasmaTheme.LONG_MS))
+            .setInterpolator(PlasmaTheme.outCubic).start()
+    }
+
+    override fun openBookPanel(kind: String, anchor: RectF) {
+        val ui = bookUi ?: return
+        if (popupKind == kind) { dismissPopup(); return }
+        if (recentlyDismissed(kind)) return
+        refreshTray()
+        val view = ui.panelView(kind) ?: return
+        val shadow = ui.panelShadowPx
+        val gap = dp(6)
+        val output = outputAt(anchor.centerX().roundToInt(), anchor.centerY().roundToInt())
+        val fromLeft = kind == "clock" || (kind == "notifications" && anchor.centerX() < output.centerX())
+        when (kind) {
+            "taskbar" -> showBookPopup(kind, view, (anchor.centerX() - dp(180)).roundToInt().coerceIn(output.left, output.right - dp(360)),
+                null, null, height - anchor.top.roundToInt() + gap - shadow)
+            else -> showBookPopup(kind, view,
+                if (fromLeft) (anchor.left.roundToInt() - shadow).coerceAtLeast(output.left) else null,
+                if (fromLeft) null else (width - anchor.right.roundToInt() - shadow).coerceAtLeast(width - output.right),
+                anchor.bottom.roundToInt() + gap - shadow, null)
+        }
+    }
+
+    // region Book host
+    override val controls: PlasmaSystemControls get() = systemControls
+    override fun background(work: () -> Unit) = systemExecutor.execute { runCatching(work).onFailure { host.log("Book: ${it.message}") } }
+    override fun closePanel() = dismissPopup()
+    override fun settings(): PlasmaSettings = settings
+    /** One of Book's own windows is open and takes the keyboard. */
+    private var bookFocus = false
+
+    override fun setBookFocus(wanted: Boolean) {
+        if (bookFocus == wanted) return
+        bookFocus = wanted
+        // passiveShellFocus decides in updateShellFocus; elsewhere the overlay is always focusable.
+        updateShellFocus()
+    }
+
+    /** Dextop may bind app widgets: granted as the privileged shell (some builds lack `cmd appwidget`). */
+    override fun grantWidgetBinding() = systemExecutor.execute {
+        runCatching {
+            val widgets = host.privilegedService("appwidget", "com.android.internal.appwidget.IAppWidgetService")
+            widgets.javaClass.methods.first { it.name == "setBindAppWidgetPermission" && it.parameterTypes.size == 3 }
+                .invoke(widgets, service.packageName, android.os.Process.myUserHandle().hashCode(), true)
+            host.log("Book widget binding granted")
+        }.onFailure { error ->
+            host.log("Book widget binding grant failed: ${error.message}")
+            runCatching { host.privilegedCommand("cmd", "appwidget", "grantbind", "--package", service.packageName, "--user", "0") }
+        }
+    }
+
+    override fun log(message: String) = host.log("Book: $message")
+
+    /** The first installed container, which has Linux applications listed. */
+    override fun installedContainer(): String? =
+        linuxApps.firstOrNull { it.packageName.startsWith(LINUX_APP_PREFIX) }?.packageName
+            ?.removePrefix(LINUX_APP_PREFIX)?.substringBefore(':')
+
+    /** The desktop folder is an experimental option (Book's settings), and needs a container. */
+    override fun desktopContainer(): String? =
+        installedContainer()?.takeIf { BookStore.flag(service, BookStore.LINUX_DESKTOP_FOLDER, false) }
+
+    override fun linuxDesktop(script: String, onDone: (String?) -> Unit) {
+        val id = desktopContainer() ?: return onDone(null)
+        LinuxContainerClient.call(service, { it.runCommand(id, script, 20) }, { json ->
+            onDone(runCatching { JSONObject(json).takeIf { it.optInt("exitCode", 1) == 0 }?.optString("output") }.getOrNull())
+        }) { onDone(null) }
+    }
+
+    /**
+     * Opens ~/Desktop/[name] with the container's handler (its file manager for a folder): a
+     * hidden desktop entry runs xdg-open, launched like any Linux app so its window is framed.
+     */
+    override fun openLinuxDesktopItem(name: String) {
+        val id = desktopContainer() ?: return
+        val encoded = android.util.Base64.encodeToString(name.toByteArray(), android.util.Base64.NO_WRAP)
+        // The name stays base64 until the guest's shell decodes it: no quoting to get wrong.
+        val setup = """
+            S="${'$'}{HOME:-/root}/.local/share/dextop"; A="${'$'}{HOME:-/root}/.local/share/applications"; mkdir -p "${'$'}S" "${'$'}A"
+            printf '%s\n' 'exec xdg-open "${'$'}{HOME:-/root}/Desktop/${'$'}(printf %s $encoded | base64 -d)"' > "${'$'}S/open.sh"
+            printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Dextop' 'NoDisplay=true' 'Exec=sh -c "sh ~/.local/share/dextop/open.sh"' > "${'$'}A/dextop-open.desktop"
+        """.trimIndent()
+        LinuxContainerClient.call(service, { linux -> linux.runCommand(id, setup, 15) },
+            { launchLinuxApp("${LINUX_APP_PREFIX}$id:dextop-open.desktop", label = name) }) { error ->
+            showLinuxError(id, error.message ?: error.toString(), false)
+        }
+    }
+    override fun appInfo(packageName: String) = openAppInfo(packageName)
+    override fun primaryArea(): Rect = Rect(primaryOutput())
+    override fun notifications(): List<DextopNotification> = NotificationCenter.all()
+
+    override fun dockCovered(): Boolean {
+        val output = primaryOutput()
+        val strip = output.bottom - dp(64)
+        return windows.any { isShown(it) && it.frame.bottom > strip && Rect.intersects(it.frame, output) }
+    }
+
+    override fun openSystemSettings(intent: Intent) {
+        dismissPopup()
+        launchIntentInWindow(intent)
+    }
+
+    override fun openBookSettings(page: String?) {
+        dismissPopup()
+        bookUi?.openWindow("settings", page)
+    }
+
+    override fun openWidgetGallery() {
+        dismissPopup()
+        bookUi?.openWindow("widgets")
+    }
+
+    /** Book: the snap layouts under the maximize button. */
+    override fun showSnapMenu(window: V2Window, anchor: RectF) {
+        val ui = bookUi ?: return
+        val tiled = window.tile != TileZone.NONE
+        val view = ui.snapView(window.maximized, tiled,
+            onMaximize = { dismissPopup(); if (!window.maximized) toggleMaximize(window) },
+            onRestore = {
+                dismissPopup()
+                when {
+                    window.maximized -> toggleMaximize(window)
+                    tiled -> {
+                        window.tile = TileZone.NONE
+                        animateFrame(window, window.restoreFrame ?: smartPlacement())
+                        window.restoreFrame = null
+                        window.view.titleBar.invalidate()
+                    }
+                }
+            },
+            onLeft = { dismissPopup(); tile(window, TileZone.LEFT); window.view.titleBar.invalidate() },
+            onRight = { dismissPopup(); tile(window, TileZone.RIGHT); window.view.titleBar.invalidate() })
+        val shadow = ui.panelShadowPx
+        showBookPopup("snap", view, null, (width - anchor.right.roundToInt() - shadow).coerceAtLeast(0), anchor.bottom.roundToInt() + dp(4) - shadow, null)
+    }
+
+    /** The taskbar started or stopped hiding: maximized and tiled windows take the new work area. */
+    private fun relayoutBookInsets() {
+        windows.forEach { window ->
+            when {
+                window.linuxFullscreen -> Unit
+                window.maximized -> setFrame(window, workAreaFor(window), resizeDisplay = true)
+                window.tile != TileZone.NONE -> setFrame(window, tileRect(window.tile, workAreaFor(window)), resizeDisplay = true)
+            }
+        }
+        invalidateDesktopPanel()
+    }
+    // endregion
+
     fun showKRunner() {
         if (popupKind == "krunner") {
             dismissPopup()
@@ -3513,29 +4046,24 @@ internal abstract class CompositedWindowShell(
         view.post { view.search.requestFocus() }
     }
 
+    /** The settings page last shown, so the dialog reopens there (e.g. after a colour change). */
+    private var settingsPage = 0
+
     override fun openDesktopSettings() {
-        val view = DesktopSettingsApplet(displayContext, palette, settings) { next -> applySettings(next) }
-        val scroll = android.widget.ScrollView(displayContext).apply {
-            isFillViewport = true
-            addView(view)
-        }
-        val w = dp(560).coerceAtMost((width - dp(24)).coerceAtLeast(1))
-        scroll.measure(View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY), View.MeasureSpec.makeMeasureSpec((height - panel.thickness - dp(40)).coerceAtLeast(1), View.MeasureSpec.AT_MOST))
-        val h = scroll.measuredHeight
-        val left = (width - w) / 2
-        val top = ((height - panel.thickness - h) / 2).coerceAtLeast(dp(8))
-        showPopup("settings", scroll, Rect(left, top, left + w, top + h))
+        // On the screen in use, as large as a settings window and no larger than the screen.
+        val output = currentOutput()
+        val area = workAreaOf(output)
+        val w = dp(780).coerceAtMost((area.width() - dp(32)).coerceAtLeast(1))
+        val h = dp(540).coerceAtMost((area.height() - dp(32)).coerceAtLeast(1))
+        val view = DesktopSettingsApplet(displayContext, palette, settings, wide = w >= dp(600), initialPage = settingsPage,
+            onPage = { settingsPage = it }, onClose = { dismissPopup() }) { next -> applySettings(next) }
+        val left = area.left + (area.width() - w) / 2
+        val top = area.top + (area.height() - h) / 2
+        showPopup("settings", view, Rect(left, top, left + w, top + h))
     }
 
-    private fun applySettings(next: PlasmaSettings) {
-        service.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
-            .putString("flutter.plasma_color_scheme", next.colorScheme)
-            .putLong("flutter.plasma_accent_color", next.accentColor.toLong() and 0xFFFFFFFFL)
-            .putBoolean("flutter.plasma_floating_panel", next.floatingPanel)
-            .putLong("flutter.plasma_virtual_desktops", next.virtualDesktops.toLong())
-            .putString("flutter.plasma_animation_speed", "VGhpcyBpcyB0aGUgcHJlZml4IGZvciBEb3VibGUu${next.animationSpeed.toDouble()}")
-            .putString("flutter.plasma_wallpaper", next.wallpaper)
-            .apply()
+    override fun applySettings(next: PlasmaSettings) {
+        next.save(service)
         val paletteChanged = next.colorScheme != settings.colorScheme || next.accentColor != settings.accentColor
         reloadSettings()
         if (paletteChanged && popupKind == "settings") handler.post { openDesktopSettings() }
@@ -3550,7 +4078,14 @@ internal abstract class CompositedWindowShell(
                 window.model.thumbnail = runCatching { content.getBitmap(content.width / 3, content.height / 3) }.getOrNull()
             }
         }
-        val view = tooltip ?: PanelTooltipView(displayContext, palette).also {
+        val view = tooltip ?: PanelTooltipView(displayContext, palette,
+            onHover = { inside ->
+                tooltipHovered = inside
+                if (!inside) hideTooltipSoon()
+            },
+            onActivate = { model -> hideTooltip(); windowFor(model)?.let(::activate) },
+            onClose = { model -> hideTooltip(); windowFor(model)?.let(::close) },
+        ).also {
             tooltip = it
             root.addView(it, FrameLayout.LayoutParams(1, 1))
         }
@@ -3571,6 +4106,7 @@ internal abstract class CompositedWindowShell(
         tooltipRunnable?.let(handler::removeCallbacks)
         tooltip?.let(root::removeView)
         tooltip = null
+        tooltipHovered = false
     }
     // endregion
 
@@ -3605,6 +4141,10 @@ internal abstract class CompositedWindowShell(
         editCsv("recent") { list -> list.remove(packageName); list.add(0, packageName); while (list.size > 12) list.removeAt(list.lastIndex) }
         if (packageName.startsWith(LINUX_APP_PREFIX)) {
             launchLinuxApp(packageName)
+            return
+        }
+        if (packageName.startsWith(BookUi.LINUX_DESKTOP_PREFIX)) {
+            openLinuxDesktopItem(packageName.removePrefix(BookUi.LINUX_DESKTOP_PREFIX))
             return
         }
         if (packageName.startsWith("linux")) return
@@ -3676,13 +4216,17 @@ internal abstract class CompositedWindowShell(
                 content.getBitmap(content.width / 3, content.height / 3)
             }.getOrNull() else null)
         }
-        val view = TaskSwitcherView(displayContext, palette, candidates.map { it.model }, thumbnails)
+        val view: TaskSwitcher = bookUi?.switcher(candidates.map { it.model }, candidates.map { thumbnails[it.id] })
+            ?: TaskSwitcherView(displayContext, palette, candidates.map { it.model }, thumbnails)
         if (reverse) view.index = candidates.lastIndex
         switcher = view
         val (w, h) = view.desiredSize((width * .9f).roundToInt())
-        root.addView(view, FrameLayout.LayoutParams(w, h, Gravity.CENTER))
-        view.alpha = 0f
-        view.animate().alpha(1f).setDuration(settings.duration(PlasmaTheme.SHORT_MS)).start()
+        root.addView(view.view, FrameLayout.LayoutParams(w, h, Gravity.CENTER))
+        view.view.alpha = 0f
+        view.view.scaleX = .96f
+        view.view.scaleY = .96f
+        view.view.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(settings.duration(PlasmaTheme.SHORT_MS))
+            .setInterpolator(BOOK_DECELERATE).start()
     }
 
     private fun commitSwitcher() {
@@ -3693,7 +4237,7 @@ internal abstract class CompositedWindowShell(
         }
         switcher = null
         view.selectedWindow()?.let(::windowFor)?.let(::activate)
-        root.removeView(view)
+        root.removeView(view.view)
     }
 
     private fun triggerHotCorner() {
@@ -3708,8 +4252,26 @@ internal abstract class CompositedWindowShell(
         kickoff != null || krunner != null || leaveScreen != null ||
             (overviewActive && overviewSearch != null) || popupKind == "settings"
 
+    /**
+     * Keys Plasma sent on to an application display. The accessibility key filter sees injected
+     * keys again; taking those as new typing re-injected them forever and nothing reached the
+     * app. Recognised here, they go on to their display.
+     */
+    private val injectedKeys = java.util.Collections.newSetFromMap(java.util.concurrent.ConcurrentHashMap<Long, Boolean>())
+
+    private fun keySignature(event: KeyEvent): Long =
+        (event.eventTime shl 24) xor (event.downTime shl 8) xor (event.keyCode.toLong() shl 2) xor event.action.toLong()
+
+    private fun injectKey(event: KeyEvent, target: Int) {
+        val copy = KeyEvent(event)
+        if (injectedKeys.size > 512) injectedKeys.clear()
+        injectedKeys += keySignature(copy)
+        injectAsync(copy, target)
+    }
+
     override fun handleKey(event: KeyEvent): Boolean {
         if (!running) return false
+        if (injectedKeys.remove(keySignature(event))) return false
         if (PlasmaVolumeKeys.handle(service, event)) {
             if (event.action == KeyEvent.ACTION_DOWN) onVolumeChanged()
             return true
@@ -3731,7 +4293,7 @@ internal abstract class CompositedWindowShell(
             }
             val target = windows.firstOrNull { it.id == activeId && isShown(it) }?.displayId ?: return false
             if (target < 0) return false
-            injectAsync(KeyEvent(event), target)
+            injectKey(event, target)
             return true
         }
         val down = event.action == KeyEvent.ACTION_DOWN
@@ -3807,7 +4369,7 @@ internal abstract class CompositedWindowShell(
                     true
                 }
                 code == KeyEvent.KEYCODE_ESCAPE && overviewActive -> { exitOverview(null); true }
-                code == KeyEvent.KEYCODE_ESCAPE && switcher != null -> { switcher?.let(root::removeView); switcher = null; switcherRequested = false; true }
+                code == KeyEvent.KEYCODE_ESCAPE && switcher != null -> { switcher?.let { root.removeView(it.view) }; switcher = null; switcherRequested = false; true }
                 code == KeyEvent.KEYCODE_ESCAPE && popup != null && !shellTextInputActive() -> { dismissPopup(); true }
                 else -> false
             }
@@ -3833,39 +4395,116 @@ internal abstract class CompositedWindowShell(
         }
         val target = windows.firstOrNull { it.id == activeId && !it.minimized }?.displayId ?: return false
         if (target < 0) return false
-        injectAsync(KeyEvent(event), target)
+        injectKey(event, target)
         return true
     }
     // endregion
 
     /** Plasma wallpaper; also the desktop click/right-click target. */
     private inner class WallpaperView(context: Context) : View(context) {
-        private var bitmap: Bitmap? = null
+        /** One picture per screen size, so each screen of an extended desktop has the whole wallpaper. */
+        private val bitmaps = HashMap<Long, Bitmap>()
         private val detector = android.view.GestureDetector(context, object : android.view.GestureDetector.SimpleOnGestureListener() {
             override fun onDown(e: MotionEvent) = true
             override fun onSingleTapUp(e: MotionEvent): Boolean { dismissPopup(); return true }
             override fun onLongPress(e: MotionEvent) = showDesktopMenu(e.rawX, e.rawY)
         })
 
+        /** Android's own wallpaper for the "system" choice, read through Dextop's shell access. */
+        private var system: Bitmap? = null
+        private var systemLoading = false
+
         fun refresh() {
-            bitmap?.recycle()
-            bitmap = null
+            bitmaps.values.forEach(Bitmap::recycle)
+            bitmaps.clear()
+            system?.recycle()
+            system = null
+            systemLoading = false
             invalidate()
         }
 
-        override fun onDraw(canvas: Canvas) {
+        private fun picture(w: Int, h: Int): Bitmap? {
             if (settings.wallpaper == "system") {
-                canvas.drawColor(0xFF101418.toInt())
+                val source = system ?: run { loadSystemWallpaper(); return null }
+                return bitmaps.getOrPut((w.toLong() shl 32) or h.toLong()) { centerCrop(source, w, h) }
             }
-            val current = bitmap ?: (if (book) BookTheme.wallpaper(width.coerceAtLeast(1), height.coerceAtLeast(1), palette.dark)
-                else PlasmaWallpaper.render(width.coerceAtLeast(1), height.coerceAtLeast(1))).also { bitmap = it }
-            if (settings.wallpaper != "system") canvas.drawBitmap(current, 0f, 0f, null)
+            return bitmaps.getOrPut((w.toLong() shl 32) or h.toLong()) {
+                if (book) BookTheme.wallpaper(w, h, palette.dark) else PlasmaWallpaper.render(w, h)
+            }
         }
+
+        /** [source] scaled to cover [w]×[h], cut to it around the centre. */
+        private fun centerCrop(source: Bitmap, w: Int, h: Int): Bitmap {
+            val scale = maxOf(w / source.width.toFloat(), h / source.height.toFloat())
+            val cropW = (w / scale).roundToInt().coerceIn(1, source.width)
+            val cropH = (h / scale).roundToInt().coerceIn(1, source.height)
+            val cut = Bitmap.createBitmap(source, (source.width - cropW) / 2, (source.height - cropH) / 2, cropW, cropH)
+            return Bitmap.createScaledBitmap(cut, w, h, true).also { if (it !== cut && cut !== source) cut.recycle() }
+        }
+
+        private fun loadSystemWallpaper() {
+            if (systemLoading) return
+            systemLoading = true
+            systemExecutor.execute {
+                val bitmap = runCatching { readSystemWallpaper() }
+                    .onFailure { host.log("Plasma v2 system wallpaper unavailable: ${it.message}") }
+                    .getOrNull()
+                // The shell's main-thread handler: inside this View, `handler` would be View.getHandler(),
+                // which is null while the view is detached (e.g. while Plasma restarts).
+                this@CompositedWindowShell.handler.post {
+                    if (!running || !systemLoading || settings.wallpaper != "system") { bitmap?.recycle(); return@post }
+                    system = bitmap
+                    invalidate()
+                }
+            }
+        }
+
+        /**
+         * The phone's home-screen wallpaper. Dextop itself may not read it (READ_WALLPAPER_INTERNAL),
+         * the shell may; a live wallpaper has no picture and leaves the plain background.
+         */
+        private fun readSystemWallpaper(): Bitmap? {
+            val service = host.privilegedService("wallpaper", "android.app.IWallpaperManager")
+            val method = service.javaClass.methods.firstOrNull { it.name == "getWallpaperWithFeature" }
+                ?: service.javaClass.methods.first { it.name == "getWallpaper" }
+            var strings = 0
+            var ints = 0
+            val userId = android.os.Process.myUserHandle().hashCode()
+            // (callingPkg, featureId, callback, which = FLAG_SYSTEM, outParams, userId, getCropped)
+            val args = method.parameterTypes.map { type ->
+                when (type) {
+                    String::class.java -> if (strings++ == 0) "com.android.shell" else null
+                    Int::class.javaPrimitiveType -> if (ints++ == 0) android.app.WallpaperManager.FLAG_SYSTEM else userId
+                    Boolean::class.javaPrimitiveType -> true
+                    android.os.Bundle::class.java -> android.os.Bundle()
+                    else -> null
+                }
+            }
+            val descriptor = method.invoke(service, *args.toTypedArray()) as? android.os.ParcelFileDescriptor ?: return null
+            return android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptor).use(android.graphics.BitmapFactory::decodeStream)
+        }
+
+        override fun onDraw(canvas: Canvas) {
+            val screens = outputs.ifEmpty { listOf(Rect(0, 0, width, height)) }
+            canvas.drawColor(if (settings.wallpaper == "system") 0xFF101418.toInt() else 0xFF000000.toInt())
+            screens.forEach { output ->
+                val picture = picture(output.width().coerceAtLeast(1), output.height().coerceAtLeast(1)) ?: return@forEach
+                canvas.drawBitmap(picture, output.left.toFloat(), output.top.toFloat(), null)
+            }
+        }
+
+        /** A right-click gesture: its release must not reach the tap detector (which closed the menu). */
+        private var secondaryGesture = false
 
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(event: MotionEvent): Boolean {
             if (event.actionMasked == MotionEvent.ACTION_DOWN && event.isButtonPressed(MotionEvent.BUTTON_SECONDARY)) {
+                secondaryGesture = true
                 showDesktopMenu(event.rawX, event.rawY)
+                return true
+            }
+            if (secondaryGesture) {
+                if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) secondaryGesture = false
                 return true
             }
             return detector.onTouchEvent(event)
@@ -3873,6 +4512,22 @@ internal abstract class CompositedWindowShell(
     }
 
     private fun showDesktopMenu(rawX: Float, rawY: Float) {
+        if (book) {
+            val icons = BookStore.flag(service, BookStore.DESKTOP_ICONS, true)
+            val linux = desktopContainer() != null
+            showMenu(listOfNotNull(
+                if (linux) MenuItem(tr("新しいフォルダ", "New folder"), Glyph.PLUS) {
+                    bookUi?.newLinuxFolder(RectF(rawX, rawY, rawX + 1, rawY + 1))
+                } else null,
+                MenuItem(tr("ウィジェットを追加", "Add widgets"), Glyph.PLUS) { openWidgetGallery() },
+                MenuItem(tr("壁紙とスタイル", "Wallpaper & style"), Glyph.WALLPAPER) { openBookSettings("style") },
+                MenuItem(if (icons) tr("デスクトップ アイコンを隠す", "Hide desktop icons") else tr("デスクトップ アイコンを表示", "Show desktop icons"),
+                    Glyph.DESKTOP) { BookStore.setFlag(service, BookStore.DESKTOP_ICONS, !icons) },
+                MenuItem(tr("概要", "Overview"), Glyph.OVERVIEW, separatorBefore = true) { toggleOverview() },
+                MenuItem(tr("Dextop Book の設定", "Dextop Book settings"), Glyph.SETTINGS) { openBookSettings(null) },
+            ), rawX, rawY)
+            return
+        }
         showMenu(listOf(
             MenuItem(t("nativePlasmaDesktop"), header = true),
             MenuItem(t("nativePlasmaOverview"), Glyph.OVERVIEW) { toggleOverview() },

@@ -386,169 +386,500 @@ internal class LeaveScreen(
 }
 
 /**
- * A compact "Configure Desktop and Wallpaper" / Quick Settings page with
- * the options that matter for the Dextop window manager.
+ * Dextop Plasma's own settings: a window-like dialog with a category list (a row of tabs on
+ * narrow screens) and pages of setting rows, each a title, a short explanation and a control.
  */
 @SuppressLint("ViewConstructor")
 internal class DesktopSettingsApplet(
     context: Context,
-    palette: PlasmaPalette,
+    private val palette: PlasmaPalette,
     settings: PlasmaSettings,
-    onChange: (PlasmaSettings) -> Unit,
+    wide: Boolean = true,
+    initialPage: Int = 0,
+    private val onPage: (Int) -> Unit = {},
+    onClose: (() -> Unit)? = null,
+    private val onChange: (PlasmaSettings) -> Unit,
 ) : LinearLayout(context) {
+    private val density = resources.displayMetrics.density
+    private var current = settings
+    private fun dp(value: Float) = (value * density).toInt()
+    private fun tr(ja: String, en: String) =
+        moe.n4tsu.dextop.InlineStrings.pick(resources.configuration.locales[0], ja, en)
+
+    private fun change(next: PlasmaSettings) {
+        current = next
+        onChange(next)
+    }
+
     init {
         orientation = VERTICAL
-        val density = resources.displayMetrics.density
-        setPadding((12 * density).toInt(), (10 * density).toInt(), (12 * density).toInt(), (12 * density).toInt())
-        addView(appletHeader(context, palette, t("nativePlasmaConfigureDesktop")))
-        var current = settings
-        val categories = ArrayList<Pair<String, LinearLayout>>()
-        var sectionBody: LinearLayout = this
-        fun section(title: String) {
-            sectionBody = LinearLayout(context).apply {
-                orientation = VERTICAL
-                val pad = (12 * density).toInt()
-                setPadding(pad, pad, pad, pad)
-                background = android.graphics.drawable.GradientDrawable().apply {
-                    setColor(palette.viewBackground)
-                    cornerRadius = 8 * density
-                    setStroke(1, palette.separator)
-                }
-                addView(plasmaLabel(context, title, palette.text, 14f, bold = true),
-                    LayoutParams(-1, -2).apply { bottomMargin = (10 * density).toInt() })
-            }
-            categories += title to sectionBody
-            addView(sectionBody, LayoutParams(-1, -2).apply { bottomMargin = (12 * density).toInt() })
+        // Title bar.
+        addView(horizontalLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(18f), 0, dp(8f), 0)
+            addView(plasmaLabel(context, t("nativePlasmaConfigureDesktop"), palette.text, 15f, bold = true),
+                LayoutParams(0, -2, 1f))
+            if (onClose != null) addView(SettingsIconButton(context, palette, Glyph.CLOSE, t("nativePlasmaClose"), onClose),
+                LayoutParams(dp(36f), dp(36f)))
+        }, LayoutParams(-1, dp(52f)))
+        addView(View(context).apply { setBackgroundColor(palette.separator) }, LayoutParams(-1, 1))
+
+        val pages = listOf(
+            Triple(tr("外観", "Appearance"), Glyph.WALLPAPER, ::appearancePage),
+            Triple(tr("タスクバー", "Taskbar"), Glyph.DESKTOP, ::taskbarPage),
+            Triple(tr("ワークスペース", "Workspace"), Glyph.OVERVIEW, ::workspacePage),
+        )
+        val content = FrameLayout(context)
+        val scroll = android.widget.ScrollView(context).apply {
+            isVerticalScrollBarEnabled = true
+            addView(content)
         }
-        fun choices(options: List<Pair<String, String>>, selected: String, apply: (String) -> PlasmaSettings) {
-            val row = LinearLayout(context).apply { orientation = VERTICAL }
-            val chips = ArrayList<ChoiceChip>()
-            options.forEach { (value, label) ->
-                val chip = ChoiceChip(context, palette, label, value == selected) {
-                    chips.forEach { c -> c.selectedChip = c.value == value }
-                    current = apply(value)
-                    onChange(current)
-                }
-                chip.value = value
-                chips += chip
-                row.addView(chip, LayoutParams(-1, (40 * density).toInt()).apply { bottomMargin = (4 * density).toInt() })
-            }
-            sectionBody.addView(row, LayoutParams(-1, -2))
+        val items = ArrayList<SettingsNavItem>()
+        fun select(index: Int) {
+            items.forEachIndexed { i, item -> item.selectedItem = i == index }
+            content.removeAllViews()
+            content.addView(pages[index].third(), FrameLayout.LayoutParams(-1, -2))
+            scroll.scrollTo(0, 0)
+            onPage(index)
         }
-        section(t("nativePlasmaColorScheme"))
-        choices(listOf("dark" to t("nativePlasmaBreezeDark"), "light" to t("nativePlasmaBreezeLight"), "system" to t("nativePlasmaFollowSystem")), settings.colorScheme) {
-            current.copy(colorScheme = it)
+        val navigation = LinearLayout(context).apply {
+            orientation = if (wide) VERTICAL else HORIZONTAL
+            setPadding(dp(8f), dp(8f), dp(8f), dp(8f))
         }
-        section(t("nativePlasmaAccentColor"))
-        val accents = listOf(0xFF3DAEE9, 0xFF9B59B6, 0xFFE93A9A, 0xFFE93D58, 0xFFE9643A, 0xFFEF973C, 0xFFE8CB2D, 0xFFB6E521, 0xFF3DD425, 0xFF00D485, 0xFF00D3B8, 0xFF7F8C8D)
-            .map { it.toInt() }
-        val accentRow = android.widget.GridLayout(context).apply { columnCount = 6 }
+        pages.forEachIndexed { index, (title, glyph, _) ->
+            val item = SettingsNavItem(context, palette, glyph, title, compact = !wide) { select(index) }
+            items += item
+            navigation.addView(item, if (wide) LayoutParams(-1, dp(40f)).apply { bottomMargin = dp(2f) }
+                else LayoutParams(0, dp(40f), 1f).apply { marginEnd = dp(4f) })
+        }
+        if (wide) {
+            addView(horizontalLayout(context).apply {
+                addView(navigation, LayoutParams(dp(200f), -1))
+                addView(View(context).apply { setBackgroundColor(palette.separator) }, LayoutParams(1, -1))
+                addView(scroll, LayoutParams(0, -1, 1f))
+            }, LayoutParams(-1, 0, 1f))
+        } else {
+            addView(navigation, LayoutParams(-1, -2))
+            addView(View(context).apply { setBackgroundColor(palette.separator) }, LayoutParams(-1, 1))
+            addView(scroll, LayoutParams(-1, 0, 1f))
+        }
+        select(initialPage.coerceIn(0, pages.lastIndex))
+    }
+
+    // region pages
+    private fun page(title: String, vararg groups: View) = LinearLayout(context).apply {
+        orientation = VERTICAL
+        setPadding(dp(20f), dp(16f), dp(20f), dp(20f))
+        addView(plasmaLabel(context, title, palette.text, 18f, bold = true),
+            LayoutParams(-1, -2).apply { bottomMargin = dp(12f) })
+        groups.forEach { addView(it, LayoutParams(-1, -2).apply { bottomMargin = dp(12f) }) }
+    }
+
+    /** Rows on one rounded card, with hairlines between them. */
+    private fun group(vararg rows: View) = LinearLayout(context).apply {
+        orientation = VERTICAL
+        background = android.graphics.drawable.GradientDrawable().apply {
+            setColor(palette.viewBackground)
+            cornerRadius = 10 * density
+            setStroke(1, palette.separator)
+        }
+        rows.forEachIndexed { index, row ->
+            if (index > 0) addView(View(context).apply { setBackgroundColor(palette.separator) },
+                LayoutParams(-1, 1).apply { marginStart = dp(14f); marginEnd = dp(14f) })
+            addView(row, LayoutParams(-1, -2))
+        }
+    }
+
+    /** Title and explanation on the left, [control] on the right (or below, when [below]). */
+    private fun row(title: String, description: String?, control: View, below: Boolean = false,
+                    onRowClick: (() -> Unit)? = null): View {
+        val texts = LinearLayout(context).apply {
+            orientation = VERTICAL
+            addView(plasmaLabel(context, title, palette.text, 14f))
+            if (description != null) addView(plasmaLabel(context, description, palette.inactiveText, 12f),
+                LayoutParams(-1, -2).apply { topMargin = dp(2f) })
+        }
+        val layout = if (below) LinearLayout(context).apply {
+            orientation = VERTICAL
+            addView(texts, LayoutParams(-1, -2).apply { bottomMargin = dp(10f) })
+            addView(control, LayoutParams(-2, -2))
+        } else horizontalLayout(context).apply {
+            gravity = Gravity.CENTER_VERTICAL
+            addView(texts, LayoutParams(0, -2, 1f).apply { marginEnd = dp(16f) })
+            addView(control, LayoutParams(-2, -2))
+        }
+        layout.minimumHeight = dp(56f)
+        layout.setPadding(dp(14f), dp(10f), dp(14f), dp(10f))
+        if (onRowClick != null) layout.setOnClickListener { onRowClick() }
+        return layout
+    }
+
+    private fun switchRow(title: String, description: String?, value: Boolean, apply: (Boolean) -> PlasmaSettings): View {
+        val toggle = SettingsSwitch(context, palette, value) { change(apply(it)) }
+        return row(title, description, toggle, onRowClick = { toggle.toggle() })
+    }
+
+    private fun segmentedRow(title: String, description: String?, options: List<Pair<String, String>>, selected: String,
+                             apply: (String) -> PlasmaSettings): View =
+        row(title, description, SettingsSegmented(context, palette, options, selected) { change(apply(it)) })
+
+    private fun appearancePage(): View {
+        val accents = listOf(0xFF3DAEE9, 0xFF9B59B6, 0xFFE93A9A, 0xFFE93D58, 0xFFE9643A, 0xFFEF973C, 0xFFE8CB2D,
+            0xFFB6E521, 0xFF3DD425, 0xFF00D485, 0xFF00D3B8, 0xFF7F8C8D).map { it.toInt() }
         val swatches = ArrayList<AccentSwatch>()
+        val accentRow = android.widget.GridLayout(context).apply { columnCount = 6 }
         accents.forEach { color ->
-            val swatch = AccentSwatch(context, palette, color, color == settings.accentColor) {
+            val swatch = AccentSwatch(context, palette, color, color == current.accentColor) {
                 swatches.forEach { s -> s.selectedSwatch = s.color == color }
-                current = current.copy(accentColor = color)
-                onChange(current)
+                change(current.copy(accentColor = color))
             }
             swatches += swatch
             accentRow.addView(swatch, android.widget.GridLayout.LayoutParams().apply {
-                width = 0; height = (36 * density).toInt()
-                columnSpec = android.widget.GridLayout.spec(android.widget.GridLayout.UNDEFINED, 1f)
-                rightMargin = (8 * density).toInt(); bottomMargin = (8 * density).toInt()
+                width = dp(32f); height = dp(32f)
+                rightMargin = dp(8f); bottomMargin = dp(6f)
             })
         }
-        sectionBody.addView(accentRow)
-        section(t("nativePlasmaWallpaper"))
-        choices(listOf("plasma" to t("nativePlasmaWallpaperPlasma"), "system" to t("nativePlasmaWallpaperAndroid")), settings.wallpaper) {
-            current.copy(wallpaper = it)
-        }
-        section(t("nativePlasmaPanel"))
-        choices(listOf("float" to t("nativePlasmaFloating"), "dock" to t("nativePlasmaDocked")), if (settings.floatingPanel) "float" else "dock") {
-            current.copy(floatingPanel = it == "float")
-        }
-        section(t("nativePlasmaVirtualDesktops"))
-        choices((1..4).map { it.toString() to it.toString() }, settings.virtualDesktops.coerceAtMost(4).toString()) {
-            current.copy(virtualDesktops = it.toInt())
-        }
-        section(t("nativePlasmaAnimationSpeed"))
-        choices(listOf("0" to t("nativePlasmaInstant"), "0.5" to "0.5×", "1" to "1×", "2" to "2×"),
-            when { settings.animationSpeed <= 0f -> "0"; settings.animationSpeed < .75f -> "0.5"; settings.animationSpeed > 1.5f -> "2"; else -> "1" }) {
-            current.copy(animationSpeed = it.toFloat())
-        }
-        // A category navigator on desktops; a single scrollable column on narrow displays.
-        if (resources.displayMetrics.widthPixels / density >= 560f) {
-            val navigation = LinearLayout(context).apply { orientation = VERTICAL }
-            val page = FrameLayout(context)
-            val buttons = ArrayList<android.widget.TextView>()
-            fun select(index: Int) {
-                categories.forEachIndexed { i, (_, content) -> content.visibility = if (i == index) VISIBLE else GONE }
-                buttons.forEachIndexed { i, button ->
-                    button.isSelected = i == index
-                    button.setTextColor(if (i == index) palette.accent else palette.text)
-                    button.setBackgroundColor(if (i == index) palette.hover else android.graphics.Color.TRANSPARENT)
-                }
-            }
-            categories.forEachIndexed { index, (title, content) ->
-                removeView(content)
-                page.addView(content, FrameLayout.LayoutParams(-1, -2))
-                val button = plasmaLabel(context, title, palette.text, 13f).apply {
-                    gravity = Gravity.CENTER_VERTICAL
-                    setPadding((10 * density).toInt(), 0, (8 * density).toInt(), 0)
-                    isFocusable = true
-                    setOnClickListener { select(index) }
-                }
-                buttons += button
-                navigation.addView(button, LayoutParams(-1, (44 * density).toInt()))
-            }
-            addView(horizontalLayout(context).apply {
-                gravity = Gravity.TOP
-                addView(navigation, LayoutParams((144 * density).toInt(), -2).apply { rightMargin = (12 * density).toInt() })
-                addView(page, LayoutParams(0, -2, 1f))
-            }, LayoutParams(-1, -2))
-            select(0)
-        }
+        return page(tr("外観", "Appearance"),
+            group(
+                segmentedRow(t("nativePlasmaColorScheme"), null,
+                    listOf("dark" to t("nativePlasmaBreezeDark"), "light" to t("nativePlasmaBreezeLight"),
+                        "system" to t("nativePlasmaFollowSystem")), current.colorScheme) { current.copy(colorScheme = it) },
+                row(t("nativePlasmaAccentColor"), null, accentRow, below = true),
+                segmentedRow(t("nativePlasmaWallpaper"), null,
+                    listOf("plasma" to t("nativePlasmaWallpaperPlasma"), "system" to t("nativePlasmaWallpaperAndroid")),
+                    current.wallpaper) { current.copy(wallpaper = it) },
+            ))
     }
+
+    private fun taskbarPage(): View = page(tr("タスクバー", "Taskbar"),
+        group(
+            switchRow(tr("フローティングパネル", "Floating panel"),
+                tr("ウィンドウが触れていないとき、パネルを画面の端から浮かせます",
+                    "Lifts the panel off the screen edge while no window touches it"),
+                current.floatingPanel) { current.copy(floatingPanel = it) },
+        ),
+        group(
+            switchRow(tr("モバイル回線の種類を表示", "Show the mobile network type"),
+                tr("電波のアイコンの下に LTE や 5G などを表示します", "Shows LTE, 5G and so on under the signal icon"),
+                current.trayNetworkType) { current.copy(trayNetworkType = it) },
+            switchRow(tr("電池残量を表示", "Show the battery percentage"),
+                tr("電池のアイコンの下に残量をパーセントで表示します", "Shows the charge as a percentage under the battery icon"),
+                current.trayBatteryPercent) { current.copy(trayBatteryPercent = it) },
+        ))
+
+    private fun workspacePage(): View = page(tr("ワークスペース", "Workspace"),
+        group(
+            row(t("nativePlasmaVirtualDesktops"), null,
+                SettingsStepper(context, palette, current.virtualDesktops, 1, 6) { change(current.copy(virtualDesktops = it)) }),
+            switchRow(tr("ホットコーナー", "Hot corner"),
+                tr("ポインターを左上の角へ動かすとオーバービューを開きます",
+                    "Opens the overview when the pointer reaches the top-left corner"),
+                current.hotCorner) { current.copy(hotCorner = it) },
+            segmentedRow(t("nativePlasmaAnimationSpeed"), null,
+                listOf("0" to t("nativePlasmaInstant"), "0.5" to "0.5×", "1" to "1×", "2" to "2×"),
+                when {
+                    current.animationSpeed <= 0f -> "0"
+                    current.animationSpeed < .75f -> "0.5"
+                    current.animationSpeed > 1.5f -> "2"
+                    else -> "1"
+                }) { current.copy(animationSpeed = it.toFloat()) },
+        ))
+    // endregion
 }
 
+/** A category in the settings list: icon and name, highlighted while hovered or selected. */
 @SuppressLint("ViewConstructor")
-private class ChoiceChip(
+private class SettingsNavItem(
     context: Context,
     private val palette: PlasmaPalette,
+    glyph: Glyph,
     private val label: String,
-    initial: Boolean,
-    private val onPick: () -> Unit,
+    private val compact: Boolean,
+    onPick: () -> Unit,
 ) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val icon = GlyphDrawable(glyph, palette.text, 1.5f)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = PlasmaTheme.sans; textSize = 13.5f * density }
+    private var hovered = false
+    var selectedItem = false
+        set(value) { field = value; invalidate() }
+
     init {
         contentDescription = label
         isFocusable = true
-        isClickable = true
         setOnClickListener { onPick() }
     }
-    var value = ""
-    var selectedChip = initial
-        set(v) { field = v; invalidate() }
-    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = PlasmaTheme.sans }
-    private val density = resources.displayMetrics.density
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        val next = event.actionMasked != MotionEvent.ACTION_HOVER_EXIT
+        if (next != hovered) { hovered = next; invalidate() }
+        return super.onHoverEvent(event)
+    }
 
     override fun onDraw(canvas: Canvas) {
-        val box = RectF(1f, 1f, width - 1f, height - 1f)
+        val box = RectF(0f, 0f, width.toFloat(), height.toFloat())
+        val radius = 8 * density
+        if (selectedItem || hovered || isPressed) {
+            paint.color = if (selectedItem) PlasmaTheme.withAlpha(palette.accent, 0x38) else palette.hover
+            canvas.drawRoundRect(box, radius, radius, paint)
+        }
+        if (selectedItem && !compact) {
+            paint.color = palette.accent
+            canvas.drawRoundRect(RectF(0f, height * .25f, 3 * density, height * .75f), 2 * density, 2 * density, paint)
+        }
+        val iconSize = 18 * density
+        val color = if (selectedItem) palette.accent else palette.text
+        icon.color = color
+        paint.color = color
+        val textWidth = paint.measureText(label)
+        val left = if (compact) ((width - iconSize - 8 * density - textWidth) / 2f).coerceAtLeast(6 * density) else 14 * density
+        val top = (height - iconSize) / 2f
+        icon.setBounds(left.toInt(), top.toInt(), (left + iconSize).toInt(), (top + iconSize).toInt())
+        icon.draw(canvas)
+        val textLeft = left + iconSize + 10 * density
+        canvas.drawText(TextUtilsCompat.ellipsize(label, paint, width - textLeft - 6 * density), textLeft,
+            height / 2f - (paint.descent() + paint.ascent()) / 2f, paint)
+    }
+
+    override fun drawableStateChanged() {
+        super.drawableStateChanged()
+        invalidate()
+    }
+}
+
+/** A round icon button (the dialog's close button). */
+@SuppressLint("ViewConstructor")
+private class SettingsIconButton(
+    context: Context,
+    private val palette: PlasmaPalette,
+    glyph: Glyph,
+    description: String,
+    onPick: () -> Unit,
+) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val icon = GlyphDrawable(glyph, palette.text, 1.6f)
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var hovered = false
+
+    init {
+        contentDescription = description
+        isFocusable = true
+        setOnClickListener { onPick() }
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        val next = event.actionMasked != MotionEvent.ACTION_HOVER_EXIT
+        if (next != hovered) { hovered = next; invalidate() }
+        return super.onHoverEvent(event)
+    }
+
+    override fun drawableStateChanged() {
+        super.drawableStateChanged()
+        invalidate()
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        if (hovered || isPressed) {
+            paint.color = if (isPressed) palette.pressed else palette.hover
+            canvas.drawCircle(width / 2f, height / 2f, minOf(width, height) / 2f, paint)
+        }
+        val size = 16 * density
+        icon.color = palette.text
+        icon.setBounds(((width - size) / 2f).toInt(), ((height - size) / 2f).toInt(),
+            ((width + size) / 2f).toInt(), ((height + size) / 2f).toInt())
+        icon.draw(canvas)
+    }
+}
+
+/** An on/off switch with a sliding thumb. */
+@SuppressLint("ViewConstructor")
+private class SettingsSwitch(
+    context: Context,
+    private val palette: PlasmaPalette,
+    initial: Boolean,
+    private val onToggle: (Boolean) -> Unit,
+) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+    private var checked = initial
+    private var position = if (initial) 1f else 0f
+
+    init {
+        isFocusable = true
+        setOnClickListener { toggle() }
+    }
+
+    fun toggle() {
+        checked = !checked
+        ValueAnimator.ofFloat(position, if (checked) 1f else 0f).apply {
+            duration = PlasmaTheme.SHORT_MS
+            interpolator = PlasmaTheme.outCubic
+            addUpdateListener { position = it.animatedValue as Float; invalidate() }
+            start()
+        }
+        onToggle(checked)
+    }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) =
+        setMeasuredDimension((44 * density).toInt(), (24 * density).toInt())
+
+    override fun onDraw(canvas: Canvas) {
+        val h = height.toFloat()
+        val track = RectF(1f, 1f, width - 1f, h - 1f)
         paint.style = Paint.Style.FILL
-        paint.color = if (selectedChip) PlasmaTheme.withAlpha(palette.accent, 0x44) else PlasmaTheme.withAlpha(palette.text, 0x10)
-        canvas.drawRoundRect(box, 4 * density, 4 * density, paint)
-        paint.style = Paint.Style.STROKE
-        paint.strokeWidth = 1f
-        paint.color = if (selectedChip) palette.accent else palette.separator
-        canvas.drawRoundRect(box, 4 * density, 4 * density, paint)
-        paint.style = Paint.Style.FILL
-        paint.color = palette.text
-        paint.textSize = 12.5f * density
-        canvas.drawText(TextUtilsCompat.ellipsize(label, paint, width - 8 * density), width / 2f, height / 2f - (paint.descent() + paint.ascent()) / 2f, paint)
+        paint.color = PlasmaTheme.blend(PlasmaTheme.withAlpha(palette.text, 0x26), palette.accent, position)
+        canvas.drawRoundRect(track, h / 2f, h / 2f, paint)
+        val radius = h / 2f - 3 * density
+        val cx = h / 2f + (width - h) * position
+        paint.color = if (position > .5f) palette.accentText else palette.text
+        canvas.drawCircle(cx, h / 2f, radius, paint)
+    }
+}
+
+/** A row of mutually exclusive options; the chosen one is filled with the accent colour. */
+@SuppressLint("ViewConstructor")
+private class SettingsSegmented(
+    context: Context,
+    private val palette: PlasmaPalette,
+    private val options: List<Pair<String, String>>,
+    private var selected: String,
+    private val onPick: (String) -> Unit,
+) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = PlasmaTheme.sans
+        textSize = 12.5f * density
+        textAlign = Paint.Align.CENTER
+    }
+    private val pad = 14 * density
+    private val widths = options.map { paint.measureText(it.second) + pad * 2 }
+    private var hoveredIndex = -1
+
+    init { isFocusable = true }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) {
+        val wanted = widths.sum().toInt() + 2
+        setMeasuredDimension(resolveSize(wanted, widthMeasureSpec), (32 * density).toInt())
+    }
+
+    /** Segments scale down together when the row is narrower than they want. */
+    private fun bounds(): List<RectF> {
+        val scale = ((width - 2f) / widths.sum()).coerceAtMost(1f)
+        var x = 1f
+        return widths.map { w -> RectF(x, 1f, x + w * scale, height - 1f).also { x += w * scale } }
+    }
+
+    private fun indexAt(x: Float) = bounds().indexOfFirst { x >= it.left && x < it.right }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        val next = if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT) -1 else indexAt(event.x)
+        if (next != hoveredIndex) { hoveredIndex = next; invalidate() }
+        return true
     }
 
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_UP) performClick()
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            val index = indexAt(event.x)
+            if (index >= 0 && event.y in 0f..height.toFloat() && options[index].first != selected) {
+                selected = options[index].first
+                invalidate()
+                onPick(selected)
+            }
+        }
         return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val outer = RectF(1f, 1f, width - 1f, height - 1f)
+        val radius = height / 2f
+        paint.style = Paint.Style.FILL
+        paint.color = PlasmaTheme.withAlpha(palette.text, 0x10)
+        canvas.drawRoundRect(outer, radius, radius, paint)
+        bounds().forEachIndexed { index, box ->
+            val chosen = options[index].first == selected
+            if (chosen || index == hoveredIndex) {
+                paint.color = if (chosen) palette.accent else palette.hover
+                val inner = RectF(box).apply { inset(2 * density, 2 * density) }
+                canvas.drawRoundRect(inner, inner.height() / 2f, inner.height() / 2f, paint)
+            }
+            paint.color = if (chosen) palette.accentText else palette.text
+            canvas.drawText(TextUtilsCompat.ellipsize(options[index].second, paint, box.width() - 8 * density),
+                box.centerX(), box.centerY() - (paint.descent() + paint.ascent()) / 2f, paint)
+        }
+        paint.style = Paint.Style.STROKE
+        paint.strokeWidth = 1f
+        paint.color = palette.separator
+        canvas.drawRoundRect(outer, radius, radius, paint)
+    }
+}
+
+/** − value + for a small whole number. */
+@SuppressLint("ViewConstructor")
+private class SettingsStepper(
+    context: Context,
+    private val palette: PlasmaPalette,
+    initial: Int,
+    private val min: Int,
+    private val max: Int,
+    private val onValue: (Int) -> Unit,
+) : View(context) {
+    private val density = resources.displayMetrics.density
+    private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        typeface = PlasmaTheme.sans
+        textAlign = Paint.Align.CENTER
+    }
+    private var value = initial.coerceIn(min, max)
+    private var hoveredSide = 0
+
+    init { isFocusable = true }
+
+    override fun onMeasure(widthMeasureSpec: Int, heightMeasureSpec: Int) =
+        setMeasuredDimension((112 * density).toInt(), (32 * density).toInt())
+
+    private fun side(x: Float) = when {
+        x < height -> -1
+        x > width - height -> 1
+        else -> 0
+    }
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        val next = if (event.actionMasked == MotionEvent.ACTION_HOVER_EXIT) 0 else side(event.x)
+        if (next != hoveredSide) { hoveredSide = next; invalidate() }
+        return true
+    }
+
+    @SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked == MotionEvent.ACTION_UP) {
+            val next = (value + side(event.x)).coerceIn(min, max)
+            if (next != value) {
+                value = next
+                invalidate()
+                onValue(value)
+            }
+        }
+        return true
+    }
+
+    override fun onDraw(canvas: Canvas) {
+        val h = height.toFloat()
+        listOf(-1 to h / 2f, 1 to width - h / 2f).forEach { (direction, cx) ->
+            val enabled = if (direction < 0) value > min else value < max
+            paint.style = Paint.Style.FILL
+            paint.color = if (hoveredSide == direction && enabled) palette.hover else PlasmaTheme.withAlpha(palette.text, 0x10)
+            canvas.drawCircle(cx, h / 2f, h / 2f - 1f, paint)
+            paint.color = if (enabled) palette.text else palette.disabledText
+            paint.strokeWidth = 1.6f * density
+            paint.style = Paint.Style.STROKE
+            val arm = 5 * density
+            canvas.drawLine(cx - arm, h / 2f, cx + arm, h / 2f, paint)
+            if (direction > 0) canvas.drawLine(cx, h / 2f - arm, cx, h / 2f + arm, paint)
+        }
+        paint.style = Paint.Style.FILL
+        paint.color = palette.text
+        paint.textSize = 15f * density
+        canvas.drawText(value.toString(), width / 2f, h / 2f - (paint.descent() + paint.ascent()) / 2f, paint)
     }
 }
 

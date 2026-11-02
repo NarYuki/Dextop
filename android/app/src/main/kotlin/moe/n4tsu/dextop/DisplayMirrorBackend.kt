@@ -577,7 +577,10 @@ internal class VirtualDisplayPlatform private constructor(
             }
         }
         val visibility = if (publicDisplay) FLAG_PUBLIC else 0
-        val flagLadder = intArrayOf(
+        // No FLAG_OWN_FOCUS: with a focus of its own every application display kept its window
+        // focused, the input method never followed the active window, and Gboard did not serve
+        // apps (HyperOS). Plasma makes the active window's display the top-focused one instead.
+        val flagLadder = listOf(
             visibility or FLAG_OWN_CONTENT_ONLY or FLAG_SUPPORTS_TOUCH or FLAG_TRUSTED,
             visibility or FLAG_OWN_CONTENT_ONLY or FLAG_TRUSTED,
             visibility or FLAG_OWN_CONTENT_ONLY,
@@ -709,6 +712,7 @@ internal class VirtualDisplayPlatform private constructor(
         private const val FLAG_SUPPORTS_TOUCH = 1 shl 6
         private const val FLAG_SHOW_SYSTEM_DECORATIONS = 1 shl 9
         private const val FLAG_TRUSTED = 1 shl 10
+        /** The display keeps its own focused window (needs FLAG_TRUSTED). */
 
         fun inspect(): VirtualDisplayPlatform {
             val manager = Class.forName(MANAGER_INTERFACE)

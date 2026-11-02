@@ -872,7 +872,15 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             if (application?.wayland != null && readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME) {
                 application.updateDisplay(config)
             } else if (application?.usesXwayland == true || desktop?.usesXwayland == true) {
+                val previousDpi = (application?.displayConfiguration ?: desktop?.displayConfiguration)?.dpi
                 application?.updateDisplay(config); desktop?.updateDisplay(config)
+                // Xwayland takes its size from the compositor, but its DPI (the desktop's scale on
+                // the external screen) only from the X resources: applications started from now on
+                // follow it.
+                if (previousDpi != config.dpi) {
+                    val result = requireProot().run(requireProot().guest(containerId, LinuxCatalog.updateDpiScript(display, config.dpi)), 15)
+                    if (result.exitCode != 0) log(containerId, "Linux DPI update failed: ${result.output.takeLast(500)}")
+                }
             } else {
                 val began = android.os.SystemClock.uptimeMillis()
                 val result = requireProot().run(requireProot().guest(containerId, LinuxCatalog.updateDisplayScript(display, config, apps)), 15)

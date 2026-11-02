@@ -94,6 +94,17 @@ internal interface V2WindowHost {
     val windowShadows: Boolean get() = true
     /** Corner radius of the window outline in pixels, or a negative value for the desktop default. */
     fun windowCornerRadius(): Float = -1f
+    /** [window]'s corner radius: Book draws maximized and tiled windows square. */
+    fun windowCornerRadius(window: V2Window): Float = windowCornerRadius()
+    /** Book: the snap layouts offered from the maximize button, under [anchor] (screen pixels). */
+    fun showSnapMenu(window: V2Window, anchor: RectF) {}
+    /** Book: maximized and tiled windows lie flat, without a shadow over their neighbours. */
+    fun flatWindow(window: V2Window): Boolean = false
+    /** Book: each corner's radius (top left, top right, bottom right, bottom left), or null for [windowCornerRadius]. */
+    fun windowCorners(window: V2Window): FloatArray? = null
+    /** Android application windows get a Back button (Linux windows have their own controls). */
+    fun hasBackButton(window: V2Window): Boolean = false
+    fun goBack(window: V2Window) {}
     /** Dextop Book: Material 3 title bars (tonal circular buttons, title at the start). */
     val bookStyle: Boolean get() = false
 }
@@ -141,6 +152,11 @@ internal class V2Window(
     var pendingAdoption: TaskSnapshot? = null
     /** Intent to start instead of the package's launcher activity (settings screens). */
     var launchIntent: android.content.Intent? = null
+    /** The Dextop activity shown (Book's Settings or Widgets), whose icon the window uses. */
+    var ownComponent: android.content.ComponentName? = null
+    /** Another task seen over this window's own on its display, and since when (uptime). */
+    var stackedTask = -1
+    var stackedSince = 0L
     var adoptAttempted = false
 
     /** Container id when this window shows a Linux desktop instead of an Android app. */
@@ -160,6 +176,8 @@ internal class V2Window(
     /** X window id when this window shows one Linux application window (0: the whole desktop). */
     var linuxXid = 0
     var linuxWMClass = ""
+    /** The Kickoff entry ("linuxapp:…") this Linux window was launched from, when known. */
+    var linuxLaunchKey: String? = null
     var linuxWindowIcon: android.graphics.drawable.Drawable? = null
     var linuxClientDecorated = false
     var linuxFullscreen = false
@@ -271,7 +289,17 @@ internal class V2WindowView(
         chrome.orientation = LinearLayout.VERTICAL
         chrome.outlineProvider = object : ViewOutlineProvider() {
             override fun getOutline(view: View, outline: Outline) {
-                val radius = host.windowCornerRadius()
+                val corners = shownCorners
+                if (corners != null && corners.any { it != corners[0] }) {
+                    // Different corners (a split window keeps its inner ones round): a path outline.
+                    cornerPath.reset()
+                    cornerPath.addRoundRect(0f, 0f, view.width.toFloat(), view.height.toFloat(), floatArrayOf(
+                        corners[0], corners[0], corners[1], corners[1], corners[2], corners[2], corners[3], corners[3],
+                    ), android.graphics.Path.Direction.CW)
+                    outline.setPath(cornerPath)
+                    return
+                }
+                val radius = corners?.get(0) ?: host.windowCornerRadius(window)
                 outline.setRoundRect(0, 0, view.width, view.height, if (radius >= 0f) radius else 6 * density)
             }
         }
@@ -398,8 +426,56 @@ internal class V2WindowView(
         status = panel
     }
 
+    /** The corners follow the window's state (square while maximized or tiled in Book). */
+    private val cornerPath = android.graphics.Path()
+    /** The corner radii drawn now, animated towards the host's; null without per-corner radii. */
+    private var shownCorners: FloatArray? = null
+    private var cornerTarget: FloatArray? = null
+    private var cornerAnimator: ValueAnimator? = null
+
+    /** The corners follow the window's state; a change rounds or sharpens them smoothly. */
+    fun refreshCorners() {
+        val target = host.windowCorners(window)
+        if (target == null) { shownCorners = null; chrome.invalidateOutline(); return }
+        val current = shownCorners
+        if (current == null) { shownCorners = target.copyOf(); cornerTarget = target; chrome.invalidateOutline(); return }
+        if (cornerTarget?.contentEquals(target) == true) { chrome.invalidateOutline(); return }
+        cornerTarget = target
+        val from = current.copyOf()
+        cornerAnimator?.cancel()
+        cornerAnimator = ValueAnimator.ofFloat(0f, 1f).apply {
+            duration = 280L
+            interpolator = android.view.animation.PathInterpolator(.2f, 0f, 0f, 1f)
+            addUpdateListener { animator ->
+                val t = animator.animatedValue as Float
+                shownCorners = FloatArray(4) { i -> from[i] + (target[i] - from[i]) * t }
+                chrome.invalidateOutline()
+            }
+            start()
+        }
+    }
+
+    private var shadowActive: Boolean? = null
+    private var shadowFlat: Boolean? = null
+
     fun refreshElevation(active: Boolean) {
-        chrome.elevation = if (!host.windowShadows) 0f else if (active) 22 * density else 9 * density
+        val flat = !host.windowShadows || host.flatWindow(window)
+        if (host.bookStyle) {
+            // Book: a soft Material shadow; the active window rises a little, smoothly.
+            if (active == shadowActive && flat == shadowFlat) return
+            val first = shadowActive == null
+            shadowActive = active
+            shadowFlat = flat
+            chrome.outlineAmbientShadowColor = 0x40000000
+            chrome.outlineSpotShadowColor = 0x59000000
+            chrome.elevation = if (flat) 0f else 4 * density
+            val lift = if (flat || !active) 0f else 6 * density
+            if (first) chrome.translationZ = lift
+            else chrome.animate().translationZ(lift).setDuration(220L).start()
+            titleBar.invalidate()
+            return
+        }
+        chrome.elevation = if (flat) 0f else if (active) 22 * density else 9 * density
         titleBar.invalidate()
     }
 
@@ -578,7 +654,10 @@ internal class V2TitleBar(
     private val host: V2WindowHost,
     private val window: V2Window,
 ) : View(context) {
-    private enum class Button { MINIMIZE, MAXIMIZE, CLOSE }
+    private enum class Button { BACK, MINIMIZE, MAXIMIZE, CLOSE }
+
+    /** The buttons this window shows: Back only for Android applications. */
+    private val buttons get() = Button.entries.filter { it != Button.BACK || host.hasBackButton(window) }
 
     private val density = resources.displayMetrics.density
     private fun dp(value: Float) = value * density
@@ -590,6 +669,7 @@ internal class V2TitleBar(
         Button.MINIMIZE to GlyphDrawable(Glyph.MINIMIZE, 0, 1.5f),
         Button.MAXIMIZE to GlyphDrawable(Glyph.MAXIMIZE, 0, 1.5f),
         Button.CLOSE to GlyphDrawable(Glyph.CLOSE, 0, 1.5f),
+        Button.BACK to GlyphDrawable(Glyph.BACK, 0, 1.5f),
     )
     private val restoreGlyph = GlyphDrawable(Glyph.RESTORE, 0, 1.4f)
     private var hovered: Button? = null
@@ -613,22 +693,33 @@ internal class V2TitleBar(
             if (next != hovered) {
                 hovered = next
                 animateHover()
+                removeCallbacks(snapMenu)
+                if (next == Button.MAXIMIZE && host.bookStyle) postDelayed(snapMenu, 450L)
             }
             true
         }
     }
 
+    /** Book: resting on (or holding) the maximize button offers the snap layouts. */
+    private val snapMenu = Runnable {
+        val r = buttonRect(Button.MAXIMIZE)
+        val origin = IntArray(2).also(::getLocationOnScreen)
+        pressed = null
+        invalidate()
+        host.showSnapMenu(window, RectF(origin[0] + r.left, origin[1] + r.top, origin[0] + r.right, origin[1] + r.bottom))
+    }
+
     private fun buttonRect(button: Button): RectF {
         val book = host.bookStyle
-        val size = dp(if (book) 28f else 20f)
-        val gap = dp(if (book) 8f else 6f)
-        val index = when (button) { Button.CLOSE -> 0; Button.MAXIMIZE -> 1; Button.MINIMIZE -> 2 }
+        val size = dp(if (book) 32f else 20f)
+        val gap = dp(if (book) 4f else 6f)
+        val index = when (button) { Button.CLOSE -> 0; Button.MAXIMIZE -> 1; Button.MINIMIZE -> 2; Button.BACK -> 3 }
         val cx = width - dp(if (book) 10f else 7f) - size / 2f - index * (size + gap)
         val cy = height / 2f
         return RectF(cx - size / 2f, cy - size / 2f, cx + size / 2f, cy + size / 2f)
     }
 
-    private fun buttonAt(x: Float, y: Float): Button? = Button.entries.firstOrNull { button ->
+    private fun buttonAt(x: Float, y: Float): Button? = buttons.firstOrNull { button ->
         buttonRect(button).apply { inset(-dp(3f), -dp(4f)) }.contains(x, y)
     }
 
@@ -679,12 +770,12 @@ internal class V2TitleBar(
         titlePaint.textSize = dp(13f)
         titlePaint.color = PlasmaTheme.blend(palette.inactiveText, palette.text, activeFraction)
         val leftLimit = dp(32f)
-        val rightLimit = w - dp(3 * 26f + 10f)
+        val rightLimit = w - dp(buttons.size * 26f + 10f)
         val title = TextUtilsCompat.ellipsize(window.title, titlePaint, (rightLimit - leftLimit).coerceAtLeast(0f))
         val half = titlePaint.measureText(title) / 2f
         val x = (w / 2f).coerceIn(leftLimit + half, (rightLimit - half).coerceAtLeast(leftLimit + half))
         canvas.drawText(title, x, h / 2f - (titlePaint.descent() + titlePaint.ascent()) / 2f, titlePaint)
-        Button.entries.forEach { button ->
+        buttons.forEach { button ->
             val r = buttonRect(button)
             val hover = hoverProgress[button] ?: 0f
             val isPressed = pressed == button
@@ -705,6 +796,33 @@ internal class V2TitleBar(
     }
 
     /** Material 3: one tonal surface with the window, title at the start, tonal circular buttons. */
+    private val chevron = GlyphDrawable(Glyph.CHEVRON_DOWN, 0, 1.6f, true)
+    private val bookGlyph = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.FILL }
+    private val restoreStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 1.7f
+        strokeJoin = Paint.Join.ROUND
+    }
+
+    /** Android's "restore" glyph on the 24-unit grid: a window with another behind it. */
+    private fun drawRestore(canvas: Canvas) {
+        restoreStroke.color = bookGlyph.color
+        rect.set(5f, 8.5f, 15.5f, 19f)
+        canvas.drawRoundRect(rect, 1.6f, 1.6f, restoreStroke)
+        path.reset()
+        path.moveTo(8.5f, 8.5f)
+        path.lineTo(8.5f, 6.6f)
+        path.quadTo(8.5f, 5f, 10.1f, 5f)
+        path.lineTo(17.4f, 5f)
+        path.quadTo(19f, 5f, 19f, 6.6f)
+        path.lineTo(19f, 13.9f)
+        path.quadTo(19f, 15.5f, 17.4f, 15.5f)
+        path.lineTo(15.5f, 15.5f)
+        canvas.drawPath(path, restoreStroke)
+    }
+    /** Right edge of Book's icon, name and chevron, which open the window menu. */
+    private var menuRight = 0f
+
     private fun drawBook(canvas: Canvas, palette: PlasmaPalette, active: Boolean, w: Float, h: Float) {
         background.color = PlasmaTheme.blend(palette.headerInactive, palette.headerActive, activeFraction)
         canvas.drawRect(0f, 0f, w, h, background)
@@ -716,34 +834,57 @@ internal class V2TitleBar(
         titlePaint.textSize = dp(14f)
         titlePaint.color = PlasmaTheme.blend(palette.inactiveText, palette.text, activeFraction)
         val left = dp(42f)
-        val right = buttonRect(Button.MINIMIZE).left - dp(8f)
+        val right = buttonRect(buttons.first()).left - dp(28f)
         val title = TextUtilsCompat.ellipsize(window.title, titlePaint, (right - left).coerceAtLeast(0f))
         canvas.drawText(title, left, h / 2f - (titlePaint.descent() + titlePaint.ascent()) / 2f, titlePaint)
+        // The name and its chevron open the window menu, as on a Pixel laptop.
+        val chevronLeft = left + titlePaint.measureText(title) + dp(4f)
+        val chevronSize = dp(18f)
+        chevron.color = titlePaint.color
+        chevron.setBounds(chevronLeft.toInt(), ((h - chevronSize) / 2f).toInt(), (chevronLeft + chevronSize).toInt(), ((h + chevronSize) / 2f).toInt())
+        chevron.draw(canvas)
+        menuRight = chevronLeft + chevronSize + dp(4f)
         titlePaint.textAlign = Paint.Align.CENTER
         titlePaint.typeface = PlasmaTheme.sans
-        Button.entries.forEach { button ->
+        buttons.forEach { button ->
             val r = buttonRect(button)
             val hover = hoverProgress[button] ?: 0f
             val isPressed = pressed == button
-            val glyph = if (button == Button.MAXIMIZE && window.maximized) restoreGlyph else glyphs.getValue(button)
-            // Tonal container; close turns to the error container under the pointer.
-            val base = PlasmaTheme.withAlpha(palette.text, if (active) 0x1A else 0x0F)
-            val lit = if (button == Button.CLOSE) palette.negative else palette.accent
-            buttonPaint.color = PlasmaTheme.blend(base, PlasmaTheme.withAlpha(lit, 0x55), if (isPressed) 1f else hover)
+            // As in Android's desktop windowing: plain outline glyphs, a soft circle under the pointer.
+            buttonPaint.color = PlasmaTheme.withAlpha(palette.text, ((if (isPressed) .2f else hover * .12f) * 255).toInt())
             canvas.drawOval(r, buttonPaint)
-            glyph.color = PlasmaTheme.blend(palette.inactiveText, palette.text, activeFraction)
-            val inset = r.width() * .22f
-            glyph.setBounds((r.left + inset).toInt(), (r.top + inset).toInt(), (r.right - inset).toInt(), (r.bottom - inset).toInt())
-            glyph.draw(canvas)
+            bookGlyph.color = PlasmaTheme.blend(palette.inactiveText, palette.text, activeFraction)
+            val tiled = window.maximized || window.tile != TileZone.NONE
+            val name = when (button) {
+                Button.BACK -> "arrow_back"
+                Button.MINIMIZE -> "remove"
+                Button.MAXIMIZE -> if (tiled) null else "crop_square"
+                Button.CLOSE -> "close"
+            }
+            val size = r.width() * .6f
+            canvas.save()
+            canvas.translate(r.centerX() - size / 2f, r.centerY() - size / 2f)
+            canvas.scale(size / 24f, size / 24f)
+            if (name != null) GlyphPainter.symbolPath(name, false)?.let { canvas.drawPath(it, bookGlyph) }
+            else drawRestore(canvas)
+            canvas.restore()
         }
     }
 
+    /** The release of a right-click belongs to the window menu, not to a title-bar button. */
+    private var secondaryGesture = false
+
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (secondaryGesture) {
+            if (event.actionMasked == MotionEvent.ACTION_UP || event.actionMasked == MotionEvent.ACTION_CANCEL) secondaryGesture = false
+            return true
+        }
         when (event.actionMasked) {
             MotionEvent.ACTION_DOWN -> {
                 host.activate(window)
                 if (event.isButtonPressed(MotionEvent.BUTTON_SECONDARY)) {
+                    secondaryGesture = true
                     host.showWindowMenu(window, event.rawX, event.rawY)
                     return true
                 }
@@ -752,6 +893,7 @@ internal class V2TitleBar(
                     return true
                 }
                 pressed = buttonAt(event.x, event.y)
+                if (pressed == Button.MAXIMIZE && host.bookStyle) postDelayed(snapMenu, ViewConfiguration.getLongPressTimeout().toLong())
                 downX = event.rawX
                 downY = event.rawY
                 dragging = false
@@ -769,17 +911,19 @@ internal class V2TitleBar(
                 if (dragging) host.move(window, event.rawX, event.rawY)
             }
             MotionEvent.ACTION_UP -> {
+                removeCallbacks(snapMenu)
                 val button = pressed
                 pressed = null
                 invalidate()
                 when {
                     button != null && buttonAt(event.x, event.y) == button -> when (button) {
+                        Button.BACK -> host.goBack(window)
                         Button.MINIMIZE -> host.minimize(window)
                         Button.MAXIMIZE -> host.toggleMaximize(window)
                         Button.CLOSE -> host.close(window)
                     }
                     dragging -> host.endMove(window, event.rawX, event.rawY)
-                    event.x < dp(30f) -> host.showWindowMenu(window, event.rawX, event.rawY)
+                    event.x < (if (host.bookStyle) menuRight else dp(30f)) -> host.showWindowMenu(window, event.rawX, event.rawY)
                     event.eventTime - lastClickAt < ViewConfiguration.getDoubleTapTimeout() -> {
                         host.toggleMaximize(window)
                         lastClickAt = 0L

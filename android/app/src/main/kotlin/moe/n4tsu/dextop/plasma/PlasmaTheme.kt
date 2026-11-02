@@ -134,7 +134,26 @@ internal data class PlasmaSettings(
     val animationSpeed: Float = 1f,
     val hotCorner: Boolean = true,
     val wallpaper: String = "plasma",
+    /** "LTE", "5G"… under the mobile signal icon. */
+    val trayNetworkType: Boolean = true,
+    /** The charge in percent under the battery icon. */
+    val trayBatteryPercent: Boolean = true,
 ) {
+    /** Stores these settings where Flutter's settings page reads them. */
+    fun save(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+            .putString("flutter.plasma_color_scheme", colorScheme)
+            .putLong("flutter.plasma_accent_color", accentColor.toLong() and 0xFFFFFFFFL)
+            .putBoolean("flutter.plasma_floating_panel", floatingPanel)
+            .putLong("flutter.plasma_virtual_desktops", virtualDesktops.toLong())
+            .putString("flutter.plasma_animation_speed", "$DOUBLE_PREFIX${animationSpeed.toDouble()}")
+            .putBoolean("flutter.plasma_hot_corner", hotCorner)
+            .putString("flutter.plasma_wallpaper", wallpaper)
+            .putBoolean("flutter.plasma_tray_network_type", trayNetworkType)
+            .putBoolean("flutter.plasma_tray_battery_percent", trayBatteryPercent)
+            .apply()
+    }
+
     /** Returns a duration scaled by the animation slider; 0 disables animation. */
     fun duration(base: Long): Long = if (animationSpeed <= 0f) 0L else (base / animationSpeed).toLong()
 
@@ -156,6 +175,8 @@ internal data class PlasmaSettings(
                 animationSpeed = double("flutter.plasma_animation_speed", 1.0).toFloat().coerceIn(0f, 3f),
                 hotCorner = prefs.getBoolean("flutter.plasma_hot_corner", true),
                 wallpaper = prefs.getString("flutter.plasma_wallpaper", "plasma") ?: "plasma",
+                trayNetworkType = prefs.getBoolean("flutter.plasma_tray_network_type", true),
+                trayBatteryPercent = prefs.getBoolean("flutter.plasma_tray_battery_percent", true),
             )
         }
 

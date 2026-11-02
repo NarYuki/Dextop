@@ -372,6 +372,13 @@ class NativeBridge {
       await channel.invokeMethod<String>('setExternalDisplay', {'mode': mode}) ??
       'failed';
 
+  /// Sets one screen's scale (percent, 100 = recommended) on the extended desktop.
+  Future<void> setExtendedDisplayScale(int displayId, int percent) =>
+      channel.invokeMethod('setExtendedDisplayScale', {
+        'displayId': displayId,
+        'percent': percent,
+      });
+
   /// Re-reads Dextop Plasma appearance preferences on the running desktop.
   Future<void> plasmaSettingsChanged() =>
       channel.invokeMethod('plasmaSettingsChanged');
