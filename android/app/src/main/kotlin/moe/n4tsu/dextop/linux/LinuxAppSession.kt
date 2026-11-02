@@ -140,6 +140,9 @@ internal class LinuxAppSession(
     }
 
     private val waylandPointerCaptured = ConcurrentHashMap.newKeySet<Int>()
+    /** Wayland windows Plasma shows full screen or maximized (their xdg_toplevel states). */
+    private val waylandFullscreen = ConcurrentHashMap.newKeySet<Int>()
+    private val waylandMaximized = ConcurrentHashMap.newKeySet<Int>()
     private fun onWaylandEvent(event: JSONObject) {
         // Text a Wayland application copied: shared like X's CLIPBOARD.
         if (event.optString("type") == "clipboard") {
@@ -159,6 +162,14 @@ internal class LinuxAppSession(
         val xid = WAYLAND_ID or event.optInt("id")
         val popup = event.optBoolean("popup")
         val type = event.optString("type")
+        // Full screen as for X11 windows (_NET_WM_STATE_FULLSCREEN): granted at once, Plasma fills the screen.
+        if (type == "fullscreen") {
+            val enabled = event.optBoolean("enabled")
+            if (enabled) waylandFullscreen.add(xid) else waylandFullscreen.remove(xid)
+            wayland?.setState(xid and WAYLAND_ID.inv(), waylandMaximized.contains(xid), enabled)
+            events(JSONObject().put("xid", xid).put("type", "fullscreen").put("enabled", enabled))
+            return
+        }
         if (type in setOf("move", "moveresize", "minimize", "maximize")) {
             val control = JSONObject().put("xid", xid).put("type", if (type == "move") "moveresize" else type)
             if (type == "maximize") control.put("action", event.optInt("action", 2))
@@ -182,6 +193,8 @@ internal class LinuxAppSession(
         if (type == "unmap") {
             waylandBounds.remove(xid)
             waylandPointerCaptured.remove(xid)
+            waylandFullscreen.remove(xid)
+            waylandMaximized.remove(xid)
         }
         val translated = JSONObject()
             .put("type", type).put("xid", xid).put("popup", popup)
@@ -758,7 +771,11 @@ internal class LinuxAppSession(
     }
 
     fun setWindowState(id: Int, maximized: Boolean, minimized: Boolean) {
-        if (isWayland(id)) { wayland?.setState(id and WAYLAND_ID.inv(), maximized); return }
+        if (isWayland(id)) {
+            if (maximized) waylandMaximized.add(id) else waylandMaximized.remove(id)
+            wayland?.setState(id and WAYLAND_ID.inv(), maximized, waylandFullscreen.contains(id))
+            return
+        }
         if (xClient == null || !windows.containsKey(id)) return
         val hidden = x.internAtom("_NET_WM_STATE_HIDDEN")
         val states = x.propertyAtoms(id, atomNetState).filterNot { it == atomMaxH || it == atomMaxV || it == hidden }.toMutableList()

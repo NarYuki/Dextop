@@ -329,4 +329,19 @@ internal class PlasmaSystemControls(
     fun setAutoBrightness(enabled: Boolean) =
         run("settings", "put", "system", Settings.System.SCREEN_BRIGHTNESS_MODE, if (enabled) "1" else "0") != null
     // endregion
+
+    // region Book quick settings
+    fun doNotDisturb(): Boolean = globalInt("zen_mode") != 0
+    fun setDoNotDisturb(enabled: Boolean) = run("cmd", "notification", "set_dnd", if (enabled) "priority" else "off") != null
+
+    /** Night Light; ColorDisplayService follows the secure setting. */
+    fun nightLight(): Boolean =
+        runCatching { Settings.Secure.getInt(resolver, "night_display_activated") }.getOrDefault(0) == 1
+    fun setNightLight(enabled: Boolean) =
+        run("settings", "put", "secure", "night_display_activated", if (enabled) "1" else "0") != null
+
+    /** Blocks or allows every app's access to the microphone or camera ("microphone" / "camera"). */
+    fun setSensorBlocked(sensor: String, blocked: Boolean) =
+        run("cmd", "sensor_privacy", if (blocked) "enable" else "disable", "0", sensor) != null
+    // endregion
 }

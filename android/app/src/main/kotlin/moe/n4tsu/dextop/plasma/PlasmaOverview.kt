@@ -418,8 +418,9 @@ internal class TaskSwitcherView(
     private val palette: PlasmaPalette,
     private val windows: List<ManagedWindow>,
     private val thumbnails: Map<Int, Bitmap?>,
-) : View(context) {
-    var index = if (windows.size > 1) 1 else 0
+) : View(context), TaskSwitcher {
+    override val view: View get() = this
+    override var index = if (windows.size > 1) 1 else 0
         set(value) { field = value; invalidate() }
     private val density = resources.displayMetrics.density
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
@@ -427,7 +428,7 @@ internal class TaskSwitcherView(
     private val cellWidth get() = 220 * density
     private val cellHeight get() = 170 * density
 
-    fun desiredSize(maxWidth: Int): Pair<Int, Int> {
+    override fun desiredSize(maxWidth: Int): Pair<Int, Int> {
         val columns = ((maxWidth - 40 * density) / cellWidth).toInt().coerceIn(1, windows.size.coerceAtLeast(1))
         val rows = ceil(windows.size / columns.toDouble()).toInt().coerceAtLeast(1)
         return (columns * cellWidth + 24 * density).toInt() to (rows * cellHeight + 24 * density).toInt()
@@ -478,7 +479,7 @@ internal class TaskSwitcherView(
         }
     }
 
-    fun selectedWindow(): ManagedWindow? = windows.getOrNull(index)
+    override fun selectedWindow(): ManagedWindow? = windows.getOrNull(index)
 }
 
 internal fun Rect.toRectF() = RectF(this)

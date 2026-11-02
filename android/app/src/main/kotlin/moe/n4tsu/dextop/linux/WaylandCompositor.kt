@@ -41,7 +41,7 @@ internal class WaylandCompositor(
         @JvmStatic private external fun nativeDeckVsync(handle: Long, frameTimeNanos: Long)
         @JvmStatic private external fun nativeConfigure(handle: Long, id: Int, width: Int, height: Int)
         @JvmStatic private external fun nativeActivate(handle: Long, id: Int)
-        @JvmStatic private external fun nativeSetState(handle: Long, id: Int, maximized: Boolean)
+        @JvmStatic private external fun nativeSetState(handle: Long, id: Int, maximized: Boolean, fullscreen: Boolean)
         @JvmStatic private external fun nativeClose(handle: Long, id: Int)
         @JvmStatic private external fun nativePointer(handle: Long, id: Int, action: Int, x: Int, y: Int, button: Int)
         @JvmStatic private external fun nativeAxis(handle: Long, dx: Int, dy: Int)
@@ -125,7 +125,7 @@ internal class WaylandCompositor(
     @Synchronized
     fun activate(id: Int) { if (running) nativeActivate(handle, id) }
     @Synchronized
-    fun setState(id: Int, maximized: Boolean) { if (running) nativeSetState(handle, id, maximized) }
+    fun setState(id: Int, maximized: Boolean, fullscreen: Boolean = false) { if (running) nativeSetState(handle, id, maximized, fullscreen) }
     @Synchronized
     fun close(id: Int) { if (running) nativeClose(handle, id) }
     @Synchronized

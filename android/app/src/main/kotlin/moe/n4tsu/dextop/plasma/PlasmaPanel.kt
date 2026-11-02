@@ -68,6 +68,8 @@ internal data class TrayState(
     val cellularType: String? = null,
     /** The active connection is Wi-Fi (networkGlyph alone also shows Wi-Fi state beside a SIM). */
     val wifiConnected: Boolean = false,
+    /** Shows the charge in percent under the battery icon. */
+    val batteryPercentVisible: Boolean = true,
 )
 
 /**
@@ -220,10 +222,10 @@ internal class PlasmaPanelView(
             TrayItem.VOLUME,
             TrayItem.EXPAND,
         )
+        // Every icon has the same cell; a caption ("100%", "LTE") fits under the icon in it.
         tray.forEach { item ->
-            val cellWidth = if (item == TrayItem.BATTERY) dp(48f) else trayCell
-            slots += Slot.Tray(RectF(right - cellWidth, bar.top, right, bar.bottom), item)
-            right -= cellWidth
+            slots += Slot.Tray(RectF(right - trayCell, bar.top, right, bar.bottom), item)
+            right -= trayCell
         }
         right -= dp(6f)
         val entries = host.panelEntries()
@@ -305,7 +307,7 @@ internal class PlasmaPanelView(
                 rect.set(slot.rect); rect.inset(dp(6f), (slot.rect.height() - dp(18f)) / 2f)
                 glyph.setBounds(rect.left.toInt(), rect.top.toInt(), rect.right.toInt(), rect.bottom.toInt())
                 val caption = when (slot.item) {
-                    TrayItem.BATTERY -> percentText(tray.battery)
+                    TrayItem.BATTERY -> percentText(tray.battery).takeIf { tray.batteryPercentVisible }
                     TrayItem.CELLULAR -> tray.cellularType
                     else -> null
                 }
@@ -504,13 +506,65 @@ internal class PlasmaPanelView(
 }
 
 /** Plasma tooltip for task-manager entries: titles plus live thumbnails. */
-internal class PanelTooltipView(context: Context, private val palette: PlasmaPalette) : View(context) {
+/**
+ * The task manager's window previews. Each window's preview activates it, and the button at
+ * its top right closes it; the tooltip stays while the pointer is on it ([onHover]).
+ */
+internal class PanelTooltipView(
+    context: Context,
+    private val palette: PlasmaPalette,
+    private val onHover: (Boolean) -> Unit = {},
+    private val onActivate: (ManagedWindow) -> Unit = {},
+    private val onClose: (ManagedWindow) -> Unit = {},
+) : View(context) {
     private var entry: PanelTask? = null
     private val density = resources.displayMetrics.density
     private val paint = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG or android.graphics.Paint.FILTER_BITMAP_FLAG)
+    /** Previews are drawn fully opaque, whatever colour [paint] last had. */
+    private val bitmapPaint = android.graphics.Paint(android.graphics.Paint.FILTER_BITMAP_FLAG)
     private val text = android.graphics.Paint(android.graphics.Paint.ANTI_ALIAS_FLAG).apply { typeface = PlasmaTheme.sans }
+    private val closeGlyph = GlyphDrawable(Glyph.CLOSE, palette.text, 1.6f)
+    private var hoverX = -1f
+    private var hoverY = -1f
 
     fun bind(value: PanelTask) { entry = value }
+
+    private fun cell(index: Int): RectF {
+        val left = (6 + index * 200) * density
+        return RectF(left + 6 * density, 8 * density, left + 194 * density, height - 8 * density)
+    }
+
+    private fun closeRect(cell: RectF) = RectF(cell.right - 22 * density, cell.top - 3 * density, cell.right, cell.top + 19 * density)
+
+    override fun onHoverEvent(event: MotionEvent): Boolean {
+        when (event.actionMasked) {
+            MotionEvent.ACTION_HOVER_ENTER -> onHover(true)
+            MotionEvent.ACTION_HOVER_EXIT -> {
+                hoverX = -1f
+                hoverY = -1f
+                onHover(false)
+                invalidate()
+                return true
+            }
+        }
+        hoverX = event.x
+        hoverY = event.y
+        invalidate()
+        return true
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(event: MotionEvent): Boolean {
+        if (event.actionMasked != MotionEvent.ACTION_UP) return true
+        entry?.windows.orEmpty().take(4).forEachIndexed { index, window ->
+            val cell = cell(index)
+            when {
+                closeRect(cell).contains(event.x, event.y) -> { onClose(window); return true }
+                cell.contains(event.x, event.y) -> { onActivate(window); return true }
+            }
+        }
+        return true
+    }
 
     fun desiredSize(): Pair<Int, Int> {
         val count = entry?.windows?.size ?: 0
@@ -540,10 +594,14 @@ internal class PanelTooltipView(context: Context, private val palette: PlasmaPal
             return
         }
         value.windows.take(4).forEachIndexed { index, window ->
-            val left = (6 + index * 200) * density
-            val cell = RectF(left + 6 * density, 8 * density, left + 194 * density, height - 8 * density)
+            val cell = cell(index)
+            if (cell.contains(hoverX, hoverY)) {
+                paint.color = palette.hover
+                val back = RectF(cell).apply { inset(-4 * density, -4 * density) }
+                canvas.drawRoundRect(back, 6 * density, 6 * density, paint)
+            }
             canvas.drawIcon(window.icon, RectF(cell.left, cell.top, cell.left + 16 * density, cell.top + 16 * density))
-            val title = TextUtilsCompat.ellipsize(window.title, text, cell.width() - 22 * density)
+            val title = TextUtilsCompat.ellipsize(window.title, text, cell.width() - 46 * density)
             canvas.drawText(title, cell.left + 22 * density, cell.top + 13 * density, text)
             val thumbArea = RectF(cell.left, cell.top + 24 * density, cell.right, cell.bottom)
             val frame = window.frame
@@ -553,17 +611,25 @@ internal class PanelTooltipView(context: Context, private val palette: PlasmaPal
                 thumbArea.centerX() + frame.width() * scale / 2, thumbArea.centerY() + frame.height() * scale / 2,
             )
             val bitmap = window.thumbnail
-            if (bitmap != null && !bitmap.isRecycled) canvas.drawBitmap(bitmap, null, thumb, paint)
+            if (bitmap != null && !bitmap.isRecycled) canvas.drawBitmap(bitmap, null, thumb, bitmapPaint)
             else {
                 paint.color = palette.windowBackground
                 canvas.drawRect(thumb, paint)
                 val s = minOf(thumb.width(), thumb.height()) * .4f
                 canvas.drawIcon(window.icon, RectF(thumb.centerX() - s / 2, thumb.centerY() - s / 2, thumb.centerX() + s / 2, thumb.centerY() + s / 2))
             }
-            if (window.minimized) {
-                paint.color = PlasmaTheme.withAlpha(palette.popup, 0x88)
-                canvas.drawRect(thumb, paint)
+            // Close button at the top right of each preview.
+            val close = closeRect(cell)
+            val overClose = close.contains(hoverX, hoverY)
+            if (overClose) {
+                paint.color = palette.negative
+                canvas.drawCircle(close.centerX(), close.centerY(), close.width() / 2f, paint)
             }
+            closeGlyph.color = if (overClose) android.graphics.Color.WHITE else palette.text
+            val g = 12 * density
+            closeGlyph.setBounds((close.centerX() - g / 2).toInt(), (close.centerY() - g / 2).toInt(),
+                (close.centerX() + g / 2).toInt(), (close.centerY() + g / 2).toInt())
+            closeGlyph.draw(canvas)
         }
     }
 }

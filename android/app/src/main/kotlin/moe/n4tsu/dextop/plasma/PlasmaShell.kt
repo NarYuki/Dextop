@@ -898,6 +898,7 @@ internal class PlasmaShell(
             battery = capacity / 100f,
             charging = battery.isCharging,
             networkConnected = connected,
+            batteryPercentVisible = settings.trayBatteryPercent,
         )
         if (::panel.isInitialized) panel.invalidate()
     }
@@ -1022,28 +1023,21 @@ internal class PlasmaShell(
         view.post { view.search.requestFocus() }
     }
 
+    /** The settings page last shown, so the dialog reopens there (e.g. after a colour change). */
+    private var settingsPage = 0
+
     override fun openDesktopSettings() {
-        val view = DesktopSettingsApplet(displayContext, palette, settings) { next -> applySettings(next) }
-        val w = layer.dp(460)
-        view.measure(
-            View.MeasureSpec.makeMeasureSpec(w, View.MeasureSpec.EXACTLY),
-            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.AT_MOST),
-        )
-        val h = view.measuredHeight
+        val w = layer.dp(780).coerceAtMost((width - layer.dp(32)).coerceAtLeast(1))
+        val h = layer.dp(540).coerceAtMost((height - panel.thickness - layer.dp(32)).coerceAtLeast(1))
+        val view = DesktopSettingsApplet(displayContext, palette, settings, wide = w >= layer.dp(600),
+            initialPage = settingsPage, onPage = { settingsPage = it }, onClose = { dismissPopup() }) { next -> applySettings(next) }
         val left = (width - w) / 2
         val top = ((height - panel.thickness - h) / 2).coerceAtLeast(layer.dp(8))
         showPopup("settings", view, Rect(left, top, left + w, top + h))
     }
 
     private fun applySettings(next: PlasmaSettings) {
-        service.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE).edit()
-            .putString("flutter.plasma_color_scheme", next.colorScheme)
-            .putLong("flutter.plasma_accent_color", next.accentColor.toLong() and 0xFFFFFFFFL)
-            .putBoolean("flutter.plasma_floating_panel", next.floatingPanel)
-            .putLong("flutter.plasma_virtual_desktops", next.virtualDesktops.toLong())
-            .putString("flutter.plasma_animation_speed", "VGhpcyBpcyB0aGUgcHJlZml4IGZvciBEb3VibGUu${next.animationSpeed.toDouble()}")
-            .putString("flutter.plasma_wallpaper", next.wallpaper)
-            .apply()
+        next.save(service)
         val paletteChanged = next.colorScheme != settings.colorScheme || next.accentColor != settings.accentColor
         reloadSettings()
         if (paletteChanged && popupKind == "settings") {

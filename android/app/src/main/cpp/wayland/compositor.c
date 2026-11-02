@@ -144,6 +144,7 @@ struct xdg {
     bool mapped;
     bool client_decorated;
     bool maximized;
+    bool fullscreen; /* granted by Plasma (CMD_STATE), announced in configure */
     uint32_t window_id;
     int32_t geo_x, geo_y, geo_w, geo_h;
     bool has_geometry;
@@ -1670,6 +1671,10 @@ static void xdg_send_configure(struct xdg *xdg) {
             uint32_t *state = wl_array_add(&states, sizeof(uint32_t));
             if (state) *state = XDG_TOPLEVEL_STATE_MAXIMIZED;
         }
+        if (xdg->fullscreen) {
+            uint32_t *state = wl_array_add(&states, sizeof(uint32_t));
+            if (state) *state = XDG_TOPLEVEL_STATE_FULLSCREEN;
+        }
         if (comp->keyboard_focus && xdg->surface && comp->keyboard_focus == xdg->surface) {
             uint32_t *s = wl_array_add(&states, sizeof(uint32_t));
             if (s) *s = XDG_TOPLEVEL_STATE_ACTIVATED;
@@ -1791,7 +1796,16 @@ static void toplevel_max_size(struct wl_client *c, struct wl_resource *r, int32_
     xdg->pending_max_w = w; xdg->pending_max_h = h; xdg->pending_size_hints = true;
 }
 static void toplevel_noop(struct wl_client *c, struct wl_resource *r) {}
-static void toplevel_fullscreen(struct wl_client *c, struct wl_resource *r, struct wl_resource *output) {}
+/* Full-screen requests go to Plasma, which answers with CMD_STATE (and the screen's size). */
+static void toplevel_fullscreen_request(struct wl_resource *r, int enabled) {
+    struct xdg *xdg = wl_resource_get_user_data(r);
+    if (!xdg) return;
+    char json[96];
+    snprintf(json, sizeof(json), "{\"type\":\"fullscreen\",\"id\":%u,\"enabled\":%s}", xdg->window_id, enabled ? "true" : "false");
+    emit(xdg->comp, json);
+}
+static void toplevel_fullscreen(struct wl_client *c, struct wl_resource *r, struct wl_resource *output) { toplevel_fullscreen_request(r, 1); }
+static void toplevel_unfullscreen(struct wl_client *c, struct wl_resource *r) { toplevel_fullscreen_request(r, 0); }
 
 static void toplevel_minimize(struct wl_client *c, struct wl_resource *r) {
     struct xdg *xdg = wl_resource_get_user_data(r);
@@ -1806,7 +1820,7 @@ static const struct xdg_toplevel_interface toplevel_impl = {
     .set_app_id = toplevel_app_id, .show_window_menu = toplevel_menu, .move = toplevel_move,
     .resize = toplevel_resize, .set_max_size = toplevel_max_size, .set_min_size = toplevel_min_size,
     .set_maximized = toplevel_maximize, .unset_maximized = toplevel_unmaximize,
-    .set_fullscreen = toplevel_fullscreen, .unset_fullscreen = toplevel_noop,
+    .set_fullscreen = toplevel_fullscreen, .unset_fullscreen = toplevel_unfullscreen,
     .set_minimized = toplevel_minimize,
 };
 
@@ -2859,8 +2873,9 @@ static void run_command(struct comp *comp, struct command *cmd) {
             break;
         }
         case CMD_STATE:
-            if (xdg && xdg->maximized != (bool)cmd->a) {
+            if (xdg && (xdg->maximized != (bool)cmd->a || xdg->fullscreen != (bool)cmd->b)) {
                 xdg->maximized = (bool)cmd->a;
+                xdg->fullscreen = (bool)cmd->b;
                 xdg_send_configure(xdg);
             }
             break;
@@ -3248,10 +3263,12 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeActivate(JNIEnv *env, jclass
 }
 
 JNIEXPORT void JNICALL
-Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeSetState(JNIEnv *env, jclass cls, jlong handle, jint id, jboolean maximized) {
+Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeSetState(JNIEnv *env, jclass cls, jlong handle, jint id, jboolean maximized,
+                                                           jboolean fullscreen) {
     struct command *cmd = command(CMD_STATE, id);
     if (!cmd) return;
     cmd->a = maximized;
+    cmd->b = fullscreen;
     post(COMP(handle), cmd);
 }
 
