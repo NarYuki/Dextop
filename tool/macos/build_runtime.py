@@ -1,4 +1,4 @@
-"""Build a pinned Darling core on a matching Linux host in a dedicated directory."""
+"""Build a pinned Darling runtime on a matching Linux host in a dedicated directory."""
 
 import argparse
 import json
@@ -22,6 +22,7 @@ def main():
     parser.add_argument("--work", type=Path, default=ROOT / "build/macos/runtime")
     parser.add_argument("--jobs", type=int, default=2)
     parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
+    parser.add_argument("--components", choices=("core", "gui"), default="core")
     args = parser.parse_args()
     host = "aarch64" if platform.machine() == "arm64" else platform.machine()
     if platform.system() != "Linux" or host != args.architecture:
@@ -42,6 +43,11 @@ def main():
     run("git", "-C", source, "fetch", "--depth", "1", "origin", lock["commit"], env=env)
     run("git", "-C", source, "checkout", "--detach", lock["commit"], env=env)
     run("python3", source / "scripts/ci/checkout_submodules.py", cwd=source, env=env)
+    if args.components == "gui":
+        # The GUI closure includes Swift. Never stage Git LFS pointers as dylibs.
+        swift = source / "src/external/swift"
+        run("git", "-C", swift, "lfs", "pull")
+        run("git", "-C", swift, "lfs", "fsck")
     patch_runtime(source)
     (work / "submodules.txt").write_bytes(subprocess.check_output([
         "git", "-C", str(source), "submodule", "status", "--recursive",
@@ -49,9 +55,11 @@ def main():
     run("cmake", "-S", source, "-B", build, "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={lock['install_prefix']}",
         "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
-        "-DCOMPONENTS=core", f"-DTARGET_ARM64={'ON' if host == 'aarch64' else 'OFF'}",
+        f"-DCOMPONENTS={'core' if args.components == 'core' else 'gui_frameworks,gui_stubs'}",
+        f"-DTARGET_ARM64={'ON' if host == 'aarch64' else 'OFF'}",
         f"-DTARGET_x86_64={'ON' if host == 'x86_64' else 'OFF'}",
-        "-DTARGET_i386=OFF", "-DANDROID=OFF", "-DENABLE_METAL=OFF",
+        "-DTARGET_i386=OFF", "-DANDROID=OFF",
+        f"-DENABLE_METAL={'ON' if args.components == 'gui' else 'OFF'}",
         "-DCOMPILE_PY2_BYTECODE=OFF")
     run("cmake", "--build", build, "--parallel", args.jobs)
     # A CMake regeneration can leave a new graph pending after an apparently successful build.
@@ -71,12 +79,12 @@ def main():
         run("sh", HERE / "run.sh", "--check", env=dict(env, DEXTOP_DARLING_ROOT=str(runtime)))
     (work / "build-info.json").write_text(json.dumps({
         **lock, "architecture": host, "build_host": platform.platform(),
-        "components": "core", "dextop_abstract_rpc": True,
+        "components": args.components, "dextop_abstract_rpc": True,
         "dextop_anonymous_executable_segments": True,
         "android_execution_verified": False,
         "macos_application_verified": False,
     }, indent=2) + "\n", encoding="utf-8")
-    print(f"Staged experimental core: {runtime}. Android/Mach-O execution still needs verification.")
+    print(f"Staged experimental {args.components}: {runtime}. Android/Mach-O execution still needs verification.")
 
 
 if __name__ == "__main__":

@@ -7,6 +7,12 @@ on:
       - tool/macos/**
       - .github/workflows/macos-compat.yml
   workflow_dispatch:
+    inputs:
+      components:
+        description: Runtime components to build
+        type: choice
+        options: [core, gui]
+        default: core
 
 permissions:
   contents: read
@@ -19,6 +25,8 @@ jobs:
   core:
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 180
+    env:
+      MACOS_COMPONENTS: ${{ inputs.components || 'core' }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,13 +37,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            git cmake ninja-build clang lld llvm-dev bison flex pkg-config python3 \
+            git git-lfs cmake ninja-build clang lld llvm-dev bison flex pkg-config python3 \
             libfuse-dev libudev-dev libcairo2-dev libgl1-mesa-dev libtiff-dev \
             libfreetype-dev libelf-dev libxml2-dev libegl1-mesa-dev libglu1-mesa-dev \
             libfontconfig-dev libbsd-dev libxrandr-dev libxcursor-dev libgif-dev \
             libavcodec-dev libavformat-dev libswresample-dev libavutil-dev \
             libpulse-dev libdbus-1-dev libxkbfile-dev libcap-dev libvulkan-dev \
-            libwayland-dev libxkbcommon-dev
+            libwayland-dev libxkbcommon-dev libssl-dev wayland-protocols
       - name: Build own-source Mach-O probes
         run: |
           linker="$(llvm-config --bindir)/ld64.lld"
@@ -46,10 +54,18 @@ jobs:
         run: |
           set -o pipefail
           mkdir -p build/macos
-          python3 tool/macos/build_runtime.py --jobs 2 2>&1 | tee build/macos/core-build.log
+          python3 tool/macos/build_runtime.py --jobs 2 --components "$MACOS_COMPONENTS" 2>&1 | tee build/macos/core-build.log
+      - name: Build the own-source AppKit probe
+        if: env.MACOS_COMPONENTS == 'gui'
+        run: |
+          python3 tool/macos/build_appkit_probe.py \
+            --source build/macos/runtime/source \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld" \
+            --output build/macos/gui-probes
       - name: Archive experimental runtime
         run: |
-          tar -C build/macos/runtime/stage/opt/dextop/macos -czf build/macos/darling-core-arm64.tar.gz .
+          tar -C build/macos/runtime/stage/opt/dextop/macos -czf "build/macos/darling-$MACOS_COMPONENTS-arm64.tar.gz" .
       - name: Verify own-source Mach-O programs on Linux ARM64
         run: |
           python3 tool/macos/check_runtime.py \
@@ -66,15 +82,16 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: darling-core-arm64-${{ github.sha }}
+          name: darling-${{ env.MACOS_COMPONENTS }}-arm64-${{ github.sha }}
           retention-days: 1
           if-no-files-found: warn
           path: |
             build/macos/core-build.log
             build/macos/runtime/build-info.json
             build/macos/runtime/submodules.txt
-            build/macos/darling-core-arm64.tar.gz
+            build/macos/darling-*-arm64.tar.gz
             build/macos/native-smoke
             build/macos/native-anon-smoke
             build/macos/native-abstract-smoke
             build/macos/smoke/*-macos-arm64
+            build/macos/gui-probes/*-macos-arm64

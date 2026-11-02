@@ -97,6 +97,29 @@ prefix, runs hello/POSIX/socket/hello, and requests prefix-specific shutdown. It
 on missing output, a nonzero exit, a timeout or a shutdown failure. GUI, input,
 GPU, audio and general application compatibility require separate validation.
 
+The separate GUI probe uses Darling's source-built SDK headers and a staged GUI
+runtime, never an Apple SDK installation:
+
+```sh
+python3 tool/macos/build_appkit_probe.py \
+  --source /absolute/path/to/pinned-darling-source \
+  --runtime /absolute/path/to/staged-runtime \
+  --clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld" \
+  --output /absolute/path/to/gui-probes
+```
+
+For the pinned source, the GUI build needs `COMPONENTS=gui_frameworks,gui_stubs`
+and `ENABLE_METAL=ON`: AppKit depends on UniformTypeIdentifiers from the former
+stub component, and Metal's source needs its enabled shader compiler dependency.
+Use `build_runtime.py --components gui --work /new/dedicated/directory` to build
+that configuration. This also fetches and checks the pinned Swift Git LFS assets;
+Git LFS and the upstream GUI development dependencies must be installed first.
+The default core-only builder does not produce this GUI payload. The probe requests a
+window containing text, an editable field and an input-report button, and exits
+when the last window closes. Button actions and window resizes print diagnostic
+events. Its initial console message proves only that the window was requested; visible rendering, input,
+resizing and closing still need independent runtime verification.
+
 On Android, `run.sh` also enables `DEXTOP_DARLING_ANON_EXEC=1`. The dyld patch
 loads executable Mach-O segments into private anonymous writable memory before
 the existing ARM64 TLS adaptation and final protection change. Android's
