@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import platform
 import subprocess
+from patch_runtime import apply as patch_runtime
 
 
 HERE = Path(__file__).resolve().parent
@@ -39,6 +40,7 @@ def main():
     run("git", "-C", source, "fetch", "--depth", "1", "origin", lock["commit"], env=env)
     run("git", "-C", source, "checkout", "--detach", lock["commit"], env=env)
     run("python3", source / "scripts/ci/checkout_submodules.py", cwd=source, env=env)
+    patch_runtime(source)
     (work / "submodules.txt").write_bytes(subprocess.check_output([
         "git", "-C", str(source), "submodule", "status", "--recursive",
     ]))
@@ -63,7 +65,8 @@ def main():
                     path.chmod(mode & ~0o6000)
     run("sh", HERE / "run.sh", "--check", env=dict(env, DEXTOP_DARLING_ROOT=str(runtime)))
     (work / "build-info.json").write_text(json.dumps({
-        **lock, "components": "core", "android_execution_verified": False,
+        **lock, "components": "core", "dextop_abstract_rpc": True,
+        "android_execution_verified": False,
         "macos_application_verified": False,
     }, indent=2) + "\n", encoding="utf-8")
     print(f"Staged experimental core: {runtime}. Android/Mach-O execution still needs verification.")

@@ -3,7 +3,8 @@
   "commit": "a6cac09bc58fa4d2f195ecb2e12b62cf12c5905d",
   "submodules": "pinned-gitlinks",
   "architecture": "aarch64",
-  "libc": "glibc-2.31",
+  "libc": "glibc",
+  "build_host": "ubuntu-24.04-arm",
   "install_prefix": "/opt/dextop/macos",
   "launch_environment": {
     "DARLING_NONROOT": "1"
