@@ -52,6 +52,9 @@ jobs:
           python3 tool/macos/check_runtime.py \
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --probes build/macos/smoke --output build/macos/native-smoke
+          python3 tool/macos/check_runtime.py --anonymous-exec \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --probes build/macos/smoke --output build/macos/native-anon-smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -64,4 +67,5 @@ jobs:
             build/macos/runtime/submodules.txt
             build/macos/darling-core-arm64.tar.gz
             build/macos/native-smoke
+            build/macos/native-anon-smoke
             build/macos/smoke/*-macos-arm64
