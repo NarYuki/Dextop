@@ -72,11 +72,14 @@ environment/file and socket-marker companion are required on Android.
 Build the own-source probes without an Apple SDK:
 
 ```sh
-python3 tool/macos/build_smoke.py --zig /absolute/path/to/zig --probe hello
-python3 tool/macos/build_smoke.py --zig /absolute/path/to/zig --probe posix
+python3 tool/macos/build_smoke.py --clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld" --probe hello
+python3 tool/macos/build_smoke.py --clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld" --probe posix
 ```
 
-Alternatively, use `--clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld"`.
+Alternatively, use `--zig /absolute/path/to/zig` with the same `--linker`.
+Zig's bundled ARM64 Mach-O linker emits zero lazy-binding offsets; the pinned
+upstream also documents this in `tools/fix-macho-stub-helper.py`. These probes
+use LLVM's linker for both frontends, without patching linked executable bytes.
 The generated TAPI file contains interface declarations, not implementations.
 The hello probe checks output and exit status. The POSIX probe checks file
 contents, thread creation/join and fork/wait. Compilation success is distinct
