@@ -67,6 +67,9 @@ def main():
     run("ninja", "-C", build, "-n")
     run("cmake", "--install", build, env=dict(env, DESTDIR=str(stage)))
     runtime = stage / lock["install_prefix"].lstrip("/")
+    if args.components == "gui" and host == "aarch64":
+        run("python3", HERE / "bundle_native.py", "--runtime", runtime,
+            "--work", work / "native-deps")
     # Upstream installs its launcher setuid; the Dextop payload must remain non-setuid.
     for directory, _, files in os.walk(stage):
         for name in files:

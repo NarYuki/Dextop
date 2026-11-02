@@ -1,0 +1,16 @@
+{
+  "architecture": "aarch64",
+  "packages": [
+    {
+      "name": "libjpeg-turbo8",
+      "version": "2.1.5-2ubuntu2",
+      "architecture": "arm64",
+      "url": "https://ports.ubuntu.com/ubuntu-ports/pool/main/libj/libjpeg-turbo/libjpeg-turbo8_2.1.5-2ubuntu2_arm64.deb",
+      "sha256": "119ddd97c19d970c5e21b97cff353afef138b05f1a3bd9e2c01b814dd193adce",
+      "provenance": "https://packages.ubuntu.com/noble/arm64/libjpeg-turbo8",
+      "library": "usr/lib/aarch64-linux-gnu/libjpeg.so.8.2.2",
+      "soname": "libjpeg.so.8",
+      "copyright": "usr/share/doc/libjpeg-turbo8/copyright"
+    }
+  ]
+}

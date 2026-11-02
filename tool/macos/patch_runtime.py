@@ -44,10 +44,31 @@ def patch_gui(source):
                  "    }\n", "")
 
 
+def patch_native_libraries(source):
+    source = Path(source)
+    # The launcher's host LD_LIBRARY_PATH is deliberately excluded from the
+    # Darwin environment. Resolve explicitly bundled ELF ABIs from the selected
+    # runtime, rather than aliasing incompatible system SONAMEs.
+    replace_once(source / "src/startup/mldr/elfcalls/elfcalls.c",
+                 "\tvoid* rv = dlopen(name, RTLD_LAZY);",
+                 "\tvoid* rv;\n"
+                 "\tconst char* dextop_root = getenv(\"DARLING_INSTALL_PREFIX\");\n"
+                 "\tif (dextop_root && dextop_root[0] == '/' && !strchr(name, '/')) {\n"
+                 "\t\tchar dextop_path[4096];\n"
+                 "\t\tint length = snprintf(dextop_path, sizeof(dextop_path), \"%s/lib/dextop-native/%s\", dextop_root, name);\n"
+                 "\t\tif (length > 0 && (size_t)length < sizeof(dextop_path)) {\n"
+                 "\t\t\trv = dlopen(dextop_path, RTLD_LAZY);\n"
+                 "\t\t\tif (rv) return rv;\n"
+                 "\t\t}\n"
+                 "\t}\n"
+                 "\trv = dlopen(name, RTLD_LAZY);")
+
+
 def apply(source):
     source = Path(source)
     patch_launcher(source)
     patch_gui(source)
+    patch_native_libraries(source)
     mldr = source / "src/startup/mldr"
     shutil.copyfile(HERE / "darling_socket.c", mldr / "dextop_socket.c")
     shutil.copyfile(HERE.parent.parent / "android/app/src/main/cpp/linux_unixsock.c",
