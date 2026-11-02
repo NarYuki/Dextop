@@ -18,12 +18,14 @@ def main():
     parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
     parser.add_argument("--output", type=Path, default=HERE.parent.parent / "build/macos/smoke")
     args = parser.parse_args()
+    if args.clang and not args.linker:
+        parser.error("--clang requires --linker")
     if args.linker and not args.linker.is_file():
         parser.error(f"Mach-O linker not found: {args.linker}")
     output = args.output.resolve()
     output.mkdir(parents=True, exist_ok=True)
     # Interface-only declarations; no Apple implementation is embedded.
-    symbols = ["_write"]
+    symbols = ["_write", "_memcpy", "_memset", "dyld_stub_binder"]
     if args.probe == "posix":
         symbols += ["_read", "_lseek", "_close", "_unlink", "_mkstemp", "_pthread_create",
                     "_pthread_join", "_fork", "_waitpid", "__exit"]
@@ -40,15 +42,20 @@ exports:
 ...
 """.replace("SYMBOLS", ", ".join(symbols)).replace("ARCH", architecture), encoding="utf-8")
     binary = output / f"{args.probe}-macos-{architecture}"
-    command = ([str(args.zig.resolve()), "cc", "-target", f"{args.architecture}-macos.11.0"] if args.zig else
-               [str(args.clang.resolve()), "-target", f"{architecture}-apple-macos11.0"])
-    if args.clang and args.linker:
-        # LLD selects the Mach-O driver using argv[0]; preserve ld64.lld symlinks.
-        command.append(f"-fuse-ld={args.linker.absolute()}")
-    subprocess.run(command + [
-        "-nostdlib", "-fno-stack-protector", "-O2", str(HERE / f"smoke/{args.probe}.c"), "-L", str(output), "-lSystem",
-        "-Wl,-e,_main", "-o", str(binary),
-    ], check=True)
+    compile_flags = ["-fno-stack-protector", "-O2", str(HERE / f"smoke/{args.probe}.c")]
+    if args.zig:
+        subprocess.run([str(args.zig.resolve()), "cc", "-target", f"{args.architecture}-macos.11.0",
+                        "-nostdlib", *compile_flags, "-L", str(output), "-lSystem",
+                        "-Wl,-e,_main", "-o", str(binary)], check=True)
+    else:
+        object_file = output / f"{args.probe}-{architecture}.o"
+        subprocess.run([str(args.clang.resolve()), "-target", f"{architecture}-apple-macosx11.0",
+                        *compile_flags, "-c", "-o", str(object_file)], check=True)
+        # Invoke the Mach-O driver directly, with explicit platform/architecture.
+        # Preserve ld64.lld's basename: LLD selects its driver using argv[0].
+        subprocess.run([str(args.linker.absolute()), "-arch", architecture,
+                        "-platform_version", "macos", "11.0", "11.0", "-e", "_main",
+                        str(object_file), "-L", str(output), "-lSystem", "-o", str(binary)], check=True)
     print(f"Built Mach-O probe: {binary}. Execution under Darling is a separate check.")
 
 
