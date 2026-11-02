@@ -61,11 +61,39 @@ internal object LinuxUsb {
         )
     }
 
-    /** "serial" for USB-serial adapters (CDC-ACM and the common converter chips), otherwise "usb". */
+    /**
+     * "fido" for security keys (Linux sees their FIDO interface as /dev/hidrawN), "serial" for
+     * USB-serial adapters (CDC-ACM and the common converter chips), otherwise "usb".
+     */
     fun kind(device: UsbDevice): String {
+        if (fidoInterface(device) != null) return "fido"
         val serialVendors = setOf(0x0403 /* FTDI */, 0x10c4 /* Silicon Labs */, 0x1a86 /* WCH */, 0x067b /* Prolific */)
         val acm = (0 until device.interfaceCount).any { device.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_COMM }
         return if (acm || device.vendorId in serialVendors) "serial" else "usb"
+    }
+
+    /** Makers of FIDO security keys (CTAP HID), for telling their HID interface apart before it can be read. */
+    private val FIDO_VENDORS = setOf(
+        0x1050 /* Yubico */, 0x18d1 /* Google Titan */, 0x096e /* Feitian */, 0x20a0 /* Nitrokey */,
+        0x1209 /* SoloKeys, Trezor (pid.codes) */, 0x0483 /* SoloKeys v1 */, 0x1d50 /* OnlyKey */,
+        0x2ccf /* HyperFIDO */, 0x349e /* Token2 */, 0x1ea8 /* Thetis */, 0x311f /* Kensington */,
+        0x2581 /* Ledger, Plug-up */, 0x1532 /* Razer key */, 0x24dc /* Arculus */, 0x32a3 /* Identiv */,
+    )
+
+    /**
+     * The interface a security key speaks CTAP HID on: a HID interface that is no boot keyboard
+     * or mouse (YubiKeys also have an OTP keyboard) with interrupt endpoints of 64-byte reports,
+     * on a key maker's device. [LinuxDeviceBridge] confirms it by the FIDO usage page of its
+     * report descriptor once Android lets Dextop read it.
+     */
+    fun fidoInterface(device: UsbDevice): android.hardware.usb.UsbInterface? {
+        if (device.vendorId !in FIDO_VENDORS) return null
+        return (0 until device.interfaceCount).map(device::getInterface).firstOrNull { usb ->
+            usb.interfaceClass == UsbConstants.USB_CLASS_HID && usb.interfaceProtocol == 0 &&
+                (0 until usb.endpointCount).map(usb::getEndpoint).any {
+                    it.type == UsbConstants.USB_ENDPOINT_XFER_INT && it.direction == UsbConstants.USB_DIR_IN && it.maxPacketSize == 64
+                }
+        }
     }
 
     /** Linux may use the device ([enabled]); access is asked for or granted as the mode allows. */

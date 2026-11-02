@@ -303,13 +303,17 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
                         }),
                   icon: device['kind'] == 'serial'
                       ? M3EIcons.cable_rounded
-                      : M3EIcons.usb_rounded,
+                      : device['kind'] == 'fido'
+                          ? M3EIcons.key_rounded
+                          : M3EIcons.usb_rounded,
                   title: device['name'] as String? ?? '',
                   subtitle: [
                     device['ids'] as String? ?? '',
                     device['kind'] == 'serial'
                         ? t('USB シリアル', 'USB serial')
-                        : t('USB 機器', 'USB device'),
+                        : device['kind'] == 'fido'
+                            ? t('セキュリティキー (FIDO)', 'Security key (FIDO)')
+                            : t('USB 機器', 'USB device'),
                     device['permission'] == true
                         ? t('アクセス許可済み', 'access granted')
                         : t('アクセス未許可', 'no access yet'),

@@ -55,6 +55,7 @@ internal interface BookHost {
     fun refreshTray()
     fun apps(): List<PlasmaApp>
     fun appInfo(packageName: String)
+    fun pinnedApps(): List<PanelTask>
     fun isPinned(packageName: String): Boolean
     fun setPinned(packageName: String, pinned: Boolean)
     fun openNotification(item: DextopNotification)
@@ -96,6 +97,39 @@ internal object BookStore {
     const val NOTIFICATION_ICONS = "notification_icons"
     /** Experimental: the Linux container's ~/Desktop on the desktop. */
     const val LINUX_DESKTOP_FOLDER = "linux_desktop_folder"
+
+    private fun desktopCache(context: Context) = context.getSharedPreferences("book_desktop_cache", Context.MODE_PRIVATE)
+    private fun desktopCacheMode(context: Context) = moe.n4tsu.dextop.linux.LinuxExecutionMode.read(context)
+
+    /** Names and types only; contents stay in Linux. Grid positions live in grid_shortcuts. */
+    fun cachedLinuxDesktop(context: Context, container: String? = null): Pair<String, List<Pair<String, Boolean>>>? {
+        val prefs = desktopCache(context)
+        val mode = desktopCacheMode(context)
+        val id = container ?: prefs.getString("$mode.active", null) ?: return null
+        val files = prefs.getString("$mode.$id", null)?.let(BookDesktopFiles::parse) ?: return null
+        return id to files
+    }
+
+    fun cacheLinuxDesktop(context: Context, container: String, files: List<Pair<String, Boolean>>) {
+        val prefs = desktopCache(context)
+        val mode = desktopCacheMode(context)
+        val encoded = BookDesktopFiles.encode(files)
+        if (prefs.getString("$mode.$container", null) == encoded && prefs.getString("$mode.active", null) == container) return
+        prefs.edit().putString("$mode.$container", encoded).putString("$mode.active", container).apply()
+    }
+
+    /** Called only after an authoritative container listing, never on connection failure. */
+    fun pruneLinuxDesktopCache(context: Context, containers: Set<String>) {
+        val prefs = desktopCache(context)
+        val prefix = "${desktopCacheMode(context)}."
+        val obsolete = prefs.all.keys.filter { it.startsWith(prefix) && it != "${prefix}active" && it.removePrefix(prefix) !in containers }
+        val active = prefs.getString("${prefix}active", null)
+        if (obsolete.isEmpty() && (active == null || active in containers)) return
+        val edit = prefs.edit()
+        obsolete.forEach(edit::remove)
+        if (active !in containers) edit.remove("${prefix}active")
+        edit.apply()
+    }
 
     /** The external screen's scale in percent; 0 follows its physical size. */
     fun displayScale(context: Context): Int = prefs(context).getInt("display_scale", 0)

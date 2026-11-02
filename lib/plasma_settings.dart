@@ -57,8 +57,10 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
       wallpaper = store.getString('plasma_wallpaper') ?? 'plasma';
       floatingPanel = store.getBool('plasma_floating_panel') ?? true;
       desktops = (store.getInt('plasma_virtual_desktops') ?? 4).clamp(1, 6);
-      animationSpeed = (store.getDouble('plasma_animation_speed') ?? 1.0)
-          .clamp(0.0, 2.0);
+      animationSpeed = (store.getDouble('plasma_animation_speed') ?? 1.0).clamp(
+        0.0,
+        2.0,
+      );
       hotCorner = store.getBool('plasma_hot_corner') ?? true;
       trayNetworkType = store.getBool('plasma_tray_network_type') ?? true;
       trayBatteryPercent = store.getBool('plasma_tray_battery_percent') ?? true;
@@ -101,7 +103,7 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
     return Scaffold(
-      appBar: AppBar(title: Text(l.plasmaSettingsTitle)),
+      appBar: AppBar(title: const Text('Dextop Book')),
       body: prefs == null
           ? const Center(child: CircularProgressIndicator())
           : ListView(
@@ -129,7 +131,8 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                       onSelectionChanged: (value) {
                         setState(() => colorScheme = value.first);
                         _save(
-                          (p) => p.setString('plasma_color_scheme', value.first),
+                          (p) =>
+                              p.setString('plasma_color_scheme', value.first),
                         );
                       },
                     ),
@@ -150,7 +153,8 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                                 onTap: () {
                                   setState(() => accent = color);
                                   _save(
-                                    (p) => p.setInt('plasma_accent_color', color),
+                                    (p) =>
+                                        p.setInt('plasma_accent_color', color),
                                   );
                                 },
                                 child: AnimatedContainer(
@@ -163,7 +167,9 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                                     shape: BoxShape.circle,
                                     border: Border.all(
                                       color: accent == color
-                                          ? Theme.of(context).colorScheme.onSurface
+                                          ? Theme.of(context)
+                                                .colorScheme
+                                                .onSurface
                                           : Colors.transparent,
                                       width: 2.5,
                                     ),
@@ -195,7 +201,9 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                       selected: {wallpaper},
                       onSelectionChanged: (value) {
                         setState(() => wallpaper = value.first);
-                        _save((p) => p.setString('plasma_wallpaper', value.first));
+                        _save(
+                          (p) => p.setString('plasma_wallpaper', value.first),
+                        );
                       },
                     ),
                   ),
@@ -217,25 +225,51 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                   const Divider(height: 1),
                   SwitchListTile(
                     secondary: const Icon(Icons.signal_cellular_alt_rounded),
-                    title: Text(localText(context, 'モバイル回線の種類を表示', 'Show the mobile network type')),
-                    subtitle: Text(localText(context, '電波のアイコンの下に LTE や 5G などを表示します',
-                        'Shows LTE, 5G and so on under the signal icon')),
+                    title: Text(
+                      localText(
+                        context,
+                        'モバイル回線の種類を表示',
+                        'Show the mobile network type',
+                      ),
+                    ),
+                    subtitle: Text(
+                      localText(
+                        context,
+                        '電波のアイコンの下に LTE や 5G などを表示します',
+                        'Shows LTE, 5G and so on under the signal icon',
+                      ),
+                    ),
                     value: trayNetworkType,
                     onChanged: (value) {
                       setState(() => trayNetworkType = value);
-                      _save((p) => p.setBool('plasma_tray_network_type', value));
+                      _save(
+                        (p) => p.setBool('plasma_tray_network_type', value),
+                      );
                     },
                   ),
                   const Divider(height: 1),
                   SwitchListTile(
                     secondary: const Icon(Icons.battery_std_rounded),
-                    title: Text(localText(context, '電池残量を表示', 'Show the battery percentage')),
-                    subtitle: Text(localText(context, '電池のアイコンの下に残量をパーセントで表示します',
-                        'Shows the charge as a percentage under the battery icon')),
+                    title: Text(
+                      localText(
+                        context,
+                        '電池残量を表示',
+                        'Show the battery percentage',
+                      ),
+                    ),
+                    subtitle: Text(
+                      localText(
+                        context,
+                        '電池のアイコンの下に残量をパーセントで表示します',
+                        'Shows the charge as a percentage under the battery icon',
+                      ),
+                    ),
                     value: trayBatteryPercent,
                     onChanged: (value) {
                       setState(() => trayBatteryPercent = value);
-                      _save((p) => p.setBool('plasma_tray_battery_percent', value));
+                      _save(
+                        (p) => p.setBool('plasma_tray_battery_percent', value),
+                      );
                     },
                   ),
                   const Divider(height: 1),
@@ -251,7 +285,8 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                       onChanged: (value) =>
                           setState(() => desktops = value.round()),
                       onChangeEnd: (value) => _save(
-                        (p) => p.setInt('plasma_virtual_desktops', value.round()),
+                        (p) =>
+                            p.setInt('plasma_virtual_desktops', value.round()),
                       ),
                     ),
                     trailing: Text('$desktops'),
@@ -293,9 +328,8 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                     padding: const EdgeInsets.all(16),
                     child: Text(
                       l.plasmaShortcutsBody,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        height: 1.6,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium
+                          ?.copyWith(height: 1.6),
                     ),
                   ),
                 ]),

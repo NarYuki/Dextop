@@ -61,7 +61,7 @@ internal data class DesktopEnvironment(
      * (a WindowManagerSelection value). Vendors whose own desktop is unusable on
      * Dextop's display start on the Dextop window manager instead.
      */
-    val defaultWindowManager: String = "system",
+    val defaultWindowManager: String = "dextop_book",
     /** Ordered, device-local strategies. Never change the global order for one model. */
     val displayCreationStrategies: List<String> = listOf("overlay_settings"),
     val mirrorStrategies: List<String> = listOf("virtual_display", "window_manager", "surface_control"),

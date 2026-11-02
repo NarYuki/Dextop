@@ -265,12 +265,6 @@ class _ExperimentalFeaturesPage extends StatelessWidget {
       children: [
         DisplayEnvironmentSettingsCard(bridge: bridge, showConvenience: false),
         const SizedBox(height: 12),
-        _ExperimentalWindowManagerTile(
-          bridge: bridge,
-          isRunning: isRunning,
-          onChanged: onChanged,
-        ),
-        const SizedBox(height: 12),
         _GamepadExperimentalTile(isRunning: isRunning),
         const SizedBox(height: 12),
         _ForceLaptopModeExperimentalTile(isRunning: isRunning),
@@ -283,70 +277,6 @@ class _ExperimentalFeaturesPage extends StatelessWidget {
       ],
     ),
   );
-}
-
-class _ExperimentalWindowManagerTile extends StatefulWidget {
-  const _ExperimentalWindowManagerTile({
-    required this.bridge,
-    required this.isRunning,
-    this.onChanged,
-  });
-
-  final NativeBridge bridge;
-  final bool isRunning;
-  final VoidCallback? onChanged;
-
-  @override
-  State<_ExperimentalWindowManagerTile> createState() =>
-      _ExperimentalWindowManagerTileState();
-}
-
-class _ExperimentalWindowManagerTileState
-    extends State<_ExperimentalWindowManagerTile> {
-  bool enabled = false;
-  bool loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final preferences = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      enabled =
-          preferences.getBool('experimental_dextop_window_manager') ?? false;
-      loading = false;
-    });
-  }
-
-  Future<void> _update(bool value) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool('experimental_dextop_window_manager', value);
-    // Only the experimental v1 shell depends on this switch; Plasma v2 stays selected.
-    if (!value && preferences.getString('window_manager') == 'dextop_plasma') {
-      await preferences.setString('window_manager', 'system');
-      await widget.bridge.setWindowManager();
-    }
-    if (mounted) setState(() => enabled = value);
-    widget.onChanged?.call();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return Card(
-      child: SwitchListTile(
-        secondary: const Icon(Icons.space_dashboard_outlined),
-        value: enabled,
-        onChanged: loading ? null : _update,
-        title: Text(l.windowManagerPlasma),
-        subtitle: Text(l.windowManagerPlasmaDescription),
-      ),
-    );
-  }
 }
 
 class _GamepadExperimentalTile extends StatefulWidget {

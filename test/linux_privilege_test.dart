@@ -46,19 +46,20 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      expect(find.textContaining('built-in access service'), findsOneWidget);
       expect(
-        tester.widget<M3ESwitch>(find.byType(M3ESwitch)).onChanged,
-        isNull,
+        find.textContaining('Full privilege needs privileged access'),
+        findsOneWidget,
       );
-      await tester.tap(find.text('Set up Dextop access'));
+      expect(find.text('Change the execution mode'), findsOneWidget);
+      expect(find.text('Set up Linux'), findsNothing);
+      await tester.tap(find.text('Set up the built-in binder'));
       await tester.pumpAndSettle();
       expect(openedSetup, isTrue);
-      expect(find.textContaining('built-in access service'), findsNothing);
       expect(
-        tester.widget<M3ESwitch>(find.byType(M3ESwitch)).onChanged,
-        isNotNull,
+        find.textContaining('Full privilege needs privileged access'),
+        findsNothing,
       );
+      expect(find.text('Set up Linux'), findsOneWidget);
     },
   );
   testWidgets(

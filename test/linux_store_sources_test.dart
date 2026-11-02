@@ -89,8 +89,9 @@ void main() {
             case 'settings':
               return <String, Object?>{};
             case 'storeSourceCatalog':
-              if ((call.arguments as Map)['source'] == 'flathub')
+              if ((call.arguments as Map)['source'] == 'flathub') {
                 return slowSource.future;
+              }
               return {
                 'apps': [
                   StoreApp.fromJson({
@@ -140,8 +141,9 @@ void main() {
       slowPackages.complete({});
       await load;
     } finally {
-      if (!slowSource.isCompleted)
+      if (!slowSource.isCompleted) {
         slowSource.complete({'apps': [], 'more': false});
+      }
       if (!slowPackages.isCompleted) slowPackages.complete({});
       store.dispose();
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger

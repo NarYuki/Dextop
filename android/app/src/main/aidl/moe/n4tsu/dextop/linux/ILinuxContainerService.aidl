@@ -125,4 +125,11 @@ interface ILinuxContainerService {
     boolean stopProcess(int pid, String start) = 61;
     /** [launchApp] for a window Dextop's own window manager frames: GTK keeps its title bar buttons. */
     void launchFramedApp(String containerId, String desktopId) = 62;
+    /** Wheel steps at ([x], [y]) in window [xid], focused or not: the window under the pointer scrolls. */
+    oneway void windowScroll(String containerId, int xid, int x, int y, int dx, int dy) = 63;
+    /**
+     * The keyring password of [containerId] (LinuxKeyring), kept in memory and handed to each
+     * session as it starts; [persistent] false hands it to the next session only. Empty forgets it.
+     */
+    oneway void setKeyringSecret(String containerId, String secret, boolean persistent) = 64;
 }

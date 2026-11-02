@@ -107,6 +107,8 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             add("${it.absolutePath}:/sys/bus/pci/devices")
         }
         add("$nativeLibraryDir:$GUEST_LIBRARY_DIR")
+        // Security keys relayed as /dev/hidrawN, as udev finds them (LinuxHidSysfs).
+        runCatching { LinuxHidSysfs.binds(id) }.getOrNull()?.let(::addAll)
         // Keep installed distro packages intact. Only this daemon's process
         // loads the loopback policy; Steam and user servers keep normal binds.
         val faked = File(LinuxPaths.rootfs(id), "usr/bin/faked-tcp")

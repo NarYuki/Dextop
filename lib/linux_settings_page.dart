@@ -689,7 +689,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
               : Center(
                   key: ValueKey(page),
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 760),
+                    // Resources is a task manager: its graphs and table use the window's width.
+                    constraints: BoxConstraints(
+                      maxWidth: page == 'resources' ? double.infinity : 760,
+                    ),
                     child: ListView(
                       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
                       children: [

@@ -6,7 +6,8 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:material_3_expressive/material_3_expressive.dart' show M3ESafeArea;
+import 'package:material_3_expressive/material_3_expressive.dart'
+    show M3ESafeArea;
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/l10n/current_localizations.dart';
 import 'package:free_dextop/analytics_service.dart';
@@ -22,6 +23,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:archive/archive.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
+
 import 'l10n/inline_text.dart';
 
 part 'app_info.dart';
@@ -44,6 +46,12 @@ Future<void> main() async {
   // implementation. Clear values from older installations before any screen
   // or service can read them, including users who never open Mouse settings.
   final preferences = await SharedPreferences.getInstance();
+  final windowManager = preferences.getString('window_manager');
+  if (windowManager == null ||
+      windowManager == 'dextop_plasma' ||
+      windowManager == 'dextop_plasma_v2') {
+    await preferences.setString('window_manager', 'dextop_book');
+  }
   await preferences.remove('virtual_mouse_dpi');
   await preferences.remove('virtual_mouse_acceleration');
   // Keep the host display awake unless the user has explicitly opted out.

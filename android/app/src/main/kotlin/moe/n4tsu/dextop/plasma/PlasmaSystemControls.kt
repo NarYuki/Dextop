@@ -249,8 +249,25 @@ internal class PlasmaSystemControls(
         }
     }.getOrNull()
 
-    /** The most relevant media session, read from `dumpsys media_session`. */
+    /**
+     * The most relevant media session: from the media sessions themselves with Dextop's
+     * notification access, else read from `dumpsys media_session` (a privileged process each time).
+     */
     fun nowPlaying(): MediaInfo? {
+        val sessions = runCatching {
+            context.getSystemService(android.media.session.MediaSessionManager::class.java)
+                .getActiveSessions(DextopNotificationListener.component(context))
+        }.getOrNull() ?: return nowPlayingFromDump()
+        val playing = sessions.mapNotNull { controller ->
+            val description = controller.metadata?.description ?: return@mapNotNull null
+            val title = description.title?.toString()?.takeIf { it.isNotBlank() } ?: return@mapNotNull null
+            MediaInfo(controller.packageName, title, description.subtitle?.toString()?.takeIf { it.isNotBlank() },
+                controller.playbackState?.state == android.media.session.PlaybackState.STATE_PLAYING)
+        }
+        return playing.firstOrNull { it.playing } ?: playing.firstOrNull()
+    }
+
+    private fun nowPlayingFromDump(): MediaInfo? {
         val dump = run("dumpsys", "media_session") ?: return null
         val sessions = dump.split(Regex("\\n\\s*package=")).drop(1).mapNotNull { block ->
             val packageName = block.lineSequence().first().trim()

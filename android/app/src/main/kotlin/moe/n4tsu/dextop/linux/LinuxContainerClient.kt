@@ -138,6 +138,8 @@ internal object LinuxContainerClient {
                         }
                     }.onFailure { Log.w(TAG, "Cannot observe Android network link", it) }
                     refreshAudio()
+                    // Keyring passwords stay in the app's Keystore-sealed storage; the service gets them in memory.
+                    runCatching { LinuxKeyring.publish(context, service) }.onFailure { Log.w(TAG, "Cannot hand over keyring passwords", it) }
                     Log.i(TAG, "connected android=$usingAndroid via=${if (usingEmbedded) "embedded" else "external"}: ${runCatching { service.probe() }.getOrNull()}")
                     dispatch { it.onConnectionChanged(true) }
                     pending.toList().also { pending.clear() }.forEach { it.run(service) }

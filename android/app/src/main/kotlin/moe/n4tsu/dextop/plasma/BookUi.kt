@@ -9,6 +9,7 @@ import android.content.SharedPreferences
 import android.graphics.Bitmap
 import android.graphics.Rect
 import android.graphics.RectF
+import androidx.compose.ui.platform.LocalView
 import android.graphics.drawable.Drawable
 import android.os.Handler
 import android.os.Looper
@@ -175,6 +176,8 @@ private class BookWindow(val kind: String, frame: Rect) {
     var frame by mutableStateOf(frame)
     var maximized by mutableStateOf(false)
     var minimized by mutableStateOf(false)
+    /** Its dock icon on screen: where it goes when minimized and comes back from. */
+    var dockIcon: RectF? = null
 }
 
 private data class DragState(
@@ -207,7 +210,10 @@ internal class BookUi(
     /** Bumped on every refresh: the desktop re-reads the app list (Linux apps arrive late). */
     private var appsTick by mutableIntStateOf(0)
     /** The files and folders of the Linux container's ~/Desktop (name to is-folder). */
-    private var linuxFiles by mutableStateOf<List<Pair<String, Boolean>>>(emptyList())
+    private val initialDesktopCache = BookStore.cachedLinuxDesktop(context)
+        ?.takeIf { BookStore.flag(context, BookStore.LINUX_DESKTOP_FOLDER, false) }
+    private var linuxFilesContainer = initialDesktopCache?.first
+    private var linuxFiles by mutableStateOf(initialDesktopCache?.second.orEmpty())
     /** The ~/Desktop item being renamed, and its new name as typed. */
     private var renaming by mutableStateOf<String?>(null)
     private var linuxFolderOn = false
@@ -300,7 +306,7 @@ internal class BookUi(
         }.also { root.addView(it, FrameLayout.LayoutParams(-1, (3 * density).toInt(), android.view.Gravity.BOTTOM or android.view.Gravity.START)) }
         BookStore.listen(context, storeListener)
         handler.post(poll)
-        handler.postDelayed(linuxDesktopPoll, 1_500L)
+        handler.post(linuxDesktopPoll)
         refresh()
     }
 
@@ -1049,8 +1055,15 @@ internal class BookUi(
                 MenuItem(tr("開く", "Open"), Glyph.OPEN_EXTERNAL) { chrome.openLinuxDesktopItem(name) },
                 MenuItem(tr("名前を変更", "Rename"), Glyph.SETTINGS) { rename(name, RectF(x, y, x + 1, y + 1)) },
                 MenuItem(tr("ゴミ箱に移動", "Move to Trash"), Glyph.CLOSE, separatorBefore = true) {
-                    chrome.linuxDesktop(desktopScript("""T="${'$'}{HOME:-/root}/.local/share/Trash"; mkdir -p "${'$'}T/files" "${'$'}T/info"
-                        mv "${'$'}D/${'$'}(n ${b64(name)})" "${'$'}T/files/" && printf '[Trash Info]\nPath=%s\nDeletionDate=%s\n' "${'$'}D/${'$'}(n ${b64(name)})" "${'$'}(date +%Y-%m-%dT%H:%M:%S)" > "${'$'}T/info/${'$'}(n ${b64(name)}).trashinfo"""")) { refreshLinuxDesktop() }
+                    chrome.linuxDesktop(desktopScript("""P="${'$'}D/${'$'}(n ${b64(name)})"
+                        if command -v gio >/dev/null 2>&1; then gio trash -- "${'$'}P"
+                        else
+                            T="${'$'}{HOME:-/root}/.local/share/Trash"; mkdir -p "${'$'}T/files" "${'$'}T/info" || exit 1
+                            K="${'$'}(date +%s)-${'$'}${'$'}-${'$'}(n ${b64(name)})"
+                            [ ! -e "${'$'}T/files/${'$'}K" ] && [ ! -L "${'$'}T/files/${'$'}K" ] || exit 1
+                            mv -T -n -- "${'$'}P" "${'$'}T/files/${'$'}K" || exit 1
+                            printf '[Trash Info]\nPath=%s\nDeletionDate=%s\n' "${'$'}P" "${'$'}(date +%Y-%m-%dT%H:%M:%S)" > "${'$'}T/info/${'$'}K.trashinfo"
+                        fi""")) { refreshLinuxDesktop() }
                 },
             ), x, y)
             return
@@ -1175,23 +1188,33 @@ internal class BookUi(
 
     private fun b64(text: String) = android.util.Base64.encodeToString(text.toByteArray(), android.util.Base64.NO_WRAP)
 
-    /** [body] with D set to ~/Desktop and n decoding a base64 name (names never pass through the shell). */
-    private fun desktopScript(body: String) = """D="${'$'}{HOME:-/root}/Desktop"; mkdir -p "${'$'}D"; n() { printf '%s' "${'$'}1" | base64 -d; }
-        $body"""
+    private fun desktopScript(body: String) = BookDesktopFiles.directoryScript + "\n" + body
+    private var desktopReadPending = false
 
-    /** Reads ~/Desktop; its items take free cells, and items gone from it leave the desktop. */
+    /** Read the guest's actual desktop. A failed or obsolete request must not erase icons. */
     fun refreshLinuxDesktop() {
-        if (chrome.desktopContainer() == null) {
-            linuxFiles = emptyList()
-            // Switched off: its icons leave the desktop (the files stay in the container).
-            BookStore.shortcuts(context).filter { it.packageName.startsWith(LINUX_DESKTOP_PREFIX) }
-                .forEach { BookStore.removeShortcut(context, it.packageName) }
+        val container = chrome.desktopContainer()
+        if (container == null) {
+            val cached = BookStore.cachedLinuxDesktop(context)
+                ?.takeIf { BookStore.flag(context, BookStore.LINUX_DESKTOP_FOLDER, false) }
+            linuxFilesContainer = cached?.first
+            linuxFiles = cached?.second.orEmpty()
             return
         }
-        chrome.linuxDesktop(desktopScript("""cd "${'$'}D" && for f in *; do [ -e "${'$'}f" ] || continue
-            if [ -d "${'$'}f" ]; then printf 'd/%s\n' "${'$'}f"; else printf 'f/%s\n' "${'$'}f"; fi; done""")) { output ->
-            output ?: return@linuxDesktop
-            val files = output.lines().filter { it.length > 2 && it[1] == '/' }.map { it.substring(2) to (it[0] == 'd') }
+        if (linuxFilesContainer != container) {
+            linuxFilesContainer = container
+            linuxFiles = BookStore.cachedLinuxDesktop(context, container)?.second.orEmpty()
+        }
+        if (desktopReadPending) return
+        desktopReadPending = true
+        chrome.linuxDesktop(desktopScript(BookDesktopFiles.listingScript)) { output ->
+            desktopReadPending = false
+            if (container != chrome.desktopContainer()) {
+                refreshLinuxDesktop()
+                return@linuxDesktop
+            }
+            val files = output?.let(BookDesktopFiles::parse) ?: return@linuxDesktop
+            BookStore.cacheLinuxDesktop(context, container, files)
             linuxFiles = files
             val names = files.map { LINUX_DESKTOP_PREFIX + it.first }.toSet()
             val stale = BookStore.shortcuts(context).filter { it.packageName.startsWith(LINUX_DESKTOP_PREFIX) && it.packageName !in names }
@@ -1207,7 +1230,7 @@ internal class BookUi(
     private val linuxDesktopPoll = object : Runnable {
         override fun run() {
             refreshLinuxDesktop()
-            handler.postDelayed(this, 10_000L)
+            handler.postDelayed(this, 3_000L)
         }
     }
 
@@ -1217,9 +1240,9 @@ internal class BookUi(
         val base = tr("新しいフォルダ", "New folder")
         val taken = linuxFiles.map { it.first }.toSet()
         val name = generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in taken }
-        chrome.linuxDesktop(desktopScript("""mkdir -p "${'$'}D/${'$'}(n ${b64(name)})" && echo ok""")) {
+        chrome.linuxDesktop(desktopScript("""mkdir -- "${'$'}D/${'$'}(n ${b64(name)})" && echo ok""")) { output ->
             refreshLinuxDesktop()
-            rename(name, at)
+            if (output?.trim() == "ok") rename(name, at)
         }
     }
 
@@ -1240,9 +1263,9 @@ internal class BookUi(
             val next = text.text.trim()
             host.closePanel()
             renaming = null
-            if (next.isEmpty() || next == old || '/' in next) return
-            chrome.linuxDesktop(desktopScript("""mv -n "${'$'}D/${'$'}(n ${b64(old)})" "${'$'}D/${'$'}(n ${b64(next)})" && echo ok""")) { ok ->
-                if (ok != null) BookStore.shortcuts(context).firstOrNull { it.packageName == LINUX_DESKTOP_PREFIX + old }?.let {
+            if (!BookDesktopFiles.validName(next) || next == old) return
+            chrome.linuxDesktop(desktopScript("""P="${'$'}D/${'$'}(n ${b64(next)})"; [ ! -e "${'$'}P" ] && [ ! -L "${'$'}P" ] && mv -T -n -- "${'$'}D/${'$'}(n ${b64(old)})" "${'$'}P" && [ ! -e "${'$'}D/${'$'}(n ${b64(old)})" ] && [ ! -L "${'$'}D/${'$'}(n ${b64(old)})" ] && echo ok""")) { ok ->
+                if (ok?.trim() == "ok") BookStore.shortcuts(context).firstOrNull { it.packageName == LINUX_DESKTOP_PREFIX + old }?.let {
                     BookStore.removeShortcut(context, it.packageName)
                     BookStore.placeShortcut(context, LINUX_DESKTOP_PREFIX + next, it.spot)
                 }
@@ -1540,12 +1563,19 @@ internal class BookUi(
         val height = lerp(f.height(), work.height())
         val corner = 16.dp * (1f - toMax)
         val active = bookWindows.lastOrNull() === window
-        // Minimizing shrinks towards the taskbar.
-        val sink = (1f - shown) * (area.bottom - top - height / 2f)
+        // Minimizing shrinks into its dock icon (the window's centre moves onto the icon's), and
+        // restoring grows out of it again. The dock reports screen coordinates.
+        val origin = IntArray(2).also(LocalView.current::getLocationOnScreen)
+        val icon = window.dockIcon
+        val centerX = left + width / 2f
+        val centerY = top + height / 2f
+        val targetX = icon?.let { it.centerX() - origin[0] } ?: centerX
+        val targetY = icon?.let { it.centerY() - origin[1] } ?: area.bottom.toFloat()
+        val away = 1f - shown
         Box(
-            Modifier.offset { IntOffset(left, top + sink.roundToInt()) }
+            Modifier.offset { IntOffset((left + away * (targetX - centerX)).roundToInt(), (top + away * (targetY - centerY)).roundToInt()) }
                 .size(with(px) { width.toDp() }, with(px) { height.toDp() })
-                .scale((.94f + .06f * appear.value) * (.4f + .6f * shown)).alpha(appear.value * shown),
+                .scale((.94f + .06f * appear.value) * (.08f + .92f * shown)).alpha(appear.value * shown),
         ) {
             Surface(
                 Modifier.fillMaxSize().blockPointer()
@@ -1648,7 +1678,7 @@ internal class BookUi(
                 Box(
                     Modifier.size(44.dp).clip(RoundedCornerShape(14.dp))
                         .background(if (hovered || active) colors.onSurface.copy(alpha = if (active) .12f else .08f) else Color.Transparent)
-                        .onScreen { anchor = it }
+                        .onScreen { anchor = it; window.dockIcon = it }
                         .pointerButtons(onHover = { inside ->
                             hovered = inside
                             if (inside) showTooltip(windowTitle(window.kind), anchor) else hideTooltip()

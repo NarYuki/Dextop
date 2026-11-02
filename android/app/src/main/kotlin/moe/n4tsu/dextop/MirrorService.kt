@@ -2533,22 +2533,27 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val handler = Handler(mainLooper)
         val autoTasks = mutableMapOf<Int, moe.n4tsu.dextop.plasma.TaskSnapshot>()
         var lastSplitSnapshot = ""
+        // One bridge for the whole session: making one looks up the task service each time.
+        val bridge by lazy {
+            moe.n4tsu.dextop.plasma.TaskBridge({ name, type -> privilegedAccess.service(name, type) }, logTag)
+        }
         val check = object : Runnable {
             override fun run() {
                 if (!active || !autoOnlySession || targetDisplayId != displayId ||
                     generation != autoOverlapCorrectionGeneration) return
+                val prefs = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
+                val splitCorrection = prefs.getBoolean("flutter.android_auto_correct_split_transfer", false)
+                val overlapCorrection = prefs.getBoolean("flutter.android_auto_correct_fullscreen_overlap", false)
                 if (forceFreeformSession) {
                     recentsExecutor.execute {
                         runCatching {
                             if (!active || targetDisplayId != displayId ||
                                 generation != autoOverlapCorrectionGeneration) return@runCatching
-                            val bridge = moe.n4tsu.dextop.plasma.TaskBridge(
-                                { name, type -> privilegedAccess.service(name, type) }, logTag)
                             val current = bridge.tasks(displayId).filter { it.activityType == 1 }
                             current.forEach { autoTasks[it.taskId] = it }
-                            val phoneTasks = bridge.tasks(0)
-                            val enabled = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                                .getBoolean("flutter.android_auto_correct_split_transfer", false)
+                            val enabled = splitCorrection
+                            // The phone's tasks matter only to the correction.
+                            val phoneTasks = if (enabled) bridge.tasks(0) else emptyList()
                             val snapshot = "enabled=$enabled display=$displayId auto=${current.map { it.taskId }} known=${autoTasks.keys} phoneSplit=${phoneTasks.filter { it.windowingMode == 6 }.map { it.taskId }}"
                             if (snapshot != lastSplitSnapshot) {
                                 lastSplitSnapshot = snapshot
@@ -2571,8 +2576,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         }.onFailure { Log.w(logTag, "Auto split transfer correction failed", it) }
                     }
                 }
-                if (getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-                        .getBoolean("flutter.android_auto_correct_fullscreen_overlap", false)) {
+                if (overlapCorrection) {
                     val full = Rect(0, 0, targetWidth, targetHeight)
                     val usable = runCatching {
                         workspaceLayoutEngine.usableArea(displayId, targetWidth, targetHeight)
@@ -2582,8 +2586,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                             runCatching {
                                 if (!active || targetDisplayId != displayId ||
                                     generation != autoOverlapCorrectionGeneration) return@runCatching
-                                val bridge = moe.n4tsu.dextop.plasma.TaskBridge(
-                                    { name, type -> privilegedAccess.service(name, type) }, logTag)
                                 for (task in bridge.tasks(displayId)) {
                                     if (task.displayId != displayId || task.activityType != 1 || !task.visible) continue
                                     val bounds = task.bounds
@@ -2600,7 +2602,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         }
                     }
                 }
-                handler.postDelayed(this, 300L)
+                // Corrections must follow a transfer at once; with both off this only tracks the car's tasks.
+                handler.postDelayed(this, if (splitCorrection || overlapCorrection) 300L else 1_000L)
             }
         }
         handler.postDelayed(check, 1000L)
@@ -3097,8 +3100,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (!active || (autoOnlySession && !carShell) || targetDisplayId < 0) return false
         val selection = moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this)
         val wantPlasma = carShell || selection != moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
-        val wantBook = !carShell && selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_BOOK
-        val wantV2 = carShell || wantBook || selection == moe.n4tsu.dextop.plasma.WindowManagerSelection.DEXTOP_PLASMA_V2
+        val wantBook = !carShell
+        val wantV2 = true
         val existing = plasmaShell
         if (!wantPlasma) {
             if (existing != null) {
@@ -3125,7 +3128,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
                     privateAppDisplays = desktopEnvironment.privateApplicationDisplays,
                 )
-            } else if (wantBook) {
+            } else {
                 moe.n4tsu.dextop.plasma.BookShell(
                     this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
                     fullscreenAppDisplays = desktopEnvironment.fullscreenApplicationDisplays,
@@ -3134,17 +3137,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
                     privateAppDisplays = desktopEnvironment.privateApplicationDisplays,
                 )
-            } else if (wantV2) {
-                moe.n4tsu.dextop.plasma.PlasmaV2Shell(
-                    this, targetDisplayId, targetWidth, targetHeight, density, plasmaHost,
-                    fullscreenAppDisplays = carShell || desktopEnvironment.fullscreenApplicationDisplays,
-                    passiveShellFocus = desktopEnvironment.passivePlasmaShellFocus,
-                    maxRateAppDisplays = desktopEnvironment.maxRateApplicationDisplays,
-                    applicationOverlay = desktopEnvironment.plasmaApplicationOverlay && phoneOwnedDisplay == null,
-                    privateAppDisplays = desktopEnvironment.privateApplicationDisplays,
-                )
-            } else {
-                moe.n4tsu.dextop.plasma.PlasmaShell(this, targetDisplayId, targetWidth, targetHeight, plasmaHost)
             }).also {
                     plasmaShell = it
                     it.start()
@@ -6146,6 +6138,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
     }
 
+    private val LAPTOP_SPECIAL_KEYS = setOf(
+        KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_ENTER,
+        KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP,
+        KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT
+    )
+
     private fun laptopKeyBackground(selected: Boolean, keyCode: Int? = null) = GradientDrawable().apply {
         val palette = laptopPalette()
         val lockedShift = keyCode == LaptopKeyboardLayout.SHIFT && laptopShiftLocked
@@ -6155,11 +6153,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val modifierKey = keyCode != null &&
                 (keyCode < 0 || keyCode == KeyEvent.KEYCODE_META_LEFT ||
                         keyCode == KeyEvent.KEYCODE_ALT_LEFT || keyCode == KeyEvent.KEYCODE_ALT_RIGHT)
-        val specialKey = keyCode in setOf(
-            KeyEvent.KEYCODE_TAB, KeyEvent.KEYCODE_DEL, KeyEvent.KEYCODE_ENTER,
-            KeyEvent.KEYCODE_SPACE, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_UP,
-            KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_RIGHT
-        )
+        val specialKey = keyCode in LAPTOP_SPECIAL_KEYS
         val fill = if (lockedShift) {
             palette.selected
         } else if (selected) {
@@ -11207,8 +11201,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         cursorView?.visibility = View.GONE
         setOverlayFocusable(true)
         surfaceView?.post {
-            surfaceView?.requestFocus()
-            surfaceView?.requestPointerCapture()
+            val shell = plasmaShell
+            val capture = if (shell is moe.n4tsu.dextop.plasma.CompositedWindowShell) shell.hostPointerCaptureRequested()
+                else moe.n4tsu.dextop.plasma.WindowManagerSelection.current(this) == moe.n4tsu.dextop.plasma.WindowManagerSelection.SYSTEM
+            surfaceView?.let { surface ->
+                if (capture && !overlayTextInputActive) {
+                    surface.requestFocus()
+                    if (!surface.hasPointerCapture()) surface.requestPointerCapture()
+                } else if (surface.hasPointerCapture()) surface.releasePointerCapture()
+            }
         }
         if (!wasActive) {
             OperationLog.i(
