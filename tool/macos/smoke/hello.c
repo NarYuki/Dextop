@@ -2,6 +2,6 @@
 extern long write(int fd, const void *buffer, unsigned long count);
 
 int main(void) {
-    static const char message[] = "Dextop macOS ARM64 hello\n";
+    static const char message[] = "Dextop macOS hello\n";
     return write(1, message, sizeof(message) - 1) == sizeof(message) - 1 ? 0 : 1;
 }
