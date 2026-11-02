@@ -16,6 +16,8 @@ def main():
     parser.add_argument("--abstract-rpc", action="store_true")
     parser.add_argument("--anonymous-exec", action="store_true")
     parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
+    parser.add_argument("--probe", choices=("hello", "posix", "socket"), action="append",
+                        help="Diagnostic subset/order; default runs the complete sequence")
     args = parser.parse_args()
     runtime = args.runtime.resolve()
     architecture = "arm64" if args.architecture == "aarch64" else "x86_64"
@@ -32,18 +34,22 @@ def main():
         env.pop("DARLING_PROFILE", None)
         command = [str(runtime / "bin/darling")]
         try:
-            for name, expected in (("hello", "Dextop macOS hello"),
-                                   ("posix", "file: OK\nthread: OK\nfork: OK"),
-                                   ("socket", "socket: OK"),
-                                   ("hello", "Dextop macOS hello")):
+            expected_output = {"hello": "Dextop macOS hello", "posix": "file: OK\nthread: OK\nfork: OK",
+                               "socket": "socket: OK"}
+            for name in args.probe or ("hello", "posix", "socket", "hello"):
+                expected = expected_output[name]
                 log = output / f"{name}-{len(list(output.glob('*.log')))}.log"
+                # Darling treats /var, /tmp, /usr, etc. as Darwin paths.
+                # Probe files are Linux guest files, addressed explicitly.
+                program = "/Volumes/SystemRoot" + str(args.probes.resolve() / f"{name}-macos-{architecture}")
                 with log.open("wb") as stream:
-                    result = subprocess.run(command + ["exec", str(args.probes.resolve() / f"{name}-macos-{architecture}")],
+                    result = subprocess.run(command + ["exec", program],
                                             env=env, stdout=stream, stderr=subprocess.STDOUT, timeout=90)
                 content = log.read_text(encoding="utf-8", errors="replace")
-                print(content, end="", flush=True)
                 if result.returncode or expected not in content:
+                    print("\n".join(content.splitlines()[-40:]), flush=True)
                     raise RuntimeError(f"Mach-O {name} failed: exit {result.returncode}, log {log}")
+                print(expected, flush=True)
         finally:
             with (output / "shutdown.log").open("wb") as stream:
                 result = subprocess.run(command + ["shutdown"], env=env,

@@ -5,6 +5,7 @@ import json
 from pathlib import Path
 import re
 import subprocess
+from patch_runtime import patch_launcher
 
 
 HERE = Path(__file__).resolve().parent
@@ -29,6 +30,7 @@ def build(source, zig, output):
         target = extracted / name
         target.parent.mkdir(parents=True, exist_ok=True)
         target.write_bytes(git(source, "show", f"{commit}:{name}"))
+    patch_launcher(extracted)
 
     config = git(source, "show", f"{commit}:src/include/darling-config.h.in").decode()
     values = {

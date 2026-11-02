@@ -58,6 +58,11 @@ jobs:
           python3 tool/macos/check_runtime.py --anonymous-exec \
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --probes build/macos/smoke --output build/macos/native-anon-smoke
+          cc -shared -fPIC -O2 tool/macos/tests/abstract_server.c -o build/macos/abstract-server.so
+          LD_PRELOAD="$PWD/build/macos/abstract-server.so" DEXTOP_SOCKET_NS=dextop-ci DEXTOP_TEST_DENY_PID_NAMESPACE=1 \
+            python3 tool/macos/check_runtime.py --abstract-rpc --anonymous-exec \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --probes build/macos/smoke --output build/macos/native-abstract-smoke
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -71,4 +76,5 @@ jobs:
             build/macos/darling-core-arm64.tar.gz
             build/macos/native-smoke
             build/macos/native-anon-smoke
+            build/macos/native-abstract-smoke
             build/macos/smoke/*-macos-arm64
