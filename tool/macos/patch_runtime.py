@@ -30,9 +30,24 @@ def patch_launcher(source):
                  "shutdownContainer(pidInit, handle, shellspawn, shellHandle, g_nonroot);")
 
 
+def patch_gui(source):
+    # NSWindow's frame conversion already reserves the title bar. Subtracting
+    # it again makes real content smaller than AppKit's reported content rect.
+    replace_once(Path(source) / "src/external/cocotron/AppKit/NSThemeFrame.m",
+                 "    /* The title bar lives above the content; the window's frame conversion\n"
+                 "     * reserves the extra height, so take it out of the content view here. */\n"
+                 "    CGFloat titleHeight = [NSThemeFrame titleBarHeightForStyleMask:\n"
+                 "                                            [[self window] styleMask]];\n"
+                 "    if (titleHeight > 0.0 && contentFrame.size.height > titleHeight) {\n"
+                 "        contentFrame.size.height -= titleHeight;\n"
+                 "        contentFrame.origin.y += titleHeight;\n"
+                 "    }\n", "")
+
+
 def apply(source):
     source = Path(source)
     patch_launcher(source)
+    patch_gui(source)
     mldr = source / "src/startup/mldr"
     shutil.copyfile(HERE / "darling_socket.c", mldr / "dextop_socket.c")
     shutil.copyfile(HERE.parent.parent / "android/app/src/main/cpp/linux_unixsock.c",

@@ -136,7 +136,13 @@ With the current probe, add `--persistence` to verify that Foundation atomically
 saves the entered text plus a Japanese UTF-8 suffix, then reloads it after the
 app closes and restarts in the same private prefix. Review `reopened.png` for
 Japanese glyph rendering. This verifies storage and display, not Japanese IME
-input. The probe's document stays inside its private Darwin `/tmp`.
+input. `DEXTOP_GUI_DOCUMENT` points to a unique file in this test's temporary
+directory, addressed through `/Volumes/SystemRoot`; successful cleanup removes
+it. Do not assume that Darwin `/tmp` is isolated between non-root prefixes.
+Add `--dialog` to check modal confirmation, return to the main window and that
+all dialog controls fit inside its content bounds. The GUI patch removes a
+second subtraction of title-bar height in `NSThemeFrame`, which otherwise clips
+the alert's message and icon despite successful button interaction.
 
 The pinned x86_64 Swift Foundation overlay comes from Swift 5.2.2 and fails to
 load against the bundled Swift 6.3.3 core (`__swift_classIsSwiftMask`). The native

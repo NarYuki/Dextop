@@ -21,6 +21,7 @@ def main():
     parser.add_argument("--abstract-rpc", action="store_true")
     parser.add_argument("--anonymous-exec", action="store_true")
     parser.add_argument("--persistence", action="store_true", help="Verify UTF-8 save and reload across app restart")
+    parser.add_argument("--dialog", action="store_true", help="Verify a modal dialog and return to the main window")
     args = parser.parse_args()
     for executable in ("Xvfb", "xdotool", "import"):
         if not shutil.which(executable):
@@ -36,6 +37,7 @@ def main():
     directory = tempfile.mkdtemp(prefix="dextop-gui-")
     env = dict(os.environ, DARLING_NONROOT="1", DARLING_INSTALL_PREFIX=str(runtime),
                DPREFIX=directory + "/prefix",
+               DEXTOP_GUI_DOCUMENT="/Volumes/SystemRoot" + directory + "/document.txt",
                DEXTOP_DARLING_ABSTRACT_RPC="1" if args.abstract_rpc else "0",
                DEXTOP_DARLING_ANON_EXEC="1" if args.anonymous_exec else "0")
     env.pop("WAYLAND_DISPLAY", None)
@@ -79,10 +81,10 @@ def main():
                 subprocess.run(["import", "-display", env["DISPLAY"], "-window", "root",
                                 str(output / name)], check=True, timeout=15)
 
-            def wait_for_event(message):
+            def wait_for_event(message, offset=0):
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline:
-                    if message in (output / "app.log").read_text(errors="replace"):
+                    if message in (output / "app.log").read_text(errors="replace")[offset:]:
                         return
                     if app.poll() is not None:
                         break
@@ -106,6 +108,15 @@ def main():
                     raise RuntimeError("AppKit window did not appear")
                 time.sleep(1)
                 capture("window.png")
+                if args.dialog:
+                    xdo("mousemove", "--window", window, "240", "292", "click", "1")
+                    dialog = xdo("search", "--sync", "--name", "^Dextop dialog probe$").stdout.splitlines()[-1]
+                    wait_for_event("appkit: dialog layout OK")
+                    time.sleep(0.5)
+                    capture("dialog.png")
+                    xdo("windowfocus", "--sync", dialog)
+                    xdo("key", "Return")
+                    wait_for_event("appkit: dialog accepted")
                 # Coordinates refer to this probe's fixed initial layout, never a user display.
                 xdo("mousemove", "--window", window, "120", "245", "click", "1")
                 xdo("key", "ctrl+a")
@@ -125,10 +136,11 @@ def main():
                 if args.persistence:
                     if "appkit: saved=Dextop GUI input 日本語" not in content:
                         raise RuntimeError("Foundation did not save the UTF-8 document")
+                    offset = len(content)
                     app = subprocess.Popen([str(launcher), "exec", "/Volumes/SystemRoot" + str(binary)],
                                            env=env, stdout=app_log, stderr=subprocess.STDOUT)
-                    wait_for_event("appkit: loaded=Dextop GUI input 日本語")
-                    found = xdo("search", "--name", "^Dextop macOS AppKit probe$")
+                    wait_for_event("appkit: loaded=Dextop GUI input 日本語", offset=offset)
+                    found = xdo("search", "--sync", "--name", "^Dextop macOS AppKit probe$")
                     window = found.stdout.splitlines()[-1]
                     time.sleep(1)
                     capture("reopened.png")
