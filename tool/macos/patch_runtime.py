@@ -85,3 +85,10 @@ def apply(source):
                      f"\tret = __dextop_socket_{operation}(fd, fixed, socklen);\n"
                      "\tif (ret == -38) { /* older MLDR without Dextop bridge */\n"
                      + original + "\n\t}")
+    dyld = source / "src/external/dyld/src"
+    shutil.copyfile(HERE / "darling_segments.h", dyld / "dextop_segments.h")
+    replace_once(dyld / "ImageLoaderMachO.cpp", '#include "dyld2.h"',
+                 '#include "dyld2.h"\n#include "dextop_segments.h"')
+    replace_once(dyld / "ImageLoaderMachO.cpp",
+                 "void* loadAddress = xmmap((void*)requestedLoadAddress, size, protection, MAP_FIXED | MAP_PRIVATE, fd, fileOffset);",
+                 "void* loadAddress = dextop_map_segment((void*)requestedLoadAddress, size, protection, fd, fileOffset, context.envp);")

@@ -30,6 +30,8 @@ class SocketTests(unittest.TestCase):
 #include <unistd.h>
 void dextop_macos_rpc_address(void *, unsigned);
 int dextop_macos_unused_bind(int, const void *, unsigned);
+long dextop_macos_connect(int, const void *, unsigned);
+long dextop_macos_bind(int, const void *, unsigned);
 
 static void exchange(const char *path) {
     struct sockaddr_un address = {.sun_family = AF_UNIX};
@@ -54,6 +56,21 @@ static void exchange(const char *path) {
     assert(memcmp(received, data, sizeof(data)) == 0);
     close(sender);
     close(receiver);
+
+    /* The Darwin bind/connect bridge must find the same abstract endpoint. */
+    receiver = socket(AF_UNIX, SOCK_STREAM, 0);
+    sender = socket(AF_UNIX, SOCK_STREAM, 0);
+    assert(receiver >= 0 && sender >= 0);
+    assert(bind(receiver, (void *)&address, length) == 0);
+    assert(listen(receiver, 1) == 0);
+    struct sockaddr_un original = {.sun_family = AF_UNIX};
+    strcpy(original.sun_path, path);
+    assert(dextop_macos_connect(sender, &original, sizeof(original)) == 0);
+    int peer = accept(receiver, 0, 0);
+    assert(peer >= 0);
+    close(peer);
+    close(sender);
+    close(receiver);
 }
 int main(void) {
     struct sockaddr_un original = {.sun_family = AF_UNIX};
@@ -65,6 +82,25 @@ int main(void) {
     assert(setenv("DEXTOP_SOCKET_NS", "dextop-macos-test", 1) == 0);
     exchange("/var/tmp/dextop/prefix/.darlingserver.sock");
     exchange("/var/tmp/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/.darlingserver.sock");
+    char directory[] = "/tmp/dextop-mac-XXXXXX";
+    assert(mkdtemp(directory));
+    struct sockaddr_un local = {.sun_family = AF_UNIX};
+    strcpy(local.sun_path, directory);
+    strcat(local.sun_path, "/socket");
+    int receiver = socket(AF_UNIX, SOCK_STREAM, 0);
+    int sender = socket(AF_UNIX, SOCK_STREAM, 0);
+    assert(receiver >= 0 && sender >= 0);
+    /* Native Linux uses a filesystem socket; Android exercises bind fallback. */
+    assert(dextop_macos_bind(receiver, &local, sizeof(local)) == 0);
+    assert(listen(receiver, 1) == 0);
+    assert(dextop_macos_connect(sender, &local, sizeof(local)) == 0);
+    int peer = accept(receiver, 0, 0);
+    assert(peer >= 0);
+    close(peer);
+    close(sender);
+    close(receiver);
+    unlink(local.sun_path);
+    assert(rmdir(directory) == 0);
     struct sockaddr_un address = {.sun_family = AF_UNIX};
     strcpy(address.sun_path + 1, "already-abstract");
     dextop_macos_rpc_address(&address, sizeof(address));
@@ -72,6 +108,6 @@ int main(void) {
     return 0;
 }
 ''', encoding="utf-8")
-            subprocess.run(["cc", "-O2", "-Wall", "-Wextra", str(root / "test.c"),
+            subprocess.run(["cc", "-O2", "-UNDEBUG", "-Wall", "-Wextra", str(root / "test.c"),
                             str(root / "darling_socket.c"), "-o", str(root / "test")], check=True)
             subprocess.run([str(root / "test")], check=True, timeout=10)
