@@ -66,6 +66,7 @@ def main():
     run("sh", HERE / "run.sh", "--check", env=dict(env, DEXTOP_DARLING_ROOT=str(runtime)))
     (work / "build-info.json").write_text(json.dumps({
         **lock, "components": "core", "dextop_abstract_rpc": True,
+        "dextop_anonymous_executable_segments": True,
         "android_execution_verified": False,
         "macos_application_verified": False,
     }, indent=2) + "\n", encoding="utf-8")

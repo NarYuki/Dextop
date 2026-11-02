@@ -13,6 +13,7 @@ def main():
     parser.add_argument("--probes", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--abstract-rpc", action="store_true")
+    parser.add_argument("--anonymous-exec", action="store_true")
     args = parser.parse_args()
     runtime = args.runtime.resolve()
     output = args.output.resolve()
@@ -20,7 +21,8 @@ def main():
     # Keep the Unix socket pathname below sockaddr_un's limit on Linux CI.
     with tempfile.TemporaryDirectory(prefix="dextop-mac-") as directory:
         env = dict(os.environ, DARLING_NONROOT="1", DARLING_INSTALL_PREFIX=str(runtime),
-                   DPREFIX=directory + "/prefix", DEXTOP_DARLING_ABSTRACT_RPC="1" if args.abstract_rpc else "0")
+                   DPREFIX=directory + "/prefix", DEXTOP_DARLING_ABSTRACT_RPC="1" if args.abstract_rpc else "0",
+                   DEXTOP_DARLING_ANON_EXEC="1" if args.anonymous_exec else "0")
         env.pop("DARLING_PROFILE", None)
         command = [str(runtime / "bin/darling")]
         try:
