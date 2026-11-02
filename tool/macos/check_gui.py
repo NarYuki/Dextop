@@ -20,6 +20,7 @@ def main():
     parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
     parser.add_argument("--abstract-rpc", action="store_true")
     parser.add_argument("--anonymous-exec", action="store_true")
+    parser.add_argument("--persistence", action="store_true", help="Verify UTF-8 save and reload across app restart")
     args = parser.parse_args()
     for executable in ("Xvfb", "xdotool", "import"):
         if not shutil.which(executable):
@@ -121,6 +122,20 @@ def main():
                             "appkit: resized=640x380")
                 if app.returncode or any(message not in content for message in expected):
                     raise RuntimeError(f"GUI input/resize/close verification failed: exit {app.returncode}")
+                if args.persistence:
+                    if "appkit: saved=Dextop GUI input 日本語" not in content:
+                        raise RuntimeError("Foundation did not save the UTF-8 document")
+                    app = subprocess.Popen([str(launcher), "exec", "/Volumes/SystemRoot" + str(binary)],
+                                           env=env, stdout=app_log, stderr=subprocess.STDOUT)
+                    wait_for_event("appkit: loaded=Dextop GUI input 日本語")
+                    found = xdo("search", "--name", "^Dextop macOS AppKit probe$")
+                    window = found.stdout.splitlines()[-1]
+                    time.sleep(1)
+                    capture("reopened.png")
+                    xdo("mousemove", "--window", window, "27", "14", "click", "1")
+                    app.wait(timeout=15)
+                    if app.returncode:
+                        raise RuntimeError(f"Reopened app did not close normally: {app.returncode}")
             finally:
                 with (output / "shutdown.log").open("wb") as shutdown_log:
                     result = subprocess.run([str(launcher), "shutdown"], env=env,
@@ -130,6 +145,8 @@ def main():
                 if app is not None:
                     app.wait(timeout=10)
             success = True
+            if args.persistence:
+                print("Foundation UTF-8 save/reload across app restart: OK", flush=True)
             print("AppKit window/input/resize/close and scoped shutdown: OK. Inspect captured rendering separately.", flush=True)
     finally:
         if server is not None:

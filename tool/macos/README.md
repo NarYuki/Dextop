@@ -132,6 +132,11 @@ display and Darling prefix, types into the probe, clicks its report button,
 resizes its window, closes it normally, checks the diagnostic events and exit
 status, and requests scoped shutdown. It saves PNG captures for visual review.
 Xvfb does not establish hardware GPU acceleration or Android presentation.
+With the current probe, add `--persistence` to verify that Foundation atomically
+saves the entered text plus a Japanese UTF-8 suffix, then reloads it after the
+app closes and restarts in the same private prefix. Review `reopened.png` for
+Japanese glyph rendering. This verifies storage and display, not Japanese IME
+input. The probe's document stays inside its private Darwin `/tmp`.
 
 The pinned x86_64 Swift Foundation overlay comes from Swift 5.2.2 and fails to
 load against the bundled Swift 6.3.3 core (`__swift_classIsSwiftMask`). The native
