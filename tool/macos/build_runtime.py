@@ -48,6 +48,7 @@ def main():
     ]))
     run("cmake", "-S", source, "-B", build, "-G", "Ninja",
         "-DCMAKE_BUILD_TYPE=Release", f"-DCMAKE_INSTALL_PREFIX={lock['install_prefix']}",
+        "-DCMAKE_EXPORT_COMPILE_COMMANDS=ON",
         "-DCOMPONENTS=core", f"-DTARGET_ARM64={'ON' if host == 'aarch64' else 'OFF'}",
         f"-DTARGET_x86_64={'ON' if host == 'x86_64' else 'OFF'}",
         "-DTARGET_i386=OFF", "-DANDROID=OFF", "-DENABLE_METAL=OFF",
