@@ -18,3 +18,16 @@ void dextop_macos_rpc_address(void *address, unsigned length) {
     unsigned mapped = abstract_twin(address, length, &twin);
     if (mapped) memcpy(address, &twin, sizeof(twin));
 }
+
+/* Called through MLDR's ELF bridge after Darwin's sockaddr/path conversion.
+ * Return Linux negative errno, as expected by libsystem_kernel.
+ */
+long dextop_macos_bind(int fd, const void *address, unsigned length) {
+    int result = dextop_macos_unused_bind(fd, address, length);
+    return result < 0 ? -*__errno_location() : result;
+}
+
+long dextop_macos_connect(int fd, const void *address, unsigned length) {
+    int result = dextop_macos_unused_connect(fd, address, length);
+    return result < 0 ? -*__errno_location() : result;
+}
