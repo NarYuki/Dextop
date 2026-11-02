@@ -62,7 +62,8 @@ internal object DeviceProfiles {
                     directPlasmaDisplay = true,
                     untrustedMirrorDisplay = true,
                     fullscreenApplicationDisplays = true,
-                    privateApplicationDisplays = true,
+                    // Public: Gboard can draw its candidates and toolbar only on a display it may
+                    // add windows to. System decorations are switched off on each one instead.
                     passivePlasmaShellFocus = true,
                     defaultWindowManager = "dextop_plasma_v2",
                 )

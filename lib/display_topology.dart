@@ -170,8 +170,8 @@ class ExternalDisplayModeCard extends StatefulWidget {
 
 class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
   Map<String, dynamic> state = const {};
-  String position = 'right';
   String main = '2';
+  String phoneRole = 'phone';
   bool busy = false;
   Timer? monitor;
   String t(String ja, String en) => localText(context, ja, en);
@@ -198,8 +198,8 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     if (!mounted) return;
     setState(() {
       state = next;
-      position = preferences.getString('external_display_position') ?? 'right';
       main = preferences.getString('external_display_main') ?? '2';
+      phoneRole = preferences.getString('external_display_phone') ?? 'phone';
     });
   }
 
@@ -227,13 +227,14 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setString(key, value);
     setState(() {
-      if (key == 'external_display_position') {
-        position = value;
+      if (key == 'external_display_phone') {
+        phoneRole = value;
       } else {
         main = value;
       }
     });
-    if (state['mode'] == 'extend') await choose('extend');
+    final mode = state['mode'];
+    if (mode == 'extend' || mode == 'external') await choose(mode as String);
   }
 
   Widget dropdown(String value, Map<String, String> items, ValueChanged<String>? onChanged) =>
@@ -279,15 +280,21 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
                 'external': t('2 のみに表示する', 'Show only on 2'),
               }, enabled ? choose : null),
             ),
-            if (mode == 'extend') ...[
+            if (mode == 'external') ...[
               const Divider(height: 1),
               ListTile(
-                title: Text(t('2 の位置', 'Position of 2')),
-                trailing: dropdown(position, {
-                  'left': t('1 の左', 'Left of 1'),
-                  'right': t('1 の右', 'Right of 1'),
-                }, enabled ? (value) => setArrangement('external_display_position', value) : null),
+                title: Text(t('スマホの使い方', 'Use the phone as')),
+                subtitle: Text(phoneRole == 'phone'
+                    ? t('スマホはふだんどおり使えます', 'The phone works as usual')
+                    : t('スマホの画面でデスクトップを操作します', 'Control the desktop from the phone screen')),
+                trailing: dropdown(phoneRole, {
+                  'phone': t('スマホ', 'Phone'),
+                  'touchpad': t('トラックパッドとキーボード', 'Trackpad and keyboard'),
+                }, enabled ? (value) => setArrangement('external_display_phone', value) : null),
               ),
+            ],
+            if (mode == 'extend') ...[
+              const Divider(height: 1),
               ListTile(
                 title: Text(t('メインディスプレイ', 'Main display')),
                 subtitle: Text(t('タスクバーを表示する画面です', 'The screen that shows the taskbar')),
@@ -933,7 +940,8 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         ),
       );
     }
-    if (!physicalDensities.containsKey(display.id)) unawaited(physicalDensity(display));
+    final extendedScreen = display.extendedScreen != null;
+    if (!extendedScreen && !physicalDensities.containsKey(display.id)) unawaited(physicalDensity(display));
     final enabled = !applying;
 
     // Scale: Android's 160 dpi is 100 %.
@@ -977,21 +985,41 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
           padding: const EdgeInsets.only(top: 4, bottom: 4),
           child: Text(display.name, style: Theme.of(context).textTheme.titleMedium),
         ),
-        _settingRow(
-          icon: Icons.aspect_ratio_rounded,
-          title: t('拡大縮小', 'Scale'),
-          subtitle: t('テキスト、アプリ、その他の項目のサイズを変更する', 'Change the size of text, apps, and other items'),
-          trailing: _dropdown<int>(
-            currentPercent,
-            [for (final value in percents) (value, percentLabel(value))],
-            !enabled
-                ? null
-                : (value) => applyDisplaySetting(() => widget.bridge.setDisplayDensity(
-                    display.id,
-                    value == recommendedPercent ? 0 : (value * 160 / 100).round(),
-                  )),
+        if (extendedScreen)
+          // The extended desktop sizes each screen's part itself; 100 % is the recommended size.
+          _settingRow(
+            icon: Icons.aspect_ratio_rounded,
+            title: t('拡大縮小', 'Scale'),
+            subtitle: t('テキスト、アプリ、その他の項目のサイズを変更する', 'Change the size of text, apps, and other items'),
+            trailing: _dropdown<int>(
+              display.scalePercent,
+              [
+                for (final value in {...display.scalePercents, display.scalePercent}.toList()..sort())
+                  (value, value == 100 ? inlineFormat(t('{0}%（推奨）', '{0}% (Recommended)'), [value]) : '$value%'),
+              ],
+              !enabled
+                  ? null
+                  : (value) => applyDisplaySetting(
+                      () => widget.bridge.setExtendedDisplayScale(display.id, value),
+                    ),
+            ),
+          )
+        else
+          _settingRow(
+            icon: Icons.aspect_ratio_rounded,
+            title: t('拡大縮小', 'Scale'),
+            subtitle: t('テキスト、アプリ、その他の項目のサイズを変更する', 'Change the size of text, apps, and other items'),
+            trailing: _dropdown<int>(
+              currentPercent,
+              [for (final value in percents) (value, percentLabel(value))],
+              !enabled
+                  ? null
+                  : (value) => applyDisplaySetting(() => widget.bridge.setDisplayDensity(
+                      display.id,
+                      value == recommendedPercent ? 0 : (value * 160 / 100).round(),
+                    )),
+            ),
           ),
-        ),
         if (sizes.isNotEmpty && activeSize != null)
           _settingRow(
             icon: Icons.fit_screen_rounded,
@@ -1034,7 +1062,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                     }),
             ),
           ),
-        _settingRow(
+        if (!extendedScreen) _settingRow(
           icon: Icons.screen_rotation_alt_rounded,
           title: t('画面の向き', 'Display orientation'),
           trailing: _dropdown<int>(
@@ -1443,6 +1471,9 @@ class _TopologyDisplay {
     required this.supportedModes,
     required this.dextopOverlay,
     required this.primary,
+    this.extendedScreen,
+    this.scalePercent = 100,
+    this.scalePercents = const [],
   });
   final int id;
   final String name;
@@ -1458,6 +1489,11 @@ class _TopologyDisplay {
   final List<_DisplayMode> supportedModes;
   final bool dextopOverlay;
   final bool primary;
+
+  /// 1 (phone) or 2 (external) on Dextop's extended desktop, which Dextop arranges itself.
+  final int? extendedScreen;
+  final int scalePercent;
+  final List<int> scalePercents;
 
   String get modeLabel =>
       '$widthPx × $heightPx · ${refreshRate.toStringAsFixed(refreshRate == refreshRate.roundToDouble() ? 0 : 1)} Hz';
@@ -1488,6 +1524,11 @@ class _TopologyDisplay {
             .toList(),
         dextopOverlay: map['dextopOverlay'] == true,
         primary: map['primary'] == true,
+        extendedScreen: (map['extendedScreen'] as num?)?.toInt(),
+        scalePercent: (map['scalePercent'] as num?)?.toInt() ?? 100,
+        scalePercents: [
+          for (final value in map['scalePercents'] as List? ?? const []) (value as num).toInt(),
+        ],
       );
 
   _TopologyDisplay copyWith({Offset? position}) => _TopologyDisplay(
@@ -1505,6 +1546,9 @@ class _TopologyDisplay {
     supportedModes: supportedModes,
     dextopOverlay: dextopOverlay,
     primary: primary,
+    extendedScreen: extendedScreen,
+    scalePercent: scalePercent,
+    scalePercents: scalePercents,
   );
 }
 

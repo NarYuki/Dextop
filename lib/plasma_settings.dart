@@ -37,6 +37,8 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
   var desktops = 4;
   var animationSpeed = 1.0;
   var hotCorner = true;
+  var trayNetworkType = true;
+  var trayBatteryPercent = true;
 
   @override
   void initState() {
@@ -58,6 +60,8 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
       animationSpeed = (store.getDouble('plasma_animation_speed') ?? 1.0)
           .clamp(0.0, 2.0);
       hotCorner = store.getBool('plasma_hot_corner') ?? true;
+      trayNetworkType = store.getBool('plasma_tray_network_type') ?? true;
+      trayBatteryPercent = store.getBool('plasma_tray_battery_percent') ?? true;
     });
   }
 
@@ -208,6 +212,30 @@ class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
                     onChanged: (value) {
                       setState(() => floatingPanel = value);
                       _save((p) => p.setBool('plasma_floating_panel', value));
+                    },
+                  ),
+                  const Divider(height: 1),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.signal_cellular_alt_rounded),
+                    title: Text(localText(context, 'モバイル回線の種類を表示', 'Show the mobile network type')),
+                    subtitle: Text(localText(context, '電波のアイコンの下に LTE や 5G などを表示します',
+                        'Shows LTE, 5G and so on under the signal icon')),
+                    value: trayNetworkType,
+                    onChanged: (value) {
+                      setState(() => trayNetworkType = value);
+                      _save((p) => p.setBool('plasma_tray_network_type', value));
+                    },
+                  ),
+                  const Divider(height: 1),
+                  SwitchListTile(
+                    secondary: const Icon(Icons.battery_std_rounded),
+                    title: Text(localText(context, '電池残量を表示', 'Show the battery percentage')),
+                    subtitle: Text(localText(context, '電池のアイコンの下に残量をパーセントで表示します',
+                        'Shows the charge as a percentage under the battery icon')),
+                    value: trayBatteryPercent,
+                    onChanged: (value) {
+                      setState(() => trayBatteryPercent = value);
+                      _save((p) => p.setBool('plasma_tray_battery_percent', value));
                     },
                   ),
                   const Divider(height: 1),

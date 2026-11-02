@@ -142,7 +142,7 @@ internal object GlyphPainter {
         }
     }
 
-    private fun symbolPath(name: String, filled: Boolean): Path? {
+    fun symbolPath(name: String, filled: Boolean): Path? {
         val key = if (filled) "$name#fill" else name
         symbolCache[key]?.let { return it }
         val data = MaterialSymbols.path(name, filled) ?: return null

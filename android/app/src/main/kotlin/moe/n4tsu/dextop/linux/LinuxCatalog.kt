@@ -79,6 +79,13 @@ internal object LinuxCatalog {
         if command -v xrdb >/dev/null 2>&1; then printf '%s\n' 'Xft.dpi: ${xDpi(config.dpi)}' | xrdb -nocpp -merge; fi
     """.trimIndent() + "\n"
 
+    /** The X server's DPI and Xft.dpi for [androidDpi], as the desktop's scale changes. */
+    internal fun updateDpiScript(display: Int, androidDpi: Int) = """
+        export DISPLAY=:$display
+        command -v xrandr >/dev/null 2>&1 && xrandr --dpi ${xDpi(androidDpi)} || true
+        if command -v xrdb >/dev/null 2>&1; then printf '%s\n' 'Xft.dpi: ${xDpi(androidDpi)}' | xrdb -nocpp -merge; fi
+    """.trimIndent() + "\n"
+
     const val IMAGE_SERVER = "https://images.linuxcontainers.org"
     const val IMAGE_INDEX = "$IMAGE_SERVER/meta/1.0/index-system"
     const val ARCHITECTURE = "arm64"

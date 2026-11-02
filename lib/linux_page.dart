@@ -87,6 +87,9 @@ class _LinuxPageState extends State<LinuxPage> {
   bool enabled = false;
   Map<Object?, Object?> status = const {};
   List<_LinuxContainer> containers = const [];
+
+  /// The container list has been read once; until then the pages show it loading, not empty.
+  bool _containersLoaded = false;
   String defaultContainer = '';
   List<Map<Object?, Object?>> catalog = const [];
   final Map<String, _Progress> progress = {};
@@ -266,6 +269,7 @@ class _LinuxPageState extends State<LinuxPage> {
         catalog = distros;
         defaultContainer = settings['defaultContainer'] as String? ?? '';
         error = null;
+        _containersLoaded = true;
       });
       _publishSetupProgress();
       unawaited(_prepareFirstRunSources());
@@ -276,7 +280,12 @@ class _LinuxPageState extends State<LinuxPage> {
         unawaited(_loadApps());
       }
     } on PlatformException catch (e) {
-      if (mounted) setState(() => error = e.message);
+      if (mounted) {
+        setState(() {
+          error = e.message;
+          _containersLoaded = true;
+        });
+      }
     } finally {
       _refreshing = false;
     }
@@ -796,7 +805,29 @@ class _LinuxPageState extends State<LinuxPage> {
 
   // region applications
 
+  /// Shown while the containers are still being read (the Linux service may take a moment).
+  List<Widget> _loadingSlivers(ThemeData theme) => [
+    SliverFillRemaining(
+      hasScrollBody: false,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const M3ELoadingIndicator(),
+            const SizedBox(height: 16),
+            Text(
+              t('コンテナを読み込んでいます…', 'Loading containers…'),
+              style: theme.textTheme.titleMedium,
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    ),
+  ];
+
   List<Widget> _appsSlivers(ThemeData theme) {
+    if (!_containersLoaded) return _loadingSlivers(theme);
     if (installedContainers.isEmpty) {
       return [
         SliverFillRemaining(
@@ -903,6 +934,7 @@ class _LinuxPageState extends State<LinuxPage> {
   // region containers
 
   List<Widget> _containerSlivers(AppLocalizations l, ThemeData theme) {
+    if (!_containersLoaded) return _loadingSlivers(theme);
     if (containers.isEmpty) {
       return [
         SliverFillRemaining(
