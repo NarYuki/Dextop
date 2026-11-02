@@ -1,0 +1,11 @@
+{
+  "repository": "https://github.com/VibeDarling/darling.git",
+  "commit": "a6cac09bc58fa4d2f195ecb2e12b62cf12c5905d",
+  "submodules": "pinned-gitlinks",
+  "architecture": "aarch64",
+  "libc": "glibc-2.31",
+  "install_prefix": "/opt/dextop/macos",
+  "launch_environment": {
+    "DARLING_NONROOT": "1"
+  }
+}
