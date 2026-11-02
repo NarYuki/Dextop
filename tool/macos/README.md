@@ -120,6 +120,41 @@ when the last window closes. Button actions and window resizes print diagnostic
 events. Its initial console message proves only that the window was requested; visible rendering, input,
 resizing and closing still need independent runtime verification.
 
+For a private headless X11 control test, install `xvfb`, `xdotool` and ImageMagick:
+
+```sh
+python3 tool/macos/check_gui.py --runtime /absolute/path/to/gui-runtime \
+  --probes /absolute/path/to/gui-probes --output /absolute/path/to/gui-logs
+```
+
+Use `--architecture x86_64` for a native WSL control. The test creates its own X
+display and Darling prefix, types into the probe, clicks its report button,
+resizes its window, closes it normally, checks the diagnostic events and exit
+status, and requests scoped shutdown. It saves PNG captures for visual review.
+Xvfb does not establish hardware GPU acceleration or Android presentation.
+
+The pinned x86_64 Swift Foundation overlay comes from Swift 5.2.2 and fails to
+load against the bundled Swift 6.3.3 core (`__swift_classIsSwiftMask`). The native
+GUI control uses rebuilt source overlays instead:
+
+```sh
+python3 tool/macos/build_swift_x86.py --source /pinned/darling-source \
+  --runtime /private/staged-runtime --toolchain /verified/linux-toolchain/usr \
+  --resource-dir /verified/swift-org-darwin-toolchain/usr/lib/swift \
+  --linker /darling-build/src/external/cctools-port/cctools/ld64/src/x86_64-apple-darwin20-ld \
+  --libsystem /darling-build/src/external/libsystem/libSystem.B.dylib \
+  --work /new/dedicated/swift-build
+```
+
+This requires the Swift.org 6.3.3 toolchain and its open-source Darwin runtime
+resources, verified before use. It copies the pinned Swift sources, builds
+Foundation and its real dependencies, and writes dylibs plus OpenCombine to
+`work/output`; it does not modify the supplied runtime. Stage those dylibs under
+the private runtime's `libexec/darling/usr/lib/swift` and `Combine` under
+`libexec/darling/System/Library/Frameworks/Combine.framework/Versions/A` before
+running the GUI control. Preserve the original files separately. This focused
+rebuild does not establish full Swift, SwiftUI or application compatibility.
+
 On Android, `run.sh` also enables `DEXTOP_DARLING_ANON_EXEC=1`. The dyld patch
 loads executable Mach-O segments into private anonymous writable memory before
 the existing ARM64 TLS adaptation and final protection change. Android's
