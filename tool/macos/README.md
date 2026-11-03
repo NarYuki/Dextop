@@ -231,6 +231,18 @@ The GUI shares the supplied X11 `DISPLAY` and common GPU environment. This tool
 is the lifecycle bridge for Book integration, not an installed Android UI or a
 claim that arbitrary macOS applications work.
 
+Book's application lifecycle gives each macOS launch a private bound control
+directory and sets `DEXTOP_DARLING_STOP_FILE`. Stopping the Linux session first
+requests all macOS supervisors to shut down, then waits before terminating the
+PRoot processes or display. A request during initial startup waits for the
+prefix's live, matching shellspawn registration; it does not race a second
+shutdown command against server initialization. A request received before
+launch cancels without starting Darling. If a supervisor does not finish within
+the shared stop deadline, the service retains the session for a retry rather
+than forcibly destroying the PRoot parent. Ordinary Linux processes do not use
+these controls. This does not guarantee cleanup after Android kills the service
+or the device loses power.
+
 Android's build copies this same source into Java resources. The common Linux
 session staging installs it at `/usr/local/lib/dextop/macos/launch_app.py`; there
 is no separately maintained Android launcher implementation. Python 3 and the

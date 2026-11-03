@@ -155,6 +155,18 @@ def prefix_lock(prefix):
         yield
 
 
+def session_ready(prefix):
+    """Do not race shutdown against initial server/shellspawn registration."""
+    try:
+        pid = int((prefix / '.shellspawn.pid').read_text().strip())
+        if pid <= 0:
+            return False
+        environment = Path(f'/proc/{pid}/environ').read_bytes().split(b'\0')
+        return b'__mldr_sockpath=' + os.fsencode(prefix / '.darlingserver.sock') in environment
+    except (OSError, ValueError):
+        return False
+
+
 def launch(runtime, prefix, executable, arguments):
     launcher = runtime / "bin/darling"
     for relative in CORE_COMPONENTS:
@@ -168,6 +180,7 @@ def launch(runtime, prefix, executable, arguments):
     # The currently supported Darling GUI backend is X11, sharing Book's Xwayland.
     env.pop("WAYLAND_DISPLAY", None)
     stopped = False
+    stop_file = Path(env['DEXTOP_DARLING_STOP_FILE']) if env.get('DEXTOP_DARLING_STOP_FILE') else None
 
     def interrupted(signum, frame):
         nonlocal stopped
@@ -177,16 +190,25 @@ def launch(runtime, prefix, executable, arguments):
         previous = {s: signal.signal(s, interrupted) for s in (signal.SIGTERM, signal.SIGINT)}
         app = None
         try:
+            if stopped or stop_file is not None and stop_file.exists():
+                print('macOS: startup cancelled', flush=True)
+                return 128 + signal.SIGTERM
             print("macOS: starting application", flush=True)
             app = subprocess.Popen([str(launcher), "exec", "/Volumes/SystemRoot" + str(executable), *arguments], env=env)
-            while not stopped:
+            waiting_reported = False
+            while True:
+                stopped = stopped or stop_file is not None and stop_file.exists()
+                if stopped and session_ready(prefix):
+                    return_code = 128 + signal.SIGTERM
+                    break
+                if stopped and not waiting_reported:
+                    print('macOS: waiting for startup before stopping', flush=True)
+                    waiting_reported = True
                 try:
                     return_code = app.wait(timeout=0.2)
                     break
                 except subprocess.TimeoutExpired:
                     pass
-            else:
-                return_code = 128 + signal.SIGTERM
         finally:
             try:
                 if app is not None:

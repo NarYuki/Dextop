@@ -494,6 +494,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     // region application windows
     private val appSessions = ConcurrentHashMap<String, LinuxAppSession>()
     private val appProcesses = ConcurrentHashMap<String, MutableList<Process>>()
+    private val appLifecycleLocks = ConcurrentHashMap<String, Any>()
+    private val macosLifecycle = LinuxMacosLifecycle()
 
     private fun appTarget(target: String): LinuxAppSession? =
         if (target.endsWith("#apps")) appSessions[target.removeSuffix("#apps")] else null
@@ -576,6 +578,12 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
      * application the GPU path cannot run still opens.
      */
     private fun launchApp(containerId: String, desktopId: String, software: Boolean, x11: Boolean = false, framed: Boolean = false) {
+        synchronized(appLifecycleLocks.getOrPut(containerId) { Any() }) {
+            launchAppLocked(containerId, desktopId, software, x11, framed)
+        }
+    }
+
+    private fun launchAppLocked(containerId: String, desktopId: String, software: Boolean, x11: Boolean, framed: Boolean) {
         val session = appSessions[containerId]?.takeIf { it.alive } ?: error("Application display is not running")
         val entry = LinuxDesktopEntries.find(LinuxPaths.rootfs(containerId), desktopId) ?: error("Unknown application $desktopId")
         if (session.restoreHiddenApplication(entry.startupWMClass)) {
@@ -620,10 +628,14 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             entry.displayBackend != "x11" && toolkitAvailable && (droidDeck || backend == "wayland" || backend.isEmpty() && waylandGpu))
         if (!toolkitAvailable && !x11) log(containerId, "${entry.name}: using X11 + Zink; native Wayland GPU driver is not installed")
         val appLog = "app-${entry.id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.log"
-        val process = requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command, wayland = wayland,
+        val macos = if (entry.runtime == "macos") macosLifecycle.prepare(File(LinuxPaths.container(containerId), "runtime/macos-control")) else null
+        val process = try { requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command, wayland = wayland,
             waylandGpu = droidDeck || waylandGpu, appLog = appLog, androidWindows = !framed),
-            extraBinds = flatpak?.binds.orEmpty(), extraEnvironment = flatpak?.environment.orEmpty())
+            extraBinds = flatpak?.binds.orEmpty() + macos?.binds.orEmpty(),
+            extraEnvironment = flatpak?.environment.orEmpty() + macos?.environment.orEmpty())
             .redirectErrorStream(true).start()
+        } catch (error: Exception) { macos?.cleanup(); throw error }
+        if (macos != null) macosLifecycle.attach(process, macos)
         process.outputStream.close()
         appProcesses.getOrPut(containerId) { java.util.Collections.synchronizedList(ArrayList()) }.apply {
             removeAll { !it.isAlive }
@@ -638,7 +650,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             }
             fun ended(code: Int) {
                 log(containerId, "launch-exit ${entry.id}: code=$code elapsedMs=${android.os.SystemClock.elapsedRealtime() - started} log=/tmp/$appLog")
-                val current = appProcesses[containerId]?.contains(process) == true
+                val current = appProcesses[containerId]?.contains(process) == true && macos?.stop?.isFile != true
                 val chromiumGpuFailure = LinuxLaunchFailure.chromiumGpu(code, output)
                 val gpuCrash = LinuxLaunchFailure.gpu(code, output) &&
                     android.os.SystemClock.elapsedRealtime() - started < GPU_CRASH_WINDOW_MS
@@ -682,14 +694,27 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             } } }
             // Without the marker the launch itself was killed (session stopped, out of memory).
             if (exitCode == null) ended(process.waitFor())
+            process.waitFor()
+            macosLifecycle.finished(process)
         }
             .apply { isDaemon = true; start() }
 
     }
 
     override fun stopApps(containerId: String) {
+        synchronized(appLifecycleLocks.getOrPut(containerId) { Any() }) { stopAppsLocked(containerId) }
+    }
+
+    private fun stopAppsLocked(containerId: String) {
+        val processes = appProcesses.remove(containerId)?.let { synchronized(it) { it.toList() } }.orEmpty()
+        try {
+            macosLifecycle.stop(processes)
+        } catch (error: Exception) {
+            appProcesses[containerId] = java.util.Collections.synchronizedList(processes.filter { it.isAlive }.toMutableList())
+            throw error
+        }
         wineTrayMetadata.stop(containerId)
-        appProcesses.remove(containerId)?.toList()?.forEach { runCatching { LinuxRuntime.terminate(it) } }
+        processes.forEach { runCatching { LinuxRuntime.terminate(it) } }
         appSessions.remove(containerId)?.let { notifiers.remove(it.display)?.stop(); it.stop() }
         stopRendererIfIdle(containerId)
     }

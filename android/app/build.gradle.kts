@@ -234,7 +234,7 @@ tasks.named("preBuild") { dependsOn(copyLinuxShortcutTemplate) }
 // second embedded copy. Java resources are available in both service modes.
 val macosResources = layout.buildDirectory.dir("generated/macos/resources")
 val copyMacosLauncher by tasks.registering(Copy::class) {
-    from(rootProject.file("../tool/macos/launch_app.py"))
+    from(rootProject.file("../tool/macos")) { include("launch_app.py", "runtime_archive.py") }
     into(macosResources.map { it.dir("moe/n4tsu/dextop/linux/macos") })
 }
 android.sourceSets.getByName("main").resources.srcDir(macosResources)

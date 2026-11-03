@@ -23,7 +23,7 @@ internal object LinuxDesktopEntries {
     private val FLATPAK_ROOTS = listOf("/root/.local/share/flatpak", "/var/lib/flatpak")
     private val ICON_DIRECTORY_SIZE = Regex("(?:^|/)(\\d+)(?:x\\d+)?(?:@\\d+)?(?:/|$)")
 
-    data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "", val flatpakId: String = "", val displayBackend: String = "")
+    data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "", val flatpakId: String = "", val displayBackend: String = "", val runtime: String = "")
 
     fun list(rootfs: File, locale: String): List<Entry> {
         val files = linkedMapOf<String, File>()
@@ -85,7 +85,7 @@ internal object LinuxDesktopEntries {
         val exec = values["Exec"]?.takeIf { it.isNotBlank() } ?: return null
         val language = locale.substringBefore('-').substringBefore('_')
         val name = values["Name[${locale.replace('-', '_')}]"] ?: values["Name[$language]"] ?: values["Name"] ?: return null
-        return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty(), values["X-Flatpak"].orEmpty(), values["X-Dextop-DisplayBackend"].orEmpty())
+        return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty(), values["X-Flatpak"].orEmpty(), values["X-Dextop-DisplayBackend"].orEmpty(), values["X-Dextop-Runtime"].orEmpty())
     }
 
     /**
