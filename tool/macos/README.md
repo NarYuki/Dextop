@@ -160,6 +160,13 @@ and the probe output directory. It checks four successive stereo conversions
 from 48 kHz signed 16-bit PCM to 24 kHz float PCM, bounded/nonzero samples and
 channel separation, followed by scoped shutdown. A 20-second in-program alarm
 also catches converter loops. This does not test speaker output or video.
+For output-path diagnostics, build with `build_audio_probe.py --probe audioqueue`
+and run with `check_runtime.py --probe audioqueue`. This requires a reachable
+PulseAudio server and sends silence. It requires eight playback callbacks before
+stopping, so callbacks returned by immediate stop cannot count as consumption.
+The checker supplies a host-side timeout; do not rely on guest signal delivery
+to interrupt a blocked native audio call. This is a diagnostic, and playback
+support must be established from its actual result, not from building the probe.
 The runtime patch supplies complete modern FFmpeg channel layouts and sample
 rates, receives encoder packets into the output packet, releases those packets,
 and stops draining the resampler when it produces zero actual samples.
@@ -213,6 +220,18 @@ the private runtime's `libexec/darling/usr/lib/swift` and `Combine` under
 `libexec/darling/System/Library/Frameworks/Combine.framework/Versions/A` before
 running the GUI control. Preserve the original files separately. This focused
 rebuild does not establish full Swift, SwiftUI or application compatibility.
+
+Use `check_swiftui_prerequisites.py` to diagnose the current source-built Swift
+overlays before working on OpenSwiftUI. Supply `--swiftc`, `--sdk`,
+`--resource-dir`, `--modules`, `--headers`, `--modulemap`, `--architecture`
+(`arm64` or `x86_64`) and a dedicated `--output` directory. These are the same
+toolchain, SDK, Darwin resources, built overlay modules, framework headers and
+overlay shim module map used by the overlay build above. It records each
+typecheck's diagnostics, the compiler version and command in `report.json`.
+Exit 2 means the Foundation baseline cannot compile; exit 1 means at least one
+prerequisite fails; exit 0 means only these focused source checks passed.
+The checks include Foundation formatting/image-glyph APIs and a minimal SwiftUI
+view import. They do not prove SwiftUI binary ABI compatibility or GUI behavior.
 
 On Android, `run.sh` also enables `DEXTOP_DARLING_ANON_EXEC=1`. The dyld patch
 loads executable Mach-O segments into private anonymous writable memory before
