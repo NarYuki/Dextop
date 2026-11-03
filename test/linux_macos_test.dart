@@ -10,10 +10,12 @@ void main() {
   final calls = <MethodCall>[];
   var installed = false;
   var registered = false;
+  var bundleAvailable = false;
   setUp(() {
     calls.clear();
     installed = false;
     registered = false;
+    bundleAvailable = false;
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
           calls.add(call);
@@ -29,6 +31,7 @@ void main() {
             return {
               'componentsPresent': installed,
               'guiPresent': installed,
+              'bundleAvailable': bundleAvailable,
               'applications': [
                 if (registered)
                   {
@@ -39,6 +42,10 @@ void main() {
                   },
               ],
             };
+          }
+          if (call.method == 'macosInstall') {
+            installed = true;
+            return {};
           }
           throw StateError('Unexpected ${call.method}');
         });
@@ -67,6 +74,22 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('only an available approved bundle enables installation', (
+    tester,
+  ) async {
+    bundleAvailable = true;
+    await open(tester);
+    await tester.tap(find.text('Install compatibility runtime'));
+    await tester.pumpAndSettle();
+    expect(calls.singleWhere((c) => c.method == 'macosInstall').arguments, {
+      'id': 'ctest',
+      'value': '',
+    });
+    expect(
+      find.text('Components installed; app compatibility is unverified'),
+      findsOneWidget,
+    );
+  });
   testWidgets('missing runtime never enables bundle registration', (
     tester,
   ) async {
