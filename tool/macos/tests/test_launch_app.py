@@ -50,6 +50,25 @@ class BundleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.bundle_info(self.bundle)
 
+    def test_registration_does_not_put_bundle_path_in_exec(self):
+        info = module.bundle_info(self.bundle)
+        info['name'] = 'Name\nExec=unexpected\n[Desktop Entry]'
+        home = Path(self.directory.name) / 'home'
+        registration = module.register_bundle(info, Path('/runtime'), Path('/prefix'), home)
+        key = registration['id'].removeprefix('dextop-macos-').removesuffix('.desktop')
+        record, desktop = module.registration_paths(home, key)
+        self.assertEqual(json.loads(record.read_text())['bundle'], str(self.bundle.resolve()))
+        lines = desktop.read_text().splitlines()
+        self.assertEqual(len([line for line in lines if line.startswith('Exec=')]), 1)
+        self.assertNotIn(str(self.bundle), next(line for line in lines if line.startswith('Exec=')))
+        self.assertEqual(lines.count('[Desktop Entry]'), 1)
+        self.assertIn('X-Dextop-DisplayBackend=x11', lines)
+
+    def test_registration_id_cannot_escape_directory(self):
+        for key in ('../outside', 'A' * 24, '0' * 23, '0' * 24 + '/file'):
+            with self.assertRaises(ValueError):
+                module.registration_paths(Path(self.directory.name), key)
+
     def test_universal_architectures_and_truncated_table(self):
         table = struct.pack(">II", 0xCAFEBABE, 2)
         table += struct.pack(">IIIII", 0x0100000C, 0, 4096, 100, 12)
@@ -130,6 +149,32 @@ sys.exit(int(os.environ.get('OWN_APP_CODE', '0')))
         result = subprocess.run(self.command, env=dict(self.env, OWN_SHUTDOWN_CODE='9'), capture_output=True, timeout=10)
         self.assertEqual(result.returncode, 1)
         self.assertIn(b'shutdown failed', result.stderr)
+
+    def test_registered_launch_and_removal_preserve_bundle_and_prefix(self):
+        bundle = self.root / '日本語 App.app'
+        binary = bundle / 'Contents/MacOS/program'
+        binary.parent.mkdir(parents=True)
+        binary.write_bytes(struct.pack('<II', 0xFEEDFACF, module.CPU_TYPES[platform.machine()]))
+        (bundle / 'Contents/Info.plist').write_bytes(plistlib.dumps({'CFBundleExecutable': 'program'}))
+        env = dict(self.env, HOME=str(self.root))
+        register = [sys.executable, module.__file__, '--register', '--bundle', str(bundle),
+                    '--runtime', str(self.runtime), '--prefix', str(self.root / 'prefix')]
+        result = subprocess.run(register, env=env, capture_output=True, text=True, check=True, timeout=10)
+        key = json.loads(result.stdout)['id'].removeprefix('dextop-macos-').removesuffix('.desktop')
+        self.assertFalse(self.log.exists())
+        result = subprocess.run([sys.executable, module.__file__, '--registered', key], env=env,
+                                capture_output=True, timeout=10)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(self.events()[-1], ['shutdown'])
+        data = self.root / 'prefix/user-file'
+        data.parent.mkdir(exist_ok=True)
+        data.write_text('retain')
+        subprocess.run([sys.executable, module.__file__, '--unregister', key], env=env, check=True, timeout=10)
+        self.assertTrue(binary.is_file())
+        self.assertEqual(data.read_text(), 'retain')
+        record, desktop = module.registration_paths(self.root, key)
+        self.assertFalse(record.exists())
+        self.assertFalse(desktop.exists())
 
     def test_sigterm_requests_scoped_shutdown(self):
         app = subprocess.Popen(self.command, env=dict(self.env, OWN_APP_WAIT='1'),
