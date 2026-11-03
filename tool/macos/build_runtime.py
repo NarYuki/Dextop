@@ -1,6 +1,7 @@
 """Build a pinned Darling runtime on a matching Linux host in a dedicated directory."""
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -86,6 +87,9 @@ def main():
         "dextop_anonymous_executable_segments": True,
         "android_execution_verified": False,
         "macos_application_verified": False,
+        "tooling_sha256": {name: hashlib.sha256((HERE / name).read_bytes()).hexdigest()
+                           for name in ("patch_runtime.py", "darling_segments.h", "darling_socket.c",
+                                        "bundle_native.py", "native-deps.lock.json")},
     }, indent=2) + "\n", encoding="utf-8")
     print(f"Staged experimental {args.components}: {runtime}. Android/Mach-O execution still needs verification.")
 

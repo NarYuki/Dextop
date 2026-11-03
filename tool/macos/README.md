@@ -257,3 +257,35 @@ removal using the same commands. `--status` inspects files without starting
 Darling; component presence is explicitly distinct from verified compatibility.
 The runtime installer is still needed; registration alone does not install
 Darling or prove app compatibility.
+
+### Runtime archives and installation
+
+CI packages the runtime only after the native execution checks pass. The first
+archive entry is `dextop-runtime.json`, containing build provenance, tool input
+digests, and the complete file/directory/link inventory. Build verification
+flags remain explicit: passing Linux probes does not mark Android or arbitrary
+macOS app compatibility as verified.
+
+```sh
+python3 tool/macos/runtime_archive.py package --runtime /private/staged-runtime \
+  --metadata /private/build-info.json --output /private/runtime.tar.gz
+python3 tool/macos/runtime_archive.py install --archive /private/runtime.tar.gz \
+  --sha256 TRUSTED_ARCHIVE_SHA256 --source-commit PINNED_DARLING_COMMIT \
+  --architecture aarch64 --target /private/new-runtime
+```
+
+The SHA-256 must come from an independently trusted source. A manifest or digest
+bundled with an unknown download does not authenticate it. Installation checks
+the archive digest, pinned source and architecture, complete inventory, file
+hashes, native ELF and core Mach-O architectures and required components before atomically
+publishing a new directory. GUI components are required unless `--core-only`
+is supplied. It refuses existing targets, including a concurrent install, and
+does not merge, upgrade, delete or stop an existing runtime. Failed staging is
+removed. No runtime binaries are executed during installation.
+
+Darwin absolute symbolic links are preserved but are created after regular
+files; they cannot be used as extraction parents. Device nodes, hard links,
+duplicate paths, unexpected files and setuid/setgid modes are rejected. This
+installer currently runs inside Linux; the Android file-picker/install UI and
+trusted distribution digest are still pending. Do not publish private assembled
+validation runtimes as reproducible release builds.
