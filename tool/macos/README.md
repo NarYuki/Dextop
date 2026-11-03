@@ -251,5 +251,9 @@ the bundle; launching revalidates it. Refresh the application list after adding
 or removing registrations. `--registered ID` launches one; `--unregister ID`
 removes only its registration and desktop entry, keeping the bundle and prefix.
 The id is the 24-character suffix returned by registration, excluding
-`dextop-macos-` and `.desktop`. A settings UI and runtime installer are still
-needed; a registration alone does not install Darling or prove app compatibility.
+`dextop-macos-` and `.desktop`. Linux settings → macOS compatibility provides
+per-container component status, bundle registration and confirmed registration
+removal using the same commands. `--status` inspects files without starting
+Darling; component presence is explicitly distinct from verified compatibility.
+The runtime installer is still needed; registration alone does not install
+Darling or prove app compatibility.
