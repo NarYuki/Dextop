@@ -19,6 +19,7 @@ class LinuxDesktopEntriesTest {
             val entry = LinuxDesktopEntries.list(root, "ja").single()
             assertEquals("日本語 App", entry.name)
             assertEquals("x11", entry.displayBackend)
+            assertEquals("macos", entry.runtime)
             assertEquals(command, LinuxDesktopEntries.command(entry))
             assertEquals(entry, LinuxDesktopEntries.find(root, id))
         } finally { root.deleteRecursively() }
