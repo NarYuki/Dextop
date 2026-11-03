@@ -299,7 +299,8 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     }
                     LinuxMacosSettings.execute(service, call.argument<String>("id")!!, operation,
                         call.argument<String>("value").orEmpty())
-                }) { jsonMap(it) }
+                }) { jsonMap(it) + mapOf("bundleAvailable" to (LinuxMacosRuntimeBundle.approval() != null)) }
+                "macosInstall" -> remote({ it.installMacosRuntime(call.argument<String>("id")!!) }) { jsonMap(it) }
                 "storeState" -> remote({ service ->
                     val id = call.argument<String>("id")!!
                     LinuxStoreSources.requireApt(service, id)

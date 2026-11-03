@@ -267,8 +267,8 @@ The id is the 24-character suffix returned by registration, excluding
 per-container component status, bundle registration and confirmed registration
 removal using the same commands. `--status` inspects files without starting
 Darling; component presence is explicitly distinct from verified compatibility.
-The runtime installer is still needed; registration alone does not install
-Darling or prove app compatibility.
+Installing the bundled runtime is a separate operation; registration alone does
+not install Darling or prove app compatibility.
 
 ### Runtime archives and installation
 
@@ -298,6 +298,26 @@ removed. No runtime binaries are executed during installation.
 Darwin absolute symbolic links are preserved but are created after regular
 files; they cannot be used as extraction parents. Device nodes, hard links,
 duplicate paths, unexpected files and setuid/setgid modes are rejected. This
-installer currently runs inside Linux; the Android file-picker/install UI and
-trusted distribution digest are still pending. Do not publish private assembled
-validation runtimes as reproducible release builds.
+installer runs inside Linux. Android settings can invoke it only for the runtime
+approved inside its own APK; callers supply only the container id. The service
+checks the bundled digest before preparing Python 3, binds the private archive
+into that container, and installs to the fixed runtime path. Missing Python 3
+is prepared through APT on Debian/Ubuntu. No Darwin process is started by setup.
+
+To include a reviewed successful GUI build in a local APK, supply both Gradle
+properties (paths are resolved from the Android app project):
+
+```text
+-PdextopMacosRuntimeArchive=/absolute/path/darling-gui-arm64.tar.gz
+-PdextopMacosRuntimeSha256=INDEPENDENTLY_APPROVED_ARCHIVE_SHA256
+```
+
+The build verifies the supplied digest and generates an APK-owned approval
+descriptor with the pinned source commit. Review the build/run and provenance
+before approving its digest; an archive's own checksum is not a trust decision.
+Without these options the settings screen reports that no installable runtime
+is bundled. Resource synchronization removes an older optional archive and its
+descriptor when the options are unset. No runtime binary or approval is tracked
+in this repository. Do not publish private assembled validation runtimes as
+reproducible release builds. Installation and arbitrary app compatibility still
+need device verification for each distributed payload.

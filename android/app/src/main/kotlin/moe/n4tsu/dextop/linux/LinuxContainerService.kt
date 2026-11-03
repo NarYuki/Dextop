@@ -34,8 +34,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     private val androidContext = context?.takeUnless { Os.getuid() in setOf(0, 2000) }
     companion object {
         private const val TAG = "DextopLinuxService"
-        // Includes guest state files (AIDL transaction 47).
-        const val PROTOCOL_VERSION = 25
+        // Includes APK-approved macOS runtime installation (AIDL transaction 65).
+        const val PROTOCOL_VERSION = 26
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         private val GUEST_LOG = Regex("""[A-Za-z0-9._-]+\.log""")
@@ -350,6 +350,29 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         prepareAndroid(containerId)
         val result = runner.run(runner.guest(containerId, command, fakeRoot = true), timeoutSeconds.toLong().coerceIn(1, 3_600))
         return JSONObject().put("exitCode", result.exitCode).put("output", result.output).toString()
+    }
+
+    override fun installMacosRuntime(containerId: String): String = synchronized(appLifecycleLocks.getOrPut(containerId) { Any() }) {
+        val approval = checkNotNull(LinuxMacosRuntimeBundle.approval()) { "This APK has no approved macOS runtime bundle" }
+        val runner = requireProot()
+        val root = LinuxPaths.rootfs(containerId)
+        check(root.isDirectory) { "Linux container is not installed" }
+        val base = File(LinuxPaths.container(containerId), "runtime").apply { check(isDirectory || mkdirs()) }
+        val temporary = java.nio.file.Files.createTempDirectory(base.toPath(), "macos-install-").toFile()
+        val archive = File(temporary, "runtime.tar.gz")
+        try {
+            LinuxMacosRuntimeBundle.copyArchive(archive, approval)
+            prepareAndroid(containerId)
+            LinuxSessionCompatibility.stage(root, runner.nativeLibraryDir, LinuxProot.socketNamespace(containerId))
+            val preparation = runner.run(runner.guest(containerId, LinuxMacosRuntimeBundle.PREPARE, fakeRoot = true), 600)
+            check(preparation.exitCode == 0) { preparation.output.takeLast(4000).ifBlank { "macOS runtime preparation failed" } }
+            val result = runner.run(runner.guest(containerId, LinuxMacosRuntimeBundle.command(approval),
+                extraBinds = listOf("${archive.absolutePath}:/run/dextop-macos-runtime.tar.gz")), 600)
+            check(result.exitCode == 0) { result.output.takeLast(4000).ifBlank { "macOS runtime installation failed" } }
+            val json = result.output.lineSequence().lastOrNull { it.trimStart().startsWith('{') }
+                ?: error("macOS installation did not return a result")
+            JSONObject(json).toString()
+        } finally { archive.delete(); temporary.delete() }
     }
 
     override fun openTerminal(containerId: String, rows: Int, cols: Int): android.os.ParcelFileDescriptor {

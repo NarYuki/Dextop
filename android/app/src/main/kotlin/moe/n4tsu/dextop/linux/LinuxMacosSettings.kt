@@ -22,7 +22,9 @@ internal object LinuxMacosSettings {
             }
             else -> error("Unknown macOS settings operation")
         }
-        return "python3 $LAUNCHER $arguments"
+        val command = "python3 $LAUNCHER $arguments"
+        return if (operation == "status") "if command -v python3 >/dev/null 2>&1; then $command; else " +
+            "printf '%s\\n' '{\"pythonAvailable\":false,\"componentsPresent\":false,\"guiPresent\":false,\"applications\":[]}'; fi" else command
     }
 
     fun execute(service: ILinuxContainerService, id: String, operation: String, value: String = ""): String {
