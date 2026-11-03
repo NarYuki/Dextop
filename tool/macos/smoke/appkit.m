@@ -7,9 +7,11 @@ static NSString *documentPath;
 
 @interface DextopProbeDelegate : NSObject <NSApplicationDelegate, NSWindowDelegate> {
     NSTextField *input;
+    NSWindow *probeWindow;
 }
 - (void)reportInput:(id)sender;
 - (void)showDialog:(id)sender;
+- (void)traceTick:(NSTimer *)timer;
 @end
 
 @implementation DextopProbeDelegate
@@ -20,7 +22,9 @@ static NSString *documentPath;
                   styleMask:(NSTitledWindowMask | NSClosableWindowMask |
                              NSResizableWindowMask)
                     backing:NSBackingStoreBuffered defer:NO];
-    [window setTitle:@"Dextop macOS AppKit probe"];
+    const char *title = getenv("DEXTOP_GUI_TITLE");
+    [window setTitle:title ? [NSString stringWithUTF8String:title] : @"Dextop macOS AppKit probe"];
+    probeWindow = window;
     [window setDelegate:self];
     NSTextField *label = [[NSTextField alloc]
         initWithFrame:NSMakeRect(24, 110, 432, 40)];
@@ -59,6 +63,10 @@ static NSString *documentPath;
     [dialogButton setAction:@selector(showDialog:)];
     [[window contentView] addSubview:dialogButton];
     [window makeKeyAndOrderFront:nil];
+    if (getenv("DEXTOP_GUI_TRACE")) {
+        [NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(traceTick:)
+                                      userInfo:nil repeats:YES];
+    }
     puts("appkit: window requested");
     fflush(stdout);
 }
@@ -71,6 +79,29 @@ static NSString *documentPath;
         printf("appkit: saved=%s\n", [document UTF8String]);
     } else if (documentPath) {
         fprintf(stderr, "appkit: save failed: %s\n", [[error description] UTF8String]);
+    }
+    fflush(stdout);
+}
+- (void)traceTick:(NSTimer *)timer {
+    (void)timer;
+    printf("appkit: tick visible=%d dirty=%d\n", [probeWindow isVisible],
+           [[probeWindow contentView] needsDisplay]);
+    if (getenv("DEXTOP_GUI_FORCE_DISPLAY")) {
+        [probeWindow display];
+        puts("appkit: explicit display returned");
+    }
+    if (getenv("DEXTOP_GUI_TEST_FILL")) {
+        NSView *view = [probeWindow contentView];
+        [view lockFocus];
+        printf("appkit: focus context=%d port=%d flushDisabled=%d\n",
+               [NSGraphicsContext currentContext] != nil,
+               [[NSGraphicsContext currentContext] graphicsPort] != NULL,
+               [probeWindow isFlushWindowDisabled]);
+        [[NSColor colorWithCalibratedRed:1 green:0 blue:0 alpha:1] setFill];
+        NSRectFill([view bounds]);
+        [view unlockFocus];
+        [probeWindow flushWindow];
+        puts("appkit: test fill flushed");
     }
     fflush(stdout);
 }

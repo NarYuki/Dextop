@@ -60,6 +60,20 @@ class RunTests(unittest.TestCase):
         self.env["DEXTOP_DARLING_ROOT"] = "relative/path"
         self.assertEqual(self.invoke("--check").returncode, 64)
 
+    def test_host_library_transport_preserves_paths_and_explicit_override(self):
+        self.populate()
+        (self.runtime / "bin/darling").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$DEXTOP_DARLING_HOST_LIBRARY_PATH"\n')
+        self.env.pop("DEXTOP_DARLING_HOST_LIBRARY_PATH", None)
+        self.env["LD_LIBRARY_PATH"] = "/driver release/lib:/shared/lib"
+        result = self.invoke("exec", "/Applications/Test")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout.strip(), "/driver release/lib:/shared/lib")
+        self.env["DEXTOP_DARLING_HOST_LIBRARY_PATH"] = "/selected/driver/lib"
+        self.assertEqual(self.invoke("exec", "/Applications/Test").stdout.strip(), "/selected/driver/lib")
+        self.env["DEXTOP_DARLING_HOST_LIBRARY_PATH"] = ""
+        self.assertEqual(self.invoke("exec", "/Applications/Test").stdout, "\n")
+
 
 if __name__ == "__main__":
     unittest.main()

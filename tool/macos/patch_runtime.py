@@ -14,6 +14,27 @@ def replace_once(path, old, new):
     path.write_text(content.replace(old, new), encoding="utf-8")
 
 
+def patch_shutdown_diagnostics(source):
+    shutdown = Path(source) / "src/startup/container-shutdown.h"
+    replace_once(shutdown,
+                 "if (fd < 0) { if (errno != ESRCH) ok = false; continue; }",
+                 "if (fd < 0) { if (errno != ESRCH) { fprintf(stderr, \"Shutdown pidfd_open(%d): %s\\n\", pid, strerror(errno)); ok = false; } continue; }")
+    for signal in ("SIGTERM", "SIGKILL"):
+        replace_once(shutdown,
+                     f"if (syscall(SYS_pidfd_send_signal, handles[i].fd, {signal}, NULL, 0) < 0 && errno != ESRCH) ok = false;",
+                     f"if (syscall(SYS_pidfd_send_signal, handles[i].fd, {signal}, NULL, 0) < 0 && errno != ESRCH) {{ fprintf(stderr, \"Shutdown {signal} pidfd=%d: %s\\n\", handles[i].fd, strerror(errno)); ok = false; }}")
+        replace_once(shutdown,
+                     f"syscall(SYS_pidfd_send_signal, serverHandle, {signal}, NULL, 0);",
+                     f"if (syscall(SYS_pidfd_send_signal, serverHandle, {signal}, NULL, 0) < 0 && errno != ESRCH) fprintf(stderr, \"Shutdown server {signal}: %s\\n\", strerror(errno));")
+    replace_once(shutdown,
+                 " if (poll(&serverPoll, 1, 1000) <= 0) ok = false;",
+                 " int serverState = poll(&serverPoll, 1, 1000);\n"
+                 " if (serverState <= 0) { fprintf(stderr, \"Shutdown server %d did not exit: poll=%d errno=%d\\n\", server, serverState, serverState < 0 ? errno : 0); ok = false; }")
+    replace_once(shutdown,
+                 "  if (poll(&handles[i], 1, 1000) <= 0) ok = false;",
+                 "  { int state = poll(&handles[i], 1, 1000); if (state <= 0) { fprintf(stderr, \"Shutdown child pidfd=%d did not exit: poll=%d errno=%d\\n\", handles[i].fd, state, state < 0 ? errno : 0); ok = false; } }")
+
+
 def patch_launcher(source):
     source = Path(source)
     shutdown = source / "src/startup/container-shutdown.h"
@@ -28,6 +49,7 @@ def patch_launcher(source):
     replace_once(source / "src/startup/darling.c",
                  "shutdownContainer(pidInit, handle, shellspawn, shellHandle);",
                  "shutdownContainer(pidInit, handle, shellspawn, shellHandle, g_nonroot);")
+    patch_shutdown_diagnostics(source)
 
 
 def patch_gui(source):
@@ -62,6 +84,21 @@ def patch_native_libraries(source):
                  "\t\t}\n"
                  "\t}\n"
                  "\trv = dlopen(name, RTLD_LAZY);")
+    patch_host_library_path(source)
+
+
+def patch_host_library_path(source):
+    source = Path(source)
+    execve = source / "src/external/xnu/darling/src/libsystem_kernel/emulation/src/xnu_syscall/bsd/impl/process/execve.c"
+    replace_once(execve, "\t\tif (is_android) {",
+                 "\t\tconst char* dextop_host_ld = getenv(\"DEXTOP_DARLING_HOST_LIBRARY_PATH\");\n"
+                 "\t\tif (dextop_host_ld && dextop_host_ld[0]) {\n"
+                 "\t\t\ttermux_ld_env = (char*)__builtin_alloca(strlen(dextop_host_ld) + sizeof(\"LD_LIBRARY_PATH=\"));\n"
+                 "\t\t\tstrcpy(termux_ld_env, \"LD_LIBRARY_PATH=\");\n"
+                 "\t\t\tstrcat(termux_ld_env, dextop_host_ld);\n"
+                 "\t\t\tadd_termux_ld = 1;\n"
+                 "\t\t}\n"
+                 "\t\tif (!add_termux_ld && is_android) {")
 
 
 def apply(source):

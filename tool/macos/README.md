@@ -142,6 +142,23 @@ this directory for bare ELF SONAMEs before the system loader; explicit paths
 keep their original behavior. This is separate from Darwin's dyld search path:
 the launcher intentionally filters the host's `LD_LIBRARY_PATH`, and Debian's
 `libjpeg.so.62` does not provide Ubuntu's `libjpeg.so.8` ABI.
+
+The wrapper transports the selected host `LD_LIBRARY_PATH` using
+`DEXTOP_DARLING_HOST_LIBRARY_PATH`. The Darwin exec bridge restores it only for
+the next Linux MLDR invocation; MLDR still removes the standard host loader
+variables before entering Darwin userland. This keeps the common Dextop EGL/GL
+runtime selected across nested Mach-O launches. On the Android control device,
+native EGL gears and AppKit both produced black X11 images with the system
+graphics libraries, while the common Dextop library path produced correct
+pixels. An explicit transport value overrides the inherited path; an explicit
+empty value disables transport. Callers bypassing `run.sh` must provide the
+same transport when they select a host graphics runtime.
+
+Keep the PRoot parent session alive through scoped Darling shutdown. The
+standalone Android diagnostic reproduced a tracer exit-stop hang when its root
+client exited while a different PRoot task shut down its daemon; supervised
+tests that retain the parent through cleanup complete normally. Shutdown
+diagnostics report pidfd and polling failures without broadening targets.
 With the current probe, add `--persistence` to verify that Foundation atomically
 saves the entered text plus a Japanese UTF-8 suffix, then reloads it after the
 app closes and restarts in the same private prefix. Review `reopened.png` for
