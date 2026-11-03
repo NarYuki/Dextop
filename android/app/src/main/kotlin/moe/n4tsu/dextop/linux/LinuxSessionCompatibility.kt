@@ -34,6 +34,7 @@ internal object LinuxSessionCompatibility {
         stageSystemServices(root)
         stageWindowsHelper(root)
         stageScript(root, "dextop-apt-heal", "usr/local/sbin/dextop-apt-heal")
+        stageScript(root, "macos/launch_app.py", "usr/local/lib/dextop/macos/launch_app.py")
         val source = File(nativeLibraryDir, LIBRARY)
         check(source.isFile) { "Linux session compatibility library is not packaged" }
         val target = File(root, GUEST_PRELOAD.removePrefix("/"))

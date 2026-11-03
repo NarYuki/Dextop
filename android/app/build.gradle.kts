@@ -229,3 +229,13 @@ val copyLinuxShortcutTemplate by tasks.registering(Copy::class) {
 }
 android.sourceSets.getByName("main").assets.srcDir(linuxShortcutAssets)
 tasks.named("preBuild") { dependsOn(copyLinuxShortcutTemplate) }
+
+// Share the tested launcher with the Android service instead of maintaining a
+// second embedded copy. Java resources are available in both service modes.
+val macosResources = layout.buildDirectory.dir("generated/macos/resources")
+val copyMacosLauncher by tasks.registering(Copy::class) {
+    from(rootProject.file("../tool/macos/launch_app.py"))
+    into(macosResources.map { it.dir("moe/n4tsu/dextop/linux/macos") })
+}
+android.sourceSets.getByName("main").resources.srcDir(macosResources)
+tasks.named("preBuild") { dependsOn(copyMacosLauncher) }
