@@ -75,5 +75,20 @@ class RunTests(unittest.TestCase):
         self.assertEqual(self.invoke("exec", "/Applications/Test").stdout, "\n")
 
 
+    def test_host_preload_transport_preserves_selection_and_empty_override(self):
+        self.populate()
+        (self.runtime / "bin/darling").write_text(
+            '#!/bin/sh\nprintf "%s\\n" "$DEXTOP_DARLING_HOST_PRELOAD" "$LD_PRELOAD"\n')
+        self.env.pop("DEXTOP_DARLING_HOST_PRELOAD", None)
+        self.env["LD_PRELOAD"] = "libm.so.6"
+        self.assertEqual(self.invoke("exec", "/Applications/Test").stdout.splitlines(),
+                         ["libm.so.6", "libm.so.6"])
+        self.env["DEXTOP_DARLING_HOST_PRELOAD"] = "/chosen/shim.so:/other/shim.so"
+        self.assertEqual(self.invoke("exec", "/Applications/Test").stdout.splitlines(),
+                         ["/chosen/shim.so:/other/shim.so", "libm.so.6"])
+        self.env["DEXTOP_DARLING_HOST_PRELOAD"] = ""
+        self.assertEqual(self.invoke("exec", "/Applications/Test").stdout.splitlines(), ["", "libm.so.6"])
+
+
 if __name__ == "__main__":
     unittest.main()
