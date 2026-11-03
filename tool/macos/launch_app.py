@@ -22,6 +22,27 @@ from xml.parsers.expat import ExpatError
 
 
 CPU_TYPES = {"aarch64": 0x0100000C, "arm64": 0x0100000C, "x86_64": 0x01000007}
+CORE_COMPONENTS = ("bin/darling", "bin/darlingserver", "libexec/darling/bin/mldr",
+                   "libexec/darling/usr/lib/dyld", "libexec/darling/sbin/launchd")
+
+
+def runtime_status(runtime, home):
+    missing = [name for name in CORE_COMPONENTS if not (runtime / name).is_file()]
+    gui = runtime / "libexec/darling/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"
+    applications = []
+    for record in sorted((home / ".local/share/dextop/macos/apps").glob("*.json")):
+        if not re.fullmatch(r"[a-f0-9]{24}", record.stem) or record.stat().st_size > 64 * 1024:
+            continue
+        try:
+            saved = json.loads(record.read_text(encoding="utf-8"))
+            bundle = Path(saved["bundle"])
+            info = bundle_info(bundle)
+            applications.append({"key": record.stem, "name": info["name"], "bundle": str(bundle), "present": True})
+        except (OSError, ValueError, TypeError, KeyError, plistlib.InvalidFileException, ExpatError):
+            applications.append({"key": record.stem, "name": record.stem, "present": False})
+    return {"runtime": str(runtime), "componentsPresent": not missing,
+            "guiPresent": gui.is_file(), "missing": missing,
+            "architecture": platform.machine(), "applications": applications}
 
 
 def application_key(info):
@@ -136,8 +157,7 @@ def prefix_lock(prefix):
 
 def launch(runtime, prefix, executable, arguments):
     launcher = runtime / "bin/darling"
-    for relative in ("bin/darling", "bin/darlingserver", "libexec/darling/bin/mldr",
-                     "libexec/darling/usr/lib/dyld", "libexec/darling/sbin/launchd"):
+    for relative in CORE_COMPONENTS:
         if not (runtime / relative).is_file():
             raise ValueError(f"Missing Darling component: {relative}")
     env = dict(os.environ, DARLING_NONROOT="1", DARLING_INSTALL_PREFIX=str(runtime), DPREFIX=str(prefix))
@@ -189,6 +209,7 @@ def main():
     target.add_argument("--executable", type=Path, help="Standalone Mach-O, for own-source programs")
     target.add_argument("--registered", help="Launch an application registered in the Linux app list")
     target.add_argument("--unregister", help="Remove a registration, retaining the .app and its data")
+    target.add_argument("--status", action="store_true", help="Inspect installed components and registrations without starting Darling")
     parser.add_argument("--inspect", action="store_true", help="Read bundle metadata without executing it")
     parser.add_argument("--register", action="store_true", help="Add the bundle to Book and the Linux application list")
     parser.add_argument("--runtime", type=Path, default=Path(os.environ.get("DEXTOP_DARLING_ROOT", "/opt/dextop/macos")))
@@ -196,6 +217,9 @@ def main():
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
+        if args.status:
+            print(json.dumps(runtime_status(args.runtime.resolve(), Path.home()), ensure_ascii=False))
+            return 0
         if args.unregister:
             record, desktop = registration_paths(Path.home(), args.unregister)
             desktop.unlink(missing_ok=True)

@@ -15,6 +15,7 @@ import 'linux/linux_advanced_settings.dart';
 import 'linux/linux_compat.dart';
 import 'linux/linux_resources.dart';
 import 'linux/linux_first_run.dart';
+import 'linux/linux_macos.dart';
 
 /// Linux settings, stored by the shell-side Linux service: the defaults
 /// (default container and graphics) or, with [containerId], one container's
@@ -626,6 +627,15 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             'Store',
             t('配布元と準備', 'Sources and their setup'),
           ),
+          category(
+            'macos',
+            M3EIcons.computer_rounded,
+            t('macOS 互換', 'macOS compatibility'),
+            t(
+              '互換環境とローカルアプリの登録',
+              'Compatibility runtime and local app registration',
+            ),
+          ),
         ],
       ),
       LinuxSection(t('初期化', 'Reset')),
@@ -657,6 +667,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'store' => 'Store',
       'compat' => t('互換性と権限', 'Compatibility and permissions'),
       'resources' => t('リソース', 'Resources'),
+      'macos' => t('macOS 互換', 'macOS compatibility'),
       _ => l.linuxSettingsTitle,
     };
     final content = switch (page) {
@@ -667,6 +678,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'store' => store(),
       'compat' => const [LinuxCompatPanel()],
       'resources' => const [LinuxResourcesPanel()],
+      'macos' => [LinuxMacosPanel(containers: containers)],
       _ => hub(),
     };
 

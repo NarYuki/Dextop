@@ -69,6 +69,16 @@ class BundleTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.registration_paths(Path(self.directory.name), key)
 
+    def test_status_does_not_start_or_create_a_runtime(self):
+        root = Path(self.directory.name)
+        runtime = root / 'not-installed'
+        status = module.runtime_status(runtime, root / 'home')
+        self.assertFalse(status['componentsPresent'])
+        self.assertFalse(status['guiPresent'])
+        self.assertEqual(status['applications'], [])
+        self.assertEqual(len(status['missing']), len(module.CORE_COMPONENTS))
+        self.assertFalse(runtime.exists())
+
     def test_universal_architectures_and_truncated_table(self):
         table = struct.pack(">II", 0xCAFEBABE, 2)
         table += struct.pack(">IIIII", 0x0100000C, 0, 4096, 100, 12)

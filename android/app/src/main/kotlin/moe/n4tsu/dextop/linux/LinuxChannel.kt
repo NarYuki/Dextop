@@ -291,6 +291,15 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     )
                 }
                 "stopProcess" -> remote({ it.stopProcess(call.argument<Int>("pid")!!, call.argument<String>("start").orEmpty()) })
+                "macosStatus", "macosRegister", "macosUnregister" -> remote({ service ->
+                    val operation = when (call.method) {
+                        "macosRegister" -> "register"
+                        "macosUnregister" -> "unregister"
+                        else -> "status"
+                    }
+                    LinuxMacosSettings.execute(service, call.argument<String>("id")!!, operation,
+                        call.argument<String>("value").orEmpty())
+                }) { jsonMap(it) }
                 "storeState" -> remote({ service ->
                     val id = call.argument<String>("id")!!
                     LinuxStoreSources.requireApt(service, id)
