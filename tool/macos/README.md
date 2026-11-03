@@ -119,6 +119,10 @@ window containing text, an editable field and an input-report button, and exits
 when the last window closes. Button actions and window resizes print diagnostic
 events. Its initial console message proves only that the window was requested; visible rendering, input,
 resizing and closing still need independent runtime verification.
+The current probe reports its logical frame, content bounds and backing scale.
+The GUI checker derives resize expectations and pointer coordinates from those
+values, so different menu font heights do not cause a false resize failure.
+Rebuild the probe with the same revision as the checker.
 
 For a private headless X11 control test, install `xvfb`, `xdotool` and ImageMagick:
 
