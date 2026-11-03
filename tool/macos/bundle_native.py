@@ -51,11 +51,22 @@ def main():
             architecture = subprocess.check_output(["dpkg-deb", "-f", str(archive), "Architecture"], text=True).strip()
             if architecture != package["architecture"]:
                 raise RuntimeError(f"Unexpected package architecture: {architecture}")
+            for field, expected in (("Package", package["name"]), ("Version", package["version"])):
+                actual = subprocess.check_output(["dpkg-deb", "-f", str(archive), field], text=True).strip()
+                if actual != expected:
+                    raise RuntimeError(f"Unexpected package {field}: {actual}")
             extracted = work / package["name"]
             subprocess.run(["dpkg-deb", "-x", str(archive), str(extracted)], check=True)
-            library = extracted / package["library"]
-            shutil.copy2(library, stage / library.name)
-            (stage / package["soname"]).symlink_to(library.name)
+            for entry in package.get("libraries", [package]):
+                library = extracted / entry["library"]
+                if (stage / library.name).exists() or (stage / entry["soname"]).exists():
+                    raise RuntimeError(f"Duplicate native library: {entry['soname']}")
+                shutil.copy2(library, stage / library.name)
+                if package.get("private_runpath"):
+                    # Resolve transitive dependencies beside this ELF library.
+                    subprocess.run(["patchelf", "--set-rpath", "$ORIGIN", str(stage / library.name)], check=True)
+                if entry["soname"] != library.name:
+                    (stage / entry["soname"]).symlink_to(library.name)
             shutil.copy2(extracted / package["copyright"], stage / "licenses" / (package["name"] + ".copyright"))
         (stage / "manifest.json").write_text(json.dumps(lock, indent=2) + "\n")
         stage.rename(target)

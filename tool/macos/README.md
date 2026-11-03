@@ -137,15 +137,22 @@ resizes its window, closes it normally, checks the diagnostic events and exit
 status, and requests scoped shutdown. It saves PNG captures for visual review.
 Xvfb does not establish hardware GPU acceleration or Android presentation.
 
-The ARM64 GUI builder also bundles the pinned native JPEG ABI from
-`native-deps.lock.json`. `bundle_native.py` verifies the official package's
-SHA-256 and architecture, extracts its library and copyright notice, and stages
+The ARM64 GUI builder also bundles the pinned native JPEG and FFmpeg ABIs and
+their additional Debian-missing dependencies from `native-deps.lock.json`.
+`bundle_native.py` verifies each official package's SHA-256, architecture,
+name and version, extracts its libraries and copyright notice, and stages
 them atomically under `runtime/lib/dextop-native` without installing system
 packages. It refuses to replace an existing bundle. The MLDR patch searches
 this directory for bare ELF SONAMEs before the system loader; explicit paths
 keep their original behavior. This is separate from Darwin's dyld search path:
 the launcher intentionally filters the host's `LD_LIBRARY_PATH`, and Debian's
 `libjpeg.so.62` does not provide Ubuntu's `libjpeg.so.8` ABI.
+Private FFmpeg dependencies receive an ELF `$ORIGIN` RUNPATH using `patchelf`,
+so their transitive dependencies resolve within the bundle. No SONAME version
+aliases or system package replacements are used. On the target Linux CPU,
+`check_native.py --runtime PATH --output REPORT.json` loads each generated
+native bridge's host dependency in a separate process. CI requires this check
+for GUI packaging; a successful load does not prove audio/video functionality.
 
 The wrapper transports the selected host `LD_LIBRARY_PATH` using
 `DEXTOP_DARLING_HOST_LIBRARY_PATH`. The Darwin exec bridge restores it only for
