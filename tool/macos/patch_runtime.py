@@ -16,6 +16,37 @@ def replace_once(path, old, new):
 
 def patch_shutdown_diagnostics(source):
     shutdown = Path(source) / "src/startup/container-shutdown.h"
+    replace_once(shutdown, "#include <sys/syscall.h>", r'''#include <sys/syscall.h>
+
+/* Inspect only the process already pinned for this shutdown, without signals
+ * or a process-name search. Do not log its environment or application data. */
+static void shutdownReportHandle(int handle)
+{
+ char path[128], line[512]; int pid = -1;
+ snprintf(path, sizeof(path), "/proc/self/fdinfo/%d", handle);
+ FILE *f = fopen(path, "re");
+ if (!f) return;
+ while (fgets(line, sizeof(line), f))
+  if (sscanf(line, "Pid: %d", &pid) == 1) break;
+ fclose(f);
+ if (pid <= 1) return;
+ fprintf(stderr, "Shutdown pinned process %d:\n", pid);
+ snprintf(path, sizeof(path), "/proc/%d/status", pid);
+ f = fopen(path, "re");
+ if (f) {
+  while (fgets(line, sizeof(line), f))
+   if (!strncmp(line, "State:", 6) || !strncmp(line, "PPid:", 5) ||
+       !strncmp(line, "TracerPid:", 10) || !strncmp(line, "NSpid:", 6))
+    fputs(line, stderr);
+  fclose(f);
+ }
+ snprintf(path, sizeof(path), "/proc/%d/wchan", pid);
+ f = fopen(path, "re");
+ if (f) {
+  if (fgets(line, sizeof(line), f)) fprintf(stderr, "Wait channel: %s\n", line);
+  fclose(f);
+ }
+}''')
     replace_once(shutdown,
                  "if (fd < 0) { if (errno != ESRCH) ok = false; continue; }",
                  "if (fd < 0) { if (errno != ESRCH) { fprintf(stderr, \"Shutdown pidfd_open(%d): %s\\n\", pid, strerror(errno)); ok = false; } continue; }")
@@ -32,7 +63,7 @@ def patch_shutdown_diagnostics(source):
                  " if (serverState <= 0) { fprintf(stderr, \"Shutdown server %d did not exit: poll=%d errno=%d\\n\", server, serverState, serverState < 0 ? errno : 0); ok = false; }")
     replace_once(shutdown,
                  "  if (poll(&handles[i], 1, 1000) <= 0) ok = false;",
-                 "  { int state = poll(&handles[i], 1, 1000); if (state <= 0) { fprintf(stderr, \"Shutdown child pidfd=%d did not exit: poll=%d errno=%d\\n\", handles[i].fd, state, state < 0 ? errno : 0); ok = false; } }")
+                 "  { int state = poll(&handles[i], 1, 1000); if (state <= 0) { fprintf(stderr, \"Shutdown child pidfd=%d did not exit: poll=%d errno=%d\\n\", handles[i].fd, state, state < 0 ? errno : 0); shutdownReportHandle(handles[i].fd); ok = false; } }")
 
 
 def patch_launcher(source):
