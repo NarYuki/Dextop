@@ -174,6 +174,7 @@ def launch(runtime, prefix, executable, arguments):
             raise ValueError(f"Missing Darling component: {relative}")
     env = dict(os.environ, DARLING_NONROOT="1", DARLING_INSTALL_PREFIX=str(runtime), DPREFIX=str(prefix))
     env.setdefault("DEXTOP_DARLING_HOST_LIBRARY_PATH", env.get("LD_LIBRARY_PATH", ""))
+    env.setdefault("DEXTOP_DARLING_HOST_PRELOAD", env.get("LD_PRELOAD", ""))
     env.setdefault("DEXTOP_DARLING_ABSTRACT_RPC", "1")
     env.setdefault("DEXTOP_DARLING_ANON_EXEC", "1")
     env.pop("DARLING_PROFILE", None)

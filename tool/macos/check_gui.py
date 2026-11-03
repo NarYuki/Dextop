@@ -44,6 +44,7 @@ def main():
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("DARLING_PROFILE", None)
     env.setdefault("DEXTOP_DARLING_HOST_LIBRARY_PATH", env.get("LD_LIBRARY_PATH", ""))
+    env.setdefault("DEXTOP_DARLING_HOST_PRELOAD", env.get("LD_PRELOAD", ""))
     print(f"GUI probe prefix: {directory}", flush=True)
     success = False
     app = None

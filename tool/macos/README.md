@@ -182,6 +182,13 @@ pixels. An explicit transport value overrides the inherited path; an explicit
 empty value disables transport. Callers bypassing `run.sh` must provide the
 same transport when they select a host graphics runtime.
 
+The wrappers also transport host `LD_PRELOAD` as `DEXTOP_DARLING_HOST_PRELOAD`.
+The exec bridge restores it for the Linux MLDR loader; MLDR continues filtering
+`LD_PRELOAD` out of the Darwin application's environment. This retains host
+interposers such as Dextop's Unix socket namespace shim across Mach-O execs.
+An explicit empty transport disables it. Loading the shim does not by itself
+prove that an audio stream connects or plays correctly.
+
 Keep the PRoot parent session alive through scoped Darling shutdown. The
 standalone Android diagnostic reproduced a tracer exit-stop hang when its root
 client exited while a different PRoot task shut down its daemon; supervised
