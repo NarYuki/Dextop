@@ -204,3 +204,29 @@ file-backed `execmod` restriction then does not apply. No writable/executable
 mapping is requested, and the original file is not modified. Short reads fail
 the load. Data segments keep their normal mapping. Set the variable to `0` for
 the unmodified mapping path. CI verifies both paths on Linux ARM64.
+
+### Local application lifecycle
+
+`launch_app.py` reads XML or binary `Contents/Info.plist` and launches the bundle's
+`CFBundleExecutable` directly, preserving argument boundaries and Unicode paths:
+
+```sh
+python3 tool/macos/launch_app.py --bundle '/path/My Application.app' --inspect
+python3 tool/macos/launch_app.py --runtime /private/staged-runtime \
+  --bundle '/path/My Application.app' -- --example 'argument with spaces'
+```
+
+The supervisor must remain **inside the same PRoot** as Darling until scoped
+shutdown completes. Unlike `run.sh`, it owns the application lifecycle: after
+normal exit or SIGTERM/SIGINT it calls Darling's prefix-scoped shutdown before
+returning. It retains application data under a stable per-bundle prefix and
+locks that prefix against simultaneous supervisors. It neither deletes user
+prefixes nor kills unrelated Linux processes. A failed shutdown is an error.
+Use `--prefix /absolute/private/prefix` to select an explicit persistent prefix.
+
+Only a matching native Mach-O architecture is accepted; this does not provide
+Intel translation on ARM64. Bundle path checks prevent accidental metadata or
+executable symlink traversal during discovery, but do not sandbox applications.
+The GUI shares the supplied X11 `DISPLAY` and common GPU environment. This tool
+is the lifecycle bridge for Book integration, not an installed Android UI or a
+claim that arbitrary macOS applications work.
