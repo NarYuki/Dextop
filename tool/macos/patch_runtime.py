@@ -97,6 +97,48 @@ def patch_gui(source):
                  "    }\n", "")
 
 
+def patch_audio(source):
+    path = Path(source) / "src/CoreAudio/AudioToolbox/AudioConverterImpl.cpp"
+    content = path.read_text(encoding="utf-8")
+    if content.count("#if LIBAVCODEC_VERSION_MAJOR >= 61") != 5:
+        raise RuntimeError("Pinned AudioConverter FFmpeg layout guards do not match")
+    path.write_text(content.replace("#if LIBAVCODEC_VERSION_MAJOR >= 61",
+                                    "#if LIBAVCODEC_VERSION_MAJOR >= 59"), encoding="utf-8")
+    replace_once(path, "cIn->ch_layout.nb_channels = inSourceFormat->mChannelsPerFrame;",
+                 "av_channel_layout_default(&cIn->ch_layout, inSourceFormat->mChannelsPerFrame);")
+    replace_once(path, "m_encoder->ch_layout.order = AV_CHANNEL_ORDER_UNSPEC;\n\tm_encoder->ch_layout.nb_channels = m_destinationFormat.mChannelsPerFrame;",
+                 "av_channel_layout_default(&m_encoder->ch_layout, m_destinationFormat.mChannelsPerFrame);")
+    replace_once(path, "m_audioFrame->ch_layout.order = m_encoder->ch_layout.order;\n\tm_audioFrame->ch_layout.nb_channels = m_encoder->ch_layout.nb_channels;",
+                 "if (int err = av_channel_layout_copy(&m_audioFrame->ch_layout, &m_encoder->ch_layout); err < 0)\n"
+                 '\t\tthrowFFMPEGError(err, "av_channel_layout_copy()");')
+    replace_once(path, "m_audioFrame->format = m_encoder->sample_fmt;",
+                 "m_audioFrame->format = m_encoder->sample_fmt;\n\tm_audioFrame->sample_rate = m_encoder->sample_rate;")
+    start = '\tav_opt_set_int(m_resampler, "in_channel_layout",'
+    end = '\tav_opt_set_int(m_resampler, "out_sample_fmt", m_targetFormat, 0);'
+    content = path.read_text(encoding="utf-8")
+    original = content[content.index(start):content.index(end) + len(end)]
+    replace_once(path, original, '''#if LIBAVCODEC_VERSION_MAJOR >= 59
+    AVChannelLayout inputLayout = {}, outputLayout = {};
+    av_channel_layout_default(&inputLayout, m_sourceFormat.mChannelsPerFrame);
+    av_channel_layout_default(&outputLayout, m_destinationFormat.mChannelsPerFrame);
+    err = swr_alloc_set_opts2(&m_resampler, &outputLayout, m_targetFormat,
+        m_destinationFormat.mSampleRate, &inputLayout, (AVSampleFormat)frame->format,
+        frame->sample_rate, 0, nullptr);
+    av_channel_layout_uninit(&inputLayout);
+    av_channel_layout_uninit(&outputLayout);
+    if (err < 0) throwFFMPEGError(err, "swr_alloc_set_opts2()");
+#else
+''' + original + "\n#endif")
+    replace_once(path, "avcodec_receive_packet(m_encoder, &m_avpkt);",
+                 "avcodec_receive_packet(m_encoder, &m_avpktOut);")
+    replace_once(path, "av_init_packet(&m_avpktOut);", "av_packet_unref(&m_avpktOut);")
+    replace_once(path, "#ifdef DEBUG_AUDIOCONVERTER\n\t\tm_resamplerOutput.write",
+                 "\t\t// swr_get_out_samples is an upper bound, even when the delay is empty.\n"
+                 "\t\tif (!avail) break;\n\n#ifdef DEBUG_AUDIOCONVERTER\n\t\tm_resamplerOutput.write")
+    replace_once(path, "if (m_encoder)\n\t\tavcodec_free_context(&m_encoder);",
+                 "if (m_encoder)\n\t\tavcodec_free_context(&m_encoder);\n\tav_packet_unref(&m_avpktOut);")
+
+
 def patch_native_libraries(source):
     source = Path(source)
     # The launcher's host LD_LIBRARY_PATH is deliberately excluded from the
@@ -136,6 +178,7 @@ def apply(source):
     source = Path(source)
     patch_launcher(source)
     patch_gui(source)
+    patch_audio(source)
     patch_native_libraries(source)
     mldr = source / "src/startup/mldr"
     shutil.copyfile(HERE / "darling_socket.c", mldr / "dextop_socket.c")

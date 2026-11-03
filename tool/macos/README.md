@@ -154,6 +154,16 @@ aliases or system package replacements are used. On the target Linux CPU,
 native bridge's host dependency in a separate process. CI requires this check
 for GUI packaging; a successful load does not prove audio/video functionality.
 
+`build_audio_probe.py` uses the source SDK and built AudioToolbox framework to
+build our PCM conversion probe. Run it with `check_runtime.py --probe audio`
+and the probe output directory. It checks four successive stereo conversions
+from 48 kHz signed 16-bit PCM to 24 kHz float PCM, bounded/nonzero samples and
+channel separation, followed by scoped shutdown. A 20-second in-program alarm
+also catches converter loops. This does not test speaker output or video.
+The runtime patch supplies complete modern FFmpeg channel layouts and sample
+rates, receives encoder packets into the output packet, releases those packets,
+and stops draining the resampler when it produces zero actual samples.
+
 The wrapper transports the selected host `LD_LIBRARY_PATH` using
 `DEXTOP_DARLING_HOST_LIBRARY_PATH`. The Darwin exec bridge restores it only for
 the next Linux MLDR invocation; MLDR still removes the standard host loader
