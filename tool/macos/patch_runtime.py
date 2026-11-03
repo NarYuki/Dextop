@@ -172,6 +172,25 @@ def patch_host_library_path(source):
                  "\t\t\tadd_termux_ld = 1;\n"
                  "\t\t}\n"
                  "\t\tif (!add_termux_ld && is_android) {")
+    patch_host_preload(source)
+
+
+def patch_host_preload(source):
+    execve = Path(source) / "src/external/xnu/darling/src/libsystem_kernel/emulation/src/xnu_syscall/bsd/impl/process/execve.c"
+    replace_once(execve, "\t\tconst int new_env_count = 2 + add_termux_ld;",
+                 "\t\tconst char* host_preload = getenv(\"DEXTOP_DARLING_HOST_PRELOAD\");\n"
+                 "\t\tint add_host_preload = host_preload && host_preload[0];\n"
+                 "\t\tchar* host_preload_env = NULL;\n"
+                 "\t\tif (add_host_preload) {\n"
+                 "\t\t\thost_preload_env = (char*)__builtin_alloca(strlen(host_preload) + sizeof(\"LD_PRELOAD=\"));\n"
+                 "\t\t\tstrcpy(host_preload_env, \"LD_PRELOAD=\");\n"
+                 "\t\t\tstrcat(host_preload_env, host_preload);\n"
+                 "\t\t}\n"
+                 "\t\tconst int new_env_count = 2 + add_termux_ld + add_host_preload;")
+    replace_once(execve, "\t\t// append original env vars",
+                 "\t\t// Only the ELF loader consumes this; MLDR removes it from Darwin's environment.\n"
+                 "\t\tif (add_host_preload) modenvp[env_idx++] = host_preload_env;\n\n"
+                 "\t\t// append original env vars")
 
 
 def apply(source):
