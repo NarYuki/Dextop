@@ -97,7 +97,45 @@ def patch_gui(source):
                  "    }\n", "")
 
 
+def patch_audio_diagnostics(source):
+    root = Path(source) / "src/CoreAudio"
+    helper = '''#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+static void dextopAudioTrace(const char* phase)
+{
+    const char* enabled = getenv("DEXTOP_DARLING_AUDIO_TRACE");
+    if (enabled && !strcmp(enabled, "1"))
+        fprintf(stderr, "[Dextop audio] %s\\n", phase);
+}
+'''
+    queue = root / "AudioToolbox/AudioQueueOutput.cpp"
+    pulse = root / "CoreAudio/pulse/AudioHardwareImplPA.cpp"
+    replace_once(queue, '#include "AudioQueueOutput.h"', helper + '\n#include "AudioQueueOutput.h"')
+    replace_once(pulse, '#include "AudioHardwareImplPA.h"', helper + '\n#include "AudioHardwareImplPA.h"')
+    for original, event in (
+        ("\tUInt32 propSize = sizeof(AudioDeviceID);", "queue: default output query"),
+        ("\t// Try to set device stream format", "queue: default output returned"),
+        ("\tstatus = AudioDeviceCreateIOProcID", "queue: create IO procedure"),
+        ("\tstatus = AudioDeviceStart", "queue: start device"),
+        ("\tm_running = true;", "queue: device start returned"),
+    ):
+        replace_once(queue, original, f'\tdextopAudioTrace("{event}");\n' + original)
+    for original, event in (
+        ("\t// TODO: destruction", "pulse: acquire context"),
+        ("\t\t\tCFBundleRef mainBundle = CFBundleGetMainBundle();", "pulse: bundle lookup"),
+        ("\t\t\tpa_proplist_sets(proplist, PA_PROP_APPLICATION_NAME, appname);", "pulse: bundle lookup returned"),
+        ("\t\t\tm_loop.reset(new PAThreadedMainLoop);", "pulse: create main loop"),
+        ("\t\t\tm_context = pa_context_new_with_proplist", "pulse: create context"),
+        ("\t\t\tif (pa_context_connect(m_context, server, PA_CONTEXT_NOAUTOSPAWN, nullptr) < 0)", "pulse: connect context"),
+        ("\t\t\t// Wait for connection to reach READY or terminal state", "pulse: wait for ready"),
+    ):
+        indent = original[:len(original) - len(original.lstrip())]
+        replace_once(pulse, original, f'{indent}dextopAudioTrace("{event}");\n' + original)
+
+
 def patch_audio(source):
+    patch_audio_diagnostics(source)
     path = Path(source) / "src/CoreAudio/AudioToolbox/AudioConverterImpl.cpp"
     content = path.read_text(encoding="utf-8")
     if content.count("#if LIBAVCODEC_VERSION_MAJOR >= 61") != 5:

@@ -167,6 +167,11 @@ stopping, so callbacks returned by immediate stop cannot count as consumption.
 The checker supplies a host-side timeout; do not rely on guest signal delivery
 to interrupt a blocked native audio call. This is a diagnostic, and playback
 support must be established from its actual result, not from building the probe.
+Set `DEXTOP_DARLING_AUDIO_TRACE=1` to log fixed startup phase names for the
+default output query, IO procedure, bundle lookup, PulseAudio main loop and
+context connection. It is disabled by default and does not log application
+names, audio contents, server addresses or authentication data. Compare these
+phases across working and failing targets to locate a blocked startup call.
 The runtime patch supplies complete modern FFmpeg channel layouts and sample
 rates, receives encoder packets into the output packet, releases those packets,
 and stops draining the resampler when it produces zero actual samples.
