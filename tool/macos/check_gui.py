@@ -2,6 +2,7 @@
 
 import argparse
 import os
+import re
 from pathlib import Path
 import secrets
 import shutil
@@ -85,7 +86,7 @@ def main():
             def wait_for_event(message, offset=0):
                 deadline = time.monotonic() + 10
                 while time.monotonic() < deadline:
-                    if message in (output / "app.log").read_text(errors="replace")[offset:]:
+                    if message in (output / "app.log").read_text(errors="replace")[offset:].splitlines():
                         return
                     if app.poll() is not None:
                         break
@@ -108,9 +109,19 @@ def main():
                 if window is None:
                     raise RuntimeError("AppKit window did not appear")
                 time.sleep(1)
+                geometry = re.search(r"appkit: geometry frame=([\d.]+)x([\d.]+) content=([\d.]+)x([\d.]+) scale=([\d.]+)",
+                                     (output / "app.log").read_text(errors="replace"))
+                if not geometry:
+                    raise RuntimeError("Rebuild the current own-source probe with geometry reporting")
+                frame_width, frame_height, content_width, content_height, scale = map(float, geometry.groups())
+                if scale <= 0:
+                    raise RuntimeError("Invalid reported backing scale")
+                expected_resize = f"appkit: resized={640 / scale - (frame_width - content_width):.0f}x{430 / scale - (frame_height - content_height):.0f}"
+                def click_at(x, y):
+                    xdo("mousemove", "--window", window, str(round(x * scale)), str(round(y * scale)), "click", "1")
                 capture("window.png")
                 if args.dialog:
-                    xdo("mousemove", "--window", window, "240", "292", "click", "1")
+                    click_at(240, frame_height - 38)
                     dialog = xdo("search", "--sync", "--name", "^Dextop dialog probe$").stdout.splitlines()[-1]
                     wait_for_event("appkit: dialog layout OK")
                     time.sleep(0.5)
@@ -119,20 +130,20 @@ def main():
                     xdo("key", "Return")
                     wait_for_event("appkit: dialog accepted")
                 # Coordinates refer to this probe's fixed initial layout, never a user display.
-                xdo("mousemove", "--window", window, "120", "245", "click", "1")
+                click_at(120, frame_height - 84)
                 xdo("key", "ctrl+a")
                 xdo("type", "--clearmodifiers", "Dextop GUI input")
-                xdo("mousemove", "--window", window, "390", "245", "click", "1")
+                click_at(390, frame_height - 84)
                 wait_for_event("appkit: input=Dextop GUI input")
                 xdo("windowsize", window, "640", "430")
-                wait_for_event("appkit: resized=640x380")
+                wait_for_event(expected_resize)
                 capture("resized.png")
-                xdo("mousemove", "--window", window, "27", "14", "click", "1")
+                click_at(27, 14)
                 app.wait(timeout=15)
                 content = (output / "app.log").read_text(errors="replace")
                 expected = ("appkit: window requested", "appkit: input=Dextop GUI input",
-                            "appkit: resized=640x380")
-                if app.returncode or any(message not in content for message in expected):
+                            expected_resize)
+                if app.returncode or any(message not in content.splitlines() for message in expected):
                     raise RuntimeError(f"GUI input/resize/close verification failed: exit {app.returncode}")
                 if args.persistence:
                     if "appkit: saved=Dextop GUI input 日本語" not in content:
@@ -145,7 +156,7 @@ def main():
                     window = found.stdout.splitlines()[-1]
                     time.sleep(1)
                     capture("reopened.png")
-                    xdo("mousemove", "--window", window, "27", "14", "click", "1")
+                    click_at(27, 14)
                     app.wait(timeout=15)
                     if app.returncode:
                         raise RuntimeError(f"Reopened app did not close normally: {app.returncode}")

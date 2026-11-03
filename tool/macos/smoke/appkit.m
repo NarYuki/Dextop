@@ -63,6 +63,11 @@ static NSString *documentPath;
     [dialogButton setAction:@selector(showDialog:)];
     [[window contentView] addSubview:dialogButton];
     [window makeKeyAndOrderFront:nil];
+    NSRect frame = [window frame];
+    NSRect contentBounds = [[window contentView] bounds];
+    printf("appkit: geometry frame=%gx%g content=%gx%g scale=%g\n",
+           frame.size.width, frame.size.height, contentBounds.size.width,
+           contentBounds.size.height, [window backingScaleFactor]);
     if (getenv("DEXTOP_GUI_TRACE")) {
         [NSTimer scheduledTimerWithTimeInterval:1 target:self selector:@selector(traceTick:)
                                       userInfo:nil repeats:YES];
