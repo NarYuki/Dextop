@@ -207,6 +207,25 @@ class _MacosContainerState extends State<_MacosContainer> {
               trailing: const Icon(M3EIcons.refresh_rounded),
               onTap: busy ? null : _load,
             ),
+            if (!present && status != null)
+              M3EListItem(
+                leading: const Icon(M3EIcons.download_rounded),
+                headline: t('互換環境をインストール', 'Install compatibility runtime'),
+                supportingMaxLines: null,
+                supportingText: status?['bundleAvailable'] == true
+                    ? t(
+                        'Dextop に同梱された互換環境を検証して追加します',
+                        'Verify and install the runtime bundled with Dextop',
+                      )
+                    : t(
+                        'このバージョンにはインストール用の互換環境が同梱されていません',
+                        'This version does not include an installable runtime',
+                      ),
+                trailing: const Icon(M3EIcons.chevron_right_rounded),
+                onTap: busy || status?['bundleAvailable'] != true
+                    ? null
+                    : () => _run('macosInstall', ''),
+              ),
             M3EListItem(
               leading: const Icon(M3EIcons.add_rounded),
               headline: t('アプリを登録', 'Register an application'),
