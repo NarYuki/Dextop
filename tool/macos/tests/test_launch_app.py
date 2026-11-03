@@ -123,6 +123,7 @@ class LifecycleTests(unittest.TestCase):
         launcher = self.runtime / "bin/darling"
         launcher.write_text("#!" + sys.executable + "\n" + '''
 import json, os, signal, sys, time
+from pathlib import Path
 with open(os.environ['OWN_LIFECYCLE_LOG'], 'a') as stream:
     stream.write(json.dumps(sys.argv[1:]) + '\\n')
 if sys.argv[1] == 'shutdown':
@@ -133,6 +134,12 @@ if sys.argv[1] == 'shutdown':
 if os.environ.get('OWN_APP_WAIT'):
     with open(os.environ['OWN_LIFECYCLE_LOG'] + '.pid', 'w') as stream:
         stream.write(str(os.getpid()))
+    if os.environ.get('OWN_READY_SIGNAL'):
+        while not Path(os.environ['OWN_READY_SIGNAL']).exists():
+            time.sleep(.02)
+    prefix = Path(os.environ['DPREFIX'])
+    prefix.mkdir(parents=True, exist_ok=True)
+    (prefix / '.shellspawn.pid').write_text(str(os.getpid()))
     time.sleep(30)
 sys.exit(int(os.environ.get('OWN_APP_CODE', '0')))
 ''')
@@ -140,7 +147,8 @@ sys.exit(int(os.environ.get('OWN_APP_CODE', '0')))
         binary = self.root / "App with spaces"
         binary.write_bytes(struct.pack("<II", 0xFEEDFACF, module.CPU_TYPES[platform.machine()]))
         self.log = self.root / "lifecycle.jsonl"
-        self.env = dict(os.environ, OWN_LIFECYCLE_LOG=str(self.log))
+        self.env = dict(os.environ, OWN_LIFECYCLE_LOG=str(self.log),
+                        __mldr_sockpath=str(self.root / 'prefix/.darlingserver.sock'))
         self.command = [sys.executable, str(Path(module.__file__)), '--runtime', str(self.runtime),
                         '--prefix', str(self.root / 'prefix'), '--executable', str(binary),
                         '--', 'one argument', "quote'and;metacharacters"]
@@ -191,7 +199,7 @@ sys.exit(int(os.environ.get('OWN_APP_CODE', '0')))
                                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         try:
             deadline = time.monotonic() + 5
-            while not Path(str(self.log) + '.pid').exists():
+            while not (self.root / 'prefix/.shellspawn.pid').exists():
                 if time.monotonic() > deadline:
                     self.fail('Supervisor did not start its guest')
                 time.sleep(.02)
@@ -202,6 +210,39 @@ sys.exit(int(os.environ.get('OWN_APP_CODE', '0')))
             # Reap this fixture's exact child; never enumerate real guests.
             app.kill()
             app.wait(timeout=5)
+
+    def test_stop_file_waits_for_startup_registration_before_shutdown(self):
+        stop = self.root / 'stop'
+        ready = self.root / 'ready'
+        app = subprocess.Popen(self.command, env=dict(self.env, OWN_APP_WAIT='1',
+            OWN_READY_SIGNAL=str(ready), DEXTOP_DARLING_STOP_FILE=str(stop)),
+            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.monotonic() + 5
+            while not Path(str(self.log) + '.pid').exists():
+                if time.monotonic() > deadline:
+                    self.fail('Guest did not start')
+                time.sleep(.02)
+            stop.write_text('stop')
+            time.sleep(.3)
+            self.assertTrue(app.poll() is None)
+            self.assertNotIn(['shutdown'], self.events())
+            ready.touch()
+            self.assertEqual(app.wait(timeout=5), 143)
+            self.assertEqual(self.events()[-1], ['shutdown'])
+        finally:
+            ready.touch()
+            if app.poll() is None:
+                app.terminate()
+                app.wait(timeout=5)
+
+    def test_stop_requested_before_startup_does_not_start_darling(self):
+        stop = self.root / 'stop'
+        stop.touch()
+        result = subprocess.run(self.command, env=dict(self.env, DEXTOP_DARLING_STOP_FILE=str(stop)),
+                                capture_output=True, timeout=5)
+        self.assertEqual(result.returncode, 143)
+        self.assertFalse(self.log.exists())
 
 
 if __name__ == "__main__":
