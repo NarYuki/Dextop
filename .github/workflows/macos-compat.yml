@@ -18,7 +18,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: macos-core-${{ github.ref }}
+  group: macos-${{ inputs.components || 'core' }}-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -63,9 +63,6 @@ jobs:
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld" \
             --output build/macos/gui-probes
-      - name: Archive experimental runtime
-        run: |
-          tar -C build/macos/runtime/stage/opt/dextop/macos -czf "build/macos/darling-$MACOS_COMPONENTS-arm64.tar.gz" .
       - name: Verify own-source Mach-O programs on Linux ARM64
         run: |
           python3 tool/macos/check_runtime.py \
@@ -79,6 +76,14 @@ jobs:
             python3 tool/macos/check_runtime.py --abstract-rpc --anonymous-exec \
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --probes build/macos/smoke --output build/macos/native-abstract-smoke
+      - name: Package verified build with runtime inventory
+        run: |
+          set -o pipefail
+          python3 tool/macos/runtime_archive.py package \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --metadata build/macos/runtime/build-info.json \
+            --output "build/macos/darling-$MACOS_COMPONENTS-arm64.tar.gz" \
+            | tee build/macos/runtime-package.json
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -90,6 +95,7 @@ jobs:
             build/macos/runtime/build-info.json
             build/macos/runtime/submodules.txt
             build/macos/darling-*-arm64.tar.gz
+            build/macos/runtime-package.json
             build/macos/native-smoke
             build/macos/native-anon-smoke
             build/macos/native-abstract-smoke
