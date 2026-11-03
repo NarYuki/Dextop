@@ -37,7 +37,7 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            git git-lfs cmake ninja-build clang lld llvm-dev bison flex pkg-config python3 \
+            git git-lfs cmake ninja-build clang lld llvm-dev bison flex pkg-config python3 patchelf \
             libfuse-dev libudev-dev libcairo2-dev libgl1-mesa-dev libtiff-dev \
             libfreetype-dev libelf-dev libxml2-dev libegl1-mesa-dev libglu1-mesa-dev \
             libfontconfig-dev libbsd-dev libxrandr-dev libxcursor-dev libgif-dev \
@@ -76,6 +76,12 @@ jobs:
             python3 tool/macos/check_runtime.py --abstract-rpc --anonymous-exec \
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --probes build/macos/smoke --output build/macos/native-abstract-smoke
+      - name: Verify GUI host library dependencies
+        if: env.MACOS_COMPONENTS == 'gui'
+        run: |
+          python3 tool/macos/check_native.py \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --output build/macos/native-dependencies.json
       - name: Package verified build with runtime inventory
         run: |
           set -o pipefail
@@ -96,6 +102,7 @@ jobs:
             build/macos/runtime/submodules.txt
             build/macos/darling-*-arm64.tar.gz
             build/macos/runtime-package.json
+            build/macos/native-dependencies.json
             build/macos/native-smoke
             build/macos/native-anon-smoke
             build/macos/native-abstract-smoke
