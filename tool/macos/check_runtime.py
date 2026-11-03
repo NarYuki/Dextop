@@ -32,6 +32,7 @@ def main():
                    DPREFIX=directory + "/prefix", DEXTOP_DARLING_ABSTRACT_RPC="1" if args.abstract_rpc else "0",
                    DEXTOP_DARLING_ANON_EXEC="1" if args.anonymous_exec else "0")
         env.pop("DARLING_PROFILE", None)
+        env.setdefault("DEXTOP_DARLING_HOST_LIBRARY_PATH", env.get("LD_LIBRARY_PATH", ""))
         command = [str(runtime / "bin/darling")]
         try:
             expected_output = {"hello": "Dextop macOS hello", "posix": "file: OK\nthread: OK\nfork: OK",
