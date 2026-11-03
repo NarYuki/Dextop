@@ -42,6 +42,7 @@ def main():
                DEXTOP_DARLING_ANON_EXEC="1" if args.anonymous_exec else "0")
     env.pop("WAYLAND_DISPLAY", None)
     env.pop("DARLING_PROFILE", None)
+    env.setdefault("DEXTOP_DARLING_HOST_LIBRARY_PATH", env.get("LD_LIBRARY_PATH", ""))
     print(f"GUI probe prefix: {directory}", flush=True)
     success = False
     app = None
