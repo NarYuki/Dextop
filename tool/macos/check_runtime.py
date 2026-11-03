@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--abstract-rpc", action="store_true")
     parser.add_argument("--anonymous-exec", action="store_true")
     parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
-    parser.add_argument("--probe", choices=("hello", "posix", "socket"), action="append",
+    parser.add_argument("--probe", choices=("hello", "posix", "socket", "audio"), action="append",
                         help="Diagnostic subset/order; default runs the complete sequence")
     args = parser.parse_args()
     runtime = args.runtime.resolve()
@@ -36,7 +36,7 @@ def main():
         command = [str(runtime / "bin/darling")]
         try:
             expected_output = {"hello": "Dextop macOS hello", "posix": "file: OK\nthread: OK\nfork: OK",
-                               "socket": "socket: OK"}
+                               "socket": "socket: OK", "audio": "audio: PCM resample and sample-format conversion OK"}
             for name in args.probe or ("hello", "posix", "socket", "hello"):
                 expected = expected_output[name]
                 log = output / f"{name}-{len(list(output.glob('*.log')))}.log"

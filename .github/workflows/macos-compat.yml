@@ -76,6 +76,17 @@ jobs:
             python3 tool/macos/check_runtime.py --abstract-rpc --anonymous-exec \
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --probes build/macos/smoke --output build/macos/native-abstract-smoke
+      - name: Build and verify AudioToolbox conversion
+        if: env.MACOS_COMPONENTS == 'gui'
+        run: |
+          python3 tool/macos/build_audio_probe.py \
+            --source build/macos/runtime/source \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld" \
+            --output build/macos/audio-probes
+          python3 tool/macos/check_runtime.py --probe audio \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --probes build/macos/audio-probes --output build/macos/native-audio-smoke
       - name: Verify GUI host library dependencies
         if: env.MACOS_COMPONENTS == 'gui'
         run: |
@@ -103,6 +114,8 @@ jobs:
             build/macos/darling-*-arm64.tar.gz
             build/macos/runtime-package.json
             build/macos/native-dependencies.json
+            build/macos/native-audio-smoke
+            build/macos/audio-probes/*-macos-arm64
             build/macos/native-smoke
             build/macos/native-anon-smoke
             build/macos/native-abstract-smoke
