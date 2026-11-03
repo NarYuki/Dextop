@@ -12,6 +12,8 @@ import os
 from pathlib import Path
 import platform
 import plistlib
+import re
+import shlex
 import signal
 import struct
 import subprocess
@@ -20,6 +22,51 @@ from xml.parsers.expat import ExpatError
 
 
 CPU_TYPES = {"aarch64": 0x0100000C, "arm64": 0x0100000C, "x86_64": 0x01000007}
+
+
+def application_key(info):
+    return hashlib.sha256(info.get("bundle", info["executable"]).encode()).hexdigest()[:24]
+
+
+def registration_paths(home, key):
+    if not re.fullmatch(r"[a-f0-9]{24}", key):
+        raise ValueError("Invalid registered application id")
+    return (home / ".local/share/dextop/macos/apps" / (key + ".json"),
+            home / ".local/share/applications" / ("dextop-macos-" + key + ".desktop"))
+
+
+def write_atomic(path, content):
+    import tempfile
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", newline="\n",
+                                         dir=path.parent, delete=False) as stream:
+            temporary = Path(stream.name)
+            stream.write(content)
+        temporary.replace(path)
+    finally:
+        if temporary is not None:
+            temporary.unlink(missing_ok=True)
+
+
+def register_bundle(info, runtime, prefix, home):
+    key = application_key(info)
+    record, desktop = registration_paths(home, key)
+    launcher = str(Path(__file__).resolve())
+    if any(c in launcher for c in "\n\r%"):
+        raise ValueError("Install the launcher in a path without line breaks or percent characters")
+    # Bundle names are desktop string values, never shell syntax or new entries.
+    name = info["name"].replace("\\", "\\\\").replace("\r", "\\r").replace("\n", "\\n").replace("\t", "\\t")
+    write_atomic(record, json.dumps({"bundle": info["bundle"], "runtime": str(runtime),
+                                     "prefix": str(prefix)}, ensure_ascii=False))
+    # No user-controlled bundle path appears in Exec. The fixed id selects JSON
+    # metadata, and each launch revalidates the bundle and native architecture.
+    write_atomic(desktop, "[Desktop Entry]\nType=Application\n" + f"Name={name}\n" +
+                 f"Exec=python3 {shlex.quote(launcher)} --registered {key}\n" +
+                 "Icon=application-x-executable\nTerminal=false\nCategories=Utility;\n" +
+                 "X-Dextop-DisplayBackend=x11\nX-Dextop-Runtime=macos\n")
+    return {"id": "dextop-macos-" + key + ".desktop", "name": info["name"], "bundle": info["bundle"]}
 
 
 def executable_architectures(path):
@@ -140,12 +187,30 @@ def main():
     target = parser.add_mutually_exclusive_group(required=True)
     target.add_argument("--bundle", type=Path)
     target.add_argument("--executable", type=Path, help="Standalone Mach-O, for own-source programs")
+    target.add_argument("--registered", help="Launch an application registered in the Linux app list")
+    target.add_argument("--unregister", help="Remove a registration, retaining the .app and its data")
     parser.add_argument("--inspect", action="store_true", help="Read bundle metadata without executing it")
+    parser.add_argument("--register", action="store_true", help="Add the bundle to Book and the Linux application list")
     parser.add_argument("--runtime", type=Path, default=Path(os.environ.get("DEXTOP_DARLING_ROOT", "/opt/dextop/macos")))
     parser.add_argument("--prefix", type=Path)
     parser.add_argument("arguments", nargs=argparse.REMAINDER)
     args = parser.parse_args()
     try:
+        if args.unregister:
+            record, desktop = registration_paths(Path.home(), args.unregister)
+            desktop.unlink(missing_ok=True)
+            record.unlink(missing_ok=True)
+            return 0
+        if args.register and not args.bundle:
+            raise ValueError("Registration requires --bundle")
+        if args.registered:
+            record, _ = registration_paths(Path.home(), args.registered)
+            if record.stat().st_size > 64 * 1024:
+                raise ValueError("Application registration is too large")
+            saved = json.loads(record.read_text(encoding="utf-8"))
+            if not isinstance(saved, dict) or any(not isinstance(saved.get(k), str) for k in ("bundle", "runtime", "prefix")):
+                raise ValueError("Invalid application registration")
+            args.bundle, args.runtime, args.prefix = (Path(saved[k]) for k in ("bundle", "runtime", "prefix"))
         info = bundle_info(args.bundle) if args.bundle else {
             "executable": str(args.executable.resolve(strict=True)),
             "cpuTypes": sorted(executable_architectures(args.executable))}
@@ -156,8 +221,11 @@ def main():
         if cpu is None or cpu not in info["cpuTypes"]:
             raise ValueError("Application does not contain a native architecture; Intel translation is not installed")
         executable = Path(info["executable"])
-        key = hashlib.sha256(info.get("bundle", str(executable)).encode()).hexdigest()[:24]
+        key = application_key(info)
         prefix = (args.prefix or Path.home() / ".local/share/dextop/macos/apps" / key).absolute()
+        if args.register:
+            print(json.dumps(register_bundle(info, args.runtime.resolve(strict=True), prefix, Path.home()), ensure_ascii=False))
+            return 0
         arguments = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
         return launch(args.runtime.resolve(strict=True), prefix, executable, arguments)
     except (OSError, ValueError, RuntimeError, plistlib.InvalidFileException, ExpatError, subprocess.TimeoutExpired) as error:

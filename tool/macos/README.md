@@ -230,3 +230,26 @@ executable symlink traversal during discovery, but do not sandbox applications.
 The GUI shares the supplied X11 `DISPLAY` and common GPU environment. This tool
 is the lifecycle bridge for Book integration, not an installed Android UI or a
 claim that arbitrary macOS applications work.
+
+Android's build copies this same source into Java resources. The common Linux
+session staging installs it at `/usr/local/lib/dextop/macos/launch_app.py`; there
+is no separately maintained Android launcher implementation. Python 3 and the
+compatible native Darling runtime must be installed in the container.
+
+Register a local bundle with the existing Book/Linux application list:
+
+```sh
+python3 /usr/local/lib/dextop/macos/launch_app.py --register \
+  --bundle '/root/Applications/My Application.app'
+```
+
+This writes a user `.desktop` entry and a JSON registration with the bundle,
+runtime and persistent prefix paths. Its Exec line contains a fixed registration
+id rather than a bundle path or app-supplied command. The normal application
+launcher reads the entry and selects X11 for Darling. Registration does not run
+the bundle; launching revalidates it. Refresh the application list after adding
+or removing registrations. `--registered ID` launches one; `--unregister ID`
+removes only its registration and desktop entry, keeping the bundle and prefix.
+The id is the 24-character suffix returned by registration, excluding
+`dextop-macos-` and `.desktop`. A settings UI and runtime installer are still
+needed; a registration alone does not install Darling or prove app compatibility.
