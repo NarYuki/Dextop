@@ -183,12 +183,12 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         ? t('テストしています（30 秒ほど）…', 'Testing (about 30 seconds)…')
         : switch (state) {
             'passed' => t(
-                'GPU のほうが速く安定していました。GPU を推奨します',
-                'The GPU was stable and faster. The GPU is recommended',
+                'GPU で安定して描画できました。GPU を推奨します（軽い描画のテストのため、3D の重い処理ではこの差より大きく速くなります）',
+                'The GPU drew reliably. The GPU is recommended (the test scene is light; heavy 3D work gains much more than this)',
               ),
             'slow' => t(
-                'GPU は安定していましたが、CPU より十分に速くありませんでした。CPU 描画を推奨します',
-                'The GPU was stable but not enough faster than the processor. Software rendering is recommended',
+                'GPU は安定していましたが、CPU より明らかに遅くなりました。CPU 描画を推奨します',
+                'The GPU was stable but clearly slower than the processor. Software rendering is recommended',
               ),
             'failed' => t(
                 'GPU で正しく描画できませんでした。CPU 描画を推奨します',
@@ -199,8 +199,8 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
                 'The test could not run',
               ),
             _ => t(
-                'まだテストしていません。GPU と CPU で同じ描画を行い、速いほうを推奨します',
-                'Not tested yet. The same drawing runs on the GPU and the processor, and the faster one is recommended',
+                'まだテストしていません。GPU と CPU で同じ描画を行い、GPU が安定して遅くなければ GPU を推奨します',
+                'Not tested yet. The same drawing runs on the GPU and the processor; the GPU is recommended when it is stable and not slower',
               ),
           };
     final details = [
