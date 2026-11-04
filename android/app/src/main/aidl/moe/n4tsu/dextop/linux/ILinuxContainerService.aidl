@@ -158,4 +158,8 @@ interface ILinuxContainerService {
     String installAppImage(String containerId, in ParcelFileDescriptor file, String fileName) = 76;
     /** Removes an AppImage installed with [installAppImage] by its desktop entry. */
     boolean removeAppImage(String containerId, String desktopId) = 77;
+    /** Measures where [containerId]'s storage goes, as a background job ([listSnapshots]'s job result). */
+    void containerUsage(String containerId) = 78;
+    /** Removes [containerId]'s caches (package downloads, ~/.cache, temporary files) as a background job. */
+    void cleanContainer(String containerId) = 79;
 }

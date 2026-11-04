@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'linux/linux_error_log.dart';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
@@ -1102,16 +1104,12 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
               child: ExpansionTile(
                 title: Text(l.linuxSetupLog),
                 shape: const Border(),
+                initiallyExpanded: true,
                 children: [
+                  // Five lines that follow the newest one, not the whole log at once.
                   Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: SelectableText(
-                      current!.logs.join('\n'),
-                      style: const TextStyle(
-                        fontFamily: 'monospace',
-                        fontSize: 12,
-                      ),
-                    ),
+                    padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+                    child: LinuxLogTail(lines: current!.logs),
                   ),
                 ],
               ),
