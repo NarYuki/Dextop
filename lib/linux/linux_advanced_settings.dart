@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -27,10 +29,16 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
 
   Future<void> _load() async {
     try {
-      final value = await _channel.invokeMethod<String>('executionMode');
+      final value = await _channel
+          .invokeMethod<String>('executionMode')
+          .timeout(const Duration(seconds: 10));
       if (mounted) setState(() => mode = value ?? 'privileged');
-    } on PlatformException catch (e) {
-      if (mounted) setState(() => error = e.message);
+    } on Exception catch (e) {
+      if (mounted) {
+        setState(
+          () => error = e is PlatformException ? e.message : e.toString(),
+        );
+      }
     }
   }
 
@@ -62,18 +70,24 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
     if (confirmed != true || !mounted) return;
     setState(() => saving = true);
     try {
-      final result = await _channel.invokeMethod<String>('setExecutionMode', {
-        'mode': value,
-        'stop': true,
-      });
+      final result = await _channel
+          .invokeMethod<String>('setExecutionMode', {
+            'mode': value,
+            'stop': true,
+          })
+          .timeout(const Duration(seconds: 50));
       if (mounted) {
         setState(() {
-          mode = result;
+          mode = result ?? value;
           error = null;
         });
       }
-    } on PlatformException catch (e) {
-      if (mounted) setState(() => error = e.message);
+    } on Exception catch (e) {
+      if (mounted) {
+        setState(
+          () => error = e is PlatformException ? e.message : e.toString(),
+        );
+      }
     } finally {
       if (mounted) setState(() => saving = false);
     }
@@ -91,7 +105,10 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
         LinuxSection(t('実行方式', 'Execution mode')),
         if (error != null)
           Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
-        if (mode == null || saving) const LinearProgressIndicator(),
+        if ((mode == null && error == null) || saving)
+          const LinearProgressIndicator(),
+        if (mode == null && error != null)
+          M3EButton.outlined(onPressed: _load, label: Text(t('再試行', 'Retry'))),
         LinuxGroup(
           children: [
             LinuxChoice<String>(

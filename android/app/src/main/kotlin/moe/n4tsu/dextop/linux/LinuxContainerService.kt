@@ -35,7 +35,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes APK-approved macOS runtime installation (AIDL transaction 65).
-        const val PROTOCOL_VERSION = 26
+        const val PROTOCOL_VERSION = 27
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         private val GUEST_LOG = Regex("""[A-Za-z0-9._-]+\.log""")
@@ -43,6 +43,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         private const val BUFFER = 256 * 1024
     }
 
+    @Volatile private var closed = false
     @Volatile private var proot: LinuxProot? = null
     @Volatile private var audioClientUid = -1
     override fun openMicrophoneStream(containerId: String): android.os.ParcelFileDescriptor {
@@ -61,6 +62,34 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     private val installer = Executors.newSingleThreadExecutor { Thread(it, "DextopLinuxInstall") }
     private val cancelled = ConcurrentHashMap.newKeySet<String>()
     private val activeProcesses = ConcurrentHashMap<String, Process>()
+
+    private val integrations by lazy { LinuxIntegration(
+        { requireProot() },
+        { id -> LinuxCatalog.find(readConfig(id)?.optString("distro").orEmpty())?.family ?: error("Unknown distribution") },
+        { id -> startDesktop(id, 1280, 720, 160) },
+        { id, message -> log(id, message) },
+        { notifyChanged() },
+    ) }
+    private fun integrationCaller(id: String) {
+        check(android.os.Binder.getCallingUid() == audioClientUid) { "Integration caller is not the connected application" }
+        check(readConfig(id)?.optString("state") == "installed") { "Linux environment is not installed" }
+    }
+    override fun integrationStatus(containerId: String): String {
+        integrationCaller(containerId)
+        return integrations.status(containerId)
+    }
+    override fun integrationAction(containerId: String, json: String): String {
+        integrationCaller(containerId)
+        return integrations.action(containerId, json)
+    }
+    override fun openIntegrationPrint(containerId: String, job: String): android.os.ParcelFileDescriptor {
+        integrationCaller(containerId)
+        return integrations.openPrint(containerId, job)
+    }
+    override fun filterIntegrationPrint(containerId: String, job: String, ranges: String): android.os.ParcelFileDescriptor {
+        integrationCaller(containerId)
+        return integrations.filterPrint(containerId, job, ranges)
+    }
 
     override fun protocolVersion(): Int = PROTOCOL_VERSION
 
@@ -106,7 +135,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             if (name.matches(safe) && name in installed) external += "deb-get:$name"
         }
         // Flatpak apps of the user installation that came from Flathub.
-        val flatpak = File(root, "root/.local/share/flatpak")
+        val flatpak = File(root, LinuxUser.home(root).removePrefix("/") + "/.local/share/flatpak")
         File(flatpak, "app").listFiles()?.sortedBy { it.name }?.forEach { app ->
             if (app.name.matches(safe) && File(app, "current").exists() &&
                 File(flatpak, "repo/refs/remotes/flathub/app/${app.name}").exists()) external += "flathub:${app.name}"
@@ -203,6 +232,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     @Synchronized
     override fun initialize(nativeLibraryDir: String, callback: ILinuxContainerCallback?) {
+        check(!closed) { "Linux runtime is closed; reconnect" }
         val caller = android.os.Binder.getCallingUid()
         // Wayland clients name the compositor after the process serving their socket (fastfetch's WM).
         runCatching {
@@ -255,10 +285,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             put(config.put("running", sessions[id]?.alive == true)
                 .put("appsRunning", appSessions[id]?.alive == true)
                 .put("audioGeneration", audio?.generation(id) ?: 0)
+                .put("integrationsRunning", integrations.running(id))
                 .put("runtimeState", when {
                     runtimeStates[id] == "failed" -> "failed"
                     sessions[id]?.alive == true && sessions[id]?.windowManagerReady != true -> "starting"
-                    sessions[id]?.alive == true || appSessions[id]?.alive == true -> "running"
+                    sessions[id]?.alive == true || appSessions[id]?.alive == true || integrations.running(id) -> "running"
                     else -> runtimeStates[id]?.takeIf { it == "starting" } ?: "stopped"
                 })
                 .put("runtimeError", runtimeErrors[id]))
@@ -277,7 +308,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun installWithOptions(name: String, distroId: String, optionsJson: String): String {
         val distro = LinuxCatalog.find(distroId) ?: throw IllegalArgumentException("Unknown distribution $distroId")
-        val options = LinuxSetupOptions.fromJson(JSONObject(optionsJson)).validate(distro)
+        val requested = JSONObject(optionsJson)
+        val (_, password) = LinuxUser.credentials(requested)
+        val options = LinuxSetupOptions.fromJson(requested).validate(distro)
         val id = "c" + UUID.randomUUID().toString().replace("-", "").take(12)
         LinuxPaths.container(id).mkdirs()
         writeConfig(id, JSONObject()
@@ -287,6 +320,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             .put("setupOptions", options.toJson())
             .put("state", "installing")
             .put("created", System.currentTimeMillis()))
+        keyringSecrets[id] = password to true
         notifyChanged()
         installer.execute { runInstall(id, distro) }
         return id
@@ -300,6 +334,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun remove(containerId: String): Boolean {
         cancelInstall(containerId)
+        integrations.stop(containerId)
         sessions.remove(containerId)?.stop()
         stopApps(containerId)
         LinuxRuntime.forceStop(containerId)
@@ -324,7 +359,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val config = readConfig(containerId) ?: return false
         if (config.optString("state") in setOf("installing", "updating")) return false
         val distro = LinuxCatalog.find(config.optString("distro")) ?: return false
-        val options = LinuxSetupOptions.fromJson(JSONObject(optionsJson)).validate(distro)
+        val requested = JSONObject(optionsJson)
+        val previousName = config.optJSONObject("setupOptions")?.optString("username", "").orEmpty()
+        if (previousName.isNotEmpty()) {
+            require(!requested.has("username") || requested.optString("username") == previousName) { "Changing an existing Linux account is not supported" }
+            requested.put("username", previousName)
+        }
+        val options = LinuxSetupOptions.fromJson(requested).validate(distro)
         val imageReady = config.optBoolean("imageReady") || config.optString("state") == "installed"
         cancelled -= containerId
         config.put("setupOptions", options.toJson())
@@ -348,7 +389,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         check(LinuxPaths.rootfs(containerId).isDirectory) { "Container $containerId is not installed" }
         // Store jobs: an Android-mode container set up before these steps gets DNS and apt fixed first.
         prepareAndroid(containerId)
-        val result = runner.run(runner.guest(containerId, command, fakeRoot = true), timeoutSeconds.toLong().coerceIn(1, 3_600))
+        val result = runner.run(runner.guest(containerId, command, fakeRoot = true, extraEnvironment = listOf("HOME=${LinuxUser.home(containerId)}")), timeoutSeconds.toLong().coerceIn(1, 3_600))
         return JSONObject().put("exitCode", result.exitCode).put("output", result.output).toString()
     }
 
@@ -378,10 +419,10 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     override fun openTerminal(containerId: String, rows: Int, cols: Int): android.os.ParcelFileDescriptor {
         val runner = requireProot()
         check(LinuxPaths.rootfs(containerId).isDirectory) { "Container $containerId is not installed" }
-        // Root, as for package management, so apt works from the terminal.
+        integrations.restore(containerId)
         val builder = runner.guest(containerId,
-            "cd /root 2>/dev/null; if command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh -l; fi",
-            fakeRoot = true)
+            "cd \"${'$'}HOME\" 2>/dev/null; if command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh -l; fi",
+            fakeRoot = LinuxUser.name(LinuxPaths.rootfs(containerId)) == null)
         val pid = IntArray(1)
         val master = LinuxPty.nativeSpawn(builder.command().toTypedArray(),
             builder.environment().map { (name, value) -> "$name=$value" }.toTypedArray(),
@@ -406,6 +447,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     override fun resetSession(containerId: String, force: Boolean): Boolean {
         check(readConfig(containerId)?.optString("state") !in setOf("installing", "updating")) { "Setup is running; cancel it first" }
         runtimeGenerations.merge(containerId, 1, Int::plus)
+        integrations.stop(containerId)
         // Kill orphan trees before losing their display identities.
         val killed = if (force) LinuxRuntime.forceStop(containerId) else 0
         stopDesktop(containerId)
@@ -470,6 +512,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         sessions[containerId] = session
         session.onClipboard = { text -> shareClipboard(containerId, text) }
+        integrations.restore(containerId)
         startNotifications(containerId, display)
         monitor(containerId, { session.alive }) { sessions[containerId] === session }
         notifyChanged()
@@ -585,6 +628,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         appSessions[containerId] = session
         session.onClipboard = { text -> shareClipboard(containerId, text) }
+        integrations.restore(containerId)
         startNotifications(containerId, display)
         monitor(containerId, { session.alive }) { appSessions[containerId] === session }
         notifyChanged()
@@ -1015,6 +1059,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     @Synchronized internal fun close() {
+        if (closed) return
+        closed = true
+        integrations.stopAll()
         sessions.values.forEach { runCatching { it.stop() } }
         appSessions.keys.toList().forEach { runCatching { stopApps(it) } }
         graphics?.stopAll()
@@ -1252,6 +1299,16 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         checkCancelled(id)
         // DroidDeck's runtime and desktop package bring everything; pacman would replace its own builds.
         if (!runtime) provisionPackages(id, distro, runner)
+        if (options.username.isNotEmpty() && LinuxUser.name(LinuxPaths.rootfs(id)) == null) {
+            progress(id, "account", -1, "")
+            LinuxSessionCompatibility.stage(LinuxPaths.rootfs(id), runner.nativeLibraryDir, LinuxProot.socketNamespace(id))
+            val password = keyringSecrets[id]?.first ?: error("Reopen Dextop to unlock the account setup password, then retry setup")
+            val uid = android.system.Os.getuid().takeIf { it > 0 } ?: 1000
+            val script = "exec python3 /usr/local/libexec/dextop-user-setup ${options.username} $uid"
+            val result = runner.run(runner.guest(id, script, fakeRoot = true), 600,
+                onProcess = { activeProcesses[id] = it }, input = password) { log(id, it) }
+            check(result.exitCode == 0) { "Linux account setup failed (exit ${result.exitCode}); see installation log" }
+        }
         setupSteps(id, distro, options, runner)
     }
 
@@ -1299,8 +1356,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             }
             progress(id, step.phase, -1, "")
             val result = try {
-                LinuxSetupScript.run(LinuxPaths.rootfs(id), step.script) { command ->
-                    runner.run(runner.guest(id, command, fakeRoot = true), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
+                LinuxSetupScript.run(LinuxPaths.rootfs(id), step.script.replace("/root", LinuxUser.home(id))) { command ->
+                    runner.run(runner.guest(id, command, fakeRoot = true, extraEnvironment = listOf("HOME=${LinuxUser.home(id)}")), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
                         log(id, line)
                         if (line.startsWith("Unpacking ") || line.startsWith("Setting up ")) progress(id, step.phase, -1, line.take(100))
                     }

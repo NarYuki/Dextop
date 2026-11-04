@@ -41,7 +41,12 @@ internal object LinuxContainerClient {
     @Volatile private var usingAndroid = false
     @Volatile private var usingEmbedded = false
     @Volatile private var embeddedBinder: IBinder? = null
-    private var bindGeneration = 0
+    private val epochs = LinuxConnectionEpoch()
+    @Volatile private var activeConnection: RuntimeConnection? = null
+    private val controlCalls = Executors.newFixedThreadPool(2) { Thread(it, "DextopLinuxModeSwitch") }
+    private fun onMain(action: () -> Unit) {
+        if (Looper.myLooper() == Looper.getMainLooper()) action() else mainHandler.post { action() }
+    }
     private var appContext: Context? = null
 
     private val args by lazy {
@@ -60,102 +65,137 @@ internal object LinuxContainerClient {
             .daemon(true)
     }
 
-    private val callback = object : ILinuxContainerCallback.Stub() {
+    private fun runtimeCallback(attempt: LinuxConnectionEpoch.Attempt) = object : ILinuxContainerCallback.Stub() {
         override fun onProgress(containerId: String, phase: String, percent: Int, message: String) =
-            dispatch { it.onProgress(containerId, phase, percent, message) }
+            dispatch(attempt) { it.onProgress(containerId, phase, percent, message) }
 
-        override fun onLog(containerId: String, line: String) = dispatch { it.onLog(containerId, line) }
+        override fun onLog(containerId: String, line: String) = dispatch(attempt) { it.onLog(containerId, line) }
 
         override fun onContainersChanged() {
+            if (!epochs.owns(attempt)) return
             refreshAudio()
-            dispatch { it.onContainersChanged() }
+            dispatch(attempt) { it.onContainersChanged() }
         }
 
-        override fun onClipboard(containerId: String, text: String) = dispatch { it.onClipboard(containerId, text) }
+        override fun onClipboard(containerId: String, text: String) = dispatch(attempt) { it.onClipboard(containerId, text) }
 
         override fun onNotification(containerId: String, json: String) {
             val event = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return
-            dispatch { it.onNotification(containerId, event) }
+            dispatch(attempt) { it.onNotification(containerId, event) }
         }
 
         override fun onWindowEvent(containerId: String, json: String) {
             val event = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return
-            dispatch { it.onWindowEvent(containerId, event) }
+            dispatch(attempt) { it.onWindowEvent(containerId, event) }
         }
     }
 
-    private val connection = object : ServiceConnection {
-        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) {
-            val service = binder?.takeIf { it.pingBinder() }?.let(ILinuxContainerService.Stub::asInterface) ?: run {
-                binding = false
-                failPending(IllegalStateException("Linux service binder is unavailable"))
-                return
+    private class RuntimeConnection(val attempt: LinuxConnectionEpoch.Attempt) : ServiceConnection {
+        @Volatile var candidate: ILinuxContainerService? = null
+        override fun onServiceConnected(name: ComponentName?, binder: IBinder?) = onMain {
+            if (!epochs.owns(attempt)) return@onMain
+            val service = binder?.takeIf { it.isBinderAlive }?.let(ILinuxContainerService.Stub::asInterface)
+            if (service == null) {
+                failConnection(this, IllegalStateException("Linux service binder is unavailable"))
+                return@onMain
             }
-            val context = appContext ?: return
+            candidate = service
+            val context = appContext ?: return@onMain
             calls.execute {
-                val version = runCatching { service.protocolVersion() }.getOrNull()
-                // A daemon kept across an APK update still runs the old code, whatever its protocol.
-                val code = runCatching { service.codePath() }.getOrNull()
-                val stale = version != null && (version != LinuxContainerService.PROTOCOL_VERSION ||
-                    code?.contains(context.applicationInfo.sourceDir) != true)
-                if (stale && protocolRestarts++ == 0) {
-                    Log.i(TAG, "restarting Linux service protocol=$version expected=${LinuxContainerService.PROTOCOL_VERSION} code=$code")
-                    // Some compatible privilege servers reuse a daemon after an APK update.
-                    // The old process holds the old dex; it must exit before loading the new API.
-                    runCatching { service.destroy() }
-                    remote = null
-                    binding = false
-                    mainHandler.postDelayed({ connect(context) }, 500)
-                    return@execute
-                }
-                // A privilege provider can restart the other mode's runtime after a mode switch stopped
-                // it, and its connection arrives late. It is not ours: drop it and keep waiting.
-                val probedUid = runCatching { Regex("uid=(\\d+)").find(service.probe())?.groupValues?.get(1)?.toIntOrNull() }.getOrNull()
-                if (probedUid != null && (probedUid == android.os.Process.myUid()) != usingAndroid) {
-                    Log.i(TAG, "ignoring a Linux runtime of the other execution mode uid=$probedUid")
-                    if (!usingAndroid) return@execute
-                    runCatching { service.destroy() }
-                    return@execute
-                }
+                if (!epochs.owns(attempt)) return@execute
                 runCatching {
-                    check(service.protocolVersion() == LinuxContainerService.PROTOCOL_VERSION) { "protocol mismatch" }
+                    val version = service.protocolVersion()
+                    val code = service.codePath()
                     val report = service.probe()
                     val uid = Regex("uid=(\\d+)").find(report)?.groupValues?.get(1)?.toIntOrNull()
-                    check(if (usingAndroid) uid == android.os.Process.myUid() else uid in setOf(0, 2000)) {
+                    check(if (attempt.android) uid == android.os.Process.myUid() else uid in setOf(0, 2000)) {
                         "Linux execution UID does not match the selected mode"
                     }
-                    service.initialize(context.applicationInfo.nativeLibraryDir, callback)
-                }.onSuccess {
-                    binding = false
-                    protocolRestarts = 0
-                    remote = service
-                    runCatching {
-                        LinuxNetworkMonitor.start(context, scanRequested = { remote?.consumeNetworkScanRequests() == true }) { snapshot ->
-                            calls.execute {
-                                runCatching { remote?.setNetworkLink(snapshot) }
-                                    .onFailure { Log.w(TAG, "Cannot publish Linux network link", it) }
+                    check(epochs.owns(attempt)) { "Linux connection changed during initialization" }
+                    val stale = version != LinuxContainerService.PROTOCOL_VERSION || !code.contains(context.applicationInfo.sourceDir)
+                    if (stale) {
+                        if (protocolRestarts++ == 0) {
+                            runCatching { service.destroy() }
+                            onMain {
+                                if (epochs.abandon(attempt)) {
+                                    activeConnection = null
+                                    binding = false
+                                    if (embeddedBinder === binder) embeddedBinder = null
+                                    releaseBinding(context, this)
+                                    mainHandler.postDelayed({ connect(context) }, 500)
+                                }
                             }
+                            return@execute
                         }
-                    }.onFailure { Log.w(TAG, "Cannot observe Android network link", it) }
-                    refreshAudio()
-                    // Keyring passwords stay in the app's Keystore-sealed storage; the service gets them in memory.
-                    runCatching { LinuxKeyring.publish(context, service) }.onFailure { Log.w(TAG, "Cannot hand over keyring passwords", it) }
-                    Log.i(TAG, "connected android=$usingAndroid via=${if (usingEmbedded) "embedded" else "external"}: ${runCatching { service.probe() }.getOrNull()}")
-                    dispatch { it.onConnectionChanged(true) }
-                    pending.toList().also { pending.clear() }.forEach { it.run(service) }
-                }.onFailure {
-                    binding = false
-                    Log.e(TAG, "Linux service initialization failed", it)
-                    failPending(it)
-                }
+                        error("Linux service protocol or APK version does not match; reconnect Dextop")
+                    }
+                    service.initialize(context.applicationInfo.nativeLibraryDir, runtimeCallback(attempt))
+                    check(epochs.owns(attempt)) { "Linux connection changed during initialization" }
+                    runCatching { LinuxKeyring.publish(context, service) }
+                        .onFailure { Log.w(TAG, "Cannot hand over keyring passwords", it) }
+                }.onSuccess {
+                    onMain {
+                        if (!epochs.owns(attempt)) return@onMain
+                        if (LinuxExecutionMode.android(context) != attempt.android) {
+                            failConnection(this, IllegalStateException("Linux execution mode changed; reconnect"))
+                            return@onMain
+                        }
+                        binding = false
+                        protocolRestarts = 0
+                        remote = service
+                        usingAndroid = attempt.android
+                        usingEmbedded = attempt.embedded
+                        runCatching {
+                            LinuxNetworkMonitor.start(context, scanRequested = {
+                                remote === service && service.consumeNetworkScanRequests()
+                            }) { snapshot ->
+                                calls.execute {
+                                    if (remote === service) runCatching { service.setNetworkLink(snapshot) }
+                                        .onFailure { Log.w(TAG, "Cannot publish Linux network link", it) }
+                                }
+                            }
+                        }.onFailure { Log.w(TAG, "Cannot observe Android network link", it) }
+                        refreshAudio()
+                        Log.i(TAG, "connected android=${attempt.android} via=${if (attempt.embedded) "embedded" else "platform"}")
+                        dispatch { it.onConnectionChanged(true) }
+                        pending.toList().also { pending.clear() }.forEach { it.run(service) }
+                    }
+                }.onFailure { error -> onMain { failConnection(this, error) } }
             }
         }
 
-        override fun onServiceDisconnected(name: ComponentName?) {
+        override fun onServiceDisconnected(name: ComponentName?) = onMain {
+            if (!epochs.abandon(attempt)) return@onMain
             remote = null
             binding = false
+            activeConnection = null
+            appContext?.let { releaseBinding(it, this) }
+            failPending(IllegalStateException("Linux runtime disconnected; retry the operation"))
             dispatch { it.onConnectionChanged(false) }
         }
+        override fun onBindingDied(name: ComponentName?) = onServiceDisconnected(name)
+        override fun onNullBinding(name: ComponentName?) = onMain {
+            failConnection(this, IllegalStateException("Linux runtime returned an empty binding"))
+        }
+    }
+
+    private fun releaseBinding(context: Context, connection: RuntimeConnection, remove: Boolean = false) {
+        if (connection.attempt.android) runCatching { context.applicationContext.unbindService(connection) }
+        else if (!connection.attempt.embedded) {
+            if (Looper.myLooper() == Looper.getMainLooper()) controlCalls.execute {
+                runCatching { Shizuku.unbindUserService(args, connection, remove) }
+            } else runCatching { Shizuku.unbindUserService(args, connection, remove) }
+        }
+    }
+
+    private fun failConnection(connection: RuntimeConnection, error: Throwable) {
+        if (!epochs.abandon(connection.attempt)) return
+        remote = null
+        binding = false
+        activeConnection = null
+        appContext?.let { releaseBinding(it, connection) }
+        Log.e(TAG, "Linux service connection failed", error)
+        failPending(error)
     }
 
     /** Sound players by container, following the containers' PulseAudio ports. */
@@ -185,7 +225,9 @@ internal object LinuxContainerClient {
                     .associate { it.optString("id") to it.optInt("audioGeneration") }
                     .filterValues { it > 0 }
             }.onFailure { Log.w(TAG, "Cannot refresh Linux audio ports", it) }.getOrNull() ?: return@execute
+            if (remote !== service || epochs.switching) return@execute
             synchronized(players) {
+                if (remote !== service || epochs.switching) return@synchronized
                 players.entries.removeAll { (id, player) ->
                     (ports[id] != player.generation).also { stale -> if (stale) player.stop() }
                 }
@@ -193,14 +235,20 @@ internal object LinuxContainerClient {
                     Log.i(TAG, "Connecting Linux audio $id generation=$port")
                     val burst = appContext?.getSystemService(android.media.AudioManager::class.java)
                         ?.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)
-                    players[id] = LinuxAudioPlayer(id, port, burst) { checkNotNull(remote) { "Linux service disconnected" }.openAudioStream(id) }
+                    players[id] = LinuxAudioPlayer(id, port, burst) {
+                        check(remote === service && !epochs.switching) { "Linux service disconnected" }
+                        service.openAudioStream(id)
+                    }
                 } }
             }
         }
     }
 
-    private fun dispatch(action: (Listener) -> Unit) {
-        mainHandler.post { listeners.forEach(action) }
+    private fun dispatch(attempt: LinuxConnectionEpoch.Attempt? = null, action: (Listener) -> Unit) {
+        mainHandler.post {
+            if (attempt != null && !epochs.owns(attempt)) return@post
+            listeners.forEach(action)
+        }
     }
 
     private fun failPending(error: Throwable) {
@@ -208,8 +256,8 @@ internal object LinuxContainerClient {
     }
 
     /** Only the shell-only provider calls this, after validating the daemon's APK path. */
-    fun acceptEmbeddedService(context: Context, binder: IBinder) {
-        if (LinuxExecutionMode.android(context)) return
+    fun acceptEmbeddedService(context: Context, binder: IBinder) = onMain {
+        if (LinuxExecutionMode.android(context)) return@onMain
         appContext = context.applicationContext
         embeddedBinder = binder
         runCatching {
@@ -217,13 +265,13 @@ internal object LinuxContainerClient {
                 if (embeddedBinder === binder) {
                     embeddedBinder = null
                     mainHandler.post {
-                        if (usingEmbedded && remote?.asBinder() == binder) connection.onServiceDisconnected(null)
+                        activeConnection?.takeIf { it.attempt.embedded && it.candidate?.asBinder() == binder }?.onServiceDisconnected(null)
                     }
                 }
             }, 0)
         }
         mainHandler.post {
-            if (usingEmbedded && binding) connection.onServiceConnected(null, binder)
+            activeConnection?.takeIf { it.attempt.embedded && binding }?.onServiceConnected(null, binder)
         }
     }
 
@@ -235,7 +283,7 @@ internal object LinuxContainerClient {
 
     /** The connected service, for oneway input calls that may run on the main thread. */
     fun service(): ILinuxContainerService? = remote?.takeIf {
-        it.asBinder().isBinderAlive && (!usingEmbedded || DistributionPrivilegeRuntime.enabled)
+        !epochs.switching && it.asBinder().isBinderAlive && (!usingEmbedded || DistributionPrivilegeRuntime.enabled)
     }
 
     fun privilegedService(): ILinuxContainerService? = service()?.takeUnless { usingAndroid }
@@ -246,145 +294,158 @@ internal object LinuxContainerClient {
             (DistributionPrivilegeRuntime.enabled && embeddedBinder?.isBinderAlive == true) ||
             runCatching { Shizuku.pingBinder() && !Shizuku.isPreV11() }.getOrDefault(false)
 
-    fun connect(context: Context) {
+    fun connect(context: Context): Unit = onMain {
         appContext = context.applicationContext
-        if (connected || binding || !privilegeAvailable()) return
+        if (epochs.switching || connected || binding || !privilegeAvailable(context)) return@onMain
+        val androidMode = LinuxExecutionMode.android(context)
+        val embedded = !androidMode && (DistributionPrivilegeRuntime.available ||
+            (DistributionPrivilegeRuntime.enabled && embeddedBinder?.isBinderAlive == true))
+        val previous = activeConnection
+        val attempt = epochs.begin(androidMode, embedded) ?: return@onMain
+        remote = null
+        previous?.let { releaseBinding(context, it) }
+        val connection = RuntimeConnection(attempt)
+        activeConnection = connection
         binding = true
-        val generation = ++bindGeneration
-        usingAndroid = LinuxExecutionMode.android(context)
-        if (usingAndroid) {
-            usingEmbedded = false
-            mainHandler.post {
-                runCatching {
-                    check(context.applicationContext.bindService(
-                        android.content.Intent(context, LinuxRuntimeService::class.java), connection,
-                        // As important as Dextop itself: an on-screen Dextop gives Linux the top-app cores.
-                        Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_INCLUDE_CAPABILITIES
-                    )) { "Cannot bind Android Linux runtime" }
-                }.onFailure { binding = false; failPending(it) }
-            }
-            mainHandler.postDelayed({
-                if (bindGeneration == generation && binding && usingAndroid && !connected) {
-                    binding = false
-                    runCatching { context.applicationContext.unbindService(connection) }
-                    failPending(IllegalStateException("Android Linux runtime did not connect"))
-                }
-            }, 15_000)
-            return
-        }
-        if (DistributionPrivilegeRuntime.available ||
-            (DistributionPrivilegeRuntime.enabled && embeddedBinder?.isBinderAlive == true)) {
-            usingEmbedded = true
-            embeddedBinder?.takeIf { it.isBinderAlive }?.let {
-                connection.onServiceConnected(null, it)
-                return
-            }
-            calls.execute {
-                runCatching {
-                    val command = LinuxServiceHost.startCommand(context.packageName,
-                        context.applicationInfo.sourceDir, context.applicationInfo.nativeLibraryDir)
-                    val result = DistributionPrivilegeRuntime.execute(arrayOf("/system/bin/sh", "-c", command))
-                        ?: error("Dextop built-in access is not running")
-                    check(result.exitCode == 0) { "Linux service launch failed: ${result.error}" }
-                }.onFailure {
-                    binding = false
-                    Log.e(TAG, "Built-in Linux service launch failed", it)
-                    failPending(it)
-                }
-            }
-            mainHandler.postDelayed({
-                if (bindGeneration == generation && binding && usingEmbedded && !connected) {
-                    binding = false
-                    failPending(IllegalStateException("Dextop's Linux service did not connect; retry Dextop setup"))
-                }
-            }, 15_000)
-            return
-        }
-        usingEmbedded = false
-        runCatching { Shizuku.bindUserService(args, connection) }
-            .onFailure {
-                binding = false
-                Log.e(TAG, "Linux UserService bind failed", it)
-                failPending(it)
-            }
-        // A user service that never answers (its provider restarted, Dextop updated under it)
-        // would otherwise leave every call waiting with no error and no way to connect again.
+        usingAndroid = androidMode
+        usingEmbedded = embedded
+        // Covers every provider and the entire handshake, including rejected/late callbacks.
         mainHandler.postDelayed({
-            if (bindGeneration == generation && binding && !usingAndroid && !usingEmbedded && !connected) {
-                binding = false
-                Log.w(TAG, "Linux UserService did not connect within 15 s")
-                failPending(IllegalStateException("Dextop's Linux service did not connect; try again"))
-            }
+            if (epochs.owns(attempt) && binding) failConnection(connection,
+                IllegalStateException("Linux runtime did not connect within 15 seconds; retry the operation"))
         }, 15_000)
+        when {
+            androidMode -> runCatching {
+                check(context.applicationContext.bindService(
+                    android.content.Intent(context, LinuxRuntimeService::class.java), connection,
+                    Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_INCLUDE_CAPABILITIES
+                )) { "Cannot bind Android Linux runtime" }
+            }.onFailure { failConnection(connection, it) }
+            embedded -> {
+                val binder = embeddedBinder?.takeIf { it.isBinderAlive }
+                if (binder != null) connection.onServiceConnected(null, binder)
+                else calls.execute {
+                    if (!epochs.owns(attempt)) return@execute
+                    runCatching {
+                        val command = LinuxServiceHost.startCommand(context.packageName,
+                            context.applicationInfo.sourceDir, context.applicationInfo.nativeLibraryDir)
+                        val result = DistributionPrivilegeRuntime.execute(arrayOf("/system/bin/sh", "-c", command))
+                            ?: error("Dextop built-in access is not running")
+                        check(result.exitCode == 0) { "Linux service launch failed: ${result.error}" }
+                    }.onFailure { error -> onMain { failConnection(connection, error) } }
+                }
+            }
+            else -> runCatching { Shizuku.bindUserService(args, connection) }
+                .onFailure { failConnection(connection, it) }
+        }
     }
 
     /** Explicit mode changes stop sessions only after the user confirms. Storage is never removed. */
-    fun switchExecution(context: Context, mode: String, stop: Boolean, done: () -> Unit, failed: (Throwable) -> Unit) {
-        calls.execute {
+    fun switchExecution(context: Context, mode: String, stop: Boolean, done: () -> Unit, failed: (Throwable) -> Unit): Unit = onMain {
+        if (mode !in setOf(LinuxExecutionMode.PRIVILEGED, LinuxExecutionMode.ANDROID)) {
+            failed(IllegalArgumentException("Unknown Linux execution mode")); return@onMain
+        }
+        if (epochs.switching) {
+            failed(IllegalStateException("Linux execution mode is already changing")); return@onMain
+        }
+        if (mode == LinuxExecutionMode.read(context)) { done(); return@onMain }
+        val oldConnection = activeConnection
+        val current = remote ?: oldConnection?.candidate ?: embeddedBinder
+            ?.takeIf { !LinuxExecutionMode.android(context) && it.isBinderAlive }
+            ?.let(ILinuxContainerService.Stub::asInterface)
+        val switchId = epochs.beginSwitch() ?: return@onMain
+        remote = null
+        binding = false
+        activeConnection = null
+        failPending(IllegalStateException("Linux execution mode is changing; retry the operation"))
+        // A blocked Binder call must not leave the settings page loading forever.
+        mainHandler.postDelayed({
+            if (epochs.finishSwitch(switchId)) {
+                oldConnection?.let { releaseBinding(context, it) }
+                failed(IllegalStateException("Stopping the previous Linux runtime timed out; the execution mode was not changed"))
+                dispatch { it.onConnectionChanged(false) }
+            }
+        }, 45_000)
+        controlCalls.execute {
             runCatching {
-                require(mode in setOf(LinuxExecutionMode.PRIVILEGED, LinuxExecutionMode.ANDROID))
-                if (mode == LinuxExecutionMode.read(context)) return@runCatching
+                fun currentSwitch() = check(epochs.ownsSwitch(switchId)) { "Linux mode switch was cancelled or timed out" }
+                currentSwitch()
                 check(!LinuxStoreJobs.hasActiveJobs()) { "Wait for Store operations to finish before switching Linux execution mode" }
-                val current = remote
                 if (current != null) {
                     val list = org.json.JSONArray(current.listContainers())
                     val active = (0 until list.length()).map(list::getJSONObject).filter {
-                        it.optString("runtimeState") == "running" || it.optBoolean("appsRunning") ||
-                        it.optString("state") in setOf("installing", "updating")
+                        it.optString("runtimeState") in setOf("starting", "running") || it.optBoolean("appsRunning") ||
+                            it.optBoolean("integrationsRunning") || it.optString("state") in setOf("installing", "updating")
                     }
                     check(active.none { it.optString("state") in setOf("installing", "updating") }) {
                         "Wait for Linux installation or repair to finish before changing execution mode"
                     }
                     check(active.isEmpty() || stop) { "Linux sessions are running; confirm stopping them before switching modes" }
                     (if (stop) (0 until list.length()).map(list::getJSONObject) else active).forEach { item ->
-                        val id = item.getString("id")
-                        current.resetSession(id, true)
+                        currentSwitch()
+                        current.resetSession(item.getString("id"), true)
                     }
-                    // The other mode's runtime must not stay behind: a shell-user service would keep
-                    // running with privilege after the user chose the Android mode, and vice versa.
-                    runCatching { current.destroy() }
+                    currentSwitch()
+                    // Remote shell runtimes exit during this transaction, so DeadObjectException is expected.
+                    try { current.destroy() } catch (_: android.os.DeadObjectException) { }
                 }
-                val wasAndroid = usingAndroid
-                val wasEmbedded = usingEmbedded
-                remote = null
-                binding = false
-                ++bindGeneration
+                currentSwitch()
+                oldConnection?.let { releaseBinding(context, it, remove = true) }
+                currentSwitch()
                 synchronized(players) { players.values.forEach { it.stop() }; players.clear() }
-                LinuxExecutionMode.write(context, mode)
-                mainHandler.post {
-                    if (wasAndroid) runCatching { context.applicationContext.unbindService(connection) }
-                    else if (!wasEmbedded) runCatching { Shizuku.unbindUserService(args, connection, false) }
-                    usingAndroid = false
-                    usingEmbedded = false
-                    dispatch { it.onConnectionChanged(false) }
-                    done()
+            }.onSuccess {
+                onMain {
+                    if (!epochs.ownsSwitch(switchId)) return@onMain
+                    runCatching { LinuxExecutionMode.write(context, mode) }.onSuccess {
+                        // All old state is retired before publishing the new mode. Never reset the
+                        // new connection's mode flags from a delayed teardown callback.
+                        usingAndroid = mode == LinuxExecutionMode.ANDROID
+                        usingEmbedded = false
+                        embeddedBinder = null
+                        epochs.finishSwitch(switchId)
+                        dispatch { it.onConnectionChanged(false) }
+                        done()
+                        connect(context)
+                    }.onFailure { error ->
+                        epochs.finishSwitch(switchId)
+                        failed(error)
+                        dispatch { it.onConnectionChanged(false) }
+                    }
                 }
-            }.onFailure { mainHandler.post { failed(it) } }
+            }.onFailure { error -> onMain {
+                if (epochs.finishSwitch(switchId)) {
+                    oldConnection?.let { releaseBinding(context, it) }
+                    failed(error)
+                    dispatch { it.onConnectionChanged(false) }
+                }
+            } }
         }
     }
 
     /** Runs [action] on a background thread once connected; [onError] runs on the main thread. */
-    fun <T> call(context: Context, action: (ILinuxContainerService) -> T, onResult: (T) -> Unit, onError: (Throwable) -> Unit) {
+    fun <T> call(context: Context, action: (ILinuxContainerService) -> T, onResult: (T) -> Unit, onError: (Throwable) -> Unit): Unit = onMain {
+        if (epochs.switching) {
+            onError(IllegalStateException("Linux execution mode is changing; retry the operation"))
+            return@onMain
+        }
         val wrapped: (ILinuxContainerService) -> Unit = { service ->
             calls.execute {
                 runCatching {
                     check(LinuxContainerClient.service() === service) { "Linux execution mode or connection changed; retry the operation" }
                     action(service)
-                }
-                    .onSuccess { result -> mainHandler.post { onResult(result) } }
-                    .onFailure { error -> mainHandler.post { onError(error) } }
+                }.onSuccess { result -> mainHandler.post {
+                    if (LinuxContainerClient.service() === service) onResult(result)
+                    else onError(IllegalStateException("Linux execution mode or connection changed; retry the operation"))
+                } }.onFailure { error -> mainHandler.post { onError(error) } }
             }
         }
         val service = service()
-        if (service != null) {
-            wrapped(service)
-            return
-        }
+        if (service != null) { wrapped(service); return@onMain }
         if (!privilegeAvailable(context)) {
-            mainHandler.post { onError(IllegalStateException("Complete Dextop setup to enable built-in access")) }
-            return
+            onError(IllegalStateException("Complete Dextop setup to enable built-in access"))
+            return@onMain
         }
-        pending += PendingCall(wrapped) { error -> mainHandler.post { onError(error) } }
+        pending += PendingCall(wrapped, onError)
         connect(context)
     }
 }

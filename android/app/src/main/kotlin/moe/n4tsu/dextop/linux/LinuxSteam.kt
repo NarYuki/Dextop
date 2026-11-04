@@ -297,7 +297,7 @@ internal object LinuxSteam {
             exec /usr/local/bin/dextop-dd-stock-session "${'$'}@"
         fi
         # Debian puts gamescope under /usr/games.
-        export HOME=/root USER=root PATH=/usr/local/bin:/usr/bin:/bin:/usr/games LANG=${'$'}{LANG:-C.UTF-8}
+        export HOME=${'$'}{HOME:-/root} USER=${'$'}{USER:-root} PATH=/usr/local/bin:/usr/bin:/bin:/usr/games LANG=${'$'}{LANG:-C.UTF-8}
         export XDG_DATA_HOME=${'$'}HOME/.local/share XDG_CONFIG_HOME=${'$'}HOME/.config XDG_CACHE_HOME=${'$'}HOME/.cache
         export GLIBC_TUNABLES=glibc.pthread.rseq=0:glibc.malloc.top_pad=16777216 MESA_DISK_CACHE_DATABASE=1
         log=/tmp/$STEAM_MODE_LOG
@@ -367,7 +367,7 @@ internal object LinuxSteam {
                 export PULSE_SERVER="tcp:127.0.0.1:${'$'}audio_port"
                 echo "Deck audio: DirectAudio"
             else
-                export PULSE_COOKIE=/root/.config/pulse/dextop-cookie
+                export PULSE_COOKIE=${'$'}HOME/.config/pulse/dextop-cookie
                 echo "Deck audio: container fallback"
             fi
             export DEXTOP_STEAM_INSIDE=1 GAMESCOPE_FORCE_GENERAL_QUEUE=1 gamescope_cursor_composite=2
@@ -593,7 +593,7 @@ internal object LinuxSteam {
     private val droidDeckDesktopLauncher = """
         #!/bin/sh
         unset DISPLAY DBUS_SESSION_BUS_ADDRESS MESA_LOADER_DRIVER_OVERRIDE GALLIUM_DRIVER
-        export HOME=/root USER=root PATH=/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8
+        export HOME=${'$'}{HOME:-/root} USER=${'$'}{USER:-root} PATH=/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8
         export XDG_RUNTIME_DIR=/tmp/runtime-root XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=wayland-0
         export GAMESCOPE_FORCE_GENERAL_QUEUE=1 MESA_LOADER_DRIVER_OVERRIDE=zink GALLIUM_DRIVER=zink LIBGL_KOPPER_DRI2=true
         [ -f ${LinuxCatalog.TURNIP_ICD} ] && export VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD}

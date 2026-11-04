@@ -27,7 +27,10 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
         LinuxContainerClient.addListener(this)
         channel.setMethodCallHandler { call, result ->
             fun <T> remote(action: (ILinuxContainerService) -> T, map: (T) -> Any? = { it }) =
-                LinuxContainerClient.call(context, action, { result.success(map(it)) }) { error ->
+                LinuxContainerClient.call(context, action, { value ->
+                    runCatching { map(value) }.onSuccess { result.success(it) }
+                        .onFailure { result.error("linux", it.message ?: it.javaClass.simpleName, null) }
+                }) { error ->
                     result.error("linux", error.message ?: error.javaClass.simpleName, null)
                 }
             when (call.method) {
@@ -35,6 +38,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     "supportedDevice" to Build.SUPPORTED_ABIS.contains("arm64-v8a"),
                     "privilege" to LinuxContainerClient.privilegeAvailable(context),
                     "connected" to LinuxContainerClient.connected,
+                    "executionMode" to LinuxExecutionMode.read(context),
                     "plasmaV2" to (WindowManagerSelection.current(context) in setOf(WindowManagerSelection.DEXTOP_PLASMA_V2, WindowManagerSelection.DEXTOP_BOOK)),
                 ))
                 "executionMode" -> result.success(LinuxExecutionMode.read(context))
@@ -126,26 +130,78 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                         "if command -v python3 >/dev/null 2>&1; then " + LinuxStoreSources.helper() +
                             "dextop-store status ${if (call.argument<Boolean>("refresh") == true) "refresh" else ""}; else printf '%s\\n' '{\"installed\":[],\"upgradable\":[]}'; fi", 120))
                 }) { jsonMap(it) }
+                "integrationStatus" -> remote({ it.integrationStatus(call.argument<String>("id")!!) }) { jsonMap(it) }
+                "integrationAction" -> remote({ service ->
+                    val id = call.argument<String>("id")!!
+                    val request = JSONObject(call.argument<Map<String, Any?>>("request") ?: emptyMap<String, Any?>())
+                    val calendar = request.optString("feature") == "calendar"
+                    if (calendar && request.optString("op") in setOf("start", "save")) {
+                        val ids = request.optJSONArray("calendarIds") ?: org.json.JSONArray()
+                        val selected = (0 until ids.length()).map { ids.getString(it) }.toSet()
+                        if (request.optString("op") == "start") require(selected.isNotEmpty()) { "Choose calendars to share" }
+                        if (selected.isNotEmpty()) check(LinuxCalendarBridge.granted(context)) { "Allow calendar access first" }
+                        val visible = (LinuxCalendarBridge.list(context)["calendars"] as List<*>).map { (it as Map<*, *>)["id"] }.toSet()
+                        if (request.optString("op") == "save" && JSONObject(service.integrationStatus(id)).getJSONObject("calendar").optBoolean("running")) require(selected.isNotEmpty()) { "Choose calendars to share" }
+                        require(selected.all { it in visible }) { "A selected calendar is no longer available" }
+                        service.integrationAction(id, request.toString()).also {
+                            LinuxCalendarBridge.select(context, id, selected)
+                            if (JSONObject(it).getJSONObject("calendar").optBoolean("running")) LinuxCalendarBridge.sync(context, service, id, force = true)
+                        }
+                    } else service.integrationAction(id, request.toString())
+                }) { jsonMap(it).also { LinuxSessionService.start(context) } }
+                "calendarList" -> {
+                    fun reply() {
+                        Thread({
+                            val value = runCatching { LinuxCalendarBridge.list(context) + mapOf("selected" to LinuxCalendarBridge.selected(context, call.argument<String>("id")!!).toList()) }
+                            main.post { value.onSuccess { result.success(it) }.onFailure { result.error("calendar", it.message, null) } }
+                        }, "DextopCalendarList").start()
+                    }
+                    if (call.argument<Boolean>("request") == true) LinuxCalendarBridge.request(context) { reply() } else reply()
+                }
+                "calendarSync" -> remote({ service ->
+                    LinuxCalendarBridge.sync(context, service, call.argument<String>("id")!!, force = true)
+                    true
+                })
+                "printJob" -> runCatching {
+                    LinuxPrintBridge.open(context, call.argument<String>("id")!!, call.argument<String>("job")!!, call.argument<String>("title") ?: "Linux document")
+                }.onSuccess { result.success(null) }.onFailure { result.error("print", it.message, null) }
                 "settings" -> remote({ it.linuxSettings() }) { jsonMap(it) }
                 "setSettings" -> remote({
                     it.setLinuxSettings(JSONObject(call.argument<Map<String, Any?>>("settings") ?: emptyMap<String, Any?>()).toString())
                 }) { jsonMap(it) }
-                "list" -> remote({ it.listContainers() }) { json ->
+                "list" -> LinuxExecutionMode.read(context).let { mode -> remote({ it.listContainers() }) { json ->
+                    if (LinuxExecutionMode.read(context) == mode) runCatching { LinuxModeContainers.remember(context, mode, json) }
                     jsonList(json).also { list ->
                         if (list.any { (it as? Map<*, *>)?.let { c -> c["runtimeState"] == "running" || c["appsRunning"] == true } == true })
                             LinuxSessionService.start(context)
                     }
+                } }
+                // The container page: the selected mode's containers, then the other mode's (display only).
+                "listAll" -> {
+                    val mode = LinuxExecutionMode.read(context)
+                    remote({ it.listContainers() }) { json ->
+                        if (LinuxExecutionMode.read(context) == mode) runCatching { LinuxModeContainers.remember(context, mode, json) }
+                        val active = jsonList(json)
+                        if (active.any { (it as? Map<*, *>)?.let { c -> c["runtimeState"] == "running" || c["appsRunning"] == true } == true })
+                            LinuxSessionService.start(context)
+                        val ids = active.mapNotNull { (it as? Map<*, *>)?.get("id") }.toSet()
+                        active + LinuxModeContainers.inactive(context, mode).filter { it.optString("id") !in ids }.map(::toMap)
+                    }
                 }
-                "install" -> remote({
-                    it.installWithOptions(call.argument<String>("name").orEmpty(), call.argument<String>("distro") ?: "debian",
-                        JSONObject(call.argument<Map<String, Any?>>("options") ?: emptyMap<String, Any?>()).toString())
+                "install" -> remote({ service ->
+                    val options = JSONObject(call.argument<Map<String, Any?>>("options") ?: emptyMap<String, Any?>())
+                    val (_, password) = LinuxUser.credentials(options)
+                    val id = service.installWithOptions(call.argument<String>("name").orEmpty(), call.argument<String>("distro") ?: "debian",
+                        options.toString())
+                    LinuxKeyring.setup(context, id, LinuxKeyring.ACCOUNT, password, service)
+                    id
                 })
                 "setup" -> remote({ it.setup(call.argument<String>("id")!!,
                     JSONObject(call.argument<Map<String, Any?>>("options") ?: emptyMap<String, Any?>()).toString()) })
                 "cancel" -> remote({ it.cancelInstall(call.argument<String>("id")!!) })
                 "remove" -> remote({
                     val id = call.argument<String>("id")!!
-                    it.remove(id).also { LinuxKeyring.forget(context, id) }
+                    it.remove(id).also { LinuxKeyring.forget(context, id); LinuxCalendarBridge.forget(context, id) }
                 })
                 // The keyring choice of setup: a stored random password, or the user's own once.
                 "setKeyring" -> remote({
@@ -161,6 +217,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     for (name in listOf("linux-store-sources", "linux-android-app-grants", "dextop_linux_controllers"))
                         context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE).edit().clear().commit()
                     LinuxFolders.clear(context)
+                    LinuxModeContainers.clear(context)
                     // All data, not only the selected mode's: the other mode's storage goes too.
                     val android = java.io.File(context.noBackupFilesDir, "linux-android").absolutePath
                     runCatching {

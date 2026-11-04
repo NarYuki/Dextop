@@ -16,6 +16,20 @@ Future<void> next(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
+Future<void> enterAccount(WidgetTester tester) async {
+  for (final label in ['Password', 'Confirm password']) {
+    final field = find.byWidgetPredicate(
+      (widget) => widget is M3ETextField && widget.label == label,
+    );
+    await tester.ensureVisible(field);
+    await tester.enterText(
+      find.descendant(of: field, matching: find.byType(EditableText)),
+      'test-account-password',
+    );
+    await tester.pump();
+  }
+}
+
 void main() {
   const channel = MethodChannel('app.freedextop/linux');
   final keyringCalls = <MethodCall>[];
@@ -72,7 +86,7 @@ void main() {
       await tester.tap(find.text('Japanese — Mozc (experimental)'));
       await next(tester);
       await next(tester);
-      expect(find.text('Automatic (recommended)'), findsOneWidget);
+      await enterAccount(tester);
       await next(tester);
       await tester.tap(find.text('Start setup'));
       await tester.pump();
@@ -82,7 +96,9 @@ void main() {
       expect(selected?['themes'], false);
       expect(selected?['ime'], 'mozc');
       expect(selected?['apps'], isEmpty);
-      expect(keyringCalls.single.arguments, {'id': 'new', 'mode': 'auto'});
+      expect(selected?['username'], 'dextop');
+      expect(selected?['accountPassword'], 'test-account-password');
+      expect(keyringCalls, isEmpty);
       expect(find.text('Setting up language and fonts'), findsOneWidget);
       progress.value = {'new': const LinuxSetupProgress(state: 'installed')};
       await tester.pumpAndSettle();
@@ -162,9 +178,11 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (var i = 0; i < 6; i++) {
+      for (var i = 0; i < 5; i++) {
         await next(tester);
       }
+      await enterAccount(tester);
+      await next(tester);
       await tester.tap(find.text('Start setup'));
       await tester.pumpAndSettle();
       expect(find.text('Download interrupted'), findsOneWidget);
@@ -173,7 +191,7 @@ void main() {
       await tester.tap(find.text('Start setup'));
       await tester.pumpAndSettle();
       expect(targets, [null, 'existing']);
-      expect(keyringCalls.length, 1);
+      expect(keyringCalls, isEmpty);
       await tester.pumpWidget(const SizedBox());
     },
   );

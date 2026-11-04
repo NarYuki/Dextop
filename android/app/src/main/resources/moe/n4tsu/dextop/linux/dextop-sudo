@@ -1,0 +1,107 @@
+#!/usr/bin/python3
+"""Password-checked fakeroot for PRoot, where Android forbids setuid sudo.
+
+This is guest compatibility, not a security boundary against the Android uid.
+No password is cached, placed in argv, or written to a file.
+"""
+import ctypes
+import ctypes.util
+import getpass
+import hmac
+import os
+import pwd
+import shutil
+import sys
+from pathlib import Path
+
+
+def authenticate(name, password, shadow=Path('/etc/shadow')):
+    hashed = next((line.split(':')[1] for line in shadow.read_text().splitlines()
+                   if line.split(':', 1)[0] == name), '')
+    if not hashed or hashed.startswith(('!', '*')):
+        return False
+    library = ctypes.CDLL(ctypes.util.find_library('crypt') or 'libcrypt.so.1')
+    library.crypt.argtypes = [ctypes.c_char_p, ctypes.c_char_p]
+    library.crypt.restype = ctypes.c_char_p
+    result = library.crypt(password.encode(), hashed.encode())
+    return result is not None and hmac.compare_digest(result, hashed.encode())
+
+
+def main(args):
+    stdin = noninteractive = login = shell = validate = False
+    preserve_home = False
+    while args and args[0].startswith('-'):
+        flag = args.pop(0)
+        if flag == '--':
+            break
+        if flag in ('-u', '--user'):
+            if not args or args.pop(0) not in ('root', '#0'):
+                raise ValueError('Only sudo to root is supported in PRoot')
+        elif flag in ('-S', '--stdin'):
+            stdin = True
+        elif flag in ('-n', '--non-interactive'):
+            noninteractive = True
+        elif flag in ('-i', '--login'):
+            login = True
+        elif flag in ('-s', '--shell'):
+            shell = True
+        elif flag in ('-v', '--validate'):
+            validate = True
+        elif flag in ('-k', '-K', '--reset-timestamp', '--remove-timestamp'):
+            if not args:
+                return
+        elif flag in ('-E', '--preserve-env'):
+            preserve_home = True
+        elif flag in ('-H', '--set-home'):
+            preserve_home = False
+        elif flag in ('-h', '--help'):
+            print('Usage: sudo [-SniEsHvk] [-u root] [--] command [arguments]')
+            return
+        else:
+            raise ValueError('Unsupported sudo option: ' + flag)
+    if not args and not (login or shell or validate):
+        raise ValueError('A command is required')
+    name = Path('/etc/dextop/username').read_text().strip()
+    if os.geteuid() != 0:
+        if noninteractive:
+            raise ValueError('sudo: a password is required')
+        for attempt in range(3):
+            if stdin:
+                line = sys.stdin.readline()
+                password = line[:-1] if line.endswith('\n') else line
+            else:
+                password = getpass.getpass(f'[sudo] password for {name}: ')
+            accepted = authenticate(name, password)
+            del password
+            if accepted:
+                break
+            print('Sorry, try again.', file=sys.stderr)
+        else:
+            raise ValueError('sudo: authentication failed')
+    if validate:
+        return
+    account = pwd.getpwnam(name)
+    os.environ.update(SUDO_USER=name, SUDO_UID=str(account.pw_uid), SUDO_GID=str(account.pw_gid), USER='root', LOGNAME='root')
+    if not preserve_home:
+        os.environ['HOME'] = '/root'
+        for key in ('XDG_CONFIG_HOME', 'XDG_DATA_HOME', 'XDG_CACHE_HOME'):
+            os.environ.pop(key, None)
+    if login:
+        os.chdir('/root')
+        args = ['/bin/bash', '-l'] + (['-c', ' '.join(__import__('shlex').quote(arg) for arg in args)] if args else [])
+    elif shell:
+        args = ['/bin/bash'] + (['-c', ' '.join(__import__('shlex').quote(arg) for arg in args)] if args else [])
+    if os.geteuid() == 0:
+        os.execvpe(args[0], args, os.environ)
+    fakeroot = shutil.which('fakeroot-tcp') or shutil.which('fakeroot')
+    if not fakeroot:
+        raise ValueError('Install fakeroot to use sudo in PRoot')
+    os.execv(fakeroot, [fakeroot, '--'] + args)
+
+
+if __name__ == '__main__':
+    try:
+        main(sys.argv[1:])
+    except (ValueError, OSError, KeyError) as error:
+        print(str(error), file=sys.stderr)
+        sys.exit(1)

@@ -46,6 +46,7 @@ class _LinuxContainer {
       runtimeError = json['runtimeError'] as String?,
       bytes = (json['bytes'] as num?)?.toInt() ?? -1,
       error = json['error'] as String?,
+      inactiveMode = json['inactiveMode'] as String?,
       setupOptions =
           (json['setupOptions'] as Map?)?.cast<Object?, Object?>() ?? const {},
       progress = json['phase'] is String
@@ -66,6 +67,11 @@ class _LinuxContainer {
   final String? error;
   final Map<Object?, Object?> setupOptions;
 
+  /// The execution mode this container belongs to when it is not the selected one.
+  /// Such a container is shown for reference only and cannot be operated.
+  final String? inactiveMode;
+  bool get inactive => inactiveMode != null;
+
   /// The install phase reported by the service when the list was read.
   final _Progress? progress;
 }
@@ -83,6 +89,9 @@ class _LinuxPageState extends State<LinuxPage> {
 
   Timer? _runtimePoll;
   bool _refreshing = false;
+  int _dataGeneration = 0;
+  int _statusRequest = 0;
+  String? _executionMode;
   bool loading = true;
   bool enabled = false;
   Map<Object?, Object?> status = const {};
@@ -110,7 +119,7 @@ class _LinuxPageState extends State<LinuxPage> {
   bool get usable => privilege && supportedDevice;
 
   List<_LinuxContainer> get installedContainers =>
-      containers.where((c) => c.state == 'installed').toList();
+      containers.where((c) => !c.inactive && c.state == 'installed').toList();
 
   /// The containers whose applications are listed: the default one, or all.
   List<_LinuxContainer> get appContainers {
@@ -194,19 +203,49 @@ class _LinuxPageState extends State<LinuxPage> {
   }
 
   Future<void> _load() async {
-    final next =
-        await _channel.invokeMapMethod<Object?, Object?>('status') ?? const {};
-    if (!mounted) return;
-    setState(() {
-      // No on/off switch: Linux is either set up (first setup done) or offers its setup.
-      enabled = true;
-      status = next;
-      loading = false;
-    });
-    if (enabled && usable) {
-      await _channel.invokeMethod('connect');
-      await _refreshContainers();
-      await _maybeFirstRun();
+    final request = ++_statusRequest;
+    try {
+      final next =
+          await _channel
+              .invokeMapMethod<Object?, Object?>('status')
+              .timeout(const Duration(seconds: 10)) ??
+          const {};
+      if (!mounted || request != _statusRequest) return;
+      final mode = next['executionMode'] as String? ?? 'privileged';
+      if (_executionMode != mode) {
+        _executionMode = mode;
+        _dataGeneration++;
+        _refreshing = false;
+        _containersLoaded = false;
+        containers = const [];
+        catalog = const [];
+        defaultContainer = '';
+        _appsSignature = '';
+        progress.clear();
+        logs.clear();
+        firstRun = false;
+        apps.resetForExecutionMode();
+      }
+      setState(() {
+        enabled = true;
+        status = next;
+        loading = false;
+      });
+      if (enabled && usable) {
+        await _channel
+            .invokeMethod('connect')
+            .timeout(const Duration(seconds: 10));
+        await _refreshContainers();
+        if (mounted && request == _statusRequest) await _maybeFirstRun();
+      }
+    } on Exception catch (e) {
+      if (mounted && request == _statusRequest) {
+        setState(() {
+          error = e is PlatformException ? e.message : e.toString();
+          loading = false;
+          _containersLoaded = true;
+        });
+      }
     }
   }
 
@@ -251,16 +290,26 @@ class _LinuxPageState extends State<LinuxPage> {
   Future<void> _refreshContainers() async {
     if (!enabled || !usable || _refreshing) return;
     _refreshing = true;
+    final generation = _dataGeneration;
     try {
-      final list = await _channel.invokeListMethod<Object?>('list') ?? const [];
+      final list =
+          await _channel
+              .invokeListMethod<Object?>('listAll')
+              .timeout(const Duration(seconds: 20)) ??
+          const [];
       final settings =
-          await _channel.invokeMapMethod<Object?, Object?>('settings') ??
+          await _channel
+              .invokeMapMethod<Object?, Object?>('settings')
+              .timeout(const Duration(seconds: 10)) ??
           const {};
       final distros = catalog.isEmpty
-          ? (await _channel.invokeListMethod<Object?>('catalog') ?? const [])
+          ? (await _channel
+                        .invokeListMethod<Object?>('catalog')
+                        .timeout(const Duration(seconds: 10)) ??
+                    const [])
                 .cast<Map<Object?, Object?>>()
           : catalog;
-      if (!mounted) return;
+      if (!mounted || generation != _dataGeneration) return;
       setState(() {
         containers = list
             .cast<Map<Object?, Object?>>()
@@ -279,15 +328,15 @@ class _LinuxPageState extends State<LinuxPage> {
         _appsSignature = signature;
         unawaited(_loadApps());
       }
-    } on PlatformException catch (e) {
-      if (mounted) {
+    } on Exception catch (e) {
+      if (mounted && generation == _dataGeneration) {
         setState(() {
-          error = e.message;
+          error = e is PlatformException ? e.message : e.toString();
           _containersLoaded = true;
         });
       }
     } finally {
-      _refreshing = false;
+      if (generation == _dataGeneration) _refreshing = false;
     }
   }
 
@@ -829,6 +878,36 @@ class _LinuxPageState extends State<LinuxPage> {
   List<Widget> _appsSlivers(ThemeData theme) {
     if (!_containersLoaded) return _loadingSlivers(theme);
     if (installedContainers.isEmpty) {
+      final elsewhere = containers
+          .where((c) => c.inactive && c.state == 'installed')
+          .firstOrNull;
+      if (elsewhere != null) {
+        final environment = elsewhere.inactiveMode == 'android'
+            ? t('Android環境', 'Android environment')
+            : t('特権環境', 'privileged environment');
+        return [
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: _emptyState(
+              theme,
+              M3EIcons.dns_rounded,
+              t('$environmentに切り替えてください', 'Switch to the $environment'),
+              t(
+                '今のモードにはコンテナがありません。$environmentのコンテナのアプリは、切り替えると使えます。',
+                'This mode has no containers. The $environment containers\' apps are available after switching.',
+              ),
+              M3EButton.filled(
+                icon: const Icon(M3EIcons.add_rounded),
+                onPressed: () {
+                  _setTab(1);
+                  _addContainer();
+                },
+                label: Text(t('このモードでコンテナを作成', 'Create a container in this mode')),
+              ),
+            ),
+          ),
+        ];
+      }
       return [
         SliverFillRemaining(
           hasScrollBody: false,
@@ -971,6 +1050,7 @@ class _LinuxPageState extends State<LinuxPage> {
     ThemeData theme,
     _LinuxContainer container,
   ) {
+    if (container.inactive) return _inactiveContainerCard(theme, container);
     final current = progress[container.id] ?? container.progress;
     final installing =
         container.state == 'installing' || container.state == 'updating';
@@ -1100,10 +1180,64 @@ class _LinuxPageState extends State<LinuxPage> {
     );
   }
 
+  /// A container of the execution mode that is not selected: grayed out and not operable.
+  Widget _inactiveContainerCard(ThemeData theme, _LinuxContainer container) {
+    final environment = container.inactiveMode == 'android'
+        ? t('Android環境', 'Android environment')
+        : t('特権環境', 'privileged environment');
+    final muted = theme.colorScheme.onSurface.withValues(alpha: 0.38);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+      child: IgnorePointer(
+        child: Opacity(
+          opacity: 0.6,
+          child: M3ECard(
+            variant: M3ECardVariant.filled,
+            padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
+            child: Row(
+              children: [
+                PenguinIcon(filled: false, size: 40, color: muted),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        container.name,
+                        style: theme.textTheme.titleMedium?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        t(
+                          '$environmentに切り替えてください',
+                          'Switch to the $environment',
+                        ),
+                        style: theme.textTheme.bodySmall?.copyWith(
+                          color: muted,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.all(12),
+                  child: Icon(M3EIcons.more_vert_rounded, color: muted),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Future<void> _containerMenu(
     AppLocalizations l,
     _LinuxContainer container,
   ) async {
+    if (container.inactive) return;
     final installing =
         container.state == 'installing' || container.state == 'updating';
     final installed = container.state == 'installed';

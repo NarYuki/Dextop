@@ -119,7 +119,11 @@ internal object LinuxStoreJobs {
         if (action !in setOf("install", "remove", "upgrade")) return false
         if (packages.any { !packageName.matches(it) }) return false
         val name = packages.joinToString(" ").ifEmpty { "*" }
-        val list = packages.joinToString(" ")
+        val installedPackages = if (action == "install" && packages.any {
+            it.substringBefore(':') in setOf("libreoffice", "libreoffice-core", "libreoffice-writer",
+                "libreoffice-calc", "libreoffice-impress", "libreoffice-draw", "libreoffice-base", "libreoffice-math")
+        }) (packages + "libreoffice-gtk3").distinct() else packages
+        val list = installedPackages.joinToString(" ")
         val log = logFile(name)
         // APT::Status-Fd makes apt report dlstatus:/pmstatus: progress lines in the log.
         val apt = "apt-get -o APT::Status-Fd=1 " + when (action) {

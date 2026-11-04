@@ -129,7 +129,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         // /proc/*/maps contains Android host paths. Apps such as VLC derive plugin
         // directories from those paths, so expose the same library/data trees at
         // their mapped names too. Bind subtrees, never the whole root recursively.
-        for (name in listOf("usr", "opt", "root")) {
+        for (name in listOf("usr", "opt", "root", "home")) {
             val tree = File(LinuxPaths.rootfs(id), name)
             if (tree.isDirectory) add("${tree.absolutePath}:${tree.absolutePath}")
         }
@@ -138,13 +138,19 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         addAll(gpuNode(runtime))
     }
 
-    /** The image's accounts with root renamed to the real uid (DroidDeck's writeAccounts), for sessions only. */
+    /** Match the session account to the kernel uid for D-Bus EXTERNAL and file ownership. */
     private fun accounts(id: String, runtime: File): Pair<String, String>? = runCatching {
-        val etc = File(LinuxPaths.rootfs(id), "etc")
-        fun copy(name: String, root: String) = File(runtime, name).apply {
-            writeText(File(etc, name).readLines().joinToString("\n", postfix = "\n") { if (it.startsWith("root:")) root else it })
+        val rootfs = LinuxPaths.rootfs(id)
+        val name = LinuxUser.name(rootfs) ?: "root"
+        val home = LinuxUser.home(rootfs)
+        val accountUid = if (uid == 0 && name != "root") 1000 else uid
+        val etc = File(rootfs, "etc")
+        fun copy(file: String, replacement: String) = File(runtime, file).apply {
+            writeText(File(etc, file).readLines().joinToString("\n", postfix = "\n") {
+                if (it.startsWith("$name:")) replacement else it
+            })
         }.absolutePath
-        copy("passwd", "root:x:$uid:$uid:root:/root:/bin/bash") to copy("group", "root:x:$uid:")
+        copy("passwd", "$name:x:$accountUid:$accountUid:$name:$home:/bin/bash") to copy("group", "$name:x:$accountUid:")
     }.getOrNull()
 
     /** Stand-ins for /proc files the shell user may not read (DroidDeck's fake proc). */
@@ -194,7 +200,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
     /**
      * Runs a /bin/sh script inside the container [id], laid out like
      * DroidDeck's LinuxRuntime. Sessions run with the shell user's real ids
-     * (`-i`), named root through a bound passwd, so every process and the
+     * (`-i`), named as the configured account through a bound passwd, so every process and the
      * kernel agree on the uid (D-Bus EXTERNAL, file owners); [fakeRoot]
      * (`-0`) is for package management, which needs root semantics.
      */
@@ -202,6 +208,9 @@ internal class LinuxProot(val nativeLibraryDir: String) {
               extraBinds: List<String> = emptyList(), extraEnvironment: List<String> = emptyList()): ProcessBuilder {
         val sessionBinds = binds(id, fakeRoot) + extraBinds
         val root = LinuxPaths.rootfs(id)
+        val account = if (fakeRoot) "root" else LinuxUser.name(root) ?: "root"
+        val home = if (fakeRoot) "/root" else LinuxUser.home(root)
+        val accountUid = if (uid == 0 && account != "root") 1000 else uid
         // Package management requires fake ownership/permissions; retain PRoot's full translation there.
         val fastPath = if (!fakeRoot && "PROOT_FP_OFF=1" !in extraEnvironment && extraBinds.isEmpty() && File(root, LinuxProotFastPath.LIBRARY.removePrefix("/")).isFile &&
             System.getenv("PROOT_NO_SECCOMP") == null) LinuxProotFastPath.create(root, sessionBinds) else null
@@ -210,16 +219,16 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             // Secure stores reject link-emulated temporary files and can retry forever.
             // Keep emulation for installers; ordinary applications need real file semantics.
             "--kill-on-exit", *(if (fakeRoot) arrayOf("--link2symlink") else emptyArray()),
-            *(if (fakeRoot) arrayOf("-0") else arrayOf("-i", "$uid:$uid")),
+            *(if (fakeRoot) arrayOf("-0") else arrayOf("-i", "$accountUid:$accountUid")),
             "-r", LinuxPaths.rootfs(id).absolutePath,
-            "-w", "/root",
+            "-w", home,
             *sessionBinds.flatMap { listOf("-b", it) }.toTypedArray(),
             "/usr/bin/env", "-i",
-            "HOME=/root", "USER=root", "LOGNAME=root",
+            "HOME=$home", "USER=$account", "LOGNAME=$account",
             "TERM=xterm-256color", "LANG=C.UTF-8",
             // Android's time zone (images default to UTC); sites compare it with the network location.
             *timeZone(id)?.let { arrayOf("TZ=$it") }.orEmpty(),
-            "TMPDIR=/tmp", "PATH=$GUEST_PATH",
+            "TMPDIR=/tmp", "PATH=${GUEST_PATH.replace("/root/.local/bin", "$home/.local/bin")}",
             // Path unix sockets fall back to abstract ones (the shell user may not create them).
             // DD's bind/connect hooks must run before the socket shim: its udev
             // stand-in sockets need bind() emulation before the real syscall.
@@ -245,10 +254,10 @@ internal class LinuxProot(val nativeLibraryDir: String) {
     data class Result(val exitCode: Int, val output: String)
 
     /** Runs [builder] to completion, streaming merged output lines to [onLine]. */
-    fun run(builder: ProcessBuilder, timeoutSeconds: Long = 0, onProcess: ((Process) -> Unit)? = null, onLine: (String) -> Unit = {}): Result {
+    fun run(builder: ProcessBuilder, timeoutSeconds: Long = 0, onProcess: ((Process) -> Unit)? = null, input: String? = null, onLine: (String) -> Unit = {}): Result {
         val process = builder.redirectErrorStream(true).start()
         onProcess?.invoke(process)
-        process.outputStream.close()
+        process.outputStream.use { stream -> if (input != null) stream.write(input.toByteArray(Charsets.UTF_8)) }
         val output = StringBuilder()
         val reader = Thread {
             // A cancelled or timed-out process interrupts this read; that must not crash the service.

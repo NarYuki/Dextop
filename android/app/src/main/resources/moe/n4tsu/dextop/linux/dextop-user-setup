@@ -1,0 +1,80 @@
+#!/usr/bin/python3
+"""Create the fresh installation's account. Password comes from stdin, never argv."""
+import os
+import pwd
+import re
+import shutil
+import subprocess
+import sys
+from pathlib import Path
+
+
+def setup(name, uid, password):
+    if not re.fullmatch(r'[a-z][a-z0-9_-]{0,30}', name) or name == 'root':
+        raise ValueError('Invalid Linux username')
+    if uid <= 0 or len(password) < 8 or any(c in password for c in '\r\n\0'):
+        raise ValueError('Invalid Linux account credentials')
+    marker = Path('/etc/dextop/username')
+    pending = marker.with_name('username.pending')
+    if marker.exists():
+        if marker.read_text().strip() != name:
+            raise ValueError('An existing account cannot be replaced by setup')
+        return
+    try:
+        existing = pwd.getpwnam(name)
+    except KeyError:
+        existing = None
+    retry = pending.exists() and pending.read_text().strip() == name
+    if existing is not None and not (retry and existing.pw_uid == uid and existing.pw_dir == f'/home/{name}'):
+        raise ValueError('That username belongs to an existing account')
+    # Keep the Android uid: D-Bus EXTERNAL and real file owners must agree.
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    pending.write_text(name + '\n')
+    if existing is None:
+        import grp
+        try:
+            group = grp.getgrnam(name)
+        except KeyError:
+            group = None
+        if group is None:
+            subprocess.run(['groupadd', '-g', str(uid), name], check=True)
+        elif not retry or group.gr_gid != uid:
+            raise ValueError('That group name belongs to an existing account')
+        subprocess.run(['useradd', '-m', '-u', str(uid), '-g', name, '-s', '/bin/bash', name], check=True)
+    home = Path('/home') / name
+    # Setup templates and downloaded application data belong to this NEW account.
+    # Never move or change a pre-existing environment's /root.
+    for source in Path('/root').iterdir():
+        target = home / source.name
+        if target.exists() or target.is_symlink():
+            continue
+        if source.is_symlink():
+            target.symlink_to(os.readlink(source))
+        elif source.is_dir():
+            shutil.copytree(source, target, symlinks=True,
+                            ignore=lambda directory, names: {'keyrings'} if directory == '/root/.local/share' else set())
+        else:
+            shutil.copy2(source, target)
+    subprocess.run(['chpasswd'], input=f'{name}:{password}\n', text=True, check=True)
+    subprocess.run(['groupadd', '-f', 'sudo'], check=True)
+    subprocess.run(['usermod', '-aG', 'sudo', name], check=True)
+    for parent, dirs, files in os.walk(home, followlinks=False):
+        os.chown(parent, uid, uid)
+        for item in dirs + files:
+            os.chown(Path(parent) / item, uid, uid, follow_symlinks=False)
+    home.chmod(0o700)
+    sudoers = Path('/etc/sudoers.d/dextop-user')
+    sudoers.parent.mkdir(parents=True, exist_ok=True)
+    sudoers.write_text(f'{name} ALL=(ALL:ALL) ALL\n')
+    sudoers.chmod(0o440)
+    sudo = Path('/usr/local/bin/sudo')
+    sudo.parent.mkdir(parents=True, exist_ok=True)
+    # A separate executable preserves all program arguments and stdin.
+    shutil.copy2('/usr/local/libexec/dextop-sudo', sudo)
+    sudo.chmod(0o755)
+    marker.parent.mkdir(parents=True, exist_ok=True)
+    pending.replace(marker)
+
+
+if __name__ == '__main__':
+    setup(sys.argv[1], int(sys.argv[2]), sys.stdin.read())

@@ -36,6 +36,7 @@ String linuxSetupPhaseLabel(AppLocalizations l, String phase) =>
       'download' => l.linuxPhaseDownload,
       'verify' => l.linuxPhaseVerify,
       'extract' => l.linuxPhaseExtract,
+      'account' => l.linuxPhaseConfigure,
       'configure' => l.linuxPhaseConfigure,
       'refresh' => l.linuxPhaseRefresh,
       'provision' => l.linuxPhaseProvision,
@@ -112,9 +113,8 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   bool themes = true;
   final apps = <String>{'files', 'editor'};
 
-  /// Step 9: the keyring. "auto" (a strong random password Dextop keeps in the Android
-  /// Keystore and unlocks with) or "manual" (the user's own, asked twice).
-  String keyringMode = 'auto';
+  /// Step 9: a fresh Linux account, also used to unlock its encrypted keyring.
+  final username = TextEditingController(text: 'dextop');
   final keyringPassword = TextEditingController();
   final keyringConfirm = TextEditingController();
   int step = 0;
@@ -135,7 +135,6 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   bool submitting = false;
   bool refreshing = false;
   String? operationId;
-  String? keyringConfiguredId;
   String? failure;
   Timer? timer;
   AppLocalizations get l => AppLocalizations.of(context);
@@ -146,12 +145,43 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   bool get runtime => distro == 'droiddeck';
   List<int> get flow => [
     if (widget.firstRun) ...[7, 8],
-    ...(runtime ? const [0, 4, 5] : [0, 1, 2, 3, 4, if (!updating) 9, 5]),
+    ...(runtime
+        ? [0, 4, if (!updating) 9, 5]
+        : [0, 1, 2, 3, 4, if (!updating) 9, 5]),
   ];
 
-  /// The manual password's problem, or null when it may be used.
+  /// Validate account credentials before starting installation.
   String? get keyringProblem {
-    if (keyringMode != 'manual') return null;
+    if (!RegExp(r'^[a-z][a-z0-9_-]{0,30}$').hasMatch(username.text) ||
+        const {
+          'root',
+          'nobody',
+          'daemon',
+          'bin',
+          'sys',
+          'sync',
+          'games',
+          'mail',
+          'news',
+          'www-data',
+          'backup',
+          'messagebus',
+          'sshd',
+          'systemd-network',
+          'systemd-timesync',
+        }.contains(username.text)) {
+      return t(
+        'ユーザー名は英小文字で始まる31文字以内の英小文字・数字・_・-にしてください。システム用の名前は使えません。',
+        'Use a non-system username of up to 31 lowercase letters, digits, _ or -, starting with a letter',
+      );
+    }
+    if (keyringPassword.text.contains(RegExp(r'[\r\n\x00]')) ||
+        keyringPassword.text.length > 1024) {
+      return t(
+        'パスワードに改行は使えません（最大1024文字）',
+        'No line breaks; maximum 1024 characters',
+      );
+    }
     if (keyringPassword.text.length < 8) {
       return t('8 文字以上にしてください', 'Use at least 8 characters');
     }
@@ -197,6 +227,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     if (distro != 'ubuntu') apps.add('firefox');
     final saved = widget.initialOptions;
     if (saved.isNotEmpty) {
+      username.text = saved['username'] as String? ?? username.text;
       profile = saved['profile'] as String? ?? profile;
       displayBackend = saved['displayBackend'] as String? ?? displayBackend;
       locale = saved['locale'] as String? ?? locale;
@@ -214,12 +245,16 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   void dispose() {
     timer?.cancel();
     name.dispose();
+    username.dispose();
     keyringPassword.dispose();
     keyringConfirm.dispose();
     super.dispose();
   }
 
   Map<String, Object> get options => {
+    if (!updating) 'username': username.text,
+    if (!updating && operationId == null)
+      'accountPassword': keyringPassword.text,
     'profile': profile,
     'displayBackend': displayBackend,
     'locale': locale,
@@ -274,18 +309,9 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       if (!mounted) return;
       // Keep the created container even if the following keyring handover needs a retry.
       setState(() => operationId = id);
-      // Retrying a failed download must not replace the secret or reuse a cleared password.
-      if (!runtime && !updating && keyringConfiguredId != id) {
-        await _channel.invokeMethod<bool>('setKeyring', {
-          'id': id,
-          'mode': keyringMode,
-          if (keyringMode == 'manual') 'password': keyringPassword.text,
-        });
-        keyringConfiguredId = id;
-        if (!mounted) return;
-        keyringPassword.clear();
-        keyringConfirm.clear();
-      }
+      // Android keeps the account/keyring password encrypted with its Keystore.
+      keyringPassword.clear();
+      keyringConfirm.clear();
       if (!mounted) return;
       timer?.cancel();
       timer = Timer.periodic(const Duration(seconds: 2), (_) => refresh());
@@ -373,7 +399,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       5: l.linuxSetupReview,
       7: t('Linux の動かし方', 'How Linux runs'),
       8: t('Store の配布元', 'Store sources'),
-      9: t('キーリング', 'Keyring'),
+      9: t('Linuxユーザー', 'Linux user'),
     };
     final theme = Theme.of(context);
     return PopScope(
@@ -617,57 +643,44 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     9 => [
       Text(
         t(
-          'ブラウザーやメール、開発ツールなどが保存するパスワードやトークンは、キーリングで暗号化して保存されます。そのキーリングのパスワードの決め方を選びます。',
-          'Browsers, mail and developer tools keep passwords and tokens encrypted in the keyring. Choose how its password is set.',
+          '通常のアプリやターミナルで使うLinuxユーザーを作成します。管理操作はsudoを使います。同じパスワードをキーリングにも設定し、Linux起動時に自動でロックを解除します。パスワードはAndroid Keystoreで暗号化して保存します。',
+          'Create the Linux user for apps and terminals. Use sudo for administration. The same password protects the keyring, which unlocks automatically when Linux starts. Dextop stores the password encrypted with Android Keystore.',
         ),
       ),
       const SizedBox(height: 24),
-      optionGroup([
-        LinuxChoice<String>(
-          value: 'auto',
-          groupValue: keyringMode,
-          onChanged: (value) => setState(() => keyringMode = value),
-          icon: M3EIcons.key_rounded,
-          title: t('自動（おすすめ）', 'Automatic (recommended)'),
-          subtitle: t(
-            'Dextop が強力なランダムのパスワードを作り、Android のセキュアな鍵保管領域（Keystore）で暗号化して保存します。Linux を起動するたびに自動でロックを解除するので、パスワードを聞かれることはありません。',
-            'Dextop makes a strong random password and keeps it encrypted with the Android Keystore. The keyring unlocks by itself whenever Linux starts, so it never asks for a password.',
-          ),
+      M3ETextField(
+        variant: M3ETextFieldVariant.outlined,
+        controller: username,
+        label: t('ユーザー名', 'Username'),
+        supportingText: t(
+          '英小文字・数字・_・-（英小文字で開始）',
+          'Lowercase letters, digits, _ or -; start with a letter',
         ),
-        LinuxChoice<String>(
-          value: 'manual',
-          groupValue: keyringMode,
-          onChanged: (value) => setState(() => keyringMode = value),
-          icon: M3EIcons.password_rounded,
-          title: t('自分で設定', 'Set it myself'),
-          subtitle: t(
-            '自分で決めたパスワードでキーリングを作ります。Dextop はパスワードを保存せず、ロックの解除が必要なときに Linux 側で入力します。',
-            'The keyring uses a password of your own. Dextop does not keep it; Linux asks for it when the keyring needs unlocking.',
-          ),
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 16),
+      M3ETextField(
+        variant: M3ETextFieldVariant.outlined,
+        controller: keyringPassword,
+        obscureText: true,
+        showPasswordToggle: true,
+        label: t('パスワード', 'Password'),
+        supportingText: t(
+          '8文字以上。sudo・SSH・キーリングで使用します。',
+          'At least 8 characters. Used for sudo, SSH and the keyring.',
         ),
-      ]),
-      if (keyringMode == 'manual') ...[
-        const SizedBox(height: 20),
-        M3ETextField(
-          variant: M3ETextFieldVariant.outlined,
-          controller: keyringPassword,
-          obscureText: true,
-          showPasswordToggle: true,
-          label: t('パスワード', 'Password'),
-          supportingText: t('8 文字以上', 'At least 8 characters'),
-          onChanged: (_) => setState(() {}),
-        ),
-        const SizedBox(height: 12),
-        M3ETextField(
-          variant: M3ETextFieldVariant.outlined,
-          controller: keyringConfirm,
-          obscureText: true,
-          showPasswordToggle: true,
-          label: t('パスワード（確認）', 'Confirm password'),
-          errorText: keyringConfirm.text.isEmpty ? null : keyringProblem,
-          onChanged: (_) => setState(() {}),
-        ),
-      ],
+        onChanged: (_) => setState(() {}),
+      ),
+      const SizedBox(height: 12),
+      M3ETextField(
+        variant: M3ETextFieldVariant.outlined,
+        controller: keyringConfirm,
+        obscureText: true,
+        showPasswordToggle: true,
+        label: t('パスワード（確認）', 'Confirm password'),
+        errorText: keyringConfirm.text.isEmpty ? null : keyringProblem,
+        onChanged: (_) => setState(() {}),
+      ),
     ],
     0 => [
       const Align(
@@ -919,13 +932,11 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
               ? l.linuxSetupNothingExtra
               : apps.map(appName).join(' · '),
         ),
-        if (!runtime && !updating)
+        if (!updating)
           summary(
             M3EIcons.key_rounded,
-            t('キーリング', 'Keyring'),
-            keyringMode == 'auto'
-                ? t('自動（自動でロック解除）', 'Automatic (unlocks by itself)')
-                : t('自分で設定したパスワード', 'Your own password'),
+            t('Linuxユーザー・キーリング', 'Linux user and keyring'),
+            '${username.text} · ${t('共通パスワード・自動ロック解除', 'Shared password, automatic unlock')}',
           ),
       ]),
       const SizedBox(height: 16),
