@@ -511,6 +511,8 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
         val height = (info.bounds.height() + extraHeight).coerceIn(1, screen.height())
         val left = (frame.centerX() - width / 2).coerceIn(screen.left, (screen.right - width).coerceAtLeast(screen.left))
         val top = (frame.centerY() - height / 2).coerceIn(screen.top, (screen.bottom - height).coerceAtLeast(screen.top))
+        Log.i(TAG, "launch bounds 0x${info.xid.toString(16)}: client=${info.bounds.width()}x${info.bounds.height()} " +
+            "parentFrame=$frame decoration=$decoration -> ${width}x$height")
         return display.displayId to Rect(left, top, left + width, top + height)
     }
 
