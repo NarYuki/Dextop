@@ -60,24 +60,44 @@ internal object LinuxSettings {
 
     @Synchronized fun reset() { file.delete() }
 
+    /**
+     * The global settings. "gpu" saved in the file is the user's own choice; without one it is
+     * the device test's recommendation ([LinuxGpuProbe]) once there is one, and until then Turnip
+     * on Adreno 6xx–8xx and VirGL, which runs on any GPU, elsewhere. "gpuChosen" says which.
+     */
     @Synchronized
     fun read(): JSONObject = load(file).also {
-        // Turnip on Adreno 6xx–8xx; VirGL, which runs on any GPU, elsewhere.
-        if (!it.has("gpu")) it.put("gpu", (if (LinuxGraphics.turnipCapable) LinuxGpuMode.TURNIP else LinuxGpuMode.HARDWARE).id)
+        val chosen = it.has("gpu")
+        it.put("gpuChosen", chosen)
+        if (!chosen) it.put("gpu", it.optJSONObject("gpuProbe")?.optString("recommended")?.takeIf { id -> id.isNotEmpty() }
+            ?: (if (LinuxGraphics.turnipCapable) LinuxGpuMode.TURNIP else LinuxGpuMode.HARDWARE).id)
         if (!it.has("defaultContainer")) it.put("defaultContainer", "")
     }
 
+    /** Records the device test's result; its recommendation applies while the user has not chosen. */
+    @Synchronized
+    fun writeProbe(result: JSONObject) {
+        val raw = load(file)
+        save(file, raw.put("gpuProbe", result))
+    }
+
+    @Synchronized
+    fun probe(): JSONObject? = load(file).optJSONObject("gpuProbe")
+
     @Synchronized
     fun write(update: JSONObject): JSONObject {
-        val merged = read()
+        // Only what was asked for is saved: a renderer is stored once the user picks one.
+        val merged = load(file)
         update.optString("gpu").takeIf { it.isNotEmpty() }?.let { merged.put("gpu", LinuxGpuMode.of(it).id) }
+        // Back to the device test's recommendation.
+        if (update.optBoolean("gpuRecommended")) merged.remove("gpu")
         if (update.has("flatpakCompatibility")) merged.put("flatpakCompatibility", update.getBoolean("flatpakCompatibility"))
         if (update.has("defaultContainer")) {
             val id = update.optString("defaultContainer")
             merged.put("defaultContainer", id.takeIf { runCatching { LinuxPaths.container(it).isDirectory }.getOrDefault(false) } ?: "")
         }
         save(file, merged)
-        return merged
+        return read()
     }
 
     /** [id]'s own settings; a missing "gpu" follows the global default. */
@@ -211,6 +231,10 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
             log("VirGL renderer is not packaged; using software rendering")
             return false
         }
+        return startServer(containerId, log)
+    }
+
+    private fun startServer(containerId: String, log: (String) -> Unit): Boolean {
         val logFile = File(LinuxPaths.container(containerId), "virgl.log")
         val process = runCatching {
             ProcessBuilder(
@@ -239,26 +263,52 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
     fun stopAll() = servers.keys.toList().forEach(::stop)
 
     /** Environment of container processes: Turnip + Zink, virpipe while the renderer runs, otherwise llvmpipe. */
-    fun environment(containerId: String): List<String> = ((if (usesTurnip(containerId)) listOf(
-        "VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD}",
-        "GALLIUM_DRIVER=zink",
-        // Xvfb has no DRI3; present through CPU-visible images (XPutImage).
-        "MESA_VK_WSI_DEBUG=sw",
-        "LIBGL_KOPPER_DRI2=true",
-    ) else if (running(containerId)) listOf(
-        "GALLIUM_DRIVER=virpipe",
-        // virgl on a GLES host offers a compatibility profile below what
-        // desktop applications ask for; the core features are there.
-        "MESA_GL_VERSION_OVERRIDE=4.3COMPAT",
-        "MESA_GLSL_VERSION_OVERRIDE=430",
-        "MESA_GLES_VERSION_OVERRIDE=3.2",
-    ) else listOf("GALLIUM_DRIVER=llvmpipe")) +
-        if (usesTurnip(containerId) || running(containerId)) listOf(
-            "MOZ_WEBRENDER=1", "MOZ_ACCELERATED=1", "GSK_RENDERER=gl",
-            "QSG_RHI_BACKEND=opengl", "QSG_RHI_PREFER_SOFTWARE_RENDERER=0",
-            "QT_WIDGETS_RHI=1", "QT_WIDGETS_RHI_BACKEND=opengl",
-        ) else emptyList()) +
-        (if (usesTurnip(containerId)) LinuxGpuRuntime.environment(LinuxPaths.rootfs(containerId)) else emptyList())
+    fun environment(containerId: String): List<String> = environmentFor(containerId, when {
+        usesTurnip(containerId) -> LinuxGpuMode.TURNIP
+        running(containerId) -> LinuxGpuMode.HARDWARE
+        else -> LinuxGpuMode.SOFTWARE
+    })
+
+    /** The environment that draws with [mode]; VirGL needs its renderer running ([ensureFor]). */
+    fun environmentFor(containerId: String, mode: LinuxGpuMode): List<String> = (when (mode) {
+        LinuxGpuMode.TURNIP -> listOf(
+            "VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD}",
+            "GALLIUM_DRIVER=zink",
+            // Xvfb has no DRI3; present through CPU-visible images (XPutImage).
+            "MESA_VK_WSI_DEBUG=sw",
+            "LIBGL_KOPPER_DRI2=true",
+        )
+        LinuxGpuMode.HARDWARE -> listOf(
+            "GALLIUM_DRIVER=virpipe",
+            // virgl on a GLES host offers a compatibility profile below what
+            // desktop applications ask for; the core features are there.
+            "MESA_GL_VERSION_OVERRIDE=4.3COMPAT",
+            "MESA_GLSL_VERSION_OVERRIDE=430",
+            "MESA_GLES_VERSION_OVERRIDE=3.2",
+        )
+        LinuxGpuMode.SOFTWARE -> listOf("GALLIUM_DRIVER=llvmpipe")
+    }) + (if (mode != LinuxGpuMode.SOFTWARE) listOf(
+        "MOZ_WEBRENDER=1", "MOZ_ACCELERATED=1", "GSK_RENDERER=gl",
+        "QSG_RHI_BACKEND=opengl", "QSG_RHI_PREFER_SOFTWARE_RENDERER=0",
+        "QT_WIDGETS_RHI=1", "QT_WIDGETS_RHI_BACKEND=opengl",
+    ) else emptyList()) +
+        (if (mode == LinuxGpuMode.TURNIP) LinuxGpuRuntime.environment(LinuxPaths.rootfs(containerId)) else emptyList())
+
+    /** The GPU path this device and [containerId] can use, before any setting: Turnip where built, else VirGL. */
+    fun candidate(containerId: String): LinuxGpuMode? = when {
+        turnipInstalled(containerId) -> LinuxGpuMode.TURNIP
+        available -> LinuxGpuMode.HARDWARE
+        else -> null
+    }
+
+    /** Starts the VirGL renderer of [containerId] for a test, whatever the setting; false when it cannot run. */
+    @Synchronized
+    fun ensureFor(containerId: String, log: (String) -> Unit): Boolean {
+        if (running(containerId)) return true
+        stop(containerId)
+        if (!available) return false
+        return startServer(containerId, log)
+    }
 
     /**
      * Settings plus the live renderer state, for the Linux settings screens:

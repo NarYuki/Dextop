@@ -320,6 +320,12 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
             auxiliary = event.optBoolean("popup") || event.optBoolean("dialog") || transientFor != 0
             fixedSize = event.optBoolean("fixedSize")
             this.bounds.set(bounds)
+            // A window shown again after a close the application declined keeps its application.
+            windows[key]?.let { previous ->
+                desktopId = previous.desktopId
+                appLabel = previous.appLabel
+                appIcon = previous.appIcon
+            }
         }
         windows[key] = info
         restoring.remove(key)?.let { it.bind(info); return }

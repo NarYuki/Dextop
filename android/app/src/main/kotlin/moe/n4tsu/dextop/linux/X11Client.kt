@@ -521,6 +521,14 @@ internal class X11Client private constructor(
         checkNotNull(request(le(12).put(shmOpcode.toByte()).put(6).putShort(3).putInt(segment).put(0).put(0).putShort(0), fd = fd, checked = true)) { "X server rejected shared memory" }
     }
 
+    /**
+     * MIT-SHM Attach of System V segment [shmid] as [segment]: what Xlib's XShmAttach sends for a
+     * Linux program. False when the server refuses it (BadAccess, BadValue).
+     */
+    fun shmAttachSysV(segment: Int, shmid: Int): Boolean = shmOpcode >= 0 &&
+        request(le(16).put(shmOpcode.toByte()).put(1).putShort(4).putInt(segment).putInt(shmid).put(0).put(0).putShort(0),
+            checked = true) != null
+
     fun shmDetach(segment: Int) {
         request(le(8).put(shmOpcode.toByte()).put(2).putShort(2).putInt(segment))
     }

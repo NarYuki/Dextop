@@ -131,6 +131,117 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
     }
   }
 
+  Timer? _probePoll;
+
+  /// Runs the device's GPU test, then follows it until it has a result.
+  Future<void> _testGpu() async {
+    await _save({'gpuProbe': true});
+    _probePoll?.cancel();
+    _probePoll = Timer.periodic(const Duration(seconds: 2), (timer) async {
+      try {
+        final result = await _channel.invokeMapMethod<Object?, Object?>(
+          'settings',
+        );
+        if (!mounted) return timer.cancel();
+        setState(() => settings = result);
+        if (result?['gpuProbeRunning'] != true) timer.cancel();
+      } on PlatformException catch (_) {
+        timer.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _probePoll?.cancel();
+    super.dispose();
+  }
+
+  /// The device test's last result, for Settings > Graphics.
+  Widget _gpuProbeGroup(String Function(String, String) t) {
+    final running = settings?['gpuProbeRunning'] == true;
+    final chosen = settings?['gpuChosen'] == true;
+    final probe = (settings?['gpuProbe'] as Map?)?.cast<Object?, Object?>();
+    final state = probe?['state'] as String?;
+    String fps(Object? value) =>
+        value is num ? value.toStringAsFixed(value < 10 ? 1 : 0) : '-';
+    final measured = probe?['gpuFps'] != null || probe?['cpuFps'] != null
+        ? t(
+            'GPU ${fps(probe?['gpuFps'])} fps / CPU ${fps(probe?['cpuFps'])} fps',
+            'GPU ${fps(probe?['gpuFps'])} fps / CPU ${fps(probe?['cpuFps'])} fps',
+          )
+        : null;
+    final summary = running
+        ? t('テストしています（30 秒ほど）…', 'Testing (about 30 seconds)…')
+        : switch (state) {
+            'passed' => t(
+                'GPU のほうが速く安定していました。GPU を推奨します',
+                'The GPU was stable and faster. The GPU is recommended',
+              ),
+            'slow' => t(
+                'GPU は安定していましたが、CPU より十分に速くありませんでした。CPU 描画を推奨します',
+                'The GPU was stable but not enough faster than the processor. Software rendering is recommended',
+              ),
+            'failed' => t(
+                'GPU で正しく描画できませんでした。CPU 描画を推奨します',
+                'The GPU did not draw correctly. Software rendering is recommended',
+              ),
+            'unavailable' => t(
+                'テストを実行できませんでした',
+                'The test could not run',
+              ),
+            _ => t(
+                'まだテストしていません。GPU と CPU で同じ描画を行い、速いほうを推奨します',
+                'Not tested yet. The same drawing runs on the GPU and the processor, and the faster one is recommended',
+              ),
+          };
+    final details = [
+      summary,
+      if (!running && measured != null) measured,
+      if (!running && (probe?['renderer'] as String? ?? '').isNotEmpty)
+        probe!['renderer'] as String,
+      if (!running && (probe?['error'] as String? ?? '').isNotEmpty)
+        probe!['error'] as String,
+      if (!running && !chosen && state != null)
+        t('推奨設定を使っています', 'Using the recommended setting'),
+    ].join('\n');
+    return LinuxGroup(
+      children: [
+        M3EListItem(
+          supportingMaxLines: null,
+          headline: t('この端末をテスト', 'Test this device'),
+          supportingText: details,
+          leading: running
+              ? const SizedBox(
+                  width: 24,
+                  height: 24,
+                  child: CircularProgressIndicator(strokeWidth: 2.5),
+                )
+              : const Icon(M3EIcons.speed_rounded),
+          trailing: running
+              ? null
+              : TextButton(
+                  onPressed: saving ? null : _testGpu,
+                  child: Text(
+                    state == null ? t('テスト', 'Test') : t('再テスト', 'Test again'),
+                  ),
+                ),
+        ),
+        if (chosen && state != null && !running)
+          M3EListItem(
+            supportingMaxLines: null,
+            headline: t('推奨設定を使う', 'Use the recommended setting'),
+            supportingText: t(
+              'GPU の選択をテスト結果に任せます',
+              'Lets the test result choose the renderer',
+            ),
+            leading: const Icon(M3EIcons.auto_awesome_rounded),
+            onTap: saving ? null : () => _save({'gpuRecommended': true}),
+          ),
+      ],
+    );
+  }
+
   Future<void> _setLauncherMode(String mode) async {
     if (mode == launcherMode) return;
     setState(() => launcherMode = mode);
@@ -298,6 +409,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           ),
         ],
       ),
+      if (!_forContainer) ...[
+        const SizedBox(height: 12),
+        _gpuProbeGroup(t),
+      ],
       Padding(
         padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
         child: Text(
@@ -556,6 +671,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           ),
         ],
       ),
+      if (!_forContainer) ...[
+        const SizedBox(height: 12),
+        _gpuProbeGroup(t),
+      ],
       Padding(
         padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
         child: Text(

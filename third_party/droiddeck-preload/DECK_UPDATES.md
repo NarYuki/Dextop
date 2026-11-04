@@ -11,3 +11,12 @@ Dextop gates the new behavior with `DEXTOP_STEAM_INSIDE=1`, retains its
 existing non-Deck implementations and shell-UID/socket/PE compatibility hooks,
 and resets cached message-queue reference counts after fork. No DD Remote Play
 encoder, application-specific fixups, or global FEX defaults were imported.
+
+## MIT-SHM for X programs (Dextop)
+
+`sysv.c`: `shmctl(IPC_STAT)` reports segments as mode 0666 so the X server's
+MIT-SHM permission check (the server runs under fakeroot as uid 0, its clients
+connect with the real Android uid) no longer refuses every attach, and `shmget`
+fails with ENOSYS while `/etc/dextop/no-shm` or the object directory's
+`.dextop-shm-off` (written by Dextop when the display's self-test fails) exists.
+See `LinuxGuestShm.kt`.
