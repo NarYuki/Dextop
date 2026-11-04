@@ -16,7 +16,7 @@ internal class LinuxWineTrayMetadata {
         val environment = environmentFile.readText().split('\u0000').mapNotNull { entry ->
             val split = entry.indexOf('='); if (split > 0) entry.substring(0, split) to entry.substring(split + 1) else null
         }.toMap()
-        val prefix = environment["WINEPREFIX"] ?: "/root/.wine"
+        val prefix = environment["WINEPREFIX"] ?: "${environment["HOME"] ?: "/root"}/.wine"
         fun guestFile(path: String): File? {
             if (!path.startsWith('/')) return null
             val file = File(root, path.removePrefix("/")).canonicalFile

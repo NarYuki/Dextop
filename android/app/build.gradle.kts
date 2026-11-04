@@ -1,3 +1,5 @@
+import java.security.MessageDigest
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
@@ -198,6 +200,7 @@ dependencies {
     // USB serial adapters for Linux (CDC-ACM, FTDI, CP210x, CH34x, PL2303) without a kernel driver.
     implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
     testImplementation(kotlin("test"))
+    testImplementation("org.json:json:20240303")
 }
 
 tasks.configureEach {
@@ -229,3 +232,40 @@ val copyLinuxShortcutTemplate by tasks.registering(Copy::class) {
 }
 android.sourceSets.getByName("main").assets.srcDir(linuxShortcutAssets)
 tasks.named("preBuild") { dependsOn(copyLinuxShortcutTemplate) }
+
+// Share the tested launcher with the Android service instead of maintaining a
+// second embedded copy. Java resources are available in both service modes.
+val macosResources = layout.buildDirectory.dir("generated/macos/resources")
+val approvedMacosArchive = providers.gradleProperty("dextopMacosRuntimeArchive").orNull?.let { file(it) }
+val approvedMacosDigest = providers.gradleProperty("dextopMacosRuntimeSha256").orNull?.trim()?.lowercase()
+val macosSourceLock = rootProject.file("../tool/macos/darling.lock.json")
+val copyMacosLauncher by tasks.registering(Sync::class) {
+    from(rootProject.file("../tool/macos")) { include("launch_app.py", "runtime_archive.py", "asset_catalog_cache.py") }
+    into(macosResources.map { it.dir("moe/n4tsu/dextop/linux/macos") })
+    inputs.property("approvedArchive", approvedMacosArchive?.absolutePath ?: "")
+    inputs.property("approvedDigest", approvedMacosDigest ?: "")
+    inputs.file(macosSourceLock)
+    if (approvedMacosArchive != null) from(approvedMacosArchive) { rename { "runtime.tar.gz" } }
+    doFirst {
+        check((approvedMacosArchive == null) == (approvedMacosDigest == null)) { "Supply both macOS runtime archive and independently approved SHA-256" }
+        if (approvedMacosArchive != null) {
+            check(approvedMacosDigest!!.matches(Regex("[a-f0-9]{64}"))) { "Invalid approved macOS runtime SHA-256" }
+            val digest = MessageDigest.getInstance("SHA-256")
+            approvedMacosArchive.inputStream().use { input ->
+                val buffer = ByteArray(1024 * 1024)
+                while (true) { val count = input.read(buffer); if (count < 0) break; digest.update(buffer, 0, count) }
+            }
+            check(digest.digest().joinToString("") { "%02x".format(it) } == approvedMacosDigest) { "Approved macOS runtime archive digest mismatch" }
+        }
+    }
+    doLast {
+        if (approvedMacosArchive != null) {
+            val lock = groovy.json.JsonSlurper().parse(macosSourceLock) as Map<*, *>
+            File(destinationDir, "runtime-trust.json").writeText(groovy.json.JsonOutput.toJson(mapOf(
+                "sha256" to approvedMacosDigest, "sourceCommit" to lock["commit"], "architecture" to "aarch64"
+            )))
+        }
+    }
+}
+android.sourceSets.getByName("main").resources.srcDir(macosResources)
+tasks.named("preBuild") { dependsOn(copyMacosLauncher) }

@@ -82,7 +82,7 @@ void main() {
               'catalog' => [
                 {'id': 'debian', 'name': 'Debian'},
               ],
-              'list' => [
+              'list' || 'listAll' => [
                 {
                   'id': 'ctest',
                   'name': 'My Linux',

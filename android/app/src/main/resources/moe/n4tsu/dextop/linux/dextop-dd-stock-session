@@ -1,7 +1,7 @@
 #!/bin/bash
 set -eu
 # Host integration only. DD supplies gamescope, Mesa, Xwayland and Steam session.
-export HOME=/root USER=root PATH=/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8
+export HOME=${HOME:-/root} USER=${USER:-root} PATH=/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8
 unset DISPLAY DBUS_SESSION_BUS_ADDRESS LIBGL_ALWAYS_SOFTWARE MESA_VK_WSI_DEBUG VK_DRIVER_FILES VK_ICD_FILENAMES
 export XDG_RUNTIME_DIR=/tmp/runtime-root XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=wayland-0
 export GAMESCOPE_FORCE_GENERAL_QUEUE=1 MESA_LOADER_DRIVER_OVERRIDE=zink GALLIUM_DRIVER=zink LIBGL_KOPPER_DRI2=true

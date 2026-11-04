@@ -102,9 +102,15 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
         worker.execute {
             val running = runCatching {
                 val list = JSONArray(linux.listContainers())
-                (0 until list.length()).map(list::getJSONObject).filter {
-                    it.optString("runtimeState") == "running" || it.optBoolean("appsRunning")
-                }.map { it.optString("name").ifBlank { it.optString("id") } }
+                val active = (0 until list.length()).map(list::getJSONObject).filter {
+                    it.optString("runtimeState") == "running" || it.optBoolean("appsRunning") || it.optBoolean("integrationsRunning")
+                }
+                val ids = active.map { it.getString("id") }
+                for (id in ids) runCatching { LinuxCalendarBridge.sync(this, linux, id) }
+                    .onFailure { android.util.Log.w("DextopCalendar", "Calendar sync failed", it) }
+                runCatching { LinuxPrintBridge.poll(this, linux, ids) }
+                    .onFailure { android.util.Log.w("DextopPrint", "Print queue failed", it) }
+                active.map { it.optString("name").ifBlank { it.optString("id") } }
             }.getOrDefault(runningContainers)
             main.post {
                 runningContainers = running
