@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux/linux_apps.dart';
+import 'package:free_dextop/linux/linux_backups.dart';
 import 'package:free_dextop/linux/linux_first_run.dart';
 import 'package:free_dextop/linux/linux_expressive.dart';
 import 'package:free_dextop/linux/linux_store_page.dart';
@@ -902,7 +903,9 @@ class _LinuxPageState extends State<LinuxPage> {
                   _setTab(1);
                   _addContainer();
                 },
-                label: Text(t('このモードでコンテナを作成', 'Create a container in this mode')),
+                label: Text(
+                  t('このモードでコンテナを作成', 'Create a container in this mode'),
+                ),
               ),
             ),
           ),
@@ -1030,6 +1033,7 @@ class _LinuxPageState extends State<LinuxPage> {
             ),
           ),
         ),
+        SliverToBoxAdapter(child: _restoreButton()),
       ];
     }
     return [
@@ -1039,11 +1043,29 @@ class _LinuxPageState extends State<LinuxPage> {
           children: [
             for (final container in containers)
               _containerCard(l, theme, container),
+            _restoreButton(),
           ],
         ),
       ),
     ];
   }
+
+  /// Snapshots on the device and backup files from elsewhere, restored as new containers.
+  Widget _restoreButton() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: M3EButton.text(
+        onPressed: () async {
+          await LinuxBackupsUi.showSnapshots(context);
+          await _refreshContainers();
+        },
+        child: Text(
+          t('スナップショットとバックアップから復元', 'Restore from a snapshot or backup'),
+        ),
+      ),
+    ),
+  );
 
   Widget _containerCard(
     AppLocalizations l,
@@ -1264,6 +1286,23 @@ class _LinuxPageState extends State<LinuxPage> {
             ('setup', l.linuxSetupCustomize, M3EIcons.settings_suggest_rounded),
           if (!installing)
             ('repair', l.linuxRepair, M3EIcons.home_repair_service_rounded),
+          if (installed)
+            (
+              'appimage',
+              t('AppImage を追加', 'Add an AppImage'),
+              M3EIcons.add_box_rounded,
+            ),
+          if (installed)
+            (
+              'snapshot',
+              t('スナップショットを作成', 'Create a snapshot'),
+              M3EIcons.inventory_2_rounded,
+            ),
+          (
+            'snapshots',
+            t('スナップショットとバックアップ', 'Snapshots and backups'),
+            M3EIcons.history_rounded,
+          ),
           ('log', l.linuxShowLog, M3EIcons.description_rounded),
           ('delete', l.linuxDelete, M3EIcons.delete_forever_rounded),
         ];
@@ -1327,6 +1366,30 @@ class _LinuxPageState extends State<LinuxPage> {
           if (opened != true && mounted) {
             M3ESnackbar.show(context, message: l.linuxStartPlasmaFirst);
           }
+        case 'appimage':
+          await LinuxBackupsUi.addAppImage(context, container.id);
+          await _refreshContainers();
+          unawaited(_loadApps());
+        case 'snapshot':
+          if (container.runtimeState != 'stopped') {
+            if (mounted) {
+              M3ESnackbar.show(
+                context,
+                message: t(
+                  'スナップショットの前にコンテナを停止してください（強制停止）',
+                  'Stop the container first (Force stop)',
+                ),
+              );
+            }
+          } else {
+            await LinuxBackupsUi.createSnapshot(context, container.id);
+          }
+        case 'snapshots':
+          await LinuxBackupsUi.showSnapshots(
+            context,
+            containerId: container.id,
+          );
+          await _refreshContainers();
         case 'delete':
           await _remove(container);
       }

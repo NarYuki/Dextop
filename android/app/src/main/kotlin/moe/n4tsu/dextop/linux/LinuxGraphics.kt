@@ -107,7 +107,7 @@ internal object LinuxSettings {
     fun readContainer(id: String): JSONObject = load(containerFile(id))
 
     private val APP_MODES = mapOf(
-        "display" to setOf("x11", "wayland"),
+        "display" to setOf("x11", "wayland", LinuxGpuWindow.MODE),
         "renderer" to setOf("software"),
         "gl" to setOf("override"),
     )
