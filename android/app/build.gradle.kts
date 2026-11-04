@@ -93,6 +93,9 @@ android {
     packaging {
         resources {
             excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            // Python caches left by running tool/tests against the bundled guest scripts.
+            excludes += "**/__pycache__/**"
+            excludes += "**/*.pyc"
         }
         // Extract native libraries at install time: the Linux container's
         // proot executables (libproot.so, libproot_loader.so) are run from

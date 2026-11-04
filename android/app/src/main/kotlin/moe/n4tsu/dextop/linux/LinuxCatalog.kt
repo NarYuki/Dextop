@@ -534,6 +534,11 @@ internal object LinuxCatalog {
      * The keyring Dextop set up (LinuxKeyring): its password, handed over for this session
      * only, creates the login keyring the first time (as the default one) and unlocks it, so
      * applications store secrets encrypted without asking for a password at every start.
+     *
+     * A login keyring that password cannot open (an application asked for a new keyring before
+     * Dextop unlocked one, and the user typed another password; or the account password changed)
+     * would make every application ask again at every start. Such a keyring is kept aside, under
+     * its name with the date, and a new one is made with Dextop's password.
      * Expects the session bus to run.
      */
     private val KEYRING_UNLOCK = """
@@ -543,7 +548,25 @@ internal object LinuxCatalog {
                 KD="${'$'}{HOME:-/root}/.local/share/keyrings"
                 mkdir -p "${'$'}KD" && chmod 700 "${'$'}KD"
                 [ -s "${'$'}KD/default" ] || printf 'login\n' >"${'$'}KD/default"
-                printf '%s' "${'$'}DEXTOP_KR" | gnome-keyring-daemon --replace --unlock --daemonize --components=secrets >/dev/null 2>&1
+                dextop_unlock() {
+                    printf '%s' "${'$'}DEXTOP_KR" | gnome-keyring-daemon --replace --unlock --daemonize --components=secrets >/dev/null 2>&1
+                }
+                dextop_locked() {
+                    dbus-send --session --print-reply=literal --dest=org.freedesktop.secrets \
+                        /org/freedesktop/secrets/collection/login org.freedesktop.DBus.Properties.Get \
+                        string:org.freedesktop.Secret.Collection string:Locked 2>/dev/null | grep -q true
+                }
+                dextop_unlock
+                if [ -s "${'$'}KD/login.keyring" ] && command -v dbus-send >/dev/null 2>&1; then
+                    sleep 0.5
+                    if dextop_locked; then
+                        echo 'Dextop: the login keyring has another password; kept aside, a new one is made' >&2
+                        mv "${'$'}KD/login.keyring" "${'$'}KD/login.keyring.before-dextop-${'$'}(date +%Y%m%d-%H%M%S)"
+                        dextop_unlock
+                    fi
+                fi
+                # Applications that store secrets use the login keyring, never a new one asking for a password.
+                printf 'login\n' >"${'$'}KD/default"
             fi
             unset DEXTOP_KR
         fi
