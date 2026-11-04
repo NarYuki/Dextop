@@ -92,6 +92,9 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         // generated at each launch are bound over them, as proot-distro does, so even programs that
         // bypass libc see them.
         if (androidMode) addAll(LinuxProcStandIns.binds(File(runtime, "proc")))
+        // System information Android denies or lacks (network counters, battery, device model…),
+        // rebuilt for every program that reads it (LinuxSysStandIns).
+        addAll(runCatching { LinuxSysStandIns.binds() }.getOrDefault(emptyList()))
         // Android's shared storage and mounted USB volumes; later mounts appear under it too. The
         // Android mode sees the folders picked in Linux settings (LinuxFolders) instead.
         if (androidMode) {

@@ -100,6 +100,10 @@ internal open class LinuxWindowActivity : Activity() {
      * window then follows whatever size the application takes (see [fitTaskToClient]).
      */
     private var userSized = false
+    private var lastSizedLog = ""
+    /** The task's size at the last layout, and the size Dextop last asked Android for. */
+    private var lastTaskSize: android.util.Size? = null
+    private var taskTarget: android.util.Size? = null
     private var taskRequest: android.util.Size? = null
     /** The X window this activity shows, with its size as the application last reported it. */
     private var bound: LinuxAndroidWindows.Info? = null
@@ -237,16 +241,18 @@ internal open class LinuxWindowActivity : Activity() {
             insets
         }
         root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            // Only a change of the task itself is a resize. The view also changes while Android lays
+            // out the window's caption, and counting that as the user's resize kept windows from
+            // fitting their applications (LibreOffice stayed scaled down with margins).
+            val task = windowManager.currentWindowMetrics.bounds.let { android.util.Size(it.width(), it.height()) }
+            val userResized = lastTaskSize != null && task != lastTaskSize && task != taskTarget
+            lastTaskSize = task
             // A resized window first offers the application all of its room again.
             if (floating) {
-                val available = android.util.Size(right - left - root.paddingLeft - root.paddingRight,
-                    bottom - top - root.paddingTop - root.paddingBottom)
-                // Not the size Dextop asked for: the user resized the window.
-                if (oldRight - oldLeft > 0 && (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) &&
-                    available != taskRequest && bound?.fixedSize != true) userSized = true
+                if (userResized && bound?.fixedSize != true) userSized = true
                 bound?.bounds?.let { windowSized(it.width(), it.height()) }
             } else if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
-                resizedAt = android.os.SystemClock.uptimeMillis()
+                if (userResized) resizedAt = android.os.SystemClock.uptimeMillis()
                 unscale()
             }
             place()
@@ -341,6 +347,12 @@ internal open class LinuxWindowActivity : Activity() {
         val availableWidth = root.width - root.paddingLeft - root.paddingRight
         val availableHeight = root.height - root.paddingTop - root.paddingBottom
         if (availableWidth <= 0 || availableHeight <= 0) return
+        if (lastSizedLog != "$width $height $availableWidth $availableHeight") {
+            lastSizedLog = "$width $height $availableWidth $availableHeight"
+            android.util.Log.i("DextopLinuxWindow", "floating 0x${xid.toString(16)}: client=${width}x$height " +
+                "area=${availableWidth}x$availableHeight task=${windowManager.currentWindowMetrics.bounds} " +
+                "padding=${root.paddingLeft},${root.paddingTop},${root.paddingRight},${root.paddingBottom}")
+        }
         // The surface keeps the application's pixels; SurfaceFlinger scales them to the view,
         // which has the same aspect ratio, so the picture fills the window without distortion.
         content.holder.setFixedSize(width, height)
@@ -373,7 +385,7 @@ internal open class LinuxWindowActivity : Activity() {
      * is resized so its content area is exactly that, once per size and never right after the
      * user resized the window. Android-mode Linux cannot resize tasks and keeps the window.
      */
-    private fun requestTaskSize(width: Int, height: Int) {
+    private fun requestTaskSize(width: Int, height: Int, retries: Int = 0) {
         if (!isInMultiWindowMode || !LinuxExecutionMode.privilegeAllowed(this)) return
         if (android.os.SystemClock.uptimeMillis() - resizedAt < 1000) return
         val wanted = android.util.Size(width, height)
@@ -381,17 +393,25 @@ internal open class LinuxWindowActivity : Activity() {
         val availableWidth = root.width - root.paddingLeft - root.paddingRight
         val availableHeight = root.height - root.paddingTop - root.paddingBottom
         if (availableWidth <= 0 || availableHeight <= 0 || (availableWidth == width && availableHeight == height)) return
-        taskRequest = wanted
         val task = windowManager.currentWindowMetrics.bounds
+        // The caption is not laid out yet (the view still fills the whole task): measured now, the
+        // window would lose the caption's height. Asked again once the layout has settled.
+        if ((root.isLayoutRequested || (availableHeight >= task.height() && task.height() > 0)) && retries < 10) {
+            root.postDelayed({ requestTaskSize(width, height, retries + 1) }, 120)
+            return
+        }
+        taskRequest = wanted
         val screen = windowManager.maximumWindowMetrics.bounds
         val target = Rect(task.left, task.top, task.right + width - availableWidth, task.bottom + height - availableHeight)
         if (target.width() > screen.width() || target.height() > screen.height()) return
+        taskTarget = android.util.Size(target.width(), target.height())
         target.offset(minOf(0, screen.right - target.right), minOf(0, screen.bottom - target.bottom))
         val id = taskId
         Thread({
             runCatching {
-                moe.n4tsu.dextop.PrivilegedAccess("DextopLinuxWindow").execute("/system/bin/am", "task", "resize",
+                val result = moe.n4tsu.dextop.PrivilegedAccess("DextopLinuxWindow").execute("/system/bin/am", "task", "resize",
                     id.toString(), target.left.toString(), target.top.toString(), target.right.toString(), target.bottom.toString())
+                android.util.Log.i("DextopLinuxWindow", "task $id ${task.width()}x${task.height()} -> $target for ${width}x$height: ${result.succeeded}")
             }
         }, "DextopLinuxTaskResize").start()
     }
