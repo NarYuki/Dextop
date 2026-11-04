@@ -640,7 +640,6 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         monitor(containerId, { session.alive }) { appSessions[containerId] === session }
         notifyChanged()
         runCatching { maybeProbeGpu(containerId) }
-        runCatching { maybeInstallCjkFonts(containerId) }
         return display
     }
 
@@ -1029,28 +1028,6 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             graphics.environmentFor(containerId, LinuxGpuMode.SOFTWARE) + "LIBGL_ALWAYS_SOFTWARE=1", variables)
         val run = proot.run(proot.guest(containerId, script), timeoutSeconds = 120)
         return LinuxGpuProbe.parse(candidate, run.output)
-    }
-
-    /** Containers whose missing CJK fonts were installed (or tried) in this service process. */
-    private val cjkFontAttempts = ConcurrentHashMap.newKeySet<String>()
-
-    /**
-     * Japanese, Chinese or Korean text without a CJK font shows as boxes. A container set up
-     * without them gets the Noto CJK fonts once, in the background; programs opened afterwards
-     * show the text.
-     */
-    private fun maybeInstallCjkFonts(containerId: String) {
-        val root = LinuxPaths.rootfs(containerId)
-        if (readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME) return
-        if (LinuxFonts.hasCjk(root) || !LinuxFonts.wanted(root) || !cjkFontAttempts.add(containerId)) return
-        Thread({
-            runCatching {
-                log(containerId, "Installing the CJK fonts (Noto CJK) so Japanese, Chinese and Korean text shows")
-                val proot = requireProot()
-                val result = proot.run(proot.guest(containerId, LinuxFonts.INSTALL_SCRIPT, fakeRoot = true), 1_800) { log(containerId, it) }
-                log(containerId, if (LinuxFonts.hasCjk(root)) "CJK fonts installed" else "CJK fonts could not be installed (exit ${result.exitCode})")
-            }.onFailure { log(containerId, "CJK font installation failed: ${it.message}") }
-        }, "DextopCjkFonts").apply { isDaemon = true; start() }
     }
 
     /** GPU crashes at application start by container, for [gpuCrashed]. */
