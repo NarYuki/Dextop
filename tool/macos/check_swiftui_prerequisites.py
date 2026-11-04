@@ -14,7 +14,7 @@ PROBES = {
     "foundation-import": "import Foundation\nlet value: Date = Date(timeIntervalSince1970: 0)\n",
     "date-components-style": "import Foundation\nfunc accept(_ value: Date.ComponentsFormatStyle) {}\n",
     "duration-units-style": "import Foundation\nfunc accept(_ value: Duration.UnitsFormatStyle) {}\n",
-    "adaptive-image-glyph": "import Foundation\nfunc accept(_ value: AttributedString.AdaptiveImageGlyph) {}\n",
+    "adaptive-image-glyph": "import Foundation\nimport CoreText\nfunc accept(_ value: AttributedString.AdaptiveImageGlyph) {}\n",
     "nsstring-cstring": "import Foundation\nfunc convert(_ bytes: UnsafePointer<CChar>) -> NSString? { NSString(cString: bytes, encoding: String.Encoding.utf8.rawValue) }\n",
     "swiftui-import": 'import SwiftUI\nstruct DextopSwiftUIProbe: View { var body: some View { Text("Dextop") } }\n',
 }

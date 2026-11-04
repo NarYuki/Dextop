@@ -164,7 +164,10 @@ def validate_manifest(manifest, architecture, source):
 
 def validate_native_binaries(root, architecture, gui):
     machine = {"aarch64": 183, "x86_64": 62}[architecture]
-    for relative in ("bin/darling", "bin/darlingserver", "libexec/darling/bin/mldr"):
+    executables = ["bin/darling", "bin/darlingserver", "libexec/darling/bin/mldr"]
+    if gui:
+        executables.append("bin/dextop-car")
+    for relative in executables:
         path = root / relative
         if not path.resolve(strict=True).is_relative_to(root) or not os.access(path, os.X_OK):
             raise ValueError(f"Runtime executable unavailable: {relative}")

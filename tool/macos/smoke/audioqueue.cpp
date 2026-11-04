@@ -3,6 +3,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>
+#include <stdlib.h>
 
 struct State { unsigned callbacks = 0; unsigned error = 0; unsigned stopping = 0; };
 
@@ -15,10 +16,8 @@ static void completed(void *opaque, AudioQueueRef queue, AudioQueueBufferRef buf
         __atomic_store_n(&state->error, 1, __ATOMIC_SEQ_CST);
 }
 
-int main()
+static int playbackCycle()
 {
-    setvbuf(stdout, nullptr, _IOLBF, 0);
-    alarm(20);
     AudioStreamBasicDescription format = {};
     format.mSampleRate = 44100;
     format.mFormatID = kAudioFormatLinearPCM;
@@ -52,6 +51,24 @@ int main()
     OSStatus disposed = AudioQueueDispose(queue, true);
     printf("audioqueue: dispose=%d\n", (int)disposed);
     if (consumed < 8 || status || disposed || __atomic_load_n(&state.error, __ATOMIC_SEQ_CST)) return 5;
+    return 0;
+}
+
+int main()
+{
+    setvbuf(stdout, nullptr, _IOLBF, 0);
+    unsigned long cycles = 1;
+    if (const char *value = getenv("DEXTOP_AUDIOQUEUE_CYCLES")) {
+        char *end = nullptr;
+        cycles = strtoul(value, &end, 10);
+        if (!value[0] || *end || cycles < 1 || cycles > 20) return 64;
+    }
+    alarm(60);
+    for (unsigned long cycle = 0; cycle < cycles; ++cycle) {
+        printf("audioqueue: cycle=%lu/%lu\n", cycle + 1, cycles);
+        int result = playbackCycle();
+        if (result) return result;
+    }
     alarm(0);
     puts("audioqueue: silent playback buffer consumption OK");
     return 0;

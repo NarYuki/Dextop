@@ -16,7 +16,7 @@ def main():
     parser.add_argument("--abstract-rpc", action="store_true")
     parser.add_argument("--anonymous-exec", action="store_true")
     parser.add_argument("--architecture", choices=("aarch64", "x86_64"), default="aarch64")
-    parser.add_argument("--probe", choices=("hello", "posix", "socket", "audio", "audioqueue"), action="append",
+    parser.add_argument("--probe", choices=("hello", "posix", "socket", "audio", "audioqueue", "metal", "calendar", "layout_fitting", "eventkit", "view_backing", "controller_appearance", "grid", "layer_render", "unarchiver", "calibrated_rgb", "accessibility_chart", "gradient_layer", "timing_function"), action="append",
                         help="Diagnostic subset/order; default runs the complete sequence")
     args = parser.parse_args()
     runtime = args.runtime.resolve()
@@ -38,7 +38,20 @@ def main():
         try:
             expected_output = {"hello": "Dextop macOS hello", "posix": "file: OK\nthread: OK\nfork: OK",
                                "socket": "socket: OK", "audio": "audio: PCM resample and sample-format conversion OK",
-                               "audioqueue": "audioqueue: silent playback buffer consumption OK"}
+                               "audioqueue": "audioqueue: silent playback buffer consumption OK",
+                               "metal": "metal: source compute, readback and negative controls OK",
+                               "calendar": "calendar: locale, leap day, DST boundaries and automatic calendar OK",
+                               "layout_fitting": "layout fitting PASS",
+                               "eventkit": "EventKit search with denied authorization PASS",
+                               "view_backing": "view backing: nested drawing, partial invalidation, resize and hosted layers OK",
+                               "controller_appearance": "controller appearance: window, hidden ancestors, child insertion/removal and replacement OK",
+                               "grid": "grid: model, fitting, baseline, reorder, hiding, padding and RTL OK",
+                               "layer_render": "layer render: replacement, contents update and removal readback OK",
+                               "unarchiver": "unarchiver: object graphs, NSCoding, nil root and error propagation OK",
+                               "calibrated_rgb": "CalRGB: solid paints, gamma, matrix, white adaptation, alpha, copying and invalid inputs OK",
+                               "accessibility_chart": "Accessibility chart data OK",
+                               "gradient_layer": "Gradient layer: model, copy, axial/radial/conic pixels and invalidation OK",
+                               "timing_function": "Timing function: float ABI, guarded output, inverse curve, copy and archive OK"}
             for name in args.probe or ("hello", "posix", "socket", "hello"):
                 expected = expected_output[name]
                 log = output / f"{name}-{len(list(output.glob('*.log')))}.log"
