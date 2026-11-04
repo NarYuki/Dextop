@@ -523,9 +523,14 @@ internal open class LinuxWindowActivity : Activity() {
         if (bounds == lastPlace) return
         lastPlace.set(bounds)
         LinuxContainerClient.service()?.runCatching {
+            // Only a fixed-size window keeps its own size. A dialog or other floating window
+            // (a file chooser) is offered its Android window's size like any window: offered
+            // its own size instead, it stayed wider than a window the user had made narrower.
+            // One that cannot shrink that far answers with its minimum, which the window takes.
             val client = bound?.bounds
-            val width = if (floating) client?.width()?.coerceAtLeast(1) ?: bounds.width() else bounds.width()
-            val height = if (floating) client?.height()?.coerceAtLeast(1) ?: bounds.height() else bounds.height()
+            val fixed = bound?.fixedSize == true
+            val width = if (fixed) client?.width()?.coerceAtLeast(1) ?: bounds.width() else bounds.width()
+            val height = if (fixed) client?.height()?.coerceAtLeast(1) ?: bounds.height() else bounds.height()
             configureWindow(container, xid, bounds.left, bounds.top, width, height)
         }
         // Slow clients may still be committing the previous size. Never infer a fixed-size
