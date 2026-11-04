@@ -43,8 +43,6 @@ internal object LinuxSessionCompatibility {
         stageSystemPrompter(root)
         stageSystemServices(root)
         stageWindowsHelper(root)
-        // CJK text in its regional forms for GTK (Noto Sans) and Qt (qt5ct/qt6ct) alike.
-        runCatching { LinuxFonts.stage(root) }
         // apt-get keeps every package it downloaded; containers grew by a second copy of all of them.
         if (File(root, "etc/apt/apt.conf.d").isDirectory) runCatching {
             val file = File(root, LinuxStorage.APT_NO_CACHE)
