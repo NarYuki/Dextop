@@ -3,22 +3,26 @@ package moe.n4tsu.dextop.linux
 import org.json.JSONObject
 
 /**
- * Measures, on this device, whether the GPU path draws Linux applications faster than the
- * processor, and recommends a renderer from that.
+ * Checks, on this device, that the GPU path draws Linux applications reliably and is not slower
+ * than the processor, and recommends a renderer from that.
  *
  * In a container, on an X display of its own, the same OpenGL program is drawn twice: once with
  * the GPU path this device has ([LinuxGraphics.candidate]: Turnip with Zink, or VirGL) and once
  * with llvmpipe. The GPU path must start, report its own renderer (not a software fallback),
- * keep drawing for the whole run, and be at least [MIN_SPEEDUP] times as fast. What is timed is
- * the whole path an application window takes, presentation included, at a desktop window size.
+ * keep drawing for the whole run, and reach at least [MIN_RATIO] of llvmpipe's frame rate.
+ *
+ * What is timed is the whole path an application window takes, presentation included. The scene is
+ * light, so both paths are mostly limited by presenting the frame (a CPU copy on Xvfb) and come out
+ * close even where the GPU is many times faster at real 3D work. The rate is therefore a guard
+ * against a GPU path that is clearly slower, not a requirement that it beat the processor here.
  *
  * The recommendation applies only while the user has not picked a renderer ([LinuxSettings]).
  */
 internal object LinuxGpuProbe {
     /** Bumped when the test changes, so a device tested by an older one is tested again. */
-    const val VERSION = 1
-    /** The GPU path has to be at least this much faster than llvmpipe to be recommended. */
-    const val MIN_SPEEDUP = 1.2
+    const val VERSION = 2
+    /** The GPU path is recommended unless it reaches less than this share of llvmpipe's frame rate. */
+    const val MIN_RATIO = 0.8
     private const val MARK = "DEXTOP_PROBE"
     private const val WIDTH = 1280
     private const val HEIGHT = 720
@@ -72,7 +76,7 @@ internal object LinuxGpuProbe {
             values.getOrPut(rest.substringBefore(' ')) { ArrayList() } += rest.substringAfter(' ', "")
         }
         val result = JSONObject().put("version", VERSION).put("at", System.currentTimeMillis())
-            .put("candidate", candidate.id).put("minSpeedup", MIN_SPEEDUP)
+            .put("candidate", candidate.id).put("minRatio", MIN_RATIO)
         values["missing"]?.firstOrNull()?.let {
             return result.put("state", "unavailable").put("error", "$it is not installed; run container setup with graphics again")
         }
@@ -97,7 +101,7 @@ internal object LinuxGpuProbe {
         if (cpuFps == null || cpuFps <= 0.0) return result.put("state", "passed").put("recommended", candidate.id)
         val speedup = gpuFps!! / cpuFps
         result.put("speedup", speedup)
-        return if (speedup >= MIN_SPEEDUP) result.put("state", "passed").put("recommended", candidate.id)
+        return if (speedup >= MIN_RATIO) result.put("state", "passed").put("recommended", candidate.id)
             else result.put("state", "slow").put("recommended", LinuxGpuMode.SOFTWARE.id)
     }
 }
