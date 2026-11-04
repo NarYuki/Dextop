@@ -1,9 +1,12 @@
 import 'dart:async';
 
+import 'package:free_dextop/l10n/inline_text.dart';
+
 import 'package:flutter/services.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux/linux_apps.dart';
 import 'package:free_dextop/linux/linux_backups.dart';
+import 'package:free_dextop/linux/linux_error_log.dart';
 import 'package:free_dextop/linux/linux_first_run.dart';
 import 'package:free_dextop/linux/linux_expressive.dart';
 import 'package:free_dextop/linux/linux_store_page.dart';
@@ -1180,21 +1183,20 @@ class _LinuxPageState extends State<LinuxPage> {
                 trackStrokeWidth: 3,
               ),
             ],
+            // One line on the card; the whole text in its own overlay.
             if (!installing && container.runtimeError != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: SelectableText(
-                  container.runtimeError!,
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
+              LinuxErrorLine(
+                title: inlineFormat(t('{0} のエラー', '{0}: error'), [
+                  container.name,
+                ]),
+                text: container.runtimeError!,
               ),
             if (!installing && container.error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12),
-                child: Text(
-                  container.error!,
-                  style: TextStyle(color: theme.colorScheme.error),
-                ),
+              LinuxErrorLine(
+                title: inlineFormat(t('{0} のエラー', '{0}: error'), [
+                  container.name,
+                ]),
+                text: container.error!,
               ),
           ],
         ),
