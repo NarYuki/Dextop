@@ -265,6 +265,8 @@ class _ExperimentalFeaturesPage extends StatelessWidget {
       children: [
         DisplayEnvironmentSettingsCard(bridge: bridge, showConvenience: false),
         const SizedBox(height: 12),
+        _MacosCompatibilityExperimentalTile(onChanged: onChanged),
+        const SizedBox(height: 12),
         _GamepadExperimentalTile(isRunning: isRunning),
         const SizedBox(height: 12),
         _ForceLaptopModeExperimentalTile(isRunning: isRunning),
@@ -275,6 +277,71 @@ class _ExperimentalFeaturesPage extends StatelessWidget {
           onOpenSettings: onOpenSamsungSettings,
         ),
       ],
+    ),
+  );
+}
+
+class _MacosCompatibilityExperimentalTile extends StatefulWidget {
+  const _MacosCompatibilityExperimentalTile({this.onChanged});
+  final VoidCallback? onChanged;
+
+  @override
+  State<_MacosCompatibilityExperimentalTile> createState() =>
+      _MacosCompatibilityExperimentalTileState();
+}
+
+class _MacosCompatibilityExperimentalTileState
+    extends State<_MacosCompatibilityExperimentalTile> {
+  bool enabled = false;
+  bool loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final preferences = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      enabled = preferences.getBool(macosCompatibilityPreferenceKey) ?? false;
+      loading = false;
+    });
+  }
+
+  Future<void> _update(bool value) async {
+    setState(() => loading = true);
+    try {
+      final preferences = await SharedPreferences.getInstance();
+      final saved = await preferences.setBool(
+        macosCompatibilityPreferenceKey,
+        value,
+      );
+      if (!mounted) return;
+      if (saved) {
+        setState(() => enabled = value);
+        widget.onChanged?.call();
+      }
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => Card(
+    child: SwitchListTile(
+      secondary: const Icon(Icons.computer_rounded),
+      value: enabled,
+      onChanged: loading ? null : _update,
+      title: Text(linuxText(context, 'macOS互換', 'macOS compatibility')),
+      subtitle: Text(
+        linuxText(
+          context,
+          'Linux設定にmacOS互換の設定を表示します。対応するアプリは限られています。',
+          'Show macOS compatibility in Linux settings. App support is limited.',
+        ),
+      ),
     ),
   );
 }

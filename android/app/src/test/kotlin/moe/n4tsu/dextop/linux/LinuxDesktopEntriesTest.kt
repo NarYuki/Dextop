@@ -7,6 +7,24 @@ import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 
 class LinuxDesktopEntriesTest {
+    @Test fun registeredMacosAppsUseTheCommonLauncherAndX11Backend() {
+        val root = Files.createTempDirectory("linux-macos-entry").toFile()
+        try {
+            val id = "dextop-macos-0123456789abcdef01234567.desktop"
+            val command = "python3 /usr/local/lib/dextop/macos/launch_app.py --registered 0123456789abcdef01234567"
+            File(root, "root/.local/share/applications/$id").apply {
+                parentFile.mkdirs()
+                writeText("[Desktop Entry]\nType=Application\nName=日本語 App\nExec=$command\nIcon=application-x-executable\nTerminal=false\nCategories=Utility;\nX-Dextop-DisplayBackend=x11\nX-Dextop-Runtime=macos\n")
+            }
+            val entry = LinuxDesktopEntries.list(root, "ja").single()
+            assertEquals("日本語 App", entry.name)
+            assertEquals("x11", entry.displayBackend)
+            assertEquals("macos", entry.runtime)
+            assertEquals(command, LinuxDesktopEntries.command(entry))
+            assertEquals(entry, LinuxDesktopEntries.find(root, id))
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun userLaunchersOverrideSystemAppsWithoutDuplicates() {
         val root = Files.createTempDirectory("linux-overrides").toFile()
         try {
