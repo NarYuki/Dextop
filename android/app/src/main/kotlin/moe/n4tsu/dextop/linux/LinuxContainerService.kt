@@ -36,7 +36,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes APK-approved macOS runtime installation (AIDL transaction 65).
-        const val PROTOCOL_VERSION = 28
+        const val PROTOCOL_VERSION = 29
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         /** [GPU_CRASH_LIMIT] GPU crashes within this long turn the GPU off for the session. */
@@ -1230,6 +1230,35 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         log(containerId, "AppImage removed: $slug")
         notifyChanged()
         return true
+    }
+
+    override fun containerUsage(containerId: String) {
+        check(readConfig(containerId) != null) { "Unknown container $containerId" }
+        startFileJob("usage", containerId) { job ->
+            val root = LinuxPaths.rootfs(containerId)
+            LinuxStorage.usage(root, LinuxUser.home(root), bytes(job))
+                .put("snapshotBytes", LinuxBackups.directory.listFiles().orEmpty()
+                    .filter { it.name.startsWith("$containerId-") && it.name.endsWith(LinuxBackups.EXTENSION) }.sumOf { it.length() })
+        }
+    }
+
+    override fun cleanContainer(containerId: String) {
+        check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
+        // /tmp holds the sessions' sockets and display files: only while nothing runs.
+        check(!containerBusy(containerId)) { "Stop the container's sessions and applications first" }
+        startFileJob("clean", containerId) { _ ->
+            val root = LinuxPaths.rootfs(containerId)
+            val before = LinuxStorage.usage(root, LinuxUser.home(root)).optLong("total")
+            val proot = requireProot()
+            proot.run(proot.guest(containerId, LinuxStorage.PACKAGE_CACHE_SCRIPT, fakeRoot = true), 300) { log(containerId, it) }
+            LinuxStorage.clean(root, LinuxUser.home(root))
+            File(root, "tmp").apply { mkdirs(); setWritable(true, false); setReadable(true, false); setExecutable(true, false) }
+            val after = LinuxStorage.usage(root, LinuxUser.home(root)).optLong("total")
+            val freed = (before - after).coerceAtLeast(0)
+            log(containerId, "Cleaned caches: ${freed / 1_048_576} MiB freed")
+            notifyChanged()
+            JSONObject().put("freed", freed).put("total", after)
+        }
     }
     // endregion
 
