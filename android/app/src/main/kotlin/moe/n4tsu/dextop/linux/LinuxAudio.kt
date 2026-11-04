@@ -37,9 +37,9 @@ internal class LinuxAudio(
 
     fun generation(containerId: String) = outputs[containerId]?.takeIf { it.process.isAlive }?.generation ?: 0
 
-    private fun cookie(containerId: String): File = File(LinuxPaths.rootfs(containerId), "root/.config/pulse/dextop-cookie")
+    private fun cookie(containerId: String): File = File(LinuxPaths.rootfs(containerId), LinuxUser.home(containerId).removePrefix("/") + "/.config/pulse/dextop-cookie")
     fun environment(containerId: String): List<String> = listOf(
-        "PULSE_SERVER=$PULSE_SERVER", "PULSE_COOKIE=/root/.config/pulse/dextop-cookie")
+        "PULSE_SERVER=$PULSE_SERVER", "PULSE_COOKIE=${LinuxUser.home(containerId)}/.config/pulse/dextop-cookie")
 
     @Synchronized fun openStream(containerId: String): ParcelFileDescriptor {
         check(running(containerId)) { "Container audio is not running" }
@@ -97,11 +97,11 @@ internal class LinuxAudio(
         val script = """
             set -e
             mkdir -p /tmp/dextop-pulse
-            rm -rf /tmp/dextop-pulse/native /root/.config/pulse/*-runtime
+            rm -rf /tmp/dextop-pulse/native ${LinuxUser.home(containerId)}/.config/pulse/*-runtime
             exec pulseaudio --daemonize=no --exit-idle-time=-1 --disallow-exit -n --use-pid-file=no \
                 --log-target=stderr --log-level=warning \
                 --load="module-null-sink sink_name=dextop rate=48000 channels=2 sink_properties=device.description=Dextop" \
-                --load="module-native-protocol-unix socket=/tmp/dextop-pulse/native auth-anonymous=0 auth-cookie-enabled=1 auth-cookie=/root/.config/pulse/dextop-cookie" \
+                --load="module-native-protocol-unix socket=/tmp/dextop-pulse/native auth-anonymous=0 auth-cookie-enabled=1 auth-cookie=${LinuxUser.home(containerId)}/.config/pulse/dextop-cookie" \
                 --load="module-always-sink" \
                 --load="module-null-sink sink_name=dextop_mic rate=48000 channels=1 sink_properties=device.description=Dextop-Microphone-Input" \
                 --load="module-remap-source master=dextop_mic.monitor source_name=dextop_microphone channels=1 source_properties=device.description=Android-Microphone" \

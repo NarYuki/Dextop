@@ -200,6 +200,7 @@ dependencies {
     // USB serial adapters for Linux (CDC-ACM, FTDI, CP210x, CH34x, PL2303) without a kernel driver.
     implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
     testImplementation(kotlin("test"))
+    testImplementation("org.json:json:20240303")
 }
 
 tasks.configureEach {
@@ -239,7 +240,7 @@ val approvedMacosArchive = providers.gradleProperty("dextopMacosRuntimeArchive")
 val approvedMacosDigest = providers.gradleProperty("dextopMacosRuntimeSha256").orNull?.trim()?.lowercase()
 val macosSourceLock = rootProject.file("../tool/macos/darling.lock.json")
 val copyMacosLauncher by tasks.registering(Sync::class) {
-    from(rootProject.file("../tool/macos")) { include("launch_app.py", "runtime_archive.py") }
+    from(rootProject.file("../tool/macos")) { include("launch_app.py", "runtime_archive.py", "asset_catalog_cache.py") }
     into(macosResources.map { it.dir("moe/n4tsu/dextop/linux/macos") })
     inputs.property("approvedArchive", approvedMacosArchive?.absolutePath ?: "")
     inputs.property("approvedDigest", approvedMacosDigest ?: "")

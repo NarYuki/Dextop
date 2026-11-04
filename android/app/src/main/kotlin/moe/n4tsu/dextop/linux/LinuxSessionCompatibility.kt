@@ -26,7 +26,17 @@ internal object LinuxSessionCompatibility {
     }
 
     fun stage(root: File, nativeLibraryDir: String, socketNamespace: String? = null) {
+        stageScript(root, "dextop-systemd", "usr/local/libexec/dextop-systemd")
+        stageScript(root, "dextop-systemctl", "usr/local/libexec/dextop-systemctl")
+        stageScript(root, "dextop-journalctl", "usr/local/libexec/dextop-journalctl")
+        stageScript(root, "dextop-integrate", "usr/local/libexec/dextop-integrate")
+        stageScript(root, "dextop-print-backend", "usr/local/libexec/dextop-print-backend")
+        stageScript(root, "dextop-user-setup", "usr/local/libexec/dextop-user-setup")
+        stageScript(root, "dextop-sudo", "usr/local/libexec/dextop-sudo")
+        if (LinuxUser.name(root) != null) stageScript(root, "dextop-sudo", "usr/local/bin/sudo")
         stageScript(root, "dextop-path.sh", "etc/profile.d/dextop-path.sh")
+        stageScript(root, "dextop-toolkit-theme", "usr/local/libexec/dextop-toolkit-theme")
+        stageScript(root, "dextop-toolkit.sh", "etc/profile.d/dextop-toolkit.sh")
         stageScript(root, "dextop-pipewire-client.conf", "etc/pipewire/client.conf.d/99-dextop-session.conf")
         stageScript(root, "dextop-pipewire-client.conf", "etc/pipewire/client-rt.conf.d/99-dextop-session.conf")
         stageVulkan(root)
@@ -35,6 +45,7 @@ internal object LinuxSessionCompatibility {
         stageWindowsHelper(root)
         stageScript(root, "dextop-apt-heal", "usr/local/sbin/dextop-apt-heal")
         stageScript(root, "macos/launch_app.py", "usr/local/lib/dextop/macos/launch_app.py")
+        stageScript(root, "macos/asset_catalog_cache.py", "usr/local/lib/dextop/macos/asset_catalog_cache.py")
         stageScript(root, "macos/runtime_archive.py", "usr/local/lib/dextop/macos/runtime_archive.py")
         val source = File(nativeLibraryDir, LIBRARY)
         check(source.isFile) { "Linux session compatibility library is not packaged" }
@@ -78,7 +89,7 @@ internal object LinuxSessionCompatibility {
         val system = File(root, "usr/share/dbus-1/services/org.gnome.keyring.SystemPrompter.service")
         if (!system.isFile) return
         val marker = "# Dextop system prompt display compatibility\n"
-        val target = File(root, "root/.local/share/dbus-1/services/org.gnome.keyring.SystemPrompter.service")
+        val target = File(root, LinuxUser.home(root).removePrefix("/") + "/.local/share/dbus-1/services/org.gnome.keyring.SystemPrompter.service")
         if (target.isFile && !target.readText().startsWith(marker)) return
         val content = marker + system.readText().replace(Regex("(?m)^Exec=(.+)$")) {
             "Exec=/usr/bin/env GDK_BACKEND=x11 " + it.groupValues[1]

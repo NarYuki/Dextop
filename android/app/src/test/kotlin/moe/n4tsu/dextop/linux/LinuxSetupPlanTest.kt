@@ -8,6 +8,22 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LinuxSetupPlanTest {
+    @Test fun toolkitIntegrationIsPresentInMinimalProvisionAndOfficeSetup() {
+        val provision = LinuxCatalog.provisionScript(LinuxPackageFamily.APT)
+        assertContains(provision, "qt5ct qt6ct")
+        assertContains(provision, "libgtk-3-bin")
+        assertContains(provision, "libreoffice-gtk3")
+        assertContains(scripts(debian, LinuxSetupOptions(apps = setOf("office"))), "libreoffice libreoffice-gtk3")
+        val path = checkNotNull(LinuxSessionCompatibility.script("dextop-path.sh")).toString(Charsets.UTF_8)
+        assertContains(path, ". /etc/profile.d/dextop-toolkit.sh")
+        val theme = checkNotNull(LinuxSessionCompatibility.script("dextop-toolkit.sh")).toString(Charsets.UTF_8)
+        assertContains(theme, "QT_QPA_PLATFORMTHEME:-")
+        assertContains(theme, "QT_QPA_PLATFORMTHEME=qt5ct")
+        for (script in listOf(LinuxCatalog.launchScript(10, "client"), LinuxCatalog.appsScript(10, 640, 480, 160))) {
+            assertTrue(script.indexOf(". /etc/dextop/theme.env") < script.indexOf(". /etc/profile.d/dextop-path.sh"))
+        }
+    }
+
     @Test fun hardwareLaunchEnablesToolkitRenderersWithoutForcingCairo() {
         val script = LinuxCatalog.launchScript(10, "client")
         assertContains(script, "unset WAYLAND_DISPLAY DEXTOP_WAYLAND_KGSL MESA_LOADER_DRIVER_OVERRIDE")

@@ -1,0 +1,244 @@
+#!/usr/bin/python3
+"""Dextop-owned guest setup and calendar endpoint; configuration arrives on stdin."""
+import hashlib
+import hmac
+import html
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+import json
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import sys
+
+
+def write(path, content, mode=0o600):
+    path = Path(path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    pending = path.with_name('.' + path.name + '.dextop')
+    pending.unlink(missing_ok=True)
+    descriptor = os.open(pending, os.O_WRONLY | os.O_CREAT | os.O_EXCL, mode)
+    with os.fdopen(descriptor, 'w', encoding='utf-8') as stream:
+        stream.write(content)
+    pending.replace(path)
+
+
+def port(value):
+    value = int(value)
+    if not 1024 <= value <= 65535:
+        raise ValueError('Use an unprivileged port from 1024 to 65535')
+    return value
+
+
+def configure_ssh(config):
+    name = Path('/etc/dextop/username').read_text().strip()
+    if not re.fullmatch(r'[a-z][a-z0-9_-]{0,30}', name) or name == 'root':
+        raise ValueError('Set up a Linux user first')
+    base = Path('/etc/dextop/ssh')
+    base.mkdir(parents=True, exist_ok=True)
+    base.chmod(0o700)
+    hostkey = base/'ssh_host_ed25519_key'
+    if not hostkey.exists():
+        subprocess.run(['ssh-keygen', '-q', '-t', 'ed25519', '-N', '', '-f', str(hostkey)], check=True)
+    keys = config.get('keys', '')
+    if len(keys.encode()) > 65536:
+        raise ValueError('Authorized keys are too large')
+    for line in keys.splitlines():
+        if line.strip() and not re.fullmatch(r'(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)|sk-ssh-ed25519@openssh.com) [A-Za-z0-9+/=]+(?: [^\r\n]*)?', line.strip()):
+            raise ValueError('Paste OpenSSH public keys, one per line, without command options')
+    write(base/'authorized_keys', keys)
+    password = bool(config.get('password', True))
+    if not password and not keys.strip():
+        raise ValueError('Add an SSH public key before disabling password authentication')
+    lines = ['Port '+str(port(config.get('port', 2222))),
+             'AddressFamily inet', 'ListenAddress '+('0.0.0.0' if config.get('lan') else '127.0.0.1'),
+             'HostKey '+str(hostkey), 'PidFile /run/dextop-sshd.pid',
+             'PermitRootLogin no', 'PermitEmptyPasswords no', 'AllowUsers '+name,
+             'PasswordAuthentication '+('yes' if password else 'no'), 'KbdInteractiveAuthentication no',
+             'PubkeyAuthentication yes', 'AuthorizedKeysFile '+str(base/'authorized_keys'),
+             'UsePAM no', 'StrictModes no', 'MaxAuthTries 3', 'LoginGraceTime 30',
+             'AllowAgentForwarding no', 'AllowTcpForwarding yes', 'GatewayPorts no',
+             'X11Forwarding no', 'PrintMotd no', 'Subsystem sftp internal-sftp']
+    write(base/'sshd_config', '\n'.join(lines)+'\n')
+    Path('/run/sshd').mkdir(parents=True, exist_ok=True)
+    Path('/run/sshd').chmod(0o755)
+    subprocess.run(['/usr/sbin/sshd', '-t', '-f', str(base/'sshd_config')], check=True)
+
+
+def configure_vnc(config):
+    password = config['secret']
+    if len(password) != 8 or any(ord(char) < 33 or ord(char) > 126 for char in password):
+        raise ValueError('VNC requires an 8-character ASCII password')
+    write('/etc/dextop/vnc/password', password+'\n')
+
+
+def configure_print(config):
+    listen = port(config.get('port', 8631))
+    import pwd
+    account_file = Path('/etc/dextop/username')
+    account = account_file.read_text().strip() if account_file.exists() else 'lp'
+    identity = pwd.getpwnam(account)
+    if identity.pw_uid == 0:
+        raise ValueError('Printing requires a non-root Linux account')
+    base = Path('/etc/dextop/cups')
+    base.mkdir(parents=True, exist_ok=True)
+    for path in ('/var/spool/dextop-print', '/var/spool/dextop-cups', '/var/cache/dextop-cups', '/run/dextop-cups', '/var/log/dextop-cups'):
+        Path(path).mkdir(parents=True, exist_ok=True)
+    Path('/var/spool/dextop-print').chmod(0o700)
+    write(base/'cupsd.conf', f'''LogLevel warn
+Listen 127.0.0.1:{listen}
+Browsing Off
+WebInterface No
+DefaultShared No
+DefaultEncryption Never
+MaxRequestSize 67108864
+<Location />
+  Order allow,deny
+  Allow localhost
+</Location>
+<Policy default>
+  <Limit All>
+    Order allow,deny
+    Allow localhost
+  </Limit>
+</Policy>
+''')
+    write(base/'cups-files.conf', f'''SystemGroup root
+User {account}
+Group {__import__('grp').getgrgid(identity.pw_gid).gr_name}
+ServerRoot /etc/dextop/cups
+StateDir /run/dextop-cups
+RequestRoot /var/spool/dextop-cups
+CacheDir /var/cache/dextop-cups
+ErrorLog /var/log/dextop-cups/error_log
+AccessLog /var/log/dextop-cups/access_log
+PageLog /var/log/dextop-cups/page_log
+ServerBin /usr/lib/cups
+DataDir /usr/share/cups
+DocumentRoot /usr/share/cups/doc-root
+''')
+    # Native PDF/PostScript input goes straight to our own backend. No vendor
+    # printer driver or raster conversion is needed for the Android handoff.
+    write(base/'android.ppd', '''*PPD-Adobe: "4.3"
+*FormatVersion: "4.3"
+*FileVersion: "1.0"
+*LanguageVersion: English
+*LanguageEncoding: ISOLatin1
+*PCFileName: "DEXTOP.PPD"
+*Manufacturer: "Dextop"
+*Product: "(Android Printer)"
+*ModelName: "Android (Dextop)"
+*NickName: "Android (Dextop)"
+*PSVersion: "(3010.000) 0"
+*LanguageLevel: "3"
+*ColorDevice: True
+*DefaultColorSpace: RGB
+*FileSystem: False
+*Throughput: "10"
+*cupsVersion: 2.0
+*cupsManualCopies: True
+*cupsFilter2: "application/pdf application/vnd.cups-pdf 0 -"
+*cupsFilter2: "application/postscript application/vnd.cups-postscript 0 -"
+*OpenUI *PageSize/Page Size: PickOne
+*OrderDependency: 10 AnySetup *PageSize
+*DefaultPageSize: A4
+*PageSize A4/A4: "<</PageSize [595 842]>>setpagedevice"
+*PageSize Letter/Letter: "<</PageSize [612 792]>>setpagedevice"
+*CloseUI: *PageSize
+*OpenUI *PageRegion/Page Region: PickOne
+*OrderDependency: 10 AnySetup *PageRegion
+*DefaultPageRegion: A4
+*PageRegion A4/A4: "<</PageSize [595 842]>>setpagedevice"
+*PageRegion Letter/Letter: "<</PageSize [612 792]>>setpagedevice"
+*CloseUI: *PageRegion
+*DefaultImageableArea: A4
+*ImageableArea A4/A4: "0 0 595 842"
+*ImageableArea Letter/Letter: "0 0 612 792"
+*DefaultPaperDimension: A4
+*PaperDimension A4/A4: "595 842"
+*PaperDimension Letter/Letter: "612 792"
+''', 0o644)
+    backend = Path('/usr/lib/cups/backend/dextop')
+    backend.parent.mkdir(parents=True, exist_ok=True)
+    write(backend, '#!/bin/sh\nexec python3 /usr/local/libexec/dextop-print-backend "$@"\n', 0o700)
+    write(Path.home()/'.cups/client.conf', f'ServerName 127.0.0.1:{listen}\n')
+    write('/etc/dextop/printing.env', f'export CUPS_SERVER=127.0.0.1:{listen}\n', 0o644)
+
+
+def install_printer(config):
+    server = '127.0.0.1:'+str(port(config.get('port', 8631)))
+    subprocess.run(['lpadmin', '-h', server, '-p', 'DextopAndroid', '-E', '-v', 'dextop:/android',
+                    '-P', '/etc/dextop/cups/android.ppd', '-o', 'printer-is-shared=false',
+                    '-D', 'Android (Dextop)', '-L', 'Dextop'], check=True)
+    subprocess.run(['lpoptions', '-h', server, '-d', 'DextopAndroid'], check=True)
+
+
+def calendar(config):
+    folder = Path.home()/'.local/share/dextop/calendar'
+    folder.mkdir(parents=True, exist_ok=True)
+    token = config['token']
+    if not re.fullmatch('[A-Za-z0-9_-]{32,100}', token):
+        raise ValueError('Invalid calendar token')
+    write(folder/'server.json', json.dumps(dict(port=port(config.get('port', 8585)), token=token)))
+    entry = Path.home()/'.local/share/applications/dextop-calendar.desktop'
+    write(entry, '[Desktop Entry]\nType=Application\nName=Android Calendar\nName[ja]=Androidカレンダー\nIcon=x-office-calendar\nExec=xdg-open http://127.0.0.1:'+str(port(config.get('port', 8585)))+'/'+token+'/\nCategories=Office;Calendar;\n', 0o644)
+
+
+def serve_calendar():
+    folder = Path.home()/'.local/share/dextop/calendar'
+    config = json.loads((folder/'server.json').read_text())
+    class Handler(BaseHTTPRequestHandler):
+        def log_message(self, *_):
+            pass  # The URL contains a capability token.
+
+        def do_HEAD(self):
+            self.do_GET(head=True)
+
+        def do_GET(self, head=False):
+            parts = self.path.split('?', 1)[0].split('/')
+            if len(parts) != 3 or not hmac.compare_digest(parts[1], config['token']):
+                self.send_error(404)
+                return
+            route = parts[2]
+            if route == 'calendar.ics':
+                try:
+                    body = (folder/'android.ics').read_bytes()
+                except OSError:
+                    self.send_error(503)
+                    return
+                content_type = 'text/calendar; charset=utf-8'
+            elif not route:
+                data = json.loads((folder/'events.json').read_text()) if (folder/'events.json').exists() else []
+                cards = ''.join('<article><h2>'+html.escape(item['title'] or '(No title)')+'</h2><p>'+html.escape(item.get('when', ''))+'</p><p>'+html.escape(item.get('location', ''))+'</p><p>'+html.escape(item.get('description', ''))+'</p></article>' for item in data)
+                body = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Android Calendar · Dextop</title><style>:root{color-scheme:light dark}body{font:16px system-ui;margin:auto;padding:24px;max-width:850px;background:light-dark(#f8f9ff,#14151b);color:light-dark(#20212a,#e3e3ed)}h1{font-size:30px}article{padding:16px 24px;margin:12px 0;border-radius:24px;background:light-dark(#e9edff,#242836)}h2{font-size:20px;margin:0}p{white-space:pre-wrap;overflow-wrap:anywhere}a{color:inherit}</style><h1>Android Calendar</h1><a href="calendar.ics">iCalendar</a>'+cards).encode()
+                content_type = 'text/html; charset=utf-8'
+            else:
+                self.send_error(404)
+                return
+            etag = '"'+hashlib.sha256(body).hexdigest()+'"'
+            if self.headers.get('If-None-Match') == etag:
+                self.send_response(304)
+                self.end_headers()
+                return
+            self.send_response(200)
+            self.send_header('Content-Type', content_type)
+            self.send_header('Content-Length', str(len(body)))
+            self.send_header('Cache-Control', 'private, no-cache')
+            self.send_header('ETag', etag)
+            self.send_header('Content-Security-Policy', "default-src 'none'; style-src 'unsafe-inline'")
+            self.end_headers()
+            if not head:
+                self.wfile.write(body)
+    server = ThreadingHTTPServer(('127.0.0.1', port(config['port'])), Handler)
+    server.daemon_threads = True
+    server.serve_forever()
+
+
+if __name__ == '__main__':
+    if sys.argv[1] == 'calendar-server':
+        serve_calendar()
+    else:
+        config = json.load(sys.stdin)
+        {'ssh': configure_ssh, 'vnc': configure_vnc, 'printing': configure_print,
+         'printer': install_printer, 'calendar': calendar}[sys.argv[1]](config)

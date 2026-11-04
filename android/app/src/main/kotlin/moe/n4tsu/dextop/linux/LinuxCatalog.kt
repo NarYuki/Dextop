@@ -185,7 +185,11 @@ internal object LinuxCatalog {
             fi
             apt-get install -y --no-install-recommends \
                 xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
-                fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme xz-utils procps
+                fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme xz-utils procps \
+                python3 passwd sudo libcrypt1 gnome-keyring libsecret-tools gnome-themes-extra libgtk-3-bin libglib2.0-bin qt5ct qt6ct
+            if dpkg-query -W -f='${'$'}{db:Status-Status}' libreoffice-core 2>/dev/null | grep -qx installed; then
+                apt-get install -y --no-install-recommends libreoffice-gtk3
+            fi
             if apt-cache show adwaita-icon-theme-legacy >/dev/null 2>&1; then
                 apt-get install -y --no-install-recommends adwaita-icon-theme-legacy
             fi
@@ -194,7 +198,8 @@ internal object LinuxCatalog {
             set -e
             pacman -S --noconfirm --needed \
                 xorg-server-xvfb xorg-xrdb xorg-xrandr xorg-xauth icewm xterm dbus pulseaudio \
-                ttf-dejavu xdg-utils ca-certificates fakeroot adwaita-icon-theme xz procps-ng
+                ttf-dejavu xdg-utils ca-certificates fakeroot adwaita-icon-theme xz procps-ng \
+                python shadow sudo libxcrypt gnome-keyring libsecret gnome-themes-extra qt5ct qt6ct
             if pacman -Si adwaita-icon-theme-legacy >/dev/null 2>&1; then
                 pacman -S --noconfirm --needed adwaita-icon-theme-legacy
             fi
@@ -352,7 +357,7 @@ internal object LinuxCatalog {
         $GTK_FONT_SCHEMA_FIX
         ${if (wayland) (if (waylandGpu) WAYLAND_ENVIRONMENT else WAYLAND_TOOLKIT_ENVIRONMENT) else "unset WAYLAND_DISPLAY DEXTOP_WAYLAND_KGSL MESA_LOADER_DRIVER_OVERRIDE; export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11 SDL_VIDEO_DRIVER=x11 MOZ_ENABLE_WAYLAND=0 ELECTRON_OZONE_PLATFORM_HINT=x11"}
         $HARDWARE_TOOLKIT_ENVIRONMENT
-        cd /root
+        cd "${'$'}HOME"
         cmd=${shellQuote(command)}
         $CHROMIUM_SANDBOX_FIX
         # The output also goes to Dextop, which shows it while the window opens; the marker
@@ -468,6 +473,7 @@ internal object LinuxCatalog {
      */
     private fun sessionSetup(dpi: Int): String = """
         [ ! -f /etc/dextop/session.env ] || . /etc/dextop/session.env
+        [ ! -f /etc/dextop/theme.env ] || . /etc/dextop/theme.env
         [ ! -r /etc/profile.d/dextop-path.sh ] || . /etc/profile.d/dextop-path.sh
         if command -v python3 >/dev/null 2>&1 && [ -f /usr/local/bin/dextop-keyring-repair ]; then
             python3 /usr/local/bin/dextop-keyring-repair || echo 'Keyring default recovery failed' >&2
@@ -695,7 +701,7 @@ internal object LinuxCatalog {
      */
     private val ROOT_TOOLS: String get() = """
         fakeroot=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
-        if [ -n "${'$'}fakeroot" ]; then
+        if [ -n "${'$'}fakeroot" ] && [ ! -f /etc/dextop/username ]; then
             mkdir -p /usr/local/sbin
             for tool in apt apt-get dpkg aptitude pacman; do
                 [ -x /usr/bin/${'$'}tool ] || continue

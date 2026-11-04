@@ -21,16 +21,32 @@ static int following(void) {
   return cached;
 }
 
+/* Xlib may be loaded later with RTLD_LOCAL (for example by a runtime bridge).
+ * Its internal calls still reach this preload, but RTLD_NEXT cannot see it.
+ * Only look up an already loaded Xlib; do not introduce an X11 dependency.
+ */
+static void *xlib_symbol(const char *name) {
+  void *symbol = dlsym(RTLD_NEXT, name);
+  if (!symbol) {
+    void *xlib = dlopen("libX11.so.6", RTLD_LAZY | RTLD_NOLOAD);
+    if (xlib) {
+      symbol = dlsym(xlib, name);
+      dlclose(xlib);
+    }
+  }
+  return symbol;
+}
+
 int XChangeProperty(Display *dpy, Window w, Atom property, Atom type, int format, int mode,
                     const unsigned char *data, int nelements) {
   static change_property_fn real;
-  if (!real) real = (change_property_fn)dlsym(RTLD_NEXT, "XChangeProperty");
+  if (!real) real = (change_property_fn)xlib_symbol("XChangeProperty");
   if (!real) return 0;
   if (following() && format == 32 && nelements == 4 && data) {
     static intern_atom_fn intern;
     static Display *atom_dpy;
     static Atom mode_control;
-    if (!intern) intern = (intern_atom_fn)dlsym(RTLD_NEXT, "XInternAtom");
+    if (!intern) intern = (intern_atom_fn)xlib_symbol("XInternAtom");
     if (intern && atom_dpy != dpy) {
       mode_control = intern(dpy, "GAMESCOPE_XWAYLAND_MODE_CONTROL", 1);
       atom_dpy = dpy;

@@ -28,7 +28,8 @@ internal object LinuxFlatpak {
 
     fun plan(rootfs: File, id: String): Plan {
         require(component.matches(id)) { "Invalid Flatpak application ID" }
-        val base = "/root/.local/share/flatpak"
+        val home = LinuxUser.home(rootfs)
+        val base = "$home/.local/share/flatpak"
         val active = LinuxDesktopEntries.resolve(rootfs, "$base/app/$id/current/active")
             ?: error("Flatpak $id is not deployed; install it from Flathub first")
         val appMetadata = metadata(File(active, "metadata"))
@@ -60,7 +61,7 @@ internal object LinuxFlatpak {
         // Flatpak normally supplies these host fonts; PRoot must map them too,
         // especially CJK fonts which are absent from many runtimes.
         listOf("usr/share/fonts" to "fonts", "usr/local/share/fonts" to "local-fonts",
-            "root/.local/share/fonts" to "user-fonts", "root/.fonts" to "legacy-fonts").forEach { (path, target) ->
+            "${home.removePrefix("/")}/.local/share/fonts" to "user-fonts", "${home.removePrefix("/")}/.fonts" to "legacy-fonts").forEach { (path, target) ->
             val fonts = File(rootfs, path)
             if (fonts.isDirectory) binds += "${fonts.absolutePath}:/run/host/$target"
         }
@@ -115,7 +116,7 @@ internal object LinuxFlatpak {
         }
         extensions(metadata(File(runtime, "metadata")), "/usr")
         extensions(appMetadata, "/app")
-        val data = "/root/.var/app/$id"
+        val data = "$home/.var/app/$id"
         listOf("config", "data", "cache").forEach { File(rootfs, "$data/$it".removePrefix("/")).mkdirs() }
         val environment = fontEnvironment + listOf("PATH=/app/bin:/usr/local/bin:/usr/bin:/bin", "LD_LIBRARY_PATH=${libraryPaths.joinToString(":")}",
             "XDG_CONFIG_HOME=$data/config", "XDG_DATA_HOME=$data/data", "XDG_CACHE_HOME=$data/cache",

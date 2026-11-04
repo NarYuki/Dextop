@@ -1,0 +1,76 @@
+#!/usr/bin/python3
+"""CUPS backend that queues PDFs for Dextop's Android PrintManager bridge."""
+import json
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+import uuid
+
+MAX_BYTES = 64*1024*1024
+
+
+def queue(args, spool=Path('/var/spool/dextop-print')):
+    if not args:
+        print('direct dextop:/android "Dextop" "Android (Dextop)"')
+        return 0
+    if len(args) not in (5, 6):
+        raise ValueError('Invalid CUPS backend arguments')
+    spool.mkdir(parents=True, exist_ok=True)
+    if len(list(spool.glob('*.json'))) >= 32 or sum(file.stat().st_size for file in spool.glob('*.pdf')) > 256*1024*1024:
+        raise ValueError('Android print queue is full')
+    identifier = uuid.uuid4().hex
+    raw = spool/(identifier+'.input')
+    pending = spool/(identifier+'.pending')
+    output = spool/(identifier+'.pdf')
+    try:
+        source = open(args[5], 'rb') if len(args) == 6 else sys.stdin.buffer
+        try:
+            with raw.open('xb') as target:
+                os.chmod(raw, 0o600)
+                size = 0
+                while True:
+                    chunk = source.read(65536)
+                    if not chunk:
+                        break
+                    size += len(chunk)
+                    if size > MAX_BYTES:
+                        raise ValueError('Print document exceeds 64 MiB')
+                    target.write(chunk)
+        finally:
+            if len(args) == 6:
+                source.close()
+        with raw.open('rb') as stream:
+            header = stream.read(5)
+        if header == b'%PDF-':
+            raw.replace(pending)
+        elif header.startswith(b'%!PS'):
+            def limit_output():
+                import resource
+                resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_BYTES, MAX_BYTES))
+            subprocess.run(['gs', '-q', '-dSAFER', '-dBATCH', '-dNOPAUSE', '-sDEVICE=pdfwrite',
+                            '-dCompatibilityLevel=1.4', '-sOutputFile='+str(pending), str(raw)], check=True, timeout=90, preexec_fn=limit_output)
+        else:
+            raise ValueError('The Android print backend accepts PDF or PostScript')
+        if not pending.exists() or not 0 < pending.stat().st_size <= MAX_BYTES:
+            raise ValueError('Invalid converted PDF size')
+        pending.chmod(0o600)
+        pending.replace(output)
+        metadata = spool/(identifier+'.json.pending')
+        metadata.write_text(json.dumps(dict(id=identifier, title=args[2][:256], user=args[1][:64],
+                                            copies=max(1, min(99, int(args[3]))), bytes=output.stat().st_size)))
+        metadata.chmod(0o600)
+        metadata.replace(spool/(identifier+'.json'))
+        return 0
+    finally:
+        raw.unlink(missing_ok=True)
+        pending.unlink(missing_ok=True)
+
+
+if __name__ == '__main__':
+    try:
+        sys.exit(queue(sys.argv[1:]))
+    except Exception as error:
+        print('ERROR: '+str(error), file=sys.stderr)
+        sys.exit(1)

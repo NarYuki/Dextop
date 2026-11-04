@@ -82,6 +82,9 @@ class LinuxAppList extends ChangeNotifier {
   List<String> _containers = const [];
   bool _pollingInstallations = false;
   bool _disposed = false;
+  int _modeGeneration = 0;
+  int _loadGeneration = 0;
+  bool _pollingSessions = false;
   final _tileKeys = <String, String>{};
 
   List<AppInstallation> get installations => [
@@ -133,6 +136,7 @@ class LinuxAppList extends ChangeNotifier {
   Future<void> refreshInstallations() async {
     if (!trackInstallations || _pollingInstallations || _disposed) return;
     _pollingInstallations = true;
+    final generation = _modeGeneration;
     try {
       for (final container in List<String>.of(_containers)) {
         final raw =
@@ -141,7 +145,7 @@ class LinuxAppList extends ChangeNotifier {
               'peek': true,
             }) ??
             const [];
-        if (_disposed) return;
+        if (_disposed || generation != _modeGeneration) return;
         final jobs = raw.cast<Map<Object?, Object?>>();
         final active = <String>{
           for (final job in jobs)
@@ -153,14 +157,14 @@ class LinuxAppList extends ChangeNotifier {
             .forContainer(container)
             .any((item) => !active.contains(item.package))) {
           await loadAll(List<String>.of(_containers));
-          if (_disposed) return;
+          if (_disposed || generation != _modeGeneration) return;
         }
         LinuxInstallations.instance.snapshot(container, jobs);
       }
     } on PlatformException {
       // Retain visible jobs during a transient service disconnect.
     } finally {
-      _pollingInstallations = false;
+      if (generation == _modeGeneration) _pollingInstallations = false;
     }
   }
 
@@ -179,10 +183,16 @@ class LinuxAppList extends ChangeNotifier {
   }
 
   Future<void> refreshSessions() async {
+    if (_disposed || _pollingSessions) return;
+    _pollingSessions = true;
+    final generation = _modeGeneration;
     try {
       final list =
-          await _channel.invokeListMethod<Object?>('sessions') ?? const [];
-      if (_disposed) return;
+          await _channel
+              .invokeListMethod<Object?>('sessions')
+              .timeout(const Duration(seconds: 20)) ??
+          const [];
+      if (_disposed || generation != _modeGeneration) return;
       final next = <String, List<LinuxAppSession>>{};
       for (final session in list.cast<Map<Object?, Object?>>().map(
         LinuxAppSession.new,
@@ -195,8 +205,10 @@ class LinuxAppList extends ChangeNotifier {
           next.entries.any((e) => sessions[e.key]?.length != e.value.length);
       sessions = next;
       if (changed) notifyListeners();
-    } on PlatformException {
-      // Plasma windows are not listed; nothing to show.
+    } on Exception {
+      // Keep the last snapshot while disconnected.
+    } finally {
+      if (generation == _modeGeneration) _pollingSessions = false;
     }
   }
 
@@ -210,7 +222,26 @@ class LinuxAppList extends ChangeNotifier {
 
   Future<void> load(String container) => loadAll([container]);
 
+  /// Retire all snapshots and pending replies from the previous execution mode.
+  void resetForExecutionMode() {
+    if (_disposed) return;
+    _modeGeneration++;
+    _loadGeneration++;
+    _containers = const [];
+    apps = const [];
+    sessions = const {};
+    shortcuts = const {};
+    _tileKeys.clear();
+    loading = false;
+    error = null;
+    _pollingSessions = false;
+    _pollingInstallations = false;
+    notifyListeners();
+  }
+
   Future<void> loadAll(List<String> containers) async {
+    if (_disposed) return;
+    final generation = ++_loadGeneration;
     _containers = List.of(containers);
     loading = true;
     notifyListeners();
@@ -218,33 +249,45 @@ class LinuxAppList extends ChangeNotifier {
     try {
       for (final container in containers) {
         final list =
-            await _channel.invokeListMethod<Object?>('apps', {
-              'id': container,
-            }) ??
+            await _channel
+                .invokeListMethod<Object?>('apps', {'id': container})
+                .timeout(const Duration(seconds: 30)) ??
             const [];
+        if (_disposed || generation != _loadGeneration) return;
         next.addAll(
           list.cast<Map<Object?, Object?>>().map(
             (json) => LinuxAppEntry(json, container),
           ),
         );
       }
+      final nextShortcuts = containers.isEmpty
+          ? <String>{}
+          : ((await _channel
+                        .invokeListMethod<Object?>('shortcuts')
+                        .timeout(const Duration(seconds: 10))) ??
+                    const [])
+                .cast<String>()
+                .toSet();
+      if (_disposed || generation != _loadGeneration) return;
       next.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
       apps = next;
+      shortcuts = nextShortcuts;
       for (final entry in apps) {
         installationOf(entry);
       }
-      shortcuts =
-          ((await _channel.invokeListMethod<Object?>('shortcuts')) ?? const [])
-              .cast<String>()
-              .toSet();
       error = null;
-    } on PlatformException catch (e) {
-      error = e.message;
+    } on Exception catch (e) {
+      if (_disposed || generation != _loadGeneration) return;
+      error = e is PlatformException ? e.message : e.toString();
+    } finally {
+      if (!_disposed && generation == _loadGeneration) {
+        loading = false;
+        notifyListeners();
+      }
     }
-    if (_disposed) return;
-    loading = false;
-    notifyListeners();
-    if (!_pollingInstallations) await refreshInstallations();
+    if (!_disposed && generation == _loadGeneration && !_pollingInstallations) {
+      await refreshInstallations();
+    }
   }
 
   /// Opens [entry] in a new session: in the Plasma desktop when it runs, otherwise as an
