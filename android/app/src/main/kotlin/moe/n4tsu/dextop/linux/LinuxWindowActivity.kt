@@ -95,6 +95,11 @@ internal open class LinuxWindowActivity : Activity() {
     private var kept: android.util.Size? = null
     /** When this window was last resized (by the user or Android), so a client request does not undo it. */
     private var resizedAt = 0L
+    /**
+     * A floating window the user resized: its application is offered that size once, and the
+     * window then follows whatever size the application takes (see [fitTaskToClient]).
+     */
+    private var userSized = false
     private var taskRequest: android.util.Size? = null
     /** The X window this activity shows, with its size as the application last reported it. */
     private var bound: LinuxAndroidWindows.Info? = null
@@ -229,6 +234,11 @@ internal open class LinuxWindowActivity : Activity() {
         root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
             // A resized window first offers the application all of its room again.
             if (floating) {
+                val available = android.util.Size(right - left - root.paddingLeft - root.paddingRight,
+                    bottom - top - root.paddingTop - root.paddingBottom)
+                // Not the size Dextop asked for: the user resized the window.
+                if (oldRight - oldLeft > 0 && (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) &&
+                    available != taskRequest && bound?.fixedSize != true) userSized = true
                 bound?.bounds?.let { windowSized(it.width(), it.height()) }
             } else if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
                 resizedAt = android.os.SystemClock.uptimeMillis()
@@ -304,6 +314,9 @@ internal open class LinuxWindowActivity : Activity() {
             // Android may impose minimum freeform task bounds. The viewport must still
             // retain the client's size instead of magnifying a non-resizable GTK dialog.
             windowSized(info.bounds.width(), info.bounds.height())
+            // The window itself takes the application's size: no margin around it, apart from
+            // what Android's minimum window size leaves.
+            root.post { fitTaskToClient(info.bounds.width(), info.bounds.height()) }
         }
         content.surfaceReady()?.let { attach(it, xid) }
         place()
@@ -378,6 +391,22 @@ internal open class LinuxWindowActivity : Activity() {
         }, "DextopLinuxTaskResize").start()
     }
 
+    /**
+     * A floating window's task takes its application's [width] x [height] (plus the frame), so
+     * no margin is left around it; Android's own minimum window size is the only exception.
+     * After a resize by the user, the application answered with the size it takes; the window
+     * follows it, and keeps the application's size again from then on.
+     */
+    private fun fitTaskToClient(width: Int, height: Int) {
+        if (!floating || width <= 0 || height <= 0) return
+        userSized = false
+        // The user's resize is never a stale request to undo: the size is the application's answer.
+        resizedAt = 0L
+        // Asked again even when it is the size asked for before: the user may have changed it since.
+        taskRequest = null
+        requestTaskSize(width, height)
+    }
+
     private val reconcileSize = Runnable {
         lastPlace.setEmpty()
         place()
@@ -391,6 +420,7 @@ internal open class LinuxWindowActivity : Activity() {
         if (width <= 0 || height <= 0) return
         if (floating) {
             windowSized(width, height)
+            fitTaskToClient(width, height)
             return
         }
         requestTaskSize(width, height)
@@ -523,14 +553,12 @@ internal open class LinuxWindowActivity : Activity() {
         if (bounds == lastPlace) return
         lastPlace.set(bounds)
         LinuxContainerClient.service()?.runCatching {
-            // Only a fixed-size window keeps its own size. A dialog or other floating window
-            // (a file chooser) is offered its Android window's size like any window: offered
-            // its own size instead, it stayed wider than a window the user had made narrower.
-            // One that cannot shrink that far answers with its minimum, which the window takes.
             val client = bound?.bounds
-            val fixed = bound?.fixedSize == true
-            val width = if (fixed) client?.width()?.coerceAtLeast(1) ?: bounds.width() else bounds.width()
-            val height = if (fixed) client?.height()?.coerceAtLeast(1) ?: bounds.height() else bounds.height()
+            // A floating window keeps its application's size, except once the user resized it:
+            // then the application is offered the new size and the window follows its answer.
+            val own = floating && !userSized
+            val width = if (own) client?.width()?.coerceAtLeast(1) ?: bounds.width() else bounds.width()
+            val height = if (own) client?.height()?.coerceAtLeast(1) ?: bounds.height() else bounds.height()
             configureWindow(container, xid, bounds.left, bounds.top, width, height)
         }
         // Slow clients may still be committing the previous size. Never infer a fixed-size
