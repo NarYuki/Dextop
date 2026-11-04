@@ -15,6 +15,7 @@ import 'package:free_dextop/native_display_events.dart';
 import 'package:free_dextop/features_page.dart';
 import 'package:free_dextop/linux_page.dart';
 import 'package:free_dextop/linux/linux_expressive.dart';
+import 'package:free_dextop/linux/macos_feature.dart';
 import 'package:free_dextop/penguin_icon.dart';
 import 'package:free_dextop/setup_page.dart';
 import 'package:free_dextop/embedded_binder_setup.dart';
