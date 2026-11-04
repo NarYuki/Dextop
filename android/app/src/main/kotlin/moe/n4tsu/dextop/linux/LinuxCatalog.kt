@@ -262,7 +262,7 @@ internal object LinuxCatalog {
 
     // The SHM server needs its distro GLX provider to advertise visuals. Client
     // Zink and the separately packaged Mesa must not replace that provider.
-    private const val X_SERVER_ENV = "env -u LD_LIBRARY_PATH -u LIBGL_DRIVERS_PATH " +
+    internal const val X_SERVER_ENV = "env -u LD_LIBRARY_PATH -u LIBGL_DRIVERS_PATH " +
         "-u MESA_LOADER_DRIVER_OVERRIDE -u __EGL_VENDOR_LIBRARY_FILENAMES GALLIUM_DRIVER=llvmpipe"
 
     internal fun xwaylandCommand(display: Int, width: Int, height: Int, dpi: Int): String = """

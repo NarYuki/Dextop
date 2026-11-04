@@ -2010,6 +2010,8 @@ internal abstract class CompositedWindowShell(
                 windows.filter { it.linuxContainer == containerId || it.steamMode == containerId || it.packageName.startsWith("linux-launch:$containerId:") || it.packageName == "linux-error:$containerId" }.toList().forEach(::closeWindowNow)
             }
             "map" -> {
+                // A window shown again after a declined close: only when its Plasma window is gone.
+                if (event.optBoolean("reopened") && linuxWindow(containerId, xid) != null) return
                 val steamMode = if (popup) null else steamModeWindow(containerId)
                 if (steamMode != null && adoptSteamModeClient(steamMode, containerId, xid, event, bounds)) return
                 if (!popup) linuxLaunchClicked.remove(containerId)?.let { clicked ->

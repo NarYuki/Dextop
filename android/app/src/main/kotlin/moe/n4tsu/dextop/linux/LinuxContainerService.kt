@@ -38,6 +38,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         const val PROTOCOL_VERSION = 25
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
+        /** [GPU_CRASH_LIMIT] GPU crashes within this long turn the GPU off for the session. */
+        private const val GPU_CRASH_PERIOD_MS = 10 * 60_000L
+        private const val GPU_CRASH_LIMIT = 3
         private val GUEST_LOG = Regex("""[A-Za-z0-9._-]+\.log""")
         private val GUEST_STATE = Regex("""dextop-[a-z0-9-]+\.conf""")
         private const val BUFFER = 256 * 1024
@@ -559,10 +562,14 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         }
         appSessions[containerId] = session
+        // A new session tries the GPU again.
+        gpuSessionOff.remove(containerId)
+        gpuCrashes.remove(containerId)
         session.onClipboard = { text -> shareClipboard(containerId, text) }
         startNotifications(containerId, display)
         monitor(containerId, { session.alive }) { appSessions[containerId] === session }
         notifyChanged()
+        runCatching { maybeProbeGpu(containerId) }
         return display
     }
 
@@ -591,7 +598,10 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         } else null
         // The application's own choices (its app menu → How it runs).
         val mode = LinuxSettings.appMode(containerId, entry.id)
-        val softwareRendering = software || mode.optString("renderer") == "software"
+        // /root/.config/dextop/gpu-apps ("software NAME" / "gpu NAME") wins over Dextop's own fallback.
+        val listed = LinuxGpuApps.choice(LinuxPaths.rootfs(containerId), entry.id, LinuxDesktopEntries.command(entry))
+        val softwareRendering = software || mode.optString("renderer") == "software" || listed == "software" ||
+            (listed != "gpu" && containerId in gpuSessionOff)
         val glOverride = if (mode.optString("gl") == "override" && !softwareRendering) {
             if (LinuxSettings.gpuMode(containerId) == LinuxGpuMode.TURNIP) "MESA_GL_VERSION_OVERRIDE=4.6 MESA_GLSL_VERSION_OVERRIDE=460 "
             else "MESA_GL_VERSION_OVERRIDE=4.3 MESA_GLSL_VERSION_OVERRIDE=430 "
@@ -652,9 +662,12 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                         .onFailure { log(containerId, "X11 retry of ${entry.id} failed: ${it.message}") }
                     return
                 }
-                if (current && gpuCrash && !software && gpuMode != LinuxGpuMode.SOFTWARE) {
+                if (current && gpuCrash && !software && !softwareRendering && gpuMode != LinuxGpuMode.SOFTWARE) {
                     log(containerId, "${entry.name}: GPU startup failed (exit $code); preserving the selected hardware renderer")
                     status("launch-status") { put("line", "GPU startup failed (exit $code). See application diagnostics.") }
+                    if (gpuCrashed(containerId, entry.name)) status("launch-status") {
+                        put("line", "GPU turned off for this session after repeated crashes; applications opened from now on draw in software")
+                    }
                 }
                 status("launch-exit") { put("code", code) }
                 if (code != 0 && current) runtimeFailure(containerId, "${entry.name} exited (exit $code)\n$output", "apps", entry.id)
@@ -689,6 +702,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun stopApps(containerId: String) {
         wineTrayMetadata.stop(containerId)
+        gpuSessionOff.remove(containerId)
+        gpuCrashes.remove(containerId)
         appProcesses.remove(containerId)?.toList()?.forEach { runCatching { LinuxRuntime.terminate(it) } }
         appSessions.remove(containerId)?.let { notifiers.remove(it.display)?.stop(); it.stop() }
         stopRendererIfIdle(containerId)
@@ -832,7 +847,109 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
     }
 
-    override fun linuxSettings(): String = (graphics?.status() ?: LinuxSettings.read()).toString()
+    override fun linuxSettings(): String = (graphics?.status() ?: LinuxSettings.read())
+        .put("gpuProbeRunning", gpuProbeRunning).toString()
+
+    // region GPU test
+    @Volatile private var gpuProbeRunning = false
+    /** Tried once per service process by itself, so a device that cannot finish it is not retried at every start. */
+    @Volatile private var gpuProbeAttempted = false
+
+    /** Whether [containerId] can run the device test: installed, with the graphics tools. */
+    private fun probeReady(containerId: String) = readConfig(containerId)?.optString("state") == "installed" &&
+        readConfig(containerId)?.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME &&
+        File(LinuxPaths.rootfs(containerId), "usr/bin/glxgears").isFile
+
+    /** The device test, by itself, when no renderer was chosen and this device has no current result. */
+    private fun maybeProbeGpu(containerId: String) {
+        if (gpuProbeAttempted || gpuProbeRunning || LinuxSettings.read().optBoolean("gpuChosen")) return
+        val previous = LinuxSettings.probe()
+        if (previous != null && previous.optInt("version") >= LinuxGpuProbe.VERSION &&
+            previous.optString("device") == android.os.Build.FINGERPRINT) return
+        if (!probeReady(containerId)) return
+        gpuProbeAttempted = true
+        // After the session's own start, so the test does not slow the first application down.
+        startGpuProbe(containerId, delayMs = 15_000L)
+    }
+
+    /** Runs the device test on [requested] (or the default / first ready container) in the background. */
+    private fun startGpuProbe(requested: String?, delayMs: Long = 0L) {
+        if (gpuProbeRunning) return
+        val containerId = requested?.takeIf(::probeReady)
+            ?: LinuxSettings.read().optString("defaultContainer").takeIf { it.isNotEmpty() && probeReady(it) }
+            ?: containerIds().firstOrNull(::probeReady)
+        if (containerId == null) {
+            LinuxSettings.writeProbe(JSONObject().put("version", LinuxGpuProbe.VERSION).put("at", System.currentTimeMillis())
+                .put("device", android.os.Build.FINGERPRINT).put("state", "unavailable")
+                .put("error", "No installed container has the graphics tools; run container setup with graphics"))
+            notifyChanged()
+            return
+        }
+        gpuProbeRunning = true
+        notifyChanged()
+        Thread({
+            runCatching {
+                if (delayMs > 0) Thread.sleep(delayMs)
+                val result = runGpuProbe(containerId)
+                LinuxSettings.writeProbe(result.put("container", containerId).put("device", android.os.Build.FINGERPRINT))
+                log(containerId, "GPU test: ${result.optString("state")} ${result.optString("renderer")} " +
+                    "gpu=${result.optDouble("gpuFps", -1.0)} cpu=${result.optDouble("cpuFps", -1.0)} fps " +
+                    "→ ${LinuxSettings.read().optString("gpu")}${result.optString("error").takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty()}")
+            }.onFailure { error ->
+                log(containerId, "GPU test failed to run: ${error.message}")
+                LinuxSettings.writeProbe(JSONObject().put("version", LinuxGpuProbe.VERSION).put("at", System.currentTimeMillis())
+                    .put("device", android.os.Build.FINGERPRINT).put("container", containerId)
+                    .put("state", "unavailable").put("error", error.message ?: error.javaClass.simpleName))
+            }
+            gpuProbeRunning = false
+            // Running sessions follow the recommendation for applications started from now on.
+            (sessions.keys + appSessions.keys).toSet().forEach { id -> runCatching { startRenderer(id) } }
+            if (sessions[containerId]?.alive != true && appSessions[containerId]?.alive != true) graphics?.stop(containerId)
+            notifyChanged()
+        }, "DextopGpuProbe").apply { isDaemon = true; start() }
+    }
+
+    private fun runGpuProbe(containerId: String): JSONObject {
+        val graphics = checkNotNull(graphics) { "Linux graphics are not initialized" }
+        val candidate = graphics.candidate(containerId)
+            ?: return JSONObject().put("version", LinuxGpuProbe.VERSION).put("at", System.currentTimeMillis())
+                .put("state", "unavailable").put("recommended", LinuxGpuMode.SOFTWARE.id)
+                .put("error", "This device has no GPU path for Linux applications")
+        val proot = requireProot()
+        if (candidate == LinuxGpuMode.TURNIP) LinuxGpuRuntime.prepare(LinuxPaths.rootfs(containerId)) { script ->
+            val result = proot.run(proot.guest(containerId, script), timeoutSeconds = 60)
+            check(result.exitCode == 0) { "GPU runtime setup failed: ${result.output.takeLast(2000)}" }
+        }
+        if (candidate == LinuxGpuMode.HARDWARE) check(graphics.ensureFor(containerId) { line -> log(containerId, line) }) {
+            "The VirGL renderer did not start"
+        }
+        val variables = (graphics.environmentFor(containerId, LinuxGpuMode.TURNIP) +
+            graphics.environmentFor(containerId, LinuxGpuMode.HARDWARE)).map { it.substringBefore('=') }
+        val display = LinuxRuntime.freeDisplay(usedDisplays())
+        val script = LinuxGpuProbe.script(display, graphics.environmentFor(containerId, candidate),
+            graphics.environmentFor(containerId, LinuxGpuMode.SOFTWARE) + "LIBGL_ALWAYS_SOFTWARE=1", variables)
+        val run = proot.run(proot.guest(containerId, script), timeoutSeconds = 120)
+        return LinuxGpuProbe.parse(candidate, run.output)
+    }
+
+    /** GPU crashes at application start by container, for [gpuCrashed]. */
+    private val gpuCrashes = ConcurrentHashMap<String, MutableList<Long>>()
+    /** Containers whose applications draw in software for the rest of their application session. */
+    private val gpuSessionOff = ConcurrentHashMap.newKeySet<String>()
+
+    /** Three GPU crashes within ten minutes turn the GPU off for the rest of the session. */
+    private fun gpuCrashed(containerId: String, name: String): Boolean {
+        val now = android.os.SystemClock.elapsedRealtime()
+        val crashes = gpuCrashes.getOrPut(containerId) { java.util.Collections.synchronizedList(ArrayList()) }
+        synchronized(crashes) {
+            crashes.removeAll { now - it > GPU_CRASH_PERIOD_MS }
+            crashes += now
+            if (crashes.size < GPU_CRASH_LIMIT || !gpuSessionOff.add(containerId)) return false
+        }
+        log(containerId, "GPU turned off for this session: $GPU_CRASH_LIMIT applications crashed on it within 10 minutes (last: $name)")
+        return true
+    }
+    // endregion
 
     /**
      * Saves settings. A changed renderer applies to applications started
@@ -842,6 +959,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun setLinuxSettings(json: String): String {
         val update = JSONObject(json)
+        // {"gpuProbe": true} runs the device test (Settings > Graphics > Test this device).
+        if (update.optBoolean("gpuProbe")) {
+            startGpuProbe(update.optString("container").takeIf { it.isNotEmpty() })
+            return linuxSettings()
+        }
         val active = (sessions.keys + appSessions.keys).toSet()
         val before = active.associateWith { LinuxSettings.gpuMode(it) }
         // {"container": id, ...} changes that container's settings; otherwise the global defaults.

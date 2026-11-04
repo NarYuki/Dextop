@@ -312,8 +312,19 @@ static void expire_removed_shm(void) {
     closedir(d);
 }
 
+/* Dextop: System V shared memory is reported unavailable when the user turned it off
+ * (/etc/dextop/no-shm) or the application display's MIT-SHM self-test failed (a marker
+ * Dextop writes in the object directory), so X programs use the socket from the start. */
+static int shm_disabled(void) {
+    char path[PATH_MAX];
+    if (access("/etc/dextop/no-shm", F_OK) == 0) return 1;
+    snprintf(path, sizeof(path), "%s/.dextop-shm-off", object_dir());
+    return access(path, F_OK) == 0;
+}
+
 int shmget(key_t key, size_t size, int shmflg) {
     int created;
+    if (shm_disabled()) { errno = ENOSYS; return -1; }
     expire_removed_shm();
     int fd = open_object("shm", key, shmflg, &created);
     if (fd < 0) return -1;
@@ -380,7 +391,10 @@ int shmctl(int shmid, int cmd, struct shmid_ds *buf) {
         memset(buf, 0, sizeof(*buf));
         buf->shm_perm.uid = buf->shm_perm.cuid = getuid();
         buf->shm_perm.gid = buf->shm_perm.cgid = getgid();
-        buf->shm_perm.mode = 0600;
+        /* Dextop: the X server (under fakeroot, uid 0) checks this against its client's real
+         * Android uid from the socket, which never matches; owner-only access refused every
+         * MIT-SHM attach. The objects live in the app's private storage, so others may attach. */
+        buf->shm_perm.mode = 0666;
         buf->shm_segsz = (size_t)st.st_size;
         buf->shm_nattch = 1;
         buf->shm_cpid = (pid_t)getpid();
