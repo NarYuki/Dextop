@@ -486,6 +486,21 @@ internal open class LinuxWindowActivity : Activity() {
     }
 
     /** Where this window's content is on the screen, in X screen coordinates. */
+    /**
+     * The window's own frame on screen around its content area (title bar, borders): the task
+     * bounds minus android.R.id.content, not minus the X window's view, which can be smaller
+     * than the window (a fixed-size or letterboxed X window) and would count its margin too.
+     */
+    fun decoration(): Rect {
+        val frame = windowManager.currentWindowMetrics.bounds
+        val area = findViewById<View>(android.R.id.content) ?: return Rect()
+        val location = IntArray(2)
+        area.getLocationOnScreen(location)
+        if (area.width <= 0 || area.height <= 0) return Rect()
+        return Rect((location[0] - frame.left).coerceAtLeast(0), (location[1] - frame.top).coerceAtLeast(0),
+            (frame.right - location[0] - area.width).coerceAtLeast(0), (frame.bottom - location[1] - area.height).coerceAtLeast(0))
+    }
+
     fun screenBounds(): Rect {
         val location = IntArray(2)
         content.getLocationOnScreen(location)
