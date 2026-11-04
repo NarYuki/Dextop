@@ -499,11 +499,14 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
             ?: return null
         val display = parent.display ?: return null
         val frame = parent.windowManager.currentWindowMetrics.bounds
-        val content = parent.screenBounds()
         val screen = parent.windowManager.maximumWindowMetrics.bounds
-        // The title bar and frame around the content, as the parent's window has them.
-        val extraWidth = (frame.width() - content.width()).coerceIn(0, frame.width() / 4)
-        val extraHeight = (content.top - frame.top).coerceAtLeast(0) + (frame.bottom - content.bottom).coerceAtLeast(0)
+        // The title bar and frame around the content, as the parent's window has them. Never the
+        // margin around a parent X window smaller than its Android window: that made new windows
+        // as tall as the parent's empty space (a 256 px LibreOffice Start Center in a tall window).
+        val decoration = parent.decoration()
+        val limit = (64 * parent.resources.displayMetrics.density).toInt()
+        val extraWidth = (decoration.left + decoration.right).coerceIn(0, limit)
+        val extraHeight = (decoration.top + decoration.bottom).coerceIn(0, limit * 2)
         val width = (info.bounds.width() + extraWidth).coerceIn(1, screen.width())
         val height = (info.bounds.height() + extraHeight).coerceIn(1, screen.height())
         val left = (frame.centerX() - width / 2).coerceIn(screen.left, (screen.right - width).coerceAtLeast(screen.left))
