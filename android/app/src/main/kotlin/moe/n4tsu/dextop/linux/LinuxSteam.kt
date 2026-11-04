@@ -182,8 +182,15 @@ internal object LinuxSteam {
     }
 
     /** The x86 compatibility libraries must match the guest, not Android's ARM64 ABI. */
-    private fun stageGaming(root: java.io.File) {
-        gamingResources.forEach { (resource, relative) ->
+    private fun stageGaming(root: java.io.File) = stageResources(root, gamingResources)
+
+    /** DroidDeck's gamescope and its private libraries, for GPU windows (LinuxGpuWindow) without Steam. */
+    fun stageGamescope(root: java.io.File) = stageResources(root, gamingResources.filterKeys {
+        it == "dextop-deck-gamescope" || it.startsWith("gaming/deck-gamescope.")
+    })
+
+    private fun stageResources(root: java.io.File, resources: Map<String, String>) {
+        resources.forEach { (resource, relative) ->
             val bytes = gamingResource(resource).use { LinuxScript.resource(it.readBytes()) }
             java.io.File(root, relative).apply {
                 parentFile?.mkdirs()

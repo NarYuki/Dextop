@@ -138,4 +138,24 @@ interface ILinuxContainerService {
     String integrationAction(String containerId, String json) = 67;
     ParcelFileDescriptor openIntegrationPrint(String containerId, String job) = 68;
     ParcelFileDescriptor filterIntegrationPrint(String containerId, String job, String ranges) = 69;
+    /**
+     * Snapshots (LinuxBackups): local backups of stopped containers. These start background
+     * jobs and return at once; [listSnapshots] reports the snapshots and the running job (JSON).
+     */
+    void createSnapshot(String containerId) = 70;
+    String listSnapshots() = 71;
+    /** Restores snapshot [file] (a name from [listSnapshots]) as a new container. */
+    void restoreSnapshot(String file) = 72;
+    boolean deleteSnapshot(String file) = 73;
+    /** Writes snapshot [file] to [output] (a document the user picked) in the background. */
+    void exportSnapshot(String file, in ParcelFileDescriptor output) = 74;
+    /** Restores a backup read from [input] (a document the user picked) as a new container. */
+    void importBackup(in ParcelFileDescriptor input) = 75;
+    /**
+     * Unpacks AppImage [file] (named [fileName]) into [containerId] without FUSE and adds it to
+     * the container's applications. Returns JSON {desktopId, name}.
+     */
+    String installAppImage(String containerId, in ParcelFileDescriptor file, String fileName) = 76;
+    /** Removes an AppImage installed with [installAppImage] by its desktop entry. */
+    boolean removeAppImage(String containerId, String desktopId) = 77;
 }
