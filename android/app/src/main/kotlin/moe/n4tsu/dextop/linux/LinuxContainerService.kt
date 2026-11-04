@@ -245,6 +245,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         check(audioClientUid == -1 || audioClientUid == caller) { "Linux service already belongs to another application" }
         audioClientUid = caller
         if (androidContext != null) {
+            LinuxSysStandIns.context = androidContext
             check(caller == Os.getuid() && Os.getuid() !in setOf(0, 2000))
             require(nativeLibraryDir == androidContext.applicationInfo.nativeLibraryDir)
         } else LinuxServiceHost.initializeFonts()
