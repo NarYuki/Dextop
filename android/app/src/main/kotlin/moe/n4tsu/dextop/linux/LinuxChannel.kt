@@ -191,6 +191,8 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 }
                 "removeAppImage" -> remote({ it.removeAppImage(call.argument<String>("id")!!, call.argument<String>("desktopId")!!) })
                 "snapshots" -> remote({ it.listSnapshots() }) { jsonMap(it) }
+                "containerUsage" -> remote({ it.containerUsage(call.argument<String>("id")!!); true })
+                "cleanContainer" -> remote({ it.cleanContainer(call.argument<String>("id")!!); true })
                 "createSnapshot" -> remote({ it.createSnapshot(call.argument<String>("id")!!); true })
                 "restoreSnapshot" -> remote({ it.restoreSnapshot(call.argument<String>("file")!!); true })
                 "deleteSnapshot" -> remote({ it.deleteSnapshot(call.argument<String>("file")!!) })

@@ -15,10 +15,10 @@ import 'linux_widgets.dart';
 class LinuxBackupsUi {
   static const _channel = MethodChannel('app.freedextop/linux');
 
-  static String _t(BuildContext context, String ja, String en) =>
+  static String text(BuildContext context, String ja, String en) =>
       linuxText(context, ja, en);
 
-  static String _size(num bytes) {
+  static String size(num bytes) {
     if (bytes >= 1 << 30) {
       return '${(bytes / (1 << 30)).toStringAsFixed(1)} GiB';
     }
@@ -40,7 +40,7 @@ class LinuxBackupsUi {
   });
 
   /// Shows the service's job until it ends; returns it (with "result" or "error").
-  static Future<Map<Object?, Object?>?> _follow(
+  static Future<Map<Object?, Object?>?> follow(
     BuildContext context,
     String title,
   ) async {
@@ -81,8 +81,8 @@ class LinuxBackupsUi {
                   const SizedBox(height: 12),
                   Text(
                     bytes > 0
-                        ? _size(bytes)
-                        : _t(context, '準備しています…', 'Preparing…'),
+                        ? size(bytes)
+                        : text(context, '準備しています…', 'Preparing…'),
                   ),
                 ],
               ),
@@ -99,7 +99,7 @@ class LinuxBackupsUi {
     return result;
   }
 
-  static void _report(
+  static void report(
     BuildContext context,
     Map<Object?, Object?>? job,
     String done,
@@ -109,12 +109,12 @@ class LinuxBackupsUi {
     M3ESnackbar.show(
       context,
       message: failed
-          ? '${_t(context, '失敗しました', 'Failed')}: ${job?['error'] ?? ''}'
+          ? '${text(context, '失敗しました', 'Failed')}: ${job?['error'] ?? ''}'
           : done,
     );
   }
 
-  static String _message(Object error) =>
+  static String message(Object error) =>
       error is PlatformException ? error.message ?? error.toString() : '$error';
 
   /// Picks an AppImage and adds it to [containerId]'s applications.
@@ -130,19 +130,19 @@ class LinuxBackupsUi {
         'uri': uri,
       });
       if (!context.mounted) return;
-      final job = await _follow(
+      final job = await follow(
         context,
-        _t(context, 'AppImage を追加しています', 'Adding the AppImage'),
+        text(context, 'AppImage を追加しています', 'Adding the AppImage'),
       );
       if (!context.mounted) return;
       final name = (job?['result'] as Map?)?['name'] as String? ?? '';
-      _report(
+      report(
         context,
         job,
-        inlineFormat(_t(context, '{0} を追加しました', '{0} added'), [name]),
+        inlineFormat(text(context, '{0} を追加しました', '{0} added'), [name]),
       );
     } catch (e) {
-      if (context.mounted) M3ESnackbar.show(context, message: _message(e));
+      if (context.mounted) M3ESnackbar.show(context, message: message(e));
     }
   }
 
@@ -154,19 +154,19 @@ class LinuxBackupsUi {
     try {
       await _channel.invokeMethod('createSnapshot', {'id': containerId});
       if (!context.mounted) return;
-      final job = await _follow(
+      final job = await follow(
         context,
-        _t(context, 'スナップショットを作成しています', 'Creating a snapshot'),
+        text(context, 'スナップショットを作成しています', 'Creating a snapshot'),
       );
       if (context.mounted) {
-        _report(
+        report(
           context,
           job,
-          _t(context, 'スナップショットを作成しました', 'Snapshot created'),
+          text(context, 'スナップショットを作成しました', 'Snapshot created'),
         );
       }
     } catch (e) {
-      if (context.mounted) M3ESnackbar.show(context, message: _message(e));
+      if (context.mounted) M3ESnackbar.show(context, message: message(e));
     }
   }
 
@@ -177,19 +177,19 @@ class LinuxBackupsUi {
       if (uri == null || !context.mounted) return;
       await _channel.invokeMethod('importBackup', {'uri': uri});
       if (!context.mounted) return;
-      final job = await _follow(
+      final job = await follow(
         context,
-        _t(context, 'バックアップから復元しています', 'Restoring the backup'),
+        text(context, 'バックアップから復元しています', 'Restoring the backup'),
       );
       if (context.mounted) {
-        _report(
+        report(
           context,
           job,
-          _t(context, '新しいコンテナとして復元しました', 'Restored as a new container'),
+          text(context, '新しいコンテナとして復元しました', 'Restored as a new container'),
         );
       }
     } catch (e) {
-      if (context.mounted) M3ESnackbar.show(context, message: _message(e));
+      if (context.mounted) M3ESnackbar.show(context, message: message(e));
     }
   }
 
@@ -208,7 +208,7 @@ class LinuxBackupsUi {
           .where((s) => containerId == null || s['container'] == containerId)
           .toList();
     } catch (e) {
-      if (context.mounted) M3ESnackbar.show(context, message: _message(e));
+      if (context.mounted) M3ESnackbar.show(context, message: message(e));
       return;
     }
     if (!context.mounted) return;
@@ -223,14 +223,16 @@ class LinuxBackupsUi {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
               child: Text(
-                _t(sheet, 'スナップショット', 'Snapshots'),
+                text(sheet, 'スナップショット', 'Snapshots'),
                 style: Theme.of(sheet).textTheme.titleLarge,
               ),
             ),
             if (snapshots.isEmpty)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-                child: Text(_t(sheet, 'まだスナップショットはありません', 'No snapshots yet')),
+                child: Text(
+                  text(sheet, 'まだスナップショットはありません', 'No snapshots yet'),
+                ),
               ),
             for (final snapshot in snapshots)
               LinuxMenuRow(
@@ -239,13 +241,17 @@ class LinuxBackupsUi {
                   DateTime.fromMillisecondsSinceEpoch(
                     (snapshot['created'] as num?)?.toInt() ?? 0,
                   ).toLocal().toString().substring(0, 16),
-                  _size((snapshot['size'] as num?) ?? 0),
+                  size((snapshot['size'] as num?) ?? 0),
                 ].join(' · '),
                 icon: M3EIcons.inventory_2_rounded,
                 onTap: () => Navigator.pop(sheet, ('open', snapshot)),
               ),
             LinuxMenuRow(
-              title: _t(sheet, 'バックアップファイルから復元', 'Restore from a backup file'),
+              title: text(
+                sheet,
+                'バックアップファイルから復元',
+                'Restore from a backup file',
+              ),
               icon: M3EIcons.upload_file_rounded,
               onTap: () => Navigator.pop(sheet, ('import', null)),
             ),
@@ -266,13 +272,13 @@ class LinuxBackupsUi {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             LinuxMenuRow(
-              title: _t(sheet, '新しいコンテナとして復元', 'Restore as a new container'),
+              title: text(sheet, '新しいコンテナとして復元', 'Restore as a new container'),
               icon: M3EIcons.restore_rounded,
               onTap: () => Navigator.pop(sheet, 'restore'),
             ),
             LinuxMenuRow(
-              title: _t(sheet, 'ファイルに書き出す', 'Export to a file'),
-              subtitle: _t(
+              title: text(sheet, 'ファイルに書き出す', 'Export to a file'),
+              subtitle: text(
                 sheet,
                 '別の端末で「バックアップファイルから復元」できます',
                 'Another device can restore it from a backup file',
@@ -281,7 +287,7 @@ class LinuxBackupsUi {
               onTap: () => Navigator.pop(sheet, 'export'),
             ),
             LinuxMenuRow(
-              title: _t(sheet, '削除', 'Delete'),
+              title: text(sheet, '削除', 'Delete'),
               icon: M3EIcons.delete_forever_rounded,
               onTap: () => Navigator.pop(sheet, 'delete'),
             ),
@@ -295,15 +301,15 @@ class LinuxBackupsUi {
         case 'restore':
           await _channel.invokeMethod('restoreSnapshot', {'file': file});
           if (!context.mounted) return;
-          final job = await _follow(
+          final job = await follow(
             context,
-            _t(context, 'スナップショットから復元しています', 'Restoring the snapshot'),
+            text(context, 'スナップショットから復元しています', 'Restoring the snapshot'),
           );
           if (context.mounted) {
-            _report(
+            report(
               context,
               job,
-              _t(context, '新しいコンテナとして復元しました', 'Restored as a new container'),
+              text(context, '新しいコンテナとして復元しました', 'Restored as a new container'),
             );
           }
         case 'export':
@@ -319,24 +325,24 @@ class LinuxBackupsUi {
             'uri': uri,
           });
           if (!context.mounted) return;
-          final job = await _follow(
+          final job = await follow(
             context,
-            _t(context, '書き出しています', 'Exporting'),
+            text(context, '書き出しています', 'Exporting'),
           );
           if (context.mounted) {
-            _report(context, job, _t(context, '書き出しました', 'Exported'));
+            report(context, job, text(context, '書き出しました', 'Exported'));
           }
         case 'delete':
           await _channel.invokeMethod('deleteSnapshot', {'file': file});
           if (context.mounted) {
             M3ESnackbar.show(
               context,
-              message: _t(context, 'スナップショットを削除しました', 'Snapshot deleted'),
+              message: text(context, 'スナップショットを削除しました', 'Snapshot deleted'),
             );
           }
       }
     } catch (e) {
-      if (context.mounted) M3ESnackbar.show(context, message: _message(e));
+      if (context.mounted) M3ESnackbar.show(context, message: message(e));
     }
   }
 }

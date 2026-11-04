@@ -7,6 +7,7 @@ import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux/linux_apps.dart';
 import 'package:free_dextop/linux/linux_backups.dart';
 import 'package:free_dextop/linux/linux_error_log.dart';
+import 'package:free_dextop/linux/linux_storage_ui.dart';
 import 'package:free_dextop/linux/linux_first_run.dart';
 import 'package:free_dextop/linux/linux_expressive.dart';
 import 'package:free_dextop/linux/linux_store_page.dart';
@@ -1300,6 +1301,12 @@ class _LinuxPageState extends State<LinuxPage> {
               t('スナップショットを作成', 'Create a snapshot'),
               M3EIcons.inventory_2_rounded,
             ),
+          if (installed)
+            (
+              'storage',
+              t('ストレージの使用量', 'Storage use'),
+              M3EIcons.storage_rounded,
+            ),
           (
             'snapshots',
             t('スナップショットとバックアップ', 'Snapshots and backups'),
@@ -1386,6 +1393,13 @@ class _LinuxPageState extends State<LinuxPage> {
           } else {
             await LinuxBackupsUi.createSnapshot(context, container.id);
           }
+        case 'storage':
+          await LinuxStorageUi.show(
+            context,
+            container.id,
+            stopped: container.runtimeState == 'stopped',
+          );
+          await _refreshContainers();
         case 'snapshots':
           await LinuxBackupsUi.showSnapshots(
             context,

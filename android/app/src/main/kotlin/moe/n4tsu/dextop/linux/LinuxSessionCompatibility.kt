@@ -43,6 +43,11 @@ internal object LinuxSessionCompatibility {
         stageSystemPrompter(root)
         stageSystemServices(root)
         stageWindowsHelper(root)
+        // apt-get keeps every package it downloaded; containers grew by a second copy of all of them.
+        if (File(root, "etc/apt/apt.conf.d").isDirectory) runCatching {
+            val file = File(root, LinuxStorage.APT_NO_CACHE)
+            if (!file.isFile || file.readText() != LinuxStorage.APT_NO_CACHE_TEXT) file.writeText(LinuxStorage.APT_NO_CACHE_TEXT)
+        }
         stageScript(root, "dextop-apt-heal", "usr/local/sbin/dextop-apt-heal")
         stageScript(root, "macos/launch_app.py", "usr/local/lib/dextop/macos/launch_app.py")
         stageScript(root, "macos/asset_catalog_cache.py", "usr/local/lib/dextop/macos/asset_catalog_cache.py")

@@ -132,3 +132,82 @@ Future<void> showLinuxErrorLog(
     },
   );
 }
+
+/// A live log in a fixed window of [visibleLines] lines that follows its newest line, unless
+/// the reader has scrolled up to read earlier ones.
+class LinuxLogTail extends StatefulWidget {
+  const LinuxLogTail({super.key, required this.lines, this.visibleLines = 5});
+
+  final List<String> lines;
+  final int visibleLines;
+
+  @override
+  State<LinuxLogTail> createState() => _LinuxLogTailState();
+}
+
+class _LinuxLogTailState extends State<LinuxLogTail> {
+  final _scroll = ScrollController();
+  bool _following = true;
+
+  static const _fontSize = 12.0;
+  static const _lineHeight = 1.35;
+
+  @override
+  void initState() {
+    super.initState();
+    _scroll.addListener(() {
+      if (!_scroll.hasClients) return;
+      final position = _scroll.position;
+      // Near the end: keep following; scrolled up: leave the reader where they are.
+      _following = position.pixels >= position.maxScrollExtent - 24;
+    });
+    _toEnd();
+  }
+
+  @override
+  void didUpdateWidget(LinuxLogTail old) {
+    super.didUpdateWidget(old);
+    if (_following) _toEnd();
+  }
+
+  void _toEnd() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scroll.hasClients) _scroll.jumpTo(_scroll.position.maxScrollExtent);
+    });
+  }
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scale = MediaQuery.textScalerOf(context).scale(_fontSize) / _fontSize;
+    final height = _fontSize * scale * _lineHeight * widget.visibleLines + 16;
+    return Container(
+      height: height,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Scrollbar(
+        controller: _scroll,
+        child: SingleChildScrollView(
+          controller: _scroll,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: SelectableText(
+            widget.lines.join('\n'),
+            style: theme.textTheme.bodySmall?.copyWith(
+              fontFamily: 'monospace',
+              fontSize: _fontSize,
+              height: _lineHeight,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
