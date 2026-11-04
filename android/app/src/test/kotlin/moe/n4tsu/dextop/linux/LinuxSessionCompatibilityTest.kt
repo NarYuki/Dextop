@@ -55,6 +55,10 @@ class LinuxSessionCompatibilityTest {
                 parentFile!!.mkdirs(); writeText("export LANG=ja_JP.UTF-8\nexport CUSTOM_SETTING=1\n")
             }
             LinuxSessionCompatibility.install(root, native.path, "dextop-cfresh", true)
+            val macosLauncher = kotlin.test.assertNotNull(LinuxSessionCompatibility.script("macos/launch_app.py"))
+            assertContentEquals(macosLauncher, File(root, "usr/local/lib/dextop/macos/launch_app.py").readBytes())
+            val macosInstaller = kotlin.test.assertNotNull(LinuxSessionCompatibility.script("macos/runtime_archive.py"))
+            assertContentEquals(macosInstaller, File(root, "usr/local/lib/dextop/macos/runtime_archive.py").readBytes())
             val installed = env.readText()
             val audioConfigs = listOf("client.conf.d", "client-rt.conf.d").map {
                 File(root, "etc/pipewire/$it/99-dextop-session.conf")

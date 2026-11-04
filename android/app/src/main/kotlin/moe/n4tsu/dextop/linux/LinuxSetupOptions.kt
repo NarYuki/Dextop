@@ -13,8 +13,10 @@ internal data class LinuxSetupOptions(
     val themes: Boolean = false,
     val apps: Set<String> = emptySet(),
     val displayBackend: String = "xvfb",
+    val username: String = "",
 ) {
     init {
+        if (username.isNotEmpty()) LinuxUser.validate(username)
         require(displayBackend in setOf("xvfb", "wayland")) { "Unknown display backend" }
         require(profile in setOf("minimal", "complete")) { "Unknown desktop profile" }
         require(locale in LOCALES) { "Unsupported locale" }
@@ -37,7 +39,7 @@ internal data class LinuxSetupOptions(
     fun toJson(): JSONObject = JSONObject()
         .put("profile", profile).put("locale", locale).put("cjkFonts", cjkFonts)
         .put("ime", ime).put("graphics", graphics).put("themes", themes)
-        .put("apps", JSONArray(apps.sorted())).put("displayBackend", displayBackend)
+        .put("apps", JSONArray(apps.sorted())).put("displayBackend", displayBackend).put("username", username)
 
     companion object {
         val LOCALES = setOf("en_US", "ja_JP", "zh_CN", "zh_TW", "ko_KR", "ru_RU", "pt_BR", "de_DE", "fr_FR", "es_ES")
@@ -51,7 +53,7 @@ internal data class LinuxSetupOptions(
                 json.optBoolean("cjkFonts", true), json.optString("ime", "none"),
                 json.optBoolean("graphics", false), json.optBoolean("themes", false),
                 (0 until apps.length()).map { apps.getString(it) }.toSet(),
-                json.optString("displayBackend", "xvfb"),
+                json.optString("displayBackend", "xvfb"), json.optString("username", ""),
             )
         }
     }
@@ -139,6 +141,7 @@ internal object LinuxSetupPlan {
                 if ("files" in options.apps) add("pcmanfm")
                 if ("editor" in options.apps) add("mousepad")
                 if ("office" in options.apps) add(if (apt) "libreoffice" else "libreoffice-fresh")
+                if (apt && "office" in options.apps) add("libreoffice-gtk3")
                 if ("chrome" in options.apps) add("curl")
                 if (apt && "firefox" in options.apps && options.locale != "en_US") add("firefox-esr-l10n-" + when (options.locale) {
                     "pt_BR" -> "pt-br"; "zh_CN" -> "zh-cn"; "zh_TW" -> "zh-tw"; "es_ES" -> "es-es"; else -> options.locale.substringBefore('_')

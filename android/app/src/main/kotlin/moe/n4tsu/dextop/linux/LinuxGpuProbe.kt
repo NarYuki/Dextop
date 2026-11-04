@@ -103,7 +103,8 @@ internal object LinuxGpuProbe {
 }
 
 /**
- * The user's own per-program renderer choices: `~/.config/dextop/gpu-apps` (in /root), one per line,
+ * The user's own per-program renderer choices: `~/.config/dextop/gpu-apps` in the home of the
+ * container's account (/root without one), one per line,
  * `software NAME` or `gpu NAME`, where NAME is the program (its executable's name) or its
  * desktop entry (with or without `.desktop`). `#` starts a comment. It wins over Dextop's own
  * automatic choices; a renderer picked in an application's menu still applies.
@@ -114,8 +115,8 @@ internal object LinuxGpuApps {
 
     /** "software", "gpu", or null when the file says nothing about this program. */
     fun choice(root: java.io.File, desktopId: String, command: String): String? {
-        // Applications run as root, with HOME=/root.
-        val file = java.io.File(root, "root/$PATH")
+        // Applications run as the container's account, in its home.
+        val file = java.io.File(root, LinuxUser.home(root).removePrefix("/") + "/" + PATH)
         if (!file.isFile || file.length() > 64 * 1024) return null
         val names = setOfNotNull(desktopId, desktopId.removeSuffix(".desktop"), program(command))
         var found: String? = null

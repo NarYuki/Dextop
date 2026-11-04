@@ -13,6 +13,7 @@ import javax.crypto.spec.GCMParameterSpec
 
 /**
  * The keyring (Secret Service) of each Linux environment, as chosen in its setup:
+ *  - "account": the Linux account password, stored encrypted with Android Keystore;
  *  - "auto": Dextop makes a strong random password, keeps it encrypted with a key of the
  *    Android Keystore (hardware-backed where the device has it, never leaving it), and unlocks
  *    the keyring with it whenever a session starts;
@@ -23,6 +24,7 @@ import javax.crypto.spec.GCMParameterSpec
  */
 internal object LinuxKeyring {
     const val AUTO = "auto"
+    const val ACCOUNT = "account"
     const val MANUAL = "manual"
     private const val PREFS = "linux-keyring"
     private const val KEY_ALIAS = "dextop-linux-keyring"
@@ -34,15 +36,15 @@ internal object LinuxKeyring {
 
     /**
      * Sets up the keyring of [containerId]: [mode] [AUTO] makes and stores its password,
-     * [MANUAL] passes [password] for the first session only.
+     * [ACCOUNT] stores the chosen account password; [MANUAL] passes [password] once.
      */
     fun setup(context: Context, containerId: String, mode: String, password: String?, service: ILinuxContainerService?) {
         LinuxPaths.container(containerId)
         when (mode) {
-            AUTO -> {
-                val secret = generate()
+            AUTO, ACCOUNT -> {
+                val secret = if (mode == ACCOUNT) requireNotNull(password).also { require(it.isNotEmpty()) } else generate()
                 prefs(context).edit()
-                    .putString("mode_$containerId", AUTO)
+                    .putString("mode_$containerId", mode)
                     .putString("secret_$containerId", encrypt(secret))
                     .apply()
                 service?.setKeyringSecret(containerId, secret, true)

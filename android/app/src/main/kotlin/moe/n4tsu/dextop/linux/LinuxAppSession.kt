@@ -248,6 +248,7 @@ internal class LinuxAppSession(
         var icon = ""
         var transientFor = 0
         var dialog = false
+        var fixedSize = false
     }
 
     private val windows = ConcurrentHashMap<Int, Win>()
@@ -274,6 +275,7 @@ internal class LinuxAppSession(
     /** The window that has the keyboard (X id, or a Wayland id with WAYLAND_ID). */
     private var atomWindowType = 0
     private var atomDialog = 0
+    private var atomNormalHints = 0
 
     val alive get() = running && process.isAlive
 
@@ -310,6 +312,7 @@ internal class LinuxAppSession(
         atomTakeFocus = x.internAtom("WM_TAKE_FOCUS")
         atomWindowType = x.internAtom("_NET_WM_WINDOW_TYPE")
         atomDialog = x.internAtom("_NET_WM_WINDOW_TYPE_DIALOG")
+        atomNormalHints = x.internAtom("WM_NORMAL_HINTS")
         val supported = intArrayOf(atomNetState, atomMaxH, atomMaxV, atomFullscreen, atomMoveResize, atomClose, atomActive, atomNetWmIcon)
         val bytes = ByteBuffer.allocate(supported.size * 4).order(java.nio.ByteOrder.LITTLE_ENDIAN)
         supported.forEach(bytes::putInt)
@@ -424,6 +427,13 @@ internal class LinuxAppSession(
                     window.wmClass = readClass(window.id)
                     events(JSONObject().put("type", "class").put("xid", window.id).put("class", window.wmClass))
                 }
+                if (atom == atomNormalHints && !window.popup) {
+                    window.fixedSize = readFixedSize(window.id)
+                    val bounds = window.bounds
+                    events(JSONObject().put("type", "configure").put("geometryOnly", true)
+                        .put("xid", window.id).put("popup", false).put("fixedSize", window.fixedSize)
+                        .put("x", bounds.left).put("y", bounds.top).put("w", bounds.width()).put("h", bounds.height()))
+                }
             }
         }
     }
@@ -457,6 +467,7 @@ internal class LinuxAppSession(
             window.wmClass = readClass(id)
             window.decorated = readDecorated(id)
             window.icon = readIcon(id)
+            window.fixedSize = readFixedSize(id)
         }
         windows[id] = window
         val transientFor = if (popup) 0 else x.propertyAtoms(id, X11Client.ATOM_WM_TRANSIENT_FOR).firstOrNull() ?: 0
@@ -466,6 +477,7 @@ internal class LinuxAppSession(
             .put("type", "map").put("xid", id).put("popup", popup)
             .put("title", window.title).put("class", window.wmClass).put("transientFor", transientFor)
             .put("dialog", window.dialog)
+            .put("fixedSize", window.fixedSize)
             .put("decorated", window.decorated)
             .put("icon", window.icon)
             .put("fullscreen", !popup && atomFullscreen in x.propertyAtoms(id, atomNetState))
@@ -526,6 +538,7 @@ internal class LinuxAppSession(
             markDirty(window, Rect(0, 0, bounds.width(), bounds.height()))
         }
         events(JSONObject().put("type", "configure").put("geometryOnly", true).put("xid", window.id).put("popup", window.popup)
+            .put("fixedSize", window.fixedSize)
             .put("x", bounds.left).put("y", bounds.top).put("w", bounds.width()).put("h", bounds.height()))
     }
 
@@ -533,6 +546,8 @@ internal class LinuxAppSession(
         x.property(id, atomNetWmName, atomUtf8)?.let { return String(it.third, Charsets.UTF_8) }
         return x.property(id, X11Client.ATOM_WM_NAME)?.let { String(it.third, Charsets.ISO_8859_1) }.orEmpty()
     }
+
+    private fun readFixedSize(id: Int): Boolean = X11SizeHints.fixedSize(x.propertyAtoms(id, atomNormalHints))
 
     private fun readIcon(id: Int): String = runCatching {
         val (_, format, bytes) = x.property(id, atomNetWmIcon, 6, LinuxWindowIcon.MAX_PROPERTY_BYTES)
@@ -978,6 +993,7 @@ internal class LinuxAppSession(
                 .put("type", "map").put("xid", window.id).put("popup", window.popup)
                 .put("title", window.title).put("class", window.wmClass).put("transientFor", window.transientFor)
                 .put("dialog", window.dialog)
+                .put("fixedSize", window.fixedSize)
                 .put("decorated", window.decorated)
                 .put("icon", window.icon)
                 .put("fullscreen", !window.popup && atomFullscreen in x.propertyAtoms(window.id, atomNetState))

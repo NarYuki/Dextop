@@ -50,15 +50,16 @@ internal object LinuxTheme {
         val scheme = if (dark) "prefer-dark" else "default"
         val theme = if (dark) "Adwaita-dark" else "Adwaita"
         return """
-            mkdir -p /etc/dextop /root/.config/gtk-3.0 /root/.config/gtk-4.0
+            mkdir -p /etc/dextop "${'$'}HOME/.config/gtk-3.0" "${'$'}HOME/.config/gtk-4.0"
             {
                 echo '# Written by Dextop from its Linux theme setting.'
                 echo 'export DEXTOP_THEME=$name'
                 echo 'export GTK_THEME=${if (dark) "Adwaita:dark" else "Adwaita"}'
                 echo 'export ADW_DEBUG_COLOR_SCHEME=${if (dark) "prefer-dark" else "prefer-light"}'
             } >/etc/dextop/theme.env
+            [ ! -r /etc/profile.d/dextop-toolkit.sh ] || . /etc/profile.d/dextop-toolkit.sh
             for version in 3.0 4.0; do
-                file=/root/.config/gtk-${'$'}version/settings.ini
+                file="${'$'}HOME/.config/gtk-${'$'}version/settings.ini"
                 [ -f "${'$'}file" ] || printf '[Settings]\n' >"${'$'}file"
                 grep -q '^gtk-application-prefer-dark-theme=' "${'$'}file" \
                     && sed -i 's/^gtk-application-prefer-dark-theme=.*/gtk-application-prefer-dark-theme=$gtk/' "${'$'}file" \

@@ -23,12 +23,12 @@ internal object LinuxDesktopEntries {
     private val FLATPAK_ROOTS = listOf("/root/.local/share/flatpak", "/var/lib/flatpak")
     private val ICON_DIRECTORY_SIZE = Regex("(?:^|/)(\\d+)(?:x\\d+)?(?:@\\d+)?(?:/|$)")
 
-    data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "", val flatpakId: String = "", val displayBackend: String = "")
+    data class Entry(val id: String, val name: String, val exec: String, val icon: String, val terminal: Boolean, val categories: String, val startupWMClass: String = "", val flatpakId: String = "", val displayBackend: String = "", val runtime: String = "")
 
     fun list(rootfs: File, locale: String): List<Entry> {
         val files = linkedMapOf<String, File>()
         // XDG user entries override distribution entries, including Hidden=true.
-        for (path in APPLICATION_ROOTS) {
+        for (path in APPLICATION_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }) {
             resolve(rootfs, path)?.listFiles { file -> file.name.endsWith(".desktop") }.orEmpty()
                 .forEach { files[it.name] = it }
         }
@@ -38,7 +38,7 @@ internal object LinuxDesktopEntries {
 
     fun find(rootfs: File, id: String): Entry? {
         require('/' !in id && '\\' !in id) { "Invalid desktop entry id" }
-        for (path in APPLICATION_ROOTS.asReversed()) {
+        for (path in APPLICATION_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }.asReversed()) {
             resolve(rootfs, "$path/$id")?.let { return parse(rootfs, it, "", launcher = false) }
         }
         return null
@@ -85,7 +85,7 @@ internal object LinuxDesktopEntries {
         val exec = values["Exec"]?.takeIf { it.isNotBlank() } ?: return null
         val language = locale.substringBefore('-').substringBefore('_')
         val name = values["Name[${locale.replace('-', '_')}]"] ?: values["Name[$language]"] ?: values["Name"] ?: return null
-        return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty(), values["X-Flatpak"].orEmpty(), values["X-Dextop-DisplayBackend"].orEmpty())
+        return Entry(file.name, name, exec, values["Icon"].orEmpty(), values["Terminal"] == "true", values["Categories"].orEmpty(), values["StartupWMClass"].orEmpty(), values["X-Flatpak"].orEmpty(), values["X-Dextop-DisplayBackend"].orEmpty(), values["X-Dextop-Runtime"].orEmpty())
     }
 
     /**
@@ -98,11 +98,11 @@ internal object LinuxDesktopEntries {
         if (!id.matches(Regex("[A-Za-z0-9._-]+")) || icon.isBlank() || icon.startsWith("/")) return null
         val names = listOf("$icon.png", "$icon.svg")
         val candidates = sequence {
-            for (root in FLATPAK_ROOTS) for (tree in listOf("export/share/icons", "files/share/icons")) {
+            for (root in FLATPAK_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }) for (tree in listOf("export/share/icons", "files/share/icons")) {
                 for (size in ICON_SIZES + "scalable") for (name in names) yield("$root/app/$id/current/active/$tree/hicolor/$size/apps/$name")
             }
-            for (root in FLATPAK_ROOTS) for (name in names) yield("$root/app/$id/current/active/files/share/pixmaps/$name")
-            for (root in FLATPAK_ROOTS) for (size in listOf("128x128", "64x64")) {
+            for (root in FLATPAK_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }) for (name in names) yield("$root/app/$id/current/active/files/share/pixmaps/$name")
+            for (root in FLATPAK_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }) for (size in listOf("128x128", "64x64")) {
                 yield("$root/appstream/flathub/aarch64/active/icons/$size/$id.png")
             }
         }
@@ -150,10 +150,10 @@ internal object LinuxDesktopEntries {
             val names = if (icon.substringAfterLast('.').lowercase() in listOf("png", "svg", "xpm", "ico")) listOf(icon)
                 else listOf("$icon.png", "$icon.svg", "$icon.xpm", "$icon.ico")
             val themes = linkedSetOf("hicolor", "Adwaita", "gnome")
-            ICON_ROOTS.forEach { root ->
+            ICON_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }.forEach { root ->
                 resolve(rootfs, root)?.listFiles()?.filter { it.isDirectory }?.forEach { themes.add(it.name) }
             }
-            for (theme in themes) for (root in ICON_ROOTS) {
+            for (theme in themes) for (root in ICON_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }) {
                 val base = "$root/$theme"
                 val directories = linkedSetOf<String>()
                 ICON_SIZES.forEach { directories.add("$it/apps") }
@@ -174,7 +174,7 @@ internal object LinuxDesktopEntries {
                 }
                 for (directory in ordered) for (name in names) yield("$base/$directory/$name")
             }
-            for (root in ICON_ROOTS) for (name in names) yield("$root/$name")
+            for (root in ICON_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }) for (name in names) yield("$root/$name")
             for (name in names) yield("/usr/share/pixmaps/$name")
         }
 

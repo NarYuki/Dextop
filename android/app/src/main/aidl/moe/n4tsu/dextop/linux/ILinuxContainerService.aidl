@@ -132,4 +132,10 @@ interface ILinuxContainerService {
      * session as it starts; [persistent] false hands it to the next session only. Empty forgets it.
      */
     oneway void setKeyringSecret(String containerId, String secret, boolean persistent) = 64;
+    /** Installs only the runtime approved and bundled inside this APK. */
+    String installMacosRuntime(String containerId) = 65;
+    String integrationStatus(String containerId) = 66;
+    String integrationAction(String containerId, String json) = 67;
+    ParcelFileDescriptor openIntegrationPrint(String containerId, String job) = 68;
+    ParcelFileDescriptor filterIntegrationPrint(String containerId, String job, String ranges) = 69;
 }

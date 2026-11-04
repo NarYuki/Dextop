@@ -1,0 +1,31 @@
+package moe.n4tsu.dextop.linux
+
+import org.json.JSONObject
+import java.io.File
+
+/** Guest account identity; it does not change the Android process's permissions. */
+internal object LinuxUser {
+    private val namePattern = Regex("[a-z][a-z0-9_-]{0,30}")
+    fun validate(name: String) {
+        require(namePattern.matches(name) && name !in setOf("root", "nobody", "daemon", "bin", "sys", "sync", "games", "mail", "news", "www-data", "backup", "messagebus", "sshd", "systemd-network", "systemd-timesync")) {
+            "Use a non-system username: lowercase letters, digits, _ or -, starting with a letter (up to 31 characters)"
+        }
+    }
+
+    fun name(root: File): String? {
+        val file = File(root, "etc/dextop/username")
+        if (!file.isFile) return null
+        return file.readText().trim().also(::validate)
+    }
+    fun home(root: File): String = name(root)?.let { "/home/$it" } ?: "/root"
+    fun home(id: String): String = home(LinuxPaths.rootfs(id))
+
+    fun credentials(json: JSONObject): Pair<String, String> {
+        val name = json.getString("username").also(::validate)
+        val password = json.getString("accountPassword")
+        require(password.length >= 8 && password.length <= 1024 && password.none { it == '\n' || it == '\r' || it == '\u0000' }) {
+            "Use a password of 8 to 1024 characters without line breaks"
+        }
+        return name to password
+    }
+}

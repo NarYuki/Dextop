@@ -15,6 +15,9 @@ import 'linux/linux_advanced_settings.dart';
 import 'linux/linux_compat.dart';
 import 'linux/linux_resources.dart';
 import 'linux/linux_first_run.dart';
+import 'linux/linux_macos.dart';
+import 'linux/macos_feature.dart';
+import 'linux/linux_integrations.dart';
 
 /// Linux settings, stored by the shell-side Linux service: the defaults
 /// (default container and graphics) or, with [containerId], one container's
@@ -49,6 +52,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
 
   /// Whether Android and Linux share the clipboard.
   bool clipboardSync = true;
+  bool macosCompatibilityEnabled = false;
 
   /// Light or dark Linux and Windows apps: 'auto' (as Android), 'light' or 'dark'.
   String colorTheme = 'auto';
@@ -88,8 +92,12 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       final appTheme = _forContainer
           ? 'auto'
           : await _channel.invokeMethod<String>('linuxTheme') ?? 'auto';
+      final preferences = await SharedPreferences.getInstance();
+      final macosEnabled =
+          preferences.getBool(macosCompatibilityPreferenceKey) ?? false;
       if (mounted) {
         setState(() {
+          macosCompatibilityEnabled = macosEnabled;
           settings = result;
           containers = list;
           launcherMode = launcher?['mode'] as String? ?? 'ask';
@@ -718,16 +726,19 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           category(
             'integration',
             M3EIcons.phone_android_rounded,
-            t('Android との連携', 'Android integration'),
-            t('クリップボード・ホーム画面のランチャー', 'Clipboard and home-screen launchers'),
+            t('Android統合と権限', 'Android integration and permissions'),
+            t(
+              '連携・権限・互換性・SSH・VNC・カレンダー',
+              'Integration, permissions, compatibility, SSH, VNC and calendars',
+            ),
           ),
           category(
-            'compat',
-            M3EIcons.verified_user_rounded,
-            t('互換性と権限', 'Compatibility and permissions'),
+            'services',
+            M3EIcons.settings_applications_rounded,
+            t('サービスと印刷', 'Services and printing'),
             t(
-              'プロセス数の制限・ストレージ・カメラとマイク・USB 機器',
-              'Process limit, storage, camera and microphone, USB devices',
+              'systemd互換サービス・Androidへの印刷',
+              'Service compatibility and Android printing',
             ),
           ),
           category(
@@ -745,6 +756,16 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             'Store',
             t('配布元と準備', 'Sources and their setup'),
           ),
+          if (macosCompatibilityEnabled)
+            category(
+              'macos',
+              M3EIcons.computer_rounded,
+              t('macOS 互換', 'macOS compatibility'),
+              t(
+                '互換環境とローカルアプリの登録',
+                'Compatibility runtime and local app registration',
+              ),
+            ),
         ],
       ),
       LinuxSection(t('初期化', 'Reset')),
@@ -772,20 +793,38 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'container' => l.linuxContainerSettings,
       'general' => t('一般', 'General'),
       'display' => t('表示とグラフィックス', 'Display and graphics'),
-      'integration' => t('Android との連携', 'Android integration'),
+      'integration' => t('Android統合と権限', 'Android integration and permissions'),
       'store' => 'Store',
-      'compat' => t('互換性と権限', 'Compatibility and permissions'),
       'resources' => t('リソース', 'Resources'),
+      'services' => t('サービスと印刷', 'Services and printing'),
+      'macos' => t('macOS 互換', 'macOS compatibility'),
       _ => l.linuxSettingsTitle,
     };
     final content = switch (page) {
       'container' => container(),
       'general' => general(),
       'display' => display(),
-      'integration' => integration(),
+      'integration' => [
+        ...integration(),
+        const LinuxCompatPanel(),
+        LinuxSection(t('SSH・VNC・カレンダー', 'SSH, VNC and calendars')),
+        LinuxIntegrationsPanel(
+          containers: containers,
+          features: const {'ssh', 'vnc', 'calendar'},
+        ),
+      ],
       'store' => store(),
-      'compat' => const [LinuxCompatPanel()],
       'resources' => const [LinuxResourcesPanel()],
+      'services' => [
+        LinuxIntegrationsPanel(
+          containers: containers,
+          features: const {'services', 'printing'},
+        ),
+      ],
+      'macos' =>
+        macosCompatibilityEnabled
+            ? [LinuxMacosPanel(containers: containers)]
+            : hub(),
       _ => hub(),
     };
 
