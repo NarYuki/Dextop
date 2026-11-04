@@ -10,6 +10,14 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LinuxUserTest {
+    @Test fun relocatesOnlyRootsHomeNotPathsEndingInRoot() {
+        val script = "HOME=/root bash x\nmkdir -p /root/.local/share\nln -sfn \"\$steam_root\" \"\$HOME/.steam/root\"\n" +
+            "cp a /rootfs/b; cd /root; echo '/root'"
+        assertEquals("HOME=/home/me bash x\nmkdir -p /home/me/.local/share\nln -sfn \"\$steam_root\" \"\$HOME/.steam/root\"\n" +
+            "cp a /rootfs/b; cd /home/me; echo '/home/me'", LinuxUser.relocateHome(script, "/home/me"))
+        assertEquals(script, LinuxUser.relocateHome(script, "/root"))
+    }
+
     @Test fun validatesCredentialsAndNeverSerializesPassword() {
         val json = JSONObject().put("username", "yuuki").put("accountPassword", "a test password")
         assertEquals("yuuki" to "a test password", LinuxUser.credentials(json))

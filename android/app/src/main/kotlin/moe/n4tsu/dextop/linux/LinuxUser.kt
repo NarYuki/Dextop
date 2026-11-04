@@ -20,6 +20,13 @@ internal object LinuxUser {
     fun home(root: File): String = name(root)?.let { "/home/$it" } ?: "/root"
     fun home(id: String): String = home(LinuxPaths.rootfs(id))
 
+    /** "/root" at the start of a path (not inside one, like Steam's ~/.steam/root, nor /rootfs). */
+    private val ROOT_HOME = Regex("(?<![A-Za-z0-9_.~/-])/root(?![A-Za-z0-9_.-])")
+
+    /** [script] with root's home moved to [home], for setup steps that run as the account. */
+    fun relocateHome(script: String, home: String): String =
+        if (home == "/root") script else script.replace(ROOT_HOME) { home }
+
     fun credentials(json: JSONObject): Pair<String, String> {
         val name = json.getString("username").also(::validate)
         val password = json.getString("accountPassword")
