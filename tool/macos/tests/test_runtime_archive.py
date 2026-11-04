@@ -24,7 +24,7 @@ class ArchiveTests(unittest.TestCase):
         self.source = 'ab' * 20
         self.metadata = {'commit': self.source, 'architecture': 'aarch64', 'components': 'gui',
                          'android_execution_verified': False, 'macos_application_verified': False}
-        for name in ('bin/darling', 'bin/darlingserver', 'libexec/darling/bin/mldr'):
+        for name in ('bin/darling', 'bin/darlingserver', 'libexec/darling/bin/mldr', 'bin/dextop-car'):
             path = self.runtime / name
             path.parent.mkdir(parents=True, exist_ok=True)
             header = bytearray(20)
@@ -42,6 +42,21 @@ class ArchiveTests(unittest.TestCase):
 
     def package(self):
         return module.package_runtime(self.runtime, self.archive, self.metadata)
+
+    def test_gui_rejects_missing_catalog_decoder(self):
+        (self.runtime / 'bin/dextop-car').unlink()
+        with self.assertRaises((ValueError, FileNotFoundError)):
+            self.install(self.package())
+        self.assertFalse(self.target.exists())
+
+    def test_gui_rejects_wrong_catalog_decoder_architecture(self):
+        path = self.runtime / 'bin/dextop-car'
+        header = bytearray(path.read_bytes())
+        struct.pack_into('<H', header, 18, 62)
+        path.write_bytes(header)
+        with self.assertRaises(ValueError):
+            self.install(self.package())
+        self.assertFalse(self.target.exists())
 
     def install(self, digest):
         return module.install_archive(self.archive, self.target, digest, 'aarch64', self.source)

@@ -6,8 +6,10 @@ import json
 import os
 from pathlib import Path
 import platform
+import shutil
 import subprocess
 from patch_runtime import apply as patch_runtime
+from apply_gui_runtime_patches import PATCHES as GUI_PATCHES
 
 
 HERE = Path(__file__).resolve().parent
@@ -30,6 +32,9 @@ def main():
         parser.error("Use a Linux host matching --architecture; cross-compilation is not configured")
     if args.jobs < 1:
         parser.error("--jobs must be positive")
+    cargo = shutil.which("cargo") if args.components == "gui" else None
+    if args.components == "gui" and cargo is None:
+        parser.error("The GUI asset catalog decoder requires Cargo with Rust 2024 support")
     lock = json.loads((HERE / "darling.lock.json").read_text(encoding="utf-8"))
     work = args.work.resolve()
     if work.exists() and any(work.iterdir()):
@@ -50,6 +55,8 @@ def main():
         run("git", "-C", swift, "lfs", "pull")
         run("git", "-C", swift, "lfs", "fsck")
     patch_runtime(source)
+    if args.components == "gui":
+        run("python3", HERE / "apply_gui_runtime_patches.py", "--source", source)
     (work / "submodules.txt").write_bytes(subprocess.check_output([
         "git", "-C", str(source), "submodule", "status", "--recursive",
     ]))
@@ -68,6 +75,19 @@ def main():
     run("ninja", "-C", build, "-n")
     run("cmake", "--install", build, env=dict(env, DESTDIR=str(stage)))
     runtime = stage / lock["install_prefix"].lstrip("/")
+    if args.components == "gui":
+        catalog_lock = json.loads((HERE / "asset_catalog.lock.json").read_text())
+        catalog_source = work / "catalog-source"
+        run("git", "init", catalog_source)
+        run("git", "-C", catalog_source, "remote", "add", "origin", catalog_lock["repository"])
+        run("git", "-C", catalog_source, "fetch", "--depth", "1", "origin", catalog_lock["commit"])
+        run("git", "-C", catalog_source, "checkout", "--detach", catalog_lock["commit"])
+        run("python3", HERE / "build_asset_catalog_tool.py", "--source", catalog_source,
+            "--cargo", cargo, "--target", f"{host}-unknown-linux-gnu", "--output", runtime)
+        calendar_notice = runtime / "share/dextop/licenses/calendar"
+        calendar_notice.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source / "src/external/corefoundation/submodules/swift-corelibs-foundation/LICENSE",
+                     calendar_notice / "LICENSE")
     if args.components == "gui" and host == "aarch64":
         run("python3", HERE / "bundle_native.py", "--runtime", runtime,
             "--work", work / "native-deps")
@@ -89,7 +109,12 @@ def main():
         "macos_application_verified": False,
         "tooling_sha256": {name: hashlib.sha256((HERE / name).read_bytes()).hexdigest()
                            for name in ("patch_runtime.py", "darling_segments.h", "darling_socket.c",
-                                        "bundle_native.py", "native-deps.lock.json")},
+                                        "bundle_native.py", "native-deps.lock.json",
+                                        *(["apply_gui_runtime_patches.py", "build_asset_catalog_tool.py",
+                                           "asset_catalog.lock.json", *GUI_PATCHES,
+                                           *(str(p.relative_to(HERE)).replace("\\", "/")
+                                             for p in sorted((HERE / "runtime").rglob("*")) if p.is_file())]
+                                          if args.components == "gui" else []))},
     }, indent=2) + "\n", encoding="utf-8")
     print(f"Staged experimental {args.components}: {runtime}. Android/Mach-O execution still needs verification.")
 

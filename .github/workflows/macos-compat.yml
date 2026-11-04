@@ -43,7 +43,7 @@ jobs:
             libfontconfig-dev libbsd-dev libxrandr-dev libxcursor-dev libgif-dev \
             libavcodec-dev libavformat-dev libswresample-dev libavutil-dev \
             libpulse-dev libdbus-1-dev libxkbfile-dev libcap-dev libvulkan-dev \
-            libwayland-dev libxkbcommon-dev libssl-dev wayland-protocols
+            libwayland-dev libxkbcommon-dev libssl-dev wayland-protocols python3-xlib
       - name: Build own-source Mach-O probes
         run: |
           linker="$(llvm-config --bindir)/ld64.lld"
@@ -51,8 +51,13 @@ jobs:
             python3 tool/macos/build_smoke.py --clang /usr/bin/clang --linker "$linker" --probe "$probe"
           done
       - name: Build the pinned core
+        env:
+          RUSTUP_TOOLCHAIN: 1.98.1
         run: |
           set -o pipefail
+          if [ "$MACOS_COMPONENTS" = gui ]; then
+            rustup toolchain install 1.98.1 --profile minimal
+          fi
           mkdir -p build/macos
           python3 tool/macos/build_runtime.py --jobs 2 --components "$MACOS_COMPONENTS" 2>&1 | tee build/macos/core-build.log
       - name: Build the own-source AppKit probe
@@ -76,6 +81,26 @@ jobs:
             python3 tool/macos/check_runtime.py --abstract-rpc --anonymous-exec \
             --runtime build/macos/runtime/stage/opt/dextop/macos \
             --probes build/macos/smoke --output build/macos/native-abstract-smoke
+      - name: Verify calendar, layout, view backing and EventKit API behavior
+        if: env.MACOS_COMPONENTS == 'gui'
+        run: |
+          sudo apt-get install -y --no-install-recommends xvfb
+          for probe in calendar layout_fitting eventkit view_backing controller_appearance grid layer_render unarchiver presentation calibrated_rgb accessibility_chart gradient_layer timing_function; do
+            python3 tool/macos/build_appkit_probe.py --probe "$probe" \
+              --source build/macos/runtime/source \
+              --runtime build/macos/runtime/stage/opt/dextop/macos \
+              --clang /usr/bin/clang --linker "$(llvm-config --bindir)/ld64.lld" \
+              --output build/macos/gui-probes
+          done
+          xvfb-run -a python3 tool/macos/check_runtime.py --abstract-rpc --anonymous-exec \
+            --probe calendar --probe layout_fitting --probe eventkit --probe view_backing --probe controller_appearance --probe grid --probe layer_render --probe unarchiver --probe calibrated_rgb --probe accessibility_chart --probe gradient_layer --probe timing_function \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --probes build/macos/gui-probes --output build/macos/gui-api-smoke
+          xvfb-run -a python3 tool/macos/check_presentation.py \
+            --runtime build/macos/runtime/stage/opt/dextop/macos \
+            --prefix build/macos/presentation-prefix \
+            --executable build/macos/gui-probes/presentation-macos-arm64 \
+            --log build/macos/native-presentation.log
       - name: Build and verify AudioToolbox conversion
         if: env.MACOS_COMPONENTS == 'gui'
         run: |
@@ -121,3 +146,4 @@ jobs:
             build/macos/native-abstract-smoke
             build/macos/smoke/*-macos-arm64
             build/macos/gui-probes/*-macos-arm64
+            build/macos/gui-api-smoke

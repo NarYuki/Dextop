@@ -134,8 +134,63 @@ static void dextopAudioTrace(const char* phase)
         replace_once(pulse, original, f'{indent}dextopAudioTrace("{event}");\n' + original)
 
 
+def patch_audio_lifecycle(source):
+    queue = Path(source) / "src/CoreAudio/AudioToolbox/AudioQueueOutput.cpp"
+    header = queue.with_suffix(".h")
+    replace_once(header, "\tstd::recursive_mutex m_mutex;",
+                 "\tstd::recursive_mutex m_lifecycleMutex;\n\tstd::recursive_mutex m_mutex;")
+    replace_once(queue, "OSStatus AudioQueueOutput::start(const AudioTimeStamp *inStartTime)\n{",
+                 "OSStatus AudioQueueOutput::start(const AudioTimeStamp *inStartTime)\n{\n"
+                 "\tstd::unique_lock<std::recursive_mutex> transition(m_lifecycleMutex);")
+    content = queue.read_text(encoding="utf-8")
+    start = content.index("OSStatus AudioQueueOutput::stop(Boolean inImmediate)")
+    end = content.index("OSStatus AudioQueueOutput::pause()", start)
+    replace_once(queue, content[start:end], '''OSStatus AudioQueueOutput::stop(Boolean inImmediate)
+{
+    std::unique_lock<std::recursive_mutex> transition(m_lifecycleMutex);
+    std::vector<AudioQueueBufferRef> toReturn;
+    AudioDeviceID device = 0;
+    AudioDeviceIOProcID procedure = nullptr;
+    {
+        std::unique_lock<std::recursive_mutex> lock(m_mutex);
+        if (!m_running) return noErr;
+        m_running = false;
+        m_paused = false;
+        device = m_outputDevice;
+        procedure = m_ioProcID;
+        m_ioProcID = nullptr;
+        if (inImmediate) {
+            while (!m_buffers.empty()) {
+                toReturn.push_back(m_buffers.front().buf);
+                m_buffers.pop_front();
+            }
+        }
+    }
+    // AudioDeviceStop joins an I/O thread which may be entering fillOutput.
+    // Keep lifecycle transitions serialized, but release the queue mutex first.
+    if (device && procedure) {
+        AudioDeviceStop(device, procedure);
+        AudioDeviceDestroyIOProcID(device, procedure);
+    }
+    for (AudioQueueBufferRef buffer : toReturn)
+        if (m_callback) m_callback(m_userData, this, buffer);
+    return noErr;
+}
+
+''')
+    stream = Path(source) / "src/CoreAudio/CoreAudio/pulse/AudioHardwareStreamPA.cpp"
+    replace_once(stream, "\t\tpa_stream_disconnect(m_stream);",
+                 "\t\t// Clear callbacks while holding the PulseAudio loop lock, before releasing\n"
+                 "\t\t// the stream and its callback userdata's lifetime.\n"
+                 "\t\tpa_stream_set_state_callback(m_stream, nullptr, nullptr);\n"
+                 "\t\tpa_stream_set_write_callback(m_stream, nullptr, nullptr);\n"
+                 "\t\tpa_stream_set_read_callback(m_stream, nullptr, nullptr);\n"
+                 "\t\tpa_stream_disconnect(m_stream);")
+
+
 def patch_audio(source):
     patch_audio_diagnostics(source)
+    patch_audio_lifecycle(source)
     path = Path(source) / "src/CoreAudio/AudioToolbox/AudioConverterImpl.cpp"
     content = path.read_text(encoding="utf-8")
     if content.count("#if LIBAVCODEC_VERSION_MAJOR >= 61") != 5:

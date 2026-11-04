@@ -167,7 +167,16 @@ def session_ready(prefix):
         return False
 
 
-def launch(runtime, prefix, executable, arguments):
+def darwin_executable_path(prefix, executable):
+    """Keep applications installed in a prefix in the Darwin namespace."""
+    try:
+        relative = executable.resolve().relative_to(prefix.resolve())
+    except ValueError:
+        return "/Volumes/SystemRoot" + str(executable)
+    return "/" + relative.as_posix()
+
+
+def launch(runtime, prefix, executable, arguments, bundle=None):
     launcher = runtime / "bin/darling"
     for relative in CORE_COMPONENTS:
         if not (runtime / relative).is_file():
@@ -191,11 +200,17 @@ def launch(runtime, prefix, executable, arguments):
         previous = {s: signal.signal(s, interrupted) for s in (signal.SIGTERM, signal.SIGINT)}
         app = None
         try:
+            if bundle is not None:
+                from asset_catalog_cache import prepare_bundle_catalogs
+                catalog_index = prepare_bundle_catalogs(runtime, prefix, Path(bundle),
+                    lambda path: darwin_executable_path(prefix, path))
+                if catalog_index:
+                    env["DEXTOP_ASSET_CATALOG_INDEX"] = catalog_index
             if stopped or stop_file is not None and stop_file.exists():
                 print('macOS: startup cancelled', flush=True)
                 return 128 + signal.SIGTERM
             print("macOS: starting application", flush=True)
-            app = subprocess.Popen([str(launcher), "exec", "/Volumes/SystemRoot" + str(executable), *arguments], env=env)
+            app = subprocess.Popen([str(launcher), "exec", darwin_executable_path(prefix, executable), *arguments], env=env)
             waiting_reported = False
             while True:
                 stopped = stopped or stop_file is not None and stop_file.exists()
@@ -274,8 +289,8 @@ def main():
             print(json.dumps(register_bundle(info, args.runtime.resolve(strict=True), prefix, Path.home()), ensure_ascii=False))
             return 0
         arguments = args.arguments[1:] if args.arguments[:1] == ["--"] else args.arguments
-        return launch(args.runtime.resolve(strict=True), prefix, executable, arguments)
-    except (OSError, ValueError, RuntimeError, plistlib.InvalidFileException, ExpatError, subprocess.TimeoutExpired) as error:
+        return launch(args.runtime.resolve(strict=True), prefix, executable, arguments, info.get("bundle"))
+    except (OSError, ValueError, RuntimeError, plistlib.InvalidFileException, ExpatError, subprocess.TimeoutExpired, subprocess.CalledProcessError) as error:
         print(f"macOS: {error}", file=sys.stderr, flush=True)
         return 1
 
