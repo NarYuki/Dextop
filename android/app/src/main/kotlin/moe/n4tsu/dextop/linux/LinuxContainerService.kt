@@ -1478,7 +1478,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             }
             progress(id, step.phase, -1, "")
             val result = try {
-                LinuxSetupScript.run(LinuxPaths.rootfs(id), step.script.replace("/root", LinuxUser.home(id))) { command ->
+                LinuxSetupScript.run(LinuxPaths.rootfs(id), LinuxUser.relocateHome(step.script, LinuxUser.home(id))) { command ->
                     runner.run(runner.guest(id, command, fakeRoot = true, extraEnvironment = listOf("HOME=${LinuxUser.home(id)}")), 3_600, onProcess = { activeProcesses[id] = it }) { line ->
                         log(id, line)
                         if (line.startsWith("Unpacking ") || line.startsWith("Setting up ")) progress(id, step.phase, -1, line.take(100))
@@ -1540,6 +1540,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     private fun log(id: String, line: String) {
         runCatching { LinuxPaths.log(id).appendText(line + "\n") }
+        // Also in logcat: the Android mode keeps install.log in app-private storage, out of adb's reach.
+        Log.i("DextopLinuxLog", "[$id] ${line.take(3000)}")
         callback(id) { it.onLog(id, line) }
     }
 
