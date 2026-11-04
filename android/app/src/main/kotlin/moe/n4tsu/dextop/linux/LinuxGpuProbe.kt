@@ -20,12 +20,17 @@ import org.json.JSONObject
  */
 internal object LinuxGpuProbe {
     /** Bumped when the test changes, so a device tested by an older one is tested again. */
-    const val VERSION = 2
+    const val VERSION = 3
     /** The GPU path is recommended unless it reaches less than this share of llvmpipe's frame rate. */
     const val MIN_RATIO = 0.8
     private const val MARK = "DEXTOP_PROBE"
     private const val WIDTH = 1280
     private const val HEIGHT = 720
+    /**
+     * glxgears' own default window. Every GPU frame is read back and copied to Xvfb (no DRI3), a
+     * cost that grows with the window; at 1280x720 that copy, not drawing, set both rates.
+     */
+    private const val GEARS = 300
     /** glxgears reports every 5 s; 13 s gives two reports, the second one warmed up. */
     private const val RUN_SECONDS = 13
 
@@ -58,7 +63,7 @@ internal object LinuxGpuProbe {
                 echo "$MARK ${'$'}{label}_info ${'$'}?"
                 printf '%s\n' "${'$'}info" | sed -n "s/^OpenGL renderer string: /$MARK ${'$'}{label}_renderer /p"
                 env $clear "${'$'}@" \
-                    timeout -k 2 $RUN_SECONDS glxgears -geometry ${WIDTH}x$HEIGHT >/tmp/dextop-gpu-probe-${'$'}label.log 2>&1
+                    timeout -k 2 $RUN_SECONDS glxgears -geometry ${GEARS}x$GEARS >/tmp/dextop-gpu-probe-${'$'}label.log 2>&1
                 echo "$MARK ${'$'}{label}_exit ${'$'}?"
                 sed -n "s/.* = \([0-9.]*\) FPS.*/$MARK ${'$'}{label}_fps \1/p" /tmp/dextop-gpu-probe-${'$'}label.log
             }
