@@ -137,6 +137,15 @@ class _LinuxAppModePageState extends State<LinuxAppModePage> {
             ),
             M3EIcons.layers_rounded,
           ),
+          (
+            'gamescope',
+            t('GPU ウィンドウ（gamescope）', 'GPU window (gamescope)'),
+            t(
+              'X11 のアプリを gamescope の Xwayland で動かし、描いた画面を GPU のまま Dextop に渡します（CPU でのコピーがありません）。大きなウィンドウや全画面のゲーム向けです。Turnip が必要です。',
+              "Runs an X11 app on gamescope's Xwayland and hands its frames to Dextop on the GPU, with no CPU copy. For large windows and full-screen games. Needs Turnip.",
+            ),
+            M3EIcons.bolt_rounded,
+          ),
         ]),
         LinuxSection(t('描画方式', 'Renderer')),
         _group('renderer', [

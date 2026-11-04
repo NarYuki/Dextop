@@ -321,6 +321,14 @@ class LinuxAppList extends ChangeNotifier {
 
   /// Removes the package that installed [entry]; false when none was found or apt failed.
   static Future<bool> uninstall(LinuxAppEntry entry) async {
+    // An AppImage Dextop unpacked has no package: its files and entry are removed.
+    if (entry.desktopId.startsWith('dextop-appimage-')) {
+      return await _channel.invokeMethod<bool>('removeAppImage', {
+            'id': entry.container,
+            'desktopId': entry.desktopId,
+          }) ==
+          true;
+    }
     final package = await _channel.invokeMethod<String>('appPackage', {
       'id': entry.container,
       'desktop': entry.desktopId,

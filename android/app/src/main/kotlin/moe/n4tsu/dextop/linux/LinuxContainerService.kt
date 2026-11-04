@@ -11,6 +11,7 @@ import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.security.MessageDigest
@@ -35,7 +36,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes APK-approved macOS runtime installation (AIDL transaction 65).
-        const val PROTOCOL_VERSION = 27
+        const val PROTOCOL_VERSION = 28
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         /** [GPU_CRASH_LIMIT] GPU crashes within this long turn the GPU off for the session. */
@@ -681,10 +682,17 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             if (LinuxSettings.gpuMode(containerId) == LinuxGpuMode.TURNIP) "MESA_GL_VERSION_OVERRIDE=4.6 MESA_GLSL_VERSION_OVERRIDE=460 "
             else "MESA_GL_VERSION_OVERRIDE=4.3 MESA_GLSL_VERSION_OVERRIDE=430 "
         } else ""
-        val command = (if (softwareRendering) "env DEXTOP_SOFTWARE_RENDERING=1 LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe "
+        val gpuMode = LinuxSettings.gpuMode(containerId)
+        val waylandGpu = gpuMode == LinuxGpuMode.TURNIP && graphics?.turnipWaylandInstalled(containerId) == true
+        // A GPU window (gamescope): the X11 program's frames stay on the GPU. An X11 retry leaves it.
+        val gpuWindow = mode.optString("display") == LinuxGpuWindow.MODE && !x11 && !softwareRendering && !droidDeck
+        if (gpuWindow) LinuxGpuWindow.prepare(LinuxPaths.rootfs(containerId), waylandGpu, session.wayland?.running == true)
+        val program = (if (softwareRendering) "env DEXTOP_SOFTWARE_RENDERING=1 LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe "
             else if (glOverride.isNotEmpty()) "env $glOverride" else "") +
             (if (sized) "DEXTOP_WIDTH=${session.screenWidth} DEXTOP_HEIGHT=${session.screenHeight} " else "") +
             (flatpak?.command ?: LinuxDesktopEntries.command(entry))
+        val command = if (gpuWindow) LinuxGpuWindow.command(minOf(session.screenWidth, 1920).takeIf { it > 0 } ?: 1280,
+            minOf(session.screenHeight, 1080).takeIf { it > 0 } ?: 720, program) else program
         val started = android.os.SystemClock.elapsedRealtime()
         callback(containerId) {
             it.onWindowEvent(containerId, JSONObject().put("type", "launch-start").put("desktop", entry.id)
@@ -693,15 +701,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         log(containerId, "launch ${entry.id}: $command")
         val backend = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend", "") ?: ""
         check(backend != "wayland" || session.wayland?.running == true) { "The selected Wayland compositor is unavailable; restart the Linux application session" }
-        val gpuMode = LinuxSettings.gpuMode(containerId)
-        val waylandGpu = gpuMode == LinuxGpuMode.TURNIP && graphics?.turnipWaylandInstalled(containerId) == true
         // Turnip's X11 package does not include the Wayland EGL/WSI driver.
         // Its distro EGL can still create windows and submit empty buffers, so
         // process/connection success cannot trigger the existing failure retry.
         // Keep GPU rendering through Xwayland until the Wayland driver is installed.
         val toolkitAvailable = droidDeck || gpuMode != LinuxGpuMode.TURNIP || waylandGpu
         val display = mode.optString("display")
-        val wayland = !x11 && display != "x11" && session.wayland?.running == true && (display == "wayland" ||
+        val wayland = gpuWindow || !x11 && display != "x11" && session.wayland?.running == true && (display == "wayland" ||
             entry.displayBackend != "x11" && toolkitAvailable && (droidDeck || backend == "wayland" || backend.isEmpty() && waylandGpu))
         if (!toolkitAvailable && !x11) log(containerId, "${entry.name}: using X11 + Zink; native Wayland GPU driver is not installed")
         val appLog = "app-${entry.id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.log"
@@ -1039,6 +1045,190 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             if (crashes.size < GPU_CRASH_LIMIT || !gpuSessionOff.add(containerId)) return false
         }
         log(containerId, "GPU turned off for this session: $GPU_CRASH_LIMIT applications crashed on it within 10 minutes (last: $name)")
+        return true
+    }
+    // endregion
+
+    // region Snapshots, backups and AppImages
+    /**
+     * The one long file job at a time (snapshot, restore, export, import, AppImage), run off the
+     * binder thread; [listSnapshots] reports it: {type, container, state, bytes, error, result}.
+     */
+    @Volatile private var fileJob: JSONObject? = null
+
+    private fun containerBusy(id: String) = sessions[id]?.alive == true || appSessions[id]?.alive == true ||
+        integrations.running(id) || readConfig(id)?.optString("state") in setOf("installing", "updating")
+
+    private fun startFileJob(type: String, container: String, work: (JSONObject) -> Any?) {
+        check(fileJob?.optString("state") != "running") { "Another backup or AppImage job is running" }
+        val job = JSONObject().put("type", type).put("container", container).put("state", "running").put("bytes", 0L)
+        fileJob = job
+        notifyChanged()
+        Thread({
+            runCatching { work(job) }
+                .onSuccess { result -> synchronized(job) { job.put("state", "done"); if (result != null) job.put("result", result) } }
+                .onFailure { error ->
+                    synchronized(job) { job.put("state", "failed").put("error", error.message ?: error.javaClass.simpleName) }
+                    if (container.isNotEmpty()) log(container, "$type failed: ${error.message}")
+                }
+            notifyChanged()
+        }, "DextopLinuxFileJob").apply { isDaemon = true; start() }
+    }
+
+    /** Progress of [job], reported a few times a second at most. */
+    private fun bytes(job: JSONObject): (Long) -> Unit {
+        var reported = 0L
+        return { count ->
+            synchronized(job) { job.put("bytes", count) }
+            val now = android.os.SystemClock.elapsedRealtime()
+            if (now - reported > 500) { reported = now; notifyChanged() }
+        }
+    }
+
+    override fun createSnapshot(containerId: String) {
+        check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
+        check(!containerBusy(containerId)) { "Stop the container's sessions and applications first" }
+        startFileJob("snapshot", containerId) { job ->
+            val file = LinuxBackups.create(containerId, bytes(job))
+            log(containerId, "Snapshot saved: ${file.name} (${file.length() / 1_048_576} MiB)")
+            file.name
+        }
+    }
+
+    override fun listSnapshots(): String = JSONObject()
+        .put("snapshots", runCatching { LinuxBackups.list() }.getOrDefault(org.json.JSONArray()))
+        .put("job", fileJob?.let { synchronized(it) { JSONObject(it.toString()) } } ?: JSONObject.NULL)
+        .toString()
+
+    private fun newContainerId() = "c" + UUID.randomUUID().toString().replace("-", "").take(12)
+
+    /** Unpacks a backup as a new container and sets up what a session needs again. */
+    private fun restoreAs(job: JSONObject, open: () -> InputStream): String {
+        val id = newContainerId()
+        job.put("container", id)
+        val config = LinuxBackups.restore(open, id, {}, bytes(job))
+        log(id, "Restored from a backup of ${config.optString("restoredFrom")}")
+        runCatching {
+            LinuxSessionCompatibility.install(LinuxPaths.rootfs(id), requireProot().nativeLibraryDir, LinuxProot.socketNamespace(id),
+                xvfb = config.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME)
+        }.onFailure { log(id, "Linux compatibility setup failed: ${it.message}") }
+        notifyChanged()
+        return id
+    }
+
+    override fun restoreSnapshot(file: String) {
+        val snapshot = LinuxBackups.file(file)
+        check(snapshot.isFile) { "Snapshot $file does not exist" }
+        startFileJob("restore", "") { job -> restoreAs(job) { snapshot.inputStream() } }
+    }
+
+    override fun deleteSnapshot(file: String): Boolean {
+        check(fileJob?.optString("state") != "running") { "A backup job is running" }
+        return LinuxBackups.file(file).delete().also { notifyChanged() }
+    }
+
+    override fun exportSnapshot(file: String, output: android.os.ParcelFileDescriptor) {
+        val snapshot = LinuxBackups.file(file)
+        if (!snapshot.isFile) { output.close(); error("Snapshot $file does not exist") }
+        startFileJob("export", file.substringBefore('-')) { job ->
+            val progress = bytes(job)
+            android.os.ParcelFileDescriptor.AutoCloseOutputStream(output).use { stream ->
+                snapshot.inputStream().use { input ->
+                    val buffer = ByteArray(1 shl 20)
+                    var copied = 0L
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        stream.write(buffer, 0, count)
+                        copied += count
+                        progress(copied)
+                    }
+                }
+            }
+            file
+        }
+    }
+
+    override fun importBackup(input: android.os.ParcelFileDescriptor) {
+        startFileJob("import", "") { job ->
+            // A document may not be readable twice: it is copied next to the snapshots first.
+            LinuxBackups.directory.mkdirs()
+            val copy = File(LinuxBackups.directory, ".import-${System.currentTimeMillis()}.tmp")
+            try {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(input).use { stream ->
+                    copy.outputStream().use { out -> stream.copyTo(out, 1 shl 20) }
+                }
+                restoreAs(job) { copy.inputStream() }
+            } finally {
+                copy.delete()
+            }
+        }
+    }
+
+    override fun installAppImage(containerId: String, file: android.os.ParcelFileDescriptor, fileName: String): String {
+        if (readConfig(containerId)?.optString("state") != "installed") { file.close(); error("Container $containerId is not installed") }
+        val slug = LinuxAppImage.slug(fileName)
+        startFileJob("appimage", containerId) { job ->
+            val root = LinuxPaths.rootfs(containerId)
+            val home = LinuxUser.home(root)
+            val guestFile = "$home/Applications/$slug.AppImage"
+            val guestDir = "$home/Applications/.$slug"
+            val hostFile = File(root, guestFile.removePrefix("/"))
+            hostFile.parentFile?.mkdirs()
+            hostFile.parentFile?.apply { setWritable(true, false); setReadable(true, false); setExecutable(true, false) }
+            val staged = File(hostFile.parentFile, ".$slug.AppImage.part")
+            val progress = bytes(job)
+            try {
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(file).use { input ->
+                    staged.outputStream().use { out ->
+                        val buffer = ByteArray(1 shl 20)
+                        var copied = 0L
+                        while (true) {
+                            val count = input.read(buffer)
+                            if (count < 0) break
+                            out.write(buffer, 0, count)
+                            copied += count
+                            progress(copied)
+                        }
+                    }
+                }
+                val image = LinuxAppImage.inspect(staged)
+                check(staged.renameTo(hostFile)) { "Cannot save the AppImage" }
+                hostFile.setReadable(true, false); hostFile.setExecutable(true, false)
+                val proot = requireProot()
+                log(containerId, "AppImage $slug: unpacking (image at byte ${image.offset})")
+                val tools = proot.run(proot.guest(containerId, LinuxAppImage.TOOLS_SCRIPT, fakeRoot = true), 900) { log(containerId, it) }
+                check(tools.exitCode == 0) { "squashfs-tools could not be installed (exit ${tools.exitCode})" }
+                val unpacked = proot.run(proot.guest(containerId, LinuxAppImage.unpackScript(guestFile, image.offset, guestDir)), 900) { log(containerId, it) }
+                check(unpacked.exitCode == 0) { "The AppImage could not be unpacked (exit ${unpacked.exitCode}): ${unpacked.output.takeLast(500)}" }
+                val (entryName, contents, name) = LinuxAppImage.desktopEntry(root, guestDir, guestFile, slug)
+                val applications = File(root, home.removePrefix("/") + "/.local/share/applications")
+                applications.mkdirs()
+                File(applications, entryName).writeText(contents)
+                log(containerId, "AppImage installed: $name ($entryName)")
+                notifyChanged()
+                JSONObject().put("desktopId", entryName).put("name", name)
+            } finally {
+                staged.delete()
+            }
+        }
+        return JSONObject().put("started", true).put("slug", slug).toString()
+    }
+
+    override fun removeAppImage(containerId: String, desktopId: String): Boolean {
+        require(desktopId.startsWith(LinuxAppImage.ENTRY_PREFIX) && desktopId.endsWith(".desktop") && '/' !in desktopId) { "Not an AppImage entry" }
+        val root = LinuxPaths.rootfs(containerId)
+        val home = LinuxUser.home(root)
+        val entry = File(root, home.removePrefix("/") + "/.local/share/applications/$desktopId")
+        if (!entry.isFile) return false
+        val slug = desktopId.removePrefix(LinuxAppImage.ENTRY_PREFIX).removeSuffix(".desktop")
+        require(slug == LinuxAppImage.slug(slug)) { "Invalid AppImage entry" }
+        val applications = File(root, home.removePrefix("/") + "/Applications")
+        LinuxRootfsArchive.deleteTree(File(applications, ".$slug"))
+        File(applications, "$slug.AppImage").delete()
+        entry.delete()
+        log(containerId, "AppImage removed: $slug")
+        notifyChanged()
         return true
     }
     // endregion

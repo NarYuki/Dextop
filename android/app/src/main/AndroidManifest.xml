@@ -325,6 +325,12 @@
             android:exported="false"
             android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+        <!-- Android's document picker for AppImages and container backups. -->
+        <activity
+            android:name=".linux.LinuxDocumentActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
         <!-- Opened by the generated Linux launcher APKs and the Linux tab. -->
         <activity
             android:name=".linux.LinuxLaunchActivity"

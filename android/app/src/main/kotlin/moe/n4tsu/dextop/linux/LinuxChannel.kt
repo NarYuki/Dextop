@@ -176,6 +176,36 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                             LinuxSessionService.start(context)
                     }
                 } }
+                // Android's document picker: {"create": bool, "name", "mime"} → the picked URI or null.
+                "pickDocument" -> LinuxDocumentActivity.pick(context, call.argument<Boolean>("create") == true,
+                    call.argument<String>("name").orEmpty(), call.argument<String>("mime").orEmpty()) { uri ->
+                    main.post { result.success(uri?.toString()) }
+                }
+                "installAppImage" -> {
+                    val uri = android.net.Uri.parse(call.argument<String>("uri")!!)
+                    val name = call.argument<String>("name")?.takeIf { it.isNotBlank() }
+                        ?: uri.lastPathSegment?.substringAfterLast('/') ?: "app.AppImage"
+                    val file = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }.getOrNull()
+                    if (file == null) result.error("linux", "Cannot read the picked file", null)
+                    else remote({ service -> try { service.installAppImage(call.argument<String>("id")!!, file, name) } finally { file.close() } }) { jsonMap(it) }
+                }
+                "removeAppImage" -> remote({ it.removeAppImage(call.argument<String>("id")!!, call.argument<String>("desktopId")!!) })
+                "snapshots" -> remote({ it.listSnapshots() }) { jsonMap(it) }
+                "createSnapshot" -> remote({ it.createSnapshot(call.argument<String>("id")!!); true })
+                "restoreSnapshot" -> remote({ it.restoreSnapshot(call.argument<String>("file")!!); true })
+                "deleteSnapshot" -> remote({ it.deleteSnapshot(call.argument<String>("file")!!) })
+                "exportSnapshot" -> {
+                    val uri = android.net.Uri.parse(call.argument<String>("uri")!!)
+                    val output = runCatching { context.contentResolver.openFileDescriptor(uri, "wt") }.getOrNull()
+                    if (output == null) result.error("linux", "Cannot write the picked document", null)
+                    else remote({ service -> try { service.exportSnapshot(call.argument<String>("file")!!, output) } finally { output.close() }; true })
+                }
+                "importBackup" -> {
+                    val uri = android.net.Uri.parse(call.argument<String>("uri")!!)
+                    val input = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }.getOrNull()
+                    if (input == null) result.error("linux", "Cannot read the picked file", null)
+                    else remote({ service -> try { service.importBackup(input) } finally { input.close() }; true })
+                }
                 // The container page: the selected mode's containers, then the other mode's (display only).
                 "listAll" -> {
                     val mode = LinuxExecutionMode.read(context)
