@@ -69,7 +69,9 @@ internal object LinuxSettings {
     fun read(): JSONObject = load(file).also {
         val chosen = it.has("gpu")
         it.put("gpuChosen", chosen)
-        if (!chosen) it.put("gpu", it.optJSONObject("gpuProbe")?.optString("recommended")?.takeIf { id -> id.isNotEmpty() }
+        // A result of an older test (an earlier rule) recommends nothing until the device is tested again.
+        if (!chosen) it.put("gpu", it.optJSONObject("gpuProbe")?.takeIf { probe -> probe.optInt("version") >= LinuxGpuProbe.VERSION }
+            ?.optString("recommended")?.takeIf { id -> id.isNotEmpty() }
             ?: (if (LinuxGraphics.turnipCapable) LinuxGpuMode.TURNIP else LinuxGpuMode.HARDWARE).id)
         if (!it.has("defaultContainer")) it.put("defaultContainer", "")
     }
