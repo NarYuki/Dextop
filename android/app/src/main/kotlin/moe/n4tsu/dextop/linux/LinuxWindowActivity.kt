@@ -229,6 +229,11 @@ internal open class LinuxWindowActivity : Activity() {
             val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or
                 android.view.WindowInsets.Type.displayCutout() or android.view.WindowInsets.Type.ime())
             view.setPadding(bars.left, bars.top, bars.right, bars.bottom)
+            // A keyboard that opened by itself closes again; one closed by the user needs ✏️ to return.
+            val ime = insets.isVisible(android.view.WindowInsets.Type.ime())
+            if (imeVisible && !ime) keyboardWanted = false
+            if (!imeVisible && ime && !keyboardWanted) hideUnwantedKeyboard()
+            imeVisible = ime
             insets
         }
         root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
@@ -782,6 +787,7 @@ internal open class LinuxWindowActivity : Activity() {
         LinuxAndroidWindows.focused(this)
         LinuxContainerClient.service()?.runCatching { activateWindow(container, xid) }
         content.requestFocus()
+        hideUnwantedKeyboard()
         root.removeCallbacks(capturePoll)
         root.post(capturePoll)
         captureMetaKey()
@@ -871,9 +877,30 @@ internal open class LinuxWindowActivity : Activity() {
         super.onPause()
     }
 
+    /** The on-screen keyboard was opened with ✏️; nothing else opens it. */
+    private var keyboardWanted = false
+    private var imeVisible = false
+
+    private fun keyboardShown() = root.rootWindowInsets?.isVisible(android.view.WindowInsets.Type.ime()) == true
+
+    /** ✏️: opens the on-screen keyboard, or closes it when it is open. */
     private fun toggleKeyboard() {
         content.requestFocus()
-        getSystemService(InputMethodManager::class.java)?.toggleSoftInput(0, 0)
+        val controller = window.insetsController
+        if (keyboardShown()) {
+            keyboardWanted = false
+            controller?.hide(android.view.WindowInsets.Type.ime())
+        } else {
+            keyboardWanted = true
+            getSystemService(InputMethodManager::class.java)?.showSoftInput(content, InputMethodManager.SHOW_IMPLICIT)
+            controller?.show(android.view.WindowInsets.Type.ime())
+        }
+    }
+
+    /** Closes an on-screen keyboard Android opened by itself (on focus or a tap), not one opened with ✏️. */
+    private fun hideUnwantedKeyboard() {
+        if (keyboardWanted) return
+        root.post { if (!keyboardWanted && keyboardShown()) window.insetsController?.hide(android.view.WindowInsets.Type.ime()) }
     }
 
     override fun onDestroy() {

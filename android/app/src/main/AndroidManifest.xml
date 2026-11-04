@@ -262,7 +262,7 @@
             android:resizeableActivity="true"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
         <!-- A Linux window inside its launcher APK's task (opened by that launcher's Window
              activity), so the task carries the application's name and icon. -->
         <activity
@@ -271,7 +271,7 @@
             android:resizeableActivity="true"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
         <!-- A container's Linux desktop outside Plasma v2: on the phone, in DeX or any desktop mode. -->
         <activity
             android:name=".linux.LinuxDesktopActivity"
@@ -299,7 +299,7 @@
             android:autoRemoveFromRecents="true"
             android:theme="@android:style/Theme.DeviceDefault.Dialog.NoActionBar"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|screenLayout|density|uiMode|navigation"
-            android:windowSoftInputMode="adjustResize" />
+            android:windowSoftInputMode="adjustResize|stateAlwaysHidden" />
         <!-- Keeps Linux applications running in the background, with an ongoing notification;
              forwards Linux notifications as Android notifications. -->
         <service
