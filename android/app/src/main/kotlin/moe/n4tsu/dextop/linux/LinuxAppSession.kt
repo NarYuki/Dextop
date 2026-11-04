@@ -35,6 +35,10 @@ internal class LinuxAppSession(
         /** The name Linux sees for Dextop's window manager and compositor. */
         const val WM_NAME = "Dextop Fusion"
         private const val DEFAULT_FRAME_INTERVAL_NS = 16_666_667L
+        /** How long a program has to close or ask before its window comes back. */
+        private const val CLOSE_ANSWER_MS = 4_000L
+        /** A second close within this long ends a program that did not close. */
+        private const val CLOSE_FORCE_MS = 60_000L
 
         fun start(
             proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int,
@@ -79,6 +83,8 @@ internal class LinuxAppSession(
                     LinuxRuntime.terminate(process)
                     "X server lacks Composite or DAMAGE"
                 }
+                // Before any program starts: whether they may hand pixels over in shared memory.
+                if (!xwayland) LinuxGuestShm.selfTest(containerId, client, display)
                 return LinuxAppSession(containerId, display, process, client, events).also {
                     it.screenWidth = width
                     it.screenHeight = height
@@ -208,7 +214,7 @@ internal class LinuxAppSession(
             .put("x", left).put("y", top).put("w", width).put("h", height)
         when (type) {
             "map" -> waylandWindows[xid] = translated.toString()
-            "unmap" -> waylandWindows.remove(xid)
+            "unmap" -> { waylandWindows.remove(xid); closeRequests.remove(xid) }
             else -> waylandWindows.computeIfPresent(xid) { _, snapshot ->
                 val cached = JSONObject(snapshot)
                 translated.keys().forEach { key -> if (key != "type") cached.put(key, translated.get(key)) }
@@ -469,6 +475,7 @@ internal class LinuxAppSession(
 
     private fun forget(id: Int) {
         promptWindows.remove(id)
+        closeRequests.remove(id)
         val window = windows.remove(id) ?: return
         synchronized(renderLock) {
             if (window.surfaceHandle != 0L) LinuxFrameBridge.nativeDetach(window.surfaceHandle)
@@ -829,12 +836,71 @@ internal class LinuxAppSession(
             ByteBuffer.allocate(8).order(java.nio.ByteOrder.LITTLE_ENDIAN).putInt(if (minimized) 3 else 1).putInt(0).array())
     }
 
-    /** Asks the client to close [id] (WM_DELETE_WINDOW), or disconnects it when it does not support that. */
+    /** When each window was last asked to close, for [close]. */
+    private val closeRequests = ConcurrentHashMap<Int, Long>()
+    private val closeChecksHolder = lazy {
+        java.util.concurrent.Executors.newSingleThreadScheduledExecutor { Thread(it, "DextopLinuxClose").apply { isDaemon = true } }
+    }
+    private val closeChecks by closeChecksHolder
+
+    /**
+     * Asks the client to close [id] the way a desktop does (WM_DELETE_WINDOW), so a program with
+     * unsaved work can ask about it in a dialog of its own. Its Android window is already gone,
+     * so a window that is still there once the program has answered (the user cancelled) or that
+     * neither closed nor asked within [CLOSE_ANSWER_MS] is shown again. Closing the same window
+     * again within [CLOSE_FORCE_MS] ends a program that did not close: it is disconnected. A
+     * client that cannot be asked is disconnected at once.
+     */
     fun close(id: Int) {
-        if (isWayland(id)) { wayland?.close(id and WAYLAND_ID.inv()); return }
+        val now = android.os.SystemClock.elapsedRealtime()
+        val previous = closeRequests[id]
+        closeRequests.entries.removeAll { now - it.value > CLOSE_FORCE_MS }
+        if (isWayland(id)) {
+            val surface = id and WAYLAND_ID.inv()
+            wayland?.close(surface)
+            closeRequests[id] = now
+            scheduleCloseCheck(id, now)
+            return
+        }
         if (!windows.containsKey(id)) return
-        if (atomDelete in x.propertyAtoms(id, atomProtocols)) x.clientMessage(id, atomProtocols, intArrayOf(atomDelete, 0))
-        else x.killClient(id)
+        if (previous != null && now - previous < CLOSE_FORCE_MS) {
+            Log.i(TAG, "[$display] window 0x${id.toString(16)} closed again; ending its client")
+            closeRequests.remove(id)
+            x.killClient(id)
+            return
+        }
+        if (atomDelete in x.propertyAtoms(id, atomProtocols)) {
+            x.clientMessage(id, atomProtocols, intArrayOf(atomDelete, 0))
+            closeRequests[id] = now
+            scheduleCloseCheck(id, now)
+        } else x.killClient(id)
+    }
+
+    private fun scheduleCloseCheck(id: Int, requested: Long) {
+        runCatching { closeChecks.schedule({ closeCheck(id, requested) }, CLOSE_ANSWER_MS, java.util.concurrent.TimeUnit.MILLISECONDS) }
+    }
+
+    /** The program's answer to a close request: gone, still asking (a dialog of its own), or kept. */
+    private fun closeCheck(id: Int, requested: Long) {
+        if (!running || closeRequests[id] != requested) return
+        val asking = if (isWayland(id)) waylandWindows.values.any { JSONObject(it).optInt("transientFor") == id }
+            else windows.values.any { !it.popup && it.transientFor == id }
+        if (asking) {
+            // Its question is open: look again once it has been answered.
+            if (android.os.SystemClock.elapsedRealtime() - requested < CLOSE_FORCE_MS) scheduleCloseCheck(id, requested)
+            return
+        }
+        val event = (if (isWayland(id)) waylandWindows[id]?.let { JSONObject(it).put("type", "map") }
+            else windows[id]?.let { window ->
+                val b = window.bounds
+                JSONObject().put("type", "map").put("xid", window.id).put("popup", false)
+                    .put("title", window.title).put("class", window.wmClass).put("transientFor", window.transientFor)
+                    .put("dialog", window.dialog).put("decorated", window.decorated).put("icon", window.icon)
+                    .put("fullscreen", atomFullscreen in x.propertyAtoms(window.id, atomNetState))
+                    .put("x", b.left).put("y", b.top).put("w", b.width()).put("h", b.height())
+            }) ?: return
+        Log.i(TAG, "[$display] window 0x${id.toString(16)} stayed open after its close request; showing it again")
+        events(event.put("reopened", true))
     }
 
     /** Pointer input at ([localX], [localY]) inside window [id]; [action] 0 move, 1 press, 2 release. */
@@ -923,6 +989,7 @@ internal class LinuxAppSession(
     fun stop() {
         if (!running) return
         running = false
+        if (closeChecksHolder.isInitialized()) closeChecks.shutdownNow()
         pointerGrabs?.stop()
         synchronized(renderLock) {
             windows.values.forEach {
