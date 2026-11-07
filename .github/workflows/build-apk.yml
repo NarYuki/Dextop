@@ -32,13 +32,13 @@ jobs:
         java-version: ${{ env.JAVA_VERSION }}
         distribution: 'temurin'
 
-    # Setup Flutter
+    # Setup Flutter (use latest stable matching pubspec constraints)
     - name: Setup Flutter
       uses: subosito/flutter-action@v2
       with:
-        flutter-version: ${{ env.FLUTTER_VERSION }}
         channel: 'stable'
         cache: true
+        # Let it auto-resolve the version from pubspec.yaml
 
     # Cache dependencies
     - name: Cache pub dependencies
