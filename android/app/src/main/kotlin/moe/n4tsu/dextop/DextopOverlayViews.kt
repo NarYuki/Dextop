@@ -7,7 +7,6 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.RectF
-import android.graphics.Typeface
 import android.graphics.drawable.Drawable
 import android.view.MotionEvent
 import android.view.View
