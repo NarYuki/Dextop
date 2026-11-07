@@ -16,6 +16,11 @@ env:
   FLUTTER_VERSION: '3.47.0'
   JAVA_VERSION: '17'
 
+permissions:
+  contents: write
+  actions: read
+  checks: read
+  
 jobs:
   build:
     runs-on: ubuntu-latest
