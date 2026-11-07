@@ -80,7 +80,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: dextop-github-debug
-        path: android/build/outputs/apk/github/debug/*.apk
+        path: build/app/outputs/apk/github/debug/*.apk
         retention-days: 30
 
     # Create release on GitHub (only on main branch pushes)
@@ -88,7 +88,7 @@ jobs:
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       uses: softprops/action-gh-release@v1
       with:
-        files: android/build/outputs/apk/github/debug/*.apk
+        files: build/app/outputs/apk/github/debug/*.apk
         tag_name: v${{ github.run_number }}-debug
         name: Dextop Debug ${{ github.run_number }}
         body: |
