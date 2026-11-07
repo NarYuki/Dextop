@@ -61,35 +61,26 @@ jobs:
     - name: Run tests
       run: flutter test || echo "No tests found, skipping..."
 
-    # Build APK - find the actual output path
-    - name: Build APK
-      run: flutter build apk --debug --verbose
+    # Build APK using Gradle directly
+    - name: Build APK (Github Debug)
+      run: |
+        cd android
+        ./gradlew assembleGithubDebug
 
-    # Find and check output
-    - name: Find APK output
+    # Show output
+    - name: Show APK location
       run: |
         echo "=== APK output locations ==="
-        find build -name "*.apk" 2>/dev/null || echo "No APK found"
-        ls -la build/app/outputs/ 2>/dev/null || echo "outputs dir not found"
-
-    # Build split APKs for different architectures
-    - name: Build split APKs
-      run: flutter build apk --debug --split-per-abi || echo "Split build optional"
+        find build -name "*.apk" -o -name "*.aab" | head -20
+        ls -lah build/app/outputs/ 2>/dev/null || echo "outputs not found"
+        ls -lah build/outputs/ 2>/dev/null || echo "build/outputs not found"
 
     # Upload main APK as artifact
     - name: Upload APK artifact
       uses: actions/upload-artifact@v4
       with:
-        name: dextop-release-apk
-        path: build/app/outputs/flutter-apk/app-release.apk
-        retention-days: 30
-
-    # Upload split APKs
-    - name: Upload split APKs
-      uses: actions/upload-artifact@v4
-      with:
-        name: dextop-split-apks
-        path: build/app/outputs/flutter-apk/*-release.apk
+        name: dextop-github-debug
+        path: android/build/outputs/apk/github/debug/*.apk
         retention-days: 30
 
     # Create release on GitHub (only on main branch pushes)
@@ -97,25 +88,17 @@ jobs:
       if: github.ref == 'refs/heads/main' && github.event_name == 'push'
       uses: softprops/action-gh-release@v1
       with:
-        files: |
-          build/app/outputs/flutter-apk/app-release.apk
-          build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
-          build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
-          build/app/outputs/flutter-apk/app-x86_64-release.apk
-        tag_name: v${{ github.run_number }}
-        name: Dextop Release ${{ github.run_number }}
+        files: android/build/outputs/apk/github/debug/*.apk
+        tag_name: v${{ github.run_number }}-debug
+        name: Dextop Debug ${{ github.run_number }}
         body: |
-          ## Dextop APK Release
+          ## Dextop APK Debug
           
           ### Changes in this version:
           - Mobile data support added
-          - No longer requires Wi-Fi connection
           
-          ### APK Files:
-          - `app-release.apk` - Universal APK (all architectures)
-          - `app-arm64-v8a-release.apk` - For modern ARM64 devices
-          - `app-armeabi-v7a-release.apk` - For older ARM devices
-          - `app-x86_64-release.apk` - For x86_64 emulators/devices
+          ### APK File:
+          `app-github-debug.apk` - Debug build (github flavor)
           
           ### Installation:
           Download the appropriate APK for your device architecture.
