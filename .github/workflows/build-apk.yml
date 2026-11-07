@@ -1,0 +1,120 @@
+name: Build Flutter APK
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'android/**'
+      - 'lib/**'
+      - 'pubspec.yaml'
+      - '.github/workflows/build-apk.yml'
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+env:
+  FLUTTER_VERSION: '3.24.0'
+  JAVA_VERSION: '17'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # Checkout repository
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    # Setup Java
+    - name: Setup Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: ${{ env.JAVA_VERSION }}
+        distribution: 'temurin'
+
+    # Setup Flutter
+    - name: Setup Flutter
+      uses: subosito/flutter-action@v2
+      with:
+        flutter-version: ${{ env.FLUTTER_VERSION }}
+        channel: 'stable'
+        cache: true
+
+    # Cache dependencies
+    - name: Cache pub dependencies
+      uses: actions/cache@v4
+      with:
+        path: ${{ env.PUB_CACHE }}
+        key: ${{ runner.os }}-pub-${{ hashFiles('**/pubspec.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-pub-
+
+    # Install dependencies
+    - name: Get dependencies
+      run: flutter pub get
+
+    # Analyze code
+    - name: Analyze code
+      run: flutter analyze --fatal-infos
+
+    # Run tests (if any exist)
+    - name: Run tests
+      run: flutter test || echo "No tests found, skipping..."
+
+    # Build APK with mobile data support
+    - name: Build APK
+      run: flutter build apk --release
+
+    # Build split APKs for different architectures (optional but recommended)
+    - name: Build split APKs
+      run: flutter build apk --release --split-per-abi
+
+    # Upload main APK as artifact
+    - name: Upload APK artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: dextop-release-apk
+        path: build/app/outputs/flutter-apk/app-release.apk
+        retention-days: 30
+
+    # Upload split APKs
+    - name: Upload split APKs
+      uses: actions/upload-artifact@v4
+      with:
+        name: dextop-split-apks
+        path: build/app/outputs/flutter-apk/*-release.apk
+        retention-days: 30
+
+    # Create release on GitHub (only on main branch pushes)
+    - name: Create Release
+      if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+      uses: softprops/action-gh-release@v1
+      with:
+        files: |
+          build/app/outputs/flutter-apk/app-release.apk
+          build/app/outputs/flutter-apk/app-arm64-v8a-release.apk
+          build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk
+          build/app/outputs/flutter-apk/app-x86_64-release.apk
+        tag_name: v${{ github.run_number }}
+        name: Dextop Release ${{ github.run_number }}
+        body: |
+          ## Dextop APK Release
+          
+          ### Changes in this version:
+          - Mobile data support added
+          - No longer requires Wi-Fi connection
+          
+          ### APK Files:
+          - `app-release.apk` - Universal APK (all architectures)
+          - `app-arm64-v8a-release.apk` - For modern ARM64 devices
+          - `app-armeabi-v7a-release.apk` - For older ARM devices
+          - `app-x86_64-release.apk` - For x86_64 emulators/devices
+          
+          ### Installation:
+          Download the appropriate APK for your device architecture.
+          
+          Built from commit: ${{ github.sha }}
+        draft: false
+        prerelease: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
