@@ -13,10 +13,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.BroadcastReceiver
 import android.content.pm.PackageManager
-import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Matrix
-import android.graphics.Path
 import android.graphics.Point
 import android.graphics.PointF
 import android.graphics.Rect
@@ -25,13 +23,10 @@ import android.graphics.Typeface
 import android.graphics.BitmapFactory
 import android.graphics.RenderEffect
 import android.graphics.Shader
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.GradientDrawable
 import android.graphics.drawable.ClipDrawable
 import android.graphics.drawable.LayerDrawable
 import android.graphics.drawable.ColorDrawable
-import android.graphics.drawable.BitmapDrawable
-import android.graphics.Paint
 import android.graphics.PixelFormat
 import android.hardware.display.DisplayManager
 import android.hardware.input.InputManager
@@ -109,11 +104,9 @@ import java.util.concurrent.atomic.AtomicInteger
 import java.util.Locale
 import moe.n4tsu.dextop.input.PrivilegedInputClient
 import moe.n4tsu.dextop.input.PrivilegedInputProtocol
-import moe.n4tsu.dextop.GamepadStickView
 import moe.n4tsu.dextop.GamepadTriggerView
 import moe.n4tsu.dextop.input.LaptopSwipeDecoder
 import moe.n4tsu.dextop.input.SwipeObservingKeyboardLayout
-import moe.n4tsu.dextop.input.DextopSwipeInputMethodService
 import moe.n4tsu.dextop.input.LaptopSwipeImeCoordinator
 import kotlin.math.abs
 import kotlin.math.hypot
