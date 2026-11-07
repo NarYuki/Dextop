@@ -609,8 +609,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
           ),
         // MOBILE DATA TOGGLE - Added by khankomar
         SwitchListTile(
-          title: Text(l.useMobileData ?? 'Use mobile data'),
-          subtitle: Text(l.useMobileDataDescription ?? 'Connect using mobile data instead of Wi-Fi'),
+          title: Text('Use mobile data'),
+          subtitle: Text('Connect using mobile data instead of Wi-Fi'),
           value: useMobileData,
           onChanged: toggleMobileData,
         ),
@@ -619,7 +619,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         
         _StatusTile(
           label: useMobileData
-              ? (l.setupMobileDataConnected ?? 'Mobile data connected')
+              ? ('Mobile data connected')
               : (usesEmbeddedProvider
                   ? l.setupEmbeddedConfigure
                   : providerText(l.setupConfigureShizuku)),
