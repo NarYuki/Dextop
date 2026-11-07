@@ -2,7 +2,6 @@
 
 package moe.n4tsu.dextop.plasma
 
-import android.appwidget.AppWidgetHostView
 import android.appwidget.AppWidgetProviderInfo
 import android.content.Context
 import android.content.SharedPreferences

@@ -16,10 +16,7 @@ import android.graphics.Rect
 import android.graphics.RectF
 import android.hardware.display.DisplayManager
 import android.media.AudioManager
-import android.net.ConnectivityManager
-import android.net.NetworkCapabilities
 import android.net.Uri
-import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
@@ -2668,9 +2665,6 @@ internal abstract class CompositedWindowShell(
         updateShellFocus()
     }
 
-    private fun hideLinuxKeyboardIfOtherWindow(window: V2Window) {
-        if (linuxKeyboardShown && window.linuxContainer == null) hideLinuxKeyboard()
-    }
     // endregion
 
     /** Makes tasks on [appDisplay] fill it instead of opening as freeform windows. */

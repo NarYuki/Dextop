@@ -1053,8 +1053,6 @@ open class MainActivity : FlutterActivity() {
         packageManager.getPackageInfo(STELLAR_PACKAGE, 0)
     }.isSuccess
 
-    private fun isShizukuInstalled(): Boolean = installedPrivilegeProviders().any { it.kind == "shizuku" }
-
     private fun refreshBinderAvailability(
         provider: PrivilegeProvider? = null,
         requestIfMissing: Boolean = false

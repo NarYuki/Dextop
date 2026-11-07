@@ -10,7 +10,6 @@ import android.graphics.PointF
 import android.graphics.RectF
 import android.view.KeyEvent
 import android.view.MotionEvent
-import android.view.View
 import android.view.ViewConfiguration
 import android.widget.LinearLayout
 import kotlin.math.hypot

@@ -7,7 +7,6 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.ComponentName
 import android.content.pm.PackageManager
-import android.hardware.input.InputManager
 import android.os.BatteryManager
 import android.os.Build
 import android.provider.Settings

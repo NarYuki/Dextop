@@ -1,7 +1,6 @@
 package moe.n4tsu.dextop.privilege
 
 import android.content.AttributionSource
-import android.net.Uri
 import android.os.Binder
 import android.os.Bundle
 import android.os.Handler
