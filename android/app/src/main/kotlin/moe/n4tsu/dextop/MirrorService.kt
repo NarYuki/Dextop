@@ -211,6 +211,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val PHONE_NAVIGATION_DISABLE_FLAGS =
             0x00200000 or 0x00400000 or 0x01000000
         private var instance: MirrorService? = null
+        private var carCompanionInputActive = false
+
+        /** Samsung's accessibility input filter cancels alternating phone/virtual touch streams. */
+        internal fun setCarCompanionInputActive(value: Boolean) {
+            carCompanionInputActive = value
+            Handler(Looper.getMainLooper()).post { instance?.applyCarCompanionKeyFilter() }
+        }
         private var pending: Config? = null
         private var pendingAutoSurface: Surface? = null
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
@@ -576,7 +583,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "connected" to (display != null),
                 "name" to display?.name,
                 "running" to (active && service != null),
-                "mode" to (service?.externalOutput?.mode ?: "off"),
+                "mode" to (service?.externalOutput?.mode ?:
+                    context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+                        .getString("flutter.external_display_mode", "off")),
             )
         }
 
@@ -1118,6 +1127,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val laptopInputExecutor = Executors.newSingleThreadExecutor { task ->
         Thread(task, "Dextop-laptop-input").apply { isDaemon = true }
     }
+    private val laptopKeyExecutor = Executors.newSingleThreadExecutor { task ->
+        Thread(task, "Dextop-laptop-keys").apply { isDaemon = true }
+    }
     private val laptopSwipeHandler = Handler(Looper.getMainLooper())
     private var laptopSwipeGeneration = 0L
     private val laptopSwipeImeCoordinator by lazy(LazyThreadSafetyMode.NONE) {
@@ -1345,7 +1357,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * windows itself, so physical mice stay on the desktop display.
      */
     private val routePhysicalMice: Boolean
-        get() = routePhysicalMouseToDextop || (phoneOwnedDisplay != null && !autoOnlySession)
+        get() = routePhysicalMouseToDextop ||
+            ((phoneOwnedDisplay != null || desktopEnvironment.pinPhysicalMouseToDesktop) && !autoOnlySession)
     @Volatile
     private var touchscreenReaderRunning = false
     @Volatile
@@ -2093,6 +2106,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         runCatching { physicalInputRouter.restore() }
         experimentalMultiTouch = true
         instance = this
+        applyCarCompanionKeyFilter()
         windowManager = getSystemService(WindowManager::class.java)
         inputManager = getSystemService(InputManager::class.java).also {
             it.registerInputDeviceListener(inputDeviceListener, null)
@@ -2729,6 +2743,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         return plasmaShell?.handleKey(event) == true || forwardKeyEvent(event)
     }
 
+    private fun applyCarCompanionKeyFilter() {
+        val info = serviceInfo ?: return
+        val filter = android.accessibilityservice.AccessibilityServiceInfo.FLAG_REQUEST_FILTER_KEY_EVENTS
+        val next = if (carCompanionInputActive) info.flags and filter.inv() else info.flags or filter
+        if (next == info.flags) return
+        info.flags = next
+        serviceInfo = info
+        Log.i(logTag, "Car Companion keyboard filter enabled=${!carCompanionInputActive}")
+    }
+
     override fun onMotionEvent(event: MotionEvent) {
         // Events emitted by our uinput device already travel through
         // InputReader/InputDispatcher (and therefore display topology). Do
@@ -2802,6 +2826,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         laptopSwipeImeCoordinator.close()
         laptopSwipeExecutor.shutdownNow()
         laptopInputExecutor.shutdownNow()
+        laptopKeyExecutor.shutdownNow()
         desktopWallpaperController.cancel()
         if (privilegedInputClientDelegate.isInitialized()) {
             privilegedInputClient.release("service_destroyed")
@@ -11756,6 +11781,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         metaState: Int,
         repeatCount: Int
     ): Boolean {
+        if (desktopEnvironment.directDeckKeyboardToApp &&
+            plasmaShell is moe.n4tsu.dextop.plasma.CompositedWindowShell) {
+            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
+        }
         // Once a key-down used the targeted path, keep repeats and key-up on
         // that same virtual device even if uinput becomes ready mid-press.
         if (laptopFallbackKeyDownTimes.containsKey(keyCode)) {
@@ -11793,7 +11822,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         metaState: Int,
         repeatCount: Int,
     ): Boolean {
-        val displayId = targetDisplayId
+        val displayId = if (desktopEnvironment.directDeckKeyboardToApp) {
+            (plasmaShell as? moe.n4tsu.dextop.plasma.CompositedWindowShell)?.hostKeyboardDisplayId() ?: targetDisplayId
+        } else targetDisplayId
         if (displayId < 0) return false
         val eventTime = SystemClock.uptimeMillis()
         val downTime = when (action) {
@@ -11813,6 +11844,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             0,
             InputDevice.SOURCE_KEYBOARD,
         )
+        if (desktopEnvironment.directDeckKeyboardToApp) {
+            // WAIT_FOR_RESULT on the UI thread can wait for this service's own
+            // accessibility key callback. Keep DOWN/repeats/UP ordered off-thread.
+            return runCatching {
+                laptopKeyExecutor.execute {
+                    if (!inputDispatcher.send(event, displayId, waitForResult = false)) {
+                        Log.e(logTag, "deck key submission failed display=$displayId action=$action")
+                    }
+                }
+                true
+            }.getOrDefault(false)
+        }
         val accepted = inputDispatcher.send(event, displayId)
         if (!accepted) {
             Log.e(
@@ -12311,12 +12354,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Samsung, HyperOS's desktop on Xiaomi), which shows in the car whenever Dextop Auto is
         // not drawn over it. The display stays public and trusted so Dextop's windows can use it.
         val displayDecorations = decorations && !dextopAutoSelected
+        val (outputWidth, outputHeight) = autoDestinationSize()
         val owned = platform.openOwned(
             this,
             service,
             destination,
-            targetWidth,
-            targetHeight,
+            outputWidth,
+            outputHeight,
             density,
             displayDecorations,
             configureBeforePublish = { displayId ->
@@ -12333,6 +12377,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // An Android Auto session never disables navigation or gestures: the phone stays
         // fully usable, and the car display has no phone navigation to suppress.
         clearInheritedDisplayOverrides(targetDisplayId)
+        applyAutoLogicalSize()
         configureDisplay(skipWindowing = forceFreeformSession || dextopAutoSelected)
         if (!dextopAutoSelected) startAutoOverlapCorrection()
         if (dextopAutoSelected) {
@@ -12389,16 +12434,30 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
     }
 
+    private fun autoDestinationSize(): Pair<Int, Int> =
+        CardexRelayService.activeDestinationSize() ?: (targetWidth to targetHeight)
+
+    /** Keep the car's physical buffer fixed; WMS fits the scaled desktop into it. */
+    private fun applyAutoLogicalSize() {
+        val service = systemService("window", "android.view.IWindowManager")
+        val type = Class.forName("android.view.IWindowManager")
+        type.getMethod("setForcedDisplaySize", Int::class.javaPrimitiveType,
+            Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
+            .invoke(service, targetDisplayId, targetWidth, targetHeight)
+    }
+
     private fun replaceAutoDestinationSurface(nextSurface: Surface?) {
         if (!autoOnlySession || nextSurface == null || !nextSurface.isValid) return
         autoDestinationSurface = nextSurface
+        val (outputWidth, outputHeight) = autoDestinationSize()
         val updated = autoOwnedDisplay?.resize(
             nextSurface,
-            targetWidth,
-            targetHeight,
+            outputWidth,
+            outputHeight,
             density,
         ) == true
         check(updated) { "Unable to move the Android Auto desktop to the new host surface" }
+        applyAutoLogicalSize()
         OperationLog.i(
             this,
             "CarCompanion",
@@ -13386,8 +13445,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (autoOnlySession && sizeChanged) {
             val destination = autoDestinationSurface
+            val (outputWidth, outputHeight) = autoDestinationSize()
             val updated = destination?.takeIf { it.isValid }?.let {
-                autoOwnedDisplay?.resize(it, targetWidth, targetHeight, density)
+                autoOwnedDisplay?.resize(it, outputWidth, outputHeight, density)
             } == true
             OperationLog.i(
                 this,
@@ -13397,10 +13457,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             if (!updated) {
                 throw IllegalStateException("Unable to resize the Android Auto desktop buffer")
             }
-            // Owned displays change their physical mode in place. A forced
-            // WMS size can otherwise leave the viewport at the old scale.
-            type.getMethod("clearForcedDisplaySize", Int::class.javaPrimitiveType)
-                .invoke(service, targetDisplayId)
+            applyAutoLogicalSize()
         }
         if (sizeChanged) {
             // A live size change can cross the natural-orientation boundary.

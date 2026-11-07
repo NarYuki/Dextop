@@ -1,6 +1,8 @@
-/* Wine accepts FIFO discovery entries for its AF_UNIX server. Android denies
- * creating both socket and FIFO inodes here, so only our tagged regular files
- * are reported as FIFOs. The actual connection uses linux_unixsock.c.
+/* Discovery entries of path sockets (Wine's server, gnome-keyring's control
+ * socket). Android denies creating both socket and FIFO inodes here, so our
+ * tagged regular files are reported as the sockets they stand for: Wine accepts
+ * a socket or a FIFO, gnome-keyring a socket only. The actual connection uses
+ * linux_unixsock.c.
  * Shared by the glibc container session and x86 compatibility libraries. */
 #define _GNU_SOURCE
 #define _LARGEFILE64_SOURCE
@@ -58,7 +60,7 @@ int name(const char *path, struct type *st) { \
     static int (*real)(const char *, struct type *); \
     if (!real) real = dlsym(RTLD_NEXT, #name); \
     int rc = real(path, st); \
-    if (!rc && tagged(AT_FDCWD, path, st->st_mode, st->st_size)) st->st_mode = (st->st_mode & ~S_IFMT) | S_IFIFO; \
+    if (!rc && tagged(AT_FDCWD, path, st->st_mode, st->st_size)) st->st_mode = (st->st_mode & ~S_IFMT) | S_IFSOCK; \
     return rc; \
 }
 WRAP(lstat, stat)

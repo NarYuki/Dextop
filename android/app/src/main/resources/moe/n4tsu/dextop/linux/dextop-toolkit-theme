@@ -63,6 +63,7 @@ def apply(root, mode, home=Path('/root')):
                    f'/usr/share/{generation}/colors/darker.conf')
         if previous in managed and (root / scheme.lstrip('/')).is_file():
             update_ini(path, 'Appearance', {'color_scheme_path': scheme, 'custom_palette': 'true'})
+    write_changed(config_home / 'dextop/toolkit-theme-v1', mode + '\n')
 
 
 if __name__ == '__main__':

@@ -64,7 +64,7 @@ class LinuxStorageUi {
       }
       final usage =
           (job?['result'] as Map?)?.cast<Object?, Object?>() ?? const {};
-      final clean = await _sheet(context, usage);
+      final clean = await _sheet(context, containerId, usage);
       if (clean != true || !context.mounted) return;
       if (!stopped) {
         M3ESnackbar.show(
@@ -98,6 +98,7 @@ class LinuxStorageUi {
 
   static Future<bool?> _sheet(
     BuildContext context,
+    String containerId,
     Map<Object?, Object?> usage,
   ) {
     final total = (usage['total'] as num?) ?? 0;
@@ -144,7 +145,22 @@ class LinuxStorageUi {
                   shrinkWrap: true,
                   children: [
                     for (final part in parts)
-                      _row(sheet, part, total, t('削除可', 'Removable')),
+                      _row(
+                        sheet,
+                        part,
+                        total,
+                        t('削除可', 'Removable'),
+                        () => Navigator.of(sheet).push<void>(
+                          MaterialPageRoute(
+                            builder: (_) => _LinuxStorageDetails(
+                              container: containerId,
+                              category: part['id'] as String,
+                              path: part['path'] as String,
+                              title: _partName(sheet, part['id'] as String),
+                            ),
+                          ),
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -181,42 +197,219 @@ class LinuxStorageUi {
     Map<Object?, Object?> part,
     num total,
     String removable,
+    VoidCallback onTap,
   ) {
     final theme = Theme.of(context);
     final bytes = (part['bytes'] as num?) ?? 0;
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    return Material(
+      type: MaterialType.transparency,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  _partName(context, part['id'] as String? ?? ''),
-                  style: theme.textTheme.bodyMedium,
-                ),
-              ),
-              if (part['cache'] == true)
-                Padding(
-                  padding: const EdgeInsets.only(right: 8),
-                  child: Text(
-                    removable,
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.primary,
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      _partName(context, part['id'] as String? ?? ''),
+                      style: theme.textTheme.bodyMedium,
                     ),
                   ),
-                ),
-              Text(
-                LinuxBackupsUi.size(bytes),
-                style: theme.textTheme.bodySmall,
+                  if (part['cache'] == true)
+                    Padding(
+                      padding: const EdgeInsets.only(right: 8),
+                      child: Text(
+                        removable,
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                        ),
+                      ),
+                    ),
+                  Text(
+                    LinuxBackupsUi.size(bytes),
+                    style: theme.textTheme.bodySmall,
+                  ),
+                  const SizedBox(width: 8),
+                  const Icon(M3EIcons.chevron_right_rounded, size: 18),
+                ],
+              ),
+              const SizedBox(height: 4),
+              LinearProgressIndicator(
+                value: total > 0 ? bytes / total : 0,
+                borderRadius: BorderRadius.circular(4),
               ),
             ],
           ),
-          const SizedBox(height: 4),
-          LinearProgressIndicator(
-            value: total > 0 ? bytes / total : 0,
-            borderRadius: BorderRadius.circular(4),
+        ),
+      ),
+    );
+  }
+}
+
+/// Each page retains its measured children when returning from a deeper directory.
+class _LinuxStorageDetails extends StatefulWidget {
+  const _LinuxStorageDetails({
+    required this.container,
+    required this.category,
+    required this.path,
+    required this.title,
+  });
+  final String container, category, path, title;
+  @override
+  State<_LinuxStorageDetails> createState() => _LinuxStorageDetailsState();
+}
+
+class _LinuxStorageDetailsState extends State<_LinuxStorageDetails> {
+  static const _channel = MethodChannel('app.freedextop/linux');
+  final List<Map<Object?, Object?>> entries = [];
+  bool loading = true;
+  int offset = 0, count = 0;
+  num total = 0;
+  String? error;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      loading = true;
+      error = null;
+    });
+    try {
+      final result = await _channel.invokeMapMethod<Object?, Object?>(
+        'storageBreakdown',
+        {
+          'id': widget.container,
+          'category': widget.category,
+          'path': widget.path,
+          'offset': offset,
+        },
+      );
+      if (!mounted) return;
+      setState(() {
+        entries.addAll(
+          ((result?['entries'] as List?) ?? const [])
+              .whereType<Map<Object?, Object?>>(),
+        );
+        offset = (result?['nextOffset'] as num?)?.toInt() ?? entries.length;
+        count = (result?['count'] as num?)?.toInt() ?? entries.length;
+        total = (result?['total'] as num?) ?? 0;
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = LinuxBackupsUi.message(e));
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    String t(String ja, String en) => LinuxBackupsUi.text(context, ja, en);
+    return Scaffold(
+      appBar: M3EAppBar.top(
+        titleText: widget.title,
+        automaticallyImplyLeading: true,
+      ),
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                SelectableText(widget.path),
+                if (!loading || entries.isNotEmpty)
+                  Text(
+                    inlineFormat(t('合計 {0} · {1}項目', 'Total {0} · {1} items'), [
+                      LinuxBackupsUi.size(total),
+                      count,
+                    ]),
+                  ),
+              ],
+            ),
+          ),
+          if (loading) const M3EProgressIndicator.linearWavy(),
+          if (error != null)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  Text(error!),
+                  TextButton(onPressed: _load, child: Text(t('再試行', 'Retry'))),
+                ],
+              ),
+            ),
+          if (!loading && error == null && entries.isEmpty)
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(
+                t(
+                  'このカテゴリに含まれるファイルはありません',
+                  'No files belong to this category here',
+                ),
+              ),
+            ),
+          Expanded(
+            child: ListView.builder(
+              itemCount: entries.length + (offset < count ? 1 : 0),
+              itemBuilder: (context, index) {
+                if (index == entries.length) {
+                  return TextButton(
+                    onPressed: loading ? null : _load,
+                    child: Text(t('さらに表示', 'Load more')),
+                  );
+                }
+                final entry = entries[index];
+                final directory = entry['directory'] == true;
+                return ListTile(
+                  leading: Icon(
+                    directory
+                        ? M3EIcons.folder_rounded
+                        : M3EIcons.insert_drive_file_rounded,
+                  ),
+                  title: Text(entry['name'] as String),
+                  subtitle: Text(
+                    LinuxBackupsUi.size((entry['bytes'] as num?) ?? 0),
+                  ),
+                  trailing: directory
+                      ? const Icon(M3EIcons.chevron_right_rounded)
+                      : null,
+                  onTap: directory
+                      ? () => Navigator.of(context).push<void>(
+                          MaterialPageRoute(
+                            builder: (_) => _LinuxStorageDetails(
+                              container: widget.container,
+                              category: widget.category,
+                              path: entry['path'] as String,
+                              title: entry['name'] as String,
+                            ),
+                          ),
+                        )
+                      : () => showDialog<void>(
+                          context: context,
+                          builder: (dialog) => AlertDialog(
+                            title: Text(entry['name'] as String),
+                            content: SelectableText(
+                              '${entry['path']}\n${LinuxBackupsUi.size((entry['bytes'] as num?) ?? 0)}',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialog),
+                                child: Text(t('閉じる', 'Close')),
+                              ),
+                            ],
+                          ),
+                        ),
+                );
+              },
+            ),
           ),
         ],
       ),

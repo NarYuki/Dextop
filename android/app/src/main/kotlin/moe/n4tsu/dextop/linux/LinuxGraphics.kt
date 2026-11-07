@@ -73,6 +73,8 @@ internal object LinuxSettings {
         if (!chosen) it.put("gpu", it.optJSONObject("gpuProbe")?.takeIf { probe -> probe.optInt("version") >= LinuxGpuProbe.VERSION }
             ?.optString("recommended")?.takeIf { id -> id.isNotEmpty() }
             ?: (if (LinuxGraphics.turnipCapable) LinuxGpuMode.TURNIP else LinuxGpuMode.HARDWARE).id)
+        if (!it.has("uiScale")) it.put("uiScale", 100)
+        if (!it.has("dnsServers")) it.put("dnsServers", org.json.JSONArray())
         if (!it.has("defaultContainer")) it.put("defaultContainer", "")
     }
 
@@ -90,6 +92,15 @@ internal object LinuxSettings {
     fun write(update: JSONObject): JSONObject {
         // Only what was asked for is saved: a renderer is stored once the user picks one.
         val merged = load(file)
+        if (update.has("uiScale")) merged.put("uiScale", LinuxUiScale.validate(update.getInt("uiScale")))
+        if (update.has("dnsServers")) {
+            val servers = update.getJSONArray("dnsServers")
+            require(servers.length() <= 3) { "Use up to three DNS servers" }
+            val values = (0 until servers.length()).map { servers.getString(it) }
+            values.forEach(LinuxNetworkLink::validateDnsAddress)
+            LinuxNetworkLink.resolver(values)
+            merged.put("dnsServers", org.json.JSONArray(values.distinct()))
+        }
         update.optString("gpu").takeIf { it.isNotEmpty() }?.let { merged.put("gpu", LinuxGpuMode.of(it).id) }
         // Back to the device test's recommendation.
         if (update.optBoolean("gpuRecommended")) merged.remove("gpu")
@@ -133,6 +144,7 @@ internal object LinuxSettings {
         if (app.isNotEmpty() && '/' !in app && update.has("appSettings")) {
             val choices = JSONObject()
             update.optJSONObject("appSettings")?.let { given ->
+                if (given.has("uiScale")) choices.put("uiScale", LinuxUiScale.validate(given.getInt("uiScale")))
                 for ((key, allowed) in APP_MODES) given.optString(key).takeIf { it in allowed }?.let { choices.put(key, it) }
             }
             val apps = merged.optJSONObject("apps") ?: JSONObject()
@@ -141,6 +153,16 @@ internal object LinuxSettings {
         }
         save(containerFile(id), merged)
         return merged
+    }
+
+    fun uiScale(id: String, desktopId: String): Int =
+        LinuxUiScale.resolve(read().optInt("uiScale", 100), appMode(id, desktopId).let {
+            if (it.has("uiScale")) it.getInt("uiScale") else null
+        })
+
+    fun customResolver(): String? {
+        val servers = read().getJSONArray("dnsServers")
+        return LinuxNetworkLink.resolver((0 until servers.length()).map { servers.getString(it) })
     }
 
     /** [id]'s window manager: its own choice, else DroidDeck's for the DroidDeck runtime. */

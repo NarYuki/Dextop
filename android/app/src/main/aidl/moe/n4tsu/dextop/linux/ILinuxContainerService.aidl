@@ -162,4 +162,16 @@ interface ILinuxContainerService {
     void containerUsage(String containerId) = 78;
     /** Removes [containerId]'s caches (package downloads, ~/.cache, temporary files) as a background job. */
     void cleanContainer(String containerId) = 79;
+    /** Confirms that this exact password update was handled by the connected app. */
+    void acknowledgeAccountPassword(String containerId, String password) = 80;
+    /** Shell-owned listener: Android SELinux denies shell connections to app-owned sockets. */
+    void startDeviceBridgeListener(String name) = 81;
+    /** Accepts only the connected app or this service's own Linux processes. */
+    ParcelFileDescriptor acceptDeviceBridge() = 82;
+    /** A category's immediate children, excluding bytes counted in other categories. */
+    String storageBreakdown(String containerId, String category, String path, int offset) = 83;
+    /** The package manager and package owning an actual desktop entry. */
+    String appUninstallTarget(String containerId, String desktopId) = 84;
+    /** Explicit size refresh on view entry or a completed storage mutation. */
+    void refreshContainerSize(String containerId, boolean force) = 85;
 }

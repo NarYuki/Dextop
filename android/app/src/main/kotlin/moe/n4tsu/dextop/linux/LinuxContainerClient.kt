@@ -84,6 +84,26 @@ internal object LinuxContainerClient {
             dispatch(attempt) { it.onNotification(containerId, event) }
         }
 
+        /** passwd changed the account password: the keyring follows it in "account" mode, as on a desktop. */
+        override fun onAccountPassword(containerId: String, password: String) {
+            // Preserve hand-over ordering without retaining a plaintext String in the work queue.
+            val protected = LinuxSealedSecret.seal(password.toByteArray(Charsets.UTF_8))
+            calls.execute {
+                if (!epochs.owns(attempt)) return@execute
+                val context = appContext ?: return@execute
+                val service = remote ?: activeConnection?.candidate ?: return@execute
+                runCatching {
+                    protected.useBytes { bytes ->
+                        val transient = String(bytes, Charsets.UTF_8)
+                        if (LinuxKeyring.mode(context, containerId) == LinuxKeyring.ACCOUNT) {
+                            LinuxKeyring.setup(context, containerId, LinuxKeyring.ACCOUNT, transient, service)
+                        }
+                        service.acknowledgeAccountPassword(containerId, transient)
+                    }
+                }.onFailure { Log.w(TAG, "Cannot keep the changed account password of $containerId", it) }
+            }
+        }
+
         override fun onWindowEvent(containerId: String, json: String) {
             val event = runCatching { org.json.JSONObject(json) }.getOrNull() ?: return
             dispatch(attempt) { it.onWindowEvent(containerId, event) }
@@ -167,6 +187,7 @@ internal object LinuxContainerClient {
         override fun onServiceDisconnected(name: ComponentName?) = onMain {
             if (!epochs.abandon(attempt)) return@onMain
             remote = null
+            LinuxDeviceBridge.disconnect()
             binding = false
             activeConnection = null
             appContext?.let { releaseBinding(it, this) }
@@ -328,7 +349,8 @@ internal object LinuxContainerClient {
                     if (!epochs.owns(attempt)) return@execute
                     runCatching {
                         val command = LinuxServiceHost.startCommand(context.packageName,
-                            context.applicationInfo.sourceDir, context.applicationInfo.nativeLibraryDir)
+                            context.applicationInfo.sourceDir, context.applicationInfo.nativeLibraryDir,
+                            moe.n4tsu.dextop.privilege.PublisherKeys.issue(context, moe.n4tsu.dextop.privilege.PublisherKeys.LINUX))
                         val result = DistributionPrivilegeRuntime.execute(arrayOf("/system/bin/sh", "-c", command))
                             ?: error("Dextop built-in access is not running")
                         check(result.exitCode == 0) { "Linux service launch failed: ${result.error}" }
@@ -387,6 +409,7 @@ internal object LinuxContainerClient {
                     }
                     currentSwitch()
                     // Remote shell runtimes exit during this transaction, so DeadObjectException is expected.
+                    LinuxDeviceBridge.disconnect()
                     try { current.destroy() } catch (_: android.os.DeadObjectException) { }
                 }
                 currentSwitch()
@@ -434,8 +457,9 @@ internal object LinuxContainerClient {
                     check(LinuxContainerClient.service() === service) { "Linux execution mode or connection changed; retry the operation" }
                     action(service)
                 }.onSuccess { result -> mainHandler.post {
-                    if (LinuxContainerClient.service() === service) onResult(result)
-                    else onError(IllegalStateException("Linux execution mode or connection changed; retry the operation"))
+                    LinuxCallResult.deliver(result, LinuxContainerClient.service() === service, onResult) {
+                        onError(IllegalStateException("Linux execution mode or connection changed; retry the operation"))
+                    }
                 } }.onFailure { error -> mainHandler.post { onError(error) } }
             }
         }

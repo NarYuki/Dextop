@@ -42,15 +42,22 @@ internal class LinuxAppSession(
 
         fun start(
             proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int,
-            waylandOnly: Boolean = false, requireWayland: Boolean = false, xwayland: Boolean = false, events: (JSONObject) -> Unit,
+            waylandOnly: Boolean = false, requireWayland: Boolean = false, xwayland: Boolean = false, keyring: ByteArray? = null, events: (JSONObject) -> Unit,
         ): LinuxAppSession {
+            // The X server of this display takes connections only with the container's cookie.
+            if (!waylandOnly) LinuxXAuth.prepare(containerId, display)
             val host = if (xwayland) LinuxXwaylandHost.start(containerId, display, width, height) else null
             var startedProcess: Process? = null
             try {
                 val script = if (waylandOnly) LinuxCatalog.waylandAppsScript(display) else LinuxCatalog.appsScript(display, width, height, dpi, xwayland)
-                val process = proot.guest(containerId, script).redirectErrorStream(true).start()
+                val process = proot.guest(containerId, script,
+                    extraEnvironment = if (keyring != null) listOf("DEXTOP_KEYRING_STDIN=1") else emptyList())
+                    .redirectErrorStream(true).start()
                 startedProcess = process
-                process.outputStream.close()
+                // The keyring password goes through this pipe only (the script reads it first).
+                try {
+                    process.outputStream.use { stream -> if (keyring != null) { stream.write(keyring); stream.write(10) } }
+                } finally { keyring?.fill(0) }
                 val startupReady = java.util.concurrent.atomic.AtomicBoolean(false)
                 Thread {
                     // Destroying the process interrupts this read; that must not crash the service.
@@ -67,16 +74,19 @@ internal class LinuxAppSession(
                     check(it.wayland != null) { LinuxRuntime.terminate(process); "Wayland compositor did not start" }
                 }
                 val deadline = SystemClock.uptimeMillis() + 15_000
+                var lastConnectError = "no attempt"
                 var client: X11Client? = null
                 while (SystemClock.uptimeMillis() < deadline && (client == null || !startupReady.get())) {
                     check(process.isAlive) { "X server exited (exit ${process.exitValue()})" }
-                    if (client == null) client = runCatching { X11Client.connect(display) }.getOrNull()
+                    if (client == null) client = runCatching { X11Client.connect(display) }
+                        .onFailure { lastConnectError = it.message ?: it.javaClass.simpleName }.getOrNull()
                     if (client == null || !startupReady.get()) SystemClock.sleep(150)
                 }
                 if (client == null || !startupReady.get()) {
                     client?.close()
                     LinuxRuntime.terminate(process)
-                    error("X display :$display did not start")
+                    error("X display :$display did not start (" + (if (client == null) "connection: $lastConnectError"
+                        else "the session did not report ready") + ")")
                 }
                 check(client.compositeOpcode >= 0 && client.damageOpcode >= 0) {
                     client.close()
@@ -459,6 +469,7 @@ internal class LinuxAppSession(
         val bounds = x.geometry(id) ?: return
         val window = Win(id, popup)
         window.bounds.set(bounds)
+        xwaylandHost?.ensureInputExtent(bounds.right, bounds.bottom)
         window.alpha = x.depth(id) == 32
         window.damage = x.damageCreate(id)
         window.pixmap = x.nameWindowPixmap(id)
@@ -528,6 +539,7 @@ internal class LinuxAppSession(
         if (bounds == window.bounds) return
         val resized = bounds.width() != window.bounds.width() || bounds.height() != window.bounds.height()
         window.bounds.set(bounds)
+        xwaylandHost?.ensureInputExtent(bounds.right, bounds.bottom)
         if (resized) {
             val old = window.pixmap
             window.pixmap = x.nameWindowPixmap(window.id)
@@ -1004,6 +1016,7 @@ internal class LinuxAppSession(
 
     fun stop() {
         if (!running) return
+        LinuxXAuth.forget(display)
         running = false
         if (closeChecksHolder.isInitialized()) closeChecks.shutdownNow()
         pointerGrabs?.stop()

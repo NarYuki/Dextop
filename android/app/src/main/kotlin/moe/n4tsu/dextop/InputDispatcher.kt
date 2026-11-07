@@ -17,7 +17,7 @@ internal class InputDispatcher(
         InputEvent::class.java.getMethod("setDisplayId", Int::class.javaPrimitiveType)
     }
 
-    fun send(event: InputEvent, displayId: Int): Boolean {
+    fun send(event: InputEvent, displayId: Int, waitForResult: Boolean = true): Boolean {
         var accepted = false
         var failure: Throwable? = null
         try {
@@ -25,7 +25,7 @@ internal class InputDispatcher(
             // WAIT_FOR_RESULT makes the returned value useful for diagnostics:
             // Samsung's InputManager can reject an event for a display even
             // when the binder call itself succeeds.
-            accepted = injectMethod.invoke(service, event, INJECT_WAIT_FOR_RESULT) as Boolean
+            accepted = injectMethod.invoke(service, event, if (waitForResult) INJECT_WAIT_FOR_RESULT else 0) as Boolean
         } catch (error: Throwable) {
             failure = error
         }

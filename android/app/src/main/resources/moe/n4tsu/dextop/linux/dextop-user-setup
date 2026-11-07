@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-"""Create the fresh installation's account. Password comes from stdin, never argv."""
+"""Create the fresh installation's account. Password hash comes from stdin, never argv."""
 import os
 import pwd
 import re
@@ -9,10 +9,10 @@ import sys
 from pathlib import Path
 
 
-def setup(name, uid, password):
+def setup(name, uid, password_hash):
     if not re.fullmatch(r'[a-z][a-z0-9_-]{0,30}', name) or name == 'root':
         raise ValueError('Invalid Linux username')
-    if uid <= 0 or len(password) < 8 or any(c in password for c in '\r\n\0'):
+    if uid <= 0 or not re.fullmatch(r'\$6\$rounds=100000\$[./A-Za-z0-9]{16}\$[./A-Za-z0-9]{86}', password_hash):
         raise ValueError('Invalid Linux account credentials')
     marker = Path('/etc/dextop/username')
     pending = marker.with_name('username.pending')
@@ -55,7 +55,7 @@ def setup(name, uid, password):
                             ignore=lambda directory, names: {'keyrings'} if directory == '/root/.local/share' else set())
         else:
             shutil.copy2(source, target)
-    subprocess.run(['chpasswd'], input=f'{name}:{password}\n', text=True, check=True)
+    subprocess.run(['chpasswd', '-e'], input=f'{name}:{password_hash}\n', text=True, check=True)
     subprocess.run(['groupadd', '-f', 'sudo'], check=True)
     subprocess.run(['usermod', '-aG', 'sudo', name], check=True)
     for parent, dirs, files in os.walk(home, followlinks=False):

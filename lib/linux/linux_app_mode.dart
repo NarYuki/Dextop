@@ -6,6 +6,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'linux_expressive.dart';
 import 'linux_widgets.dart';
+import 'linux_scale_setting.dart';
 
 /// How one Linux application runs: its display system, renderer and the OpenGL version it is
 /// told. Applies from its next launch; "automatic" follows the container's settings.
@@ -116,6 +117,14 @@ class _LinuxAppModePageState extends State<LinuxAppModePage> {
         if (!loaded && error == null) const M3EProgressIndicator.linearWavy(),
         if (error != null)
           Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
+        LinuxSection(t('表示倍率', 'Display scale')),
+        LinuxScaleSetting(
+          value: int.tryParse(mode['uiScale'] ?? '') ?? 0,
+          allowDefault: true,
+          enabled: loaded,
+          t: t,
+          onChanged: (value) => _set('uiScale', value == 0 ? 'auto' : '$value'),
+        ),
         LinuxSection(t('表示方式', 'Display system')),
         _group('display', [
           ('auto', t('自動', 'Automatic'), null, M3EIcons.auto_mode_rounded),

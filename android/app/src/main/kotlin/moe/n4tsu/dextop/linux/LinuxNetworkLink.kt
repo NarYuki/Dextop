@@ -69,6 +69,16 @@ internal object LinuxNetworkLink {
         return servers.joinToString("").takeIf { it.isNotEmpty() }
     }
 
+    fun validateDnsAddress(text: String) {
+        require(text.length <= 45 && text.matches(Regex("[0-9a-fA-F:.]+"))) { "Enter a numeric IPv4 or IPv6 DNS address" }
+        if (':' !in text) {
+            val parts = text.split('.')
+            require(parts.size == 4 && parts.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() in 0..255 }) { "Invalid IPv4 DNS address" }
+        }
+        val address = InetAddress.getByName(text)
+        require(!address.isAnyLocalAddress && !address.isLinkLocalAddress && !address.isMulticastAddress) { "Invalid DNS server address" }
+    }
+
     fun stageResolver(root: File, resolver: String) = write(root, "etc/resolv.conf", resolver)
 
     private fun write(root: File, relative: String, description: String) {

@@ -114,6 +114,10 @@ internal data class DesktopEnvironment(
      * already falls back to.
      */
     val privateApplicationDisplays: Boolean = false,
+    /** Keep hardware mice on the shell when focusing an app's separate display. */
+    val pinPhysicalMouseToDesktop: Boolean = false,
+    /** Avoid focusing the shell before forwarding each on-screen deck key. */
+    val directDeckKeyboardToApp: Boolean = false,
     /**
      * For Plasma v2, render the phone desktop on an app-owned public
      * VirtualDisplay drawn straight into Dextop's Surface instead of an

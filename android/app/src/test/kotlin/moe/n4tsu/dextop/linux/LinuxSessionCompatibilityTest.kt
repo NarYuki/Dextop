@@ -8,6 +8,21 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 
 class LinuxSessionCompatibilityTest {
+    @Test fun npmWrapperAppearsOnlyWhenInstalledAndPreservesCustomLaunchers() {
+        val root = Files.createTempDirectory("linux-npm").toFile()
+        try {
+            val target = File(root, "usr/local/bin/npm")
+            LinuxSessionCompatibility.stageNpm(root)
+            kotlin.test.assertFalse(target.exists())
+            File(root, "usr/bin/npm").apply { parentFile.mkdirs(); writeText("package npm") }
+            LinuxSessionCompatibility.stageNpm(root)
+            kotlin.test.assertContains(target.readText(), "DEXTOP_HARDLINK_COPY=1")
+            target.writeText("custom npm")
+            LinuxSessionCompatibility.stageNpm(root)
+            assertEquals("custom npm", target.readText())
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun systemServicesUseTheSharedBusAndKeepPackageKitOutsideFakeroot() {
         val root = Files.createTempDirectory("linux-system-services").toFile()
         try {
@@ -101,7 +116,7 @@ class LinuxSessionCompatibilityTest {
             val expected = config.readText()
             source.writeBytes(byteArrayOf(2, 3))
             LinuxSessionCompatibility.stage(root, native.path)
-            assertEquals("${LinuxSessionCompatibility.GUEST_PRELOAD}\n${LinuxSessionCompatibility.GUEST_SOCKET_SHIM}\n${LinuxProotFastPath.LIBRARY}\n# user's preload\n/usr/local/lib/custom.so\n", expected)
+            assertEquals("${LinuxProot.GUEST_LIBRARY_DIR}/libdextop_androidproc.so\n${LinuxSessionCompatibility.GUEST_PRELOAD}\n${LinuxSessionCompatibility.GUEST_SOCKET_SHIM}\n${LinuxProotFastPath.LIBRARY}\n# user's preload\n/usr/local/lib/custom.so\n", expected)
             assertEquals(expected, config.readText())
             assertContentEquals(byteArrayOf(2, 3), File(root, LinuxSessionCompatibility.GUEST_PRELOAD.removePrefix("/")).readBytes())
         } finally { dir.deleteRecursively() }

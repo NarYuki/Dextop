@@ -2,6 +2,8 @@ import importlib.machinery
 import io
 import os
 import signal
+import subprocess
+import time
 import sys
 import tarfile
 from pathlib import Path
@@ -18,6 +20,42 @@ def load(name, path):
 
 
 class GamingTest(unittest.TestCase):
+    @unittest.skipIf(os.name == 'nt', 'Linux flock and symlinks')
+    def test_sdk_lease_preserves_link_until_game_exit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            ready = root/'ready'
+            release = root/'release'
+            env = dict(os.environ, HOME=tmp)
+            launcher = ('import importlib.machinery,os,sys; '
+                        f'm=importlib.machinery.SourceFileLoader("sdk_test", {str(RESOURCES / "dextop-gaming")!r}).load_module(); '
+                        'sys.exit(m.sdk_launch([sys.executable,"-c",sys.argv[2]],dict(os.environ),sys.argv[1]))')
+            game = f'import time; from pathlib import Path; Path({str(ready)!r}).touch();\nwhile not Path({str(release)!r}).exists(): time.sleep(.02)'
+            first = subprocess.Popen([sys.executable, '-c', launcher, 'x86_64', game], env=env,
+                                     stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            try:
+                end = time.monotonic()+5
+                while not ready.exists() and time.monotonic() < end:
+                    time.sleep(.02)
+                self.assertTrue(ready.exists())
+                target = (root/'.steam/sdk64').resolve()
+                same = subprocess.run([sys.executable, '-c', launcher, 'x86_64', 'pass'], env=env, capture_output=True, timeout=5)
+                self.assertEqual(same.returncode, 0, same.stderr)
+                other = subprocess.run([sys.executable, '-c', launcher, 'aarch64', 'pass'], env=env, capture_output=True, timeout=5)
+                self.assertNotEqual(other.returncode, 0)
+                self.assertIn(b'other Proton architecture', other.stderr)
+                self.assertEqual((root/'.steam/sdk64').resolve(), target)
+                release.touch()
+                first.communicate(timeout=5)
+                other = subprocess.run([sys.executable, '-c', launcher, 'aarch64', 'pass'], env=env, capture_output=True, timeout=5)
+                self.assertEqual(other.returncode, 0, other.stderr)
+                self.assertEqual((root/'.steam/sdk64').resolve().name, 'linuxarm64')
+            finally:
+                release.touch()
+                if first.poll() is None:
+                    first.terminate()
+                first.communicate(timeout=5)
+
     def setUp(self):
         self.gaming = load('dextop_gaming', RESOURCES / 'dextop-gaming')
         self.compat = load('upstream_steam_compat', RESOURCES / 'droiddeck/linuxfs/usr/local/bin/steam-compatibility')
@@ -108,7 +146,7 @@ class GamingTest(unittest.TestCase):
             self.gaming.STEAM = tmp
             config = Path(tmp) / 'config/config.vdf'
             config.parent.mkdir()
-            original = '"InstallConfigStore" { "Software" { "Valve" { "Steam" { "Unrelated" "keep" "CompatToolMapping" { "0" { "name" "proton_experimental" } "774171" { "name" "proton_experimental" } "42" { "name" "custom-ge" } } } } } }'
+            original = '"InstallConfigStore" { "Software" { "Valve" { "Steam" { "Unrelated" "keep" "CompatToolMapping" { "0" { "name" "proton_experimental" } "774171" { "name" "proton_experimental" } "42" { "name" "proton-ge-custom" } } } } } }'
             config.write_text(original)
             def module(name):
                 return SimpleNamespace(steam_running=lambda: False) if name == 'droiddeck-fex' else self.compat
@@ -118,7 +156,7 @@ class GamingTest(unittest.TestCase):
                 self.gaming.register()
             self.assertEqual(first, config.read_text())
             mapping = self.compat.read_config_mapping(str(config))
-            self.assertEqual(mapping, {'0': self.gaming.TOOL, '774171': self.gaming.TOOL, '42': 'custom-ge'})
+            self.assertEqual(mapping, {'0': self.gaming.TOOL, '774171': self.gaming.TOOL, '42': 'proton-ge-custom'})
             self.assertIn('"keep"', first)
             self.assertEqual(Path(str(config) + '.before-dextop-gaming').read_text(), original)
             # A later manual Proton selection belongs to the user.

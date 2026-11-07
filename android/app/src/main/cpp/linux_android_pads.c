@@ -71,6 +71,7 @@ typedef void *(*mmap_fn)(void *, size_t, int, int, int, off_t);
 void *dextop_camera_mmap(mmap_fn real, void *address, size_t length, int prot, int flags, int fd, off_t offset, int *handled);
 void dextop_serial_close(int fd);
 int dextop_serial_stat(const char *path, struct stat *st);
+int dextop_serial_fstat(int fd, struct stat *st);
 
 static int raw_open(const char *path) { return (int)syscall(SYS_openat, AT_FDCWD, path, O_RDONLY | O_CLOEXEC); }
 
@@ -316,7 +317,7 @@ int dextop_stat(const char *path, struct stat *st) {
     if (FOLDER_MISSING(AT_FDCWD, path)) result = real_stat("stat", "__xstat", path, st);
     int pad = result == 0 ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
-    if (result != 0 && (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0)) return 0;
+    if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
     return result;
 }
 
@@ -326,7 +327,7 @@ int dextop_lstat(const char *path, struct stat *st) {
     if (FOLDER_MISSING(AT_FDCWD, path)) result = real_stat("lstat", "__lxstat", path, st);
     int pad = result == 0 ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
-    if (result != 0 && (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0)) return 0;
+    if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
     return result;
 }
 
@@ -338,7 +339,7 @@ int dextop_xstat(int version, const char *path, struct stat *st) {
     if (FOLDER_MISSING(AT_FDCWD, path)) result = next(version, path, st);
     int pad = result == 0 ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
-    if (result != 0 && (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0)) return 0;
+    if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
     return result;
 }
 
@@ -350,8 +351,46 @@ int dextop_fstatat(int dir, const char *path, struct stat *st, int flags) {
     if (FOLDER_MISSING(dir, path)) result = next(dir, path, st, flags);
     int pad = result == 0 && path && path[0] == '/' ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
-    if (result != 0 && (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0)) return 0;
+    if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
     return result;
+}
+
+int dextop_fstat(int fd, struct stat *st) __asm__("fstat");
+int dextop_fstat(int fd, struct stat *st) {
+    if (dextop_serial_fstat(fd, st) == 0) return 0;
+    int (*next)(int, struct stat *) = dlsym(RTLD_NEXT, "fstat");
+    if (!next) { errno = ENOSYS; return -1; }
+    return next(fd, st);
+}
+int __fxstat(int version, int fd, struct stat *st) { (void)version; return dextop_fstat(fd, st); }
+#if defined(__LP64__)
+_Static_assert(sizeof(struct stat) == sizeof(struct stat64), "LP64 stat layout");
+int fstat64(int fd, struct stat64 *st) { return dextop_fstat(fd, (struct stat *)st); }
+int __fxstat64(int version, int fd, struct stat64 *st) { (void)version; return fstat64(fd, st); }
+int stat64(const char *path, struct stat64 *st) { return dextop_stat(path, (struct stat *)st); }
+int lstat64(const char *path, struct stat64 *st) { return dextop_lstat(path, (struct stat *)st); }
+int fstatat64(int dir, const char *path, struct stat64 *st, int flags) { return dextop_fstatat(dir, path, (struct stat *)st, flags); }
+#endif
+
+int statx(int dir, const char *path, int flags, unsigned mask, struct statx *out) {
+    struct stat st;
+    int synthetic = path && path[0] == '\0' && (flags & AT_EMPTY_PATH)
+        ? dextop_serial_fstat(dir, &st) == 0
+        : dextop_serial_stat(path, &st) == 0 || dextop_camera_stat(path, &st) == 0;
+    if (synthetic) {
+        memset(out, 0, sizeof(*out));
+        out->stx_mask = STATX_BASIC_STATS;
+        out->stx_mode = st.st_mode;
+        out->stx_nlink = st.st_nlink;
+        out->stx_uid = st.st_uid;
+        out->stx_gid = st.st_gid;
+        out->stx_rdev_major = major(st.st_rdev);
+        out->stx_rdev_minor = minor(st.st_rdev);
+        return 0;
+    }
+    int (*next)(int, const char *, int, unsigned, struct statx *) = dlsym(RTLD_NEXT, "statx");
+    if (!next) { errno = ENOSYS; return -1; }
+    return next(dir, path, flags, mask, out);
 }
 
 /* Camera buffers are memory of this process (see linux_android_camera.c). */

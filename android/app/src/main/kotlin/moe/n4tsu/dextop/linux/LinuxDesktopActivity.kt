@@ -21,7 +21,6 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.TextView
 import moe.n4tsu.dextop.plasma.LinuxPointerForwarder
 import moe.n4tsu.dextop.plasma.LinuxPointerState
@@ -89,16 +88,7 @@ class LinuxDesktopActivity : Activity() {
             text = text("Linux のデスクトップを起動しています", "Starting the Linux desktop")
         }
         root.addView(status, FrameLayout.LayoutParams(-1, -1))
-        val density = resources.displayMetrics.density
-        val keyboard = ImageButton(this).apply {
-            setImageResource(android.R.drawable.ic_menu_edit)
-            setBackgroundColor(0x66000000)
-            contentDescription = text("キーボード", "Keyboard")
-            alpha = .75f
-            setOnClickListener { screen.showKeyboard() }
-        }
-        root.addView(keyboard, FrameLayout.LayoutParams((44 * density).roundToInt(), (44 * density).roundToInt(),
-            Gravity.BOTTOM or Gravity.END).apply { setMargins(0, 0, (12 * density).roundToInt(), (12 * density).roundToInt()) })
+        LinuxKeyboardButton(root) { screen.showKeyboard() }
         // Clear of the system bars and the keyboard, as other Linux windows are.
         root.setOnApplyWindowInsetsListener { view, insets ->
             val bars = insets.getInsets(android.view.WindowInsets.Type.systemBars() or

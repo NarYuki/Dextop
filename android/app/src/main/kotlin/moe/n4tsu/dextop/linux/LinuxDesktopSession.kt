@@ -31,16 +31,22 @@ internal class LinuxDesktopSession(
         private const val WM_TIMEOUT_MS = 30_000L
 
         /** Launches the selected X server and IceWM, then connects once the X socket is up. */
-        fun start(proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int, xwayland: Boolean = false): LinuxDesktopSession {
+        fun start(proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int, xwayland: Boolean = false, keyring: ByteArray? = null): LinuxDesktopSession {
+            // The X server of this display takes connections only with the container's cookie.
+            LinuxXAuth.prepare(containerId, display)
             val host = if (xwayland) LinuxXwaylandHost.start(containerId, display, width, height) else null
             var startedProcess: Process? = null
             try {
                 val fbFile = File(LinuxPaths.rootfs(containerId), "tmp/dextop-fb-$display/Xvfb_screen0")
                 fbFile.delete()
-                val process = proot.guest(containerId, LinuxCatalog.desktopScript(display, width, height, dpi, "icewm", xwayland))
+                val process = proot.guest(containerId, LinuxCatalog.desktopScript(display, width, height, dpi, "icewm", xwayland, LinuxSettings.read().optInt("uiScale", 100)),
+                    extraEnvironment = if (keyring != null) listOf("DEXTOP_KEYRING_STDIN=1") else emptyList())
                     .redirectErrorStream(true).start()
                 startedProcess = process
-                process.outputStream.close()
+                // The keyring password goes through this pipe only (the script reads it first).
+                try {
+                    process.outputStream.use { stream -> if (keyring != null) { stream.write(keyring); stream.write(10) } }
+                } finally { keyring?.fill(0) }
                 val startupReady = java.util.concurrent.atomic.AtomicBoolean(false)
                 Thread {
                     // Destroying the process interrupts this read; that must not crash the service.
@@ -263,6 +269,7 @@ internal class LinuxDesktopSession(
 
     fun stop() {
         if (!running) return
+        LinuxXAuth.forget(display)
         pointerGrabs.stop()
         running = false
         synchronized(lock) { lock.notifyAll() }

@@ -305,29 +305,38 @@ internal object LinuxFolders {
         if (from.rel == to.rel) return 0
         if (to.rel.startsWith("${from.rel}/")) return EINVAL
         val resolver = context.contentResolver
-        resolve(context, to)?.let { existing ->
+        // Validate both parents before touching an existing destination.
+        val newParent = resolve(context, Target(to.name, to.tree, to.parent)) ?: return ENOENT
+        if (!newParent.directory) return ENOTDIR
+        val oldParent = resolve(context, Target(from.name, from.tree, from.parent)) ?: return ENOENT
+        val existing = resolve(context, to)
+        if (existing != null) {
             if (flags and RENAME_NOREPLACE != 0) return EEXIST
             if (existing.directory) {
                 if (!source.directory) return EISDIR
                 if (children(context, to.tree, existing.id).isNotEmpty()) return ENOTEMPTY
             } else if (source.directory) return ENOTDIR
-            if (!DocumentsContract.deleteDocument(resolver, uri(to, existing.id))) return EIO
+        }
+        val result = try {
+            LinuxDocumentMove.replace(
+                source = uri(from, source.id),
+                destination = existing?.let { uri(to, it.id) },
+                backup = { DocumentsContract.renameDocument(resolver, it, ".dextop-replace-${java.util.UUID.randomUUID()}") },
+                move = if (from.parent == to.parent) null else { document ->
+                    try {
+                        DocumentsContract.moveDocument(resolver, document, uri(from, oldParent.id), uri(to, newParent.id))
+                    } catch (_: UnsupportedOperationException) { null }
+                },
+                rename = if (from.leaf == to.leaf) null else { document -> DocumentsContract.renameDocument(resolver, document, to.leaf) },
+                undoMove = { DocumentsContract.moveDocument(resolver, it, uri(to, newParent.id), uri(from, oldParent.id)) },
+                restore = { DocumentsContract.renameDocument(resolver, it, to.leaf) },
+                discard = { DocumentsContract.deleteDocument(resolver, it) },
+            )
+        } finally {
+            forget(from.name, from.rel)
             forget(to.name, to.rel)
         }
-        var uri = uri(from, source.id)
-        if (from.parent != to.parent) {
-            val newParent = resolve(context, Target(to.name, to.tree, to.parent)) ?: return ENOENT
-            if (!newParent.directory) return ENOTDIR
-            val oldParent = resolve(context, Target(from.name, from.tree, from.parent)) ?: return ENOENT
-            // Without move support, mv copies and deletes instead.
-            uri = try {
-                DocumentsContract.moveDocument(resolver, uri, uri(from, oldParent.id), uri(to, newParent.id))
-            } catch (_: UnsupportedOperationException) {
-                null
-            } ?: return EXDEV
-        }
-        if (from.leaf != to.leaf) DocumentsContract.renameDocument(resolver, uri, to.leaf) ?: return EIO
-        forget(from.name, from.rel)
+        if (result != 0) return result
         synchronized(lock) {
             val old = shadow(context, from)
             val new = shadow(context, to)

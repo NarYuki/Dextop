@@ -32,6 +32,8 @@ class StoreJob {
     this.line, [
     this.percent = -1,
     this.queued = false,
+    this.phase = '',
+    this.estimating = false,
   ]);
 
   final String action;
@@ -41,9 +43,13 @@ class StoreJob {
   final bool queued;
 
   /// 0–100 from apt's progress reports, or -1 before the first one.
-  final int percent;
+  final double percent;
+  final String phase;
+  final bool estimating;
 
   /// Progress for the indicators; 0 until apt reports, never indeterminate.
+  String get percentLabel => storePercentLabel(percent, estimating: estimating);
+
   double get value => percent < 0 ? 0 : percent.clamp(0, 100) / 100;
 }
 
@@ -60,7 +66,7 @@ class StoreUpdate {
 class StoreProgressCircle extends StatelessWidget {
   const StoreProgressCircle({super.key, required this.value, this.size = 32});
 
-  final double value;
+  final double? value;
   final double size;
 
   @override
@@ -68,8 +74,8 @@ class StoreProgressCircle extends StatelessWidget {
     width: size,
     height: size,
     child: TweenAnimationBuilder<double>(
-      tween: Tween(end: value),
-      duration: const Duration(milliseconds: 500),
+      tween: Tween(end: value ?? 0),
+      duration: const Duration(milliseconds: 180),
       curve: Curves.easeOutCubic,
       builder: (context, v, _) => M3EProgressIndicator.circularWavy(
         strokeWidth: 2.5,
@@ -77,7 +83,7 @@ class StoreProgressCircle extends StatelessWidget {
         // The default track matches the list rows' surface and disappears into it.
         trackColor: Theme.of(context).colorScheme.primary
             .withValues(alpha: .22),
-        value: v,
+        value: value == null ? null : v,
       ),
     ),
   );
@@ -99,6 +105,11 @@ class LinuxStore extends ChangeNotifier {
   Set<String> upgradable = const {};
   List<StoreUpdate> updates = const [];
   final Map<String, StoreJob> jobs = {};
+  String? catalogSource;
+  bool catalogRefreshing = false;
+  int catalogIndex = 0;
+  int catalogTotal = 0;
+  bool _pollingJobs = false;
 
   /// Windows applications installed in the container (winget ids), and the names of
   /// Windows jobs (`win:<id>`) for their messages.
@@ -109,6 +120,7 @@ class LinuxStore extends ChangeNotifier {
   bool searchWindows = false;
   final Map<String, String> windowsNames = {};
   bool loading = true;
+  bool catalogLoading = false;
   Map<String, bool> sources = const {'apt': true};
   final List<String> sourceErrors = [];
 
@@ -178,8 +190,13 @@ class LinuxStore extends ChangeNotifier {
   Future<void> load({bool refresh = false, String? language}) async {
     if (language != null) _language = language;
     loading = true;
+    catalogLoading = true;
     error = null;
     sourceErrors.clear();
+    catalogSource = null;
+    catalogRefreshing = false;
+    catalogIndex = 0;
+    catalogTotal = 0;
     notifyListeners();
     try {
       if (!supported) {
@@ -190,13 +207,6 @@ class LinuxStore extends ChangeNotifier {
       }
       // The cached catalog and the installed state do not wait for each other or for the
       // Linux service's settings: Android-mode Linux answers slowly while it starts.
-      final aptCatalog = StoreCatalog.load(
-        source,
-        language: _language,
-        refresh: refresh,
-      );
-      // Awaited below when APT is enabled; never an unhandled error otherwise.
-      unawaited(aptCatalog.then((_) {}, onError: (_) {}));
       final state = loadState();
       final settings = _channel
           .invokeMapMethod<Object?, Object?>('settings')
@@ -207,36 +217,46 @@ class LinuxStore extends ChangeNotifier {
       sources =
           ((await _channel.invokeMapMethod<String, bool>('storeSources')) ??
           const {'apt': true});
-      final loaded = <StoreApp>[];
-      void publishCatalog() {
-        apps = List.of(loaded);
-        LinuxInstallations.instance.remember(container.id, source, apps);
-        if (apps.isNotEmpty) loading = false;
+      final ready = (await state)?['ready'] as Map?;
+      unprepared = [
+        if (ready != null)
+          for (final name in ['deb-get', 'flathub'])
+            if (sources[name] == true && ready[name] != true) name,
+      ];
+      final catalogSources = [
+        for (final name in ['apt', 'deb-get', 'flathub'])
+          if (sources[name] == true && !unprepared.contains(name)) name,
+      ];
+      catalogTotal = catalogSources.length;
+      void catalogStatus(String name, StoreCatalogProgress progress) {
+        catalogSource = name;
+        catalogIndex = catalogSources.indexOf(name) + 1;
+        catalogRefreshing = progress.refreshing;
         notifyListeners();
       }
 
+      notifyListeners();
+      final loaded = <StoreApp>[];
       if (sources['apt'] == true) {
         try {
-          loaded.addAll(await aptCatalog);
+          loaded.addAll(
+            await StoreCatalog.load(
+              source,
+              language: _language,
+              refresh: refresh,
+              onProgress: (progress) => catalogStatus('apt', progress),
+            ),
+          );
         } catch (e) {
           sourceErrors.add('APT: $e');
         }
-        publishCatalog();
-      }
-      unprepared = [];
-      if (sources['deb-get'] == true || sources['flathub'] == true) {
-        // Without the state (an older Linux service) the sources are tried as they are.
-        final ready = (await state)?['ready'] as Map?;
-        unprepared = [
-          if (ready != null)
-            for (final name in ['deb-get', 'flathub'])
-              if (sources[name] == true && ready[name] != true) name,
-        ];
       }
       await settings;
       for (final name in ['deb-get', 'flathub']) {
         // Sources not set up in this container are offered on the setup screen instead.
-        if (sources[name] != true || unprepared.contains(name)) continue;
+        if (sources[name] != true || unprepared.contains(name)) {
+          continue;
+        }
         try {
           loaded.addAll(
             await _catalogCache.load(
@@ -247,7 +267,12 @@ class LinuxStore extends ChangeNotifier {
                 while (true) {
                   final page = await _channel.invokeMapMethod<Object?, Object?>(
                     'storeSourceCatalog',
-                    {'id': container.id, 'source': name, 'offset': offset},
+                    {
+                      'id': container.id,
+                      'source': name,
+                      'offset': offset,
+                      'refresh': refresh,
+                    },
                   );
                   final batch = (page?['apps'] as List? ?? const [])
                       .map(
@@ -257,6 +282,14 @@ class LinuxStore extends ChangeNotifier {
                       )
                       .toList();
                   snapshot.addAll(batch);
+                  catalogStatus(
+                    name,
+                    StoreCatalogProgress(
+                      page?['refreshing'] == true,
+                      snapshot.length,
+                      (page?['total'] as num?)?.toInt(),
+                    ),
+                  );
                   if (page == null) throw StateError('Missing catalog page');
                   if (page['more'] != true) break;
                   if (batch.isEmpty) throw StateError('Incomplete catalog');
@@ -265,25 +298,27 @@ class LinuxStore extends ChangeNotifier {
                 return snapshot;
               },
               refresh: refresh,
+              onProgress: (progress) => catalogStatus(name, progress),
             ),
           );
         } catch (e) {
           sourceErrors.add('$name: $e');
         }
-        publishCatalog();
       }
       apps = loaded;
+      catalogSource = null;
+      catalogIndex = catalogTotal;
       LinuxInstallations.instance.remember(container.id, source, apps);
       if (loaded.isEmpty && sourceErrors.isNotEmpty) {
         error = sourceErrors.join('\n');
       }
-      loading = false;
       notifyListeners();
       await refreshPackages(refresh: refresh);
     } catch (e) {
       error = '$e';
     }
     loading = false;
+    catalogLoading = false;
     notifyListeners();
   }
 
@@ -392,7 +427,10 @@ class LinuxStore extends ChangeNotifier {
     jobs['$windowsJobPrefix$id'] = StoreJob(action, '');
     _queueInstallations(action, ['$windowsJobPrefix$id']);
     notifyListeners();
-    _poll ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollJobs());
+    _poll ??= Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _pollJobs(),
+    );
     return true;
   }
 
@@ -524,7 +562,10 @@ class LinuxStore extends ChangeNotifier {
         }
       }
       notifyListeners();
-      _poll ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollJobs());
+      _poll ??= Timer.periodic(
+        const Duration(milliseconds: 500),
+        (_) => _pollJobs(),
+      );
       return ok;
     }
     if (packages.isEmpty && action == 'upgrade') {
@@ -553,7 +594,10 @@ class LinuxStore extends ChangeNotifier {
     _queueInstallations(action, packages);
     if (packages.isEmpty) jobs['*'] = StoreJob(action, '');
     notifyListeners();
-    _poll ??= Timer.periodic(const Duration(seconds: 2), (_) => _pollJobs());
+    _poll ??= Timer.periodic(
+      const Duration(milliseconds: 500),
+      (_) => _pollJobs(),
+    );
     return true;
   }
 
@@ -583,45 +627,54 @@ class LinuxStore extends ChangeNotifier {
   onFinished;
 
   Future<void> _pollJobs() async {
-    final list =
-        await _channel.invokeListMethod<Object?>('storeJobs', {
-          'id': container.id,
-        }) ??
-        const [];
-    var finished = false;
-    for (final item in list.cast<Map<Object?, Object?>>()) {
-      final packages = ((item['packages'] as List?) ?? const []).cast<String>();
-      final keys = packages.isEmpty ? const ['*'] : packages;
-      final state = item['state'] as String? ?? 'failed';
-      final action = item['action'] as String? ?? 'install';
-      if (state == 'running' || state == 'queued') {
-        for (final key in keys) {
-          jobs[key] = StoreJob(
+    if (_pollingJobs) return;
+    _pollingJobs = true;
+    try {
+      final list =
+          await _channel.invokeListMethod<Object?>('storeJobs', {
+            'id': container.id,
+          }) ??
+          const [];
+      var finished = false;
+      for (final item in list.cast<Map<Object?, Object?>>()) {
+        final packages = ((item['packages'] as List?) ?? const [])
+            .cast<String>();
+        final keys = packages.isEmpty ? const ['*'] : packages;
+        final state = item['state'] as String? ?? 'failed';
+        final action = item['action'] as String? ?? 'install';
+        if (state == 'running' || state == 'queued') {
+          for (final key in keys) {
+            jobs[key] = StoreJob(
+              action,
+              item['line'] as String? ?? '',
+              (item['percent'] as num?)?.toDouble() ?? -1,
+              state == 'queued',
+              item['phase'] as String? ?? '',
+              item['estimating'] == true,
+            );
+          }
+        } else if (state == 'cancelled') {
+          keys.forEach(jobs.remove);
+        } else {
+          keys.forEach(jobs.remove);
+          finished = true;
+          onFinished?.call(
             action,
-            item['line'] as String? ?? '',
-            (item['percent'] as num?)?.toInt() ?? -1,
-            state == 'queued',
+            packages,
+            state == 'done',
+            item['output'] as String? ?? '',
           );
         }
-      } else if (state == 'cancelled') {
-        keys.forEach(jobs.remove);
-      } else {
-        keys.forEach(jobs.remove);
-        finished = true;
-        onFinished?.call(
-          action,
-          packages,
-          state == 'done',
-          item['output'] as String? ?? '',
-        );
       }
+      if (jobs.isEmpty) {
+        _poll?.cancel();
+        _poll = null;
+      }
+      if (finished) await refreshPackages();
+      notifyListeners();
+    } finally {
+      _pollingJobs = false;
     }
-    if (jobs.isEmpty) {
-      _poll?.cancel();
-      _poll = null;
-    }
-    if (finished) await refreshPackages();
-    notifyListeners();
   }
 
   @override
@@ -742,7 +795,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                                     [index + 1],
                                   )
                                 else if (entry.value.percent >= 0)
-                                  '${entry.value.percent}%',
+                                  entry.value.percentLabel,
                                 if (!entry.value.queued &&
                                     entry.value.line.isNotEmpty)
                                   entry.value.line,
@@ -923,6 +976,16 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
       listenable: store,
       builder: (context, _) {
         final scheme = Theme.of(context).colorScheme;
+        if (store.loading) {
+          return Scaffold(
+            backgroundColor: scheme.surface,
+            appBar: M3EAppBar.top(
+              automaticallyImplyLeading: true,
+              titleText: 'Store',
+            ),
+            body: Center(child: _catalogProgress()),
+          );
+        }
         final updates = store.apps
             .where((a) => store.upgradable.contains(a.package))
             .toList();
@@ -1266,24 +1329,44 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
     );
   }
 
-  Widget _body(List<StoreApp> updates) {
+  Widget _body(List<StoreApp> updates) => _catalogBody(updates);
+
+  Widget _catalogProgress() {
     String t(String ja, String en) => linuxText(context, ja, en);
-    if (store.unprepared.isNotEmpty && !store.setupSkipped) return _setup();
-    if (store.loading && store.apps.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const M3ELoadingIndicator(
-              variant: M3ELoadingIndicatorVariant.contained,
-              size: 72,
-            ),
-            const SizedBox(height: 16),
-            Text(t('カタログを読み込んでいます', 'Loading the catalog')),
-          ],
+    final name = switch (store.catalogSource) {
+      'flathub' => 'Flathub',
+      final String name => name,
+      _ => '',
+    };
+    final status = name.isEmpty
+        ? t('ストアを準備しています', 'Preparing the Store')
+        : store.catalogRefreshing
+        ? t('$nameを更新しています', 'Updating $name')
+        : t('$nameを読み込んでいます', 'Loading $name');
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const M3ELoadingIndicator(
+          variant: M3ELoadingIndicatorVariant.contained,
+          size: 72,
         ),
-      );
-    }
+        const SizedBox(height: 16),
+        Text(status, textAlign: TextAlign.center),
+        if (store.catalogTotal > 0) ...[
+          const SizedBox(height: 4),
+          Text(
+            '${store.catalogIndex}/${store.catalogTotal}',
+            textAlign: TextAlign.center,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _catalogBody(List<StoreApp> updates) {
+    String t(String ja, String en) => linuxText(context, ja, en);
+    if (store.loading) return Center(child: _catalogProgress());
+    if (store.unprepared.isNotEmpty && !store.setupSkipped) return _setup();
     if (store.error != null && store.apps.isEmpty) {
       return _Empty(icon: M3EIcons.error_outline_rounded, text: store.error!);
     }
@@ -2054,13 +2137,23 @@ class _Progress extends StatelessWidget {
   Widget build(BuildContext context) {
     String t(String ja, String en) => linuxText(context, ja, en);
     final theme = Theme.of(context);
-    final line = job.line.isNotEmpty
+    final phase = switch (job.phase) {
+      'download' => t('ダウンロード', 'Downloading'),
+      'install' => t('パッケージ処理', 'Installing packages'),
+      'remove' => t('削除処理', 'Removing packages'),
+      'update' => t('リスト更新', 'Updating lists'),
+      'resolve' => t('依存関係の確認', 'Resolving dependencies'),
+      'flatpak' => 'Flatpak',
+      _ => '',
+    };
+    final detail = job.line.isNotEmpty
         ? job.line
         : switch (job.action) {
             'remove' => t('アンインストールしています', 'Uninstalling'),
             'upgrade' => t('アップデートしています', 'Updating'),
             _ => t('インストールしています', 'Installing'),
           };
+    final line = phase.isEmpty ? detail : '$phase · $detail';
     // The pill takes the place of the button it replaced.
     return Container(
       width: double.infinity,
@@ -2086,7 +2179,7 @@ class _Progress extends StatelessWidget {
                   child: Text(
                     line,
                     key: ValueKey(line),
-                    maxLines: 1,
+                    maxLines: 2,
                     overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.bodyMedium?.copyWith(
                       color: theme.colorScheme.onSecondaryContainer,
@@ -2096,7 +2189,7 @@ class _Progress extends StatelessWidget {
               ),
               const SizedBox(width: 12),
               Text(
-                '${job.percent < 0 ? 0 : job.percent}%',
+                job.percentLabel,
                 style: theme.textTheme.titleSmall?.copyWith(
                   color: theme.colorScheme.primary,
                   fontFeatures: const [FontFeature.tabularFigures()],
@@ -2107,7 +2200,7 @@ class _Progress extends StatelessWidget {
           const SizedBox(height: 10),
           TweenAnimationBuilder<double>(
             tween: Tween(end: job.value),
-            duration: const Duration(milliseconds: 500),
+            duration: const Duration(milliseconds: 180),
             curve: Curves.easeOutCubic,
             builder: (context, v, _) => M3EProgressIndicator.linearWavy(
               strokeWidth: 3,
@@ -2115,7 +2208,7 @@ class _Progress extends StatelessWidget {
               trackColor: theme.colorScheme.onSecondaryContainer.withValues(
                 alpha: .18,
               ),
-              value: v,
+              value: job.percent < 0 ? null : v,
             ),
           ),
         ],

@@ -126,13 +126,16 @@ class DisplayTopologyController(private val context: Context) {
     }
 
     fun read(): Map<String, Any> = runCatching {
-        val topology = readTopology()
-            ?: return mapOf("supported" to true, "displays" to emptyList<Map<String, Any>>())
+        val topology = runCatching { readTopology() }.getOrNull()
+            ?: return connectedDisplayLayout()
         val manager = context.getSystemService(DisplayManager::class.java)
         val bounds = linkedMapOf<Int, RectF>()
         topology.root?.collectBounds(0f, 0f, bounds)
+        if (bounds.isEmpty() || ExternalDisplayDetector(context).snapshot().displayIds.any { it !in bounds }) {
+            return connectedDisplayLayout()
+        }
         val displays = bounds
-            .filterKeys { it != android.view.Display.DEFAULT_DISPLAY }
+            .filterKeys { it != android.view.Display.DEFAULT_DISPLAY || MirrorService.topologyOverlayDisplayId() < 0 }
             .mapNotNull { (id, rect) ->
             // A topology snapshot can outlive an overlay display while the
             // framework is processing its removal. Do not expose those dead
@@ -176,18 +179,31 @@ class DisplayTopologyController(private val context: Context) {
         )
     }.getOrElse {
         android.util.Log.e("DextopTopology", "topology read failed", it)
-        linkedMapOf(
-            "supported" to false,
-            "reason" to (it.cause?.message ?: it.message ?: "Display topology is unavailable"),
-            "displays" to emptyList<Map<String, Any>>()
-        )
+        connectedDisplayLayout()
+    }
+
+    /** Physical display discovery does not depend on an active desktop or topology binder. */
+    private fun connectedDisplayLayout(): Map<String, Any> {
+        val manager = context.getSystemService(DisplayManager::class.java)
+        val ids = listOf(android.view.Display.DEFAULT_DISPLAY) + ExternalDisplayDetector(context).snapshot().displayIds
+        var x = 0.0
+        val displays = ids.distinct().mapNotNull { id ->
+            manager.getDisplay(id)?.let { display ->
+                displayInfo(display, false, id == android.view.Display.DEFAULT_DISPLAY).toMutableMap().apply {
+                    this["x"] = x
+                    x += (this["widthDp"] as Number).toDouble()
+                }
+            }
+        }
+        return mapOf("supported" to true, "displays" to displays,
+            "primaryDisplayId" to android.view.Display.DEFAULT_DISPLAY)
     }
 
     /** Displays for the resolution picker.  Unlike topology this remains
      * available before a Dextop session has created its overlay. */
     fun availableDisplays(): Map<String, Any> = runCatching {
         val manager = context.getSystemService(DisplayManager::class.java)
-        val topology = readTopology()
+        val topology = runCatching { readTopology() }.getOrNull()
         val bounds = linkedMapOf<Int, RectF>()
         topology?.root?.collectBounds(0f, 0f, bounds)
         val topologyIds = bounds.keys
@@ -250,7 +266,22 @@ class DisplayTopologyController(private val context: Context) {
     fun rearrange(rawPositions: Map<*, *>): Map<String, Any> {
         check(isSupported()) { "Display topology is unavailable on this framework" }
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
-        val current = readTopology() ?: error("No display topology is active")
+        val current = readTopology() ?: run {
+            val manager = context.getSystemService(DisplayManager::class.java)
+            val ids = listOf(android.view.Display.DEFAULT_DISPLAY) + ExternalDisplayDetector(context).snapshot().displayIds
+            val nodes = ids.distinct().mapNotNull { id ->
+                manager.getDisplay(id)?.let { display ->
+                    val metrics = android.util.DisplayMetrics()
+                    @Suppress("DEPRECATION")
+                    display.getRealMetrics(metrics)
+                    Node(id, metrics.widthPixels, metrics.heightPixels,
+                        metrics.densityDpi.coerceAtLeast(1), POSITION_RIGHT, 0f, mutableListOf())
+                }
+            }
+            val root = nodes.firstOrNull() ?: error("No displays are present")
+            root.children.addAll(nodes.drop(1))
+            Topology(root, root.displayId)
+        }
         val positions = linkedMapOf<Int, PointF>()
         val currentBounds = linkedMapOf<Int, RectF>()
         current.root?.collectBounds(0f, 0f, currentBounds)
@@ -342,8 +373,7 @@ class DisplayTopologyController(private val context: Context) {
             mode.physicalWidth.toString(),
             mode.physicalHeight.toString(),
             mode.refreshRate.toString(),
-            displayId.toString(),
-            "true"
+            displayId.toString()
         )
         check(result.succeeded) {
             result.error.ifBlank { result.output.ifBlank { "The display mode could not be applied" } }
@@ -352,15 +382,18 @@ class DisplayTopologyController(private val context: Context) {
         // retaining the old physical HDMI mode.  Treat that as a failed
         // request instead of presenting an internal scaling change as an
         // output-resolution change in the UI.
-        Thread.sleep(250)
-        val applied = context.getSystemService(DisplayManager::class.java)
-            .getDisplay(displayId)
-            ?.mode
-        check(applied != null &&
-            applied.physicalWidth == mode.physicalWidth &&
-            applied.physicalHeight == mode.physicalHeight &&
-            kotlin.math.abs(applied.refreshRate - mode.refreshRate) < .1f
-        ) { "The connected display kept its current output mode" }
+        val deadline = android.os.SystemClock.uptimeMillis() + 3_000
+        var applied = false
+        while (android.os.SystemClock.uptimeMillis() < deadline) {
+            val active = context.getSystemService(DisplayManager::class.java).getDisplay(displayId)?.mode
+                ?: error("The selected display is no longer connected")
+            applied = active.physicalWidth == mode.physicalWidth &&
+                active.physicalHeight == mode.physicalHeight &&
+                kotlin.math.abs(active.refreshRate - mode.refreshRate) < .1f
+            if (applied) break
+            Thread.sleep(100)
+        }
+        check(applied) { "Android saved the requested mode, but the connected display did not switch its output mode" }
         OperationLog.i(
             context,
             "DisplayTopology",

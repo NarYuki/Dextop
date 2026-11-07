@@ -166,6 +166,7 @@ internal abstract class CompositedWindowShell(
             .getMethod("injectInputEvent", InputEvent::class.java, Int::class.javaPrimitiveType)
     }
     private val setEventDisplay by lazy { InputEvent::class.java.getMethod("setDisplayId", Int::class.javaPrimitiveType) }
+    private val getEventDisplay by lazy { InputEvent::class.java.getMethod("getDisplayId") }
     private val windowService by lazy { host.privilegedService("window", "android.view.IWindowManager") }
 
     private var width = displayWidth
@@ -777,6 +778,7 @@ internal abstract class CompositedWindowShell(
         layer.show(root, Rect(0, 0, width, height), focusable = shellFocusable, title = shellTitle)
         if (autoMode) root.setBackgroundColor(AutoColors(palette).background) else wallpaper.refresh()
         layoutPanel()
+        bookUi?.place(primaryOutput())
         syncLinuxDisplays(force = true)
         if (autoMode) { handler.post { layoutAutoWorkspace() }; return }
         windows.forEach { window ->
@@ -2081,8 +2083,10 @@ internal abstract class CompositedWindowShell(
                     window.linuxMoveResize = -1
                 } else if (direction in 0..8) {
                     window.linuxMoveResize = direction
-                    val x = event.optInt("x").toFloat()
-                    val y = event.optInt("y").toFloat()
+                    // X11 root coordinates do not share Android's origin or scale.
+                    // Continue the same host pointer stream that delivered the press.
+                    val x = window.linuxPressPosition?.x ?: event.optInt("x").toFloat()
+                    val y = window.linuxPressPosition?.y ?: event.optInt("y").toFloat()
                     if (direction == 8) beginMove(window, x, y) else beginResize(window,
                         arrayOf(V2Edge.TOP_LEFT, V2Edge.TOP, V2Edge.TOP_RIGHT, V2Edge.RIGHT,
                             V2Edge.BOTTOM_RIGHT, V2Edge.BOTTOM, V2Edge.BOTTOM_LEFT, V2Edge.LEFT)[direction], x, y)
@@ -2235,7 +2239,7 @@ internal abstract class CompositedWindowShell(
             window.view.refreshLinuxViewport()
         }
         if (window.linuxFullscreen) return
-        if (resizing === window || moving === window) return
+        if (resizing === window || moving === window || bookFrameAnimators.containsKey(window.id)) return
         if (window.maximized || window.tile != TileZone.NONE) {
             if (bounds.width() != window.clientWidth() || bounds.height() != window.clientHeight(titleHeight)) syncLinuxWindow(window)
             return
@@ -2542,6 +2546,10 @@ internal abstract class CompositedWindowShell(
     }
 
     private fun forwardLinuxInput(window: V2Window, event: MotionEvent, source: View) {
+        if (event.actionMasked == MotionEvent.ACTION_DOWN ||
+            event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS && event.actionButton == MotionEvent.BUTTON_PRIMARY) {
+            window.linuxPressPosition = android.graphics.PointF(event.rawX, event.rawY)
+        }
         val id = window.linuxContainer ?: return
         val linux = LinuxContainerClient.service() ?: return
         if (event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
@@ -2697,6 +2705,11 @@ internal abstract class CompositedWindowShell(
             }
         }
     }
+
+    /** Deck keys can target the editor's display without first focusing the desktop. */
+    fun hostKeyboardDisplayId(): Int = windows.firstOrNull {
+        it.id == activeId && !it.minimized && !it.closing
+    }?.displayId?.takeIf { it >= 0 } ?: displayId
 
     override fun forwardInput(window: V2Window, event: MotionEvent, source: View) {
         if (window.linuxContainer != null) {
@@ -3089,6 +3102,9 @@ internal abstract class CompositedWindowShell(
         resizeStart.set(rawX, rawY)
         window.maximized = false
         window.tile = TileZone.NONE
+        window.restoreFrame = null
+        window.view.titleBar.invalidate()
+        syncLinuxWindowState(window)
     }
 
     override fun resize(window: V2Window, rawX: Float, rawY: Float) {
@@ -3378,8 +3394,14 @@ internal abstract class CompositedWindowShell(
         overviewActive = true
         updateShellFocus()
         overviewTargets.clear()
-        val top = dp(170).toFloat()
-        val area = RectF(dp(48).toFloat(), top, width - dp(48).toFloat(), height - dp(70).toFloat())
+        val output = currentOutput()
+        overviewChrome.layoutParams = FrameLayout.LayoutParams(output.width(), output.height()).apply {
+            leftMargin = output.left
+            topMargin = output.top
+        }
+        val top = output.top + dp(170).toFloat()
+        val area = RectF(output.left + dp(48).toFloat(), top,
+            output.right - dp(48).toFloat(), output.bottom - dp(70).toFloat())
         if (shown.isNotEmpty()) {
             val columns = ceil(sqrt(shown.size * area.width() / area.height().toDouble())).toInt().coerceIn(1, shown.size)
             val rows = ceil(shown.size / columns.toDouble()).toInt()
@@ -3463,7 +3485,9 @@ internal abstract class CompositedWindowShell(
         val catcher = object : View(displayContext) {}
         catcher.setOnTouchListener { _, event ->
             if (event.actionMasked == MotionEvent.ACTION_UP) {
-                val hit = windows.firstOrNull { overviewTargets[it.id]?.contains(event.x, event.y) == true }
+                val hit = windows.firstOrNull {
+                    overviewTargets[it.id]?.contains(event.x + overviewChrome.left, event.y + overviewChrome.top) == true
+                }
                 if (hit != null) exitOverview { activate(hit) }
                 else if (event.y > dp(170)) exitOverview(null)
             }
@@ -4598,6 +4622,9 @@ internal abstract class CompositedWindowShell(
         }
         val target = windows.firstOrNull { it.id == activeId && !it.minimized }?.displayId ?: return false
         if (target < 0) return false
+        // Keys already addressed to the active application must reach its IME
+        // unchanged; reinjecting them duplicates input and can move display focus.
+        if (runCatching { getEventDisplay.invoke(event) as Int }.getOrNull() == target) return false
         injectKey(event, target)
         return true
     }

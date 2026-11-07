@@ -90,13 +90,17 @@ Java_moe_n4tsu_dextop_linux_LinuxFrameBridge_nativeBlit(
     auto *base = static_cast<uint8_t *>(env->GetDirectBufferAddress(buffer));
     const jlong capacity = env->GetDirectBufferCapacity(buffer);
     if (target == nullptr || base == nullptr) return JNI_FALSE;
+    if (offset < 0 || fbWidth <= 0 || fbHeight <= 0 || stride <= 0 ||
+        static_cast<jlong>(stride) < static_cast<jlong>(fbWidth) * 4 ||
+        capacity < 0 || static_cast<jlong>(offset) + static_cast<jlong>(stride) * fbHeight > capacity ||
+        target->width <= 0 || target->height <= 0) return JNI_FALSE;
 
     const int32_t width = std::min(target->width, fbWidth);
     const int32_t height = std::min(target->height, fbHeight);
     const int32_t left = std::clamp(x, 0, width);
     const int32_t top = std::clamp(y, 0, height);
-    const int32_t right = std::clamp(x + w, left, width);
-    const int32_t bottom = std::clamp(y + h, top, height);
+    const int32_t right = std::clamp<jlong>(static_cast<jlong>(x) + w, left, width);
+    const int32_t bottom = std::clamp<jlong>(static_cast<jlong>(y) + h, top, height);
     if (right <= left || bottom <= top) return JNI_TRUE;
     if (offset + static_cast<jlong>(bottom) * stride > capacity) return JNI_FALSE;
 
