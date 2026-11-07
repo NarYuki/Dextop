@@ -625,7 +625,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                   : providerText(l.setupConfigureShizuku)),
           complete: useMobileData || shizukuSetupConfirmed,
         ),
-        if (usesEmbeddedProvider && !shizukuSetupConfirmed) ...[
+        if (usesEmbeddedProvider && !shizukuSetupConfirmed && !useMobileData) ...[
           const SizedBox(height: 12),
           Card.filled(
             child: Padding(
