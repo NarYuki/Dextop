@@ -63,11 +63,11 @@ jobs:
 
     # Build APK with mobile data support
     - name: Build APK
-      run: flutter build apk --release
+      run: flutter build apk --debug
 
     # Build split APKs for different architectures (optional but recommended)
     - name: Build split APKs
-      run: flutter build apk --release --split-per-abi
+      run: flutter build apk --debug --split-per-abi
 
     # Upload main APK as artifact
     - name: Upload APK artifact
