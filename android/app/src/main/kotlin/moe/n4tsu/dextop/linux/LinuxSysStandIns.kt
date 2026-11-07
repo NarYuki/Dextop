@@ -92,8 +92,16 @@ internal object LinuxSysStandIns {
     }
 
     private fun writeNet() {
-        val all = interfaces()
-        val root = net.apply { mkdirs() }
+        writeNetwork(net, interfaces()).forEach { (directory, error) ->
+            android.util.Log.w("DextopSysStandIns", "Cannot remove stale network interface ${directory.name}; keeping current counters", error)
+        }
+    }
+
+    /** Cleanup is optional: current counters must remain usable when an old interface disappears. */
+    @Synchronized
+    internal fun writeNetwork(root: File, all: Map<String, List<String>>,
+                              removeStale: (File) -> Unit = LinuxRootfsArchive::deleteTree): List<Pair<File, Throwable>> {
+        root.mkdirs()
         all.forEach { (name, values) ->
             val dir = File(root, name)
             val statistics = File(dir, "statistics").apply { mkdirs() }
@@ -107,7 +115,9 @@ internal object LinuxSysStandIns {
                 replace(File(dir, "flags"), "0x1003\n")
             }
         }
-        root.listFiles().orEmpty().filter { it.isDirectory && it.name !in all }.forEach { LinuxRootfsArchive.deleteTree(it) }
+        return root.listFiles().orEmpty().filter { it.isDirectory && it.name !in all }.mapNotNull { directory ->
+            runCatching { removeStale(directory) }.exceptionOrNull()?.let { directory to it }
+        }
     }
     // endregion
 
@@ -175,8 +185,12 @@ internal object LinuxSysStandIns {
     private fun replace(file: File, text: String) {
         if (file.isFile && file.length() == text.toByteArray().size.toLong() && file.readText() == text) return
         val staged = File(file.parentFile, ".${file.name}.staged")
-        staged.writeText(text)
-        staged.setReadable(true, false)
-        if (!staged.renameTo(file)) staged.delete()
+        try {
+            staged.writeText(text)
+            staged.setReadable(true, false)
+            java.nio.file.Files.move(staged.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } finally {
+            staged.delete()
+        }
     }
 }

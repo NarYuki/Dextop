@@ -50,7 +50,7 @@ internal object LinuxGpuProbe {
             rm -f /tmp/.X${'$'}D-lock /tmp/.X11-unix/X${'$'}D
             mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
             XROOT=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
-            ${LinuxCatalog.X_SERVER_ENV} ${'$'}XROOT Xvfb :${'$'}D -nolock -screen 0 ${WIDTH}x${HEIGHT}x24 -nolisten tcp -ac >/tmp/dextop-gpu-probe.log 2>&1 &
+            ${LinuxCatalog.X_SERVER_ENV} ${'$'}XROOT Xvfb :${'$'}D -nolock -screen 0 ${WIDTH}x${HEIGHT}x24 -nolisten tcp -auth ${LinuxXAuth.GUEST} >/tmp/dextop-gpu-probe.log 2>&1 &
             XPID=${'$'}!
             trap 'kill ${'$'}XPID 2>/dev/null' EXIT HUP INT TERM
             i=0

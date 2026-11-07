@@ -21,7 +21,7 @@ extension _SettingsContent on _HomeScreenState {
                   Icons.display_settings_outlined,
                   l.display,
                   currentLocalizations().uiSecureDisplayFoldable,
-                  () => _openDisplaySettings(l),
+                  _unlessLinuxOnly(() => _openDisplaySettings(l)),
                 ),
                 Divider(height: 1),
                 if (carCompanionInstalled) ...[
@@ -29,9 +29,11 @@ extension _SettingsContent on _HomeScreenState {
                     Icons.directions_car_outlined,
                     l.autoSettingsTitle,
                     l.autoSettingsDescription,
-                    () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => const AutoSettingsPage(),
+                    _unlessLinuxOnly(
+                      () => Navigator.of(context).push(
+                        MaterialPageRoute<void>(
+                          builder: (_) => const AutoSettingsPage(),
+                        ),
                       ),
                     ),
                   ),
@@ -41,16 +43,18 @@ extension _SettingsContent on _HomeScreenState {
                   Icons.mouse_outlined,
                   l.mouseSettingsTitle,
                   l.mouseSettingsDescription,
-                  () => _openMouseSettings(l),
+                  _unlessLinuxOnly(() => _openMouseSettings(l)),
                 ),
                 Divider(height: 1),
                 _categoryTile(
                   Icons.keyboard_alt_outlined,
                   l.keyboardSettingsTitle,
                   l.keyboardSettingsDescription,
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => KeyboardSettingsPage(isRunning: active),
+                  _unlessLinuxOnly(
+                    () => Navigator.of(context).push(
+                      MaterialPageRoute<void>(
+                        builder: (_) => KeyboardSettingsPage(isRunning: active),
+                      ),
                     ),
                   ),
                 ),
@@ -59,21 +63,23 @@ extension _SettingsContent on _HomeScreenState {
                   Icons.apps_outlined,
                   currentLocalizations().uiAppLauncherSettings,
                   currentLocalizations().uiManageLaunchedAppsAndConfigurations,
-                  () => _openFeatureCategory('apps', launcherOnly: true),
+                  _unlessLinuxOnly(
+                    () => _openFeatureCategory('apps', launcherOnly: true),
+                  ),
                 ),
                 Divider(height: 1),
                 _categoryTile(
                   Icons.gesture_rounded,
                   currentLocalizations().uiInputAndGestures,
                   currentLocalizations().uiTapPressAndHoldMultiFingerOperation,
-                  () => _openFeatureCategory('interaction'),
+                  _unlessLinuxOnly(() => _openFeatureCategory('interaction')),
                 ),
                 Divider(height: 1),
                 _categoryTile(
                   Icons.monitor_heart_outlined,
                   currentLocalizations().uiConditionAndDiagnosis,
                   currentLocalizations().uiPerformanceCompatibility,
-                  () => _openFeatureCategory('status'),
+                  _unlessLinuxOnly(() => _openFeatureCategory('status')),
                 ),
                 Divider(height: 1),
                 _categoryTile(
@@ -81,7 +87,7 @@ extension _SettingsContent on _HomeScreenState {
                   currentLocalizations().uiTerminalAndPermissions,
                   currentLocalizations()
                       .uiDeviceInformationDesktopModeAccessibility,
-                  () => _openDeviceSettings(l),
+                  _unlessLinuxOnly(() => _openDeviceSettings(l)),
                 ),
                 Divider(height: 1),
                 _categoryTile(
@@ -247,7 +253,7 @@ extension _SettingsContent on _HomeScreenState {
                                 borderRadius: BorderRadius.circular(14),
                               ),
                               leading: Icon(item.$2),
-                              enabled: true,
+                              enabled: !widget.linuxOnly || item.$1 == 'about',
                               title: Text(
                                 item.$3,
                                 style: const TextStyle(fontSize: 15),
@@ -384,6 +390,7 @@ extension _SettingsContent on _HomeScreenState {
               isRunning: active,
               embedded: true,
               category: 'interaction',
+              onAddHomeShortcut: addHomeScreenShortcut,
             ),
           ],
         ),
@@ -426,6 +433,10 @@ extension _SettingsContent on _HomeScreenState {
         ),
       };
 
+  /// Settings that need Dextop's setup are unavailable while only Linux is set up.
+  VoidCallback? _unlessLinuxOnly(VoidCallback action) =>
+      widget.linuxOnly ? null : action;
+
   Widget _categoryTile(
     IconData icon,
     String title,
@@ -464,6 +475,7 @@ extension _SettingsContent on _HomeScreenState {
           category: category,
           launcherOnly: launcherOnly,
           ensureDesktopRunning: ensureDesktopRunning,
+          onAddHomeShortcut: addHomeScreenShortcut,
         ),
       ),
     );
@@ -533,11 +545,17 @@ extension _SettingsContent on _HomeScreenState {
                 ListTile(
                   leading: const Icon(Icons.palette_outlined),
                   title: const Text('Dextop Book'),
-                  subtitle: Text(l.plasmaSettingsSummary),
+                  subtitle: Text(
+                    localText(
+                      context,
+                      '外観・タスクバー・スタートメニュー',
+                      'Appearance, taskbar and Start menu',
+                    ),
+                  ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).push(
                     MaterialPageRoute<void>(
-                      builder: (_) => PlasmaSettingsPage(bridge: bridge),
+                      builder: (_) => BookSettingsPage(bridge: bridge),
                     ),
                   ),
                 ),

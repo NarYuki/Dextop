@@ -1,340 +1,284 @@
 part of 'main.dart';
 
-/// Appearance and behaviour of Dextop's own window manager (Dextop Plasma).
-///
-/// Every value is stored in SharedPreferences under a `plasma_` key that the
-/// native shell reads; changes are pushed to a running desktop immediately.
-class PlasmaSettingsPage extends StatefulWidget {
-  const PlasmaSettingsPage({required this.bridge, super.key});
-
+/// Book appearance settings. Book flags share the native desktop's store.
+class BookSettingsPage extends StatefulWidget {
+  const BookSettingsPage({required this.bridge, super.key});
   final NativeBridge bridge;
-
   @override
-  State<PlasmaSettingsPage> createState() => _PlasmaSettingsPageState();
+  State<BookSettingsPage> createState() => _BookSettingsPageState();
 }
 
-class _PlasmaSettingsPageState extends State<PlasmaSettingsPage> {
-  static const _accents = <int>[
-    0xFF3DAEE9,
-    0xFF9B59B6,
-    0xFFE93A9A,
-    0xFFE93D58,
-    0xFFE9643A,
-    0xFFEF973C,
-    0xFFE8CB2D,
-    0xFFB6E521,
-    0xFF3DD425,
-    0xFF00D485,
-    0xFF00D3B8,
-    0xFF7F8C8D,
-  ];
-
+class _BookSettingsPageState extends State<BookSettingsPage> {
   SharedPreferences? prefs;
-  var colorScheme = 'dark';
-  var accent = _accents.first;
-  var wallpaper = 'plasma';
-  var floatingPanel = true;
-  var desktops = 4;
-  var animationSpeed = 1.0;
-  var hotCorner = true;
-  var trayNetworkType = true;
-  var trayBatteryPercent = true;
+  Map<String, dynamic> book = {};
+  String? error;
+  String theme = 'dark';
+  String wallpaper = 'plasma';
+  int desktops = 4;
+  double speed = 1;
+  bool battery = true;
+  bool hotCorner = true;
+  String t(String ja, String en) => localText(context, ja, en);
 
   @override
   void initState() {
     super.initState();
-    AppAnalytics.screen('plasma_settings');
-    _load();
+    load();
   }
 
-  Future<void> _load() async {
-    final store = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      prefs = store;
-      colorScheme = store.getString('plasma_color_scheme') ?? 'dark';
-      accent = store.getInt('plasma_accent_color') ?? _accents.first;
-      wallpaper = store.getString('plasma_wallpaper') ?? 'plasma';
-      floatingPanel = store.getBool('plasma_floating_panel') ?? true;
-      desktops = (store.getInt('plasma_virtual_desktops') ?? 4).clamp(1, 6);
-      animationSpeed = (store.getDouble('plasma_animation_speed') ?? 1.0).clamp(
-        0.0,
-        2.0,
-      );
-      hotCorner = store.getBool('plasma_hot_corner') ?? true;
-      trayNetworkType = store.getBool('plasma_tray_network_type') ?? true;
-      trayBatteryPercent = store.getBool('plasma_tray_battery_percent') ?? true;
-    });
+  Future<void> load() async {
+    try {
+      final store = await SharedPreferences.getInstance();
+      final values = await NativeBridge.channel
+          .invokeMapMethod<String, dynamic>('bookSettings');
+      if (!mounted) return;
+      setState(() {
+        prefs = store;
+        book = values ?? {};
+        theme = store.getString('plasma_color_scheme') ?? 'dark';
+        wallpaper = store.getString('plasma_wallpaper') ?? 'plasma';
+        desktops = (store.getInt('plasma_virtual_desktops') ?? 4).clamp(1, 6);
+        speed = (store.getDouble('plasma_animation_speed') ?? 1)
+            .clamp(0, 2)
+            .toDouble();
+        battery = store.getBool('plasma_tray_battery_percent') ?? true;
+        hotCorner = store.getBool('plasma_hot_corner') ?? true;
+        error = null;
+      });
+    } catch (e) {
+      if (mounted) setState(() => error = e.toString());
+    }
   }
 
-  Future<void> _save(Future<bool> Function(SharedPreferences) write) async {
-    final store = prefs ?? await SharedPreferences.getInstance();
-    await write(store);
-    await widget.bridge.plasmaSettingsChanged().catchError((_) {});
+  Future<void> save(Future<bool> Function(SharedPreferences) write) async {
+    try {
+      await write(prefs!);
+      await widget.bridge.plasmaSettingsChanged();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
   }
 
-  Widget _section(String title, List<Widget> children) => Padding(
+  Future<void> setBook(String key, Object value) async {
+    try {
+      final values = await NativeBridge.channel
+          .invokeMapMethod<String, dynamic>('setBookSetting', {
+            'key': key,
+            'value': value,
+          });
+      if (mounted) setState(() => book = values ?? book);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  Widget section(String title, List<Widget> children) => Padding(
     padding: const EdgeInsets.only(bottom: 20),
     child: Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
+          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+          child: Text(title, style: Theme.of(context).textTheme.titleSmall),
         ),
         Card(
           margin: EdgeInsets.zero,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 4),
-            child: Column(children: children),
-          ),
+          child: Column(children: children),
         ),
       ],
     ),
   );
 
+  Widget flag(String key, String title, IconData icon, {String? subtitle}) =>
+      SwitchListTile(
+        secondary: Icon(icon),
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle),
+        value: book[key] == true,
+        onChanged: (value) => setBook(key, value),
+      );
+
   @override
-  Widget build(BuildContext context) {
-    final l = AppLocalizations.of(context);
-    return Scaffold(
-      appBar: AppBar(title: const Text('Dextop Book')),
-      body: prefs == null
-          ? const Center(child: CircularProgressIndicator())
-          : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-              children: [
-                _section(l.nativePlasmaColorScheme, [
-                  Padding(
-                    padding: const EdgeInsets.all(12),
-                    child: SegmentedButton<String>(
-                      segments: [
-                        ButtonSegment(
-                          value: 'dark',
-                          label: Text(l.nativePlasmaBreezeDark),
-                        ),
-                        ButtonSegment(
-                          value: 'light',
-                          label: Text(l.nativePlasmaBreezeLight),
-                        ),
-                        ButtonSegment(
-                          value: 'system',
-                          label: Text(l.nativePlasmaFollowSystem),
-                        ),
-                      ],
-                      selected: {colorScheme},
-                      onSelectionChanged: (value) {
-                        setState(() => colorScheme = value.first);
-                        _save(
-                          (p) =>
-                              p.setString('plasma_color_scheme', value.first),
-                        );
-                      },
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 14),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(l.nativePlasmaAccentColor),
-                        const SizedBox(height: 10),
-                        Wrap(
-                          spacing: 10,
-                          runSpacing: 10,
-                          children: [
-                            for (final color in _accents)
-                              InkResponse(
-                                onTap: () {
-                                  setState(() => accent = color);
-                                  _save(
-                                    (p) =>
-                                        p.setInt('plasma_accent_color', color),
-                                  );
-                                },
-                                child: AnimatedContainer(
-                                  duration: const Duration(milliseconds: 200),
-                                  curve: Curves.easeOutCubic,
-                                  width: 32,
-                                  height: 32,
-                                  decoration: BoxDecoration(
-                                    color: Color(color),
-                                    shape: BoxShape.circle,
-                                    border: Border.all(
-                                      color: accent == color
-                                          ? Theme.of(context)
-                                                .colorScheme
-                                                .onSurface
-                                          : Colors.transparent,
-                                      width: 2.5,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ]),
-                _section(l.nativePlasmaDesktop, [
-                  ListTile(
-                    leading: const Icon(Icons.wallpaper_outlined),
-                    title: Text(l.nativePlasmaWallpaper),
-                    trailing: SegmentedButton<String>(
-                      showSelectedIcon: false,
-                      segments: [
-                        ButtonSegment(
-                          value: 'plasma',
-                          label: Text(l.nativePlasmaWallpaperPlasma),
-                        ),
-                        ButtonSegment(
-                          value: 'system',
-                          label: Text(l.nativePlasmaWallpaperAndroid),
-                        ),
-                      ],
-                      selected: {wallpaper},
-                      onSelectionChanged: (value) {
-                        setState(() => wallpaper = value.first);
-                        _save(
-                          (p) => p.setString('plasma_wallpaper', value.first),
-                        );
-                      },
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.dock_outlined),
-                    title: Text(l.nativePlasmaPanel),
-                    subtitle: Text(
-                      floatingPanel
-                          ? l.nativePlasmaFloating
-                          : l.nativePlasmaDocked,
-                    ),
-                    value: floatingPanel,
-                    onChanged: (value) {
-                      setState(() => floatingPanel = value);
-                      _save((p) => p.setBool('plasma_floating_panel', value));
-                    },
-                  ),
-                  const Divider(height: 1),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.signal_cellular_alt_rounded),
-                    title: Text(
-                      localText(
-                        context,
-                        'モバイル回線の種類を表示',
-                        'Show the mobile network type',
-                      ),
-                    ),
-                    subtitle: Text(
-                      localText(
-                        context,
-                        '電波のアイコンの下に LTE や 5G などを表示します',
-                        'Shows LTE, 5G and so on under the signal icon',
-                      ),
-                    ),
-                    value: trayNetworkType,
-                    onChanged: (value) {
-                      setState(() => trayNetworkType = value);
-                      _save(
-                        (p) => p.setBool('plasma_tray_network_type', value),
-                      );
-                    },
-                  ),
-                  const Divider(height: 1),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.battery_std_rounded),
-                    title: Text(
-                      localText(
-                        context,
-                        '電池残量を表示',
-                        'Show the battery percentage',
-                      ),
-                    ),
-                    subtitle: Text(
-                      localText(
-                        context,
-                        '電池のアイコンの下に残量をパーセントで表示します',
-                        'Shows the charge as a percentage under the battery icon',
-                      ),
-                    ),
-                    value: trayBatteryPercent,
-                    onChanged: (value) {
-                      setState(() => trayBatteryPercent = value);
-                      _save(
-                        (p) => p.setBool('plasma_tray_battery_percent', value),
-                      );
-                    },
-                  ),
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.view_carousel_outlined),
-                    title: Text(l.nativePlasmaVirtualDesktops),
-                    subtitle: Slider(
-                      value: desktops.toDouble(),
-                      min: 1,
-                      max: 6,
-                      divisions: 5,
-                      label: '$desktops',
-                      onChanged: (value) =>
-                          setState(() => desktops = value.round()),
-                      onChangeEnd: (value) => _save(
-                        (p) =>
-                            p.setInt('plasma_virtual_desktops', value.round()),
-                      ),
-                    ),
-                    trailing: Text('$desktops'),
-                  ),
-                ]),
-                _section(l.plasmaSettingsSummary, [
-                  ListTile(
-                    leading: const Icon(Icons.animation_outlined),
-                    title: Text(l.nativePlasmaAnimationSpeed),
-                    subtitle: Slider(
-                      value: animationSpeed,
-                      min: 0,
-                      max: 2,
-                      divisions: 8,
-                      label: animationSpeed == 0
-                          ? l.nativePlasmaInstant
-                          : '${animationSpeed.toStringAsFixed(2)}×',
-                      onChanged: (value) =>
-                          setState(() => animationSpeed = value),
-                      onChangeEnd: (value) => _save(
-                        (p) => p.setDouble('plasma_animation_speed', value),
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  SwitchListTile(
-                    secondary: const Icon(Icons.north_west_rounded),
-                    title: Text(l.plasmaHotCorner),
-                    subtitle: Text(l.plasmaHotCornerDescription),
-                    value: hotCorner,
-                    onChanged: (value) {
-                      setState(() => hotCorner = value);
-                      _save((p) => p.setBool('plasma_hot_corner', value));
-                    },
-                  ),
-                ]),
-                _section(l.plasmaShortcutsTitle, [
-                  Padding(
-                    padding: const EdgeInsets.all(16),
-                    child: Text(
-                      l.plasmaShortcutsBody,
-                      style: Theme.of(context).textTheme.bodyMedium
-                          ?.copyWith(height: 1.6),
-                    ),
-                  ),
-                ]),
-              ],
+  Widget build(BuildContext context) => Scaffold(
+    appBar: AppBar(title: const Text('Dextop Book')),
+    body: error != null
+        ? Center(
+            child: FilledButton.tonal(
+              onPressed: load,
+              child: Text(t('再読み込み', 'Retry')),
             ),
-    );
-  }
+          )
+        : prefs == null
+        ? const Center(child: CircularProgressIndicator())
+        : ListView(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            children: [
+              section(t('外観', 'Appearance'), [
+                ListTile(
+                  leading: const Icon(Icons.dark_mode_outlined),
+                  title: Text(t('テーマ', 'Theme')),
+                  subtitle: Text(
+                    t(
+                      '色はAndroidの壁紙の色から作られます',
+                      'Colours follow your Android wallpaper',
+                    ),
+                  ),
+                  trailing: DropdownButton<String>(
+                    value: theme,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (final item in {
+                        'system': t('システム', 'System'),
+                        'light': t('ライト', 'Light'),
+                        'dark': t('ダーク', 'Dark'),
+                      }.entries)
+                        DropdownMenuItem(
+                          value: item.key,
+                          child: Text(item.value),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => theme = value);
+                      save((p) => p.setString('plasma_color_scheme', value));
+                    },
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.wallpaper_outlined),
+                  title: Text(t('壁紙', 'Wallpaper')),
+                  trailing: DropdownButton<String>(
+                    value: wallpaper,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      DropdownMenuItem(
+                        value: 'plasma',
+                        child: const Text('Book'),
+                      ),
+                      DropdownMenuItem(
+                        value: 'system',
+                        child: Text(t('Androidの壁紙', 'Android wallpaper')),
+                      ),
+                    ],
+                    onChanged: (value) {
+                      if (value == null) return;
+                      setState(() => wallpaper = value);
+                      save((p) => p.setString('plasma_wallpaper', value));
+                    },
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.zoom_in_rounded),
+                  title: Text(t('外部画面の表示サイズ', 'External display size')),
+                  trailing: DropdownButton<int>(
+                    value: (book['display_scale'] as num?)?.toInt() ?? 0,
+                    underline: const SizedBox.shrink(),
+                    items: [
+                      for (final scale in [0, 100, 125, 150, 175, 200])
+                        DropdownMenuItem(
+                          value: scale,
+                          child: Text(scale == 0 ? t('自動', 'Auto') : '$scale%'),
+                        ),
+                    ],
+                    onChanged: (value) {
+                      if (value != null) setBook('display_scale', value);
+                    },
+                  ),
+                ),
+              ]),
+              section(t('タスクバーとスタートメニュー', 'Taskbar and Start menu'), [
+                flag(
+                  'always_show_taskbar',
+                  t('タスクバーを常に表示', 'Always show the taskbar'),
+                  Icons.dock_outlined,
+                ),
+                flag(
+                  'launcher_expanded',
+                  t('スタートメニューを拡張', 'Expand the Start menu'),
+                  Icons.open_in_full_rounded,
+                  subtitle: t(
+                    'メニュー内で切り替えた状態も保存されます',
+                    'Changes made in the menu are also saved',
+                  ),
+                ),
+              ]),
+              section(t('ステータスバー', 'Status bar'), [
+                flag(
+                  'live_activity',
+                  t('ライブアクティビティ', 'Live activity'),
+                  Icons.graphic_eq_rounded,
+                  subtitle: t('再生中のメディアを表示', 'Show playing media'),
+                ),
+                flag(
+                  'notification_icons',
+                  t('通知アイコン', 'Notification icons'),
+                  Icons.notifications_outlined,
+                ),
+                SwitchListTile(
+                  secondary: const Icon(Icons.battery_std_rounded),
+                  title: Text(t('電池残量（%）', 'Battery percentage')),
+                  value: battery,
+                  onChanged: (v) {
+                    setState(() => battery = v);
+                    save((p) => p.setBool('plasma_tray_battery_percent', v));
+                  },
+                ),
+              ]),
+              section(t('デスクトップと操作', 'Desktop and behaviour'), [
+                flag(
+                  'desktop_icons',
+                  t('デスクトップアイコンを表示', 'Show desktop icons'),
+                  Icons.grid_view_rounded,
+                ),
+                ListTile(
+                  leading: const Icon(Icons.view_carousel_outlined),
+                  title: Text(t('仮想デスクトップ', 'Virtual desktops')),
+                  trailing: Text('$desktops'),
+                  subtitle: Slider(
+                    value: desktops.toDouble(),
+                    min: 1,
+                    max: 6,
+                    divisions: 5,
+                    label: '$desktops',
+                    onChanged: (v) => setState(() => desktops = v.round()),
+                    onChangeEnd: (v) => save(
+                      (p) => p.setInt('plasma_virtual_desktops', v.round()),
+                    ),
+                  ),
+                ),
+                ListTile(
+                  leading: const Icon(Icons.animation_outlined),
+                  title: Text(t('アニメーション速度', 'Animation speed')),
+                  subtitle: Slider(
+                    value: speed,
+                    min: 0,
+                    max: 2,
+                    divisions: 8,
+                    label: speed == 0
+                        ? t('なし', 'Off')
+                        : '${speed.toStringAsFixed(2)}×',
+                    onChanged: (v) => setState(() => speed = v),
+                    onChangeEnd: (v) =>
+                        save((p) => p.setDouble('plasma_animation_speed', v)),
+                  ),
+                ),
+                SwitchListTile(
+                  secondary: const Icon(Icons.north_west_rounded),
+                  title: Text(t('ホットコーナー', 'Hot corner')),
+                  value: hotCorner,
+                  onChanged: (v) {
+                    setState(() => hotCorner = v);
+                    save((p) => p.setBool('plasma_hot_corner', v));
+                  },
+                ),
+              ]),
+            ],
+          ),
+  );
 }

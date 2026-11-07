@@ -121,7 +121,7 @@ internal class LinuxIntegration(
         vncPasswords.remove(key)
     }
 
-    private fun startProcess(id: String, feature: String, command: String, port: Int? = null, root: Boolean = false) {
+    private fun startProcess(id: String, feature: String, command: String, port: Int? = null, root: Boolean = false, socket: String? = null) {
         stopProcess(id, feature)
         if (port != null) ServerSocket().use { it.reuseAddress = true; it.bind(InetSocketAddress("0.0.0.0", port)) }
         val key = "$id:$feature"
@@ -147,7 +147,13 @@ internal class LinuxIntegration(
             val end = System.nanoTime() + 12_000_000_000L
             var ready = false
             while (System.nanoTime() < end && process.isAlive) {
-                ready = if (port != null) runCatching { Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 150) }; true }.getOrDefault(false)
+                ready = if (socket != null) runCatching {
+                    // Path sockets are abstract under the container's namespace (linux_unixsock.c).
+                    android.net.LocalSocket().use { it.connect(android.net.LocalSocketAddress(LinuxProot.socketNamespace(id) + socket,
+                        android.net.LocalSocketAddress.Namespace.ABSTRACT)) }
+                    true
+                }.getOrDefault(false)
+                else if (port != null) runCatching { Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 150) }; true }.getOrDefault(false)
                 else File(LinuxPaths.rootfs(id), "var/lib/dextop/services/status.json").let { file -> file.isFile && System.currentTimeMillis()-file.lastModified() < 2000 }
                 if (ready) break
                 Thread.sleep(100)
@@ -308,7 +314,9 @@ internal class LinuxIntegration(
             }
             "printing" -> {
                 helper(id, feature, value)
-                startProcess(id, feature, "exec cupsd -f -c /etc/dextop/cups/cupsd.conf -s /etc/dextop/cups/cups-files.conf", port)
+                // A unix socket of the container: a TCP port on 127.0.0.1 is reachable by every app on the device.
+                startProcess(id, feature, "exec cupsd -f -c /etc/dextop/cups/cupsd.conf -s /etc/dextop/cups/cups-files.conf",
+                    socket = "/run/dextop-cups/cups.sock")
                 try { helper(id, "printer", value) } catch (error: Throwable) { stopProcess(id, feature); throw error }
             }
             "services" -> startProcess(id, feature, "exec python3 /usr/local/libexec/dextop-systemd daemon", root = true)

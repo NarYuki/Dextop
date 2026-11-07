@@ -22,7 +22,7 @@ int main(int argc, char **argv) {
     int fd = socket(AF_UNIX, SOCK_STREAM, 0);
     if (bind(fd, (struct sockaddr *)&address, sizeof(address)) || listen(fd, 1)) return 2;
     struct stat st;
-    if (lstat(address.sun_path, &st) || !S_ISFIFO(st.st_mode)) return 3;
+    if (lstat(address.sun_path, &st) || !S_ISSOCK(st.st_mode)) return 3;
     pid_t child = fork();
     if (!child) { clearenv(); execl(argv[0], argv[0], "client", NULL); _exit(12); }
     if (child < 0) return 4;

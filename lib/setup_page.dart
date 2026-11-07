@@ -5,12 +5,21 @@ import 'package:flutter/services.dart';
 import 'package:free_dextop/analytics_service.dart';
 import 'package:free_dextop/native_display_events.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
+import 'package:free_dextop/l10n/inline_text.dart';
+import 'package:free_dextop/penguin_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class DextopSetupPage extends StatefulWidget {
-  const DextopSetupPage({required this.onCompleted, super.key});
+  const DextopSetupPage({
+    required this.onCompleted,
+    this.onLinuxOnly,
+    super.key,
+  });
 
   final VoidCallback onCompleted;
+
+  /// Skips the Dextop setup and opens the Linux tab in the Android execution mode.
+  final VoidCallback? onLinuxOnly;
 
   @override
   State<DextopSetupPage> createState() => _DextopSetupPageState();
@@ -339,7 +348,43 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   Future<void> complete() async {
     final preferences = await SharedPreferences.getInstance();
     await preferences.setBool('setup_completed', true);
+    await preferences.setBool('linux_only_mode', false);
     widget.onCompleted();
+  }
+
+  /// Linux only: no Dextop permissions, so Linux runs with ordinary app permissions.
+  Future<void> openLinuxOnly() async {
+    if (loading) return;
+    setState(() => loading = true);
+    try {
+      // The execution mode lives on the Linux channel, not the display one.
+      const linux = MethodChannel('app.freedextop/linux');
+      final current = await linux.invokeMethod<String>('executionMode');
+      if (current != 'android') {
+        await linux
+            .invokeMethod<String>('setExecutionMode', {
+              'mode': 'android',
+              'stop': true,
+            })
+            .timeout(const Duration(seconds: 50));
+      }
+      final preferences = await SharedPreferences.getInstance();
+      await preferences.setBool('linux_only_mode', true);
+      widget.onLinuxOnly?.call();
+    } on Exception catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            error is PlatformException
+                ? error.message ?? error.code
+                : error.toString(),
+          ),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => loading = false);
+    }
   }
 
   @override
@@ -386,6 +431,16 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             icon: const Icon(Icons.arrow_forward_rounded),
             label: Text(l.setupBegin),
           ),
+          if (widget.onLinuxOnly != null) ...[
+            const SizedBox(height: 12),
+            TextButton.icon(
+              onPressed: loading ? null : openLinuxOnly,
+              icon: const PenguinIcon(),
+              label: Text(
+                localText(context, 'Linuxコンテナへ', 'Go to Linux containers'),
+              ),
+            ),
+          ],
         ],
       ),
     ),

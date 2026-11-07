@@ -9,7 +9,7 @@ class StoreSnapshotCache {
   StoreSnapshotCache({Directory? directory, DateTime Function()? now})
     : directory =
           directory ??
-          Directory('${Directory.systemTemp.path}/store_snapshots_v1'),
+          Directory('${Directory.systemTemp.path}/store_snapshots_v2'),
       now = now ?? DateTime.now;
 
   final Directory directory;
@@ -18,23 +18,45 @@ class StoreSnapshotCache {
 
   /// Snapshots already read this session, so opening the Store again does not decode them again.
   static final _memory = <String, (DateTime, List<StoreApp>)>{};
+  static final _inflight = <String, Future<List<StoreApp>>>{};
 
   Future<List<StoreApp>> load(
     String key,
     Future<List<StoreApp>> Function() fetch, {
     bool refresh = false,
+    void Function(StoreCatalogProgress)? onProgress,
+  }) async {
+    final identity = '${directory.absolute.path}/${Uri.encodeComponent(key)}';
+    final running = _inflight[identity];
+    if (running != null) return running;
+    final future = _load(key, fetch, refresh: refresh, onProgress: onProgress);
+    _inflight[identity] = future;
+    try {
+      return await future;
+    } finally {
+      _inflight.remove(identity);
+    }
+  }
+
+  Future<List<StoreApp>> _load(
+    String key,
+    Future<List<StoreApp>> Function() fetch, {
+    required bool refresh,
+    void Function(StoreCatalogProgress)? onProgress,
   }) async {
     final file = File('${directory.path}/${Uri.encodeComponent(key)}.json');
     final remembered = _memory[file.path];
     if (!refresh &&
         remembered != null &&
         now().difference(remembered.$1) < maxAge) {
+      onProgress?.call(const StoreCatalogProgress(false, 1, 1));
       return remembered.$2;
     }
     List<StoreApp>? saved;
     DateTime? modified;
     try {
       modified = await file.lastModified();
+      onProgress?.call(const StoreCatalogProgress(false, 0, 1));
       final text = await file.readAsString();
       // Large catalogs (Flathub) are decoded off the UI thread.
       saved = await Isolate.run(
@@ -51,10 +73,22 @@ class StoreSnapshotCache {
         modified != null &&
         now().difference(modified) < maxAge) {
       _memory[file.path] = (modified, saved);
+      onProgress?.call(const StoreCatalogProgress(false, 1, 1));
       return saved;
     }
+    final List<StoreApp> apps;
     try {
-      final apps = await fetch();
+      onProgress?.call(const StoreCatalogProgress(true, 0, null));
+      apps = await fetch();
+    } catch (_) {
+      if (saved != null) {
+        onProgress?.call(const StoreCatalogProgress(false, 1, 1));
+        return saved;
+      }
+      rethrow;
+    }
+    _memory[file.path] = (now(), apps);
+    try {
       await directory.create(recursive: true);
       final pending = File('${file.path}.pending');
       await pending.writeAsString(
@@ -63,12 +97,9 @@ class StoreSnapshotCache {
       );
       await pending.rename(file.path);
       await file.setLastModified(now());
-      _memory[file.path] = (now(), apps);
-      return apps;
     } catch (_) {
-      // An offline fallback must not extend the snapshot's lifetime.
-      if (saved != null) return saved;
-      rethrow;
+      // Persistence failure must not discard a successful network response.
     }
+    return apps;
   }
 }

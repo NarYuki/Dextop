@@ -1,4 +1,4 @@
-import hashlib, os, pathlib, subprocess, sys, tempfile, zipfile
+import hashlib, os, pathlib, stat, subprocess, sys, tempfile, zipfile
 INSTALLER = sys.argv[1]
 with tempfile.TemporaryDirectory(prefix="dextop-sync-test-") as tmp:
     base=pathlib.Path(tmp); home=base/"home"; cdn=base/"cdn"; tools=base/"bin"
@@ -6,11 +6,15 @@ with tempfile.TemporaryDirectory(prefix="dextop-sync-test-") as tmp:
     curl=tools/"curl"
     curl.write_text("#!/usr/bin/python3\nimport os,sys,shutil\na=sys.argv[1:]; url=next(x for x in a if x.startswith('https://')); shutil.copyfile(os.path.join(os.environ['TEST_CDN'],url.rsplit('/',1)[1]),a[a.index('-o')+1])\n")
     curl.chmod(0o755)
-    env=dict(os.environ,HOME=str(home),XDG_DATA_HOME=str(home/"data"),PATH=str(tools)+":"+os.environ["PATH"],TEST_CDN=str(cdn))
+    env=dict(os.environ,HOME=str(home),XDG_DATA_HOME=str(home/"data"),PATH=str(tools)+":"+os.environ["PATH"],TEST_CDN=str(cdn),DEXTOP_STEAM_STATE=sys.argv[2] if len(sys.argv)>2 else str(pathlib.Path(INSTALLER).with_name("dextop-steam-state")))
     root=home/"data/Steam"; manifest="steam_client_steamdeck_publicbeta_linuxarm64"
     def release(version,content,bad=False):
         part=cdn/"client.zip"
-        with zipfile.ZipFile(part,"w") as z: z.writestr("steamrtarm64/steam",content)
+        with zipfile.ZipFile(part,"w") as z:
+            z.writestr("steamrtarm64/steam",content)
+            link=zipfile.ZipInfo("steamrtarm64/client-link")
+            link.create_system=3; link.external_attr=(stat.S_IFLNK | 0o777) << 16
+            z.writestr(link,"steam")
         digest="0"*64 if bad else hashlib.sha256(part.read_bytes()).hexdigest()
         (cdn/manifest).write_text('"version" "'+str(version)+'"\n\t"client_linuxarm64_linuxarm64"\n{\n"file" "client.zip"\n"sha2" "'+digest+'"\n}\n')
     def run(*args,ok=True):
@@ -31,6 +35,13 @@ with tempfile.TemporaryDirectory(prefix="dextop-sync-test-") as tmp:
     assert (root/"package"/manifest).read_text()=='a different pending update\n'
     assert (root/"package/beta").read_text().strip()=="steamdeck_publicbeta"
     assert (root/"package/droiddeck-installed").read_text().strip()=="100"
+    record=root/"package"/(manifest+".installed")
+    assert "steamrtarm64/steam,9;" in record.read_text()
+    assert "steamrtarm64/client-link,-2;" in record.read_text()
+    record.unlink()
+    run("--sync")
+    assert record.is_file()
+    assert "steamrtarm64/steam,9;" in record.read_text()
     release(101,"client-v2")
     # Steam may have downloaded the next manifest without installing the ARM64 client.
     (root/"package"/(manifest+".manifest")).write_bytes((cdn/manifest).read_bytes())

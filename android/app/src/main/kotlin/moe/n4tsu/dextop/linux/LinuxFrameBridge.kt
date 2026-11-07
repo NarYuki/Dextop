@@ -68,9 +68,10 @@ internal class XvfbFramebuffer private constructor(
                 val bytesPerLine = header.getInt(48)
                 val colors = header.getInt(76)
                 if (format != 2 || bitsPerPixel != 32 || width <= 0 || height <= 0) return null
-                val offset = headerSize + colors * 12
-                if (offset.toLong() + bytesPerLine.toLong() * height > raf.length()) return null
-                return XvfbFramebuffer(map, width, height, bytesPerLine, offset)
+                if (headerSize < 100 || colors < 0 || bytesPerLine.toLong() < width.toLong() * 4) return null
+                val offset = headerSize.toLong() + colors.toLong() * 12
+                if (offset > Int.MAX_VALUE || offset + bytesPerLine.toLong() * height > map.capacity().toLong()) return null
+                return XvfbFramebuffer(map, width, height, bytesPerLine, offset.toInt())
             }
         }
     }

@@ -110,7 +110,7 @@ internal object LinuxBackups {
                     when {
                         attrs.isSymbolicLink -> {
                             val entry = TarArchiveEntry(name, TarArchiveEntry.LF_SYMLINK)
-                            entry.linkName = Files.readSymbolicLink(path).toString()
+                            entry.linkName = portableLink(rootfs, Files.readSymbolicLink(path))
                             tar.putArchiveEntry(entry); tar.closeArchiveEntry()
                         }
                         attrs.isDirectory -> {
@@ -145,6 +145,14 @@ internal object LinuxBackups {
         }
     }
 
+    /** PRoot link2symlink stores host-absolute rootfs paths; backups must be relocatable. */
+    internal fun portableLink(rootfs: Path, target: Path): String {
+        val base = rootfs.toAbsolutePath().normalize()
+        val normalized = target.normalize()
+        return if (target.isAbsolute && normalized.startsWith(base))
+            "/" + base.relativize(normalized).joinToString("/") else target.toString()
+    }
+
     private fun mode(permissions: Set<PosixFilePermission>): Int =
         PosixFilePermission.entries.foldIndexed(0) { index, mode, permission -> if (permission in permissions) mode or (256 shr index) else mode }
 
@@ -170,23 +178,24 @@ internal object LinuxBackups {
         LinuxRootfsArchive.deleteTree(staging)
         try {
             open().use { input ->
-                LinuxRootfsArchive.extract(GZIPInputStream(input.buffered(1 shl 20)), staging, checkCancelled, onBytes)
+                LinuxRootfsArchive.extractBackup(GZIPInputStream(input.buffered(1 shl 20)), staging, checkCancelled, onBytes, metadata.optString("container", "").takeIf { it.matches(Regex("c[a-zA-Z0-9]+")) }?.let { LinuxPaths.rootfs(it).absolutePath })
             }
             val unpacked = File(staging, PREFIX.trimEnd('/'))
             check(File(unpacked, "config.json").isFile && File(unpacked, "rootfs").isDirectory) { "The backup holds no container" }
+            File(unpacked, "rootfs/dev").mkdirs()
+            File(unpacked, "rootfs/tmp").apply { mkdirs(); setWritable(true, false); setExecutable(true, false); setReadable(true, false) }
+            val config = JSONObject(File(unpacked, "config.json").readText())
+                .put("id", newId).put("state", "installed").put("created", System.currentTimeMillis())
+                .put("name", metadata.optString("name").ifBlank { config0Name(unpacked) })
+                .put("restoredFrom", metadata.optString("container"))
+            config.remove("error")
+            File(unpacked, "config.json").writeText(config.toString())
+            checkCancelled()
             check(unpacked.renameTo(container)) { "Cannot commit the restored container" }
+            return config
         } finally {
             LinuxRootfsArchive.deleteTree(staging)
         }
-        File(container, "rootfs/dev").mkdirs()
-        File(container, "rootfs/tmp").apply { mkdirs(); setWritable(true, false); setExecutable(true, false); setReadable(true, false) }
-        val config = JSONObject(File(container, "config.json").readText())
-            .put("id", newId).put("state", "installed").put("created", System.currentTimeMillis())
-            .put("name", metadata.optString("name").ifBlank { config0Name(container) })
-            .put("restoredFrom", metadata.optString("container"))
-        config.remove("error")
-        File(container, "config.json").writeText(config.toString())
-        return config
     }
 
     private fun config0Name(container: File) = runCatching { JSONObject(File(container, "config.json").readText()).optString("name") }.getOrDefault("Linux")

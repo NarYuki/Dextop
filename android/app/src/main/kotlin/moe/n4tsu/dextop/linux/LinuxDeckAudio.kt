@@ -90,23 +90,28 @@ internal object LinuxDeckAudio {
         val token = ++generation
         Thread({
             child.waitFor()
-            for (attempt in 1..3) {
-                Thread.sleep(attempt * 250L)
+            var delay = 250L
+            var attempt = 0
+            while (true) {
+                Thread.sleep(delay)
                 synchronized(this) {
                     if (generation != token || owners.isEmpty()) return@Thread
                     val now = SystemClock.uptimeMillis()
                     while (restartTimes.peekFirst()?.let { it < now - 30_000 } == true) restartTimes.removeFirst()
                     if (restartTimes.size >= 3) {
-                        Log.e(TAG, "DirectAudio recovery stopped after three attempts in 30 seconds")
-                        return@Thread
+                        delay = (checkNotNull(restartTimes.peekFirst()) + 30_000 - now).coerceAtLeast(250L)
+                        Log.w(TAG, "DirectAudio recovery cooling down for ${delay}ms")
+                        return@synchronized
                     }
                     restartTimes.addLast(now)
+                    attempt++
                     try {
                         ensure(context.applicationContext, owners.first())
                         Log.i(TAG, "DirectAudio recovered port=$selected attempt=$attempt")
                         return@Thread
                     } catch (error: Exception) {
                         Log.w(TAG, "DirectAudio recovery failed attempt=$attempt", error)
+                        delay = (delay * 2).coerceAtMost(30_000L)
                     }
                 }
             }
@@ -120,6 +125,7 @@ internal object LinuxDeckAudio {
         owners -= containerId
         if (owners.isNotEmpty()) return
         generation++
+        restartTimes.clear()
         process?.let { child ->
             child.destroy()
             if (!child.waitFor(500, TimeUnit.MILLISECONDS)) child.destroyForcibly()

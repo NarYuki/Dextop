@@ -96,6 +96,7 @@ class CardexRelayService : Service() {
                     CardexRecoveryReceiver.markInterrupted(this, "relay client disconnected")
                 }
                 stopRelay()
+                MirrorService.setCarCompanionInputActive(false)
             }
         }, CLIENT_HANDOFF_GRACE_MS)
         return true
@@ -103,6 +104,7 @@ class CardexRelayService : Service() {
 
     override fun onDestroy() {
         stopRelay()
+        MirrorService.setCarCompanionInputActive(false)
         if (instance === this) instance = null
         super.onDestroy()
     }
@@ -694,6 +696,7 @@ class CardexRelayService : Service() {
     private fun registerClient(next: Messenger?) {
         lastClientHeartbeat = SystemClock.elapsedRealtime()
         if (next == null) return
+        MirrorService.setCarCompanionInputActive(true)
         client = next
         runCatching {
             next.send(Message.obtain(null, MSG_STATUS).apply {
@@ -897,6 +900,12 @@ class CardexRelayService : Service() {
         /** Keep the CARDEX Surface valid across accessibility reconnects. */
         internal fun activeDestinationSurface(): Surface? =
             destinationSurface?.takeIf { it.isValid }
+
+        /** Physical car Surface dimensions, independent of Resolution / scale. */
+        internal fun activeDestinationSize(): Pair<Int, Int>? = instance?.let {
+            if (destinationSurface?.isValid == true && it.width > 0 && it.height > 0)
+                it.width to it.height else null
+        }
 
         /** True while Car Companion owns a relay display or is preparing one. */
         fun isRelaySessionActive(): Boolean = relaySessionActive

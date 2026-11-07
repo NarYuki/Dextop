@@ -117,12 +117,13 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
   }
 
   Future<void> _calendars({bool request = false}) async {
+    final target = id;
     try {
       final result = await channel.invokeMapMethod<Object?, Object?>(
         'calendarList',
-        {'id': id, 'request': request},
+        {'id': target, 'request': request},
       );
-      if (!mounted) return;
+      if (!mounted || target != id) return;
       setState(() {
         calendarGranted = result?['granted'] == true;
         calendars = ((result?['calendars'] as List?) ?? [])
@@ -134,7 +135,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
           ..addAll(((result?['selected'] as List?) ?? []).whereType<String>());
       });
     } catch (e) {
-      if (mounted) {
+      if (mounted && target == id) {
         setState(() => error = e is PlatformException ? e.message : '$e');
       }
     }
@@ -173,6 +174,39 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     }
     return value;
   }
+
+  /// VNC on the network: no encryption and short passwords, so the user confirms it.
+  Future<bool> _confirmVncLan() async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (dialog) => AlertDialog(
+          icon: const Icon(Icons.warning_amber_rounded),
+          title: Text(t('VNC をネットワークに公開しますか？', 'Open VNC to the network?')),
+          content: Text(
+            t(
+              'VNC の通信は暗号化されず、パスワードも最大 8 文字です。同じネットワーク（公共の Wi-Fi など）にいる人に、'
+                  '画面や入力を盗み見られたり、パスワードを推測されたりするおそれがあります。\n\n'
+                  '信頼できるネットワークでだけ使ってください。外から使うときは、SSH を有効にして SSH のトンネル経由で '
+                  '127.0.0.1 の VNC に接続する方法をおすすめします。',
+              'VNC traffic is not encrypted and its password is at most 8 characters. People on the same '
+                  'network (public Wi-Fi, for example) could watch your screen and input, or guess the password.\n\n'
+                  'Use it only on networks you trust. From elsewhere, enable SSH and reach VNC on 127.0.0.1 '
+                  'through an SSH tunnel instead.',
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: Text(t('キャンセル', 'Cancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: Text(t('公開する', 'Open it')),
+            ),
+          ],
+        ),
+      ) ==
+      true;
 
   Future<void> _start(String name, {bool saveOnly = false}) async {
     try {
@@ -389,13 +423,19 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
             subtitle: t('オフの場合はこの端末内のみ', 'Off: this device only'),
             onChanged: busy
                 ? null
-                : (value) => setState(() {
-                    if (ssh) {
-                      sshLan = value;
-                    } else {
-                      vncLan = value;
-                    }
-                  }),
+                : (value) async {
+                    // VNC itself encrypts nothing and allows 8-character passwords at most:
+                    // opening it to the network is confirmed first.
+                    if (!ssh && value && !await _confirmVncLan()) return;
+                    if (!mounted) return;
+                    setState(() {
+                      if (ssh) {
+                        sshLan = value;
+                      } else {
+                        vncLan = value;
+                      }
+                    });
+                  },
           ),
           if (ssh)
             LinuxToggle(

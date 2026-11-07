@@ -19,6 +19,9 @@ object EmbeddedPrivilegeServer {
         arguments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { nativeInputLibrary ->
             System.setProperty("moe.n4tsu.dextop.embedded_input_library", nativeInputLibrary)
         }
+        // The key Dextop gave this process (PublisherKeys), so its provider accepts this server only.
+        val key = System.`in`.bufferedReader().readLine()
+        val payload = Bundle().apply { if (key != null) putString(PublisherKeys.EXTRA, key) }
         Looper.prepareMainLooper()
         // An app update deletes the APK this process was started from. Exit then even if the main
         // thread is stuck publishing to a provider that is being replaced.
@@ -34,7 +37,7 @@ object EmbeddedPrivilegeServer {
         publishAndWatch = {
             val response = runCatching {
                 publishBinder("$packageName.embedded_privilege", server,
-                    argument = apk)
+                    argument = apk, payload = payload)
             }.getOrNull()
             // The app already has a live server, or this one runs an outdated APK.
             if (response?.getBoolean("retire") == true) kotlin.system.exitProcess(0)

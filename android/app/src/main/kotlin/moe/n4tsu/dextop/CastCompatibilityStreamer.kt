@@ -66,13 +66,20 @@ internal class CastCompatibilityStreamer(
         height = even((sourceHeight * scale).roundToInt()).coerceAtLeast(240)
     }
 
+    /** A new unguessable path for each stream. */
+    private val streamToken: String = android.util.Base64.encodeToString(
+        ByteArray(24).also(java.security.SecureRandom()::nextBytes),
+        android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
+
     fun start(): String {
         check(running.compareAndSet(false, true)) { "Compatibility stream is already running" }
         val socket = ServerSocket(0).also { server = it }
         executor.execute { acceptClients(socket) }
         startEncoder()
         val address = localIpv4Address() ?: error("No local IPv4 address is available for Google Cast")
-        val url = "http://$address:${socket.localPort}/live.mp4"
+        // The stream is the screen: only a receiver given this URL may play it, never someone on
+        // the same network who finds the port.
+        val url = "http://$address:${socket.localPort}/$streamToken/live.mp4"
         OperationLog.i(context, "Cast", "compatibility video stream ready url=$url size=${width}x$height")
         return url
     }
@@ -191,7 +198,8 @@ internal class CastCompatibilityStreamer(
             val input = client.getInputStream().bufferedReader()
             val request = input.readLine().orEmpty()
             while (!input.readLine().isNullOrEmpty()) Unit
-            if (!request.contains("/live.mp4")) {
+            val path = request.split(' ').getOrNull(1).orEmpty()
+            if (!request.startsWith("GET ") || !java.security.MessageDigest.isEqual(path.toByteArray(), "/$streamToken/live.mp4".toByteArray())) {
                 client.getOutputStream().write("HTTP/1.1 404 Not Found\r\nContent-Length: 0\r\n\r\n".toByteArray())
                 return@use
             }

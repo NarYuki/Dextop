@@ -5,6 +5,7 @@ import time
 deb-get executable/definitions are pinned together and verified before execution.
 Upstream applications remain upstream's responsibility; HTTPS is not a code audit.
 """
+import codecs
 import csv
 import hashlib
 import io
@@ -27,13 +28,129 @@ SAFE_ID = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._+-]{0,199}$')
 ENV = dict(os.environ, LC_ALL='C.UTF-8', DEBIAN_FRONTEND='noninteractive')
 
 
+def progress(percent=None, phase='', line='', estimating=False):
+    print('dextop-progress-json:' + json.dumps(dict(
+        percent=-1 if percent is None else max(0, min(100, float(percent))),
+        phase=phase, line=line[:500], estimating=bool(estimating)), ensure_ascii=True), flush=True)
+
+
+def report_line(line):
+    clean = re.sub(r'\x1b\[[0-?]*[ -/]*[@-~]', '', line).strip()
+    if not clean:
+        return
+    print(clean, flush=True)
+    status = re.match(r'^(dlstatus|pmstatus):[^:]*:([0-9.]+):(.*)$', clean)
+    if status:
+        progress(float(status[2]), 'download' if status[1] == 'dlstatus' else 'install', status[3])
+    else:
+        percentage = re.search(r'(?<![0-9])([0-9]{1,3}(?:\.[0-9]+)?)%', clean)
+        progress(float(percentage[1]) if percentage else None,
+                 'download' if percentage else 'prepare', clean)
+
+
 def run(args, capture=False):
-    result = subprocess.run(args, env=ENV, text=True,
-                            stdout=subprocess.PIPE if capture else None,
-                            stderr=subprocess.PIPE if capture else None)
-    if result.returncode:
-        raise RuntimeError((result.stderr or result.stdout or 'Command failed: ' + args[0])[-2500:])
-    return result.stdout or ''
+    if capture:
+        result = subprocess.run(args, env=ENV, text=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        if result.returncode:
+            raise RuntimeError((result.stderr or result.stdout or 'Command failed: ' + args[0])[-2500:])
+        return result.stdout or ''
+    # Reading both newline and carriage-return updates avoids waiting for a download to finish.
+    process = subprocess.Popen(args, env=ENV, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+    decoder = codecs.getincrementaldecoder('utf-8')(errors='replace')
+    pending = ''
+    diagnostics = []
+    while True:
+        chunk = os.read(process.stdout.fileno(), 4096)
+        if not chunk:
+            break
+        pending += decoder.decode(chunk)
+        parts = re.split(r'[\r\n]', pending)
+        pending = parts.pop()
+        for line in parts:
+            if line.strip():
+                diagnostics.append(line)
+                diagnostics = diagnostics[-25:]
+                report_line(line)
+        if len(pending) > 16000:
+            report_line(pending[:16000])
+            pending = pending[16000:]
+    process.stdout.close()
+    pending += decoder.decode(b'', final=True)
+    if pending.strip():
+        diagnostics.append(pending)
+        report_line(pending)
+    if process.wait():
+        raise RuntimeError(('\n'.join(diagnostics) or 'Command failed: ' + args[0])[-2500:])
+    return ''
+
+
+def flatpak_api():
+    try:
+        import gi
+        gi.require_version('Flatpak', '1.0')
+        from gi.repository import Flatpak
+        return Flatpak
+    except (ImportError, ValueError):
+        apt_tools(['python3-gi', 'gir1.2-flatpak-1.0'])
+        import importlib
+        importlib.invalidate_caches()
+        import gi
+        gi.require_version('Flatpak', '1.0')
+        from gi.repository import Flatpak
+        return Flatpak
+
+
+def flatpak_operate(action, package):
+    Flatpak = flatpak_api()
+    installation = Flatpak.Installation.new_user(None)
+    transaction = Flatpak.Transaction.new_for_installation(installation, None)
+    transaction.set_no_interaction(True)
+    counts = dict(total=0, current=0)
+
+    def ready(tx):
+        counts['total'] = len(tx.get_operations())
+        return True
+
+    def operation(tx, op, state):
+        counts['current'] += 1
+        state.set_update_frequency(200)
+
+        def changed(value):
+            detail = value.get_status() or action
+            detail += ' · ' + op.get_ref() + ' · ' + str(counts['current']) + '/' + str(counts['total'])
+            progress(value.get_progress(), 'flatpak', detail, value.get_is_estimating())
+        state.connect('changed', changed)
+        changed(state)
+
+    transaction.connect('ready', ready)
+    transaction.connect('new-operation', operation)
+    # Trust is scoped to the selected Flathub remote; never auto-add another repository.
+    transaction.connect('add-new-remote', lambda *args: False)
+    # libflatpak wants a full ref (app/ID/arch/branch); a bare ID fails with
+    # "is not application or runtime".
+    arch = Flatpak.get_default_arch()
+
+    def pick(refs):
+        refs = [r for r in refs if r.get_kind() == Flatpak.RefKind.APP
+                and r.get_name() == package and r.get_arch() == arch]
+        if not refs:
+            raise RuntimeError(package + ' is not available for ' + arch)
+        refs.sort(key=lambda r: r.get_branch() != 'stable')
+        return refs[0].format_ref()
+
+    if action == 'install':
+        transaction.add_install('flathub', pick(installation.list_remote_refs_sync('flathub', None)), None)
+    elif action == 'remove':
+        transaction.add_uninstall(pick(installation.list_installed_refs_by_kind(Flatpak.RefKind.APP, None)))
+    else:
+        transaction.add_update(pick(installation.list_installed_refs_by_kind(Flatpak.RefKind.APP, None)), None, None)
+    progress(None, 'resolve', 'Resolving Flatpak operations')
+    try:
+        if not transaction.run(None):
+            raise RuntimeError('Flatpak transaction did not complete')
+    except Exception as error:
+        raise RuntimeError(str(error)) from error
+    progress(100, 'complete', 'Flatpak transaction completed')
 
 
 def distro():
@@ -46,14 +163,14 @@ def distro():
 
 
 def apt_tools(packages):
-    run(['apt-get', 'update'])
-    run(['apt-get', 'install', '-y', '--no-install-recommends'] + packages)
+    run(['apt-get', '-o', 'APT::Status-Fd=1', 'update'])
+    run(['apt-get', '-o', 'APT::Status-Fd=1', '-o', 'Dpkg::Use-Pty=0', 'install', '-y', '--no-install-recommends'] + packages)
 
 
 def prepare(source):
     if source == 'flathub':
         if not shutil.which('flatpak'):
-            apt_tools(['flatpak', 'ca-certificates'])
+            apt_tools(['flatpak', 'ca-certificates', 'python3-gi', 'gir1.2-flatpak-1.0'])
         remotes = run(['flatpak', '--user', 'remotes', '--columns=name,url'], True)
         existing = [line.split('\t') for line in remotes.splitlines() if line.startswith('flathub\t')]
         if existing and existing[0][1].rstrip('/') != 'https://dl.flathub.org/repo':
@@ -199,12 +316,21 @@ def operate(source, action, package):
                 temporary.write_text('\n'.join(lines) + ('\n' if lines else ''))
                 temporary.replace(records)
         else:
-            run([str(DEBGET / 'deb-get'), 'install', package])
+            import tempfile
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.apt.conf') as config:
+                config.write('APT::Status-Fd \"1\"; Dpkg::Use-Pty \"0\";\n')
+                config.flush()
+                previous = ENV.get('APT_CONFIG')
+                ENV['APT_CONFIG'] = config.name
+                try:
+                    run([str(DEBGET / 'deb-get'), 'install', package])
+                finally:
+                    if previous is None:
+                        ENV.pop('APT_CONFIG', None)
+                    else:
+                        ENV['APT_CONFIG'] = previous
     elif source == 'flathub':
-        command = {'install': ['install', '--noninteractive', 'flathub', package],
-                   'remove': ['uninstall', '--noninteractive', package],
-                   'upgrade': ['update', '--noninteractive', package]}[action]
-        run(['flatpak', '--user'] + command)
+        flatpak_operate(action, package)
         if action != 'remove':
             print('Flatpak installed. Execution requires working kernel namespaces and bubblewrap.', flush=True)
     else:
@@ -215,18 +341,21 @@ def main(args):
     distro()
     if args[0] == 'prepare' and len(args) == 2:
         prepare(args[1])
-    elif args[0] == 'catalog' and len(args) == 4:
+    elif args[0] == 'catalog' and len(args) in (4, 5):
         # Cache one complete snapshot; paginate to stay below the service output limit.
         cache = Path('/var/tmp/dextop-store/' + args[1] + '-catalog.json')
         offset, count = int(args[2]), 80
         cache.parent.mkdir(parents=True, exist_ok=True)
-        if offset == 0:
-            cache.write_text(json.dumps(catalog(args[1]), ensure_ascii=True))
+        refreshing = offset == 0 and (len(args) == 5 and args[4] == 'refresh' or not cache.exists() or time.time() - cache.stat().st_mtime >= 3 * 86400)
+        if refreshing:
+            temporary = cache.with_suffix('.pending')
+            temporary.write_text(json.dumps(catalog(args[1]), ensure_ascii=True))
+            temporary.replace(cache)
         apps = json.loads(cache.read_text())
         page = apps[offset:offset + count]
         while len(json.dumps(page)) > 48000 and len(page) > 1:
             page = page[:len(page) // 2]
-        print(json.dumps(dict(apps=page, more=offset + len(page) < len(apps))))
+        print(json.dumps(dict(apps=page, more=offset + len(page) < len(apps), total=len(apps), refreshing=refreshing)))
     elif args in (['status'], ['status', 'refresh']):
         print(json.dumps(status(len(args) == 2)))
     elif len(args) == 3:

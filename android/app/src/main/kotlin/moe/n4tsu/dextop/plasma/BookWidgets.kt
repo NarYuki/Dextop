@@ -95,6 +95,13 @@ internal object BookStore {
     const val DESKTOP_ICONS = "desktop_icons"
     const val LIVE_ACTIVITY = "live_activity"
     const val NOTIFICATION_ICONS = "notification_icons"
+    const val LAUNCHER_EXPANDED = "launcher_expanded"
+
+    val appearanceFlags = mapOf(ALWAYS_SHOW_TASKBAR to true, DESKTOP_ICONS to true,
+        LIVE_ACTIVITY to true, NOTIFICATION_ICONS to true, LAUNCHER_EXPANDED to false)
+    fun appearance(context: Context): Map<String, Any> = appearanceFlags.mapValues { (key, default) ->
+        flag(context, key, default)
+    } + ("display_scale" to displayScale(context))
     /** Experimental: the Linux container's ~/Desktop on the desktop. */
     const val LINUX_DESKTOP_FOLDER = "linux_desktop_folder"
 

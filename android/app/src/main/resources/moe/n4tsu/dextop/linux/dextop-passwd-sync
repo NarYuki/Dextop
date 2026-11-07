@@ -1,0 +1,39 @@
+#!/usr/bin/python3
+"""Tell Dextop the account's new password (pam_exec expose_authtok, passwd stack).
+
+pam_unix has changed the password and pam_gnome_keyring the login keyring's;
+Dextop's own copy, which logs the session in (dextop-pam-login), follows here.
+The password goes to Dextop's Linux service over this container's abstract
+socket only; it is never printed, logged or written. Never fails passwd.
+"""
+import os
+import socket
+import sys
+
+
+def main():
+    if os.environ.get('PAM_TYPE') != 'password':
+        return 0
+    user = os.environ.get('PAM_USER', '')
+    secret = sys.stdin.buffer.read(4096)
+    if not user or not secret:
+        return 0
+    try:
+        with open('/etc/dextop/socket-namespace') as stream:
+            namespace = stream.read().strip()
+    except OSError:
+        return 0
+    try:
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as connection:
+            connection.settimeout(3)
+            connection.connect('\0' + namespace + '/run/dextop/account-password')
+            connection.sendall(user.encode() + b'\0' + secret)
+            connection.shutdown(socket.SHUT_WR)
+            connection.recv(16)
+    except OSError:
+        pass
+    return 0
+
+
+if __name__ == '__main__':
+    sys.exit(main())

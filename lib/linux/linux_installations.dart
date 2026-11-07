@@ -2,6 +2,12 @@ import 'package:flutter/foundation.dart';
 
 import 'linux_store_catalog.dart';
 
+String storePercentLabel(num percent, {bool estimating = false}) {
+  if (!percent.isFinite || percent < 0) return '—';
+  final value = percent.clamp(0, 100).toDouble();
+  return '${estimating ? '≈' : ''}${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 1)}%';
+}
+
 class AppInstallation {
   const AppInstallation({
     required this.container,
@@ -11,13 +17,16 @@ class AppInstallation {
     this.iconPath,
     this.queued = true,
     this.percent = -1,
+    this.estimating = false,
   });
 
   final String container, package, name;
   final StoreApp? app;
   final String? iconPath;
   final bool queued;
-  final int percent;
+  final double percent;
+  final bool estimating;
+  String get percentLabel => storePercentLabel(percent, estimating: estimating);
   String get key => '$container:$package';
 
   bool matches(String desktopId) =>
@@ -89,7 +98,8 @@ class LinuxInstallations extends ChangeNotifier {
           app: known?.app,
           iconPath: _iconPath(container, known),
           queued: job['state'] == 'queued',
-          percent: (job['percent'] as num?)?.toInt() ?? -1,
+          percent: (job['percent'] as num?)?.toDouble() ?? -1,
+          estimating: job['estimating'] == true,
         );
       }
     }
@@ -99,6 +109,7 @@ class LinuxInstallations extends ChangeNotifier {
           (e) =>
               old[e.key]?.queued == e.value.queued &&
               old[e.key]?.percent == e.value.percent &&
+              old[e.key]?.estimating == e.value.estimating &&
               old[e.key]?.name == e.value.name,
         )) {
       return;

@@ -1,0 +1,122 @@
+#!/usr/bin/python3
+"""Log the session's user in through PAM, as a display manager does.
+
+The account password arrives on standard input (one line). PAM service
+"dextop-session" checks it with pam_unix, and pam_gnome_keyring takes it in
+the auth phase and, when the session opens ("auto_start"), starts
+gnome-keyring-daemon --login and unlocks the login keyring with it, the same
+way GDM or LightDM unlock it at login.
+
+With --check only the password is checked and no session opens: Dextop
+verifies a changed password (dextop-passwd-sync) before keeping it.
+
+Exit status: 0 logged in (or, with --check, the password is right), 2 the password was refused, 3 the session could not
+open, 4 PAM is unavailable. The password is never printed, logged or written.
+"""
+import ctypes
+import ctypes.util
+import os
+import pwd
+import sys
+
+SERVICE = b'dextop-session'
+PAM_SUCCESS = 0
+PAM_PROMPT_ECHO_OFF = 1
+PAM_PROMPT_ECHO_ON = 2
+PAM_TTY = 3
+PAM_XDISPLAY = 11
+PAM_ESTABLISH_CRED = 0x0002
+PAM_SILENT = 0x8000
+PAM_DATA_SILENT = 0x40000000
+PAM_CONV_ERR = 19
+
+
+class Message(ctypes.Structure):
+    _fields_ = [('msg_style', ctypes.c_int), ('msg', ctypes.c_char_p)]
+
+
+class Response(ctypes.Structure):
+    _fields_ = [('resp', ctypes.c_void_p), ('resp_retcode', ctypes.c_int)]
+
+
+CONVERSE = ctypes.CFUNCTYPE(ctypes.c_int, ctypes.c_int, ctypes.POINTER(ctypes.POINTER(Message)),
+                            ctypes.POINTER(ctypes.POINTER(Response)), ctypes.c_void_p)
+
+
+class Conversation(ctypes.Structure):
+    _fields_ = [('conv', CONVERSE), ('appdata_ptr', ctypes.c_void_p)]
+
+
+def main():
+    libc = ctypes.CDLL(ctypes.util.find_library('c') or 'libc.so.6')
+    libc.calloc.restype = ctypes.c_void_p
+    libc.calloc.argtypes = [ctypes.c_size_t, ctypes.c_size_t]
+    libc.strdup.restype = ctypes.c_void_p
+    libc.strdup.argtypes = [ctypes.c_char_p]
+    try:
+        pam = ctypes.CDLL(ctypes.util.find_library('pam') or 'libpam.so.0')
+    except OSError:
+        return 4
+    pam.pam_start.argtypes = [ctypes.c_char_p, ctypes.c_char_p, ctypes.POINTER(Conversation),
+                              ctypes.POINTER(ctypes.c_void_p)]
+    for name in ('pam_authenticate', 'pam_acct_mgmt', 'pam_setcred', 'pam_open_session', 'pam_end'):
+        getattr(pam, name).argtypes = [ctypes.c_void_p, ctypes.c_int]
+    pam.pam_set_item.argtypes = [ctypes.c_void_p, ctypes.c_int, ctypes.c_char_p]
+    pam.pam_putenv.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
+
+    secret = sys.stdin.buffer.readline().rstrip(b'\n')
+    if not secret:
+        return 2
+    user = pwd.getpwuid(os.getuid()).pw_name.encode()
+
+    @CONVERSE
+    def converse(count, messages, responses, _):
+        replies = libc.calloc(count, ctypes.sizeof(Response))
+        if not replies:
+            return PAM_CONV_ERR
+        array = ctypes.cast(replies, ctypes.POINTER(Response))
+        for index in range(count):
+            # Only the password prompt is answered; information and error messages are ignored.
+            if messages[index].contents.msg_style == PAM_PROMPT_ECHO_OFF:
+                array[index].resp = libc.strdup(secret)
+        responses[0] = array
+        return PAM_SUCCESS
+
+    conversation = Conversation(converse, None)
+    handle = ctypes.c_void_p()
+    if pam.pam_start(SERVICE, user, ctypes.byref(conversation), ctypes.byref(handle)) != PAM_SUCCESS:
+        return 4
+    display = os.environ.get('DISPLAY', '').encode()
+    if display:
+        pam.pam_set_item(handle, PAM_TTY, display)
+        pam.pam_set_item(handle, PAM_XDISPLAY, display)
+    # The daemon pam_gnome_keyring starts serves this session's bus and runtime directory.
+    # pam_gnome_keyring execs with pam_getenvlist(), not the caller's environment.
+    # Its daemon needs the same Android socket mapping and libc compatibility
+    # libraries as every other guest process; otherwise PAM can report success
+    # while its optional keyring module starts an unusable daemon.
+    for name in ('DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS',
+                 'XDG_RUNTIME_DIR', 'DISPLAY', 'HOME', 'PATH', 'LANG',
+                 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DEXTOP_SOCKET_NS'):
+        value = os.environ.get(name)
+        if value:
+            pam.pam_putenv(handle, ('%s=%s' % (name, value)).encode())
+    status = 0
+    if pam.pam_authenticate(handle, PAM_SILENT) != PAM_SUCCESS:
+        status = 2
+    elif '--check' in sys.argv[1:]:
+        pass
+    elif pam.pam_acct_mgmt(handle, PAM_SILENT) != PAM_SUCCESS:
+        status = 2
+    else:
+        pam.pam_setcred(handle, PAM_ESTABLISH_CRED | PAM_SILENT)
+        if pam.pam_open_session(handle, PAM_SILENT) != PAM_SUCCESS:
+            status = 3
+    # The session (and its keyring daemon) outlives this helper, as a forked
+    # display manager child's does: end PAM without closing it.
+    pam.pam_end(handle, PAM_DATA_SILENT)
+    return status
+
+
+if __name__ == '__main__':
+    sys.exit(main())

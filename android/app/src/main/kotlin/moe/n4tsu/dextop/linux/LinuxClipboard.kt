@@ -7,7 +7,7 @@ import android.util.Log
 
 /**
  * Shares the clipboard between Android and Linux applications (CLIPBOARD, and PRIMARY for
- * text from Android), unless turned off in the Linux settings.
+ * text from Android), when enabled in the Linux settings.
  */
 internal object LinuxClipboard {
     private const val TAG = "DextopLinuxClipboard"
@@ -18,7 +18,7 @@ internal object LinuxClipboard {
     @Volatile private var last: String? = null
 
     fun enabled(context: Context): Boolean =
-        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY, true)
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY, false)
 
     fun setEnabled(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit().putBoolean(KEY, enabled).apply()

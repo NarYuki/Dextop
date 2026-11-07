@@ -148,11 +148,20 @@ const storeCategories = [
   'System',
 ];
 
+/// Progress refers to the actual cache read or network fetch, never a timer.
+class StoreCatalogProgress {
+  const StoreCatalogProgress(this.refreshing, this.completed, this.total);
+  final bool refreshing;
+  final int completed;
+  final int? total;
+}
+
 class StoreCatalog {
   StoreCatalog._();
 
   static final _memory = <String, List<StoreApp>>{};
   static final _savedAt = <String, DateTime>{};
+  static final _inflight = <String, Future<List<StoreApp>>>{};
   static const _maxAge = Duration(days: 3);
 
   /// The applications of [source], from memory, the disk cache or the network.
@@ -160,23 +169,50 @@ class StoreCatalog {
     StoreSource source, {
     String language = 'en',
     bool refresh = false,
+    void Function(StoreCatalogProgress)? onProgress,
+  }) async {
+    final key = '${source.key}-$language';
+    final running = _inflight[key];
+    if (running != null) return running;
+    final future = _load(
+      source,
+      language: language,
+      refresh: refresh,
+      onProgress: onProgress,
+    );
+    _inflight[key] = future;
+    try {
+      return await future;
+    } finally {
+      _inflight.remove(key);
+    }
+  }
+
+  static Future<List<StoreApp>> _load(
+    StoreSource source, {
+    required String language,
+    required bool refresh,
+    void Function(StoreCatalogProgress)? onProgress,
   }) async {
     final key = '${source.key}-$language';
     if (!refresh &&
         _memory[key] != null &&
         _savedAt[key] != null &&
         DateTime.now().difference(_savedAt[key]!) < _maxAge) {
+      onProgress?.call(const StoreCatalogProgress(false, 1, 1));
       return _memory[key]!;
     }
-    final cache = File('${Directory.systemTemp.path}/linux_store_$key.json');
+    final cache = File('${Directory.systemTemp.path}/linux_store_v2_$key.json');
     if (!refresh && await cache.exists()) {
       final age = DateTime.now().difference(await cache.lastModified());
       if (age < _maxAge) {
         try {
+          onProgress?.call(const StoreCatalogProgress(false, 0, 1));
           final apps = await Isolate.run(
             () => _decode(cache.readAsStringSync()),
           );
           _savedAt[key] = await cache.lastModified();
+          onProgress?.call(const StoreCatalogProgress(false, 1, 1));
           return _memory[key] = apps;
         } catch (_) {}
       }
@@ -184,24 +220,33 @@ class StoreCatalog {
     final client = HttpClient()
       ..connectionTimeout = const Duration(seconds: 20);
     final documents = <List<int>>[];
+    onProgress?.call(StoreCatalogProgress(true, 0, source.urls.length));
     try {
       for (final url in source.urls) {
         final request = await client.getUrl(Uri.parse(url));
         final response = await request.close();
         if (response.statusCode != 200) {
           await response.drain<void>();
-          continue;
+          throw HttpException(
+            'Catalog download failed: ${response.statusCode}',
+            uri: Uri.parse(url),
+          );
         }
         final bytes = <int>[];
         await for (final chunk in response) {
           bytes.addAll(chunk);
         }
         documents.add(bytes);
+        onProgress?.call(
+          StoreCatalogProgress(true, documents.length, source.urls.length),
+        );
       }
     } catch (_) {
       if (await cache.exists()) {
+        onProgress?.call(const StoreCatalogProgress(false, 0, 1));
         final apps = await Isolate.run(() => _decode(cache.readAsStringSync()));
         _savedAt[key] = await cache.lastModified();
+        onProgress?.call(const StoreCatalogProgress(false, 1, 1));
         return _memory[key] = apps;
       }
       rethrow;
@@ -219,13 +264,22 @@ class StoreCatalog {
         'The application catalog could not be downloaded',
       );
     }
+    onProgress?.call(const StoreCatalogProgress(false, 0, 1));
     final apps = await Isolate.run(() => _parseAll(documents, language));
-    await _fetchIcons(source, refresh: true);
-    await cache.writeAsString(
-      jsonEncode([for (final app in apps) app.toJson()]),
-    );
-    _savedAt[key] = await cache.lastModified();
-    return _memory[key] = apps;
+    await _fetchIcons(source, refresh: false);
+    _savedAt[key] = DateTime.now();
+    _memory[key] = apps;
+    onProgress?.call(const StoreCatalogProgress(false, 1, 1));
+    try {
+      final pending = File('${cache.path}.pending');
+      await pending.writeAsString(
+        jsonEncode([for (final app in apps) app.toJson()]),
+      );
+      await pending.rename(cache.path);
+    } catch (_) {
+      // The freshly downloaded catalog remains usable without a disk cache.
+    }
+    return apps;
   }
 
   /// Where the icons of [source] are unpacked.
@@ -257,8 +311,13 @@ class StoreCatalog {
     try {
       for (final size in _iconSizes) {
         final path = '$root/$size';
-        if (!refresh && Directory(path).existsSync()) continue;
-        for (final url in source.urls) {
+        for (final (index, url) in source.urls.indexed) {
+          final marker = File('$path/.source-$index.complete');
+          if (!refresh &&
+              await marker.exists() &&
+              await marker.readAsString() == url) {
+            continue;
+          }
           final request = await client.getUrl(
             Uri.parse(
               url.replaceFirst(
@@ -287,6 +346,7 @@ class StoreCatalog {
                   .writeAsBytesSync(file.content as List<int>);
             }
           });
+          await marker.writeAsString(url);
         }
       }
     } catch (_) {

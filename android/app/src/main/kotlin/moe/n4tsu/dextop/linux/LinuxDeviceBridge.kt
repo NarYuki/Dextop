@@ -28,8 +28,16 @@ internal object LinuxDeviceBridge {
     private const val FRAME_CONTROL = 2
     private const val FRAME_BREAK = 3
 
-    private val socketName = "dextop-devices-" + UUID.randomUUID().toString().replace("-", "")
+    @Volatile private var socketName = "dextop-devices-" + UUID.randomUUID().toString().replace("-", "")
+    private var server: LocalServerSocket? = null
+    @Volatile private var listenerService: android.os.IBinder? = null
     @Volatile private var started: Context? = null
+    private val socketOwners = java.util.concurrent.ConcurrentHashMap<LocalSocket, ParcelFileDescriptor>()
+
+    private fun closeSocket(socket: LocalSocket) {
+        runCatching { socket.close() }
+        runCatching { socketOwners.remove(socket)?.close() }
+    }
 
     fun start(context: Context) {
         if (started != null) return
@@ -37,22 +45,82 @@ internal object LinuxDeviceBridge {
         started = app
         // Another device may get a departed one's name: security keys are read again.
         LinuxUsb.onChange { hidKeys.clear() }
-        val server = LocalServerSocket(socketName)
+        val initial = LocalServerSocket(socketName)
+        server = initial
+        accept(app, initial)
+        // Android may have changed the picked folders while Dextop was not running.
+        Thread({ runCatching { LinuxFolders.syncAll(app) } }, "DextopLinuxFoldersSync").apply { isDaemon = true; start() }
+    }
+
+    private fun accept(app: Context, server: LocalServerSocket) {
         Thread({
             while (true) {
                 val socket = try { server.accept() } catch (_: Exception) { break }
-                val uid = socket.peerCredentials.uid
+                val uid = try { socket.peerCredentials.uid } catch (_: Exception) {
+                    runCatching { socket.close() }; continue
+                }
                 // Other shell-user processes (adb, Shizuku clients) may find the socket too; in the full
                 // privilege mode only processes of Dextop's own Linux service are served.
                 val allowed = uid == android.os.Process.myUid() || (uid == 2000 && !LinuxExecutionMode.android(app) &&
                     runCatching { LinuxContainerClient.service()?.ownsProcess(socket.peerCredentials.pid) }.getOrNull() == true)
-                if (!allowed) { socket.close(); continue }
+                if (!allowed) { runCatching { socket.close() }; continue }
                 Thread({ runCatching { serve(app, socket, uid) }.onFailure { Log.w(TAG, "Device request failed", it) }
                     runCatching { socket.close() } }, "DextopLinuxDevice").apply { isDaemon = true; start() }
             }
         }, "DextopLinuxDevicesAccept").apply { isDaemon = true; start() }
-        // Android may have changed the picked folders while Dextop was not running.
-        Thread({ runCatching { LinuxFolders.syncAll(app) } }, "DextopLinuxFoldersSync").apply { isDaemon = true; start() }
+    }
+
+    @Synchronized private fun attachListener(app: Context, linux: ILinuxContainerService) {
+        if (LinuxContainerClient.service()?.asBinder() != linux.asBinder()) return
+        if (listenerService == linux.asBinder()) return
+        val name = "dextop-devices-" + UUID.randomUUID().toString().replace("-", "")
+        val androidMode = LinuxExecutionMode.android(app)
+        val replacement = if (androidMode) LocalServerSocket(name) else null
+        if (!androidMode) linux.startDeviceBridgeListener(name)
+        val previous = server
+        server = replacement
+        listenerService = linux.asBinder()
+        if (replacement != null) accept(app, replacement) else acceptFromService(app, linux)
+        socketName = name
+        runCatching { previous?.close() }
+    }
+
+    /** Retire the old generation before its service exits; in-flight accepts discard their FD. */
+    @Synchronized fun disconnect() {
+        listenerService = null
+        runCatching { server?.close() }
+        server = null
+        socketOwners.keys.toList().forEach(::closeSocket)
+    }
+
+    private fun acceptFromService(app: Context, linux: ILinuxContainerService) {
+        Thread({
+            while (listenerService == linux.asBinder()) {
+                val descriptor: ParcelFileDescriptor? = try { linux.acceptDeviceBridge() } catch (error: Exception) {
+                    Log.w(TAG, "Linux device accept stopped", error); break
+                }
+                // A remote runtime can disappear while its synchronous accept is returning.
+                if (descriptor == null) break
+                if (listenerService != linux.asBinder()) {
+                    runCatching { descriptor.close() }; break
+                }
+                val socket = try {
+                    org.lsposed.hiddenapibypass.HiddenApiBypass.newInstance(LocalSocket::class.java, descriptor.fileDescriptor) as LocalSocket
+                } catch (error: Exception) { runCatching { descriptor.close() }; Log.w(TAG, "Cannot adopt Linux device connection", error); continue }
+                synchronized(this) {
+                    if (listenerService == linux.asBinder()) socketOwners[socket] = descriptor
+                }
+                if (socketOwners[socket] !== descriptor) {
+                    runCatching { socket.close() }; runCatching { descriptor.close() }; break
+                }
+                // The service checked SO_PEERCRED and process ancestry before passing this FD.
+                Thread({ runCatching { serve(app, socket, socket.peerCredentials.uid) }
+                    .onFailure { Log.w(TAG, "Device request failed", it) }
+                    // Also releases externally supplied descriptors, including on USB disconnect.
+                    closeSocket(socket)
+                }, "DextopLinuxDevice").apply { isDaemon = true; start() }
+            }
+        }, "DextopLinuxDeviceBinderAccept").apply { isDaemon = true; start() }
     }
 
     private fun manager(context: Context) = context.getSystemService(UsbManager::class.java)
@@ -164,6 +232,7 @@ internal object LinuxDeviceBridge {
             while (true) {
                 runCatching {
                     val linux = service() ?: return@runCatching
+                    attachListener(app, linux)
                     val list = org.json.JSONArray(linux.listContainers())
                     val text = state(app)
                     val now = android.os.SystemClock.elapsedRealtime()
@@ -177,16 +246,25 @@ internal object LinuxDeviceBridge {
                         if (last != null && last.first == key && now - last.second < 30_000) continue
                         runCatching { linux.setGuestState(id, "dextop-devices.conf", text) }
                             .onSuccess { written[id] = key to now }
+                            .onFailure { Log.w(TAG, "Cannot publish Linux device state", it) }
                     }
-                }
+                }.onFailure { Log.w(TAG, "Cannot prepare Linux device bridge", it) }
                 try { Thread.sleep(3000) } catch (_: InterruptedException) { return@Thread }
             }
         }, "DextopLinuxDevicesPublish").apply { isDaemon = true; start() }
     }
 
-    private fun readLine(input: DataInputStream): String {
+    private fun readLine(input: DataInputStream, socket: LocalSocket): String {
         val bytes = java.io.ByteArrayOutputStream()
+        val deadline = android.os.SystemClock.elapsedRealtime() + 5000
+        val poll = android.system.StructPollfd().apply {
+            fd = socket.fileDescriptor
+            events = android.system.OsConstants.POLLIN.toShort()
+        }
         while (bytes.size() < 8192) {
+            val remaining = (deadline - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0).toInt()
+            if (remaining == 0 || android.system.Os.poll(arrayOf(poll), remaining) == 0)
+                throw java.net.SocketTimeoutException("Device handshake timed out")
             val b = input.read()
             if (b < 0 || b == '\n'.code) break
             bytes.write(b)
@@ -195,9 +273,10 @@ internal object LinuxDeviceBridge {
     }
 
     private fun serve(context: Context, socket: LocalSocket, uid: Int) {
-        socket.soTimeout = 5000
         val input = DataInputStream(socket.inputStream)
-        val request = readLine(input)
+        // A Binder-passed shell socket can be read/written by the app, but SELinux
+        // denies setsockopt. Bound the handshake with poll instead of SO_RCVTIMEO.
+        val request = readLine(input, socket)
         // Picked folders (LinuxFolders) belong to the Android mode, which runs as this app.
         if (request.startsWith("F ")) {
             if (uid == android.os.Process.myUid()) LinuxFolders.serve(context, socket, request)
@@ -230,7 +309,7 @@ internal object LinuxDeviceBridge {
                 socket.setFileDescriptorsForSend(null)
             }
             // The guest holds its own reference to the device now; wait until it hangs up.
-            runCatching { socket.soTimeout = 0; socket.inputStream.read() }
+            runCatching { socket.inputStream.read() }
         } finally {
             connection.close()
         }
@@ -249,7 +328,6 @@ internal object LinuxDeviceBridge {
                 ?: run { socket.outputStream.write(1); return }
             val outbound = endpoints.firstOrNull { it.direction == android.hardware.usb.UsbConstants.USB_DIR_OUT }
             socket.outputStream.write(0)
-            socket.soTimeout = 0
             val output = socket.outputStream
             val open = java.util.concurrent.atomic.AtomicBoolean(true)
             val reader = Thread({
@@ -264,7 +342,7 @@ internal object LinuxDeviceBridge {
                         }
                     }
                 } catch (_: Exception) {
-                    runCatching { socket.shutdownInput() }
+                    closeSocket(socket)
                 }
             }, "DextopLinuxHidRead").apply { isDaemon = true; start() }
             try {
@@ -302,7 +380,6 @@ internal object LinuxDeviceBridge {
             port.setParameters(9600, 8, UsbSerialPort.STOPBITS_1, UsbSerialPort.PARITY_NONE)
             runCatching { port.dtr = true; port.rts = true }
             socket.outputStream.write(0)
-            socket.soTimeout = 0
             val output = socket.outputStream
             val reader = Thread({
                 val buffer = ByteArray(4096)
@@ -316,7 +393,7 @@ internal object LinuxDeviceBridge {
                         }
                     }
                 } catch (_: Exception) {
-                    runCatching { socket.shutdownInput() }
+                    closeSocket(socket)
                 }
             }, "DextopLinuxSerialRead").apply { isDaemon = true; start() }
             while (true) {

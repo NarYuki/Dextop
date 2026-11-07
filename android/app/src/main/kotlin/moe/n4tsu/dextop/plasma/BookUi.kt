@@ -43,6 +43,7 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -58,6 +59,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -77,6 +79,7 @@ import androidx.compose.material3.VerticalDivider
 import androidx.compose.material3.toShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.key
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
@@ -272,6 +275,11 @@ internal class BookUi(
 
     fun install(root: FrameLayout, desktopIndex: Int, windowsLayerView: View) {
         this.root = root
+        root.addOnLayoutChangeListener { _, left, top, right, bottom, oldLeft, oldTop, oldRight, oldBottom ->
+            if (right - left != oldRight - oldLeft || bottom - top != oldBottom - oldTop) {
+                place(chrome.primaryArea())
+            }
+        }
         BookContext.app = context.applicationContext
         root.setViewTreeLifecycleOwner(owner)
         root.setViewTreeSavedStateRegistryOwner(owner)
@@ -317,6 +325,11 @@ internal class BookUi(
             (view.layoutParams as? FrameLayout.LayoutParams)?.let { params ->
                 params.width = output.width()
                 params.leftMargin = output.left
+                if (view === statusBar) {
+                    params.topMargin = output.top
+                } else {
+                    params.bottomMargin = ((root?.height ?: output.bottom) - output.bottom).coerceAtLeast(0)
+                }
                 view.layoutParams = params
             }
         }
@@ -836,8 +849,8 @@ internal class BookUi(
     private fun Launcher() {
         val colors = MaterialTheme.colorScheme
         var query by remember { mutableStateOf("") }
-        var expanded by remember { mutableStateOf(false) }
-        val focus = remember { FocusRequester() }
+        var expanded by remember { mutableStateOf(BookStore.flag(context, BookStore.LAUNCHER_EXPANDED, false)) }
+        val gridState = rememberLazyGridState()
         val apps = remember(query) {
             if (query.isBlank()) launcher.apps().sortedBy { it.label.lowercase() } else PlasmaSearch.apps(launcher, query)
         }
@@ -845,16 +858,21 @@ internal class BookUi(
             launcher.dismissPopup()
             launcher.launch(app.packageName)
         }
-        LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
         val d = drag
         val away = d != null && !launcherBounds.contains(d.x, d.y)
         val fade by animateFloatAsState(if (away) 0f else 1f, label = "launcher-fade")
         // The popup spans the screen; the launcher sits centred in it, expanded or not.
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+        BoxWithConstraints(Modifier.fillMaxWidth(), contentAlignment = Alignment.BottomCenter) {
+        val availableWidth = (maxWidth - PANEL_SHADOW * 2).coerceAtLeast(0.dp)
+        val targetWidth = if (expanded) minOf(820.dp, availableWidth)
+            else minOf(470.dp, availableWidth * .82f)
+        val launcherWidth by animateDpAsState(targetWidth,
+            MaterialTheme.motionScheme.defaultSpatialSpec(), label = "launcher-width")
         Box(Modifier.padding(PANEL_SHADOW).alpha(fade)) {
             Surface(
-                Modifier.width(if (expanded) 820.dp else 470.dp).height(launcherHeightDp.dp - PANEL_SHADOW * 2)
-                    .onScreen { launcherBounds = it }.blockPointer(),
+                onClick = {},
+                modifier = Modifier.width(launcherWidth).height(launcherHeightDp.dp - PANEL_SHADOW * 2)
+                    .onScreen { launcherBounds = it },
                 shape = RoundedCornerShape(28.dp),
                 color = colors.surfaceContainer,
             ) {
@@ -863,7 +881,7 @@ internal class BookUi(
                         TextField(
                             value = query,
                             onValueChange = { query = it },
-                            modifier = Modifier.weight(1f).focusRequester(focus),
+                            modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = CircleShape,
                             placeholder = { Text(tr("スマートフォンのアプリを検索", "Search apps from your phone")) },
@@ -877,15 +895,22 @@ internal class BookUi(
                                 unfocusedIndicatorColor = Color.Transparent,
                             ),
                         )
-                        BookIconButton(if (expanded) "expand_more" else "expand_less", { expanded = !expanded }, size = 48.dp,
+                        BookIconButton(if (expanded) "expand_more" else "expand_less", {
+                            expanded = !expanded
+                            BookStore.setFlag(context, BookStore.LAUNCHER_EXPANDED, expanded)
+                        }, size = 48.dp,
                             container = colors.primaryContainer, tint = colors.onPrimaryContainer)
                     }
                     if (apps.isEmpty()) {
                         Text(tr("一致するアプリはありません", "No matching apps"), color = colors.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(24.dp))
                     }
-                    LazyVerticalGrid(GridCells.Fixed(if (expanded) 7 else 4), Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp)) {
-                        items(apps, key = { it.packageName }) { app -> AppCell(app) { open(app) } }
+                    // Recreate gesture handlers when the layout changes, retaining the scroll
+                    // position. A press from the old cell layout must not survive the toggle.
+                    key(expanded) {
+                        LazyVerticalGrid(GridCells.Adaptive(100.dp), Modifier.fillMaxWidth().weight(1f).padding(top = 12.dp), state = gridState) {
+                            items(apps, key = { it.packageName }) { app -> AppCell(app) { open(app) } }
+                        }
                     }
                 }
             }

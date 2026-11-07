@@ -256,7 +256,7 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     if (state['connected'] != true) return const SizedBox.shrink();
     final mode = state['mode'] as String? ?? 'off';
     final running = state['running'] == true;
-    final enabled = running && !busy;
+    final enabled = !busy;
     final name = state['name'] as String? ?? t('外部ディスプレイ', 'External display');
     return Padding(
       padding: const EdgeInsets.only(top: 12),
@@ -271,7 +271,7 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
               subtitle: Text(
                 running
                     ? inlineFormat(t('1: スマホ / 2: {0}', '1: Phone / 2: {0}'), [name])
-                    : t('デスクトップを開始すると選べます', 'Start the desktop to choose'),
+                    : t('次回のデスクトップ起動時に適用します', 'Applies when the desktop starts'),
               ),
               trailing: dropdown(mode, {
                 'mirror': t('表示画面を複製する', 'Duplicate these displays'),
@@ -709,11 +709,6 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
           .toList();
       final signature = topologySignature(next);
       if (!mounted || signature == lastNativeSignature) return;
-      if (next.length < 2) {
-        lastNativeSignature = signature;
-        await Navigator.maybePop(context);
-        return;
-      }
       setState(() {
         displays = next;
         original = {for (final display in next) display.id: display.position};

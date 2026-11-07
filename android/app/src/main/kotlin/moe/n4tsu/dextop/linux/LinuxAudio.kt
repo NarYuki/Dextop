@@ -133,7 +133,8 @@ internal class LinuxAudio(
             i=0
             until pactl info >/dev/null 2>&1 || [ ${'$'}i -ge 100 ]; do sleep 0.1; i=${'$'}((i + 1)); done
             pactl set-default-source dextop_microphone 2>/dev/null
-            count() { pactl list short source-outputs 2>/dev/null | awk '${'$'}3 != "-"' | wc -l; }
+            source=${'$'}(pactl list short sources 2>/dev/null | awk '${'$'}2 == "dextop_microphone" { print ${'$'}1; exit }')
+            count() { pactl list short source-outputs 2>/dev/null | awk -v source="${'$'}source" '${'$'}2 == source && ${'$'}3 != "-"' | wc -l; }
             count
             pactl subscribe 2>/dev/null | while read -r line; do
                 case "${'$'}line" in *source-output*) count ;; esac

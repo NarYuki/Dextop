@@ -1,6 +1,7 @@
 import 'l10n/inline_text.dart';
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
@@ -9,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'l10n/app_localizations.dart';
 import 'linux/linux_expressive.dart';
+import 'linux/linux_scale_setting.dart';
 import 'linux/linux_widgets.dart';
 import 'linux/linux_store_sources.dart';
 import 'linux/linux_advanced_settings.dart';
@@ -51,7 +53,8 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
   bool privilegedLaunchers = false;
 
   /// Whether Android and Linux share the clipboard.
-  bool clipboardSync = true;
+  bool clipboardSync = false;
+  bool keyboardButtonVisible = true;
   bool macosCompatibilityEnabled = false;
 
   /// Light or dark Linux and Windows apps: 'auto' (as Android), 'light' or 'dark'.
@@ -86,9 +89,11 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           ? null
           : await _channel.invokeMapMethod<Object?, Object?>('launcherInstall');
       final clipboard = _forContainer
-          ? true
-          : await _channel.invokeMethod<bool>('clipboardSync') ?? true;
+          ? false
+          : await _channel.invokeMethod<bool>('clipboardSync') ?? false;
       final mode = await _channel.invokeMethod<String>('executionMode');
+      final keyboardButton =
+          await _channel.invokeMethod<bool>('keyboardButtonVisible') ?? true;
       final appTheme = _forContainer
           ? 'auto'
           : await _channel.invokeMethod<String>('linuxTheme') ?? 'auto';
@@ -105,6 +110,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           pinnedLaunchers = launcher?['pinned'] == true;
           privilegedLaunchers = launcher?['privilegedOnly'] == true;
           clipboardSync = clipboard;
+          keyboardButtonVisible = keyboardButton;
           colorTheme = appTheme;
           executionMode = mode ?? 'privileged';
         });
@@ -137,6 +143,92 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
     } finally {
       if (mounted) setState(() => saving = false);
     }
+  }
+
+  Future<void> _setKeyboardButtonVisible(bool visible) async {
+    setState(() => saving = true);
+    try {
+      final value = await _channel.invokeMethod<bool>(
+        'setKeyboardButtonVisible',
+        {'visible': visible},
+      );
+      if (mounted) {
+        setState(() {
+          keyboardButtonVisible = value ?? visible;
+          error = null;
+        });
+      }
+    } on PlatformException catch (exception) {
+      if (mounted) setState(() => error = exception.message);
+    } finally {
+      if (mounted) setState(() => saving = false);
+    }
+  }
+
+  Future<void> _editDns() async {
+    var input = (settings?['dnsServers'] as List? ?? const []).join('\n');
+    String? validation;
+    final result = await showDialog<List<String>>(
+      context: context,
+      builder: (dialog) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: Text(linuxText(context, 'Linux専用DNS', 'Linux DNS')),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                linuxText(
+                  context,
+                  'IPアドレスを1行に1つ、最大3つ入力します。空欄はAndroidのDNSに従います。',
+                  'Enter up to three IP addresses, one per line. Leave empty to use Android DNS.',
+                ),
+              ),
+              const SizedBox(height: 16),
+              TextFormField(
+                initialValue: input,
+                onChanged: (value) => input = value,
+                minLines: 3,
+                maxLines: 4,
+                keyboardType: TextInputType.multiline,
+                decoration: InputDecoration(
+                  hintText: '1.1.1.1\n2606:4700:4700::1111',
+                  errorText: validation,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog),
+              child: Text(linuxText(context, 'キャンセル', 'Cancel')),
+            ),
+            TextButton(
+              onPressed: () {
+                final servers = input
+                    .split(RegExp(r'[\s,]+'))
+                    .where((v) => v.isNotEmpty)
+                    .toSet()
+                    .toList();
+                if (servers.length > 3 ||
+                    servers.any((v) => InternetAddress.tryParse(v) == null)) {
+                  setDialogState(
+                    () => validation = linuxText(
+                      context,
+                      '有効なIPアドレスを最大3つ入力してください',
+                      'Enter up to three valid IP addresses',
+                    ),
+                  );
+                  return;
+                }
+                Navigator.pop(dialog, servers);
+              },
+              child: Text(linuxText(context, '保存', 'Save')),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (result != null && mounted) await _save({'dnsServers': result});
   }
 
   Timer? _probePoll;
@@ -183,25 +275,22 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         ? t('テストしています（30 秒ほど）…', 'Testing (about 30 seconds)…')
         : switch (state) {
             'passed' => t(
-                'GPU で安定して描画できました。GPU を推奨します（軽い描画のテストのため、3D の重い処理ではこの差より大きく速くなります）',
-                'The GPU drew reliably. The GPU is recommended (the test scene is light; heavy 3D work gains much more than this)',
-              ),
+              'GPU で安定して描画できました。GPU を推奨します（軽い描画のテストのため、3D の重い処理ではこの差より大きく速くなります）',
+              'The GPU drew reliably. The GPU is recommended (the test scene is light; heavy 3D work gains much more than this)',
+            ),
             'slow' => t(
-                'GPU は安定していましたが、CPU より明らかに遅くなりました。CPU 描画を推奨します',
-                'The GPU was stable but clearly slower than the processor. Software rendering is recommended',
-              ),
+              'GPU は安定していましたが、CPU より明らかに遅くなりました。CPU 描画を推奨します',
+              'The GPU was stable but clearly slower than the processor. Software rendering is recommended',
+            ),
             'failed' => t(
-                'GPU で正しく描画できませんでした。CPU 描画を推奨します',
-                'The GPU did not draw correctly. Software rendering is recommended',
-              ),
-            'unavailable' => t(
-                'テストを実行できませんでした',
-                'The test could not run',
-              ),
+              'GPU で正しく描画できませんでした。CPU 描画を推奨します',
+              'The GPU did not draw correctly. Software rendering is recommended',
+            ),
+            'unavailable' => t('テストを実行できませんでした', 'The test could not run'),
             _ => t(
-                'まだテストしていません。GPU と CPU で同じ描画を行い、GPU が安定して遅くなければ GPU を推奨します',
-                'Not tested yet. The same drawing runs on the GPU and the processor; the GPU is recommended when it is stable and not slower',
-              ),
+              'まだテストしていません。GPU と CPU で同じ描画を行い、GPU が安定して遅くなければ GPU を推奨します',
+              'Not tested yet. The same drawing runs on the GPU and the processor; the GPU is recommended when it is stable and not slower',
+            ),
           };
     final details = [
       summary,
@@ -365,7 +454,58 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         ],
       ),
     ];
+    List<Widget> network() => [
+      LinuxSection(t('Linux専用ネットワーク設定', 'Linux network settings')),
+      LinuxGroup(
+        children: [
+          M3EListItem(
+            headline: t('DNSサーバー', 'DNS servers'),
+            supportingText:
+                (settings?['dnsServers'] as List? ?? const []).isEmpty
+                ? t('自動（AndroidのDNS）', 'Automatic (Android DNS)')
+                : (settings!['dnsServers'] as List).join('\n'),
+            supportingMaxLines: null,
+            leading: const Icon(M3EIcons.dns_rounded),
+            trailing: const Icon(M3EIcons.chevron_right_rounded),
+            onTap: saving ? null : _editDns,
+          ),
+        ],
+      ),
+      Padding(
+        padding: const EdgeInsets.all(8),
+        child: Text(
+          t(
+            'Linux内の名前解決に適用します。Android全体のネットワーク設定は変更しません。独自のDNSを使うアプリには適用されない場合があります。',
+            'Applies to name resolution inside Linux. Android network settings stay unchanged. Apps using their own DNS may bypass this setting.',
+          ),
+        ),
+      ),
+    ];
     List<Widget> display() => [
+      if (!_forContainer) ...[
+        LinuxSection(t('キーボードボタン', 'Keyboard button')),
+        LinuxGroup(
+          children: [
+            LinuxToggle(
+              value: keyboardButtonVisible,
+              onChanged: saving ? null : _setKeyboardButtonVisible,
+              icon: M3EIcons.keyboard_rounded,
+              title: t('鉛筆ボタンを表示', 'Show pencil button'),
+              subtitle: t(
+                'タップでキーボードを表示します。ドラッグで移動でき、位置は保存されます。',
+                'Tap to show the keyboard. Drag to move; the position is saved.',
+              ),
+            ),
+          ],
+        ),
+        LinuxSection(t('表示倍率', 'Display scale')),
+        LinuxScaleSetting(
+          value: (settings?['uiScale'] as num?)?.toInt() ?? 100,
+          t: t,
+          enabled: !saving,
+          onChanged: (value) => _save({'uiScale': value}),
+        ),
+      ],
       LinuxSection(
         _forContainer ? l.linuxGpuSection : l.linuxGpuDefaultSection,
       ),
@@ -417,10 +557,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           ),
         ],
       ),
-      if (!_forContainer) ...[
-        const SizedBox(height: 12),
-        _gpuProbeGroup(t),
-      ],
+      if (!_forContainer) ...[const SizedBox(height: 12), _gpuProbeGroup(t)],
       Padding(
         padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
         child: Text(
@@ -570,14 +707,22 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             LinuxChoice<String>(
               value: 'auto',
               groupValue: launcherMode,
+              // Silent installs need privileged access that is set up and running.
+              enabled: silentAvailable || launcherMode == 'auto',
               onChanged: _setLauncherMode,
               icon: M3EIcons.bolt_rounded,
               title: linuxText(context, '自動でインストール', 'Install automatically'),
-              subtitle: linuxText(
-                context,
-                'Shizuku・Stellar・内蔵バインダで、確認なしでインストールします',
-                'Installs without confirmation through Shizuku, Stellar or the built-in binder',
-              ),
+              subtitle: silentAvailable
+                  ? linuxText(
+                      context,
+                      'Shizuku・Stellar・内蔵バインダで、確認なしでインストールします',
+                      'Installs without confirmation through Shizuku, Stellar or the built-in binder',
+                    )
+                  : linuxText(
+                      context,
+                      'Shizuku・Stellar・内蔵バインダの特権アクセスを設定すると選べます',
+                      'Available once privileged access through Shizuku, Stellar or the built-in binder is set up',
+                    ),
             ),
             LinuxChoice<String>(
               value: 'manual',
@@ -679,10 +824,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           ),
         ],
       ),
-      if (!_forContainer) ...[
-        const SizedBox(height: 12),
-        _gpuProbeGroup(t),
-      ],
+      if (!_forContainer) ...[const SizedBox(height: 12), _gpuProbeGroup(t)],
       Padding(
         padding: const EdgeInsets.fromLTRB(8, 12, 8, 0),
         child: Text(
@@ -722,6 +864,12 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             M3EIcons.palette_rounded,
             t('表示とグラフィックス', 'Display and graphics'),
             '$gpuName · $themeName',
+          ),
+          category(
+            'network',
+            M3EIcons.dns_rounded,
+            t('ネットワーク', 'Network'),
+            t('Linux専用DNS', 'Linux DNS'),
           ),
           category(
             'integration',
@@ -793,6 +941,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'container' => l.linuxContainerSettings,
       'general' => t('一般', 'General'),
       'display' => t('表示とグラフィックス', 'Display and graphics'),
+      'network' => t('ネットワーク', 'Network'),
       'integration' => t('Android統合と権限', 'Android integration and permissions'),
       'store' => 'Store',
       'resources' => t('リソース', 'Resources'),
@@ -804,6 +953,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'container' => container(),
       'general' => general(),
       'display' => display(),
+      'network' => network(),
       'integration' => [
         ...integration(),
         const LinuxCompatPanel(),

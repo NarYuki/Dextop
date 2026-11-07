@@ -37,6 +37,20 @@ class DeviceMatchTest {
 
     private val pixel = DeviceIdentity("Google", "google", "Pixel 9", "tokay", "tokay", "google/tokay/build", 35)
 
+    @Test fun xperiaKeepsHotpluggedMiceOnDesktopAndAllowsGboardWindows() {
+        for (sdk in listOf(35, 36)) {
+            val identity = DeviceIdentity("Sony", "Sony", "A401SO", "A401SO", "A401SO", "Sony/A401SO/build", sdk)
+            val profile = DesktopEnvironmentRegistry.resolve(identity)
+            assertTrue(profile.pinPhysicalMouseToDesktop)
+            assertFalse(profile.privateApplicationDisplays)
+            assertTrue(profile.passivePlasmaShellFocus)
+            assertTrue(profile.untrustedMirrorDisplay)
+            assertTrue(profile.fullscreenApplicationDisplays)
+        }
+        assertFalse(DesktopEnvironmentRegistry.resolve(pixel).pinPhysicalMouseToDesktop)
+        assertFalse(DesktopEnvironmentRegistry.resolve(xiaomiAurora).pinPhysicalMouseToDesktop)
+    }
+
     @Test fun normalizesAndMatchesAllSpecifiedFields() {
         val match = DeviceMatch(
             manufacturers = setOf("google"), models = setOf("pixel 9"),

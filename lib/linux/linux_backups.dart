@@ -99,6 +99,46 @@ class LinuxBackupsUi {
     return result;
   }
 
+  /// The same progress popup for operations completed by a single service call.
+  static Future<T> duringOperation<T>(
+    BuildContext context,
+    String title,
+    String detail,
+    Future<T> Function() operation,
+  ) async {
+    final ready = Completer<BuildContext>();
+    final closed = showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialog) {
+        if (!ready.isCompleted) ready.complete(dialog);
+        return PopScope(
+          canPop: false,
+          child: M3EDialog(
+            title: title,
+            icon: const Icon(M3EIcons.delete_forever_rounded),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const M3EProgressIndicator.linearWavy(),
+                const SizedBox(height: 12),
+                Text(detail),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+    final dialog = await ready.future;
+    try {
+      return await operation();
+    } finally {
+      if (dialog.mounted) Navigator.of(dialog).pop();
+      await closed;
+    }
+  }
+
   static void report(
     BuildContext context,
     Map<Object?, Object?>? job,

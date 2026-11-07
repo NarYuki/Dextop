@@ -42,7 +42,20 @@ internal object LinuxCatalog {
     val BUS_PROBE = "dextop_bus() { if cat /proc/net/unix >/dev/null 2>&1; then " +
         "grep -q \"@/tmp/dextop-dbus-${'$'}1${'$'}\" /proc/net/unix; else " +
         "dbus-send --bus=unix:abstract=/tmp/dextop-dbus-${'$'}1 --dest=org.freedesktop.DBus " +
-        "/org/freedesktop/DBus org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; fi; }"
+        "/org/freedesktop/DBus org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; fi; }\n" + """
+        dextop_stop_system_bus() {
+            # /proc also contains other containers: never stop their buses.
+            [ -n "${'$'}{DEXTOP_SOCKET_NS:-}" ] || return 0
+            for dextop_proc in /proc/[0-9]*; do
+                [ -r "${'$'}dextop_proc/environ" ] || continue
+                tr '\000' '\n' <"${'$'}dextop_proc/environ" 2>/dev/null |
+                    grep -Fxq "DEXTOP_SOCKET_NS=${'$'}DEXTOP_SOCKET_NS" || continue
+                tr '\000' ' ' <"${'$'}dextop_proc/cmdline" 2>/dev/null |
+                    grep -q '^dbus-daemon --config-file=/etc/dextop/dbus-system-' || continue
+                kill "${'$'}{dextop_proc##*/}" 2>/dev/null
+            done
+        }
+        """.trimIndent()
     /** Xvfb's default mode has no clock. Wine caches that as 0 Hz, which
      * leaves clients polling raster status before their first visible frame.
      * Publish timing before any desktop or application initializes Wine. */
@@ -186,7 +199,7 @@ internal object LinuxCatalog {
             apt-get install -y --no-install-recommends \
                 xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
                 fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme xz-utils procps \
-                python3 passwd sudo libcrypt1 gnome-keyring libsecret-tools gnome-themes-extra libgtk-3-bin libglib2.0-bin qt5ct qt6ct
+                python3 passwd sudo libcrypt1 gnome-keyring libpam-gnome-keyring libsecret-tools gnome-themes-extra libgtk-3-bin libglib2.0-bin qt5ct qt6ct
             if dpkg-query -W -f='${'$'}{db:Status-Status}' libreoffice-core 2>/dev/null | grep -qx installed; then
                 apt-get install -y --no-install-recommends libreoffice-gtk3
             fi
@@ -211,7 +224,11 @@ internal object LinuxCatalog {
      * /tmp/dextop-fb-<display> (mmapped by the service), then the session
      * ([session] is "icewm" for desktop mode). Runs until the session ends.
      */
-    fun desktopScript(display: Int, width: Int, height: Int, dpi: Int, session: String, xwayland: Boolean = false): String = """
+    fun desktopScript(display: Int, width: Int, height: Int, dpi: Int, session: String, xwayland: Boolean = false, uiScale: Int = 100): String = """
+        # The keyring password, handed over on standard input only (LinuxContainerService.takeKeyring).
+        DEXTOP_KR=
+        [ "${'$'}{DEXTOP_KEYRING_STDIN:-}" = 1 ] && IFS= read -r DEXTOP_KR
+        unset DEXTOP_KEYRING_STDIN
         D=$display
         rm -f /tmp/.X${'$'}D-lock /tmp/.X11-unix/X${'$'}D
         mkdir -p /tmp/.X11-unix /tmp/dextop-fb-${'$'}D
@@ -219,7 +236,7 @@ internal object LinuxCatalog {
         XROOT=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
         ${if (xwayland) xwaylandCommand(display, width, height, dpi) else """
         $X_SERVER_ENV "${'$'}XROOT" Xvfb :${'$'}D -nolock -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1920)}x24 -dpi ${xDpi(dpi)} -fbdir /tmp/dextop-fb-${'$'}D \
-            -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE >/tmp/xvfb-${'$'}D.log 2>&1 &
+            -noreset -nolisten tcp -auth ${LinuxXAuth.GUEST} +extension XTEST +extension DAMAGE >/tmp/xvfb-${'$'}D.log 2>&1 &
         """.trimIndent()}
         XPID=${'$'}!
         trap 'kill ${'$'}XPID ${'$'}DBPID 2>/dev/null' EXIT HUP INT TERM
@@ -230,6 +247,7 @@ internal object LinuxCatalog {
         ${if (xwayland) ":" else virtualDisplayTiming(width, height)}
         mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
         ${sessionSetup(xDpi(dpi))}
+        ${LinuxUiScale.script(uiScale)}
         echo dextop-x-ready
         case "$session" in
             icewm) icewm-session >/tmp/session-${'$'}D.log 2>&1 || icewm >>/tmp/session-${'$'}D.log 2>&1 ;;
@@ -244,13 +262,17 @@ internal object LinuxCatalog {
      * and the session bus. Runs until Xvfb exits.
      */
     fun appsScript(display: Int, width: Int, height: Int, dpi: Int, xwayland: Boolean = false): String = """
+        # The keyring password, handed over on standard input only (LinuxContainerService.takeKeyring).
+        DEXTOP_KR=
+        [ "${'$'}{DEXTOP_KEYRING_STDIN:-}" = 1 ] && IFS= read -r DEXTOP_KR
+        unset DEXTOP_KEYRING_STDIN
         D=$display
         rm -f /tmp/.X${'$'}D-lock /tmp/.X11-unix/X${'$'}D
         mkdir -p /tmp/.X11-unix && chmod 1777 /tmp/.X11-unix
         XROOT=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
         ${if (xwayland) xwaylandCommand(display, width, height, dpi) else """
         $X_SERVER_ENV "${'$'}XROOT" Xvfb :${'$'}D -nolock -screen 0 ${maxOf(width, height, 1920)}x${maxOf(width, height, 1080)}x24 -dpi ${xDpi(dpi)} \
-            -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
+            -noreset -nolisten tcp -auth ${LinuxXAuth.GUEST} +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
         """.trimIndent()}
         XPID=${'$'}!
         trap 'kill ${'$'}XPID ${'$'}DBPID 2>/dev/null' EXIT HUP INT TERM
@@ -276,7 +298,7 @@ internal object LinuxCatalog {
         command -v Xwayland >/dev/null || { echo 'Xwayland is missing; run container setup again' >&2; exit 1; }
         XROOT=${'$'}(command -v fakeroot-tcp || command -v fakeroot)
         WAYLAND_DISPLAY=${LinuxXwaylandHost.displayName(display)} $X_SERVER_ENV "${'$'}XROOT" Xwayland :${'$'}D -nolock -geometry ${width}x$height -dpi ${xDpi(dpi)} \
-            -shm -noreset -nolisten tcp -ac +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
+            -shm -noreset -nolisten tcp -auth ${LinuxXAuth.GUEST} +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
     """.trimIndent()
 
     /**
@@ -302,10 +324,17 @@ internal object LinuxCatalog {
             DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
             # A system bus too: many applications (software centres, network and disk tools)
             # give up without one. Its own permissive configuration, since the stock one
-            # switches to the messagebus user, which PRoot's shell user cannot.
+            # switches to the messagebus user, which PRoot's shell user cannot. A system bus delivers
+            # nothing a policy does not allow receiving, not even the reply to Hello: every client
+            # (gnome-keyring-daemon among them) would wait on it for D-Bus's 25 seconds.
             export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
             mkdir -p /run/dbus
             $BUS_PROBE
+            # A bus that does not answer (one an earlier version started, which delivered no replies) is replaced.
+            if dextop_bus system && ! timeout -k 1 3 dbus-send --system --reply-timeout=2000 --print-reply \
+                --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
+                dextop_stop_system_bus; sleep 0.3
+            fi
             if ! dextop_bus system; then
             # No bus runs: a socket file left by an earlier session would make its bind fail.
             rm -f /run/dbus/system_bus_socket
@@ -315,9 +344,9 @@ internal object LinuxCatalog {
                 '<listen>unix:path=/run/dbus/system_bus_socket</listen><servicedir>/etc/dextop/system-services</servicedir>' \
                 '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/>' \
                 '<policy context="default"><allow user="*"/><allow own="*"/>' \
-                '<allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/></policy>' \
+                '<allow send_destination="*"/><allow receive_sender="*"/></policy>' \
                 '</busconfig>' >/etc/dextop/dbus-system-${'$'}D.conf
-            pkill -f "^dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf" 2>/dev/null && sleep 0.3
+            dextop_stop_system_bus
             dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf --fork >/tmp/dbus-system-${'$'}D.log 2>&1
             fi
         fi
@@ -328,7 +357,7 @@ internal object LinuxCatalog {
 
     /** Runs [command] (a desktop entry's Exec line) as an application of display [display]. */
     fun launchScript(display: Int, command: String, wayland: Boolean = false, waylandGpu: Boolean = true,
-        appLog: String? = null, androidWindows: Boolean = true): String {
+        appLog: String? = null, androidWindows: Boolean = true, uiScale: Int = 100): String {
         require(appLog == null || appLog.matches(Regex("[A-Za-z0-9._-]+\\.log")))
         val logs = "/tmp/apps-$display.log" + (appLog?.let { " /tmp/$it" } ?: "")
         return """
@@ -352,11 +381,12 @@ internal object LinuxCatalog {
         # AWT otherwise waits for a reparent event and leaves its content at
         # the initial size (Arduino/Swing appears blank after window resize).
         export _JAVA_AWT_WM_NONREPARENTING=${'$'}{_JAVA_AWT_WM_NONREPARENTING:-1}
-        ${if (androidWindows) ANDROID_WINDOW_DECORATIONS else FRAMED_WINDOW_DECORATIONS}
+        ${windowDecorations(androidWindows)}
         $RENDERER_OVERRIDE
         $GTK_FONT_SCHEMA_FIX
         ${if (wayland) (if (waylandGpu) WAYLAND_ENVIRONMENT else WAYLAND_TOOLKIT_ENVIRONMENT) else "unset WAYLAND_DISPLAY DEXTOP_WAYLAND_KGSL MESA_LOADER_DRIVER_OVERRIDE; export GDK_BACKEND=x11 QT_QPA_PLATFORM=xcb SDL_VIDEODRIVER=x11 SDL_VIDEO_DRIVER=x11 MOZ_ENABLE_WAYLAND=0 ELECTRON_OZONE_PLATFORM_HINT=x11"}
         $HARDWARE_TOOLKIT_ENVIRONMENT
+        ${LinuxUiScale.script(uiScale)}
         cd "${'$'}HOME"
         cmd=${shellQuote(command)}
         $CHROMIUM_SANDBOX_FIX
@@ -366,42 +396,33 @@ internal object LinuxCatalog {
     """.trimIndent() + "\n"
     }
 
-    /**
-     * As Android windows, Android draws each window's caption with its own close and minimize
-     * buttons, so GTK's client-side title bars leave theirs out. A system settings file only for
-     * these launches; Dextop Plasma and Book keep them, since they leave client-decorated windows
-     * unframed, and so does the desktop session for its window manager.
-     */
-    private val ANDROID_WINDOW_DECORATIONS = """
-        if [ ! -f /etc/dextop/app-xdg/gtk-4.0/settings.ini ]; then
-            for version in 3.0 4.0; do
-                mkdir -p /etc/dextop/app-xdg/gtk-${'$'}version
-                printf '[Settings]\ngtk-decoration-layout=menu:\n' >/etc/dextop/app-xdg/gtk-${'$'}version/settings.ini
-            done
-        fi
-        export XDG_CONFIG_DIRS=/etc/dextop/app-xdg:${'$'}{XDG_CONFIG_DIRS:-/etc/xdg}
-    """.trimIndent()
-
-    /**
-     * Dextop Plasma and Book leave client-decorated windows unframed, so their own title bars
-     * need all their buttons. On Wayland, GTK (and Chrome through it) takes the button layout
-     * from GSettings, whose default is "appmenu:close": a close button only. Without a dconf
-     * backend GSettings forgets everything anyway, so these launches use GIO's keyfile backend
-     * holding the full layout (the user's own value, once set, stays); with dconf the value is
-     * set there when the user has none.
-     */
-    private val FRAMED_WINDOW_DECORATIONS = """
-        DEXTOP_LAYOUT="'appmenu:minimize,maximize,close'"
+    /** GTK reads user settings and GSettings before system settings. Keep both in sync
+     * with the host's decorations, including after reinstalling a container. */
+    private fun windowDecorations(androidWindows: Boolean): String {
+        val layout = if (androidWindows) "menu:" else "appmenu:minimize,maximize,close"
+        return """
+        DEXTOP_LAYOUT='$layout'
+        for version in 3.0 4.0; do
+            settings="${'$'}{XDG_CONFIG_HOME:-${'$'}HOME/.config}/gtk-${'$'}version/settings.ini"
+            mkdir -p "${'$'}{settings%/*}"
+            # Preserve theme and other preferences; replace only the button layout.
+            [ -f "${'$'}settings" ] || printf '[Settings]\n' >"${'$'}settings"
+            awk -v layout="${'$'}DEXTOP_LAYOUT" '
+                /^\[Settings\]$/ { section=1; found=1; print; print "gtk-decoration-layout=" layout; next }
+                /^\[/ { section=0 }
+                section && /^[[:space:]]*gtk-decoration-layout[[:space:]]*=/ { next }
+                { print }
+                END { if (!found) print "[Settings]\ngtk-decoration-layout=" layout }
+            ' "${'$'}settings" >"${'$'}settings.dextop" && mv "${'$'}settings.dextop" "${'$'}settings"
+        done
         if ! ls /usr/lib/*/gio/modules/libdconfsettings.so /usr/lib/gio/modules/libdconfsettings.so >/dev/null 2>&1; then
-            KF="${'$'}{HOME:-/root}/.config/glib-2.0/settings/keyfile"
-            mkdir -p "${'$'}{KF%/*}"
-            grep -q '^button-layout=' "${'$'}KF" 2>/dev/null ||
-                printf '%s\n' '[org/gnome/desktop/wm/preferences]' "button-layout=${'$'}DEXTOP_LAYOUT" >>"${'$'}KF"
             export GSETTINGS_BACKEND=keyfile
-        elif command -v dconf >/dev/null 2>&1 && [ -z "${'$'}(dconf read /org/gnome/desktop/wm/preferences/button-layout 2>/dev/null)" ]; then
-            dconf write /org/gnome/desktop/wm/preferences/button-layout "${'$'}DEXTOP_LAYOUT" 2>/dev/null
         fi
-    """.trimIndent()
+        if command -v gsettings >/dev/null 2>&1; then
+            gsettings set org.gnome.desktop.wm.preferences button-layout "'${'$'}DEXTOP_LAYOUT'" 2>/dev/null || true
+        fi
+        """.trimIndent()
+    }
 
     /** Printed after a launched command ends, followed by its exit code. */
     const val LAUNCH_EXIT_MARKER = "dextop-launch-exit:"
@@ -427,6 +448,9 @@ internal object LinuxCatalog {
             fi
         fi
         if [ -n "${'$'}nosandbox" ]; then
+            if [ "${'$'}{DEXTOP_UI_SCALE:-1}" != 1 ]; then
+                case "${'$'}cmd" in *--force-device-scale-factor*) ;; *) cmd="${'$'}cmd --force-device-scale-factor=${'$'}DEXTOP_UI_SCALE" ;; esac
+            fi
             case "${'$'}cmd" in *--no-sandbox*) ;; *) cmd="${'$'}cmd --no-sandbox" ;; esac
             # PRoot cannot reliably clone Chromium's zygote/GPU subprocess
             # state. Use exec-based renderer children and an in-process GPU,
@@ -488,7 +512,8 @@ internal object LinuxCatalog {
             mkdir -p /var/lib/dbus && cp -f /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null
             export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-${'$'}D
             # Under PRoot the daemon may see the real uid while clients claim the fake root
-            # (or the reverse), so EXTERNAL alone can refuse every client; X is as open (-ac).
+            # (or the reverse), so EXTERNAL alone can refuse every client. Nobody may eavesdrop;
+            # X takes connections only with the container's cookie (LinuxXAuth).
             mkdir -p /etc/dextop
             printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
                 ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
@@ -501,10 +526,17 @@ internal object LinuxCatalog {
             DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
             # A system bus too: many applications (software centres, network and disk tools)
             # give up without one. Its own permissive configuration, since the stock one
-            # switches to the messagebus user, which PRoot's shell user cannot.
+            # switches to the messagebus user, which PRoot's shell user cannot. A system bus delivers
+            # nothing a policy does not allow receiving, not even the reply to Hello: every client
+            # (gnome-keyring-daemon among them) would wait on it for D-Bus's 25 seconds.
             export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
             mkdir -p /run/dbus
             $BUS_PROBE
+            # A bus that does not answer (one an earlier version started, which delivered no replies) is replaced.
+            if dextop_bus system && ! timeout -k 1 3 dbus-send --system --reply-timeout=2000 --print-reply \
+                --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
+                dextop_stop_system_bus; sleep 0.3
+            fi
             if ! dextop_bus system; then
             # No bus runs: a socket file left by an earlier session would make its bind fail.
             rm -f /run/dbus/system_bus_socket
@@ -514,9 +546,9 @@ internal object LinuxCatalog {
                 '<listen>unix:path=/run/dbus/system_bus_socket</listen><servicedir>/etc/dextop/system-services</servicedir>' \
                 '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/>' \
                 '<policy context="default"><allow user="*"/><allow own="*"/>' \
-                '<allow send_destination="*" eavesdrop="true"/><allow eavesdrop="true"/></policy>' \
+                '<allow send_destination="*"/><allow receive_sender="*"/></policy>' \
                 '</busconfig>' >/etc/dextop/dbus-system-${'$'}D.conf
-            pkill -f "^dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf" 2>/dev/null && sleep 0.3
+            dextop_stop_system_bus
             dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf --fork >/tmp/dbus-system-${'$'}D.log 2>&1
             fi
         fi
@@ -535,6 +567,10 @@ internal object LinuxCatalog {
      * only, creates the login keyring the first time (as the default one) and unlocks it, so
      * applications store secrets encrypted without asking for a password at every start.
      *
+     * When it is the account password and the container has pam_gnome_keyring, the session
+     * logs in through PAM as a desktop's does (LinuxPam), and the module unlocks the keyring.
+     * Otherwise, without PAM:
+     *
      * A login keyring that password cannot open (an application asked for a new keyring before
      * Dextop unlocked one, and the user typed another password; or the account password changed)
      * would make every application ask again at every start. Such a keyring is kept aside, under
@@ -542,28 +578,56 @@ internal object LinuxCatalog {
      * Expects the session bus to run.
      */
     private val KEYRING_UNLOCK = """
-        if [ -f /var/lib/dextop/keyring-unlock ]; then
-            DEXTOP_KR=${'$'}(cat /var/lib/dextop/keyring-unlock); rm -f /var/lib/dextop/keyring-unlock
+        # An earlier version handed the password over in this file; none is left behind.
+        rm -f /var/lib/dextop/keyring-unlock
+        if [ -n "${'$'}DEXTOP_KR" ]; then
             if command -v gnome-keyring-daemon >/dev/null 2>&1; then
                 KD="${'$'}{HOME:-/root}/.local/share/keyrings"
                 mkdir -p "${'$'}KD" && chmod 700 "${'$'}KD"
                 [ -s "${'$'}KD/default" ] || printf 'login\n' >"${'$'}KD/default"
                 dextop_unlock() {
-                    printf '%s' "${'$'}DEXTOP_KR" | gnome-keyring-daemon --replace --unlock --daemonize --components=secrets >/dev/null 2>&1
+                    # Bounded: with a login keyring of another password the daemon waits on a prompt
+                    # nobody sees; the session starts anyway and the check below repairs the keyring.
+                    printf '%s' "${'$'}DEXTOP_KR" | timeout -k 1 4 gnome-keyring-daemon --replace --unlock --daemonize --components=secrets >/dev/null 2>&1
                 }
                 dextop_locked() {
-                    dbus-send --session --print-reply=literal --dest=org.freedesktop.secrets \
+                    dbus-send --session --reply-timeout=1500 --print-reply=literal --dest=org.freedesktop.secrets \
                         /org/freedesktop/secrets/collection/login org.freedesktop.DBus.Properties.Get \
                         string:org.freedesktop.Secret.Collection string:Locked 2>/dev/null | grep -q true
                 }
-                dextop_unlock
-                if [ -s "${'$'}KD/login.keyring" ] && command -v dbus-send >/dev/null 2>&1; then
-                    sleep 0.5
-                    if dextop_locked; then
-                        echo 'Dextop: the login keyring has another password; kept aside, a new one is made' >&2
-                        mv "${'$'}KD/login.keyring" "${'$'}KD/login.keyring.before-dextop-${'$'}(date +%Y%m%d-%H%M%S)"
-                        dextop_unlock
-                    fi
+                # Locked only when the daemon answers "locked" every time, over two seconds, and a second
+                # unlock does not help: a slow daemon or bus must never get a keyring moved aside.
+                dextop_still_locked() {
+                    for dextop_try in 1 2 3 4; do
+                        sleep 0.5
+                        dextop_locked || return 1
+                    done
+                    return 0
+                }
+                if [ -f /etc/pam.d/${LinuxPam.SERVICE} ] && [ -f ${LinuxPam.LOGIN} ] && command -v python3 >/dev/null 2>&1; then
+                    # As on a desktop: the session logs in through PAM, and pam_gnome_keyring unlocks the
+                    # login keyring with the account password (and passwd keeps the two in step).
+                    # Bounded so that, with the direct unlock after it, the session reports ready in time.
+                    printf '%s\n' "${'$'}DEXTOP_KR" | timeout -k 1 5 python3 ${LinuxPam.LOGIN} >/dev/null 2>&1
+                    dextop_pam=${'$'}?
+                    # The daemon PAM started holds the login keyring; the session starts its Secret Service,
+                    # as gnome-session does.
+                    [ "${'$'}dextop_pam" != 0 ] || timeout -k 1 3 gnome-keyring-daemon --start --components=secrets >/dev/null 2>&1
+                else
+                    dextop_pam=
+                fi
+                # Not the account password (a keyring password Dextop made) or no PAM module: unlock directly.
+                [ "${'$'}dextop_pam" = 0 ] || dextop_unlock
+                # Checked in the background: the session (and its readiness signal) never waits on it.
+                # With PAM a keyring of another password stays as it is and asks, as on a desktop.
+                if [ -z "${'$'}dextop_pam" ] && [ -s "${'$'}KD/login.keyring" ] && command -v dbus-send >/dev/null 2>&1; then
+                    (
+                        if dextop_still_locked && { dextop_unlock; dextop_still_locked; }; then
+                            echo 'Dextop: the login keyring has another password; kept aside, a new one is made' >&2
+                            mv "${'$'}KD/login.keyring" "${'$'}KD/login.keyring.before-dextop-${'$'}(date +%Y%m%d-%H%M%S)"
+                            dextop_unlock
+                        fi
+                    ) </dev/null >/dev/null 2>&1 &
                 fi
                 # Applications that store secrets use the login keyring, never a new one asking for a password.
                 printf 'login\n' >"${'$'}KD/default"
@@ -828,5 +892,5 @@ internal object LinuxCatalog {
         "  export LD_LIBRARY_PATH=/opt/dextop-mesa/lib/aarch64-linux-gnu${'$'}{LD_LIBRARY_PATH:+:${'$'}LD_LIBRARY_PATH}\n" +
         "fi"
 
-    private fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
+    fun shellQuote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 }

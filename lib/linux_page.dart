@@ -96,6 +96,8 @@ class _LinuxPageState extends State<LinuxPage> {
   bool _refreshing = false;
   int _dataGeneration = 0;
   int _statusRequest = 0;
+  int _sizeRequest = 1;
+  int _sizeHandled = 0;
   String? _executionMode;
   bool loading = true;
   bool enabled = false;
@@ -107,6 +109,7 @@ class _LinuxPageState extends State<LinuxPage> {
   String defaultContainer = '';
   List<Map<Object?, Object?>> catalog = const [];
   final Map<String, _Progress> progress = {};
+  final Set<String> _deleting = {};
   final Map<String, List<String>> logs = {};
   String? error;
   final setupProgress = ValueNotifier<Map<String, LinuxSetupProgress>>({});
@@ -220,6 +223,7 @@ class _LinuxPageState extends State<LinuxPage> {
       if (_executionMode != mode) {
         _executionMode = mode;
         _dataGeneration++;
+        _sizeRequest++;
         _refreshing = false;
         _containersLoaded = false;
         containers = const [];
@@ -296,10 +300,13 @@ class _LinuxPageState extends State<LinuxPage> {
     if (!enabled || !usable || _refreshing) return;
     _refreshing = true;
     final generation = _dataGeneration;
+    final sizeRequest = _sizeRequest;
     try {
       final list =
           await _channel
-              .invokeListMethod<Object?>('listAll')
+              .invokeListMethod<Object?>('listAll', {
+                'refreshSizes': tab == 1 && _sizeHandled != sizeRequest,
+              })
               .timeout(const Duration(seconds: 20)) ??
           const [];
       final settings =
@@ -315,6 +322,7 @@ class _LinuxPageState extends State<LinuxPage> {
                 .cast<Map<Object?, Object?>>()
           : catalog;
       if (!mounted || generation != _dataGeneration) return;
+      if (tab == 1) _sizeHandled = sizeRequest;
       setState(() {
         containers = list
             .cast<Map<Object?, Object?>>()
@@ -355,6 +363,10 @@ class _LinuxPageState extends State<LinuxPage> {
 
   Future<void> _setTab(int value) async {
     setState(() => tab = value);
+    if (value == 1) {
+      _sizeRequest++;
+      unawaited(_refreshContainers());
+    }
     final preferences = await SharedPreferences.getInstance();
     await preferences.setInt(_tabKey, value);
   }
@@ -523,6 +535,7 @@ class _LinuxPageState extends State<LinuxPage> {
   }
 
   Future<void> _remove(_LinuxContainer container) async {
+    if (_deleting.contains(container.id)) return;
     final l = AppLocalizations.of(context);
     if (!await _confirm(
       l.linuxDelete,
@@ -532,8 +545,33 @@ class _LinuxPageState extends State<LinuxPage> {
     )) {
       return;
     }
-    await _channel.invokeMethod('remove', {'id': container.id});
-    await _refreshContainers();
+    if (!mounted || _deleting.contains(container.id)) return;
+    setState(() => _deleting.add(container.id));
+    try {
+      final removed = await LinuxBackupsUi.duringOperation<bool?>(
+        context,
+        t('コンテナを削除しています', 'Deleting the container'),
+        container.name,
+        () => _channel.invokeMethod<bool>('remove', {'id': container.id}),
+      );
+      if (removed != true) {
+        throw StateError(
+          t('コンテナを削除できませんでした', 'Could not delete the container'),
+        );
+      }
+      await _refreshContainers();
+    } catch (exception) {
+      if (mounted) {
+        M3ESnackbar.show(
+          context,
+          message: exception is PlatformException
+              ? exception.message ?? '$exception'
+              : '$exception',
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _deleting.remove(container.id));
+    }
   }
 
   /// Opens an interactive shell of [container] in its own window.
@@ -1077,17 +1115,25 @@ class _LinuxPageState extends State<LinuxPage> {
     _LinuxContainer container,
   ) {
     if (container.inactive) return _inactiveContainerCard(theme, container);
-    final current = progress[container.id] ?? container.progress;
+    final deleting = _deleting.contains(container.id);
+    final current = deleting
+        ? null
+        : progress[container.id] ?? container.progress;
     final installing =
-        container.state == 'installing' || container.state == 'updating';
+        deleting ||
+        container.state == 'installing' ||
+        container.state == 'updating';
     final running = container.runtimeState == 'running';
     final subtitle = [
       _distroName(container.distro),
-      switch (container.state) {
-        'installed' => l.linuxStateInstalled,
-        'installing' || 'updating' => _phaseTitle(l, current),
-        _ => l.linuxStateFailed,
-      },
+      if (deleting)
+        t('削除中', 'Deleting')
+      else
+        switch (container.state) {
+          'installed' => l.linuxStateInstalled,
+          'installing' || 'updating' => _phaseTitle(l, current),
+          _ => l.linuxStateFailed,
+        },
       if (!installing)
         switch (container.runtimeState) {
           'starting' => l.linuxRuntimeStarting,
@@ -1097,13 +1143,13 @@ class _LinuxPageState extends State<LinuxPage> {
         },
       if (container.bytes >= 0 && !installing) _size(container.bytes),
     ].join(' · ');
-    final detail = installing ? _phaseDetail(current) : null;
+    final detail = installing && !deleting ? _phaseDetail(current) : null;
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
       child: M3ECard(
         variant: M3ECardVariant.filled,
         padding: const EdgeInsets.fromLTRB(16, 16, 8, 16),
-        onPressed: () => _containerMenu(l, container),
+        onPressed: deleting ? null : () => _containerMenu(l, container),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -1146,7 +1192,9 @@ class _LinuxPageState extends State<LinuxPage> {
                 M3EIconButton(
                   variant: M3EIconButtonVariant.standard,
                   icon: const Icon(M3EIcons.more_vert_rounded),
-                  onPressed: () => _containerMenu(l, container),
+                  onPressed: deleting
+                      ? null
+                      : () => _containerMenu(l, container),
                 ),
               ],
             ),
@@ -1169,13 +1217,14 @@ class _LinuxPageState extends State<LinuxPage> {
                     style: theme.textTheme.bodySmall,
                   ),
                 ),
-              Align(
-                alignment: Alignment.centerRight,
-                child: M3EButton.text(
-                  onPressed: () => _openSetup(container: container),
-                  child: Text(l.linuxSetupLog),
+              if (!deleting)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: M3EButton.text(
+                    onPressed: () => _openSetup(container: container),
+                    child: Text(l.linuxSetupLog),
+                  ),
                 ),
-              ),
             ],
             if (!installing && container.runtimeState == 'starting') ...[
               const SizedBox(height: 16),
@@ -1262,7 +1311,7 @@ class _LinuxPageState extends State<LinuxPage> {
     AppLocalizations l,
     _LinuxContainer container,
   ) async {
-    if (container.inactive) return;
+    if (container.inactive || _deleting.contains(container.id)) return;
     final installing =
         container.state == 'installing' || container.state == 'updating';
     final installed = container.state == 'installed';

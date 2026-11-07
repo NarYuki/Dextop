@@ -10,26 +10,49 @@ import android.content.Context
  */
 internal object LinuxStoreJobs {
     fun startSource(context: android.content.Context, container: String, source: String,
-                    action: String, packageId: String): Boolean {
+                    action: String, packageId: String, onJob: (Job) -> Unit = {}): Boolean {
         if (source !in setOf("deb-get", "flathub") ||
             action !in setOf("prepare", "install", "remove", "upgrade") ||
             (action != "prepare" && !windowsId.matches(packageId))) return false
-        LinuxStoreSources.requireEnabled(context, source)
+        if (action != "remove") LinuxStoreSources.requireEnabled(context, source)
         val name = "$source:${if (action == "prepare") "@prepare" else packageId}"
         val log = logFile(name)
         val command = if (action == "prepare") "prepare ${quote(source)}"
             else "${quote(source)} ${quote(action)} ${quote(packageId)}"
         val python = if (action == "prepare") "command -v python3 >/dev/null 2>&1 || " +
             "{ export DEBIAN_FRONTEND=noninteractive; apt-get update && apt-get install -y --no-install-recommends python3; }; " else ""
-        val script = "set -e; $python" + LinuxStoreSources.helper() +
-            "mkdir -p $LOG_DIR; /usr/local/bin/dextop-store $command > $log 2>&1; "
-        // Preserve failure diagnostics instead of exiting before tail.
-        val logged = script.replace("set -e; ", "") + "status=\$?; tail -n 45 $log; exit \$status"
+        val logged = "mkdir -p $LOG_DIR; { $python" + LinuxStoreSources.helper() +
+            "/usr/local/bin/dextop-store $command; } > $log 2>&1; " +
+            "status=\$?; tail -n 45 $log; exit \$status"
         return run(Job(container, action, listOf(name)), name, logged,
-            "tail -n 1 $log 2>/dev/null", { job, line -> job.line = line }, before = {
-                LinuxStoreSources.requireEnabled(context, source)
+            log, ::sourceProgress, before = {
+                if (action != "remove") LinuxStoreSources.requireEnabled(context, source)
                 LinuxStoreSources.requireApt(checkNotNull(LinuxContainerClient.service()), container)
-            })
+            }, onJob = onJob)
+    }
+
+    /** Holds the exact job while awaiting completion, even if Store polls consume its result. */
+    fun uninstall(context: Context, container: String, source: String, packageId: String) {
+        var owned: Job? = null
+        val capture: (Job) -> Unit = { owned = it }
+        val started = when (source) {
+            "apt" -> start(container, "remove", listOf(packageId), before = {
+                LinuxStoreSources.requireApt(checkNotNull(LinuxContainerClient.service()), container)
+            }, onJob = capture)
+            "flathub", "deb-get" -> startSource(context, container, source, "remove", packageId, onJob = capture)
+            "pacman" -> {
+                require(packageName.matches(packageId))
+                val name = "pacman:$packageId"
+                val log = logFile(name)
+                val script = "mkdir -p $LOG_DIR; pacman -R --noconfirm -- ${quote(packageId)} > $log 2>&1; status=\$?; tail -n 40 $log; exit \$status"
+                run(Job(container, "remove", listOf(name)), name, script, log, ::sourceProgress, onJob = capture)
+            }
+            else -> error("This application's uninstall method is not supported")
+        }
+        check(started) { "Another operation for this application is already in progress" }
+        val job = checkNotNull(owned)
+        while (job.state in setOf("queued", "running")) Thread.sleep(200)
+        check(job.state == "done") { job.output.takeLast(4000).ifBlank { "Uninstall failed: ${job.state}" } }
     }
 
     class Job(val container: String, val action: String, val packages: List<String>) {
@@ -40,7 +63,9 @@ internal object LinuxStoreJobs {
         @Volatile var output = ""
         @Volatile var line = ""
         /** 0–100 from the job's progress reports, or -1. */
-        @Volatile var percent = -1
+        @Volatile var percent = -1.0
+        @Volatile var phase = ""
+        @Volatile var estimating = false
     }
 
     private val notificationIds = java.util.concurrent.atomic.AtomicInteger(42000)
@@ -83,7 +108,7 @@ internal object LinuxStoreJobs {
                     "remove" -> text("アンインストール中", "Uninstalling")
                     "upgrade" -> text("更新中", "Updating")
                     else -> text("インストール中", "Installing")
-                } + if (job.percent >= 0) " ${job.percent.coerceIn(0, 100)}%" else ""
+                } + if (job.percent >= 0) " ${"%.1f".format(java.util.Locale.ROOT, job.percent.coerceIn(0.0, 100.0))}%" else ""
             }
             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
             val pending = intent?.let { android.app.PendingIntent.getActivity(context, job.notificationId, it,
@@ -92,10 +117,11 @@ internal object LinuxStoreJobs {
                 .setSmallIcon(if (active) android.R.drawable.stat_sys_download else if (job.state == "done")
                     android.R.drawable.stat_sys_download_done else android.R.drawable.stat_notify_error)
                 .setContentTitle(title).setContentText(status).setContentIntent(pending)
+                .setStyle(android.app.Notification.BigTextStyle().bigText(if (job.line.isEmpty()) status else "$status\n${job.line}"))
                 .setCategory(android.app.Notification.CATEGORY_PROGRESS).setOnlyAlertOnce(true)
                 .setOngoing(active).setAutoCancel(!active)
                 .setGroup("dextop.store.${job.container}")
-            if (active) notification.setProgress(100, job.percent.coerceIn(0, 100),
+            if (active) notification.setProgress(1000, (job.percent.coerceIn(0.0, 100.0) * 10).toInt(),
                 job.state == "queued" || job.percent < 0)
             manager.notify(job.notificationId, notification.build())
         }
@@ -105,7 +131,7 @@ internal object LinuxStoreJobs {
     fun hasActiveJobs(): Boolean = jobs.values.any { it.state == "queued" || it.state == "running" }
     private val packageName = Regex("^[a-z0-9][a-z0-9+.-]+$")
     private val windowsId = Regex("^[A-Za-z0-9][A-Za-z0-9.+_-]{0,127}$")
-    private const val LOG_DIR = "/var/tmp/dextop-store"
+    private const val LOG_DIR = "/tmp"
     /** Windows applications' job names, beside Debian package names. */
     const val WINDOWS_PREFIX = "win:"
 
@@ -115,7 +141,7 @@ internal object LinuxStoreJobs {
 
     /** [action]: "install", "remove" or "upgrade"; an empty [packages] upgrades everything. */
     fun start(container: String, action: String, packages: List<String>, repair: Boolean = false,
-              before: () -> Unit = {}): Boolean {
+              before: () -> Unit = {}, onJob: (Job) -> Unit = {}): Boolean {
         if (action !in setOf("install", "remove", "upgrade")) return false
         if (packages.any { !packageName.matches(it) }) return false
         val name = packages.joinToString(" ").ifEmpty { "*" }
@@ -126,7 +152,7 @@ internal object LinuxStoreJobs {
         val list = installedPackages.joinToString(" ")
         val log = logFile(name)
         // APT::Status-Fd makes apt report dlstatus:/pmstatus: progress lines in the log.
-        val apt = "apt-get -o APT::Status-Fd=1 " + when (action) {
+        val apt = "apt-get -o APT::Status-Fd=1 -o Dpkg::Use-Pty=0 " + when (action) {
             "remove" -> "remove -y --no-auto-remove $list"
             "upgrade" -> if (packages.isEmpty()) "upgrade -y" else "install -y --only-upgrade $list"
             else -> "install -y $list"
@@ -140,17 +166,38 @@ internal object LinuxStoreJobs {
         val script = "mkdir -p $LOG_DIR; export DEBIAN_FRONTEND=noninteractive; " +
             "{ $fix" +
             "if [ -z \"\$(find /var/lib/apt/lists -maxdepth 1 -name '*Packages*' -mmin -720 2>/dev/null | head -n 1)\" ]; " +
-            "then apt-get update; fi; $apt; } > $log 2>&1; status=\$?; tail -n 40 $log; exit \$status"
-        return run(Job(container, action, packages), name, script, "grep -E '^(dl|pm)status:' $log 2>/dev/null | tail -n 1", { job, status ->
-            // dlstatus:<n>:<percent>:<text> / pmstatus:<package>:<percent>:<text>
-            val parts = status.split(':', limit = 4)
-            if (parts.size == 4) {
-                val value = parts[2].toFloatOrNull() ?: 0f
-                job.percent = if (parts[0] == "dlstatus") (value / 2).toInt()
-                    else if (action == "remove") value.toInt() else 50 + (value / 2).toInt()
-                job.line = parts[3]
+            "then echo 'dextop-stage:update:Updating package lists'; apt-get -o APT::Status-Fd=1 update; fi; echo 'dextop-stage:resolve:Resolving packages'; $apt; } > $log 2>&1; status=\$?; tail -n 40 $log; exit \$status"
+        return run(Job(container, action, packages), name, script, log, ::aptProgress, before = before, onJob = onJob)
+    }
+
+    private fun aptProgress(job: Job, tail: String) {
+        val lines = tail.replace('\r', '\n').lineSequence().map(String::trim).filter { it.isNotEmpty() }.toList()
+        for (line in lines) {
+            if (line.startsWith("dextop-stage:")) {
+                val parts = line.split(':', limit = 3)
+                if (parts.size == 3) { job.phase = parts[1]; job.line = parts[2]; job.percent = -1.0 }
+            } else LinuxStoreProgress.apt(line)?.let {
+                job.percent = it.percent
+                // dlstatus during index refresh is a package-list download, not an install.
+                if (job.phase != "update" || it.phase != "download") job.phase =
+                    if (it.phase == "install" && job.action == "remove") "remove" else it.phase
+                job.line = it.line
+                job.estimating = false
             }
-        }, before = before)
+        }
+        if (job.line.isEmpty()) job.line = lines.lastOrNull().orEmpty().take(400)
+    }
+
+    private fun sourceProgress(job: Job, tail: String) {
+        aptProgress(job, tail)
+        val line = tail.replace('\r', '\n').lineSequence().lastOrNull { it.startsWith("dextop-progress-json:") } ?: return
+        runCatching {
+            val value = org.json.JSONObject(line.substringAfter(':'))
+            job.percent = value.optDouble("percent", -1.0).takeIf { it.isFinite() }?.coerceIn(-1.0, 100.0) ?: -1.0
+            job.line = value.optString("line").take(500)
+            job.phase = value.optString("phase")
+            job.estimating = value.optBoolean("estimating")
+        }
     }
 
     /**
@@ -166,11 +213,11 @@ internal object LinuxStoreJobs {
         val command = if (action == "remove") "dextop-windows remove ${quote(id)}" else "dextop-windows install ${quote(spec!!)}"
         val script = "mkdir -p $LOG_DIR /usr/local/bin; $helper" +
             "$command > $log 2>&1; status=\$?; grep -v '^dextop-progress:' $log | tail -n 40; exit \$status"
-        return run(Job(container, action, listOf(name)), name, script, "grep '^dextop-progress:' $log 2>/dev/null | tail -n 1", { job, status ->
+        return run(Job(container, action, listOf(name)), name, script, log, { job, status ->
             // dextop-progress:<percent>:<text>
-            val parts = status.split(':', limit = 3)
+            val parts = status.replace('\r', '\n').lineSequence().lastOrNull { it.startsWith("dextop-progress:") }.orEmpty().split(':', limit = 3)
             if (parts.size == 3) {
-                job.percent = parts[1].toIntOrNull() ?: job.percent
+                job.percent = parts[1].toDoubleOrNull() ?: job.percent
                 job.line = parts[2]
             }
         })
@@ -196,7 +243,7 @@ internal object LinuxStoreJobs {
         return "mkdir -p ${path.substringBeforeLast('/')}; printf '%s' '$encoded' | base64 -d > $path; chmod 755 $path; "
     }
 
-    private fun logFile(name: String) = "$LOG_DIR/${name.replace(Regex("[^A-Za-z0-9+.-]"), "_")}.log"
+    private fun logFile(name: String) = "$LOG_DIR/dextop-store-${name.replace(Regex("[^A-Za-z0-9+.-]"), "_").take(80)}-${java.util.UUID.randomUUID()}.log"
 
     /**
      * Jobs waiting in each container, run one at a time in order: package managers share one
@@ -229,9 +276,10 @@ internal object LinuxStoreJobs {
 
     /** Queues [script] as [job] named [name], reading its progress with [progressCommand] while it runs. */
     private fun run(job: Job, name: String, script: String, progressCommand: String,
-                    progress: (Job, String) -> Unit, before: () -> Unit = {}): Boolean {
+                    progress: (Job, String) -> Unit, before: () -> Unit = {}, onJob: (Job) -> Unit = {}): Boolean {
         if (jobs[key(job.container, name)]?.state.let { it == "running" || it == "queued" }) return false
         jobs[key(job.container, name)] = job
+        onJob(job)
         notify(job)
         enqueue(job.container, Runnable {
             try {
@@ -239,7 +287,9 @@ internal object LinuxStoreJobs {
                 before()
                 job.state = "running"
                 notify(job)
+                val before = if (job.action == "install") appIds(job.container) else null
                 execute(job, script, progressCommand, progress)
+                if (before != null && job.state == "done") addLaunchers(job.container, before)
             } catch (error: Exception) {
                 job.state = "failed"
                 job.output = error.message ?: error.toString()
@@ -251,29 +301,61 @@ internal object LinuxStoreJobs {
         return true
     }
 
+    private fun apps(container: String): org.json.JSONArray? = runCatching {
+        org.json.JSONArray(checkNotNull(LinuxContainerClient.service())
+            .listApps(container, java.util.Locale.getDefault().toLanguageTag()))
+    }.getOrNull()
+
+    private fun appIds(container: String): Set<String>? = apps(container)?.let { list ->
+        (0 until list.length()).mapTo(HashSet()) { list.getJSONObject(it).optString("id") }
+    }
+
+    /**
+     * With launcher installs set to automatic, every desktop entry a finished install added gets
+     * its home-screen launcher without the user asking for it.
+     */
+    private fun addLaunchers(container: String, before: Set<String>) {
+        val context = notificationContext ?: return
+        if (LinuxShortcutInstaller.mode(context) == "manual" && !LinuxShortcutInstaller.play) return
+        if (!LinuxShortcutInstaller.silentAvailable(context)) return
+        val list = apps(container) ?: return
+        for (i in 0 until list.length()) {
+            val app = list.getJSONObject(i)
+            val id = app.optString("id")
+            if (id.isEmpty() || id in before || LinuxShortcutInstaller.installed(context, container, id)) continue
+            val icon = app.optString("icon").takeIf { it.isNotEmpty() }
+                ?.let { runCatching { android.util.Base64.decode(it, android.util.Base64.DEFAULT) }.getOrNull() }
+            runCatching {
+                LinuxShortcutInstaller.install(context, container, id, app.optString("name"), icon, silent = true)
+            }.onFailure { android.util.Log.w("DextopStore", "Launcher for $id not added", it) }
+        }
+    }
+
     private fun execute(job: Job, script: String, progressCommand: String, progress: (Job, String) -> Unit) {
         val service = LinuxContainerClient.service()
         if (service == null) { job.state = "failed"; job.output = "Linux is not connected"; return }
         val poller = Thread({
             while (job.state == "running") {
                 runCatching {
-                    val result = org.json.JSONObject(service.runCommand(job.container, progressCommand, 10))
-                    val status = result.optString("output").trim().lines().lastOrNull().orEmpty()
-                    progress(job, status)
-                    if (job.state == "running") notify(job)
+                    val tail = service.guestLog(job.container, progressCommand.substringAfterLast('/'), 16384, false)
+                    val previous = listOf(job.line, job.percent, job.phase, job.estimating)
+                    if (job.state == "running") progress(job, tail)
+                    if (job.state == "running" && previous != listOf(job.line, job.percent, job.phase, job.estimating)) notify(job)
                 }
-                try { Thread.sleep(2500) } catch (_: InterruptedException) { return@Thread }
+                try { Thread.sleep(350) } catch (_: InterruptedException) { return@Thread }
             }
         }, "DextopStorePoll").apply { isDaemon = true; start() }
         runCatching {
             val result = org.json.JSONObject(service.runCommand(job.container, script, 3600))
             job.output = result.optString("output")
             job.state = if (result.optInt("exitCode", 1) == 0) "done" else "failed"
+            if (job.state == "done") job.percent = 100.0
         }.onFailure { error ->
             job.output = error.message ?: error.toString()
             job.state = "failed"
         }
         poller.interrupt()
+        runCatching { service.refreshContainerSize(job.container, true) }
         // Failures are diagnosed from logcat; the container's own log is private to the app.
         if (job.state == "failed") android.util.Log.w("DextopStore", "${job.action} ${job.packages} failed:\n${job.output.takeLast(4000)}")
     }
@@ -285,7 +367,7 @@ internal object LinuxStoreJobs {
         }.entries.sortedBy { it.value.queuedAt }.map { (key, job) ->
             if (consume && job.state != "running" && job.state != "queued") jobs.remove(key, job)
             mapOf("action" to job.action, "packages" to job.packages, "state" to job.state,
-                "line" to job.line, "percent" to job.percent, "output" to job.output.takeLast(4000))
+                "line" to job.line, "percent" to job.percent, "phase" to job.phase, "estimating" to job.estimating, "output" to job.output.takeLast(4000))
         }
         return result
     }

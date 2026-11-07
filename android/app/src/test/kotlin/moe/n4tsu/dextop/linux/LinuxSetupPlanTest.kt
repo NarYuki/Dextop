@@ -46,7 +46,9 @@ class LinuxSetupPlanTest {
             assertContains(script, "WAYLAND_DISPLAY=wayland-x11-98 env -u LD_LIBRARY_PATH -u LIBGL_DRIVERS_PATH")
             assertContains(script, "Xwayland :\$D -nolock")
             assertContains(script, "-geometry 640x480")
-            assertContains(script, "-shm -noreset -nolisten tcp -ac")
+            // Clients need the container's cookie (LinuxXAuth); no server is open to all (-ac).
+            assertContains(script, "-shm -noreset -nolisten tcp -auth ${LinuxXAuth.GUEST}")
+            assertFalse(" -ac " in script)
             assertFalse("Xvfb :" in script)
             assertFalse("xrandr --output screen" in script)
         }

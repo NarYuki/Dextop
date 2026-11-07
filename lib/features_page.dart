@@ -16,6 +16,7 @@ class DextopFeaturesPage extends StatefulWidget {
     this.launcherOnly = false,
     this.category,
     this.ensureDesktopRunning,
+    this.onAddHomeShortcut,
     super.key,
   });
 
@@ -24,6 +25,7 @@ class DextopFeaturesPage extends StatefulWidget {
   final bool launcherOnly;
   final String? category;
   final Future<bool> Function()? ensureDesktopRunning;
+  final Future<void> Function()? onAddHomeShortcut;
 
   @override
   State<DextopFeaturesPage> createState() => _DextopFeaturesPageState();
@@ -939,6 +941,18 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
             ),
         ]),
       ],
+      if (widget.category == 'interaction')
+        _section(
+          currentLocalizations().uiShortcutAdd,
+          Icons.add_to_home_screen_rounded,
+          [
+            ListTile(
+              leading: const Icon(Icons.add_to_home_screen_rounded),
+              title: Text(currentLocalizations().uiShortcutAdd),
+              onTap: widget.onAddHomeShortcut,
+            ),
+          ],
+        ),
       if (!widget.launcherOnly &&
           (widget.category == null || widget.category == 'interaction'))
         _section(currentLocalizations().uiGesture, Icons.gesture_rounded, [

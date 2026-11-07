@@ -71,7 +71,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             File(LinuxPaths.rootfs(id), "usr/share/zoneinfo/$zone").isFile
     }
 
-    private val uid = android.system.Os.getuid()
+    private val uid by lazy { android.system.Os.getuid() }
 
     private fun sharedMemory(id: String): String = File(LinuxPaths.container(id), "shm").apply {
         mkdirs()
@@ -83,7 +83,9 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         add("/dev"); add("/proc"); add("/sys")
         add("/dev/urandom:/dev/random")
         add("/proc/self/fd:/dev/fd")
-        add("/proc/self/fd/0:/dev/stdin"); add("/proc/self/fd/1:/dev/stdout"); add("/proc/self/fd/2:/dev/stderr")
+        // /dev already supplies stdin/stdout/stderr symlinks to /proc/self/fd/N.
+        // Binding individual descriptors canonicalizes pipes/sockets at startup,
+        // fails with "can't sanitize binding", and cannot follow later redirects.
         // Android has no /dev/shm; POSIX shared memory (Firefox, wlroots) needs one.
         add("${sharedMemory(id)}:/dev/shm")
         // The Android mode cannot read /dev/input; Dextop's controller placeholders take its place.
@@ -92,7 +94,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         // generated at each launch are bound over them, as proot-distro does, so even programs that
         // bypass libc see them.
         if (androidMode) addAll(LinuxProcStandIns.binds(File(runtime, "proc")))
-        // System information Android denies or lacks (network counters, battery, device model…),
+        // System information Android denies or lacks (network counters, battery, device modelâ€¦),
         // rebuilt for every program that reads it (LinuxSysStandIns).
         addAll(runCatching { LinuxSysStandIns.binds() }.getOrDefault(emptyList()))
         // Android's shared storage and mounted USB volumes; later mounts appear under it too. The
@@ -209,6 +211,8 @@ internal class LinuxProot(val nativeLibraryDir: String) {
      */
     fun guest(id: String, script: String, fakeRoot: Boolean = false,
               extraBinds: List<String> = emptyList(), extraEnvironment: List<String> = emptyList()): ProcessBuilder {
+        LinuxSettings.customResolver()?.let { LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(id), it) }
+        LinuxSessionCompatibility.stageNpm(LinuxPaths.rootfs(id))
         val sessionBinds = binds(id, fakeRoot) + extraBinds
         val root = LinuxPaths.rootfs(id)
         val account = if (fakeRoot) "root" else LinuxUser.name(root) ?: "root"
@@ -231,6 +235,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             "TERM=xterm-256color", "LANG=C.UTF-8",
             // Android's time zone (images default to UTC); sites compare it with the network location.
             *timeZone(id)?.let { arrayOf("TZ=$it") }.orEmpty(),
+            *(if (fakeRoot) arrayOf("DEXTOP_HARDLINK_COPY=1") else emptyArray()),
             "TMPDIR=/tmp", "PATH=${GUEST_PATH.replace("/root/.local/bin", "$home/.local/bin")}",
             // Path unix sockets fall back to abstract ones (the shell user may not create them).
             // DD's bind/connect hooks must run before the socket shim: its udev
@@ -243,7 +248,11 @@ internal class LinuxProot(val nativeLibraryDir: String) {
                 "$GUEST_LIBRARY_DIR/$SOCKET_SHIM", "DEXTOP_SOCKET_NS=${socketNamespace(id)}") else emptyArray()),
             // No accessibility bus runs in the session.
             "NO_AT_BRIDGE=1",
+            // The X servers Dextop starts require their cookie (LinuxXAuth).
+            "XAUTHORITY=${LinuxXAuth.GUEST}",
             "DEXTOP_EVDEV_UDEV=1",
+            // libudev must accept Dextop's file-backed sysfs device entries.
+            "SYSTEMD_DEVICE_VERIFY_SYSFS=0",
             *fastPath?.guestEnvironment?.toTypedArray().orEmpty(),
             *guestEnvironment(id).toTypedArray(),
             *extraEnvironment.toTypedArray(),
@@ -257,10 +266,9 @@ internal class LinuxProot(val nativeLibraryDir: String) {
     data class Result(val exitCode: Int, val output: String)
 
     /** Runs [builder] to completion, streaming merged output lines to [onLine]. */
-    fun run(builder: ProcessBuilder, timeoutSeconds: Long = 0, onProcess: ((Process) -> Unit)? = null, input: String? = null, onLine: (String) -> Unit = {}): Result {
-        val process = builder.redirectErrorStream(true).start()
-        onProcess?.invoke(process)
-        process.outputStream.use { stream -> if (input != null) stream.write(input.toByteArray(Charsets.UTF_8)) }
+    fun run(builder: ProcessBuilder, timeoutSeconds: Long = 0, onProcess: ((Process) -> Unit)? = null, input: String? = null, inputBytes: ByteArray? = null, onLine: (String) -> Unit = {}): Result {
+        val process = try { builder.redirectErrorStream(true).start() }
+            catch (error: Throwable) { inputBytes?.fill(0); throw error }
         val output = StringBuilder()
         val reader = Thread {
             // A cancelled or timed-out process interrupts this read; that must not crash the service.
@@ -271,11 +279,33 @@ internal class LinuxProot(val nativeLibraryDir: String) {
                 }
             }
         }.apply { isDaemon = true; start() }
-        val finished = if (timeoutSeconds > 0) process.waitFor(timeoutSeconds, TimeUnit.SECONDS) else {
-            process.waitFor(); true
+        // Drain output before writing input: a child may write a full pipe before
+        // it reads stdin. Input must also be covered by cancellation and timeout.
+        val writeFailure = java.util.concurrent.atomic.AtomicReference<Throwable?>()
+        val writer = Thread {
+            runCatching {
+                val bytes = inputBytes ?: input?.toByteArray(Charsets.UTF_8)
+                try { process.outputStream.use { stream -> if (bytes != null) stream.write(bytes) } }
+                finally { bytes?.fill(0) }
+            }.onFailure { writeFailure.set(it) }
+        }.apply { isDaemon = true }
+        try {
+            onProcess?.invoke(process)
+            writer.start()
+            val finished = if (timeoutSeconds > 0) process.waitFor(timeoutSeconds, TimeUnit.SECONDS) else {
+                process.waitFor(); true
+            }
+            if (!finished) LinuxRuntime.terminate(process)
+            writer.join(2_000)
+            reader.join(2_000)
+            if (finished) writeFailure.get()?.let { throw it }
+            return Result(if (finished) process.exitValue() else -1, synchronized(output) { output.toString() })
+        } finally {
+            inputBytes?.fill(0)
+            // onProcess, stdin, callbacks or waitFor can throw (notably when the
+            // service is shutting down). None may leave the guest running.
+            if (process.isAlive) runCatching { LinuxRuntime.terminate(process) }
+                .onFailure { process.destroyForcibly() }
         }
-        if (!finished) LinuxRuntime.terminate(process)
-        reader.join(2_000)
-        return Result(if (finished) process.exitValue() else -1, synchronized(output) { output.toString() })
     }
 }

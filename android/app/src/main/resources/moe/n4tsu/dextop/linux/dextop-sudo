@@ -91,6 +91,12 @@ def main(args):
         args = ['/bin/bash', '-l'] + (['-c', ' '.join(__import__('shlex').quote(arg) for arg in args)] if args else [])
     elif shell:
         args = ['/bin/bash'] + (['-c', ' '.join(__import__('shlex').quote(arg) for arg in args)] if args else [])
+    # Only package management opts into copy-for-hardlink compatibility. Other
+    # programs, including secure stores, must see a genuine link error.
+    if Path(args[0]).name in ('apt', 'apt-get', 'dpkg', 'dpkg-deb', 'pacman'):
+        os.environ['DEXTOP_HARDLINK_COPY'] = '1'
+    else:
+        os.environ.pop('DEXTOP_HARDLINK_COPY', None)
     if os.geteuid() == 0:
         os.execvpe(args[0], args, os.environ)
     fakeroot = shutil.which('fakeroot-tcp') or shutil.which('fakeroot')

@@ -203,21 +203,15 @@ def main(args):
     install()
     proton = find_proton()
     env = module('dextop-wine-sync').configure(proton, environment(proton, os.environ))
-    sdk = Path.home() / '.steam/sdk64'
-    if sdk.is_symlink():
-        temporary = sdk.with_name('sdk64.dextop-arm64')
-        temporary.unlink(missing_ok=True)
-        temporary.symlink_to(STEAM / 'linuxarm64')
-        temporary.replace(sdk)
     if verb == '--exec':
-        os.execvpe(args[0], args, env)
+        return module('dextop-gaming').sdk_launch(args, env, 'aarch64')
     try:
         retain_previous_log(env)
     except OSError as error:
         print('Dextop: cannot retain previous Proton log: ' + str(error), file=sys.stderr)
     # Native Python and native bin-arm64/wine, exactly as selected by Valve's
     # Proton script on aarch64. No FEX Linux executable wraps either process.
-    os.execve('/usr/bin/python3', ['/usr/bin/python3', str(proton / 'proton'), verb] + args, env)
+    return module('dextop-gaming').sdk_launch(['/usr/bin/python3', str(proton / 'proton'), verb] + args, env, 'aarch64')
 
 
 if __name__ == '__main__':

@@ -41,8 +41,10 @@ internal object LinuxSessionCompatibility {
         stageScript(root, "dextop-pipewire-client.conf", "etc/pipewire/client-rt.conf.d/99-dextop-session.conf")
         stageVulkan(root)
         stageSystemPrompter(root)
+        LinuxPam.stage(root, ::script)
         stageSystemServices(root)
         stageWindowsHelper(root)
+        stageNpm(root)
         // apt-get keeps every package it downloaded; containers grew by a second copy of all of them.
         if (File(root, "etc/apt/apt.conf.d").isDirectory) runCatching {
             val file = File(root, LinuxStorage.APT_NO_CACHE)
@@ -67,7 +69,9 @@ internal object LinuxSessionCompatibility {
         val current = if (preload.isFile) preload.readText() else ""
         // Keep distribution/user preloads and comments; do not add ours twice.
         val entries = current.lineSequence().flatMap { it.substringBefore('#').split(Regex("[\\s:]+")) }.toSet()
-        val managed = listOf(GUEST_PRELOAD, GUEST_SOCKET_SHIM, LinuxProotFastPath.LIBRARY)
+        // sshd clears LD_PRELOAD for login sessions. Keep Android device hooks active
+        // there too, before the session and socket hooks as in LinuxProot.guest.
+        val managed = listOf("${LinuxProot.GUEST_LIBRARY_DIR}/libdextop_androidproc.so", GUEST_PRELOAD, GUEST_SOCKET_SHIM, LinuxProotFastPath.LIBRARY)
         val missing = managed.filterNot { it in entries }
         if (missing.isNotEmpty()) {
             preload.parentFile?.mkdirs()
@@ -127,6 +131,21 @@ internal object LinuxSessionCompatibility {
                 Files.move(temporary.toPath(), target.toPath(), REPLACE_EXISTING)
             }
         }
+    }
+
+    /** Supply npm's cache hardlink fallback without replacing a user's custom launcher. */
+    @Synchronized
+    internal fun stageNpm(root: File) {
+        val target = File(root, "usr/local/bin/npm")
+        val managed = "# Dextop managed npm compatibility wrapper."
+        if (Files.exists(target.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS) &&
+            (Files.isSymbolicLink(target.toPath()) || !target.isFile || !target.readText().contains(managed))) return
+        val source = File(root, "usr/bin/npm")
+        if (!Files.exists(source.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            if (target.isFile) target.delete()
+            return
+        }
+        stageScript(root, "dextop-npm", "usr/local/bin/npm")
     }
 
     /** Keeps installed Windows applications' launcher (dextop-windows) as current as Dextop. */

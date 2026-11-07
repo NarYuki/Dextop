@@ -184,6 +184,8 @@ internal class V2Window(
     var linuxFullscreen = false
     var linuxFullscreenRestore: Rect? = null
     var linuxMoveResize = -1
+    /** Physical host coordinates of the press that initiated a client drag. */
+    var linuxPressPosition: android.graphics.PointF? = null
     fun decorationHeight(titleHeight: Int) = if (linuxClientDecorated || linuxFullscreen) 0 else titleHeight
     /** When Dextop last moved or resized the X window, to tell its own ConfigureNotify from the client's. */
     var linuxConfiguredAt = 0L
@@ -369,9 +371,37 @@ internal class V2WindowView(
         refreshElevation(active = true)
     }
 
+    private var steamCaptionPress: android.graphics.PointF? = null
+
     /** Alt+drag also moves clients that expose no usable title-bar drag area. */
     private fun moveClientWindow(event: MotionEvent): Boolean {
         if (!window.linuxClientDecorated || window.linuxXid == 0 || window.linuxFullscreen) return false
+        val down = event.actionMasked == MotionEvent.ACTION_DOWN ||
+            event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS && event.actionButton == MotionEvent.BUTTON_PRIMARY
+        if (down) {
+            val bx = event.x * window.linuxWidth / content.width.coerceAtLeast(1)
+            val by = event.y * window.linuxHeight / content.height.coerceAtLeast(1)
+            steamCaptionPress = if (LinuxClientCaption.steam(window.linuxWMClass, window.title,
+                    window.linuxWidth, bx, by)) android.graphics.PointF(event.rawX, event.rawY) else null
+        }
+        val press = steamCaptionPress
+        if (!contentMoving && window.linuxMoveResize < 0 && press != null &&
+            event.actionMasked in setOf(MotionEvent.ACTION_MOVE, MotionEvent.ACTION_HOVER_MOVE) &&
+            kotlin.math.hypot(event.rawX - press.x, event.rawY - press.y) > android.view.ViewConfiguration.get(context).scaledTouchSlop) {
+            // Steam's custom caption does not always issue _NET_WM_MOVERESIZE.
+            // Let clicks through, but take a real drag over its blank caption
+            // region. Release the guest press before the host owns the drag.
+            val cancel = MotionEvent.obtain(event)
+            try { cancel.action = MotionEvent.ACTION_CANCEL; host.forwardInput(window, cancel, content) }
+            finally { cancel.recycle() }
+            contentMoving = true
+            host.activate(window)
+            host.beginMove(window, press.x, press.y)
+            steamCaptionPress = null
+        }
+        if (event.actionMasked in setOf(MotionEvent.ACTION_UP, MotionEvent.ACTION_BUTTON_RELEASE, MotionEvent.ACTION_CANCEL)) {
+            steamCaptionPress = null
+        }
         if (!contentMoving && event.metaState and android.view.KeyEvent.META_ALT_ON != 0 &&
             (event.actionMasked == MotionEvent.ACTION_DOWN ||
                 event.actionMasked == MotionEvent.ACTION_BUTTON_PRESS && event.actionButton == MotionEvent.BUTTON_PRIMARY)) {

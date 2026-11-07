@@ -56,9 +56,35 @@ class LinuxUserTests(unittest.TestCase):
                     sudo.main(['-n', 'id'])
             execute.assert_not_called()
 
+    def test_setup_sends_only_a_hash_to_chpasswd(self):
+        from unittest.mock import Mock
+        password_hash = '$6$rounds=100000$' + 'a' * 16 + '$' + 'b' * 86
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'root').mkdir()
+            real_path = Path
+            def guest_path(value):
+                return root / str(value).lstrip('/')
+            def run(arguments, **kwargs):
+                if arguments[0] == 'useradd':
+                    (root / 'home/probeuser').mkdir(parents=True)
+            commands = Mock(side_effect=run)
+            fake_grp = SimpleNamespace(getgrnam=Mock(side_effect=KeyError))
+            with patch.object(setup, 'Path', side_effect=guest_path), \
+                 patch.object(setup.pwd, 'getpwnam', side_effect=KeyError, create=True), \
+                 patch.dict(sys.modules, {'grp': fake_grp}), \
+                 patch.object(setup.subprocess, 'run', commands), \
+                 patch.object(setup.os, 'chown', create=True), \
+                 patch.object(setup.shutil, 'copy2', side_effect=lambda source, target: real_path(target).write_text('probe')):
+                setup.setup('probeuser', 2000, password_hash)
+            requests = [call for call in commands.call_args_list if call.args[0][0] == 'chpasswd']
+            self.assertEqual(len(requests), 1)
+            self.assertEqual(requests[0].args[0], ['chpasswd', '-e'])
+            self.assertEqual(requests[0].kwargs['input'], 'probeuser:' + password_hash + '\n')
+
     def test_invalid_setup_never_runs_account_commands(self):
         with patch.object(setup.subprocess, 'run') as run:
-            for name, uid, password in [('root', 2000, 'password'), ('a;id', 2000, 'password'), ('yuuki', 0, 'password'), ('yuuki', 2000, 'password\n')]:
+            for name, uid, password in [('root', 2000, 'password'), ('a;id', 2000, 'password'), ('yuuki', 0, 'password'), ('yuuki', 2000, 'password\n'), ('yuuki', 2000, 'plaintext password')]:
                 with self.assertRaises(ValueError):
                     setup.setup(name, uid, password)
             run.assert_not_called()

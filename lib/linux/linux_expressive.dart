@@ -18,8 +18,9 @@ class LinuxExpressive extends StatelessWidget {
 
   final Widget child;
 
-  /// The seed of Dextop's own theme (see `appTheme` in app_shell.dart).
-  static const seed = Color(0xff6750a4);
+  /// The seed of Dextop's own theme (see `appTheme` in app_shell.dart): the
+  /// system's Material You accent once known, purple before that and below Android 12.
+  static Color seed = const Color(0xff6750a4);
 
   @override
   Widget build(BuildContext context) {

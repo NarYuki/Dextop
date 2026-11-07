@@ -17,4 +17,9 @@ oneway interface ILinuxContainerCallback {
     void onClipboard(String containerId, String text) = 5;
     /** A Linux notification as JSON: {"type": "notify" | "close", "key", "app", "summary", "body", "actions", "time"}. */
     void onNotification(String containerId, String json) = 6;
+    /**
+     * The Linux account's password changed (passwd, through PAM) and PAM accepts the new one;
+     * the app keeps it when it is the keyring password (LinuxKeyring's "account" mode).
+     */
+    void onAccountPassword(String containerId, String password) = 7;
 }

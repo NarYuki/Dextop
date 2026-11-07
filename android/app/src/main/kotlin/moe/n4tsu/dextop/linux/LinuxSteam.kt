@@ -66,6 +66,13 @@ internal object LinuxSteam {
         steam_updates=0
         while :; do
             steam_channel=${'$'}(cat "${'$'}root/package/beta" 2>/dev/null || true)
+            case "${'$'}steam_channel" in
+                publicbeta|steamdeck_publicbeta)
+                    if [ ! -s "${'$'}root/package/steam_client_${'$'}{steam_channel}_linuxarm64.installed" ]; then
+                        $INSTALLER --sync "${'$'}steam_channel"
+                    fi
+                    ;;
+            esac
             /usr/local/bin/dextop-steam-state "${'$'}root"
             /usr/local/bin/dextop-proton-arm64 prepare 9>&-
             steam_started=${'$'}(date +%s)
@@ -125,8 +132,9 @@ internal object LinuxSteam {
     }
 
     fun stageIcon(root: java.io.File) {
-        val source = java.io.File(root, "root/.local/share/Steam/public/steam_tray.ico")
-        val target = java.io.File(root, "root/.local/share/icons/hicolor/96x96/apps/steam.png")
+        val home = LinuxUser.home(root)
+        val source = LinuxDesktopEntries.resolve(root, "$home/.local/share/Steam/public/steam_tray.ico") ?: return
+        val target = java.io.File(root, "$home/.local/share/icons/hicolor/96x96/apps/steam.png".removePrefix("/"))
         if (!source.isFile || source.length() !in 1..(2 * 1024 * 1024) || target.isFile) return
         val png = LinuxIconDecoder.png(source) ?: return
         target.parentFile?.mkdirs()
@@ -242,6 +250,14 @@ internal object LinuxSteam {
         appendLine("set -e")
         append(install(dependencies(apt)))
         if (apt && steamMode) append(aptGamescope)
+        // The installer records verified files before the remaining runtime helpers are staged.
+        val state = gamingResource("dextop-steam-state").use {
+            java.util.Base64.getEncoder().encodeToString(LinuxScript.resource(it.readBytes()))
+        }
+        appendLine("mkdir -p /usr/local/bin")
+        appendLine("printf '%s' '$state' | base64 -d > /usr/local/bin/dextop-steam-state.staged")
+        appendLine("chmod 755 /usr/local/bin/dextop-steam-state.staged")
+        appendLine("mv -f /usr/local/bin/dextop-steam-state.staged /usr/local/bin/dextop-steam-state")
         // Own the managed installer without overwriting a runtime's custom DroidDeck copy.
         appendLine("{")
         appendLine("cat >$INSTALLER <<'DEXTOP_STEAM_INSTALL'")
@@ -506,6 +522,13 @@ internal object LinuxSteam {
         steam_updates=0
         while :; do
             steam_channel=${'$'}(cat "${'$'}steam_root/package/beta" 2>/dev/null || true)
+            case "${'$'}steam_channel" in
+                publicbeta|steamdeck_publicbeta)
+                    if [ ! -s "${'$'}steam_root/package/steam_client_${'$'}{steam_channel}_linuxarm64.installed" ]; then
+                        $INSTALLER --sync "${'$'}steam_channel"
+                    fi
+                    ;;
+            esac
             /usr/local/bin/dextop-steam-state "${'$'}steam_root"
             rm -f "${'$'}STEAMOS_STEAM_SHUTDOWN_SENTINEL" "${'$'}STEAMOS_STEAM_REBOOT_SENTINEL" "${'$'}retry"
             cef=(-cef-force-gpu -cef-use-gl=angle -cef-use-angle=vulkan)

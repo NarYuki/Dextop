@@ -12,6 +12,9 @@ import shutil
 import subprocess
 import sys
 
+# CUPS on a unix socket of the container, not a TCP port every Android app on the device could reach.
+CUPS_SOCKET = '/run/dextop-cups/cups.sock'
+
 
 def write(path, content, mode=0o600):
     path = Path(path)
@@ -59,7 +62,9 @@ def configure_ssh(config):
              'PubkeyAuthentication yes', 'AuthorizedKeysFile '+str(base/'authorized_keys'),
              'UsePAM no', 'StrictModes no', 'MaxAuthTries 3', 'LoginGraceTime 30',
              'AllowAgentForwarding no', 'AllowTcpForwarding yes', 'GatewayPorts no',
-             'X11Forwarding no', 'PrintMotd no', 'Subsystem sftp internal-sftp']
+             'X11Forwarding no', 'PrintMotd no', 'Subsystem sftp internal-sftp',
+             'SetEnv PULSE_SERVER=unix:/tmp/dextop-pulse/native SYSTEMD_DEVICE_VERIFY_SYSFS=0 '
+             'PULSE_COOKIE='+str(Path.home()/'.config/pulse/dextop-cookie')]
     write(base/'sshd_config', '\n'.join(lines)+'\n')
     Path('/run/sshd').mkdir(parents=True, exist_ok=True)
     Path('/run/sshd').chmod(0o755)
@@ -87,7 +92,7 @@ def configure_print(config):
         Path(path).mkdir(parents=True, exist_ok=True)
     Path('/var/spool/dextop-print').chmod(0o700)
     write(base/'cupsd.conf', f'''LogLevel warn
-Listen 127.0.0.1:{listen}
+Listen {CUPS_SOCKET}
 Browsing Off
 WebInterface No
 DefaultShared No
@@ -162,12 +167,12 @@ DocumentRoot /usr/share/cups/doc-root
     backend = Path('/usr/lib/cups/backend/dextop')
     backend.parent.mkdir(parents=True, exist_ok=True)
     write(backend, '#!/bin/sh\nexec python3 /usr/local/libexec/dextop-print-backend "$@"\n', 0o700)
-    write(Path.home()/'.cups/client.conf', f'ServerName 127.0.0.1:{listen}\n')
-    write('/etc/dextop/printing.env', f'export CUPS_SERVER=127.0.0.1:{listen}\n', 0o644)
+    write(Path.home()/'.cups/client.conf', f'ServerName {CUPS_SOCKET}\n')
+    write('/etc/dextop/printing.env', f'export CUPS_SERVER={CUPS_SOCKET}\n', 0o644)
 
 
 def install_printer(config):
-    server = '127.0.0.1:'+str(port(config.get('port', 8631)))
+    server = CUPS_SOCKET
     subprocess.run(['lpadmin', '-h', server, '-p', 'DextopAndroid', '-E', '-v', 'dextop:/android',
                     '-P', '/etc/dextop/cups/android.ppd', '-o', 'printer-is-shared=false',
                     '-D', 'Android (Dextop)', '-L', 'Dextop'], check=True)

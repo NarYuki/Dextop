@@ -65,8 +65,8 @@ def duration(value):
     return total
 
 
-def parse_unit(text):
-    result, section, continued = {}, '', ''
+def parse_unit(text, result=None):
+    result, section, continued = {} if result is None else result, '', ''
     for line in text.splitlines():
         line = continued + line.strip()
         if line.endswith('\\'):
@@ -100,11 +100,12 @@ def load_unit(name, user=False):
     if file.is_symlink() and os.readlink(file) == '/dev/null':
         raise ValueError('Unit is masked: ' + name)
     spec = parse_unit(file.read_text())
+    dropins = {}
     for directory in reversed(paths(user)):
-        for dropin in sorted((directory/(name+'.d')).glob('*.conf')):
-            for section, settings in parse_unit(dropin.read_text()).items():
-                for key, values in settings.items():
-                    spec.setdefault(section, {})[key] = values
+        for dropin in (directory/(name+'.d')).glob('*.conf'):
+            dropins[dropin.name] = dropin
+    for basename in sorted(dropins):
+        parse_unit(dropins[basename].read_text(), spec)
     return spec
 
 
@@ -249,7 +250,7 @@ class Supervisor:
         if key in chain:
             raise ValueError('Circular unit dependency')
         old = self.jobs.get(key)
-        if old and old['state'] in ('active', 'activating', 'waiting'):
+        if old and old['state'] in ('active', 'activating', 'waiting', 'waiting-dependencies'):
             return
         spec = load_unit(name, user)
         if name.endswith('.timer'):
@@ -281,10 +282,43 @@ class Supervisor:
                    commands=list(spec['Service']['ExecStart']))
         self.jobs[key] = job
         self.log_path(key).parent.mkdir(parents=True, exist_ok=True)
-        self.hooks(job, 'ExecStartPre')
-        self.spawn(job, job['commands'].pop(0))
-        job['state'] = 'activating' if last(spec, 'Service', 'Type') == 'oneshot' else 'active'
-        self.hooks(job, 'ExecStartPost')
+        after = [name for name in shlex.split(' '.join(spec.get('Unit', {}).get('After', []))) if not name.endswith('.target')]
+        job['after'] = [self.key(dependency, user) for dependency in after if self.key(dependency, user) in self.jobs]
+        job['required'] = [self.key(dependency, user) for dependency in dependencies if not dependency.endswith('.target')]
+        if any(self.jobs[dependency]['state'] in ('activating', 'restarting', 'waiting-dependencies')
+               for dependency in job['after']):
+            job['state'] = 'waiting-dependencies'
+        else:
+            self.activate(job)
+
+    def activate(self, job):
+        spec = job['spec']
+        now = time.monotonic()
+        interval = duration(last(spec, 'Unit', 'StartLimitIntervalSec', '10'))
+        burst = int(last(spec, 'Unit', 'StartLimitBurst', '5'))
+        attempts = [stamp for stamp in job['attempts'] if now - stamp < interval]
+        try:
+            if interval > 0 and burst > 0 and len(attempts) >= burst:
+                raise ValueError('Start limit exceeded')
+            job['attempts'] = attempts + [now]
+            job['commands'] = list(spec['Service']['ExecStart'])
+            job['state'] = 'activating'
+            job['start_deadline'] = now + max(.1, duration(last(spec, 'Service', 'TimeoutStartSec', '30')))
+            self.hooks(job, 'ExecStartPre')
+            self.spawn(job, job['commands'].pop(0))
+            job['state'] = 'activating' if last(spec, 'Service', 'Type') == 'oneshot' else 'active'
+            if last(spec, 'Service', 'Type') != 'oneshot':
+                self.hooks(job, 'ExecStartPost')
+        except Exception as error:
+            process = job.pop('process', None)
+            if process and process.poll() is None:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+            job.update(state='failed', pid=0, error=str(error))
+            raise
 
     def stop(self, key):
         job = self.jobs.get(key)
@@ -322,35 +356,54 @@ class Supervisor:
                     except Exception as error:
                         job.update(state='failed', error=str(error))
                 continue
+            if job['state'] == 'waiting-dependencies':
+                failed = [key for key in job['required'] if self.jobs.get(key, {}).get('state') == 'failed']
+                if failed:
+                    job.update(state='failed', error='Dependency failed: ' + ', '.join(failed), desired=False)
+                elif not any(self.jobs.get(key, {}).get('state') in ('activating', 'restarting', 'waiting-dependencies')
+                             for key in job['after']):
+                    try:
+                        self.activate(job)
+                    except Exception as error:
+                        job.update(state='failed', error=str(error))
+                continue
             if job['state'] == 'restarting':
                 if now >= job['deadline']:
                     try:
-                        self.spawn(job, job['spec']['Service']['ExecStart'][0])
-                        job['state'] = 'active'
+                        self.activate(job)
                     except Exception as error:
                         job.update(state='failed', error=str(error))
                 continue
             process = job.get('process')
+            timed_out = bool(process and job['state'] == 'activating' and
+                             now >= job.get('start_deadline', float('inf')) and process.poll() is None)
+            if timed_out:
+                try:
+                    os.killpg(process.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                process.wait()
+                job['error'] = 'Service start timed out'
             if not process or process.poll() is None or job['state'] not in ('active', 'activating'):
                 continue
             code = process.returncode
             job.pop('process', None)
             job.update(pid=0, exitCode=code)
-            success = code == 0 or job.get('ignore') or str(code) in shlex.split(last(job['spec'], 'Service', 'SuccessExitStatus'))
+            success = not timed_out and (code == 0 or job.get('ignore') or str(code) in shlex.split(' '.join(job['spec'].get('Service', {}).get('SuccessExitStatus', []))))
             if success and job['commands']:
                 self.spawn(job, job['commands'].pop(0))
                 continue
+            if success and last(job['spec'], 'Service', 'Type') == 'oneshot':
+                try:
+                    self.hooks(job, 'ExecStartPost')
+                except Exception as error:
+                    success = False
+                    job.update(error=str(error), exitCode=1)
             job['state'] = 'active' if success and last(job['spec'], 'Service', 'RemainAfterExit') in ('yes', 'true', '1') else ('inactive' if success else 'failed')
             policy = last(job['spec'], 'Service', 'Restart', 'no')
             restart = policy == 'always' or policy == 'on-success' and success or policy == 'on-failure' and not success or policy in ('on-abnormal', 'on-abort') and code < 0
             if restart and job.get('desired'):
-                interval = max(1, duration(last(job['spec'], 'Unit', 'StartLimitIntervalSec', '10')))
-                job['attempts'] = [stamp for stamp in job['attempts'] if now-stamp < interval] + [now]
-                burst = int(last(job['spec'], 'Unit', 'StartLimitBurst', '5'))
-                if len(job['attempts']) > max(1, burst):
-                    job.update(state='failed', error='Start limit exceeded')
-                else:
-                    job.update(state='restarting', deadline=now+max(.1, duration(last(job['spec'], 'Service', 'RestartSec', '1'))))
+                job.update(state='restarting', deadline=now+max(.1, duration(last(job['spec'], 'Service', 'RestartSec', '1'))))
 
     def units(self, user=False):
         names = set()
@@ -418,6 +471,11 @@ class Supervisor:
             if action == 'reset-failed' and key in self.jobs:
                 self.jobs[key].update(state='inactive', error='', attempts=[])
         units = [row for row in self.units(user) if row['name'] in names]
+        if action == 'status':
+            if not units:
+                return dict(ok=False, units=[], code=4, error='Unit not found: ' + ', '.join(names))
+            active = any(row['state'] in ('active', 'waiting') for row in units)
+            return dict(ok=active, units=units, code=3)
         if action == 'is-active':
             return dict(ok=any(row['state'] in ('active', 'waiting') for row in units), units=units, code=3)
         if action == 'is-enabled':
@@ -495,6 +553,7 @@ def rpc(request, base=BASE, timeout=45):
 
 def cli(args):
     user, now, as_json, follow, lines = False, False, False, False, 100
+    quiet = False
     positionals = []
     journal = '--journal' in args
     index = 0
@@ -504,6 +563,7 @@ def cli(args):
         if arg == '--user': user = True
         elif arg == '--now': now = True
         elif arg == '--json': as_json = True
+        elif arg in ('-q', '--quiet'): quiet = True
         elif arg in ('-f', '--follow'): follow = True
         elif arg in ('-n', '--lines'):
             lines = int(args[index]); index += 1
@@ -521,16 +581,16 @@ def cli(args):
         result = rpc(dict(action=action, units=positionals, user=user, now=now, lines=lines))
         if as_json:
             print(json.dumps(result, ensure_ascii=False), flush=True)
-        elif action == 'journal':
+        elif not quiet and action == 'journal':
             output = result.get('output', '')
             if output != previous:
                 print(output if previous is None or not output.startswith(previous) else output[len(previous):].lstrip('\n'), flush=True)
                 previous = output
-        else:
+        elif not quiet:
             for row in result.get('units', []):
                 print(row['name'], row['state'], 'enabled' if row['enabled'] else 'disabled', row.get('error', ''))
         if not result.get('ok'):
-            if result.get('error'):
+            if result.get('error') and not quiet:
                 print(result['error'], file=sys.stderr)
             return result.get('code', 1)
         if not (journal and follow):

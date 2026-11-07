@@ -151,7 +151,7 @@ class CarDexActivity : ComponentActivity() {
     }
     private val heartbeat = object : Runnable {
         override fun run() {
-            relay?.takeIf { relayRequested }?.let { target ->
+            relay?.takeIf { isCarDisplay() }?.let { target ->
                 runCatching { target.send(Message.obtain(null, MSG_HEARTBEAT).apply { replyTo = incoming }) }
             }
             if (relayBound) relayHandler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
@@ -237,7 +237,7 @@ class CarDexActivity : ComponentActivity() {
                         onSurface = ::startRelay,
                         onTouch = ::sendTouch,
                         onStop = ::stopRelay,
-                        onRecover = { sendAction("recover", keepOpen = true) },
+                        onRecover = ::retryRelay,
                         onSurfaceLost = {
                             relaySurface = null
                             if (relayRequested) relayHandler.postDelayed({
@@ -291,7 +291,7 @@ class CarDexActivity : ComponentActivity() {
         super.onDestroy()
     }
 
-    private fun isCarDisplay(): Boolean = display?.displayId != Display.DEFAULT_DISPLAY
+    private fun isCarDisplay(): Boolean = display?.let { it.displayId != Display.DEFAULT_DISPLAY } == true
 
     private fun updateCarUiScale(scale: Float) {
         if (scale !in CAR_UI_SCALES || carUiScale == scale) return
@@ -316,6 +316,7 @@ class CarDexActivity : ComponentActivity() {
     }
 
     private fun openDextop() {
+        Log.i("DextopCarCompanion", "Parking start clicked car=${isCarDisplay()} bound=$relayBound connected=${relay != null}")
         relayState = inspectRelay()
         val car = isCarDisplay()
         if (car) {
@@ -365,20 +366,21 @@ class CarDexActivity : ComponentActivity() {
     }
 
     private fun startRelay(surface: Surface, width: Int, height: Int) {
-        val target = relay ?: run {
-            bindRelayIfNeeded()
-            if (relayRequested && relayStatus != STATUS_ERROR) {
-                window.decorView.postDelayed({ startRelay(surface, width, height) }, 120)
-            }
-            return
-        }
+        if (!relayRequested) return
         if (!surface.isValid || width <= 0 || height <= 0) {
             showRelayError("Android Auto provided an invalid destination surface ($width × $height).")
             return
         }
+        // Remember the current Surface even before binding completes. onServiceConnected
+        // sends this one; delayed retries must never resurrect a destroyed TextureView.
         relaySurface = surface
         relaySurfaceWidth = width
         relaySurfaceHeight = height
+        val target = relay ?: run {
+            bindRelayIfNeeded()
+            return
+        }
+        Log.i("DextopCarCompanion", "Parking sending start ${width}x$height scale=$carUiScale")
         relayStatus = STATUS_STARTING
         relayError = "Starting the Dextop session…"
         scheduleStartupTimeout()
@@ -397,6 +399,25 @@ class CarDexActivity : ComponentActivity() {
     private fun scheduleStartupTimeout() {
         relayHandler.removeCallbacks(startupTimeout)
         relayHandler.postDelayed(startupTimeout, STARTUP_TIMEOUT_MS)
+    }
+
+    private fun retryRelay() {
+        if (relayStatus == STATUS_RUNNING) {
+            sendAction("recover", keepOpen = true)
+            return
+        }
+        relayStatus = STATUS_STARTING
+        relayError = "Reconnecting to the Dextop relay service…"
+        scheduleStartupTimeout()
+        val current = relaySurface
+        if (current?.isValid == true) {
+            startRelay(current, relaySurfaceWidth, relaySurfaceHeight)
+        } else {
+            // Recreate the destination instead of asking the service to recover a Surface
+            // which it never received.
+            relayRequested = false
+            window.decorView.post { openDextop() }
+        }
     }
 
     private fun showRelayError(detail: String) {

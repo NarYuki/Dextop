@@ -20,6 +20,8 @@ internal class LinuxXwaylandHost private constructor(
     private var surface: Surface? = null
     private var stopped = false
     private var configuration: LinuxDisplayConfiguration? = null
+    private var inputWidth = width
+    private var inputHeight = height
     private val compositor: WaylandCompositor = WaylandCompositor(
         LinuxProot.socketNamespace(containerId) + "/tmp/runtime-root/" + displayName(display), width, height,
         File(LinuxPaths.rootfs(containerId), "tmp/runtime-root/${displayName(display)}.lock"),
@@ -28,7 +30,7 @@ internal class LinuxXwaylandHost private constructor(
             if (!stopped) when (event.optString("type")) {
                 "map" -> {
                     windowId = event.optInt("id")
-                    configuration?.let { compositorConfigure(windowId, it) }
+                    compositorConfigure(windowId, effectiveConfiguration())
                     surface?.let { attachWindow(windowId, it) }
                 }
                 "unmap" -> if (windowId == event.optInt("id")) windowId = 0
@@ -52,6 +54,27 @@ internal class LinuxXwaylandHost private constructor(
     }
     fun updateDisplay(config: LinuxDisplayConfiguration) = synchronized(lock) {
         configuration = config
+        applyConfiguration()
+    }
+
+    /** Fixed-size clients may be larger than their scaled Android viewport.
+     * XTEST is clipped by the X root, so retain room for their original pixels. */
+    fun ensureInputExtent(right: Int, bottom: Int) = synchronized(lock) {
+        val width = right.coerceIn(1, 7680)
+        val height = bottom.coerceIn(1, 7680)
+        if (width <= inputWidth && height <= inputHeight) return
+        inputWidth = maxOf(inputWidth, width)
+        inputHeight = maxOf(inputHeight, height)
+        applyConfiguration()
+    }
+
+    private fun effectiveConfiguration(): LinuxDisplayConfiguration {
+        val config = configuration ?: LinuxDisplayConfiguration.create(inputWidth, inputHeight, 160, 60f)
+        return config.copy(width = maxOf(config.width, inputWidth), height = maxOf(config.height, inputHeight))
+    }
+
+    private fun applyConfiguration() {
+        val config = effectiveConfiguration()
         compositor.updateOutput(config.width, config.height, config.refreshMilliHz)
         if (windowId != 0) compositorConfigure(windowId, config)
     }

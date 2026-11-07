@@ -66,7 +66,8 @@ internal class X11Client private constructor(
         fun connect(display: Int): X11Client {
             val socket = LocalSocket(LocalSocket.SOCKET_STREAM)
             socket.connect(LocalSocketAddress("/tmp/.X11-unix/X$display", LocalSocketAddress.Namespace.ABSTRACT))
-            return X11Client(socket, DataInputStream(socket.inputStream.buffered(256 * 1024)), socket.outputStream).apply { setup() }
+            return X11Client(socket, DataInputStream(socket.inputStream.buffered(256 * 1024)), socket.outputStream)
+                .apply { setup(LinuxXAuth.forDisplay(display)) }
         }
     }
 
@@ -104,8 +105,16 @@ internal class X11Client private constructor(
     private fun le(size: Int) = ByteBuffer.allocate(size).order(ByteOrder.LITTLE_ENDIAN)
     private fun pad(n: Int) = (4 - n % 4) % 4
 
-    private fun setup() {
-        output.write(le(12).put('l'.code.toByte()).put(0).putShort(11).putShort(0).putShort(0).putShort(0).putShort(0).array())
+    /** Connection setup, with MIT-MAGIC-COOKIE-1 when the server was started with [cookie]. */
+    private fun setup(cookie: ByteArray? = null) {
+        val name = if (cookie != null) "MIT-MAGIC-COOKIE-1".toByteArray() else ByteArray(0)
+        val data = cookie ?: ByteArray(0)
+        fun padded(length: Int) = (length + 3) and 3.inv()
+        val request = le(12 + padded(name.size) + padded(data.size)).put('l'.code.toByte()).put(0).putShort(11).putShort(0)
+            .putShort(name.size.toShort()).putShort(data.size.toShort()).putShort(0)
+        request.put(name).position(12 + padded(name.size))
+        request.put(data).position(12 + padded(name.size) + padded(data.size))
+        output.write(request.array())
         output.flush()
         val head = ByteArray(8).also(input::readFully)
         val status = head[0].toInt()

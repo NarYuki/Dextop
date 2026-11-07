@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 
@@ -6,6 +7,78 @@ import 'package:free_dextop/linux/linux_store_cache.dart';
 import 'package:free_dextop/linux/linux_store_catalog.dart';
 
 void main() {
+  test('progress distinguishes fresh fetch, memory read, forced refresh and fallback', () async {
+    final directory = await Directory.systemTemp.createTemp('store-progress');
+    addTearDown(() => directory.delete(recursive: true));
+    final cache = StoreSnapshotCache(directory: directory);
+    final events = <StoreCatalogProgress>[];
+    await cache.load('progress', () async => [], onProgress: events.add);
+    expect(events.any((p) => p.refreshing), isTrue);
+    events.clear();
+    await cache.load(
+      'progress',
+      () async => throw StateError('must use memory'),
+      onProgress: events.add,
+    );
+    expect(events.single.refreshing, isFalse);
+    expect(events.single.completed, events.single.total);
+    events.clear();
+    await cache.load(
+      'progress',
+      () async => throw StateError('offline'),
+      refresh: true,
+      onProgress: events.add,
+    );
+    expect(events.any((p) => p.refreshing), isTrue);
+    expect(events.last.refreshing, isFalse);
+    expect(events.last.completed, events.last.total);
+  });
+
+  test('successful fetch survives cache write failure', () async {
+    final dir = await Directory.systemTemp.createTemp('store-write-failure');
+    addTearDown(() => dir.delete(recursive: true));
+    final cache = StoreSnapshotCache(directory: dir);
+    await cache.load('source', () async => []);
+    await Directory('${dir.path}/source.json.pending').create();
+    final fresh = StoreApp.fromJson({
+      'id': 'fresh',
+      'package': 'fresh',
+      'name': 'Fresh',
+    });
+    expect(
+      (await cache.load(
+        'source',
+        () async => [fresh],
+        refresh: true,
+      )).single.id,
+      'fresh',
+    );
+    expect(
+      (await cache.load(
+        'source',
+        () async => throw StateError('unnecessary fetch'),
+      )).single.id,
+      'fresh',
+    );
+  });
+
+  test('simultaneous refreshes share one fetch', () async {
+    final dir = await Directory.systemTemp.createTemp('store-coalesce');
+    addTearDown(() => dir.delete(recursive: true));
+    final completion = Completer<List<StoreApp>>();
+    var calls = 0;
+    Future<List<StoreApp>> fetch() {
+      calls++;
+      return completion.future;
+    }
+
+    final cache = StoreSnapshotCache(directory: dir);
+    final first = cache.load('source', fetch, refresh: true);
+    final second = cache.load('source', fetch, refresh: true);
+    completion.complete([]);
+    await Future.wait([first, second]);
+    expect(calls, 1);
+  });
   test('snapshots survive reopening, expire at three days and allow forced refresh', () async {
     final dir = await Directory.systemTemp.createTemp('store-cache-test');
     addTearDown(() => dir.delete(recursive: true));

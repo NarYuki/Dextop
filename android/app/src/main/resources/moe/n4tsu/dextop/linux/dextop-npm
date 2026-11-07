@@ -1,0 +1,19 @@
+#!/bin/sh
+# Dextop managed npm compatibility wrapper.
+# Keep the copy fallback inside package-cache operations; npm run stays unchanged.
+skip=
+command=
+for argument do
+    if [ -n "$skip" ]; then skip=; continue; fi
+    case "$argument" in
+        --) continue ;;
+        --prefix|--cache|--userconfig|--globalconfig|--registry|--workspace|-w|--location|--loglevel) skip=1 ;;
+        -*) ;;
+        *) command=$argument; break ;;
+    esac
+done
+case "$command" in
+    install|i|in|ins|inst|insta|instal|add|isnt|isnta|isntal|isntall|ci|clean-install|update|up|upgrade|rebuild|rb|cache|dedupe|ddp|prune|uninstall|un|remove|rm)
+        export DEXTOP_HARDLINK_COPY=1 ;;
+esac
+exec /usr/bin/npm "$@"

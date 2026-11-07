@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'linux/linux_error_log.dart';
+import 'linux/linux_privilege_warning.dart';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -125,6 +126,9 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   // First setup only (steps 7 and 8).
   static const _channel = MethodChannel('app.freedextop/linux');
   String executionMode = 'privileged';
+
+  /// Full privilege needs Dextop's setup; until then only Android can be chosen.
+  bool privilegeReady = false;
   bool debGet = false;
   bool flathub = false;
   String t(String ja, String en) => linuxText(context, ja, en);
@@ -195,6 +199,17 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   int get position => flow.indexOf(step);
 
+  Future<void> _loadExecutionMode() async {
+    final ready = await linuxPrivilegeReady();
+    final value = await _channel.invokeMethod<String>('executionMode');
+    if (!mounted) return;
+    setState(() {
+      privilegeReady = ready;
+      if (value != null) executionMode = value;
+      if (!ready) executionMode = 'android';
+    });
+  }
+
   @override
   void initState() {
     super.initState();
@@ -202,9 +217,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     name.text = widget.containerName ?? '';
     if (widget.firstRun) {
       step = 7;
-      _channel.invokeMethod<String>('executionMode').then((value) {
-        if (mounted && value != null) setState(() => executionMode = value);
-      });
+      _loadExecutionMode();
     }
     if (widget.resume) {
       step = 6;
@@ -334,6 +347,22 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   /// Applies the first setup's choices before the container is created in that mode.
   Future<void> applyFirstRun() async {
+    final unavailable = linuxPrivilegeUnavailableText(context);
+    if (executionMode == 'privileged' && !await linuxPrivilegeReady()) {
+      throw Exception(unavailable);
+    }
+    // Full privilege is the default choice: its warning is shown before it is used, once.
+    if (executionMode == 'privileged' &&
+        !await linuxPrivilegedWarningAccepted()) {
+      if (!mounted || !await showLinuxPrivilegedWarning(context)) {
+        throw Exception(
+          t(
+            '完全特権の確認がキャンセルされました。実行方式を選び直してください。',
+            'Full privilege was not confirmed. Choose the execution mode again.',
+          ),
+        );
+      }
+    }
     final current = await _channel.invokeMethod<String>('executionMode');
     if (current != executionMode) {
       await _channel.invokeMethod<String>('setExecutionMode', {
@@ -576,13 +605,20 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         LinuxChoice<String>(
           value: 'privileged',
           groupValue: executionMode,
-          onChanged: (value) => setState(() => executionMode = value),
+          enabled: privilegeReady,
+          onChanged: (value) async {
+            if (await showLinuxPrivilegedWarning(context) && mounted) {
+              setState(() => executionMode = value);
+            }
+          },
           icon: M3EIcons.admin_panel_settings_rounded,
           title: t('完全特権', 'Full privilege'),
-          subtitle: t(
-            'Shizuku・Stellar・内蔵バインダなどの特権アクセスで動かします。Android のファイル領域やコントローラー・音声デバイスを直接扱えます。',
-            'Runs through privileged access such as Shizuku, Stellar or the built-in binder. Reaches Android files, controllers and audio devices directly.',
-          ),
+          subtitle: privilegeReady
+              ? t(
+                  'Shizuku・Stellar・内蔵バインダなどの特権アクセスで動かします。Android のファイル領域やコントローラー・音声デバイスを直接扱えます。',
+                  'Runs through privileged access such as Shizuku, Stellar or the built-in binder. Reaches Android files, controllers and audio devices directly.',
+                )
+              : linuxPrivilegeUnavailableText(context),
         ),
         LinuxChoice<String>(
           value: 'android',

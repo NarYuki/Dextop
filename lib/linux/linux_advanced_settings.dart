@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'linux_privilege_warning.dart';
 import 'linux_expressive.dart';
 import 'linux_widgets.dart';
 
@@ -19,6 +20,9 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
   String? mode;
   String? error;
   bool saving = false;
+
+  /// Full privilege needs Dextop's setup; until then only Android can be chosen.
+  bool privilegeReady = false;
   String t(String ja, String en) => linuxText(context, ja, en);
 
   @override
@@ -32,7 +36,13 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
       final value = await _channel
           .invokeMethod<String>('executionMode')
           .timeout(const Duration(seconds: 10));
-      if (mounted) setState(() => mode = value ?? 'privileged');
+      final ready = await linuxPrivilegeReady();
+      if (mounted) {
+        setState(() {
+          mode = value ?? 'privileged';
+          privilegeReady = ready;
+        });
+      }
     } on Exception catch (e) {
       if (mounted) {
         setState(
@@ -44,6 +54,12 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
 
   Future<void> _choose(String value) async {
     if (saving || mode == null || value == mode) return;
+    if (value == 'privileged' && !await linuxPrivilegeReady()) return;
+    if (!mounted) return;
+    if (value == 'privileged' && !await showLinuxPrivilegedWarning(context)) {
+      return;
+    }
+    if (!mounted) return;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
@@ -114,14 +130,16 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
             LinuxChoice<String>(
               value: 'privileged',
               groupValue: mode ?? '',
-              enabled: !saving && mode != null,
+              enabled: !saving && mode != null && privilegeReady,
               onChanged: _choose,
               icon: Icons.admin_panel_settings_rounded,
               title: t('完全特権（従来方式）', 'Full privilege (existing mode)'),
-              subtitle: t(
-                '既定の方式。これまでの Linux 環境をそのまま使用します。',
-                'Default. Uses your existing Linux environment.',
-              ),
+              subtitle: privilegeReady
+                  ? t(
+                      '既定の方式。これまでの Linux 環境をそのまま使用します。',
+                      'Default. Uses your existing Linux environment.',
+                    )
+                  : linuxPrivilegeUnavailableText(context),
             ),
             LinuxChoice<String>(
               value: 'android',
