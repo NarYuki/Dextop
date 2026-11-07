@@ -61,13 +61,20 @@ jobs:
     - name: Run tests
       run: flutter test || echo "No tests found, skipping..."
 
-    # Build APK with mobile data support
+    # Build APK - find the actual output path
     - name: Build APK
-      run: flutter build apk --debug
+      run: flutter build apk --debug --verbose
 
-    # Build split APKs for different architectures (optional but recommended)
+    # Find and check output
+    - name: Find APK output
+      run: |
+        echo "=== APK output locations ==="
+        find build -name "*.apk" 2>/dev/null || echo "No APK found"
+        ls -la build/app/outputs/ 2>/dev/null || echo "outputs dir not found"
+
+    # Build split APKs for different architectures
     - name: Build split APKs
-      run: flutter build apk --debug --split-per-abi
+      run: flutter build apk --debug --split-per-abi || echo "Split build optional"
 
     # Upload main APK as artifact
     - name: Upload APK artifact
