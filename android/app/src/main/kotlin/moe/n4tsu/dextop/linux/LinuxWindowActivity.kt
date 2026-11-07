@@ -27,7 +27,6 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
 import android.view.inputmethod.InputMethodManager
 import android.widget.FrameLayout
-import android.widget.ImageButton
 import android.widget.LinearLayout
 import android.widget.ProgressBar
 import android.widget.TextView
@@ -218,15 +217,7 @@ internal open class LinuxWindowActivity : Activity() {
             addView(statusAction, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
         }
         root.addView(status, FrameLayout.LayoutParams(-1, -1))
-        root.addView(ImageButton(this).apply {
-            setImageResource(android.R.drawable.ic_menu_edit)
-            alpha = .55f
-            setBackgroundColor(0x66000000)
-            contentDescription = text("キーボード", "Keyboard")
-            setOnClickListener { toggleKeyboard() }
-        }, FrameLayout.LayoutParams(dp(44), dp(44), Gravity.BOTTOM or Gravity.END).apply {
-            setMargins(0, 0, dp(12), dp(12))
-        })
+        LinuxKeyboardButton(root) { toggleKeyboard() }
         setContentView(root)
         // Android draws apps edge to edge; the X window stays clear of the bars, the cutout and the keyboard.
         root.setOnApplyWindowInsetsListener { view, insets ->

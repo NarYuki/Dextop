@@ -5,12 +5,20 @@ class HomeScreen extends StatefulWidget {
     required this.themeMode,
     required this.onThemeModeChanged,
     this.desktopWindow = false,
+    this.linuxOnly = false,
+    this.onStartSetup,
     super.key,
   });
 
   final ThemeMode themeMode;
   final ValueChanged<ThemeMode> onThemeModeChanged;
   final bool desktopWindow;
+
+  /// Dextop's setup was skipped for Linux only: the desktop features stay locked.
+  final bool linuxOnly;
+
+  /// Opens Dextop's full setup from the Linux-only home.
+  final VoidCallback? onStartSetup;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -386,6 +394,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    if (widget.linuxOnly) {
+      page = 1;
+      desktopSettingsSection = 'about';
+    }
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback(
       (_) => _initializeDeviceProfile(),
@@ -529,10 +541,11 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       WidgetsBinding.instance.addPostFrameCallback((_) => loadHomeAppIcons());
     }
-    if (mounted) await _consumeTileAction();
+    // The desktop cannot start before Dextop's setup: tiles and shortcuts wait for it.
+    if (mounted && !widget.linuxOnly) await _consumeTileAction();
     if (mounted) {
       homeInitialized = true;
-      await _consumeShortcutAction();
+      if (!widget.linuxOnly) await _consumeShortcutAction();
     }
     if (mounted) await _showMultiTouchUpgradeNoticeIfNeeded();
   }
@@ -831,6 +844,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   Future<void> _drainShortcutActions() async {
     if (!mounted ||
+        widget.linuxOnly ||
         !homeInitialized ||
         loading ||
         stopping ||
@@ -1054,7 +1068,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         autoMode = value['autoMode'] as String? ?? '';
         carCompanionInstalled = value['carCompanionInstalled'] == true;
         if (!carCompanionInstalled && desktopSettingsSection == 'auto') {
-          desktopSettingsSection = 'display';
+          desktopSettingsSection = widget.linuxOnly ? 'about' : 'display';
         }
         stopping = value['stopping'] == true;
         // Keyboard theme editing changes the native laptop overlay while it
@@ -1092,6 +1106,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _schedulePrivilegeTransition(Map<String, dynamic> value) {
+    // Linux only runs with app permissions: nothing asks for privilege until setup.
+    if (widget.linuxOnly) return;
     if (privilegeTransitionDialogVisible || !mounted) return;
     final required =
         value['externalPrivilegeAuthorizationRequired'] == true ||
@@ -1506,7 +1522,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       1 => LinuxPage(
         key: const ValueKey('linux'),
         onSwitchToPlasmaV2: () => setWindowManager('dextop_book'),
-        onSetupPrivilege: _showEmbeddedPrivilegeSetup,
+        // Linux only: privilege comes with Dextop's full setup, started from Home.
+        onSetupPrivilege: widget.linuxOnly ? null : _showEmbeddedPrivilegeSetup,
       ),
       _ => settings(),
     },

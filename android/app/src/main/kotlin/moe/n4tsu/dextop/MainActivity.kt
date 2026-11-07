@@ -321,6 +321,9 @@ open class MainActivity : FlutterActivity() {
                     val launchDisplayId = display?.displayId ?: android.view.Display.DEFAULT_DISPLAY
                     result.success(mapOf(
                         "displayId" to launchDisplayId,
+                        // Material You: the wallpaper-derived accent the system palette starts from.
+                        "accentColor" to (if (android.os.Build.VERSION.SDK_INT >= 31)
+                            getColor(android.R.color.system_accent1_500) else null),
                         "externalDisplay" to (launchDisplayId != android.view.Display.DEFAULT_DISPLAY),
                         "desktopWindow" to (
                             MirrorService.isActive() &&
@@ -397,13 +400,37 @@ open class MainActivity : FlutterActivity() {
                     result.success(null)
                 }
                 "externalDisplayState" -> result.success(MirrorService.externalDisplayState(this))
-                "setExternalDisplay" -> MirrorService.setExternalDisplay(call.argument<String>("mode") ?: "off") { outcome ->
-                    result.success(outcome)
+                "setExternalDisplay" -> {
+                    val mode = call.argument<String>("mode") ?: "off"
+                    if (mode !in setOf("off", "external", "mirror", "extend")) {
+                        result.error("INVALID_DISPLAY_MODE", "Unknown display mode", null)
+                    } else {
+                        getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
+                            .putString("flutter.external_display_mode", mode).apply()
+                        MirrorService.setExternalDisplay(mode) { outcome ->
+                            result.success(if (outcome == "no_session") "ok" else outcome)
+                        }
+                    }
                 }
                 "plasmaSettingsChanged" -> {
                     MirrorService.reloadPlasmaSettings()
                     result.success(null)
                 }
+                "bookSettings" -> result.success(moe.n4tsu.dextop.plasma.BookStore.appearance(this))
+                "setBookSetting" -> runCatching {
+                    val key = call.argument<String>("key") ?: error("A setting key is required")
+                    val store = moe.n4tsu.dextop.plasma.BookStore
+                    if (key == "display_scale") {
+                        val value = call.argument<Int>("value") ?: error("A scale is required")
+                        require(value in setOf(0, 100, 125, 150, 175, 200))
+                        store.setDisplayScale(this, value)
+                        MirrorService.displayScaleChanged()
+                    } else {
+                        require(key in store.appearanceFlags)
+                        store.setFlag(this, key, call.argument<Boolean>("value") ?: error("A boolean is required"))
+                    }
+                    store.appearance(this)
+                }.onSuccess(result::success).onFailure { result.error("BOOK_SETTING", it.message, null) }
                 "activeWindowManager" -> result.success(MirrorService.activeWindowManager())
                 "start" -> startDisplay(call.arguments as? Map<*, *>, result)
                 "currentDeviceDisplayProfile" -> {

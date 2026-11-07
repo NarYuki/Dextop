@@ -180,11 +180,53 @@ def check_runtime(dd, fex):
     for arch in ('i386', 'x86_64'):
         program = BASE + '/runtime-check-' + arch
         env = linux_environment(dd, fex, os.environ, program)
-        result = subprocess.run([fex['bin'], program], env=env, capture_output=True, text=True)
+        result = subprocess.run([fex['bin'], program], env=env, capture_output=True, text=True, timeout=60)
         if result.returncode:
             raise RuntimeError('Common ' + arch + ' runtime check failed (' +
                                str(result.returncode) + '): ' + result.stderr.strip())
         print('Dextop: ' + arch + ' runtime check passed', file=sys.stderr, flush=True)
+
+
+def sdk_launch(command, env, architecture):
+    """Keep sdk64 stable while games run; refuse concurrent mixed architectures."""
+    import fcntl
+    directory = Path.home() / '.steam'
+    directory.mkdir(parents=True, exist_ok=True)
+    sdk = directory / 'sdk64'
+    target = Path(STEAM) / ('linux64' if architecture == 'x86_64' else 'linuxarm64')
+    with (directory / '.dextop-sdk-guard').open('a+') as guard, (directory / '.dextop-sdk-lease').open('a+') as lease:
+        fcntl.flock(guard, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lease, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            fcntl.flock(lease, fcntl.LOCK_SH)
+            if sdk.resolve() != target.resolve():
+                raise RuntimeError('Close games using the other Proton architecture before launching this game.')
+        else:
+            if sdk.exists() and not sdk.is_symlink():
+                raise RuntimeError('Cannot manage ~/.steam/sdk64: it is not a symbolic link.')
+            temporary = directory / ('.sdk64-' + str(os.getpid()))
+            try:
+                temporary.symlink_to(target)
+                temporary.replace(sdk)
+            finally:
+                temporary.unlink(missing_ok=True)
+            fcntl.flock(lease, fcntl.LOCK_SH)
+        fcntl.flock(guard, fcntl.LOCK_UN)
+        child = subprocess.Popen(command, env=env)
+        def forward(number, frame):
+            try:
+                child.send_signal(number)
+            except ProcessLookupError:
+                pass
+        previous = {number: signal.signal(number, forward)
+                    for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        try:
+            result = child.wait()
+        finally:
+            for number, handler in previous.items():
+                signal.signal(number, handler)
+        return result if result >= 0 else 128 - result
 
 
 
@@ -266,16 +308,6 @@ def prepare():
     fex = dd.prepare()
     if not fex:
         raise RuntimeError('The common x86 runtime is incomplete; run container setup/repair again.')
-    # ARM64 Steam initializes sdk64 -> linuxarm64. Proton's Linux half is
-    # x86_64 and must load the x86 steamclient, which the client also ships.
-    sdk = os.path.expanduser('~/.steam/sdk64')
-    client = STEAM + '/linux64/steamclient.so'
-    if dd.elf_arch(client) == 'x86_64' and os.path.islink(sdk) and dd.elf_arch(sdk + '/steamclient.so') != 'x86_64':
-        temporary = sdk + '.dextop'
-        if os.path.lexists(temporary):
-            os.unlink(temporary)
-        os.symlink(STEAM + '/linux64', temporary)
-        os.replace(temporary, sdk)
     etc = fex['rootfs'] + '/etc/dextop'
     os.makedirs(etc, exist_ok=True)
     if os.path.isfile('/etc/dextop/socket-namespace'):
@@ -317,7 +349,7 @@ def register():
     changed = False
     current = compat.read_mapping(tokens, block)
     for app, name in dict(current, **{'0': current.get('0', '')}).items():
-        if not name or name.lower().startswith('proton'):
+        if name in ('', 'proton_experimental', 'proton_11', 'proton_10', 'proton_9'):
             compat.set_mapping(tokens, block, app, TOOL)
             changed = True
     if changed:
@@ -367,7 +399,7 @@ def main(args):
         command = [fex['rootfs'] + '/bin/python3', proton, verb] + args
     if not command:
         raise RuntimeError('No executable specified')
-    os.execve(fex['bin'], [fex['bin']] + command, env)
+    return sdk_launch([fex['bin']] + command, env, 'x86_64')
 
 
 def runtime_with(dd):

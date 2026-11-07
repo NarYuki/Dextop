@@ -36,7 +36,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes APK-approved macOS runtime installation (AIDL transaction 65).
-        const val PROTOCOL_VERSION = 29
+        const val PROTOCOL_VERSION = 43
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         /** [GPU_CRASH_LIMIT] GPU crashes within this long turn the GPU off for the session. */
@@ -50,6 +50,28 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     @Volatile private var closed = false
     @Volatile private var proot: LinuxProot? = null
     @Volatile private var audioClientUid = -1
+    @Volatile private var deviceListener: android.net.LocalServerSocket? = null
+    @Synchronized override fun startDeviceBridgeListener(name: String) {
+        check(android.os.Binder.getCallingUid() == audioClientUid) { "Device caller is not the connected application" }
+        check(!closed) { "Linux service is closed" }
+        require(name.matches(Regex("dextop-devices-[a-f0-9]{32}")))
+        val listener = android.net.LocalServerSocket(name)
+        deviceListener?.close()
+        deviceListener = listener
+    }
+    override fun acceptDeviceBridge(): android.os.ParcelFileDescriptor {
+        check(android.os.Binder.getCallingUid() == audioClientUid) { "Device caller is not the connected application" }
+        val listener = checkNotNull(deviceListener) { "Device listener is not running" }
+        while (!closed && deviceListener === listener) {
+            listener.accept().use { socket ->
+                val peer = socket.peerCredentials
+                if (peer.uid == audioClientUid || (peer.uid == Os.getuid() && ownsProcess(peer.pid))) {
+                    return android.os.ParcelFileDescriptor.dup(socket.fileDescriptor)
+                }
+            }
+        }
+        error("Device listener was replaced")
+    }
     override fun openMicrophoneStream(containerId: String): android.os.ParcelFileDescriptor {
         check(android.os.Binder.getCallingUid() == audioClientUid) { "Audio caller is not the connected application" }
         return checkNotNull(audio) { "Audio unavailable" }.openMicrophone(containerId)
@@ -64,6 +86,20 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
     @Volatile private var callback: ILinuxContainerCallback? = null
     private val installer = Executors.newSingleThreadExecutor { Thread(it, "DextopLinuxInstall") }
+    private val sizeWorker = Executors.newSingleThreadExecutor { Thread(it, "DextopLinuxSize").apply { isDaemon = true } }
+    private val containerSizes = LinuxContainerSizes(sizeWorker, { id ->
+        val directory = LinuxPaths.container(id)
+        check(directory.isDirectory)
+        val process = ProcessBuilder("/system/bin/du", "-sk", directory.absolutePath)
+            .redirectError(File("/dev/null")).start()
+        try {
+            check(process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) { "Container size measurement timed out" }
+            // Bound-device placeholders can be unreadable. du still prints the accessible
+            // container's total with exit 1, as finish() has always used; other failures fail.
+            check(process.exitValue() in 0..1)
+            Math.multiplyExact(process.inputStream.bufferedReader().use { it.readText() }.trim().substringBefore('\t').substringBefore(' ').toLong(), 1024L)
+        } finally { if (process.isAlive) process.destroyForcibly() }
+    }, { if (!closed) notifyChanged() })
     private val cancelled = ConcurrentHashMap.newKeySet<String>()
     private val activeProcesses = ConcurrentHashMap<String, Process>()
 
@@ -84,7 +120,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
     override fun integrationAction(containerId: String, json: String): String {
         integrationCaller(containerId)
-        return integrations.action(containerId, json)
+        val result = integrations.action(containerId, json)
+        val request = JSONObject(json)
+        if (request.optString("feature") == "ssh" && request.optString("op") == "start") {
+            val family = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family
+            audio?.ensure(containerId, family)
+        }
+        return result
     }
     override fun openIntegrationPrint(containerId: String, job: String): android.os.ParcelFileDescriptor {
         integrationCaller(containerId)
@@ -230,7 +272,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             .forEach {
                 LinuxNetworkLink.stage(LinuxPaths.rootfs(it), description)
                 networkSnapshot?.let { snapshot -> LinuxNetworkLink.stageSnapshot(LinuxPaths.rootfs(it), snapshot) }
-                resolver?.let { dns -> LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(it), dns) }
+                (LinuxSettings.customResolver() ?: resolver)?.let { dns -> LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(it), dns) }
             }
     }
 
@@ -252,6 +294,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         // Rebinding the app must retain the running servers and their audio ports.
         // APK changes are handled by the client's code-path/version check.
         this.callback = callback
+        deliverAccountPasswords()
         if (proot != null) return
         val renderer = LinuxGraphics(nativeLibraryDir)
         graphics = renderer
@@ -263,6 +306,10 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         this.callback = callback
         LinuxPaths.containers.mkdirs()
+        // Everything Linux keeps (containers, snapshots, stand-ins, cookies) stays its owner's:
+        // closed at the top, the world-writable modes some tools leave inside reach nobody else.
+        runCatching { Os.chmod(LinuxPaths.base.path, "700".toInt(8)) }
+            .onFailure { Log.w(TAG, "Cannot restrict ${LinuxPaths.base}: ${it.message}") }
         // An install interrupted by a reboot or a killed service never completes.
         containerIds().forEach { id ->
             val config = readConfig(id) ?: return@forEach
@@ -287,6 +334,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     override fun listContainers(): String = JSONArray().apply {
         containerIds().mapNotNull(::readConfig).sortedBy { it.optLong("created") }.forEach { config ->
             val id = config.optString("id")
+            if (config.optString("state") == "installed") config.put("bytes", containerSizes.read(id, config.optLong("bytes", -1L)))
             put(config.put("running", sessions[id]?.alive == true)
                 .put("appsRunning", appSessions[id]?.alive == true)
                 .put("audioGeneration", audio?.generation(id) ?: 0)
@@ -307,6 +355,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
     }.toString()
 
+    override fun refreshContainerSize(containerId: String, force: Boolean) {
+        val config = readConfig(containerId) ?: return
+        if (config.optString("state") == "installed") containerSizes.request(containerId, config.optLong("bytes", -1L), force)
+    }
+
     override fun catalog(): String = LinuxCatalog.toJson()
 
     override fun install(name: String, distroId: String): String = installWithOptions(name, distroId, "{}")
@@ -315,6 +368,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val distro = LinuxCatalog.find(distroId) ?: throw IllegalArgumentException("Unknown distribution $distroId")
         val requested = JSONObject(optionsJson)
         val (_, password) = LinuxUser.credentials(requested)
+        val passwordHash = LinuxPasswordHash.create(password.toByteArray(Charsets.UTF_8))
+        requested.remove("accountPassword")
         val options = LinuxSetupOptions.fromJson(requested).validate(distro)
         val id = "c" + UUID.randomUUID().toString().replace("-", "").take(12)
         LinuxPaths.container(id).mkdirs()
@@ -325,7 +380,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             .put("setupOptions", options.toJson())
             .put("state", "installing")
             .put("created", System.currentTimeMillis()))
-        keyringSecrets[id] = password to true
+        pendingAccountHashes[id] = passwordHash
         notifyChanged()
         installer.execute { runInstall(id, distro) }
         return id
@@ -338,7 +393,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun remove(containerId: String): Boolean {
+        containerSizes.forget(containerId)
         cancelInstall(containerId)
+        stopAccountPasswordListener(containerId)
         integrations.stop(containerId)
         sessions.remove(containerId)?.stop()
         stopApps(containerId)
@@ -425,6 +482,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val runner = requireProot()
         check(LinuxPaths.rootfs(containerId).isDirectory) { "Container $containerId is not installed" }
         integrations.restore(containerId)
+        val family = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family
+        audio?.ensure(containerId, family)
         val builder = runner.guest(containerId,
             "cd \"${'$'}HOME\" 2>/dev/null; if command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh -l; fi",
             fakeRoot = LinuxUser.name(LinuxPaths.rootfs(containerId)) == null)
@@ -506,22 +565,25 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         sessions[containerId]?.takeIf { it.alive }?.let { return it.display }
         sessions.remove(containerId)?.stop()
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
-        val display = LinuxRuntime.freeDisplay(usedDisplays())
+        return withDisplay { display ->
         startRenderer(containerId)
-        stageKeyring(containerId)
-        val session = runtimeStart(containerId) { LinuxDesktopSession.start(
+        val keyring = takeKeyring(containerId)
+        val session = try { runtimeStart(containerId) { LinuxDesktopSession.start(
             requireProot(), containerId, display,
             width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 480),
             xwayland = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend") == "wayland",
+            keyring = keyring,
         )
         }
+        } finally { keyring?.fill(0) }
         sessions[containerId] = session
         session.onClipboard = { text -> shareClipboard(containerId, text) }
         integrations.restore(containerId)
         startNotifications(containerId, display)
         monitor(containerId, { session.alive }) { sessions[containerId] === session }
         notifyChanged()
-        return display
+        display
+        }
     }
 
     override fun stopDesktop(containerId: String) {
@@ -571,6 +633,17 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     private fun appTarget(target: String): LinuxAppSession? =
         if (target.endsWith("#apps")) appSessions[target.removeSuffix("#apps")] else null
 
+    private val displayReservations = LinuxDisplayReservations()
+
+    private inline fun <T> withDisplay(work: (Int) -> T): T {
+        val display = displayReservations.reserve(usedDisplays())
+        try { return work(display) }
+        finally {
+            if (display !in usedDisplays()) LinuxXAuth.forget(display)
+            displayReservations.release(display)
+        }
+    }
+
     private fun usedDisplays(): Set<Int> =
         sessions.values.map { it.display }.toSet() + appSessions.values.map { it.display }
 
@@ -614,16 +687,17 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         appSessions.remove(containerId)?.stop()
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
-        val display = LinuxRuntime.freeDisplay(usedDisplays())
+        return withDisplay { display ->
         startRenderer(containerId)
-        stageKeyring(containerId)
         // DroidDeck's runtime has no Xvfb: its X clients go through KWin's Xwayland.
         val runtime = readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME
         if (runtime) stageDroidDeckFiles(containerId)
         val selectedWayland = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend") == "wayland"
-        val session = runtimeStart(containerId) { LinuxAppSession.start(
+        val keyring = takeKeyring(containerId)
+        val session = try { runtimeStart(containerId) { LinuxAppSession.start(
             requireProot(), containerId, display,
             width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 640), waylandOnly = runtime, requireWayland = selectedWayland, xwayland = selectedWayland && !runtime,
+            keyring = keyring,
         ) { event ->
             if (event.optString("type") == "tray-wine-metadata") {
                 Thread({ runCatching { wineTrayMetadata.ensure(containerId, event.optInt("pid"), requireProot()) }
@@ -631,6 +705,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             } else callback(containerId) { it.onWindowEvent(containerId, event.toString()) }
         }
         }
+        } finally { keyring?.fill(0) }
         appSessions[containerId] = session
         // A new session tries the GPU again.
         gpuSessionOff.remove(containerId)
@@ -641,7 +716,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         monitor(containerId, { session.alive }) { appSessions[containerId] === session }
         notifyChanged()
         runCatching { maybeProbeGpu(containerId) }
-        return display
+        display
+        }
     }
 
     override fun launchApp(containerId: String, desktopId: String) = launchApp(containerId, desktopId, software = false)
@@ -673,7 +749,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             log(containerId, "Flatpak compatibility mode: no Flatpak sandbox or portal permission enforcement")
             LinuxFlatpak.plan(LinuxPaths.rootfs(containerId), entry.flatpakId)
         } else null
-        // The application's own choices (its app menu → How it runs).
+        // The application's own choices (its app menu â†’ How it runs).
         val mode = LinuxSettings.appMode(containerId, entry.id)
         // ~/.config/dextop/gpu-apps ("software NAME" / "gpu NAME") wins over Dextop's own fallback.
         val listed = LinuxGpuApps.choice(LinuxPaths.rootfs(containerId), entry.id, LinuxDesktopEntries.command(entry))
@@ -714,7 +790,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val appLog = "app-${entry.id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.log"
         val macos = if (entry.runtime == "macos") macosLifecycle.prepare(File(LinuxPaths.container(containerId), "runtime/macos-control")) else null
         val process = try { requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command, wayland = wayland,
-            waylandGpu = droidDeck || waylandGpu, appLog = appLog, androidWindows = !framed),
+            waylandGpu = droidDeck || waylandGpu, appLog = appLog, androidWindows = !framed, uiScale = LinuxSettings.uiScale(containerId, entry.id)),
             extraBinds = flatpak?.binds.orEmpty() + macos?.binds.orEmpty(),
             extraEnvironment = flatpak?.environment.orEmpty() + macos?.environment.orEmpty())
             .redirectErrorStream(true).start()
@@ -848,8 +924,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     private fun startRenderer(containerId: String) {
         networkLink?.let { LinuxNetworkLink.stage(LinuxPaths.rootfs(containerId), it) }
         networkSnapshot?.let { LinuxNetworkLink.stageSnapshot(LinuxPaths.rootfs(containerId), it) }
-        networkResolver?.let { LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(containerId), it) }
+        (LinuxSettings.customResolver() ?: networkResolver)?.let { LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(containerId), it) }
         LinuxSessionCompatibility.stage(LinuxPaths.rootfs(containerId), requireProot().nativeLibraryDir, LinuxProot.socketNamespace(containerId))
+        listenForAccountPassword(containerId)
         val distro = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)
         // DroidDeck's runtime is used as DroidDeck ships it: Turnip on KGSL, no VirGL,
         // and pacman never runs (its own builds are not in pacman's database).
@@ -895,7 +972,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val resolv = File(root, "etc/resolv.conf")
         if (java.nio.file.Files.isSymbolicLink(resolv.toPath()) && !resolv.exists()) resolv.delete()
         if (!resolv.isFile || resolv.readText().lines().none { it.startsWith("nameserver") }) {
-            LinuxNetworkLink.stageResolver(root, networkResolver ?: androidResolver())
+            LinuxNetworkLink.stageResolver(root, LinuxSettings.customResolver() ?: networkResolver ?: androidResolver())
         }
     }
 
@@ -993,7 +1070,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 LinuxSettings.writeProbe(result.put("container", containerId).put("device", android.os.Build.FINGERPRINT))
                 log(containerId, "GPU test: ${result.optString("state")} ${result.optString("renderer")} " +
                     "gpu=${result.optDouble("gpuFps", -1.0)} cpu=${result.optDouble("cpuFps", -1.0)} fps " +
-                    "→ ${LinuxSettings.read().optString("gpu")}${result.optString("error").takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty()}")
+                    "â†’ ${LinuxSettings.read().optString("gpu")}${result.optString("error").takeIf { it.isNotEmpty() }?.let { " ($it)" }.orEmpty()}")
             }.onFailure { error ->
                 log(containerId, "GPU test failed to run: ${error.message}")
                 LinuxSettings.writeProbe(JSONObject().put("version", LinuxGpuProbe.VERSION).put("at", System.currentTimeMillis())
@@ -1024,11 +1101,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         val variables = (graphics.environmentFor(containerId, LinuxGpuMode.TURNIP) +
             graphics.environmentFor(containerId, LinuxGpuMode.HARDWARE)).map { it.substringBefore('=') }
-        val display = LinuxRuntime.freeDisplay(usedDisplays())
+        return withDisplay { display ->
+        LinuxXAuth.prepare(containerId, display)
         val script = LinuxGpuProbe.script(display, graphics.environmentFor(containerId, candidate),
             graphics.environmentFor(containerId, LinuxGpuMode.SOFTWARE) + "LIBGL_ALWAYS_SOFTWARE=1", variables)
         val run = proot.run(proot.guest(containerId, script), timeoutSeconds = 120)
-        return LinuxGpuProbe.parse(candidate, run.output)
+        LinuxGpuProbe.parse(candidate, run.output)
+        }
     }
 
     /** GPU crashes at application start by container, for [gpuCrashed]. */
@@ -1060,8 +1139,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     private fun containerBusy(id: String) = sessions[id]?.alive == true || appSessions[id]?.alive == true ||
         integrations.running(id) || readConfig(id)?.optString("state") in setOf("installing", "updating")
 
+    @Synchronized
     private fun startFileJob(type: String, container: String, work: (JSONObject) -> Any?) {
-        check(fileJob?.optString("state") != "running") { "Another backup or AppImage job is running" }
+        check(fileJob?.let { synchronized(it) { it.optString("state") } } != "running") { "Another backup or AppImage job is running" }
         val job = JSONObject().put("type", type).put("container", container).put("state", "running").put("bytes", 0L)
         fileJob = job
         notifyChanged()
@@ -1123,8 +1203,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         startFileJob("restore", "") { job -> restoreAs(job) { snapshot.inputStream() } }
     }
 
+    @Synchronized
     override fun deleteSnapshot(file: String): Boolean {
-        check(fileJob?.optString("state") != "running") { "A backup job is running" }
+        check(fileJob?.let { synchronized(it) { it.optString("state") } } != "running") { "A backup job is running" }
         return LinuxBackups.file(file).delete().also { notifyChanged() }
     }
 
@@ -1207,6 +1288,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 applications.mkdirs()
                 File(applications, entryName).writeText(contents)
                 log(containerId, "AppImage installed: $name ($entryName)")
+                containerSizes.invalidate(containerId)
                 notifyChanged()
                 JSONObject().put("desktopId", entryName).put("name", name)
             } finally {
@@ -1228,6 +1310,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         LinuxRootfsArchive.deleteTree(File(applications, ".$slug"))
         File(applications, "$slug.AppImage").delete()
         entry.delete()
+        containerSizes.invalidate(containerId)
         log(containerId, "AppImage removed: $slug")
         notifyChanged()
         return true
@@ -1243,6 +1326,34 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
     }
 
+    override fun storageBreakdown(containerId: String, category: String, path: String, offset: Int): String {
+        check(readConfig(containerId)?.optString("state") == "installed") { "Container is not installed" }
+        val root = LinuxPaths.rootfs(containerId)
+        return LinuxStorage.breakdown(root, LinuxUser.home(root), category, path, offset).toString()
+    }
+
+    override fun appUninstallTarget(containerId: String, desktopId: String): String {
+        val root = LinuxPaths.rootfs(containerId)
+        val entry = LinuxDesktopEntries.find(root, desktopId) ?: error("Application was not found")
+        if (entry.flatpakId.isNotEmpty()) return JSONObject().put("source", "flathub").put("package", entry.flatpakId).toString()
+        val family = LinuxCatalog.find(readConfig(containerId)?.optString("distro").orEmpty())?.family
+        val paths = listOf("/usr/share/applications/$desktopId", "/usr/local/share/applications/$desktopId",
+            "${LinuxUser.home(root)}/.local/share/applications/$desktopId").joinToString(" ") { LinuxCatalog.shellQuote(it) }
+        val script = when (family) {
+            LinuxPackageFamily.APT -> "dpkg-query -S -- $paths 2>/dev/null | head -n 1"
+            LinuxPackageFamily.PACMAN -> "pacman -Qoq -- $paths 2>/dev/null | head -n 1"
+            else -> error("This container's package manager is not supported")
+        }
+        val result = JSONObject(runCommand(containerId, script, 30))
+        val output = result.optString("output").trim().lineSequence().firstOrNull().orEmpty()
+        val pkg = if (family == LinuxPackageFamily.APT) output.substringBefore(": ").substringBefore(',') else output
+        require(pkg.matches(Regex("[A-Za-z0-9][A-Za-z0-9+._:-]*"))) { "No installed package owns this application; it may have been added manually" }
+        val records = File(root, "etc/dextop-deb-get/installed")
+        val debget = records.isFile && records.useLines { lines -> lines.any { it.substringBefore(' ') == pkg } }
+        return JSONObject().put("source", if (family == LinuxPackageFamily.PACMAN) "pacman" else if (debget) "deb-get" else "apt")
+            .put("package", pkg).toString()
+    }
+
     override fun cleanContainer(containerId: String) {
         check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
         // /tmp holds the sessions' sockets and display files: only while nothing runs.
@@ -1256,6 +1367,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             File(root, "tmp").apply { mkdirs(); setWritable(true, false); setReadable(true, false); setExecutable(true, false) }
             val after = LinuxStorage.usage(root, LinuxUser.home(root)).optLong("total")
             val freed = (before - after).coerceAtLeast(0)
+            containerSizes.invalidate(containerId)
             log(containerId, "Cleaned caches: ${freed / 1_048_576} MiB freed")
             notifyChanged()
             JSONObject().put("freed", freed).put("total", after)
@@ -1281,6 +1393,12 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         // {"container": id, ...} changes that container's settings; otherwise the global defaults.
         val container = update.optString("container").takeIf { it.isNotEmpty() && readConfig(it) != null }
         if (container != null) LinuxSettings.writeContainer(container, update) else LinuxSettings.write(update)
+        if (update.has("dnsServers")) {
+            val resolver = LinuxSettings.customResolver() ?: networkResolver ?: androidResolver()
+            containerIds().filter { readConfig(it)?.optString("state") == "installed" }.forEach {
+                LinuxNetworkLink.stageResolver(LinuxPaths.rootfs(it), resolver)
+            }
+        }
         active.filter { LinuxSettings.gpuMode(it) != before[it] }.forEach(::startRenderer)
         return linuxSettings()
     }
@@ -1362,31 +1480,148 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         appSessions[containerId]?.runCatching { pointer(xid, action, x, y, button) }
     }
 
-    /** Keyring passwords by container, with whether they stay for later sessions; memory only. */
-    private val keyringSecrets = ConcurrentHashMap<String, Pair<String, Boolean>>()
+    /** Only encrypted keyring values wait for later sessions; setup retains one-way hashes. */
+    private val keyringSecrets = ConcurrentHashMap<String, Pair<LinuxSealedSecret, Boolean>>()
+    private val pendingAccountHashes = ConcurrentHashMap<String, String>()
 
+    @Synchronized
     override fun setKeyringSecret(containerId: String, secret: String, persistent: Boolean) {
+        check(!closed) { "Linux service is closed" }
         LinuxPaths.container(containerId)
-        if (secret.isEmpty()) keyringSecrets.remove(containerId) else keyringSecrets[containerId] = secret to persistent
+        if (secret.isEmpty()) keyringSecrets.remove(containerId) else {
+            keyringSecrets[containerId] = LinuxSealedSecret.seal(secret.toByteArray(Charsets.UTF_8)) to persistent
+            // Resume an interrupted fresh setup using a hash, never the cached plaintext.
+            val root = LinuxPaths.rootfs(containerId)
+            if (LinuxUser.name(root) == null && readConfig(containerId)?.optJSONObject("setupOptions")?.optString("username").orEmpty().isNotEmpty()) {
+                pendingAccountHashes[containerId] = LinuxPasswordHash.create(secret.toByteArray(Charsets.UTF_8))
+            }
+        }
+    }
+
+    /** Containers whose account password socket is open ([listenForAccountPassword]). */
+    private val passwordServers = ConcurrentHashMap<String, android.net.LocalServerSocket>()
+    private val passwordClients = ConcurrentHashMap<String, android.net.LocalSocket>()
+    // A socket message must not create an unbounded number of PAM processes/threads.
+    private val passwordChecks = java.util.concurrent.ThreadPoolExecutor(
+        1, 1, 0L, java.util.concurrent.TimeUnit.MILLISECONDS,
+        java.util.concurrent.ArrayBlockingQueue<Runnable>(8),
+        java.util.concurrent.ThreadFactory { Thread(it, "dextop-account-password-check").apply { isDaemon = true } },
+    )
+    /** Encrypted updates waiting for the app; plaintext is opened only during authentication or delivery. */
+    private val pendingAccountPasswords = ConcurrentHashMap<String, LinuxSealedSecret>()
+
+    /**
+     * Opens [containerId]'s account password socket (LinuxPam.PASSWORD_SOCKET), where the passwd
+     * PAM stack's dextop-passwd-sync hands over a changed password. It is kept only when PAM
+     * accepts it for the container's account, so a process of the container can never make
+     * Dextop keep anything but the real account password.
+     */
+    @Synchronized
+    private fun listenForAccountPassword(containerId: String) {
+        if (closed || passwordServers.containsKey(containerId)) return
+        val server = runCatching {
+            android.net.LocalServerSocket(LinuxProot.socketNamespace(containerId) + LinuxPam.PASSWORD_SOCKET)
+        }.getOrElse {
+            Log.w(TAG, "account password socket of $containerId is unavailable", it)
+            return
+        }
+        passwordServers[containerId] = server
+        Thread({
+            while (!closed) {
+                val client = runCatching { server.accept() }.getOrNull() ?: break
+                synchronized(this@LinuxContainerService) {
+                    if (closed || passwordServers[containerId] !== server) {
+                        runCatching { client.close() }
+                        return@Thread
+                    }
+                    passwordClients[containerId] = client
+                }
+                runCatching {
+                    client.use { socket ->
+                        if (socket.peerCredentials.uid != Os.getuid()) return@use
+                        socket.soTimeout = 3000
+                        val message = ByteArray(4200)
+                        try {
+                            val count = socket.inputStream.readNBytes(message, 0, message.size)
+                            socket.outputStream.write("ok\n".toByteArray())
+                            val separator = message.indexOf(0)
+                            if (separator <= 0 || separator >= count || count - separator - 1 !in 1..4096) return@use
+                            val user = String(message, 0, separator, Charsets.UTF_8)
+                            val password = LinuxSealedSecret.seal(message.copyOfRange(separator + 1, count))
+                            // Only ciphertext can wait behind another PAM authentication.
+                            passwordChecks.execute { acceptAccountPassword(containerId, user, password, server) }
+                        } finally { message.fill(0) }
+                    }
+                }
+                passwordClients.remove(containerId, client)
+            }
+            runCatching { server.close() }
+            passwordServers.remove(containerId, server)
+        }, "dextop-account-password-$containerId").apply { isDaemon = true }.start()
+    }
+
+    @Synchronized
+    private fun stopAccountPasswordListener(containerId: String) {
+        passwordServers.remove(containerId)?.let { runCatching { it.close() } }
+        passwordClients.remove(containerId)?.let { runCatching { it.close() } }
+        pendingAccountPasswords.remove(containerId)
+        keyringSecrets.remove(containerId)
+        pendingAccountHashes.remove(containerId)
+    }
+
+    private fun acceptAccountPassword(containerId: String, user: String, password: LinuxSealedSecret, server: android.net.LocalServerSocket) {
+        if (closed || passwordServers[containerId] !== server) return
+        val runner = proot ?: return
+        if (user != LinuxUser.name(LinuxPaths.rootfs(containerId))) return
+        // The account's own PAM check, as its login does; never the shell's output, which is not logged.
+        val check = runCatching {
+            password.useBytes { bytes ->
+                runner.run(runner.guest(containerId, "exec python3 ${LinuxPam.LOGIN} --check"), 20, inputBytes = bytes)
+            }
+        }.getOrNull()
+        if (check?.exitCode != 0) {
+            log(containerId, "Dextop: a changed account password was not accepted by PAM; the keyring password stays")
+            return
+        }
+        synchronized(this) {
+            if (closed || passwordServers[containerId] !== server) return
+            pendingAccountPasswords[containerId] = password
+        }
+        deliverAccountPasswords()
+    }
+
+    private fun deliverAccountPasswords() {
+        val target = callback ?: return
+        for ((id, password) in pendingAccountPasswords) {
+            try {
+                password.useBytes { target.onAccountPassword(id, String(it, Charsets.UTF_8)) }
+                // This is a oneway callback: successful enqueue is not successful
+                // persistence. Keep it for reconnect until the app confirms it.
+            } catch (error: RemoteException) {
+                Log.w(TAG, "account password of $id waits for the app", error)
+                return
+            }
+        }
+    }
+
+    override fun acknowledgeAccountPassword(containerId: String, password: String) {
+        check(android.os.Binder.getCallingUid() == audioClientUid) { "Password caller is not the connected application" }
+        val current = pendingAccountPasswords[containerId] ?: return
+        val matches = current.useBytes { saved ->
+            val received = password.toByteArray(Charsets.UTF_8)
+            try { java.security.MessageDigest.isEqual(saved, received) } finally { received.fill(0) }
+        }
+        if (matches) pendingAccountPasswords.remove(containerId, current)
     }
 
     /**
-     * Hands the keyring password to the session about to start (LinuxCatalog's KEYRING_UNLOCK
-     * reads and removes the file): readable by Linux's own user only, and gone once read.
+     * The keyring password for the session about to start, or null. It reaches the session
+     * through its standard input (a pipe no other process can read), never through a file.
      */
-    private fun stageKeyring(containerId: String) {
-        val (secret, persistent) = keyringSecrets[containerId] ?: return
-        runCatching {
-            val directory = File(LinuxPaths.rootfs(containerId), "var/lib/dextop").apply { mkdirs() }
-            val file = File(directory, "keyring-unlock")
-            val staged = File(directory, ".keyring-unlock.staged")
-            staged.delete()
-            staged.createNewFile()
-            android.system.Os.chmod(staged.path, "600".toInt(8))
-            staged.writeText(secret)
-            check(staged.renameTo(file))
-            if (!persistent) keyringSecrets.remove(containerId)
-        }.onFailure { log(containerId, "Keyring handover failed: ${it.javaClass.simpleName}") }
+    private fun takeKeyring(containerId: String): ByteArray? {
+        val (secret, persistent) = keyringSecrets[containerId] ?: return null
+        if (!persistent) keyringSecrets.remove(containerId)
+        return secret.open()
     }
 
     override fun windowScroll(containerId: String, xid: Int, x: Int, y: Int, dx: Int, dy: Int) {
@@ -1403,6 +1638,18 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     @Synchronized internal fun close() {
         if (closed) return
         closed = true
+        containerSizes.close()
+        sizeWorker.shutdownNow()
+        runCatching { deviceListener?.close() }
+        deviceListener = null
+        passwordServers.values.forEach { runCatching { it.close() } }
+        passwordServers.clear()
+        passwordClients.values.forEach { runCatching { it.close() } }
+        passwordClients.clear()
+        passwordChecks.shutdownNow()
+        pendingAccountPasswords.clear()
+        keyringSecrets.clear()
+        pendingAccountHashes.clear()
         integrations.stopAll()
         sessions.values.forEach { runCatching { it.stop() } }
         appSessions.keys.toList().forEach { runCatching { stopApps(it) } }
@@ -1644,12 +1891,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         if (options.username.isNotEmpty() && LinuxUser.name(LinuxPaths.rootfs(id)) == null) {
             progress(id, "account", -1, "")
             LinuxSessionCompatibility.stage(LinuxPaths.rootfs(id), runner.nativeLibraryDir, LinuxProot.socketNamespace(id))
-            val password = keyringSecrets[id]?.first ?: error("Reopen Dextop to unlock the account setup password, then retry setup")
+            val passwordHash = pendingAccountHashes[id] ?: error("Reopen Dextop to unlock the account setup password, then retry setup")
             val uid = android.system.Os.getuid().takeIf { it > 0 } ?: 1000
             val script = "exec python3 /usr/local/libexec/dextop-user-setup ${options.username} $uid"
             val result = runner.run(runner.guest(id, script, fakeRoot = true), 600,
-                onProcess = { activeProcesses[id] = it }, input = password) { log(id, it) }
+                onProcess = { activeProcesses[id] = it }, input = passwordHash) { log(id, it) }
             check(result.exitCode == 0) { "Linux account setup failed (exit ${result.exitCode}); see installation log" }
+            pendingAccountHashes.remove(id)
         }
         setupSteps(id, distro, options, runner)
     }
@@ -1722,6 +1970,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }.getOrDefault(-1L)
         config.remove("error")
         writeConfig(id, config.put("state", "installed").put("bytes", bytes))
+        containerSizes.invalidate(id)
         progress(id, "done", 100, "")
         notifyChanged()
     }
@@ -1755,7 +2004,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val file = LinuxPaths.config(id)
         val temp = File(file.parentFile, "config.json.tmp")
         temp.writeText(config.toString(2))
-        temp.renameTo(file)
+        check(temp.renameTo(file)) { "Cannot save Linux container configuration" }
     }
 
     private fun log(id: String, line: String) {

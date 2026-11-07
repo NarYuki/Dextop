@@ -26,6 +26,9 @@ import java.util.concurrent.TimeUnit
  */
 internal object LinuxCameraBridge {
     private val SIZES = listOf(1280 to 720, 640 to 480, 320 to 240)
+    // Device/session callbacks can arrive after open times out. Keep their dispatcher alive
+    // so late cameras are closed even after the per-stream image thread has stopped.
+    private val callbacks = Handler(android.os.Looper.getMainLooper())
 
     private fun manager(context: Context) = context.getSystemService(CameraManager::class.java)
 
@@ -60,11 +63,26 @@ internal object LinuxCameraBridge {
         var session: CameraCaptureSession? = null
         var reader: ImageReader? = null
         val thread = HandlerThread("DextopLinuxCamera").apply { start() }
-        fun close() {
+        val opened = CountDownLatch(1)
+        var ready = false
+        var closed = false
+        var failure: Throwable? = null
+        fun fail(error: Throwable): Unit = synchronized(lock) {
+            if (failure == null) failure = error
+            close()
+        }
+        fun close(): Unit = synchronized(lock) {
+            if (closed) return@synchronized
+            closed = true
+            opened.countDown()
+            lock.notifyAll()
             runCatching { session?.close() }
             runCatching { camera?.close() }
             runCatching { reader?.close() }
             thread.quitSafely()
+        }
+        fun callback(action: () -> Unit) {
+            runCatching { synchronized(lock) { if (!closed) action() } }.onFailure(::fail)
         }
     }
 
@@ -72,7 +90,6 @@ internal object LinuxCameraBridge {
     fun serve(context: Context, socket: LocalSocket, input: DataInputStream, id: String) {
         val manager = manager(context) ?: run { socket.outputStream.write(1); return }
         if (id !in runCatching { manager.cameraIdList.toList() }.getOrDefault(emptyList())) return
-        socket.soTimeout = 0
         var stream: Stream? = null
         var sent = 0L
         try {
@@ -89,7 +106,8 @@ internal object LinuxCameraBridge {
                         val current = stream ?: continue
                         val frame = synchronized(current.lock) {
                             val deadline = System.currentTimeMillis() + 3000
-                            while (current.sequence == sent && System.currentTimeMillis() < deadline) current.lock.wait(200)
+                            while (!current.closed && current.sequence == sent && System.currentTimeMillis() < deadline) current.lock.wait(200)
+                            check(!current.closed) { "Camera stream is closed" }
                             sent = current.sequence
                             current.frame
                         } ?: ByteArray(current.width * current.height * 2) { if (it % 2 == 1) 128.toByte() else 0 }
@@ -119,43 +137,72 @@ internal object LinuxCameraBridge {
 
     @SuppressLint("MissingPermission") // Cameras are listed to Linux only with the permission.
     private fun open(context: Context, manager: CameraManager, id: String, width: Int, height: Int): Stream {
+        require(width to height in SIZES) { "Unsupported camera dimensions" }
         val stream = Stream(width, height)
-        val handler = Handler(stream.thread.looper)
-        val reader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 3)
-        stream.reader = reader
-        reader.setOnImageAvailableListener({ source ->
-            val image = runCatching { source.acquireLatestImage() }.getOrNull() ?: return@setOnImageAvailableListener
-            val yuyv = image.use { toYuyv(it) }
-            synchronized(stream.lock) {
-                stream.frame = yuyv
-                stream.sequence++
-                stream.lock.notifyAll()
-            }
-        }, handler)
-        val opened = CountDownLatch(1)
-        check(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) { "No camera permission" }
-        manager.openCamera(id, object : CameraDevice.StateCallback() {
-            override fun onOpened(camera: CameraDevice) {
-                stream.camera = camera
-                @Suppress("DEPRECATION")
-                camera.createCaptureSession(listOf(reader.surface), object : CameraCaptureSession.StateCallback() {
-                    override fun onConfigured(session: CameraCaptureSession) {
-                        stream.session = session
-                        val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
-                            addTarget(reader.surface)
-                            set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(15, 30))
-                        }.build()
-                        runCatching { session.setRepeatingRequest(request, null, handler) }
-                        opened.countDown()
+        try {
+            val handler = Handler(stream.thread.looper)
+            val reader = ImageReader.newInstance(width, height, ImageFormat.YUV_420_888, 3)
+            stream.reader = reader
+            reader.setOnImageAvailableListener({ source ->
+                stream.callback {
+                    val image = source.acquireLatestImage() ?: return@callback
+                    stream.frame = image.use { toYuyv(it) }
+                    stream.sequence++
+                    stream.lock.notifyAll()
+                }
+            }, handler)
+            check(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) { "No camera permission" }
+            manager.openCamera(id, object : CameraDevice.StateCallback() {
+                override fun onOpened(camera: CameraDevice) {
+                    // Even a callback arriving after timeout must release the newly delivered camera.
+                    synchronized(stream.lock) {
+                        if (stream.closed) { runCatching { camera.close() }; return }
+                        stream.camera = camera
+                        stream.callback {
+                            @Suppress("DEPRECATION")
+                            camera.createCaptureSession(listOf(reader.surface), object : CameraCaptureSession.StateCallback() {
+                                override fun onConfigured(session: CameraCaptureSession) {
+                                    synchronized(stream.lock) {
+                                        if (stream.closed) { runCatching { session.close() }; return }
+                                        stream.session = session
+                                        stream.callback {
+                                            val request = camera.createCaptureRequest(CameraDevice.TEMPLATE_RECORD).apply {
+                                                addTarget(reader.surface)
+                                                set(CaptureRequest.CONTROL_AE_TARGET_FPS_RANGE, Range(15, 30))
+                                            }.build()
+                                            session.setRepeatingRequest(request, null, handler)
+                                            stream.ready = true
+                                            stream.opened.countDown()
+                                        }
+                                    }
+                                }
+                                override fun onConfigureFailed(session: CameraCaptureSession) {
+                                    runCatching { session.close() }
+                                    stream.fail(java.io.IOException("Camera session configuration failed"))
+                                }
+                            }, callbacks)
+                        }
                     }
-                    override fun onConfigureFailed(session: CameraCaptureSession) { opened.countDown() }
-                }, handler)
+                }
+                override fun onDisconnected(camera: CameraDevice) {
+                    runCatching { camera.close() }
+                    stream.fail(java.io.IOException("Camera disconnected"))
+                }
+                override fun onError(camera: CameraDevice, error: Int) {
+                    runCatching { camera.close() }
+                    stream.fail(java.io.IOException("Camera error: $error"))
+                }
+            }, callbacks)
+            check(stream.opened.await(5, TimeUnit.SECONDS)) { "Camera start timed out" }
+            synchronized(stream.lock) {
+                stream.failure?.let { throw java.io.IOException("Camera start failed", it) }
+                check(stream.ready && !stream.closed) { "Camera stopped before starting" }
             }
-            override fun onDisconnected(camera: CameraDevice) { camera.close(); opened.countDown() }
-            override fun onError(camera: CameraDevice, error: Int) { camera.close(); opened.countDown() }
-        }, handler)
-        opened.await(5, TimeUnit.SECONDS)
-        return stream
+            return stream
+        } catch (error: Exception) {
+            stream.close()
+            throw error
+        }
     }
 
     /** YUV 4:2:0 from Camera2 to packed YUYV 4:2:2, as V4L2 webcams deliver it. */

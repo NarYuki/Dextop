@@ -49,7 +49,8 @@ select_channel() {
   printf '%s\n' "${sync:-$steam_channel}" > "$steam_root/package/beta.staged"
   mv -f "$steam_root/package/beta.staged" "$steam_root/package/beta"
 }
-if [ -z "$sync" ] && [ -x "$steam_root/steamrtarm64/steam" ] && [ -f "$stamp" ]; then
+if [ -z "$sync" ] && [ -x "$steam_root/steamrtarm64/steam" ] && [ -f "$stamp" ] && [ -s "$steam_root/package/$manifest.installed" ]; then
+  select_channel
   exit 0
 fi
 
@@ -84,7 +85,7 @@ if [ -n "$sync" ]; then
   # Steam itself writes pending manifests, so a matching downloaded manifest is not
   # proof that our ARM64 payload was installed successfully.
   completed=$(cat "$stamp" 2>/dev/null || true)
-  if [ -x "$steam_root/steamrtarm64/steam" ] && [ "$installed" = "$version" ] && [ "$completed" = "$version" ]; then
+  if [ -x "$steam_root/steamrtarm64/steam" ] && [ "$installed" = "$version" ] && [ "$completed" = "$version" ] && [ -s "$steam_root/package/$manifest.installed" ]; then
     select_channel
     clear_applied_pending
     chmod -R a+x "$steam_root/steamrtarm64" "$steam_root/linuxarm64" 2>/dev/null || true
@@ -137,13 +138,17 @@ chmod -R a+x "$steam_root/steamrtarm64" "$steam_root/linuxarm64" 2>/dev/null || 
 cp "$work/manifest" "$steam_root/package/$manifest.manifest.staged"
 mv -f "$steam_root/package/$manifest.manifest.staged" "$steam_root/package/$manifest.manifest"
 select_channel
+"${DEXTOP_STEAM_STATE:-/usr/local/bin/dextop-steam-state}" --record "$steam_root" "$work/client"
 ln -sfn "$steam_root/steamrtarm64" "$steam_root/steamrtarm32"
 chmod +x "$steam_root/steamrtarm64/steam" 2>/dev/null || true
 mkdir -p "$HOME/.steam"
 ln -sfn "$steam_root" "$HOME/.steam/root"
 ln -sfn "$steam_root" "$HOME/.steam/steam"
 ln -sfn "$steam_root/steamrtarm64" "$HOME/.steam/bin64"
-ln -sfn "$steam_root/linuxarm64" "$HOME/.steam/sdk64"
+# Game launchers hold architecture leases on sdk64; never replace their link.
+if [ ! -e "$HOME/.steam/sdk64" ] && [ ! -L "$HOME/.steam/sdk64" ]; then
+    ln -s "$steam_root/linuxarm64" "$HOME/.steam/sdk64" 2>/dev/null || true
+fi
 ln -sfn "$steam_root/linuxarm64" "$HOME/.steam/sdkarm64"
 ln -sfn "$steam_root/steamrtarm64" "$HOME/.steam/binarm64"
 ln -sfn "$steam_root/linux32" "$HOME/.steam/sdk32"

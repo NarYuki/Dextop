@@ -1,7 +1,59 @@
 part of 'main.dart';
 
 extension _HomeContent on _HomeScreenState {
+  /// Home while only Linux is set up: an invitation to finish Dextop's setup.
+  Widget linuxOnlyOverview() {
+    final theme = Theme.of(context);
+    return Center(
+      key: const ValueKey('overview-linux-only'),
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.all(32),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ClipRRect(
+                borderRadius: BorderRadius.circular(30),
+                child: const Image(
+                  image: AssetImage('assets/dextop_icon.png'),
+                  width: 120,
+                  height: 120,
+                ),
+              ),
+              const SizedBox(height: 30),
+              Text(
+                localText(context, 'Dextopを設定する', 'Set up Dextop'),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 12),
+              Text(
+                localText(
+                  context,
+                  'セットアップを完了させると、スタンドアローンでのAndroid Desktopが実行できるようになります',
+                  'Finish the setup to run a standalone Android desktop',
+                ),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.titleMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 34),
+              FilledButton.icon(
+                onPressed: widget.onStartSetup,
+                icon: const Icon(Icons.arrow_forward_rounded),
+                label: Text(AppLocalizations.of(context).setupBegin),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget overview() {
+    if (widget.linuxOnly) return linuxOnlyOverview();
     final wide = wideLayout;
     final session = <Widget>[
       heroPanel(),
@@ -84,16 +136,16 @@ extension _HomeContent on _HomeScreenState {
                                       children: [
                                         Icon(
                                           Icons.monitor_rounded,
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
                                         ),
                                         SizedBox(width: 12),
                                         Text(
                                           currentLocalizations().display,
-                                          style: Theme.of(
-                                            context,
-                                          ).textTheme.titleMedium,
+                                          style: Theme.of(context)
+                                              .textTheme
+                                              .titleMedium,
                                         ),
                                       ],
                                     ),
@@ -326,16 +378,6 @@ extension _HomeContent on _HomeScreenState {
                 ),
               ),
             ),
-            if (ready || active) ...[
-              const SizedBox(height: 4),
-              Center(
-                child: TextButton.icon(
-                  onPressed: addHomeScreenShortcut,
-                  icon: const Icon(Icons.add_to_home_screen_outlined, size: 18),
-                  label: Text(currentLocalizations().uiShortcutAdd),
-                ),
-              ),
-            ],
           ],
         ),
       ),

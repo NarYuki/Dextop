@@ -30,6 +30,23 @@ else:
 
 
 class UnitParserTests(unittest.TestCase):
+    def test_dropins_accumulate_reset_and_order_by_filename(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            etc, lib = root/'etc', root/'lib'
+            for directory in (etc, lib):
+                (directory/'foo.service.d').mkdir(parents=True)
+            (etc/'foo.service').write_text('[Service]\nExecStart=/bin/true\nEnvironment=ONE=1\nExecStartPre=/bin/base\n')
+            (lib/'foo.service.d/10-add.conf').write_text('[Service]\nEnvironment=THREE=3\n')
+            (etc/'foo.service.d/20-add.conf').write_text('[Service]\nEnvironment=TWO=2\nExecStartPre=/bin/dropin\n')
+            (lib/'foo.service.d/20-add.conf').write_text('[Service]\nEnvironment=SHADOWED=1\n')
+            with patch.object(module, 'paths', return_value=[etc, lib]):
+                spec = module.load_unit('foo.service')
+                self.assertEqual(spec['Service']['Environment'], ['ONE=1', 'THREE=3', 'TWO=2'])
+                self.assertEqual(spec['Service']['ExecStartPre'], ['/bin/base', '/bin/dropin'])
+                (etc/'foo.service.d/30-reset.conf').write_text('[Service]\nEnvironment=\nEnvironment=FINAL=1\n')
+                self.assertEqual(module.load_unit('foo.service')['Service']['Environment'], ['FINAL=1'])
+
     def test_units_and_exec_are_not_shell_fragments(self):
         spec = module.parse_unit('[Service]\nType=exec\nExecStart=/bin/echo "hello world" ; whoami\nRestart=on-failure\n')
         module.validate_service(spec)
@@ -55,6 +72,80 @@ class UnitParserTests(unittest.TestCase):
 
 @unittest.skipIf(os.name == 'nt', 'Process supervisor integration runs on Linux / Galaxy')
 class SupervisorTests(unittest.TestCase):
+    def test_oneshot_start_timeout_terminates_its_process(self):
+        (self.units/'slow.service').write_text('[Service]\nType=oneshot\nExecStart=/bin/sleep 60\nTimeoutStartSec=300ms\n')
+        self.start_manager()
+        self.ctl('start', 'slow.service')
+        row = self.wait_state('slow.service', 'failed')
+        self.assertIn('timed out', row['error'])
+        self.assertEqual(row['pid'], 0)
+
+    def test_target_dependencies_do_not_require_an_unimplemented_target_manager(self):
+        (self.units/'worker.service').write_text('[Unit]\nRequires=network.target\nAfter=network.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/bin/true\n')
+        self.start_manager()
+        self.ctl('start', 'worker.service')
+        self.wait_state('worker.service', 'active')
+
+    def test_failed_ordered_dependency_prevents_the_dependent_process(self):
+        marker = self.root/'must-not-run'
+        (self.units/'dependency.service').write_text('[Service]\nType=oneshot\nExecStart=/bin/false\n')
+        (self.units/'worker.service').write_text('[Unit]\nRequires=dependency.service\nAfter=dependency.service\n[Service]\nExecStart=/usr/bin/touch '+str(marker)+'\n')
+        self.start_manager()
+        self.ctl('start', 'worker.service')
+        row = self.wait_state('worker.service', 'failed')
+        self.assertIn('Dependency failed', row['error'])
+        self.assertFalse(marker.exists())
+
+    def test_after_waits_for_oneshot_dependency_and_its_post_hook(self):
+        marker = self.root/'dependency-ready'
+        script = self.root/'dependency.py'
+        script.write_text('import time; from pathlib import Path; time.sleep(.4); Path('+repr(str(marker))+').touch()')
+        post = self.root/'post.py'
+        post.write_text('from pathlib import Path; assert Path('+repr(str(marker))+').exists(); Path('+repr(str(marker)+'.post')+').touch()')
+        worker = self.root/'worker.py'
+        worker.write_text('from pathlib import Path; assert Path('+repr(str(marker))+').exists(); assert Path('+repr(str(marker)+'.post')+').exists()')
+        (self.units/'dependency.service').write_text('[Service]\nType=oneshot\nExecStart='+sys.executable+' '+str(script)+'\nExecStartPost='+sys.executable+' '+str(post)+'\n')
+        (self.units/'worker.service').write_text('[Unit]\nRequires=dependency.service\nAfter=dependency.service\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart='+sys.executable+' '+str(worker)+'\n')
+        self.start_manager()
+        self.ctl('start', 'worker.service')
+        self.wait_state('worker.service', 'active')
+
+    def test_status_exit_codes_distinguish_inactive_and_unknown_units(self):
+        (self.units/'worker.service').write_text('[Service]\nExecStart=/bin/sleep 60\n')
+        self.start_manager()
+        result = module.rpc(dict(action='status', units=['worker.service'], user=True), base=self.state)
+        self.assertFalse(result['ok'])
+        self.assertEqual(result['code'], 3)
+        missing = module.rpc(dict(action='status', units=['missing.service'], user=True), base=self.state)
+        self.assertFalse(missing['ok'])
+        self.assertEqual(missing['code'], 4)
+        self.ctl('start', 'worker.service')
+        self.assertTrue(module.rpc(dict(action='status', units=['worker.service'], user=True), base=self.state)['ok'])
+
+    def test_failed_pre_hook_reports_failed_without_process(self):
+        (self.units/'pre.service').write_text('[Service]\nExecStartPre=/bin/false\nExecStart=/bin/true\n')
+        self.start_manager()
+        result = module.rpc(dict(action='start', units=['pre.service'], user=True), base=self.state, timeout=5)
+        self.assertFalse(result['ok'])
+        row = self.wait_state('pre.service', 'failed')
+        self.assertEqual(row['pid'], 0)
+
+    def test_restart_rebuilds_oneshot_commands_and_counts_initial_start(self):
+        output = self.root/'commands'
+        first = f"/bin/sh -c 'echo first >> {output}'"
+        second = f"/bin/sh -c 'echo second >> {output}; exit 1'"
+        (self.units/'multi.service').write_text('[Unit]\nStartLimitBurst=2\nStartLimitIntervalSec=10\n[Service]\nType=oneshot\nExecStart='+first+'\nExecStart='+second+'\nRestart=on-failure\nRestartSec=100ms\n')
+        self.start_manager()
+        self.ctl('start', 'multi.service')
+        end = time.monotonic()+5
+        while time.monotonic() < end:
+            row = next(item for item in self.ctl('list-units')['units'] if item['name'] == 'multi.service')
+            if row['error'] == 'Start limit exceeded':
+                self.assertEqual(output.read_text().splitlines(), ['first', 'second', 'first', 'second'])
+                return
+            time.sleep(.05)
+        self.fail(str(row))
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.root = Path(self.temp.name)

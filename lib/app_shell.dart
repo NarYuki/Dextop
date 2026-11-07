@@ -12,6 +12,10 @@ class _DextopAppState extends State<DextopApp> {
   bool? setupCompleted;
   bool? desktopWindow;
 
+  /// Setup skipped from its first page to use only Linux (the Android execution mode):
+  /// the home screen opens with the Dextop desktop features locked until setup is done.
+  var linuxOnly = false;
+
   /// Shown on an external display (DeX, Dextop's desktop): a window with a title bar
   /// and no status bar, although Android still reports a status bar inset.
   bool externalDisplay = false;
@@ -30,6 +34,8 @@ class _DextopAppState extends State<DextopApp> {
       setState(() {
         desktopWindow = context['desktopWindow'] == true;
         externalDisplay = context['externalDisplay'] == true;
+        final accent = context['accentColor'];
+        if (accent is int) LinuxExpressive.seed = Color(accent);
         // M3E bars read the raw inset, not MediaQuery.
         M3ESafeArea.ignoreTop = externalDisplay;
       });
@@ -39,6 +45,8 @@ class _DextopAppState extends State<DextopApp> {
   Future<void> loadSetupState() async {
     final preferences = await SharedPreferences.getInstance();
     final completed = preferences.getBool('setup_completed') ?? false;
+    final onlyLinux =
+        !completed && (preferences.getBool('linux_only_mode') ?? false);
     if (!completed) {
       // Mark the current gesture guide as known as soon as a fresh 1.1.0+
       // installation starts. Updated installations already have setup marked
@@ -50,8 +58,18 @@ class _DextopAppState extends State<DextopApp> {
       await preferences.setString('last_launched_app_version', '1.1.0');
     }
     if (mounted) {
-      setState(() => setupCompleted = completed);
+      setState(() {
+        setupCompleted = completed;
+        linuxOnly = onlyLinux;
+      });
     }
+  }
+
+  /// Leaves the Linux-only home for Dextop's full setup.
+  Future<void> startFullSetup() async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool('linux_only_mode', false);
+    if (mounted) setState(() => linuxOnly = false);
   }
 
   Future<void> loadThemeMode() async {
@@ -96,21 +114,25 @@ class _DextopAppState extends State<DextopApp> {
       supportedLocales: AppLocalizations.supportedLocales,
       home: setupCompleted == null || desktopWindow == null
           ? const Scaffold(body: Center(child: CircularProgressIndicator()))
-          : setupCompleted == false
+          : setupCompleted == false && !linuxOnly
           ? DextopSetupPage(
               onCompleted: () => setState(() => setupCompleted = true),
+              onLinuxOnly: () => setState(() => linuxOnly = true),
             )
           : HomeScreen(
+              key: ValueKey(setupCompleted == false ? 'home-linux' : 'home'),
               themeMode: themeMode,
               onThemeModeChanged: setThemeMode,
               desktopWindow: desktopWindow!,
+              linuxOnly: setupCompleted == false,
+              onStartSetup: startFullSetup,
             ),
     );
   }
 
   ThemeData appTheme(Brightness brightness) {
     final scheme = ColorScheme.fromSeed(
-      seedColor: const Color(0xff6750a4),
+      seedColor: LinuxExpressive.seed,
       brightness: brightness,
       dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
     );
@@ -338,12 +360,15 @@ class NativeBridge {
         },
       ) ??
       {};
-  Future<void> setDisplayDensity(int displayId, int dpi) =>
-      channel.invokeMethod('setDisplayDensity', {'displayId': displayId, 'dpi': dpi});
+  Future<void> setDisplayDensity(int displayId, int dpi) => channel
+      .invokeMethod('setDisplayDensity', {'displayId': displayId, 'dpi': dpi});
   Future<void> setDisplayRotation(int displayId, int rotation) =>
-      channel.invokeMethod('setDisplayRotation', {'displayId': displayId, 'rotation': rotation});
-  Future<int?> displayPhysicalDensity(int displayId) =>
-      channel.invokeMethod<int>('displayPhysicalDensity', {'displayId': displayId});
+      channel.invokeMethod('setDisplayRotation', {
+        'displayId': displayId,
+        'rotation': rotation,
+      });
+  Future<int?> displayPhysicalDensity(int displayId) => channel
+      .invokeMethod<int>('displayPhysicalDensity', {'displayId': displayId});
   Future<Map<String, dynamic>> displayEnvironmentSettings() async =>
       await channel.invokeMapMethod<String, dynamic>(
         'displayEnvironmentSettings',
@@ -369,7 +394,9 @@ class NativeBridge {
 
   /// Shows the desktop on the external screen: "off", "external" or "mirror".
   Future<String> setExternalDisplay(String mode) async =>
-      await channel.invokeMethod<String>('setExternalDisplay', {'mode': mode}) ??
+      await channel.invokeMethod<String>('setExternalDisplay', {
+        'mode': mode,
+      }) ??
       'failed';
 
   /// Sets one screen's scale (percent, 100 = recommended) on the extended desktop.

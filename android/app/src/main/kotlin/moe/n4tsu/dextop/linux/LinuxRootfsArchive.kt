@@ -10,11 +10,19 @@ import java.nio.file.SimpleFileVisitor
 import java.nio.file.FileVisitResult
 import java.nio.file.attribute.BasicFileAttributes
 import java.nio.file.attribute.PosixFilePermission
+import java.nio.file.attribute.PosixFileAttributeView
 
 /** Extract into a fresh staging directory without executing Android programs under PRoot. */
 internal object LinuxRootfsArchive {
     fun extract(input: InputStream, directory: File, checkCancelled: () -> Unit = {},
-                onBytes: (Long) -> Unit = {}) {
+                onBytes: (Long) -> Unit = {}) = extractRooted(input, directory, "", checkCancelled, onBytes)
+
+    fun extractBackup(input: InputStream, directory: File, checkCancelled: () -> Unit,
+                      onBytes: (Long) -> Unit, sourceRoot: String? = null) =
+        extractRooted(input, directory, "container/rootfs", checkCancelled, onBytes, sourceRoot)
+
+    private fun extractRooted(input: InputStream, directory: File, guestPrefix: String,
+                              checkCancelled: () -> Unit, onBytes: (Long) -> Unit, sourceRoot: String? = null) {
         val root = directory.toPath().toAbsolutePath().normalize()
         Files.createDirectories(root)
         require(Files.list(root).use { !it.findAny().isPresent }) { "Extraction directory must be empty" }
@@ -47,9 +55,16 @@ internal object LinuxRootfsArchive {
                         }
                         entry.isSymbolicLink -> {
                             // Resolved the way the guest sees it: ".." stops at the guest's /.
-                            val destination = guestPath(root, target.parent, entry.linkName)
+                            val guestRoot = root.resolve(guestPrefix)
+                            val linkRoot = if (target.startsWith(guestRoot)) guestRoot else root
+                            val original = entry.linkName
+                            val portable = if (sourceRoot != null &&
+                                (original == sourceRoot || original.startsWith("$sourceRoot/")))
+                                "/" + original.removePrefix(sourceRoot).trimStart('/') else original
+                            val destination = guestPath(linkRoot, target.parent, portable)
                             // Relative equivalents keep absolute Linux links inside the rootfs on the host too.
-                            symlinks[target] = target.parent.relativize(destination)
+                            val relative = target.parent.relativize(destination)
+                            symlinks[target] = if (relative.toString().isEmpty()) Path.of(".") else relative
                         }
                         entry.isLink -> hardlinks.put(target, path(entry.linkName.removePrefix("/")))
                         entry.isFile -> {
@@ -157,10 +172,10 @@ internal object LinuxRootfsArchive {
         if (!Files.exists(directory.toPath(), NOFOLLOW_LINKS)) return
         Files.walkFileTree(directory.toPath(), object : SimpleFileVisitor<Path>() {
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
-                // Windows cannot change directory write attributes through File.setWritable.
-                // Let traversal/deletion report actual access errors on that platform.
-                if (Files.getFileStore(dir).supportsFileAttributeView("posix")) {
-                    Files.setPosixFilePermissions(dir, Files.getPosixFilePermissions(dir) +
+                // Android rejects getFileStore even when POSIX attributes are available.
+                // Ask for the view directly; Windows returns null for unsupported attributes.
+                Files.getFileAttributeView(dir, PosixFileAttributeView::class.java, NOFOLLOW_LINKS)?.let { view ->
+                    view.setPermissions(view.readAttributes().permissions() +
                         PosixFilePermission.OWNER_WRITE + PosixFilePermission.OWNER_EXECUTE)
                 }
                 return FileVisitResult.CONTINUE

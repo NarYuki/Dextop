@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
@@ -78,7 +79,7 @@ int dextop_camera_open(const char *path, int flags);
     pad_fd = dextop_camera_open(path, flags); if (pad_fd != -2) return pad_fd; } while (0)
 /* USB passthrough: a refused /dev/bus/usb node comes from Dextop instead. */
 static int usb_fallback(const char *path, int flags, int fd) {
-    if (fd >= 0 || (errno != EACCES && errno != EPERM) || path == NULL || strncmp(path, "/dev/bus/usb/", 13) != 0) return fd;
+    if (fd >= 0 || (errno != EACCES && errno != EPERM && errno != ENOENT) || path == NULL || strncmp(path, "/dev/bus/usb/", 13) != 0) return fd;
     int saved = errno;
     int device = dextop_usb_open(path, flags);
     if (device < 0) errno = saved;
@@ -166,7 +167,11 @@ FILE *fopen64(const char *path, const char *mode) {
 /*
  * Android forbids hard links to app UIDs. dpkg backs up its database with link()
  * (status-old, available-old) and fails the whole installation without it; a copy
- * of a regular file serves those callers. Directories and other types still fail.
+ * of a regular file serves those callers, but is NOT a hard link. In particular,
+ * transactional stores inspect st_nlink and fall back to their own O_EXCL copy:
+ * silently precreating that destination makes them retry forever. Preserve errno
+ * and leave no destination for ordinary applications. Installers explicitly opt in.
+ * Directories and other types still fail.
  */
 static int copy_file(int olddir, const char *old, int newdir, const char *new) {
     struct stat info;
@@ -182,7 +187,7 @@ static int copy_file(int olddir, const char *old, int newdir, const char *new) {
         if (n < 0) { if (errno == EINTR) continue; failed = 1; break; }
         for (ssize_t done = 0; done < n;) {
             ssize_t w = write(out, buffer + done, (size_t) (n - done));
-            if (w < 0) { if (errno == EINTR) continue; failed = 1; break; }
+            if (w <= 0) { if (w < 0 && errno == EINTR) continue; failed = 1; break; }
             done += w;
         }
         if (failed) break;
@@ -201,6 +206,9 @@ int linkat(int olddir, const char *old, int newdir, const char *new, int flags) 
     int result = next_linkat(olddir, old, newdir, new, flags);
     if (result == 0 || (errno != EPERM && errno != EACCES)) return result;
     int saved = errno;
+    const char *allow = getenv("DEXTOP_HARDLINK_COPY");
+    if (allow == NULL || strcmp(allow, "1") != 0) return result;
+    if (flags & ~(AT_SYMLINK_FOLLOW)) return result;
     if (copy_file(olddir, old, newdir, new) == 0) return 0;
     errno = saved;
     return -1;
@@ -211,6 +219,8 @@ int link(const char *old, const char *new) {
     int result = next_link(old, new);
     if (result == 0 || (errno != EPERM && errno != EACCES)) return result;
     int saved = errno;
+    const char *allow = getenv("DEXTOP_HARDLINK_COPY");
+    if (allow == NULL || strcmp(allow, "1") != 0) return result;
     if (copy_file(AT_FDCWD, old, AT_FDCWD, new) == 0) return 0;
     errno = saved;
     return -1;

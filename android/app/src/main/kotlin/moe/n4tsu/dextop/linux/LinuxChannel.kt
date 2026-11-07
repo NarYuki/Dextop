@@ -115,7 +115,8 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     LinuxStoreSources.requireApt(service, id)
                     val offset = (call.argument<Int>("offset") ?: 0).coerceIn(0, 100000)
                     LinuxStoreSources.result(service.runCommand(id,
-                        LinuxStoreSources.helper() + "dextop-store catalog '$source' $offset 80", 600))
+                        LinuxStoreSources.helper() + "dextop-store catalog '$source' $offset 80 " +
+                            if (call.argument<Boolean>("refresh") == true) "refresh" else "cached", 600))
                 }) { jsonMap(it) }
                 // Which enabled sources have their tools in the container; the Store asks to set up the rest first.
                 "storeSourceReady" -> remote({ service ->
@@ -166,6 +167,12 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     LinuxPrintBridge.open(context, call.argument<String>("id")!!, call.argument<String>("job")!!, call.argument<String>("title") ?: "Linux document")
                 }.onSuccess { result.success(null) }.onFailure { result.error("print", it.message, null) }
                 "settings" -> remote({ it.linuxSettings() }) { jsonMap(it) }
+                "keyboardButtonVisible" -> result.success(LinuxKeyboardButton.visible(context))
+                "setKeyboardButtonVisible" -> {
+                    val visible = call.argument<Boolean>("visible") ?: true
+                    LinuxKeyboardButton.setVisible(context, visible)
+                    result.success(visible)
+                }
                 "setSettings" -> remote({
                     it.setLinuxSettings(JSONObject(call.argument<Map<String, Any?>>("settings") ?: emptyMap<String, Any?>()).toString())
                 }) { jsonMap(it) }
@@ -192,6 +199,18 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 "removeAppImage" -> remote({ it.removeAppImage(call.argument<String>("id")!!, call.argument<String>("desktopId")!!) })
                 "snapshots" -> remote({ it.listSnapshots() }) { jsonMap(it) }
                 "containerUsage" -> remote({ it.containerUsage(call.argument<String>("id")!!); true })
+                "storageBreakdown" -> remote({ it.storageBreakdown(call.argument<String>("id")!!,
+                    call.argument<String>("category")!!, call.argument<String>("path")!!,
+                    call.argument<Int>("offset") ?: 0) }) { toMap(JSONObject(it)) }
+                "uninstallApp" -> Thread({
+                    try {
+                        val id = call.argument<String>("id")!!
+                        val service = checkNotNull(LinuxContainerClient.service()) { "Linux is not connected" }
+                        val target = JSONObject(service.appUninstallTarget(id, call.argument<String>("desktop")!!))
+                        LinuxStoreJobs.uninstall(context, id, target.getString("source"), target.getString("package"))
+                        main.post { result.success(true) }
+                    } catch (error: Exception) { main.post { result.error("uninstall", error.message ?: error.toString(), null) } }
+                }, "DextopUninstall").start()
                 "cleanContainer" -> remote({ it.cleanContainer(call.argument<String>("id")!!); true })
                 "createSnapshot" -> remote({ it.createSnapshot(call.argument<String>("id")!!); true })
                 "restoreSnapshot" -> remote({ it.restoreSnapshot(call.argument<String>("file")!!); true })
@@ -211,7 +230,17 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 // The container page: the selected mode's containers, then the other mode's (display only).
                 "listAll" -> {
                     val mode = LinuxExecutionMode.read(context)
-                    remote({ it.listContainers() }) { json ->
+                    remote({ service ->
+                        service.listContainers().also { json ->
+                            if (call.argument<Boolean>("refreshSizes") == true) {
+                                val containers = JSONArray(json)
+                                for (index in 0 until containers.length()) {
+                                    val container = containers.getJSONObject(index)
+                                    if (container.optString("state") == "installed") service.refreshContainerSize(container.getString("id"), false)
+                                }
+                            }
+                        }
+                    }) { json ->
                         if (LinuxExecutionMode.read(context) == mode) runCatching { LinuxModeContainers.remember(context, mode, json) }
                         val active = jsonList(json)
                         if (active.any { (it as? Map<*, *>)?.let { c -> c["runtimeState"] == "running" || c["appsRunning"] == true } == true })

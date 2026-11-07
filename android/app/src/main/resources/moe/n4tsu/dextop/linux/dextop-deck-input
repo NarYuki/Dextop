@@ -99,6 +99,7 @@ def main():
     x = X()
     devices = {}  # fd -> (path, kind)
     known = set()
+    pending = {}
     last_scan = 0.0
     dx = dy = 0
     while True:
@@ -109,12 +110,12 @@ def main():
                 path = "/dev/input/" + entry
                 if not entry.startswith("event") or path in known:
                     continue
-                known.add(path)
                 try:
                     fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
                 except OSError:
                     continue
                 kind = classify(fd)
+                known.add(path)
                 if kind is None:
                     os.close(fd)
                     continue
@@ -123,6 +124,7 @@ def main():
                 except OSError as error:
                     print("dextop-deck-input: %s not taken from Android: %s" % (path, error), flush=True)
                 devices[fd] = (path, kind)
+                pending[fd] = b''
                 print("dextop-deck-input: %s %s (%s)" % (kind, name(fd), path), flush=True)
         ready, _, _ = select.select(list(devices), [], [], 1.0)
         for fd in ready:
@@ -132,10 +134,20 @@ def main():
                 continue
             except OSError:
                 path, _ = devices.pop(fd)
+                pending.pop(fd, None)
                 known.discard(path)
                 os.close(fd)
                 continue
-            for offset in range(0, len(data) - EVENT.size + 1, EVENT.size):
+            if not data:
+                path, _ = devices.pop(fd)
+                pending.pop(fd, None)
+                known.discard(path)
+                os.close(fd)
+                continue
+            data = pending[fd] + data
+            complete = len(data) // EVENT.size * EVENT.size
+            pending[fd] = data[complete:]
+            for offset in range(0, complete, EVENT.size):
                 _, _, kind, code, value = EVENT.unpack_from(data, offset)
                 if kind == EV_REL:
                     if code == REL_X:

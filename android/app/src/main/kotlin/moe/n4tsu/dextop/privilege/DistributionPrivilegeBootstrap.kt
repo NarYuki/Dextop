@@ -229,7 +229,7 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
             // Do not silently run an external-manager command here.
             val command = EmbeddedServerPayload.startCommand(context)
             val response = runInterruptible(Dispatchers.IO) { it.shell(command) }
-            if (response.exitCode == 0) {
+            if (response.exitCode == 0 && PublisherKeys.bindRuntime(context, response.allOutput)) {
                 // app_process is detached through nohup/setsid.  On slower Samsung
                 // builds it can take several seconds before the Binder is published;
                 // treating the successful pair as a failure after three seconds made

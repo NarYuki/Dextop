@@ -16,8 +16,11 @@
 #include <stdint.h>
 
 #define AF_UNIX 1
+#define AF_NETLINK 16
+#define NETLINK_AUDIT 9
 #if defined(__aarch64__)
 #define SYS_bind 200
+#define SYS_socket 198
 #define SYS_connect 203
 #define SYS_openat 56
 #define SYS_read 63
@@ -25,6 +28,7 @@
 #define SYS_getcwd 17
 #elif defined(__x86_64__)
 #define SYS_bind 49
+#define SYS_socket 41
 #define SYS_connect 42
 #define SYS_openat 257
 #define SYS_read 0
@@ -32,6 +36,7 @@
 #define SYS_getcwd 79
 #elif defined(__i386__)
 #define SYS_bind 361
+#define SYS_socket 359
 #define SYS_connect 362
 #define SYS_openat 295
 #define SYS_read 3
@@ -47,6 +52,7 @@
 #define E_ROFS 30
 #define E_CONNREFUSED 111
 #define E_ADDRINUSE 98
+#define E_PROTONOSUPPORT 93
 
 struct sockaddr_un_compat {
     unsigned short sun_family;
@@ -190,5 +196,17 @@ int connect(int fd, const void *address, unsigned length) {
         long retry = raw_syscall3(SYS_connect, fd, (long)&twin, twin_length);
         if (retry == 0 || retry == -115 /* EINPROGRESS */) result = retry;
     }
+    return finish(result);
+}
+
+/*
+ * Android's SELinux refuses the kernel audit socket (EACCES). Linux-PAM and its helpers
+ * (unix_chkpwd, passwd) take only the errors of a kernel built without audit as "no audit"
+ * and fail every non-root authentication on any other error; report that case instead.
+ */
+__attribute__((visibility("default")))
+int socket(int domain, int type, int protocol) {
+    long result = raw_syscall3(SYS_socket, domain, type, protocol);
+    if (result == -E_ACCES && domain == AF_NETLINK && protocol == NETLINK_AUDIT) result = -E_PROTONOSUPPORT;
     return finish(result);
 }

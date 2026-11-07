@@ -47,10 +47,12 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
         }
     }
 
+    private var destroyed = false
     private val main = Handler(Looper.getMainLooper())
     private val worker = Executors.newSingleThreadExecutor { Thread(it, "DextopLinuxSession") }
     private val ticker = object : Runnable {
         override fun run() {
+            if (destroyed) return
             poll()
             main.postDelayed(this, POLL_MS)
         }
@@ -84,7 +86,8 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
     }
 
     override fun onDestroy() {
-        main.removeCallbacks(ticker)
+        destroyed = true
+        main.removeCallbacksAndMessages(null)
         LinuxContainerClient.removeListener(this)
         worker.shutdownNow()
         if (instance === this) instance = null
@@ -93,6 +96,7 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
 
     /** Reads which containers run, then updates the notification or stops when nothing runs. */
     private fun poll() {
+        if (destroyed) return
         val linux = LinuxContainerClient.service()
         if (linux == null) {
             LinuxContainerClient.connect(this)
@@ -113,6 +117,7 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
                 active.map { it.optString("name").ifBlank { it.optString("id") } }
             }.getOrDefault(runningContainers)
             main.post {
+                if (destroyed) return@post
                 runningContainers = running
                 polledOnce = true
                 update()
@@ -121,6 +126,7 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
     }
 
     private fun update() {
+        if (destroyed) return
         if (polledOnce && runningContainers.isEmpty() && !LinuxAndroidWindows.busy()) {
             stopForeground(STOP_FOREGROUND_REMOVE)
             stopSelf()
@@ -206,6 +212,7 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
 
     /** The icon of the application named [app] in [container], from its desktop entries. */
     private fun appIcon(container: String, app: String, done: (Bitmap?) -> Unit) {
+        if (destroyed) return
         LinuxAndroidWindows.iconFor(container, app)?.let { done(it); return }
         icons[container]?.let { done(it[app.lowercase()]); return }
         val linux = LinuxContainerClient.service() ?: return done(null)
@@ -220,7 +227,7 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
                 }.toMap()
             }.getOrDefault(emptyMap())
             icons[container] = loaded
-            main.post { done(loaded[app.lowercase()]) }
+            main.post { if (!destroyed) done(loaded[app.lowercase()]) }
         }
     }
 

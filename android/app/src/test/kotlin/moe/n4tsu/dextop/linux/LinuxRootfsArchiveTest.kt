@@ -9,8 +9,67 @@ import java.io.ByteArrayInputStream
 import java.io.File
 import java.io.ByteArrayOutputStream
 import java.nio.file.Files
+import java.nio.file.attribute.PosixFileAttributeView
+import java.nio.file.attribute.PosixFilePermission
 
 class LinuxRootfsArchiveTest {
+    @Test fun legacyBackupRebasesProotHostAbsoluteLinks() {
+        val root = Files.createTempDirectory("dextop-proot-backup").toFile()
+        try {
+            val source = "/data/local/tmp/dextop/linux/containers/cold/rootfs"
+            val link = TarArchiveEntry("container/rootfs/var/lib/dpkg/status-old", TarConstants.LF_SYMLINK)
+                .apply { linkName = "$source/var/lib/dpkg/.l2s.status0001" }
+            LinuxRootfsArchive.extractBackup(archive(link to byteArrayOf()), root, {}, {}, source)
+            val path = root.resolve("container/rootfs/var/lib/dpkg/status-old").toPath()
+            assertEquals(".l2s.status0001", Files.readSymbolicLink(path).toString())
+            val sourcePath = root.toPath().resolve("source").toAbsolutePath()
+            assertEquals("/var/lib/dpkg/.l2s.status0001", LinuxBackups.portableLink(
+                sourcePath, sourcePath.resolve("var/lib/dpkg/.l2s.status0001")))
+            val unrelated = sourcePath.parent.resolve("other")
+            assertEquals(unrelated.toString(), LinuxBackups.portableLink(sourcePath, unrelated))
+        } finally { LinuxRootfsArchive.deleteTree(root) }
+    }
+
+    @Test fun restoresDirectorySelfLinksAsDotInsteadOfAnEmptyTarget() {
+        val root = Files.createTempDirectory("dextop-dot-link").toFile()
+        try {
+            val link = TarArchiveEntry("usr/bin/X11", TarConstants.LF_SYMLINK).apply { linkName = "." }
+            LinuxRootfsArchive.extract(archive(link to byteArrayOf()), root)
+            assertEquals(".", Files.readSymbolicLink(root.resolve("usr/bin/X11").toPath()).toString())
+        } finally { LinuxRootfsArchive.deleteTree(root) }
+    }
+
+    @Test fun backupAbsoluteLinksStayInsideTheNestedGuestRoot() {
+        val root = Files.createTempDirectory("dextop-backup-link").toFile()
+        try {
+            val link = TarArchiveEntry("container/rootfs/home/user/link", TarConstants.LF_SYMLINK)
+                .apply { linkName = "/etc/example" }
+            LinuxRootfsArchive.extractBackup(archive(link to byteArrayOf()), root, {}, {})
+            val file = root.resolve("container/rootfs/home/user/link").toPath()
+            assertEquals(root.resolve("container/rootfs/etc/example").toPath(),
+                file.parent.resolve(Files.readSymbolicLink(file)).normalize())
+        } finally { LinuxRootfsArchive.deleteTree(root) }
+    }
+
+    @Test fun deletesReadOnlyDirectoriesWithoutFollowingSymlinks() {
+        val root = Files.createTempDirectory("dextop-delete").toFile()
+        val outside = Files.createTempDirectory("dextop-delete-outside").toFile()
+        try {
+            outside.resolve("keep").writeText("untouched")
+            val directory = root.resolve("nested").apply { mkdirs() }
+            directory.resolve("file").writeText("remove")
+            Files.createSymbolicLink(directory.resolve("outside").toPath(), outside.toPath())
+            Files.getFileAttributeView(directory.toPath(), PosixFileAttributeView::class.java)?.setPermissions(
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_EXECUTE))
+            LinuxRootfsArchive.deleteTree(root)
+            assertFalse(root.exists())
+            assertEquals("untouched", outside.resolve("keep").readText())
+        } finally {
+            LinuxRootfsArchive.deleteTree(root)
+            LinuxRootfsArchive.deleteTree(outside)
+        }
+    }
+
     private fun archive(vararg entries: Pair<TarArchiveEntry, ByteArray>): ByteArrayInputStream {
         val data = ByteArrayOutputStream()
         TarArchiveOutputStream(data).use { tar ->

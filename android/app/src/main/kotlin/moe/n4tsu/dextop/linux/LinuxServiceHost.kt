@@ -16,8 +16,11 @@ object LinuxServiceHost {
     private var fontsInitialized = false
 
     @JvmStatic fun main(arguments: Array<String>) {
-        require(arguments.size == 3) { "Expected package, APK and native library directory" }
+        require(arguments.size in 3..4) { "Expected package, APK, native library directory and key" }
         val (packageName, apk, nativeDirectory) = arguments
+        // The key Dextop gave this process (PublisherKeys), so its provider accepts this daemon only.
+        val key = System.`in`.bufferedReader().readLine()
+        val payload = android.os.Bundle().apply { if (key != null) putString(moe.n4tsu.dextop.privilege.PublisherKeys.EXTRA, key) }
         System.setProperty(LIBRARY_PROPERTY, File(nativeDirectory, "libdextop_linux.so").absolutePath)
         Looper.prepareMainLooper()
         HiddenApiBypass.addHiddenApiExemptions("Landroid/app/", "Landroid/content/", "Landroid/os/",
@@ -28,7 +31,7 @@ object LinuxServiceHost {
         lateinit var publish: () -> Unit
         publish = {
             val response = runCatching {
-                EmbeddedPrivilegeServer.publishBinder("$packageName.embedded_privilege", service, PUBLISH_METHOD, apk)
+                EmbeddedPrivilegeServer.publishBinder("$packageName.embedded_privilege", service, PUBLISH_METHOD, apk, payload)
             }.getOrNull()
             if (response?.getBoolean("outdated") == true) {
                 // Retire only this daemon after an APK update, preserving the main access runtime.
@@ -78,11 +81,11 @@ object LinuxServiceHost {
             .onFailure { android.util.Log.w("DextopLinuxHost", "Cannot initialize SVG icon fonts", it) }
     }
 
-    fun startCommand(packageName: String, apk: String, nativeDirectory: String): String =
-        "CLASSPATH=${quote(apk)} nohup /system/bin/setsid /system/bin/app_process /system/bin " +
+    fun startCommand(packageName: String, apk: String, nativeDirectory: String, key: String): String =
+        "printf '%s\\n' ${quote(key)} | CLASSPATH=${quote(apk)} nohup /system/bin/setsid /system/bin/app_process /system/bin " +
             "--nice-name=${quote("$packageName:dextop_linux_embedded")} " +
             "moe.n4tsu.dextop.linux.LinuxServiceHost ${quote(packageName)} ${quote(apk)} ${quote(nativeDirectory)} " +
-            ">/data/local/tmp/dextop-linux-embedded.log 2>&1 </dev/null &"
+            ">/data/local/tmp/dextop-linux-embedded.log 2>&1 &"
 
     private fun quote(value: String) = "'" + value.replace("'", "'\\''") + "'"
 }

@@ -9,6 +9,7 @@ import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
 import 'linux_app_mode.dart';
+import 'linux_backups.dart';
 import 'linux_expressive.dart';
 import 'linux_installations.dart';
 import 'linux_installation_icon.dart';
@@ -175,8 +176,9 @@ class LinuxAppList extends ChangeNotifier {
   void track() {
     if (_sessionPoll != null) return;
     LinuxInstallations.instance.addListener(_installationsChanged);
-    _sessionPoll ??= Timer.periodic(const Duration(seconds: 2), (_) {
-      refreshSessions();
+    var sessionTick = 0;
+    _sessionPoll ??= Timer.periodic(const Duration(milliseconds: 500), (_) {
+      if (++sessionTick % 4 == 0) refreshSessions();
       refreshInstallations();
     });
     refreshSessions();
@@ -329,31 +331,11 @@ class LinuxAppList extends ChangeNotifier {
           }) ==
           true;
     }
-    final package = await _channel.invokeMethod<String>('appPackage', {
-      'id': entry.container,
-      'desktop': entry.desktopId,
-    });
-    if (package == null || package.isEmpty) return false;
-    final started = await _channel.invokeMethod<bool>('storeRun', {
-      'id': entry.container,
-      'action': 'remove',
-      'packages': [package],
-    });
-    if (started != true) return false;
-    while (true) {
-      await Future<void>.delayed(const Duration(seconds: 2));
-      final jobs =
-          await _channel.invokeListMethod<Object?>('storeJobs', {
-            'id': entry.container,
-          }) ??
-          const [];
-      for (final job in jobs.cast<Map<Object?, Object?>>()) {
-        final packages = ((job['packages'] as List?) ?? const [])
-            .cast<String>();
-        if (!packages.contains(package) || job['state'] == 'running') continue;
-        return job['state'] == 'done';
-      }
-    }
+    return await _channel.invokeMethod<bool>('uninstallApp', {
+          'id': entry.container,
+          'desktop': entry.desktopId,
+        }) ==
+        true;
   }
 
   /// Makes and installs the small launcher APK that puts [entry] on the home screen.
@@ -717,7 +699,7 @@ class _AppCellState extends State<_AppCell>
                         ? t('待機中', 'Queued')
                         : installation.percent < 0
                         ? t('インストール中', 'Installing')
-                        : '${installation.percent.clamp(0, 100)}%',
+                        : installation.percentLabel,
                     maxLines: 1,
                     style: theme.textTheme.labelSmall?.copyWith(
                       color: theme.colorScheme.onSurfaceVariant,
@@ -925,26 +907,33 @@ class _AppCellState extends State<_AppCell>
       ),
     );
     if (ok != true || !context.mounted) return;
-    M3ESnackbar.show(
-      context,
-      message: inlineFormat(t('{0} をアンインストールしています', 'Uninstalling {0}'), [
+    try {
+      final done = await LinuxBackupsUi.duringOperation<bool>(
+        context,
+        t('アンインストールしています', 'Uninstalling the app'),
         entry.name,
-      ]),
-    );
-    final done = await LinuxAppList.uninstall(entry);
-    if (!context.mounted) return;
-    M3ESnackbar.show(
-      context,
-      message: done
-          ? inlineFormat(t('{0} をアンインストールしました', '{0} uninstalled'), [
-              entry.name,
-            ])
-          : inlineFormat(
-              t('{0} をアンインストールできませんでした', 'Could not uninstall {0}'),
-              [entry.name],
-            ),
-    );
-    if (done) await widget.onReload();
+        () => LinuxAppList.uninstall(entry),
+      );
+      if (!context.mounted) return;
+      if (!done) {
+        throw StateError(
+          t('アプリをアンインストールできませんでした', 'Could not uninstall the app'),
+        );
+      }
+      await widget.onReload();
+      if (context.mounted) {
+        M3ESnackbar.show(
+          context,
+          message: inlineFormat(t('{0} をアンインストールしました', '{0} uninstalled'), [
+            entry.name,
+          ]),
+        );
+      }
+    } catch (error) {
+      if (context.mounted) {
+        M3ESnackbar.show(context, message: LinuxBackupsUi.message(error));
+      }
+    }
   }
 }
 

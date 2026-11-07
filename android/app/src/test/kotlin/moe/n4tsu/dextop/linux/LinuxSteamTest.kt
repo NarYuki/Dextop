@@ -132,9 +132,10 @@ class LinuxSteamTest {
         assertFalse("--sync steamdeck_publicbeta" in script)
     }
 
-    @Test fun bothLaunchersLeaveUpdateApplicationToSteam() {
+    @Test fun bothLaunchersOnlyRepairMissingVerificationMetadata() {
         for (script in listOf(LinuxSteam.launcherScript, LinuxSteam.installScript(apt = true) { "" })) {
-            assertFalse("/usr/local/bin/dextop-steam-install --sync" in script)
+            assertTrue("/usr/local/bin/dextop-steam-install --sync" in script)
+            assertTrue("_linuxarm64.installed\" ]; then" in script)
             assertFalse("-skipinitialbootstrap" in script)
             assertTrue("steam_updates=0" in script)
             assertTrue("steam_ran\" -lt 60" in script)

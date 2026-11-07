@@ -45,7 +45,14 @@ internal object DeviceProfiles {
                     maxRateApplicationDisplays = true,
                     plasmaApplicationOverlay = identity.sdk <= 35,
                     rebuildMirrorAfterLiveResize = identity.sdk <= 35,
-                    privateApplicationDisplays = true,
+                    // Gboard cannot attach its candidate/floating window to a private
+                    // app display. Public app displays have system decorations disabled
+                    // by showImeInside, while the recording display stays untrusted.
+                    privateApplicationDisplays = false,
+                    // Android 16 uses an overlay desktop here, not phoneOwnedDisplay.
+                    // An unassociated hot-plugged mouse follows the focused app display.
+                    pinPhysicalMouseToDesktop = true,
+                    directDeckKeyboardToApp = true,
                     directPlasmaDisplay = identity.sdk <= 35,
                 )
         },

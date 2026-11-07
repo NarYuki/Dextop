@@ -86,7 +86,7 @@ internal class LinuxBluetoothBridge(private val roots: () -> List<File>) {
 
 /** Runs only in the shell service, using shell attribution and its Bluetooth permissions. */
 @androidx.annotation.Keep
-@android.annotation.SuppressLint("MissingPermission")
+@android.annotation.SuppressLint("MissingPermission", "BlockedPrivateApi") // Shell-only bridge with explicit hidden-API exemptions.
 private class AndroidBluetooth {
     private fun <T> mainCall(block: () -> T): T {
         val main = Looper.getMainLooper() ?: error("No Android main looper")
@@ -123,11 +123,15 @@ private class AndroidBluetooth {
             // The module initializer is absent on some older vendor frameworks.
         }
         val result = if (Build.VERSION.SDK_INT >= 31) {
-            // Recent Bluetooth modules take Context, earlier modules take AttributionSource.
+            // Android 16 exposes the Context factory with package visibility.
+            // getMethod only finds public methods, even with hidden-API exemptions.
+            org.lsposed.hiddenapibypass.HiddenApiBypass.addHiddenApiExemptions("Landroid/bluetooth/")
             try {
-                BluetoothAdapter::class.java.getMethod("createAdapter", Context::class.java).invoke(null, context)
+                BluetoothAdapter::class.java.getDeclaredMethod("createAdapter", Context::class.java)
+                    .apply { isAccessible = true }.invoke(null, context)
             } catch (_: NoSuchMethodException) {
-                BluetoothAdapter::class.java.getMethod("createAdapter", AttributionSource::class.java).invoke(null, context.attributionSource)
+                BluetoothAdapter::class.java.getDeclaredMethod("createAdapter", AttributionSource::class.java)
+                    .apply { isAccessible = true }.invoke(null, context.attributionSource)
             }
         } else context.getSystemService(BluetoothManager::class.java).adapter
         requireNotNull(result as? BluetoothAdapter) { "Android Bluetooth adapter unavailable" }

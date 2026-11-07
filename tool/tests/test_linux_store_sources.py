@@ -1,4 +1,10 @@
 """Boundary checks for the Store helper; no network or package installations."""
+import contextlib
+import io
+import json
+import sys
+import time
+from types import SimpleNamespace
 import importlib.machinery
 import importlib.util
 from pathlib import Path
@@ -67,6 +73,57 @@ class StoreSourceTests(unittest.TestCase):
                 store.operate('deb-get', 'remove', 'bat')
             run.assert_called_once_with(['apt-get', 'remove', '-y', '--no-auto-remove', 'bat'])
             self.assertEqual((root / 'installed').read_text(), 'codium 1.0\n')
+
+    def test_carriage_return_progress_is_streamed_with_fractional_values(self):
+        updates = []
+        with patch.object(store, 'progress', side_effect=lambda *a, **kw: updates.append((time.monotonic(), a))), contextlib.redirect_stdout(io.StringIO()):
+            store.run([sys.executable, '-c', "import os,time; os.write(1,b'Downloading 12.5%\\r'); time.sleep(.3); os.write(1,b'Downloading 78.25%\\n')"])
+        self.assertEqual([x[1][0] for x in updates], [12.5, 78.25])
+        self.assertGreater(updates[-1][0] - updates[0][0], .15)
+
+    def test_flatpak_uses_api_progress_and_keeps_estimation_and_operation_count(self):
+        emitted = []
+        class State:
+            def set_update_frequency(self, value): self.frequency = value
+            def connect(self, *args): pass
+            def get_status(self): return 'Downloading'
+            def get_progress(self): return 37
+            def get_is_estimating(self): return True
+        class Transaction:
+            def __init__(self): self.handlers = {}; self.install = None
+            def set_no_interaction(self, value): self.noninteractive = value
+            def connect(self, name, handler): self.handlers[name] = handler
+            def get_operations(self): return [1, 2]
+            def add_install(self, *args): self.install = args
+            def run(self, ignored):
+                self.handlers['ready'](self)
+                self.handlers['new-operation'](self, SimpleNamespace(get_ref=lambda: 'app/org.example.App/aarch64/stable'), State())
+                return True
+        tx = Transaction()
+        api = SimpleNamespace(Installation=SimpleNamespace(new_user=lambda _: object()), Transaction=SimpleNamespace(new_for_installation=lambda *args: tx))
+        with patch.object(store, 'flatpak_api', return_value=api), patch.object(store, 'progress', side_effect=lambda *args: emitted.append(args)):
+            store.flatpak_operate('install', 'org.example.App')
+        self.assertTrue(tx.noninteractive)
+        self.assertEqual(tx.install, ('flathub', 'org.example.App', None))
+        update = next(x for x in emitted if len(x) == 4)
+        self.assertEqual(update[0], 37)
+        self.assertTrue(update[3])
+        self.assertIn('1/2', update[2])
+        self.assertEqual(emitted[-1][0], 100)
+        self.assertFalse(tx.handlers['add-new-remote']())
+
+    def test_catalog_reports_total_and_distinguishes_refresh_from_cached_reads(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            with patch.object(store, 'distro'), patch.object(store, 'Path', side_effect=lambda _: root / 'catalog.json'), patch.object(store, 'catalog', return_value=[{'id':'one'}, {'id':'two'}]) as fetch:
+                results = []
+                for mode in ['cached', 'cached', 'refresh']:
+                    output = io.StringIO()
+                    with contextlib.redirect_stdout(output): store.main(['catalog', 'flathub', '0', '80', mode])
+                    results.append(json.loads(output.getvalue()))
+                self.assertEqual(fetch.call_count, 2)
+                self.assertEqual([r['refreshing'] for r in results], [True, False, True])
+                self.assertEqual([r['total'] for r in results], [2, 2, 2])
 
 
 if __name__ == '__main__':

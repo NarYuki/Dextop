@@ -220,6 +220,7 @@ struct hid {
     unsigned short vendor, product;
     unsigned char descriptor[4096];
     unsigned int descriptor_size;
+    unsigned int minor;
     char name[128];
 };
 
@@ -273,6 +274,7 @@ static int hid_config(const char *node, char *socket_name, size_t socket_size, c
             strcmp(name, node) != 0) continue;
         snprintf(device, device_size, "%s", path);
         if (hid != NULL) {
+            hid->minor = (unsigned int)atoi(node + 6);
             hid->vendor = (unsigned short)vendor;
             hid->product = (unsigned short)product;
             hid->descriptor_size = 0;
@@ -466,6 +468,18 @@ void dextop_serial_close(int fd) {
     if (fd >= 0 && fd < MAX_FDS && hids[fd]) { free(hids[fd]); hids[fd] = NULL; } /* the relay ends when its socket closes */
 }
 
+int dextop_serial_fstat(int fd, struct stat *st) {
+    struct hid *hid = fd >= 0 && fd < MAX_FDS ? hids[fd] : NULL;
+    if (hid == NULL) return -1;
+    memset(st, 0, sizeof(*st));
+    st->st_mode = S_IFCHR | 0660;
+    st->st_rdev = makedev(DEXTOP_HIDRAW_MAJOR, hid->minor);
+    st->st_nlink = 1;
+    st->st_uid = getuid();
+    st->st_gid = getgid();
+    return 0;
+}
+
 /* A listed serial port reports itself as a character device (ttyUSB major 188, ttyACM 166). */
 int dextop_serial_stat(const char *path, struct stat *st) {
     if (is_hidraw(path)) {
@@ -476,6 +490,8 @@ int dextop_serial_stat(const char *path, struct stat *st) {
         st->st_mode = S_IFCHR | 0660;
         st->st_rdev = makedev(DEXTOP_HIDRAW_MAJOR, atoi(path + 11));
         st->st_nlink = 1;
+        st->st_uid = getuid();
+        st->st_gid = getgid();
         return 0;
     }
     if (path == NULL || (strncmp(path, "/dev/ttyUSB", 11) != 0 && strncmp(path, "/dev/ttyACM", 11) != 0)) return -1;

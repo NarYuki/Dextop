@@ -113,6 +113,7 @@ struct surface {
     struct linux_gpu_image *gpu_shm;
     struct viewport_state view, pending_view;
     struct wl_resource *viewport;
+    struct wl_resource *fractional_scale;
     struct wl_list presentation_feedback; /* pending until wl_surface.commit */
     struct wl_list committed_feedback;
 #endif
@@ -1154,6 +1155,7 @@ static void surface_resource_destroy(struct wl_resource *resource) {
 #ifdef DEXTOP_WAYLAND_GPU
     presentation_discard(surface);
     if (surface->viewport) wl_resource_set_user_data(surface->viewport, NULL);
+    if (surface->fractional_scale) wl_resource_set_user_data(surface->fractional_scale, NULL);
 #endif
     struct comp *comp = surface->comp;
     struct wl_resource *callback, *tmp;
@@ -1667,6 +1669,9 @@ static void xdg_send_configure(struct xdg *xdg) {
     } else {
         struct wl_array states;
         wl_array_init(&states);
+        /* MAXIMIZED is the host's actual state, not a decoration hint.
+         * Faking it for normal windows breaks client caption toggles and
+         * prevents a manual resize from leaving maximized state. */
         if (xdg->maximized) {
             uint32_t *state = wl_array_add(&states, sizeof(uint32_t));
             if (state) *state = XDG_TOPLEVEL_STATE_MAXIMIZED;
@@ -2570,6 +2575,10 @@ static void bind_viewporter(struct wl_client *client, void *data, uint32_t versi
 
 /* ----------------------------------------------------------------- input */
 
+#ifdef DEXTOP_WAYLAND_GPU
+#include "fractional_scale.inc"
+#endif
+
 static void focus_keyboard(struct comp *comp, struct surface *surface) {
     if (comp->keyboard_focus == surface) return;
     struct wl_resource *r;
@@ -3200,6 +3209,7 @@ Java_moe_n4tsu_dextop_linux_WaylandCompositor_nativeStart(JNIEnv *env, jclass cl
     wl_global_create(comp->display, &wp_single_pixel_buffer_manager_v1_interface, 1, comp, bind_solid);
 #ifdef DEXTOP_WAYLAND_GPU
     wl_global_create(comp->display, &wp_presentation_interface, 1, comp, bind_presentation);
+    wl_global_create(comp->display, &fractional_manager_interface, 1, comp, bind_fractional_scale);
     wl_global_create(comp->display, &zwp_pointer_constraints_v1_interface, 1, comp, bind_constraints);
     wl_global_create(comp->display, &zwp_relative_pointer_manager_v1_interface, 1, comp, bind_relative);
 #endif

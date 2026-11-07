@@ -51,6 +51,9 @@ internal class PhysicalInputRouter(
     }
     private val methods by lazy { discoverOperations(service.javaClass) }
     private val routedKeys = linkedSetOf<String>()
+    // Explicit app-owned devices have their own lifecycle. A physical mouse
+    // inventory refresh must not detach the deck keyboard and restart the IME.
+    private val ownedKeys = linkedSetOf<String>()
     private var routedDisplayUniqueId: String? = null
 
     fun routeConnectedDevices(display: Display, mouse: Boolean = true, keyboard: Boolean = true): Int {
@@ -65,7 +68,7 @@ internal class PhysicalInputRouter(
     fun refresh(display: Display, mouse: Boolean = true, keyboard: Boolean = true): Int {
         val uniqueId = displayUniqueId(display) ?: routedDisplayUniqueId ?: return routedKeys.size
         // A recreated Dextop display has a new unique id; move every device to it.
-        if (uniqueId != routedDisplayUniqueId) routedKeys.clear()
+        if (uniqueId != routedDisplayUniqueId) routedKeys.retainAll(ownedKeys)
         routedDisplayUniqueId = uniqueId
         val eligible = eligibleDevices(mouse, keyboard)
         eligible.forEach { device ->
@@ -73,7 +76,7 @@ internal class PhysicalInputRouter(
             if (key !in routedKeys && associate(device, uniqueId)) routedKeys += key
         }
         val present = eligible.mapNotNull(::associationKey).toSet()
-        routedKeys.filter { it !in present }.toList().forEach { key ->
+        routedKeys.filter { it !in present && it !in ownedKeys }.toList().forEach { key ->
             removeAssociation(key)
             routedKeys -= key
         }
@@ -95,7 +98,7 @@ internal class PhysicalInputRouter(
         removeAssociation(key)
         if (!associate(device, uniqueId)) return false
         routedKeys += key
-        routedDisplayUniqueId = uniqueId
+        ownedKeys += key
         persist()
         return true
     }
@@ -105,6 +108,7 @@ internal class PhysicalInputRouter(
         val key = "descriptor:$value"
         removeAssociation(key)
         routedKeys -= key
+        ownedKeys -= key
         persist()
     }
 
@@ -129,6 +133,7 @@ internal class PhysicalInputRouter(
         val keys = (routedKeys + preferences.getStringSet(KEY_ASSOCIATIONS, emptySet()).orEmpty()).toSet()
         keys.forEach(::removeAssociation)
         routedKeys.clear()
+        ownedKeys.clear()
         routedDisplayUniqueId = null
         preferences.edit().clear().apply()
     }
@@ -149,6 +154,7 @@ internal class PhysicalInputRouter(
                 // routed twice through the physical path).
                 device.name != "Dextop Virtual Mouse" &&
                 device.name != "Dextop Virtual Touchpad" &&
+                device.name != "Dextop Laptop Keyboard" &&
                 (mouse && device.sources and InputDevice.SOURCE_MOUSE == InputDevice.SOURCE_MOUSE ||
                     keyboard && device.keyboardType == InputDevice.KEYBOARD_TYPE_ALPHABETIC)
         }

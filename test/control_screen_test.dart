@@ -42,7 +42,7 @@ void main() {
     expect(find.textContaining('Shizuku'), findsNothing);
   });
 
-  testWidgets('pins the launcher shortcut from the home screen', (tester) async {
+  testWidgets('pins the launcher shortcut from input and gesture settings', (tester) async {
     final calls = <MethodCall>[];
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(channel, (call) async {
@@ -69,8 +69,24 @@ void main() {
     for (var frame = 0; frame < 12; frame++) {
       await tester.pump(const Duration(milliseconds: 50));
     }
-    expect(find.text('Add home screen shortcut'), findsOneWidget);
-    await tester.tap(find.text('Add home screen shortcut'));
+    expect(find.text('Add home screen shortcut'), findsNothing);
+    await tester.tap(find.text('Settings').last);
+    await tester.pumpAndSettle();
+    await Scrollable.ensureVisible(
+      tester.element(find.text('Input and gestures').last),
+      alignment: .3,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Input and gestures').last);
+    await tester.pumpAndSettle();
+    final shortcut = find.widgetWithText(ListTile, 'Add home screen shortcut');
+    await Scrollable.ensureVisible(
+      tester.element(shortcut),
+      alignment: .3,
+    );
+    await tester.pumpAndSettle();
+    expect(shortcut, findsOneWidget);
+    await tester.tap(shortcut);
     await tester.pump();
     expect(calls.where((call) => call.method == 'pinShortcut'), isNotEmpty);
   });

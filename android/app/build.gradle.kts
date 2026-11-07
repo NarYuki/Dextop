@@ -181,6 +181,7 @@ androidComponents {
 }
 
 dependencies {
+    implementation("commons-codec:commons-codec:1.19.0")
     implementation("com.caverock:androidsvg-aar:1.4")
     implementation("androidx.window:window:1.5.1")
     implementation("androidx.appcompat:appcompat:1.7.1")

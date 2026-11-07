@@ -32,6 +32,12 @@ class LinuxNetworkLinkTest {
         assertEquals(null, LinuxMobileSignal.level("permission denied", 1))
     }
 
+    @Test fun customDnsAcceptsOnlyNumericUnicastAddresses() {
+        for (ip in listOf("1.1.1.1", "192.168.1.1", "2606:4700:4700::1111", "127.0.0.1")) LinuxNetworkLink.validateDnsAddress(ip)
+        for (ip in listOf("example.com", "123", "1.2.3", "256.1.1.1", "1.1.1.1\nsearch evil", "::", "0.0.0.0", "224.0.0.1", "fe80::1", "::1%lo")) {
+            assertFailsWith<IllegalArgumentException>(ip) { LinuxNetworkLink.validateDnsAddress(ip) }
+        }
+    }
     @Test fun resolverFollowsAndroidWithoutInventingAFallback() {
         assertEquals("nameserver 192.0.2.1\n", LinuxNetworkLink.resolver(listOf("192.0.2.1", "192.0.2.1")))
         assertEquals(null, LinuxNetworkLink.resolver(emptyList()))

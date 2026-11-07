@@ -75,6 +75,52 @@ internal object LinuxStorage {
             })
     }
 
+    /** Uses the same category precedence and logical byte sizes as usage(). Never follows links. */
+    fun breakdown(root: File, home: String, category: String, path: String, offset: Int = 0): JSONObject {
+        val parts = parts(home)
+        val index = parts.indexOfFirst { it.id == category }
+        require(index >= 0 && offset >= 0 && offset <= 1_000_000)
+        val base = root.toPath().toAbsolutePath().normalize()
+        val prefixes = parts.map { base.resolve(it.path.removePrefix("/")).normalize() }
+        require(path.startsWith('/') && path.length <= 4096 && '\u0000' !in path)
+        require(path.split('/').none { it == ".." || it == "." }) { "Invalid storage path" }
+        val start = base.resolve(path.removePrefix("/")).normalize()
+        require(start.startsWith(prefixes[index]) && start.startsWith(base)) { "Path is outside this category" }
+        var ancestor = base
+        for (component in base.relativize(start)) {
+            ancestor = ancestor.resolve(component)
+            require(!Files.isSymbolicLink(ancestor)) { "Symbolic links cannot be browsed" }
+        }
+        require(Files.isDirectory(start, java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "Storage directory is unavailable" }
+        val sizes = HashMap<Path, Long>()
+        Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
+            override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {
+                if (base.relativize(dir).toString() in setOf("dev", "proc", "sys")) return FileVisitResult.SKIP_SUBTREE
+                val owner = prefixes.indexOfFirst { dir.startsWith(it) }
+                // A parent can contain subcategories; descend only when this category may own files.
+                return if (owner < index) FileVisitResult.SKIP_SUBTREE else FileVisitResult.CONTINUE
+            }
+            override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                if (attrs.isRegularFile && prefixes.indexOfFirst { file.startsWith(it) } == index) {
+                    val child = start.resolve(start.relativize(file).getName(0))
+                    sizes[child] = (sizes[child] ?: 0L) + attrs.size()
+                }
+                return FileVisitResult.CONTINUE
+            }
+            override fun visitFileFailed(file: Path, exc: java.io.IOException) = FileVisitResult.CONTINUE
+        })
+        val sorted = sizes.entries.sortedWith(compareByDescending<Map.Entry<Path, Long>> { it.value }.thenBy { it.key.fileName.toString() })
+        val page = sorted.drop(offset).take(200)
+        return JSONObject().put("path", path).put("total", sizes.values.sum()).put("count", sorted.size)
+            .put("nextOffset", offset + page.size).put("entries", JSONArray().apply {
+                page.forEach { (child, bytes) ->
+                    put(JSONObject().put("name", child.fileName.toString())
+                        .put("path", "/" + base.relativize(child).joinToString("/"))
+                        .put("directory", Files.isDirectory(child, java.nio.file.LinkOption.NOFOLLOW_LINKS)).put("bytes", bytes))
+                }
+            })
+    }
+
     /** Package managers' own cleaning, run as root in the container. */
     const val PACKAGE_CACHE_SCRIPT = """
         if command -v apt-get >/dev/null 2>&1; then apt-get clean; fi
