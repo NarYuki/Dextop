@@ -34,6 +34,22 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   var page = -1;
   var status = <String, dynamic>{};
   var loading = false;
+  // MOBILE DATA SUPPORT - Added by khankomar
+  bool useMobileData = false;
+  
+  Future<void> toggleMobileData(bool value) async {
+    setState(() => useMobileData = value);
+    if (value) {
+      // اگه mobile data انتخاب شد، needWirelessDebugging رو false بذار
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mobile data mode enabled. Wireless debugging not required.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    }
+  }
+  // END MOBILE DATA
   Timer? statusTimer;
   StreamSubscription<MethodCall>? nativeEvents;
   var statusRequest = 0;
@@ -228,6 +244,16 @@ class _DextopSetupPageState extends State<DextopSetupPage>
 
   Future<void> setupEmbeddedPrivilege() async {
     if (loading) return;
+    if (useMobileData) {
+      // MOBILE DATA MODE: Skip wireless debugging
+      setState(() => shizukuSetupConfirmed = true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Mobile data mode: No wireless debugging needed.'),
+        ),
+      );
+      return;
+    }
     setState(() => loading = true);
     try {
       if (status['shizukuRunning'] != true) {
@@ -269,10 +295,10 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   Future<void> verifyShizukuSetup() async {
     await refreshStatus(clearPrevious: true);
     if (!mounted) return;
-    final valid =
+    final valid = useMobileData || (
         status['wirelessDebuggingEnabled'] == true &&
         status['shizukuBinderAlive'] == true &&
-        status['shizukuRunning'] == true;
+        status['shizukuRunning'] == true);
     setState(() => shizukuSetupConfirmed = valid);
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -581,11 +607,23 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             label: l.setupEmbeddedNotificationPermission,
             complete: status['embeddedNotificationGranted'] == true,
           ),
+        // MOBILE DATA TOGGLE - Added by khankomar
+        SwitchListTile(
+          title: Text(l.useMobileData ?? 'Use mobile data'),
+          subtitle: Text(l.useMobileDataDescription ?? 'Connect using mobile data instead of Wi-Fi'),
+          value: useMobileData,
+          onChanged: toggleMobileData,
+        ),
+        const SizedBox(height: 8),
+        // END TOGGLE
+        
         _StatusTile(
-          label: usesEmbeddedProvider
-              ? l.setupEmbeddedConfigure
-              : providerText(l.setupConfigureShizuku),
-          complete: shizukuSetupConfirmed,
+          label: useMobileData
+              ? (l.setupMobileDataConnected ?? 'Mobile data connected')
+              : (usesEmbeddedProvider
+                  ? l.setupEmbeddedConfigure
+                  : providerText(l.setupConfigureShizuku)),
+          complete: useMobileData || shizukuSetupConfirmed,
         ),
         if (usesEmbeddedProvider && !shizukuSetupConfirmed) ...[
           const SizedBox(height: 12),
