@@ -3,19 +3,12 @@ package moe.n4tsu.dextop
 import android.Manifest
 import android.content.Intent
 import android.content.ComponentName
+import android.content.pm.ActivityInfo
+import android.content.pm.PackageManager
+import android.hardware.display.DisplayManager
+import android.net.Uri
 import android.content.Context
-import android.content.pm.ActivityInfo
-import android.content.pm.PackageManager
-import android.hardware.display.DisplayManager
 import android.net.ConnectivityManager
-import android.net.Uri
-import android.os.Bundle
-import android.content.Intent
-import android.content.ComponentName
-import android.content.pm.ActivityInfo
-import android.content.pm.PackageManager
-import android.hardware.display.DisplayManager
-import android.net.Uri
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -41,13 +34,12 @@ import moe.n4tsu.dextop.privilege.DistributionPrivilegeBootstrap
 import moe.n4tsu.dextop.privilege.DistributionPrivilegeRuntime
 import rikka.shizuku.Shizuku
 
-// MODIFIED: Added Mobile Data support
 open class MainActivity : FlutterActivity() {
-    
+    // MODIFIED: Added Mobile Data support
     private fun isNetworkConnected(): Boolean {
-    val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        val connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
         val activeNetwork = connectivityManager.activeNetworkInfo
-    return activeNetwork != null && activeNetwork.isConnected
+        return activeNetwork != null && activeNetwork.isConnected
     }
 
     companion object {
@@ -133,7 +125,7 @@ open class MainActivity : FlutterActivity() {
     }
     private var flutterChannel: MethodChannel? = null
     private var linuxChannel: moe.n4tsu.dextop.linux.LinuxChannel? = null
-    private var pendingDebuggingResult: MethodChannel.Result? = null
+    private var pendingWirelessDebuggingResult: MethodChannel.Result? = null
     private var pendingNotificationPermissionResult: MethodChannel.Result? = null
     private val distributionScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     // Embedded ADB restore must survive the launcher activity replacing its Flutter engine.
@@ -742,8 +734,8 @@ open class MainActivity : FlutterActivity() {
                 "recovery" -> result.success(SessionJournal(this).snapshot())
                 "clearRecovery" -> discardRecovery(result)
                 "openAccessibility" -> openSettings(Settings.ACTION_ACCESSIBILITY_SETTINGS, result)
-                "openDebugging" -> openDebuggingSettings(result)
-                "openDebuggingSettingsOnly" -> openSystemDebuggingSettings(result)
+                "openWirelessDebugging" -> openWirelessDebuggingSettings(result)
+                "openWirelessDebuggingSettingsOnly" -> openSystemWirelessDebuggingSettings(result)
                 "requestEmbeddedNotificationPermission" -> requestEmbeddedNotificationPermission(result)
                 "requestStoreNotificationPermission" -> requestEmbeddedNotificationPermission(result, forStore = true)
                 "prepareEmbeddedPairingNotification" -> prepareEmbeddedPairingNotification(result)
@@ -829,7 +821,7 @@ open class MainActivity : FlutterActivity() {
         // A binder from an earlier Shizuku session can remain visible briefly even
         // after the manager has been removed.  Installation is therefore a hard
         // prerequisite for both the service and permission states.
-        val debuggingEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+        val wirelessDebuggingEnabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
             runCatching {
                 Settings.Global.getInt(contentResolver, "adb_wifi_enabled", 0) == 1
             }.getOrDefault(false)
@@ -906,7 +898,7 @@ open class MainActivity : FlutterActivity() {
             "embeddedNotificationGranted" to notificationGranted,
             "distributionChannel" to BuildConfig.DISTRIBUTION_CHANNEL,
             "accessibilityEnabled" to accessibilityEnabled,
-            "debuggingEnabled" to debuggingEnabled,
+            "wirelessDebuggingEnabled" to wirelessDebuggingEnabled,
             "shizukuBinderAlive" to binderAlive,
             "shizukuRunning" to running,
             "shizukuGranted" to granted
@@ -1069,8 +1061,6 @@ open class MainActivity : FlutterActivity() {
     private fun isStellarInstalled(): Boolean = runCatching {
         packageManager.getPackageInfo(STELLAR_PACKAGE, 0)
     }.isSuccess
-
-    private fun isShizukuInstalled(): Boolean = installedPrivilegeProviders().any { it.kind == "shizuku" }
 
     private fun refreshBinderAvailability(
         provider: PrivilegeProvider? = null,
@@ -1383,24 +1373,24 @@ open class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun openDebuggingSettings(result: MethodChannel.Result) {
+    private fun openWirelessDebuggingSettings(result: MethodChannel.Result) {
         if (
             DistributionPrivilegeBootstrap.included &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
-            if (pendingDebuggingResult != null) {
+            if (pendingWirelessDebuggingResult != null) {
                 result.error("notification_permission_busy", "Notification permission is already being requested", null)
                 return
             }
-            pendingDebuggingResult = result
+            pendingWirelessDebuggingResult = result
             requestPermissions(
                 arrayOf(Manifest.permission.POST_NOTIFICATIONS),
                 EMBEDDED_NOTIFICATION_PERMISSION_REQUEST,
             )
             return
         }
-        launchDebuggingSettings(result)
+        launchWirelessDebuggingSettings(result)
     }
 
     private fun requestEmbeddedNotificationPermission(result: MethodChannel.Result, forStore: Boolean = false) {
@@ -1415,7 +1405,7 @@ open class MainActivity : FlutterActivity() {
             result.success(true)
             return
         }
-        if (pendingNotificationPermissionResult != null || pendingDebuggingResult != null) {
+        if (pendingNotificationPermissionResult != null || pendingWirelessDebuggingResult != null) {
             result.error("notification_permission_busy", "Notification permission is already being requested", null)
             return
         }
@@ -1447,12 +1437,12 @@ open class MainActivity : FlutterActivity() {
         result.success(true)
     }
 
-    private fun launchDebuggingSettings(result: MethodChannel.Result) {
+    private fun launchWirelessDebuggingSettings(result: MethodChannel.Result) {
         val hasStoredPairing = DistributionPrivilegeBootstrap.included &&
             DistributionPrivilegeBootstrap.hasStoredPairing(applicationContext)
         if (DistributionPrivilegeBootstrap.included && !hasStoredPairing) {
             DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
-            openSystemDebuggingSettings(result)
+            openSystemWirelessDebuggingSettings(result)
             return
         }
         if (hasStoredPairing) {
@@ -1497,7 +1487,7 @@ open class MainActivity : FlutterActivity() {
                                         result.success(null)
                                     } else {
                                         DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
-                                        openSystemDebuggingSettings(result)
+                                        openSystemWirelessDebuggingSettings(result)
                                     }
                                 }
                             }
@@ -1508,7 +1498,7 @@ open class MainActivity : FlutterActivity() {
                                 "EmbeddedPrivilege",
                                 "app-side enable did not produce a Binder; opening system settings",
                             )
-                            openSystemDebuggingSettings(result)
+                            openSystemWirelessDebuggingSettings(result)
                         }
                     }
                 }
@@ -1521,10 +1511,10 @@ open class MainActivity : FlutterActivity() {
             )
             DistributionPrivilegeBootstrap.dismissPairingNotification(applicationContext)
         }
-        openSystemDebuggingSettings(result)
+        openSystemWirelessDebuggingSettings(result)
     }
 
-    private fun openSystemDebuggingSettings(result: MethodChannel.Result) {
+    private fun openSystemWirelessDebuggingSettings(result: MethodChannel.Result) {
         val actions = listOf(
             "android.settings.WIRELESS_DEBUGGING_SETTINGS",
             Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS,
@@ -1621,10 +1611,10 @@ open class MainActivity : FlutterActivity() {
             result.success(permissionGranted)
             return
         }
-        val result = pendingDebuggingResult ?: return
-        pendingDebuggingResult = null
+        val result = pendingWirelessDebuggingResult ?: return
+        pendingWirelessDebuggingResult = null
         if (permissionGranted) {
-            launchDebuggingSettings(result)
+            launchWirelessDebuggingSettings(result)
         } else {
             result.error(
                 "notification_permission_denied",
