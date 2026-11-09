@@ -57,6 +57,7 @@ Dextop 是一款开源 Android 应用，可在手机上创建虚拟显示器，�
 - [x] 恢复中断的会话和临时 Android 设置
 - [x] 包含应用日志、能力探测、回退结果和设备规格的详细诊断报告
 - [x] 支持逐项结果和自动邮件编写的本地化设备运行报告
+- [x] Debian 13 Linux 应用（支持 Store、GPU 加速和 Steam）
 - [x] 日语、英语、中文、韩语和俄语界面
 
 ## 兼容性
@@ -115,6 +116,14 @@ Dextop 1.5.0 及更高版本内置正常运行所需的访问功能，因此不�
 可以从 [Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop) 安装 Dextop。
 
 也可以从 [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest) 下载最新的签名 APK。
+
+## Linux
+
+Dextop 2.0.0 可在 arm64 设备上运行 Debian 13 应用，以 Android 窗口或在 Dextop 桌面上显示。请在 **Linux** 标签页中进行设置。需要联网并预留数 GB 的可用空间。
+
+Dextop 会下载已签名的预构建映像（包含桌面组件和 GPU 驱动），然后安装你选择的语言、输入法和应用。下载中断后会自动继续。如果只使用 Linux，请在 Dextop 设置的第一页选择 **前往 Linux 容器**。
+
+Linux 默认仅使用应用权限运行。GitHub 版还提供高级的特权 Shell 方式，Google Play 版仅提供应用权限。Store 始终可使用 APT，并可添加 deb-get 和 Flathub。详情请参阅 [Linux 指南](docs/wiki/Linux.md)（英文）。
 
 ## Android Auto 快速开始
 

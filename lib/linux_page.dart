@@ -9,6 +9,7 @@ import 'package:free_dextop/linux/linux_backups.dart';
 import 'package:free_dextop/linux/linux_error_log.dart';
 import 'package:free_dextop/linux/linux_storage_ui.dart';
 import 'package:free_dextop/linux/linux_first_run.dart';
+import 'package:free_dextop/linux/linux_privilege_warning.dart';
 import 'package:free_dextop/linux/linux_expressive.dart';
 import 'package:free_dextop/linux/linux_store_page.dart';
 import 'package:free_dextop/linux/linux_widgets.dart';
@@ -306,7 +307,10 @@ class _LinuxPageState extends State<LinuxPage> {
   }
 
   Future<void> _startFirstRun() async {
-    await _openSetup(firstRun: true);
+    await _openSetup(
+      firstRun: true,
+      offerExecutionMode: await linuxPrivilegedModeOffered(),
+    );
     await _maybeFirstRun();
   }
 
@@ -487,6 +491,7 @@ class _LinuxPageState extends State<LinuxPage> {
   Future<void> _openSetup({
     _LinuxContainer? container,
     bool firstRun = false,
+    bool offerExecutionMode = true,
   }) async {
     if (catalog.isEmpty) await _refreshContainers();
     if (!mounted || catalog.isEmpty) return;
@@ -502,6 +507,7 @@ class _LinuxPageState extends State<LinuxPage> {
               container?.state == 'installing' ||
               container?.state == 'updating',
           firstRun: firstRun,
+          offerExecutionMode: offerExecutionMode,
           progress: setupProgress,
           refresh: _refreshContainers,
           install: (name, distro, options, targetId) async {

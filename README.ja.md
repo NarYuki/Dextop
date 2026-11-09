@@ -58,6 +58,7 @@ Dextopは、Android端末上に仮想ディスプレイを作成し、スマー�
 - [x] 中断されたセッションとAndroid設定の復元
 - [x] アプリログ、能力判定、端末仕様を含む詳細な診断レポート
 - [x] 機能別の結果とメール作成に対応したローカライズ済み動作報告
+- [x] Debian 13 の Linux アプリ（Store、GPU アクセラレーション、Steam 対応）
 - [x] 日本語、英語、中国語、韓国語、ロシア語UI
 
 ## 対応状況
@@ -160,8 +161,8 @@ _コミュニティから提出され、レビューされた動作報告_
 ## 動作要件
 
 - Android 13以降。大半の端末では実用的なデスクトップ環境にAndroid 14以降が必要です。
-- 現行リリース：**Dextop 1.7.0**
-- Android Auto Companion：**Dextop・Parking 2.0.0**／**Dextop・Driving 2.0.0**
+- 現行リリース：**Dextop 2.0.0**
+- Android Auto Companion：**Dextop・Parking 2.1.0**／**Dextop・Driving 2.1.0**
 
 Dextop 1.5.0以降には通常の動作に必要なアクセス機能が内蔵されているため、外部アプリや別の特権サービスは必須ではありません。セットアップから利用開始までDextopアプリだけで完結できます。端末によっては、Android側の権限許可やワイヤレスデバッグのペアリング画面が表示される場合があります。
 
@@ -176,6 +177,14 @@ root環境を利用している場合や、Stellar、Shizukuなどの互換性�
 ### Nightlyビルド
 
 [GitHub Actions](https://github.com/NarYuki/Dextop/actions)から、最新の変更が適用された開発版を利用できます。最新の成功した**Debug APK**ワークフローを開き、NightlyのArtifactをダウンロードしてください。Artifactには同じビルドのDextop本体とDextop Car CompanionのデバッグAPKが含まれます。Nightlyは最新ソースから自動生成されるベータ版であり、未完成の機能や安定版にはない不具合を含む場合があります。
+
+## Linux
+
+Dextop 2.0.0 では、arm64 端末で Debian 13 のアプリを、Android のウィンドウまたは Dextop のデスクトップ上で実行できます。**Linux** タブからセットアップしてください。インターネット接続と数 GB 以上の空き容量が必要です。
+
+Dextop はデスクトップ部品と GPU ドライバを含む署名済みのイメージをダウンロードし、選択した言語、入力方法、アプリをインストールします。中断されたダウンロードは自動で再開します。Linux だけを使う場合は、Dextop のセットアップ最初の画面で **Linuxコンテナへ** を選択してください。
+
+Linux は既定でアプリ権限のみで動作します。GitHub 版では高度な「特権シェル」方式も選べますが、Google Play 版はアプリ権限のみです。Store は APT を常に利用でき、deb-get と Flathub も追加できます。詳しくは [Linux ガイド](docs/wiki/Linux.md)（英語）をご覧ください。
 
 ## Android Autoの簡単な使い方
 

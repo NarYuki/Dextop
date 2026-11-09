@@ -921,7 +921,7 @@
   "linuxSetupReview": "セットアップ内容を確認",
   "linuxSetupProgress": "ワークスペースを準備中",
   "linuxSetupDone": "Linux の準備ができました",
-  "linuxSetupDoneDetail": "Linux タブからデスクトップを開くか、Plasma から Linux アプリを起動できます。Fcitx 5 の入力切り替えは Ctrl+Space です。",
+  "linuxSetupDoneDetail": "Linux タブからアプリを開けます。",
   "linuxSetupNext": "次へ",
   "linuxSetupBack": "戻る",
   "linuxSetupApply": "セットアップを開始",

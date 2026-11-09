@@ -154,7 +154,7 @@
   "uiHowLinuxRuns": "How Linux runs",
   "uiStoreSources": "Store sources",
   "uiLinuxUser": "Linux user",
-  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "This first setup prepares Linux in Dextop: how it runs, the Store sources, then what the Linux environment contains. Everything can be changed later in Linux settings.",
+  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "This first setup prepares Linux in Dextop: how it runs, the Linux environment, its Store sources, then what it contains. Everything can be changed later in Linux settings.",
   "uiRunsThroughPrivilegedAccessSuchAsShizukuStellarOrTheBuiltInBinderReachesAndroidFilesControllersAndAu": "Runs containers with elevated permissions.",
   "uiRunsWithOrdinaryAppPermissionsDevelopmentBrowsersAndGamesWorkAndroidSystemStorageStaysOutOfReach": "Default method. Runs with app permissions.",
   "uiWhereStoreAppsComeFromAPTIsAlwaysAvailableDebGetAndFlathubAreSetUpAutomaticallyAfterTheLinuxEnvironm": "Where Store apps come from. APT is always available; deb-get and Flathub are set up automatically after the Linux environment is installed.",
@@ -1563,5 +1563,12 @@
   "uiContainerSharingEnabled": "Shared with this container. Tap to disable.",
   "uiContainerStorageEnabled": "All storage is shared with this container at /media/storage. Tap to disable.",
   "uiContainerStorageDisabled": "Tap to share all storage with this container. Android access permission will be requested if needed.",
-  "uiUSBStorageDevSdX": "USB storage (/dev/sdX in Linux)"
+  "uiUSBStorageDevSdX": "USB storage (/dev/sdX in Linux)",
+  "uiLinuxImageInformationIsInvalid": "The Linux image information is invalid.",
+  "uiThisLinuxImageNeedsANewerVersionOfDextop": "This Linux image needs a newer version of Dextop.",
+  "uiTheLinuxImageDownloadWasInterruptedCheckYourConnectionAndTryAgain": "The Linux image download was interrupted. Check your connection and try again.",
+  "uiTheDownloadedLinuxImageCouldNotBeSaved": "The downloaded Linux image could not be saved.",
+  "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "The USB storage is not ready. Check that a disk is inserted.",
+  "uiCouldNotReadTheUSBStorageCapacity": "Could not read the USB storage capacity.",
+  "uiUSBStorageErrorErrno0": "USB storage error (errno {0})"
 }

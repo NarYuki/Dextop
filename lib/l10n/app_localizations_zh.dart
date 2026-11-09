@@ -2747,7 +2747,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get linuxSetupDoneDetail =>
-      '可在 Linux 标签页打开桌面，或从 Plasma 启动单个 Linux 应用。Fcitx 5 用 Ctrl+Space 切换输入法。';
+      '可以从 Linux 标签页打开应用。';
 
   @override
   String get linuxSetupNext => '下一步';

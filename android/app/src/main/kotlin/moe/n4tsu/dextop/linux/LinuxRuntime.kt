@@ -129,9 +129,17 @@ internal object LinuxRuntime {
         if (process.isAlive) process.destroyForcibly()
     }
 
-    fun freeDisplay(used: Set<Int>, sockets: String = runCatching { File("/proc/net/unix").readText() }.getOrDefault("")): Int {
+    /**
+     * Whether X's abstract socket for [display] is unclaimed. The name is shared by the whole device,
+     * including other Dextop installations, and /proc/net/unix is closed to app UIDs: only binding tells.
+     */
+    fun x11SocketFree(display: Int): Boolean =
+        runCatching { android.net.LocalServerSocket("/tmp/.X11-unix/X$display").close() }.isSuccess
+
+    fun freeDisplay(used: Set<Int>, sockets: String = runCatching { File("/proc/net/unix").readText() }.getOrDefault(""),
+                    available: (Int) -> Boolean = { true }): Int {
         return (10..63).firstOrNull { display -> display !in used &&
-            !Regex("(?m)(?:@)?/tmp/\\.X11-unix/X$display$").containsMatchIn(sockets) }
+            !Regex("(?m)(?:@)?/tmp/\\.X11-unix/X$display$").containsMatchIn(sockets) && available(display) }
             ?: error(moe.n4tsu.dextop.localText("uiNoFreeXDisplay1063StopStaleLinuxSessions"))
     }
 }
