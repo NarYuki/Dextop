@@ -97,7 +97,7 @@ internal class LinuxAudioPlayer(private val containerId: String, val generation:
                             var offset = 0
                             while (running && offset < read) {
                                 val written = track.write(buffer, offset, read - offset)
-                                check(written > 0) { "AudioTrack write failed: $written" }
+                                check(written > 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiAudioTrackWriteFailed0"), written) }
                                 offset += written
                             }
                             if (now - lastTune >= 1000) {

@@ -14,6 +14,32 @@ import sys
 
 # CUPS on a unix socket of the container, not a TCP port every Android app on the device could reach.
 CUPS_SOCKET = '/run/dextop-cups/cups.sock'
+UI_TEXT = json.loads(Path(__file__).with_name('dextop-ui.json').read_text(encoding='utf-8'))
+
+
+def ui_language(accepted=None):
+    def supported(value):
+        value = value.strip().replace('-', '_').split('.', 1)[0].split('@', 1)[0]
+        parts = value.split('_', 1)
+        value = parts[0].lower() + ('_' + parts[1].upper() if len(parts) > 1 else '')
+        return value if value in UI_TEXT else value.split('_', 1)[0] if value.split('_', 1)[0] in UI_TEXT else None
+    choices = []
+    for index, item in enumerate((accepted or '').split(',')):
+        language, *options = item.strip().split(';')
+        try:
+            quality = next((float(option.strip()[2:]) for option in options if option.strip().startswith('q=')), 1.0)
+        except ValueError:
+            continue
+        if 0 < quality <= 1 and (locale := supported(language)):
+            choices.append((-quality, index, locale))
+    if choices:
+        return min(choices)[2]
+    environment = os.environ.get('LC_ALL') or os.environ.get('LC_MESSAGES') or os.environ.get('LANG', 'en')
+    return supported(environment) or 'en'
+
+
+def ui_text(key, language=None):
+    return UI_TEXT.get(language or ui_language(), UI_TEXT['en']).get(key, UI_TEXT['en'][key])
 
 
 def write(path, content, mode=0o600):
@@ -187,12 +213,13 @@ def calendar(config):
         raise ValueError('Invalid calendar token')
     write(folder/'server.json', json.dumps(dict(port=port(config.get('port', 8585)), token=token)))
     entry = Path.home()/'.local/share/applications/dextop-calendar.desktop'
-    write(entry, '[Desktop Entry]\nType=Application\nName=Android Calendar\nName[ja]=Androidカレンダー\nIcon=x-office-calendar\nExec=xdg-open http://127.0.0.1:'+str(port(config.get('port', 8585)))+'/'+token+'/\nCategories=Office;Calendar;\n', 0o644)
+    names = ''.join('Name['+locale+']='+ui_text('uiAndroidCalendar', locale)+'\n' for locale in UI_TEXT)
+    write(entry, '[Desktop Entry]\nType=Application\nName='+ui_text('uiAndroidCalendar', 'en')+'\n'+names+'Icon=x-office-calendar\nExec=xdg-open http://127.0.0.1:'+str(port(config.get('port', 8585)))+'/'+token+'/\nCategories=Office;Calendar;\n', 0o644)
 
 
 def serve_calendar():
     folder = Path.home()/'.local/share/dextop/calendar'
-    config = json.loads((folder/'server.json').read_text())
+    config = json.loads((folder/'server.json').read_text(encoding='utf-8'))
     class Handler(BaseHTTPRequestHandler):
         def log_message(self, *_):
             pass  # The URL contains a capability token.
@@ -214,9 +241,11 @@ def serve_calendar():
                     return
                 content_type = 'text/calendar; charset=utf-8'
             elif not route:
-                data = json.loads((folder/'events.json').read_text()) if (folder/'events.json').exists() else []
-                cards = ''.join('<article><h2>'+html.escape(item['title'] or '(No title)')+'</h2><p>'+html.escape(item.get('when', ''))+'</p><p>'+html.escape(item.get('location', ''))+'</p><p>'+html.escape(item.get('description', ''))+'</p></article>' for item in data)
-                body = ('<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Android Calendar · Dextop</title><style>:root{color-scheme:light dark}body{font:16px system-ui;margin:auto;padding:24px;max-width:850px;background:light-dark(#f8f9ff,#14151b);color:light-dark(#20212a,#e3e3ed)}h1{font-size:30px}article{padding:16px 24px;margin:12px 0;border-radius:24px;background:light-dark(#e9edff,#242836)}h2{font-size:20px;margin:0}p{white-space:pre-wrap;overflow-wrap:anywhere}a{color:inherit}</style><h1>Android Calendar</h1><a href="calendar.ics">iCalendar</a>'+cards).encode()
+                language = ui_language(self.headers.get('Accept-Language'))
+                title = html.escape(ui_text('uiAndroidCalendar', language))
+                data = json.loads((folder/'events.json').read_text(encoding='utf-8')) if (folder/'events.json').exists() else []
+                cards = ''.join('<article><h2>'+html.escape(item['title'] or ui_text('uiCalendarNoTitle', language))+'</h2><p>'+html.escape(item.get('when', ''))+'</p><p>'+html.escape(item.get('location', ''))+'</p><p>'+html.escape(item.get('description', ''))+'</p></article>' for item in data)
+                body = ('<!doctype html><html lang="'+language.replace('_', '-')+'"><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>'+title+' · Dextop</title><style>:root{color-scheme:light dark}body{font:16px system-ui;margin:auto;padding:24px;max-width:850px;background:light-dark(#f8f9ff,#14151b);color:light-dark(#20212a,#e3e3ed)}h1{font-size:30px}article{padding:16px 24px;margin:12px 0;border-radius:24px;background:light-dark(#e9edff,#242836)}h2{font-size:20px;margin:0}p{white-space:pre-wrap;overflow-wrap:anywhere}a{color:inherit}</style><h1>'+title+'</h1><a href="calendar.ics">'+html.escape(ui_text('uiICalendar', language))+'</a>'+cards+'</html>').encode('utf-8')
                 content_type = 'text/html; charset=utf-8'
             else:
                 self.send_error(404)

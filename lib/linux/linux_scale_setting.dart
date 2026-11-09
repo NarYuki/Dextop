@@ -15,7 +15,7 @@ class LinuxScaleSetting extends StatelessWidget {
   });
   final int value;
   final ValueChanged<int> onChanged;
-  final String Function(String, String) t;
+  final String Function(String) t;
   final bool enabled;
   final bool allowDefault;
 
@@ -26,16 +26,11 @@ class LinuxScaleSetting extends StatelessWidget {
       context: context,
       builder: (dialog) => StatefulBuilder(
         builder: (context, setState) => AlertDialog(
-          title: Text(t('表示倍率', 'Display scale')),
+          title: Text(t('uiDisplayScale')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Text(
-                t(
-                  '50〜300%で指定します。アプリを起動し直すと反映されます。',
-                  'Choose 50–300%. Applies after restarting the app.',
-                ),
-              ),
+              Text(t('uiChoose50300AppliesAfterRestartingTheApp')),
               const SizedBox(height: 16),
               TextFormField(
                 initialValue: input,
@@ -51,27 +46,22 @@ class LinuxScaleSetting extends StatelessWidget {
             if (allowDefault)
               TextButton(
                 onPressed: () => Navigator.pop(dialog, 0),
-                child: Text(t('全体設定に従う', 'Use global setting')),
+                child: Text(t('uiUseGlobalSetting')),
               ),
             TextButton(
               onPressed: () => Navigator.pop(dialog),
-              child: Text(t('キャンセル', 'Cancel')),
+              child: Text(t('uiCancel')),
             ),
             TextButton(
               onPressed: () {
                 final percent = int.tryParse(input);
                 if (percent == null || percent < 50 || percent > 300) {
-                  setState(
-                    () => error = t(
-                      '50〜300で入力してください',
-                      'Enter a value from 50 to 300',
-                    ),
-                  );
+                  setState(() => error = t('uiEnterAValueFrom50To300'));
                   return;
                 }
                 Navigator.pop(dialog, percent);
               },
-              child: Text(t('保存', 'Save')),
+              child: Text(t('uiSave')),
             ),
           ],
         ),
@@ -84,10 +74,8 @@ class LinuxScaleSetting extends StatelessWidget {
   Widget build(BuildContext context) => LinuxGroup(
     children: [
       M3EListItem(
-        headline: t('表示倍率', 'Display scale'),
-        supportingText: value == 0
-            ? t('全体設定に従う', 'Use global setting')
-            : '$value%',
+        headline: t('uiDisplayScale'),
+        supportingText: value == 0 ? t('uiUseGlobalSetting') : '$value%',
         leading: const Icon(M3EIcons.zoom_in_rounded),
         trailing: const Icon(M3EIcons.chevron_right_rounded),
         onTap: enabled ? () => _edit(context) : null,

@@ -16,7 +16,7 @@ object LinuxServiceHost {
     private var fontsInitialized = false
 
     @JvmStatic fun main(arguments: Array<String>) {
-        require(arguments.size in 3..4) { "Expected package, APK, native library directory and key" }
+        require(arguments.size in 3..4) { moe.n4tsu.dextop.localText("uiExpectedPackageAPKNativeLibraryDirectoryAndKey") }
         val (packageName, apk, nativeDirectory) = arguments
         // The key Dextop gave this process (PublisherKeys), so its provider accepts this daemon only.
         val key = System.`in`.bufferedReader().readLine()

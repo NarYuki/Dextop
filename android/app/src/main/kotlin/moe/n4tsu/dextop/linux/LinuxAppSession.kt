@@ -24,11 +24,11 @@ internal class LinuxAppSession(
     val containerId: String,
     val display: Int,
     private val process: Process,
-    /** Null for a Wayland-only display (DroidDeck's runtime: KWin brings its own Xwayland). */
+    /** The X connection used by the application's window manager. */
     private val xClient: X11Client?,
     private val events: (JSONObject) -> Unit,
 ) {
-    private val x: X11Client get() = checkNotNull(xClient) { "Wayland-only display has no X server" }
+    private val x: X11Client get() = checkNotNull(xClient) { moe.n4tsu.dextop.localText("uiWaylandOnlyDisplayHasNoXServer") }
 
     companion object {
         private const val TAG = "DextopLinuxApps"
@@ -42,14 +42,14 @@ internal class LinuxAppSession(
 
         fun start(
             proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int,
-            waylandOnly: Boolean = false, requireWayland: Boolean = false, xwayland: Boolean = false, keyring: ByteArray? = null, events: (JSONObject) -> Unit,
+            requireWayland: Boolean = false, xwayland: Boolean = false, keyring: ByteArray? = null, events: (JSONObject) -> Unit,
         ): LinuxAppSession {
             // The X server of this display takes connections only with the container's cookie.
-            if (!waylandOnly) LinuxXAuth.prepare(containerId, display)
-            val host = if (xwayland) LinuxXwaylandHost.start(containerId, display, width, height) else null
+            LinuxXAuth.prepare(containerId, display)
+            val host = if (xwayland) startXwaylandHost(containerId, display, width, height) else null
             var startedProcess: Process? = null
             try {
-                val script = if (waylandOnly) LinuxCatalog.waylandAppsScript(display) else LinuxCatalog.appsScript(display, width, height, dpi, xwayland)
+                val script = LinuxCatalog.appsScript(display, width, height, dpi, xwayland)
                 val process = proot.guest(containerId, script,
                     extraEnvironment = if (keyring != null) listOf("DEXTOP_KEYRING_STDIN=1") else emptyList())
                     .redirectErrorStream(true).start()
@@ -66,18 +66,11 @@ internal class LinuxAppSession(
                         Log.i(TAG, "[$display] $it")
                     } }
                 }.apply { isDaemon = true; start() }
-                if (waylandOnly) return LinuxAppSession(containerId, display, process, null, events).also {
-                    it.screenWidth = width
-                    it.screenHeight = height
-                    it.waylandFocused = true
-                    it.startWayland(width, height, proot.nativeLibraryDir)
-                    check(it.wayland != null) { LinuxRuntime.terminate(process); "Wayland compositor did not start" }
-                }
                 val deadline = SystemClock.uptimeMillis() + 15_000
                 var lastConnectError = "no attempt"
                 var client: X11Client? = null
                 while (SystemClock.uptimeMillis() < deadline && (client == null || !startupReady.get())) {
-                    check(process.isAlive) { "X server exited (exit ${process.exitValue()})" }
+                    check(process.isAlive) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiXServerExitedExit0"), process.exitValue()) }
                     if (client == null) client = runCatching { X11Client.connect(display) }
                         .onFailure { lastConnectError = it.message ?: it.javaClass.simpleName }.getOrNull()
                     if (client == null || !startupReady.get()) SystemClock.sleep(150)
@@ -85,13 +78,13 @@ internal class LinuxAppSession(
                 if (client == null || !startupReady.get()) {
                     client?.close()
                     LinuxRuntime.terminate(process)
-                    error("X display :$display did not start (" + (if (client == null) "connection: $lastConnectError"
+                    error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiXDisplay0DidNotStart"), display) + (if (client == null) "connection: $lastConnectError"
                         else "the session did not report ready") + ")")
                 }
                 check(client.compositeOpcode >= 0 && client.damageOpcode >= 0) {
                     client.close()
                     LinuxRuntime.terminate(process)
-                    "X server lacks Composite or DAMAGE"
+                    moe.n4tsu.dextop.localText("uiXServerLacksCompositeOrDAMAGE")
                 }
                 // Before any program starts: whether they may hand pixels over in shared memory.
                 if (!xwayland) LinuxGuestShm.selfTest(containerId, client, display)
@@ -101,9 +94,9 @@ internal class LinuxAppSession(
                     it.xwaylandHost = host
                     it.begin()
                     it.startWayland(width, height, proot.nativeLibraryDir)
-                    check(!requireWayland || it.wayland?.running == true) {
+                    if (requireWayland && it.wayland?.running != true) {
                         it.stop()
-                        "The selected Wayland compositor did not start; see the Linux session log"
+                        throw LinuxWaylandUnavailable()
                     }
                 }
             } catch (error: Throwable) {
@@ -121,7 +114,7 @@ internal class LinuxAppSession(
         fun isWayland(id: Int) = id and WAYLAND_ID == WAYLAND_ID
     }
 
-    /** The X screen's size, which DroidDeck's desktop takes for KWin's output. */
+    /** The application display's X screen size. */
     @Volatile var screenWidth = 0; private set
     @Volatile var screenHeight = 0; private set
     @Volatile private var frameIntervalNanos = DEFAULT_FRAME_INTERVAL_NS

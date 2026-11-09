@@ -46,7 +46,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
   final gpuHistory = <double>[];
   final coreHistory = <int, List<double>>{};
 
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
 
   @override
   void initState() {
@@ -125,7 +125,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
           .toList();
 
   String _bytes(num? value) {
-    if (value == null || value < 0) return t('計測中…', 'Measuring…');
+    if (value == null || value < 0) return t('uiMeasuring');
     const units = ['B', 'KB', 'MB', 'GB', 'TB'];
     var v = value.toDouble();
     var i = 0;
@@ -159,21 +159,18 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
       dialog: Builder(
         builder: (dialog) => M3EDialog(
           icon: const Icon(M3EIcons.stop_circle_rounded),
-          title: inlineFormat(t('{0} を終了しますか？', 'End {0}?'), [process['name']]),
+          title: inlineFormat(t('uiEnd0'), [process['name']]),
           content: Text(
-            t(
-              'このプロセスと、そこから起動したプロセスを強制終了します。保存していない作業は失われます。',
-              'Force-stops this process and the ones it started. Unsaved work is lost.',
-            ),
+            t('uiForceStopsThisProcessAndTheOnesItStartedUnsavedWorkIsLost'),
           ),
           actions: [
             M3EButton.text(
               onPressed: () => Navigator.pop(dialog, false),
-              child: Text(t('キャンセル', 'Cancel')),
+              child: Text(t('uiCancel')),
             ),
             M3EButton.filled(
               onPressed: () => Navigator.pop(dialog, true),
-              child: Text(t('終了', 'End')),
+              child: Text(t('uiEnd')),
             ),
           ],
         ),
@@ -200,8 +197,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
         trailing: trailing,
       );
 
-  String _yes(bool value) =>
-      value ? t('対応', 'Supported') : t('非対応', 'Not supported');
+  String _yes(bool value) => value ? t('uiSupported') : t('uiNotSupported');
 
   @override
   Widget build(BuildContext context) {
@@ -226,11 +222,11 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
             ),
           ),
         // One page, as a task manager: what the device does, what Linux runs, then the rest.
-        LinuxSection(t('パフォーマンス', 'Performance')),
+        LinuxSection(t('uiPerformance')),
         _performance(s),
-        LinuxSection(t('プロセス', 'Processes')),
+        LinuxSection(t('uiProcesses')),
         _processes(s),
-        LinuxSection(t('ハードウェア', 'Hardware')),
+        LinuxSection(t('uiHardware')),
         _hardware(s),
         _details(s),
       ],
@@ -263,7 +259,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
       (
         _Resource.memory,
         M3EIcons.storage_rounded,
-        t('メモリ', 'Memory'),
+        t('uiMemory'),
         '${_bytes(memory - available)} / ${_bytes(memory)}',
         memoryHistory,
         scheme.tertiary,
@@ -272,14 +268,14 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
         _Resource.gpu,
         M3EIcons.developer_board_rounded,
         'GPU',
-        gpuBusy < 0 ? t('読み取れません', 'Not reported') : '$gpuBusy%',
+        gpuBusy < 0 ? t('uiNotReported') : '$gpuBusy%',
         gpuHistory,
         scheme.secondary,
       ),
       (
         _Resource.storage,
         M3EIcons.sd_storage_rounded,
-        t('ストレージ', 'Storage'),
+        t('uiStorage'),
         storageTotal > 0
             ? '${_bytes(storageTotal - storageFree)} / ${_bytes(storageTotal)}'
             : '—',
@@ -304,48 +300,46 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
     final detail = switch (resource) {
       _Resource.cpu => _cpuDetail(s, cores),
       _Resource.memory => _detailCard(
-        title: t('メモリ', 'Memory'),
+        title: t('uiMemory'),
         subtitle: _bytes(memory),
         history: memoryHistory,
         color: scheme.tertiary,
         facts: [
-          (t('使用中', 'In use'), _bytes(memory - available)),
-          (t('利用可能', 'Available'), _bytes(available)),
-          (t('Linux のプロセス', 'Linux processes'), _bytes(linuxMemory)),
+          (t('uiInUse'), _bytes(memory - available)),
+          (t('uiAvailable'), _bytes(available)),
+          (t('uiLinuxProcesses'), _bytes(linuxMemory)),
           (
-            t('スワップ', 'Swap'),
+            t('uiSwap'),
             '${_bytes(((s['swapTotal'] as num?) ?? 0) - ((s['swapFree'] as num?) ?? 0))} / ${_bytes(s['swapTotal'] as num?)}',
           ),
         ],
       ),
       _Resource.gpu => _detailCard(
-        title: 'GPU',
+        title: t('uiGPU'),
         subtitle: (s['gpuModel'] as String? ?? '').isEmpty
-            ? t('不明', 'Unknown')
+            ? t('uiUnknown')
             : s['gpuModel'] as String,
         history: gpuHistory,
         color: scheme.secondary,
         facts: [
           (
-            t('使用率', 'Load'),
-            gpuBusy < 0
-                ? t('この端末では読み取れません', 'Not reported by this device')
-                : '$gpuBusy%',
+            t('uiLoad'),
+            gpuBusy < 0 ? t('uiNotReportedByThisDevice') : '$gpuBusy%',
           ),
           ('Turnip (Zink)', _yes(s['turnipSupported'] == true)),
           ('VirGL', _yes(s['virglAvailable'] == true)),
         ],
       ),
       _Resource.storage => _detailCard(
-        title: t('ストレージ', 'Storage'),
+        title: t('uiStorage'),
         subtitle: _bytes(storageTotal),
         history: const [],
         color: scheme.error,
         meter: storageUsed >= 0 ? storageUsed / 100 : null,
         facts: [
-          (t('空き', 'Free'), _bytes(storageFree)),
+          (t('uiFree'), _bytes(storageFree)),
           (
-            t('Linux 環境', 'Linux environments'),
+            t('uiLinuxEnvironments'),
             _bytes(
               (s['containers'] as List? ?? const [])
                   .cast<Map<Object?, Object?>>()
@@ -415,11 +409,14 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('CPU', style: theme.textTheme.headlineSmall),
+              Text(
+                localText(context, 'uiCPU'),
+                style: theme.textTheme.headlineSmall,
+              ),
               Text(
                 (s['soc'] as String? ?? '').isEmpty
-                    ? inlineFormat(t('{0} コア', '{0} cores'), [count])
-                    : '${s['soc']} · ${inlineFormat(t('{0} コア', '{0} cores'), [count])}',
+                    ? inlineFormat(t('ui0Cores'), [count])
+                    : '${s['soc']} · ${inlineFormat(t('ui0Cores'), [count])}',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: scheme.onSurfaceVariant,
                 ),
@@ -429,8 +426,8 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
         ),
         M3ESegmentedButton<bool>(
           segments: [
-            M3ESegment(value: false, label: t('全体', 'Overall')),
-            M3ESegment(value: true, label: t('コアごと', 'Per core')),
+            M3ESegment(value: false, label: t('uiOverall')),
+            M3ESegment(value: true, label: t('uiPerCore')),
           ],
           selected: {perCore},
           onSelectionChanged: (value) => setState(() => perCore = value.first),
@@ -455,12 +452,10 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
                     SizedBox(
                       width: width,
                       child: _CoreTile(
-                        title: inlineFormat(t('コア {0}', 'Core {0}'), [
-                          core.index,
-                        ]),
+                        title: inlineFormat(t('uiCore0'), [core.index]),
                         usage: core.online
                             ? _percent(core.usage)
-                            : t('停止中', 'Offline'),
+                            : t('uiOffline'),
                         clock: core.online ? _clock(core.frequency) : '',
                         history: coreHistory[core.index] ?? const [],
                         color: scheme.primary,
@@ -490,8 +485,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
               padding: const EdgeInsets.only(bottom: 8),
               child: Text(
                 t(
-                  'この実行方式では Android が CPU 全体の使用率を隠しています。クロックと Linux 自身の使用率を表示します。',
-                  'Android hides the overall CPU load in this execution mode; clocks and Linux\'s own load are shown.',
+                  'uiAndroidHidesTheOverallCPULoadInThisExecutionModeClocksAndLinuxSOwnLoadAreShown',
                 ),
                 style: theme.textTheme.bodySmall,
               ),
@@ -502,26 +496,23 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
             Wrap(
               spacing: 16,
               children: [
+                _Legend(color: scheme.primary, label: t('uiWholeDevice')),
                 _Legend(
-                  color: scheme.primary,
-                  label: t('端末全体', 'Whole device'),
+                  color: scheme.tertiary,
+                  label: localText(context, 'uiLinux'),
                 ),
-                _Legend(color: scheme.tertiary, label: 'Linux'),
               ],
             ),
           ],
           const SizedBox(height: 12),
           _Facts([
+            (t('uiLoad'), _percent(cpuHistory.isEmpty ? -1 : cpuHistory.last)),
             (
-              t('使用率', 'Load'),
-              _percent(cpuHistory.isEmpty ? -1 : cpuHistory.last),
-            ),
-            (
-              t('Linux の使用率', 'Linux load'),
+              t('uiLinuxLoad'),
               '${(linux / math.max(1, count)).toStringAsFixed(0)}%',
             ),
             (
-              t('現在のクロック', 'Clock'),
+              t('uiClock'),
               _clock(
                 cores.isEmpty
                     ? -1
@@ -529,7 +520,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
               ),
             ),
             (
-              t('最大クロック', 'Maximum clock'),
+              t('uiMaximumClock'),
               _clock(
                 cores.isEmpty
                     ? -1
@@ -537,11 +528,11 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
               ),
             ),
             (
-              t('プロセス', 'Processes'),
+              t('uiProcesses'),
               '${(s['processes'] as List? ?? const []).length}',
             ),
             (
-              t('スレッド', 'Threads'),
+              t('uiThreads'),
               '${(s['processes'] as List? ?? const []).cast<Map<Object?, Object?>>().fold<int>(0, (sum, p) => sum + ((p['threads'] as num?)?.toInt() ?? 0))}',
             ),
           ]),
@@ -681,7 +672,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
           controller: search,
           decoration: InputDecoration(
             prefixIcon: const Icon(M3EIcons.search_rounded),
-            hintText: t('名前、コマンド、PID で検索', 'Search by name, command or PID'),
+            hintText: t('uiSearchByNameCommandOrPID'),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(28)),
             isDense: true,
           ),
@@ -697,10 +688,10 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
                 children: [
                   Row(
                     children: [
-                      header(t('名前', 'Name'), _Sort.name, flex: 4, end: false),
+                      header(t('uiName'), _Sort.name, flex: 4, end: false),
                       header('CPU', _Sort.cpu),
-                      header(t('メモリ', 'Memory'), _Sort.memory, flex: 2),
-                      header(t('スレッド', 'Threads'), _Sort.threads),
+                      header(t('uiMemory'), _Sort.memory, flex: 2),
+                      header(t('uiThreads'), _Sort.threads),
                       header('PID', _Sort.pid),
                       const SizedBox(width: 40),
                     ],
@@ -711,8 +702,8 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
                       padding: const EdgeInsets.all(24),
                       child: Text(
                         query.isEmpty
-                            ? t('実行中のプロセスはありません', 'No processes running')
-                            : t('一致するプロセスはありません', 'No matching processes'),
+                            ? t('uiNoProcessesRunning')
+                            : t('uiNoMatchingProcesses'),
                       ),
                     ),
                   for (final p in processes.take(200))
@@ -726,7 +717,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
                       memory: _bytes(p['memory'] as num?),
                       threads: '${p['threads'] ?? ''}',
                       pid: '${p['pid']}',
-                      endTooltip: t('終了', 'End'),
+                      endTooltip: t('uiEnd'),
                       onEnd: () => _stop(p),
                     ),
                 ],
@@ -746,11 +737,8 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
               value: showAll,
               onChanged: (v) => setState(() => showAll = v),
               icon: M3EIcons.visibility_rounded,
-              title: t('PRoot も表示', 'Show PRoot too'),
-              subtitle: t(
-                'Linux を動かしている PRoot 自体のプロセスも一覧に出します',
-                'Lists the PRoot processes that run Linux as well',
-              ),
+              title: t('uiShowPRootToo'),
+              subtitle: t('uiListsThePRootProcessesThatRunLinuxAsWell'),
             ),
           ],
         ),
@@ -761,57 +749,42 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
 
   // region hardware and details
   Widget _hardware(Map<Object?, Object?> s) {
-    final compat = s['compat'] as Map? ?? const {};
+    final sharing = (s['sharing'] as List? ?? const [])
+        .cast<Map<Object?, Object?>>();
     final usb = (s['usbDevices'] as List? ?? const [])
         .cast<Map<Object?, Object?>>();
-    final folders = (s['folders'] as List? ?? const [])
-        .cast<Map<Object?, Object?>>();
     final controllers = (s['controllers'] as List? ?? const []).cast<String>();
-    final android = s['executionMode'] == 'android';
     return LinuxGroup(
       children: [
-        _row(
-          M3EIcons.photo_camera_rounded,
-          t('カメラ', 'Camera'),
-          compat['camera'] == true
-              ? t('Linux から使えます', 'Available to Linux')
-              : t('許可されていません', 'Not allowed'),
-        ),
-        _row(
-          M3EIcons.mic_rounded,
-          t('マイク', 'Microphone'),
-          compat['microphone'] == true
-              ? t('Linux から使えます', 'Available to Linux')
-              : t('許可されていません', 'Not allowed'),
-        ),
-        _row(
-          M3EIcons.folder_rounded,
-          t('ストレージ', 'Storage'),
-          !android
-              ? t(
-                  'ストレージ全体を /media/android で使えます',
-                  'The whole storage under /media/android',
-                )
-              : [
-                  if (compat['wholeStorage'] == true)
-                    t(
-                      'ストレージ全体を /media/storage で使えます',
-                      'The whole storage under /media/storage',
-                    ),
-                  if (folders.isNotEmpty)
-                    inlineFormat(t('選んだフォルダ {0} 個', '{0} picked folders'), [
-                      folders.length,
-                    ]),
-                  if (compat['wholeStorage'] != true && folders.isEmpty)
-                    t('許可されていません', 'Not allowed'),
-                ].join(' · '),
-        ),
+        for (final container in sharing) ...[
+          _row(
+            M3EIcons.photo_camera_rounded,
+            '${t('uiCamera')} · ${container['name']}',
+            container['camera'] == true
+                ? t('uiAvailableToLinux')
+                : t('uiNotAllowed'),
+          ),
+          _row(
+            M3EIcons.mic_rounded,
+            '${t('uiMicrophone')} · ${container['name']}',
+            container['microphone'] == true
+                ? t('uiAvailableToLinux')
+                : t('uiNotAllowed'),
+          ),
+          _row(
+            M3EIcons.folder_rounded,
+            '${t('uiStorage')} · ${container['name']}',
+            container['wholeStorage'] == true
+                ? t('uiTheWholeStorageUnderMediaStorage')
+                : (container['folders'] as num? ?? 0) > 0
+                ? inlineFormat(t('ui0PickedFolders'), [container['folders']])
+                : t('uiNotAllowed'),
+          ),
+        ],
         _row(
           M3EIcons.sports_esports_rounded,
-          t('コントローラー', 'Controllers'),
-          controllers.isEmpty
-              ? t('接続されていません', 'None connected')
-              : controllers.join(', '),
+          t('uiControllers'),
+          controllers.isEmpty ? t('uiNoneConnected') : controllers.join(', '),
         ),
         for (final d in usb)
           _row(
@@ -819,24 +792,23 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
                 ? M3EIcons.cable_rounded
                 : d['kind'] == 'fido'
                 ? M3EIcons.key_rounded
+                : d['kind'] == 'storage'
+                ? M3EIcons.storage_rounded
                 : M3EIcons.usb_rounded,
             d['name'] as String? ?? 'USB',
             [
               d['ids'] as String? ?? '',
-              if (d['kind'] == 'fido') t('セキュリティキー', 'Security key'),
+              if (d['kind'] == 'fido') t('uiSecurityKey'),
+              if (d['kind'] == 'storage') t('uiUSBStorageDevSdX'),
               d['enabled'] == true && d['permission'] == true
-                  ? t('Linux から使えます', 'Available to Linux')
+                  ? t('uiAvailableToLinux')
                   : d['enabled'] == true
-                  ? t('Android の許可待ち', 'Waiting for Android')
-                  : t('Linux には渡していません', 'Not given to Linux'),
+                  ? t('uiWaitingForAndroid')
+                  : t('uiNotGivenToLinux'),
             ].join(' · '),
           ),
         if (usb.isEmpty)
-          _row(
-            M3EIcons.usb_rounded,
-            t('USB 機器', 'USB devices'),
-            t('接続されていません', 'None connected'),
-          ),
+          _row(M3EIcons.usb_rounded, t('uiUSBDevices'), t('uiNoneConnected')),
       ],
     );
   }
@@ -844,12 +816,12 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
   Widget _details(Map<Object?, Object?> s) {
     final info = (s['containers'] as List? ?? const [])
         .cast<Map<Object?, Object?>>();
-    final android = s['executionMode'] == 'android';
     final gpuModel = s['gpuModel'] as String? ?? '';
+    final android = s['executionMode'] == 'android';
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LinuxSection(t('コンテナ', 'Containers')),
+        LinuxSection(t('uiContainers')),
         LinuxGroup(
           children: [
             for (final c in containers)
@@ -865,21 +837,21 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
                   c['name'] as String? ?? id,
                   [
                     '${c['distro'] ?? '?'} · $id',
-                    inlineFormat(t('状態: {0}', 'State: {0}'), [
+                    inlineFormat(t('uiState0'), [
                       c['runtimeState'] ?? c['state'] ?? '?',
                     ]),
-                    inlineFormat(t('表示方式: {0}', 'Display: {0}'), [
+                    inlineFormat(t('uiDisplay0'), [
                       options['displayBackend'] == 'wayland'
                           ? 'Wayland'
                           : 'Xvfb',
                     ]),
-                    inlineFormat(t('描画: {0}', 'Rendering: {0}'), [
+                    inlineFormat(t('uiRendering0'), [
                       c['gpuEffective'] ?? detail['gpuMode'] ?? '?',
                     ]),
-                    inlineFormat(t('ウィンドウマネージャー: {0}', 'Window manager: {0}'), [
+                    inlineFormat(t('uiWindowManager0'), [
                       detail['windowManager'] ?? '?',
                     ]),
-                    inlineFormat(t('使用容量: {0}', 'Size: {0}'), [
+                    inlineFormat(t('uiSize0'), [
                       _bytes(detail['size'] as num?),
                     ]),
                   ].join('\n'),
@@ -887,7 +859,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
               }(),
           ],
         ),
-        LinuxSection(t('ドライバ', 'Drivers')),
+        LinuxSection(t('uiDrivers')),
         LinuxGroup(
           children: [
             _row(
@@ -896,9 +868,9 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
               [
                 s['android'] ?? '',
                 if ((s['soc'] as String? ?? '').isNotEmpty) 'SoC: ${s['soc']}',
-                'GPU: ${gpuModel.isEmpty ? t('不明（Adreno 以外）', 'unknown (not Adreno)') : gpuModel}',
-                inlineFormat(t('実行方式: {0}', 'Execution mode: {0}'), [
-                  android ? 'Android' : t('完全特権', 'Full privilege'),
+                'GPU: ${gpuModel.isEmpty ? t('uiUnknownNotAdreno') : gpuModel}',
+                inlineFormat(t('uiExecutionMode0'), [
+                  android ? 'Android' : t('uiFullPrivilege'),
                 ]),
               ].join('\n'),
             ),
@@ -914,7 +886,7 @@ class _LinuxResourcesPanelState extends State<LinuxResourcesPanel> {
             ),
             _row(
               M3EIcons.computer_rounded,
-              t('ソフトウェア (llvmpipe)', 'Software (llvmpipe)'),
+              t('uiSoftwareLlvmpipe'),
               [
                 ...{
                   for (final c in info)

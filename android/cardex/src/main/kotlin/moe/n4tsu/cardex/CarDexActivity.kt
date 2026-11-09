@@ -119,6 +119,7 @@ private const val STATUS_ERROR = 3
 private val CAR_UI_SCALES = setOf(1f, 0.9f, 0.8f, 0.7f, 0.6f, 0.5f)
 
 class CarDexActivity : ComponentActivity() {
+    private fun ct(key: String, vararg args: Any?) = CarStrings.text(this, key, *args)
     private var dextopPackage = "moe.n4tsu.dextop"
     // Keep relay identity evaluation inside the lifecycle owner during refactors.
     private val relayInvariant by lazy(LazyThreadSafetyMode.NONE) { RelayInvariant.discriminator() }
@@ -142,9 +143,9 @@ class CarDexActivity : ComponentActivity() {
         if (relayRequested && relayStatus != STATUS_RUNNING && relayStatus != STATUS_ERROR) {
             showRelayError(
                 when {
-                    relay == null -> "Dextop Car Companion could not connect to the Dextop relay service."
-                    relaySurface == null -> "Android Auto did not provide a destination surface."
-                    else -> "Dextop did not finish starting within ${STARTUP_TIMEOUT_MS / 1_000} seconds."
+                    relay == null -> ct("uiDextopCarCompanionCouldNotConnectToTheDextopRelayService")
+                    relaySurface == null -> ct("uiAndroidAutoDidNotProvideADestinationSurface")
+                    else -> ct("uiDextopDidNotFinishStartingWithin0Seconds", STARTUP_TIMEOUT_MS / 1_000)
                 }
             )
         }
@@ -176,7 +177,7 @@ class CarDexActivity : ComponentActivity() {
                 }
             }
             MSG_WORKSPACES -> {
-                workspaces = parseWorkspaces(message.data.getString(KEY_WORKSPACES).orEmpty())
+                workspaces = parseWorkspaces(message.data.getString(KEY_WORKSPACES).orEmpty(), this@CarDexActivity)
                 workspaceError = message.data.getString("detail").orEmpty()
             }
             else -> return@Handler false
@@ -195,21 +196,21 @@ class CarDexActivity : ComponentActivity() {
         override fun onServiceDisconnected(name: ComponentName?) {
             relay = null
             relayHandler.removeCallbacks(heartbeat)
-            if (relayRequested) showRelayError("The connection to Dextop was lost. The Dextop process may have stopped or crashed.")
+            if (relayRequested) showRelayError(ct("uiTheConnectionToDextopWasLostTheDextopProcessMayHaveStoppedOrCrashed"))
         }
 
         override fun onBindingDied(name: ComponentName?) {
             if (relayBound) runCatching { unbindService(this) }
             relay = null
             relayBound = false
-            if (relayRequested) showRelayError("The Dextop relay connection died and must be reconnected.")
+            if (relayRequested) showRelayError(ct("uiTheDextopRelayConnectionDiedAndMustBeReconnected"))
         }
 
         override fun onNullBinding(name: ComponentName?) {
             if (relayBound) runCatching { unbindService(this) }
             relay = null
             relayBound = false
-            if (relayRequested) showRelayError("The installed Dextop build does not provide a usable Car Companion relay service.")
+            if (relayRequested) showRelayError(ct("uiTheInstalledDextopBuildDoesNotProvideAUsableCarCompanionRelayService"))
         }
     }
 
@@ -242,7 +243,7 @@ class CarDexActivity : ComponentActivity() {
                             relaySurface = null
                             if (relayRequested) relayHandler.postDelayed({
                                 if (relayRequested && relaySurface == null) {
-                                    showRelayError("The Android Auto destination surface was disconnected.")
+                                    showRelayError(ct("uiTheAndroidAutoDestinationSurfaceWasDisconnected"))
                                 }
                             }, SURFACE_LOSS_GRACE_MS)
                         },
@@ -322,15 +323,15 @@ class CarDexActivity : ComponentActivity() {
         if (car) {
             relayRequested = true
             if (!relayState.installed) {
-                showRelayError("Dextop is not installed on this phone.")
+                showRelayError(ct("uiDextopIsNotInstalledOnThisPhone"))
                 return
             }
             if (!relayState.relayAvailable) {
-                showRelayError("This Dextop build does not include the Car Companion relay service. Update Dextop and try again.")
+                showRelayError(ct("uiThisDextopBuildDoesNotIncludeTheCarCompanionRelayServiceUpdateDextopAndTryAgain"))
                 return
             }
             relayStatus = STATUS_STARTING
-            relayError = "Connecting to the Dextop relay service…"
+            relayError = ct("uiConnectingToTheDextopRelayService")
             scheduleStartupTimeout()
             bindRelayIfNeeded()
             return
@@ -353,22 +354,22 @@ class CarDexActivity : ComponentActivity() {
         if (!isCarDisplay() || !relayState.ready || relay != null || relayBound) return
         if (!DextopTarget.isTrusted(packageManager, dextopPackage)) {
             relayState = relayState.copy(relayAvailable = false)
-            if (relayRequested) showRelayError("Dextop's signing certificate could not be verified.")
+            if (relayRequested) showRelayError(ct("uiDextopSSigningCertificateCouldNotBeVerified"))
             return
         }
         val intent = DextopTarget.relayIntent(dextopPackage)
         relayBound = runCatching { bindService(intent, connection, Context.BIND_AUTO_CREATE) }
             .getOrElse {
-                if (relayRequested) showRelayError("Dextop could not be bound: ${it.message ?: it.javaClass.simpleName}")
+                if (relayRequested) showRelayError(ct("uiDextopCouldNotBeBound0", it.message ?: it.javaClass.simpleName))
                 false
             }
-        if (!relayBound && relayRequested) showRelayError("Android refused the connection to the Dextop relay service.")
+        if (!relayBound && relayRequested) showRelayError(ct("uiAndroidRefusedTheConnectionToTheDextopRelayService"))
     }
 
     private fun startRelay(surface: Surface, width: Int, height: Int) {
         if (!relayRequested) return
         if (!surface.isValid || width <= 0 || height <= 0) {
-            showRelayError("Android Auto provided an invalid destination surface ($width × $height).")
+            showRelayError(ct("uiAndroidAutoProvidedAnInvalidDestinationSurface01", width, height))
             return
         }
         // Remember the current Surface even before binding completes. onServiceConnected
@@ -382,7 +383,7 @@ class CarDexActivity : ComponentActivity() {
         }
         Log.i("DextopCarCompanion", "Parking sending start ${width}x$height scale=$carUiScale")
         relayStatus = STATUS_STARTING
-        relayError = "Starting the Dextop session…"
+        relayError = ct("uiStartingTheDextopSession")
         scheduleStartupTimeout()
         runCatching { target.send(Message.obtain(null, MSG_START).apply {
             replyTo = incoming
@@ -393,7 +394,7 @@ class CarDexActivity : ComponentActivity() {
                 putInt(KEY_DENSITY, resources.displayMetrics.densityDpi)
                 putFloat(KEY_RENDER_SCALE, carUiScale)
             }
-        }) }.onFailure { showRelayError("The start request could not be sent to Dextop: ${it.message ?: it.javaClass.simpleName}") }
+        }) }.onFailure { showRelayError(ct("uiTheStartRequestCouldNotBeSentToDextop0", it.message ?: it.javaClass.simpleName)) }
     }
 
     private fun scheduleStartupTimeout() {
@@ -407,7 +408,7 @@ class CarDexActivity : ComponentActivity() {
             return
         }
         relayStatus = STATUS_STARTING
-        relayError = "Reconnecting to the Dextop relay service…"
+        relayError = ct("uiReconnectingToTheDextopRelayService")
         scheduleStartupTimeout()
         val current = relaySurface
         if (current?.isValid == true) {
@@ -424,7 +425,7 @@ class CarDexActivity : ComponentActivity() {
         if (!relayRequested) return
         relayHandler.removeCallbacks(startupTimeout)
         relayStatus = STATUS_ERROR
-        relayError = "Reason: $detail\nAction: Select Recover and retry. If it fails again, open Dextop and check its operation log."
+        relayError = ct("uiReason0ActionSelectRecoverAndRetryIfItFailsAgainOpenDextopAndCheckItsOperationLog", detail)
     }
 
     private fun sendTouch(event: MotionEvent) {
@@ -644,7 +645,7 @@ private fun RelaySurface(
                         Text(errorDetail, style = MaterialTheme.typography.bodyLarge)
                     }
                     if (status == STATUS_ERROR) {
-                        Button(onClick = onRecover) { Text("Recover and retry") }
+                        Button(onClick = onRecover) { Text(ct("uiRecoverAndRetry")) }
                     }
                 }
             }
@@ -704,7 +705,7 @@ private fun AutoControlPanel(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            "Dextop・Parking",
+                            ct("uiDextopParking"),
                             modifier = Modifier.weight(1f),
                             color = Color(0xFFE6E1E5),
                             style = MaterialTheme.typography.headlineSmall,
@@ -880,7 +881,7 @@ private fun WorkspacePanelButton(workspace: CardexWorkspace, action: () -> Unit)
 
 private data class CardexWorkspace(val id: String, val name: String, val apps: List<String>)
 
-private fun parseWorkspaces(raw: String): List<CardexWorkspace> = runCatching {
+private fun parseWorkspaces(raw: String, context: Context): List<CardexWorkspace> = runCatching {
     val array = JSONArray(raw.ifBlank { "[]" })
     buildList {
         for (index in 0 until array.length()) {
@@ -888,7 +889,7 @@ private fun parseWorkspaces(raw: String): List<CardexWorkspace> = runCatching {
             val apps = item.optJSONArray("apps")
             add(CardexWorkspace(
                 item.optString("id"),
-                item.optString("name", "Workspace ${index + 1}"),
+                item.optString("name", CarStrings.text(context, "uiWorkspace0", index + 1)),
                 buildList {
                     if (apps != null) for (appIndex in 0 until apps.length()) add(apps.optString(appIndex))
                 }.filter(String::isNotBlank)
@@ -956,7 +957,7 @@ private fun CarDexScreen(
             TopAppBar(
                 title = {
                     Text(
-                        if (isCarDisplay) "Dextop・Parking" else "Dextop Car Companion",
+                        if (isCarDisplay) ct("uiDextopParking") else ct("uiDextopCarCompanion"),
                         fontWeight = FontWeight.SemiBold,
                     )
                 },
@@ -1113,3 +1114,6 @@ private fun CarDexTheme(content: @Composable () -> Unit) {
         content = content
     )
 }
+
+@Composable
+private fun ct(key: String, vararg args: Any?): String = CarStrings.text(LocalContext.current, key, *args)

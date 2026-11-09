@@ -54,11 +54,11 @@ import androidx.compose.ui.unit.dp
 import moe.n4tsu.dextop.InlineStrings
 import moe.n4tsu.dextop.localText
 
-/** Book's text, written in place as a Japanese/English pair (see InlineStrings). */
-internal fun tr(ja: String, en: String) = localText(ja, en)
+/** Book's translated text, looked up by catalog key. */
+internal fun tr(key: String) = localText(key)
 
 /** [tr] with {0}, {1}… filled in. */
-internal fun trf(ja: String, en: String, vararg args: Any?) = InlineStrings.format(localText(ja, en), *args)
+internal fun trf(key: String, vararg args: Any?) = InlineStrings.format(localText(key), *args)
 
 /** A Material Symbol (Rounded) by name, drawn from the paths in [MaterialSymbols]. */
 @Composable

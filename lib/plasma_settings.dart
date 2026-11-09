@@ -18,7 +18,7 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
   double speed = 1;
   bool battery = true;
   bool hotCorner = true;
-  String t(String ja, String en) => localText(context, ja, en);
+  String t(String key) => localText(context, key);
 
   @override
   void initState() {
@@ -106,12 +106,12 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: const Text('Dextop Book')),
+    appBar: AppBar(title: Text(localText(context, 'uiDextopBook'))),
     body: error != null
         ? Center(
             child: FilledButton.tonal(
               onPressed: load,
-              child: Text(t('再読み込み', 'Retry')),
+              child: Text(t('uiRetry')),
             ),
           )
         : prefs == null
@@ -119,24 +119,19 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
         : ListView(
             padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
             children: [
-              section(t('外観', 'Appearance'), [
+              section(t('uiAppearance'), [
                 ListTile(
                   leading: const Icon(Icons.dark_mode_outlined),
-                  title: Text(t('テーマ', 'Theme')),
-                  subtitle: Text(
-                    t(
-                      '色はAndroidの壁紙の色から作られます',
-                      'Colours follow your Android wallpaper',
-                    ),
-                  ),
+                  title: Text(t('uiTheme')),
+                  subtitle: Text(t('uiColoursFollowYourAndroidWallpaper')),
                   trailing: DropdownButton<String>(
                     value: theme,
                     underline: const SizedBox.shrink(),
                     items: [
                       for (final item in {
-                        'system': t('システム', 'System'),
-                        'light': t('ライト', 'Light'),
-                        'dark': t('ダーク', 'Dark'),
+                        'system': t('uiSystem'),
+                        'light': t('uiLight'),
+                        'dark': t('uiDark'),
                       }.entries)
                         DropdownMenuItem(
                           value: item.key,
@@ -152,18 +147,18 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.wallpaper_outlined),
-                  title: Text(t('壁紙', 'Wallpaper')),
+                  title: Text(t('uiWallpaper')),
                   trailing: DropdownButton<String>(
                     value: wallpaper,
                     underline: const SizedBox.shrink(),
                     items: [
                       DropdownMenuItem(
                         value: 'plasma',
-                        child: const Text('Book'),
+                        child: Text(localText(context, 'uiBook')),
                       ),
                       DropdownMenuItem(
                         value: 'system',
-                        child: Text(t('Androidの壁紙', 'Android wallpaper')),
+                        child: Text(t('uiAndroidWallpaper')),
                       ),
                     ],
                     onChanged: (value) {
@@ -175,7 +170,7 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.zoom_in_rounded),
-                  title: Text(t('外部画面の表示サイズ', 'External display size')),
+                  title: Text(t('uiExternalDisplaySize')),
                   trailing: DropdownButton<int>(
                     value: (book['display_scale'] as num?)?.toInt() ?? 0,
                     underline: const SizedBox.shrink(),
@@ -183,7 +178,7 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
                       for (final scale in [0, 100, 125, 150, 175, 200])
                         DropdownMenuItem(
                           value: scale,
-                          child: Text(scale == 0 ? t('自動', 'Auto') : '$scale%'),
+                          child: Text(scale == 0 ? t('uiAuto') : '$scale%'),
                         ),
                     ],
                     onChanged: (value) {
@@ -192,37 +187,34 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
                   ),
                 ),
               ]),
-              section(t('タスクバーとスタートメニュー', 'Taskbar and Start menu'), [
+              section(t('uiTaskbarAndStartMenu'), [
                 flag(
                   'always_show_taskbar',
-                  t('タスクバーを常に表示', 'Always show the taskbar'),
+                  t('uiAlwaysShowTheTaskbar'),
                   Icons.dock_outlined,
                 ),
                 flag(
                   'launcher_expanded',
-                  t('スタートメニューを拡張', 'Expand the Start menu'),
+                  t('uiExpandTheStartMenu'),
                   Icons.open_in_full_rounded,
-                  subtitle: t(
-                    'メニュー内で切り替えた状態も保存されます',
-                    'Changes made in the menu are also saved',
-                  ),
+                  subtitle: t('uiChangesMadeInTheMenuAreAlsoSaved'),
                 ),
               ]),
-              section(t('ステータスバー', 'Status bar'), [
+              section(t('uiStatusBar'), [
                 flag(
                   'live_activity',
-                  t('ライブアクティビティ', 'Live activity'),
+                  t('uiLiveActivity'),
                   Icons.graphic_eq_rounded,
-                  subtitle: t('再生中のメディアを表示', 'Show playing media'),
+                  subtitle: t('uiShowPlayingMedia'),
                 ),
                 flag(
                   'notification_icons',
-                  t('通知アイコン', 'Notification icons'),
+                  t('uiNotificationIcons'),
                   Icons.notifications_outlined,
                 ),
                 SwitchListTile(
                   secondary: const Icon(Icons.battery_std_rounded),
-                  title: Text(t('電池残量（%）', 'Battery percentage')),
+                  title: Text(t('uiBatteryPercentage')),
                   value: battery,
                   onChanged: (v) {
                     setState(() => battery = v);
@@ -230,15 +222,15 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
                   },
                 ),
               ]),
-              section(t('デスクトップと操作', 'Desktop and behaviour'), [
+              section(t('uiDesktopAndBehaviour'), [
                 flag(
                   'desktop_icons',
-                  t('デスクトップアイコンを表示', 'Show desktop icons'),
+                  t('uiShowDesktopIcons'),
                   Icons.grid_view_rounded,
                 ),
                 ListTile(
                   leading: const Icon(Icons.view_carousel_outlined),
-                  title: Text(t('仮想デスクトップ', 'Virtual desktops')),
+                  title: Text(t('uiVirtualDesktops')),
                   trailing: Text('$desktops'),
                   subtitle: Slider(
                     value: desktops.toDouble(),
@@ -254,14 +246,14 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
                 ),
                 ListTile(
                   leading: const Icon(Icons.animation_outlined),
-                  title: Text(t('アニメーション速度', 'Animation speed')),
+                  title: Text(t('uiAnimationSpeed')),
                   subtitle: Slider(
                     value: speed,
                     min: 0,
                     max: 2,
                     divisions: 8,
                     label: speed == 0
-                        ? t('なし', 'Off')
+                        ? t('uiOff')
                         : '${speed.toStringAsFixed(2)}×',
                     onChanged: (v) => setState(() => speed = v),
                     onChangeEnd: (v) =>
@@ -270,7 +262,7 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
                 ),
                 SwitchListTile(
                   secondary: const Icon(Icons.north_west_rounded),
-                  title: Text(t('ホットコーナー', 'Hot corner')),
+                  title: Text(t('uiHotCorner')),
                   value: hotCorner,
                   onChanged: (v) {
                     setState(() => hotCorner = v);

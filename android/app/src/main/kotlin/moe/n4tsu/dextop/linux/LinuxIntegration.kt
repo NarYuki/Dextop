@@ -50,7 +50,7 @@ internal class LinuxIntegration(
     }
     private fun checked(id: String, command: String, input: String? = null, timeout: Long = 120, root: Boolean = true): String {
         val result = run(id, command, input, timeout, root)
-        check(result.exitCode == 0) { result.output.takeLast(4000).ifBlank { "Linux integration command failed (${result.exitCode})" } }
+        check(result.exitCode == 0) { result.output.takeLast(4000).ifBlank { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLinuxIntegrationCommandFailed0"), result.exitCode) } }
         return result.output
     }
     private fun helper(id: String, feature: String, value: JSONObject) = checked(id,
@@ -158,7 +158,7 @@ internal class LinuxIntegration(
                 if (ready) break
                 Thread.sleep(100)
             }
-            check(ready && process.isAlive) { "${feature}: " + output.readText().takeLast(3000).ifBlank { "Startup timed out" } }
+            check(ready && process.isAlive) { "${feature}: " + output.readText().takeLast(3000).ifBlank { moe.n4tsu.dextop.localText("uiStartupTimedOut") } }
         } catch (error: Throwable) {
             stopProcess(id, feature)
             throw error
@@ -206,17 +206,17 @@ internal class LinuxIntegration(
             }
             fields.filter(request::has).forEach { value.put(it, request.get(it)) }
             val defaultPort = mapOf("ssh" to 2222, "vnc" to 5900, "calendar" to 8585, "printing" to 8631).getValue(feature)
-            require(value.optInt("port", defaultPort) in 1024..65535) { "Use a port from 1024 to 65535" }
+            require(value.optInt("port", defaultPort) in 1024..65535) { moe.n4tsu.dextop.localText("uiUseAPortFrom1024To65535") }
             if (feature == "vnc") {
                 val password = value.optString("secret")
-                require(password.isEmpty() || (password.length == 8 && password.all { it.code in 33..126 })) { "VNC requires an 8-character ASCII password" }
+                require(password.isEmpty() || (password.length == 8 && password.all { it.code in 33..126 })) { moe.n4tsu.dextop.localText("uiVNCRequiresAn8CharacterASCIIPassword") }
             }
             if (feature == "ssh") {
                 val keys = value.optString("keys")
-                require(keys.toByteArray().size <= 65536) { "Authorized keys are too large" }
-                require(value.optBoolean("password", true) || keys.isNotBlank()) { "Add an SSH public key before disabling password authentication" }
+                require(keys.toByteArray().size <= 65536) { moe.n4tsu.dextop.localText("uiAuthorizedKeysAreTooLarge") }
+                require(value.optBoolean("password", true) || keys.isNotBlank()) { moe.n4tsu.dextop.localText("uiAddAnSSHPublicKeyBeforeDisablingPasswordAuthentication") }
                 val keyPattern = Regex("(?:ssh-ed25519|ssh-rsa|ecdsa-sha2-nistp(?:256|384|521)|sk-ssh-ed25519@openssh.com) [A-Za-z0-9+/=]+(?: [^\\r\\n]*)?")
-                require(keys.lineSequence().all { it.isBlank() || keyPattern.matches(it.trim()) }) { "Paste OpenSSH public keys without command options" }
+                require(keys.lineSequence().all { it.isBlank() || keyPattern.matches(it.trim()) }) { moe.n4tsu.dextop.localText("uiPasteOpenSSHPublicKeysWithoutCommandOptions") }
             }
             if (feature == "calendar" && value.optString("token").length < 32) value.put("token", random(32))
             if (alive(id, feature)) {
@@ -237,7 +237,7 @@ internal class LinuxIntegration(
         val operation = request.getString("op")
         if (operation == "calendar-data") {
             val settings = config(id).optJSONObject("calendar")
-            check(settings?.optBoolean("enabled") == true) { "Calendar sharing is disabled" }
+            check(settings?.optBoolean("enabled") == true) { moe.n4tsu.dextop.localText("uiCalendarSharingIsDisabled") }
             val ics = request.getString("ics")
             val events = request.getJSONArray("events").toString()
             require(ics.toByteArray().size <= 512000 && events.toByteArray().size <= 256000 && ics.startsWith("BEGIN:VCALENDAR\r\n"))
@@ -267,13 +267,13 @@ internal class LinuxIntegration(
             val journal = if (action == "journal") "--journal -u $name -n 150" else "$action $name"
             val output = checked(id, "python3 /usr/local/libexec/dextop-systemd ctl --json ${if (request.optBoolean("user")) "--user" else ""} $journal", timeout = 60)
             val answer = JSONObject(output.lineSequence().last { it.trimStart().startsWith('{') })
-            check(answer.optBoolean("ok")) { answer.optString("error", "Service operation failed") }
+            check(answer.optBoolean("ok")) { answer.optString("error", moe.n4tsu.dextop.localText("uiServiceOperationFailed")) }
             return if (action == "journal") answer.toString() else status(id)
         }
         val feature = request.getString("feature").also { require(it in features) }
         val settings = config(id)
         if (operation == "stop") {
-            require(feature != "services") { "Service management is part of the Linux runtime" }
+            require(feature != "services") { moe.n4tsu.dextop.localText("uiServiceManagementIsPartOfTheLinuxRuntime") }
             stopProcess(id, feature)
             val value = settings.optJSONObject(feature) ?: JSONObject()
             value.put("enabled", false)
@@ -285,11 +285,11 @@ internal class LinuxIntegration(
             return status(id)
         }
         require(operation == "start")
-        if (feature == "ssh") check(LinuxUser.name(LinuxPaths.rootfs(id)) != null) { "Create a Linux environment with a user account first" }
+        if (feature == "ssh") check(LinuxUser.name(LinuxPaths.rootfs(id)) != null) { moe.n4tsu.dextop.localText("uiCreateALinuxEnvironmentWithAUserAccountFirst") }
         prepare(id, feature)
         val value = JSONObject()
         val defaults = mapOf("ssh" to 2222, "vnc" to 5900, "calendar" to 8585, "printing" to 8631)
-        val port = defaults[feature]?.let { request.optInt("port", it).also { selected -> require(selected in 1024..65535) { "Use a port from 1024 to 65535" } } }
+        val port = defaults[feature]?.let { request.optInt("port", it).also { selected -> require(selected in 1024..65535) { moe.n4tsu.dextop.localText("uiUseAPortFrom1024To65535") } } }
         if (port != null) value.put("port", port)
         value.put("lan", request.optBoolean("lan", false))
         when (feature) {
@@ -371,7 +371,7 @@ internal class LinuxIntegration(
                 if (index < pieces.lastIndex) require(OsConstants.S_ISDIR(Os.fstat(anchor.fileDescriptor).st_mode))
             }
             val stat = Os.fstat(anchor.fileDescriptor)
-            require(OsConstants.S_ISREG(stat.st_mode) && stat.st_size in 1..64L*1024*1024) { "Invalid print spool file" }
+            require(OsConstants.S_ISREG(stat.st_mode) && stat.st_size in 1..64L*1024*1024) { moe.n4tsu.dextop.localText("uiInvalidPrintSpoolFile") }
             return ParcelFileDescriptor.dup(anchor.fileDescriptor)
         } finally { handles.asReversed().forEach { it.close() } }
     }

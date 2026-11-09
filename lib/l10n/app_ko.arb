@@ -854,7 +854,7 @@
   "nativePlasmaTimeUntilFull": "완충까지 %1$s",
   "nativePlasmaHoursMinutes": "%1$d시간 %2$d분",
   "nativePlasmaMinutes": "%1$d분",
-  "nativePlasmaApplying": "전환 중…",
+  "nativePlasmaApplying": "전환 중…",
   "linuxUnsupportedDevice": "Linux는 arm64 기기에서만 사용할 수 있습니다.",
   "linuxRequiresPlasma": "Linux는 Dextop Plasma v2를 사용할 때만 쓸 수 있습니다.",
   "linuxSwitchToPlasma": "Plasma v2로 전환",
@@ -894,7 +894,7 @@
   "linuxPhaseFinish": "마무리하는 중",
   "linuxPhaseStep": "{total}단계 중 {step}단계",
   "linuxSetupTitle": "Linux 설정",
-  "linuxSetupIntro": "사용 방식에 맞게 Linux를 준비합니다. 데스크톱, 언어, 입력 방법, 앱을 차례로 고르세요.",
+  "linuxSetupIntro": "사용 방식에 맞게 Linux를 준비합니다. 언어, 입력 방법, 앱을 차례로 고르세요.",
   "linuxSetupExisting": "이 Linux 환경에 기능을 추가합니다. 기존 파일과 앱은 유지됩니다. 설정을 적용하려면 완료 후 데스크톱을 다시 여세요.",
   "linuxSetupSystem": "Linux 환경 선택",
   "linuxSetupDesktop": "데스크톱 준비",
@@ -940,7 +940,6 @@
   "linuxSetupOffice": "오피스 제품군",
   "linuxSetupOfficeDetail": "LibreOffice — 문서, 스프레드시트, 프레젠테이션. 다운로드 용량과 필요한 저장 공간이 커집니다.",
   "linuxSetupSteamDetail": "Valve의 Steam(ARM64). 처음 사용할 때 Valve에서 받으며, Proton과 FEX는 Steam이 설치합니다.",
-  "linuxSetupDroidDeckNote": "DroidDeck 런타임에는 KDE Plasma 데스크톱(KWin, Xwayland)과 글꼴, 입력기가 포함되어 있어 IceWM·언어·입력 단계를 건너뜁니다.",
   "linuxSetupStorage": "여유 공간을 몇 GB 이상 확보하세요. 다운로드 용량과 설치 크기는 배포판과 고른 앱에 따라 다릅니다. 이 화면을 나가도 설치는 계속됩니다.",
   "linuxSetupAdditive": "선택을 해제한 앱은 삭제되지 않습니다. 고른 패키지를 추가하고 언어와 세션 설정을 업데이트합니다.",
   "linuxSetupNothingExtra": "추가 앱 없음",
@@ -990,7 +989,7 @@
   "nativePlasmaClearAll": "모두 지우기",
   "linuxGpuTurnip": "Turnip + Zink(권장)",
   "linuxGpuTurnipDescription": "Linux 앱이 Adreno GPU를 직접 사용합니다(Vulkan, OpenGL 4.6). 가장 빠르고 게임에 적합합니다.",
-  "linuxGpuTurnipSetup": "컨테이너 설정에서 3D 그래픽을 켜면 사용할 수 있습니다(빌드에 약 30분). 그 전까지는 VirGL을 사용합니다.",
+  "linuxGpuTurnipSetup": "컨테이너를 복구하면 사용할 수 있습니다. 그 전까지는 VirGL을 사용합니다.",
   "linuxSetupPhaseGpu": "GPU 드라이버(Turnip) 빌드 중",
   "linuxSetupDisplayBackend": "표시 방식",
   "linuxSetupXvfbDetail": "앱과 IceWM 데스크톱을 X11로 표시합니다.",
@@ -1025,5 +1024,6 @@
     }
   },
   "nativeShortcutStartDisplayLong": "Dextop 가상 디스플레이를 시작하거나 중지합니다",
-  "nativeShortcutStartDisplay": "Dextop 시작"
+  "nativeShortcutStartDisplay": "Dextop 시작",
+  "androidDisplayTileLabel": "Dextop 디스플레이"
 }

@@ -27,7 +27,7 @@ class DextopCastRouteActivity : AppCompatActivity() {
 
         if (BuildConfig.CAST_RECEIVER_APP_ID.isBlank()) {
             setContentView(TextView(this).apply {
-                text = "Google Cast Receiver App ID is not configured"
+                text = moe.n4tsu.dextop.localText("uiGoogleCastReceiverAppIDIsNotConfigured")
                 gravity = Gravity.CENTER
                 setTextColor(Color.WHITE)
                 setBackgroundColor(Color.rgb(28, 27, 31))

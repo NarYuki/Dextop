@@ -41,7 +41,7 @@ internal object LinuxBackups {
     val directory: File get() = File(LinuxPaths.base, "snapshots")
 
     fun file(name: String): File {
-        require(NAME.matches(name)) { "Invalid snapshot name" }
+        require(NAME.matches(name)) { moe.n4tsu.dextop.localText("uiInvalidSnapshotName") }
         return File(directory, name)
     }
 
@@ -60,14 +60,14 @@ internal object LinuxBackups {
     /** Writes [containerId] as a snapshot file; [onBytes] reports what was read so far. */
     fun create(containerId: String, onBytes: (Long) -> Unit): File {
         val config = JSONObject(LinuxPaths.config(containerId).readText())
-        check(config.optString("state") == "installed") { "Only an installed container can be backed up" }
+        check(config.optString("state") == "installed") { moe.n4tsu.dextop.localText("uiOnlyAnInstalledContainerCanBeBackedUp") }
         directory.mkdirs()
         val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
         val target = File(directory, "$containerId-$stamp$EXTENSION")
         val staged = File(directory, target.name + ".staged")
         try {
             staged.outputStream().buffered(1 shl 20).use { write(containerId, config, it, onBytes) }
-            check(staged.renameTo(target)) { "Cannot save the snapshot" }
+            check(staged.renameTo(target)) { moe.n4tsu.dextop.localText("uiCannotSaveTheSnapshot") }
         } finally {
             staged.delete()
         }
@@ -158,10 +158,10 @@ internal object LinuxBackups {
 
     private fun readMetadata(input: InputStream): JSONObject = input.use {
         TarArchiveInputStream(GZIPInputStream(it.buffered(64 * 1024))).use { tar ->
-            val entry = tar.nextEntry ?: error("Empty backup")
-            require(entry.name == METADATA && entry.size in 1..65536) { "Not a Dextop backup" }
+            val entry = tar.nextEntry ?: error(moe.n4tsu.dextop.localText("uiEmptyBackup"))
+            require(entry.name == METADATA && entry.size in 1..65536) { moe.n4tsu.dextop.localText("uiNotADextopBackup") }
             JSONObject(String(tar.readBytes())).also { metadata ->
-                require(metadata.optInt("format") in 1..FORMAT) { "This backup was made by a newer Dextop" }
+                require(metadata.optInt("format") in 1..FORMAT) { moe.n4tsu.dextop.localText("uiThisBackupWasMadeByANewerDextop") }
             }
         }
     }
@@ -173,7 +173,7 @@ internal object LinuxBackups {
     fun restore(open: () -> InputStream, newId: String, checkCancelled: () -> Unit, onBytes: (Long) -> Unit): JSONObject {
         val metadata = readMetadata(open())
         val container = LinuxPaths.container(newId)
-        check(!container.exists()) { "Container $newId already exists" }
+        check(!container.exists()) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0AlreadyExists"), newId) }
         val staging = File(LinuxPaths.containers, ".restore-$newId")
         LinuxRootfsArchive.deleteTree(staging)
         try {
@@ -181,7 +181,7 @@ internal object LinuxBackups {
                 LinuxRootfsArchive.extractBackup(GZIPInputStream(input.buffered(1 shl 20)), staging, checkCancelled, onBytes, metadata.optString("container", "").takeIf { it.matches(Regex("c[a-zA-Z0-9]+")) }?.let { LinuxPaths.rootfs(it).absolutePath })
             }
             val unpacked = File(staging, PREFIX.trimEnd('/'))
-            check(File(unpacked, "config.json").isFile && File(unpacked, "rootfs").isDirectory) { "The backup holds no container" }
+            check(File(unpacked, "config.json").isFile && File(unpacked, "rootfs").isDirectory) { moe.n4tsu.dextop.localText("uiTheBackupHoldsNoContainer") }
             File(unpacked, "rootfs/dev").mkdirs()
             File(unpacked, "rootfs/tmp").apply { mkdirs(); setWritable(true, false); setExecutable(true, false); setReadable(true, false) }
             val config = JSONObject(File(unpacked, "config.json").readText())
@@ -191,7 +191,7 @@ internal object LinuxBackups {
             config.remove("error")
             File(unpacked, "config.json").writeText(config.toString())
             checkCancelled()
-            check(unpacked.renameTo(container)) { "Cannot commit the restored container" }
+            check(unpacked.renameTo(container)) { moe.n4tsu.dextop.localText("uiCannotCommitTheRestoredContainer") }
             return config
         } finally {
             LinuxRootfsArchive.deleteTree(staging)

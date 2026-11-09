@@ -151,7 +151,7 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                             await applyOrientation();
                           },
                           icon: const Icon(Icons.arrow_back_rounded),
-                          label: Text(localText(context, '戻る', 'Back')),
+                          label: Text(localText(context, 'uiBack')),
                         ),
                         const SizedBox(width: 16),
                       ],
@@ -176,7 +176,7 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                         ),
                         label: Text(
                           horizontal
-                              ? (localText(context, '次へ', 'Next'))
+                              ? (localText(context, 'uiNext'))
                               : copy.close,
                         ),
                       ),
@@ -642,7 +642,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     try {
       final status = await bridge.status();
       final current = '${status['appVersion'] ?? ''}'.trim();
-      if (current.isEmpty) throw const FormatException('Missing app version');
+      if (current.isEmpty) {
+        throw FormatException(currentUiText('uiMissingAppVersion'));
+      }
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       final request = await client.getUrl(
         Uri.parse(
@@ -657,18 +659,22 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         const Duration(seconds: 8),
       );
       if (response.statusCode != HttpStatus.ok) {
-        throw HttpException('GitHub API returned ${response.statusCode}');
+        throw HttpException(
+          inlineFormat(currentUiText('uiGitHubAPIReturned0'), [
+            response.statusCode,
+          ]),
+        );
       }
       final payload = jsonDecode(await response.transform(utf8.decoder).join());
       if (payload is! Map) {
-        throw const FormatException('Invalid GitHub response');
+        throw FormatException(currentUiText('uiInvalidGitHubResponse'));
       }
       final latest = '${payload['tag_name'] ?? ''}'.replaceFirst(
         RegExp(r'^[vV]'),
         '',
       );
       if (latest.isEmpty) {
-        throw const FormatException('Missing release version');
+        throw FormatException(currentUiText('uiMissingReleaseVersion'));
       }
       final url = '${payload['html_url'] ?? ''}';
       final newer = _isNewerVersion(latest, current);
@@ -1523,7 +1529,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         key: const ValueKey('linux'),
         onSwitchToPlasmaV2: () => setWindowManager('dextop_book'),
         // Linux only: privilege comes with Dextop's full setup, started from Home.
-        onSetupPrivilege: widget.linuxOnly ? null : _showEmbeddedPrivilegeSetup,
+        onSetupPrivilege: widget.linuxOnly ? null : connect,
+        privilegeConnectionLabel: privilegeConnectionLabel,
       ),
       _ => settings(),
     },

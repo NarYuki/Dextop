@@ -48,15 +48,15 @@ internal object LinuxKeyring {
                 check(prefs(context).edit()
                     .putString("mode_$containerId", mode)
                     .putString("secret_$containerId", encrypt(secret))
-                    .commit()) { "Cannot store the Linux keyring password" }
+                    .commit()) { moe.n4tsu.dextop.localText("uiCannotStoreTheLinuxKeyringPassword") }
                 service?.setKeyringSecret(containerId, secret, true)
             }
             MANUAL -> {
-                require(!password.isNullOrEmpty()) { "A keyring password is required" }
+                require(!password.isNullOrEmpty()) { moe.n4tsu.dextop.localText("uiAKeyringPasswordIsRequired") }
                 prefs(context).edit().putString("mode_$containerId", MANUAL).remove("secret_$containerId").apply()
                 service?.setKeyringSecret(containerId, password, false)
             }
-            else -> throw IllegalArgumentException("Unknown keyring mode $mode")
+            else -> throw IllegalArgumentException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownKeyringMode0"), mode))
         }
     }
 

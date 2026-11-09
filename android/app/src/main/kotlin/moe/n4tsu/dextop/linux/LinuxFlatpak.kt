@@ -27,24 +27,24 @@ internal object LinuxFlatpak {
     }
 
     fun plan(rootfs: File, id: String): Plan {
-        require(component.matches(id)) { "Invalid Flatpak application ID" }
+        require(component.matches(id)) { moe.n4tsu.dextop.localText("uiInvalidFlatpakApplicationID") }
         val home = LinuxUser.home(rootfs)
         val base = "$home/.local/share/flatpak"
         val active = LinuxDesktopEntries.resolve(rootfs, "$base/app/$id/current/active")
-            ?: error("Flatpak $id is not deployed; install it from Flathub first")
+            ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiFlatpak0IsNotDeployedInstallItFromFlathubFirst"), id))
         val appMetadata = metadata(File(active, "metadata"))
-        val application = appMetadata["Application"] ?: error("Missing Flatpak application metadata")
+        val application = appMetadata["Application"] ?: error(moe.n4tsu.dextop.localText("uiMissingFlatpakApplicationMetadata"))
         val reference = application["runtime"].orEmpty().split('/')
         require(reference.size == 3 && reference.all(component::matches) && reference[1] == "aarch64") {
-            "Compatibility execution supports ARM64 Flatpaks only"
+            moe.n4tsu.dextop.localText("uiCompatibilityExecutionSupportsARM64FlatpaksOnly")
         }
         val runtime = LinuxDesktopEntries.resolve(rootfs, "$base/runtime/${reference.joinToString("/")}/active")
-            ?: error("Flatpak runtime is not deployed")
+            ?: error(moe.n4tsu.dextop.localText("uiFlatpakRuntimeIsNotDeployed"))
         val runtimeFiles = File(runtime, "files")
         val appFiles = File(active, "files")
-        check(runtimeFiles.isDirectory && appFiles.isDirectory) { "Incomplete Flatpak deployment" }
+        check(runtimeFiles.isDirectory && appFiles.isDirectory) { moe.n4tsu.dextop.localText("uiIncompleteFlatpakDeployment") }
         val executable = application["command"].orEmpty()
-        require(executable.matches(Regex("[A-Za-z0-9_./+-]+"))) { "Unsupported Flatpak command" }
+        require(executable.matches(Regex("[A-Za-z0-9_./+-]+"))) { moe.n4tsu.dextop.localText("uiUnsupportedFlatpakCommand") }
         val binds = mutableListOf("${runtimeFiles.absolutePath}:/usr", "${appFiles.absolutePath}:/app")
         // Preserve Dextop's glibc socket/session hooks when replacing /usr.
         binds += "${File(rootfs, "usr/local").absolutePath}:/usr/local"
@@ -165,7 +165,7 @@ internal object LinuxFlatpak {
             if (!copy.isFile || copy.length() != source.length() || copy.lastModified() != source.lastModified()) {
                 val pending = File(bin, "${source.name}.staged")
                 source.copyTo(pending, overwrite = true)
-                check(pending.setExecutable(true, false)) { "Cannot prepare Flatpak executable" }
+                check(pending.setExecutable(true, false)) { moe.n4tsu.dextop.localText("uiCannotPrepareFlatpakExecutable") }
                 pending.setLastModified(source.lastModified())
                 Files.move(pending.toPath(), copy.toPath(), REPLACE_EXISTING)
             }

@@ -67,7 +67,7 @@ class SamsungDesktopSettings(private val context: Context) {
     }
 
     fun backupIfNeeded(): Map<String, Any> {
-        check(isSamsungDevice()) { "Samsung desktop settings are only available on Samsung devices" }
+        check(isSamsungDevice()) { moe.n4tsu.dextop.localText("uiSamsungDesktopSettingsAreOnlyAvailableOnSamsungDevices") }
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (!preferences.contains(KEY_BACKUP)) {
             val backup = JSONObject()
@@ -84,7 +84,7 @@ class SamsungDesktopSettings(private val context: Context) {
     fun restoreBackup(): Map<String, Any> {
         val preferences = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val serialized = preferences.getString(KEY_BACKUP, null)
-            ?: error("No Samsung desktop settings backup is available")
+            ?: error(moe.n4tsu.dextop.localText("uiNoSamsungDesktopSettingsBackupIsAvailable"))
         val backup = JSONObject(serialized)
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         entries.forEach { (id, entry) ->
@@ -95,7 +95,7 @@ class SamsungDesktopSettings(private val context: Context) {
             } else {
                 privilegedAccess.execute("settings", "put", namespace, key, backup.getString(id))
             }
-            check(command.succeeded) { "Unable to restore Samsung desktop setting $key" }
+            check(command.succeeded) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToRestoreSamsungDesktopSetting0"), key) }
         }
         preferences.edit().remove(KEY_BACKUP).commit()
         OperationLog.i(context, "SamsungDesktopSettings", "original settings restored")
@@ -104,16 +104,16 @@ class SamsungDesktopSettings(private val context: Context) {
 
     fun write(id: String, value: Any?) {
         check(isSamsungDevice()) {
-            "Samsung desktop settings are only available on Samsung devices"
+            moe.n4tsu.dextop.localText("uiSamsungDesktopSettingsAreOnlyAvailableOnSamsungDevices")
         }
-        val entry = entries[id] ?: error("Unknown Samsung desktop setting: $id")
+        val entry = entries[id] ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownSamsungDesktopSetting0"), id))
         val serialized = normalize(entry.type, value)
         val key = platformKeys.getValue(id)
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         val namespace = entry.namespace.name.lowercase()
         val command = privilegedAccess.execute("settings", "put", namespace, key, serialized)
         check(command.succeeded) {
-            "Android rejected Samsung desktop setting $key: ${command.error.ifBlank { command.output }}"
+            moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiAndroidRejectedSamsungDesktopSetting01"), key, command.error.ifBlank { command.output })
         }
         OperationLog.i(context, "SamsungDesktopSettings", "$key=$serialized")
     }
@@ -160,15 +160,15 @@ class SamsungDesktopSettings(private val context: Context) {
     private fun normalize(type: ValueType, value: Any?): String = when (type) {
         ValueType.INT -> (value as? Number)?.toInt()?.toString()
             ?: value?.toString()?.toIntOrNull()?.toString()
-            ?: error("An integer value is required")
+            ?: error(moe.n4tsu.dextop.localText("uiAnIntegerValueIsRequired"))
         ValueType.LONG -> (value as? Number)?.toLong()?.toString()
             ?: value?.toString()?.toLongOrNull()?.toString()
-            ?: error("A long value is required")
+            ?: error(moe.n4tsu.dextop.localText("uiALongValueIsRequired"))
         ValueType.FLOAT -> (value as? Number)?.toDouble()?.toString()
             ?: value?.toString()?.toDoubleOrNull()?.toString()
-            ?: error("A decimal value is required")
+            ?: error(moe.n4tsu.dextop.localText("uiADecimalValueIsRequired"))
         ValueType.STRING -> value?.toString()?.takeIf { it.isNotBlank() }
-            ?: error("A non-empty value is required")
+            ?: error(moe.n4tsu.dextop.localText("uiANonEmptyValueIsRequired"))
     }
 
     companion object {

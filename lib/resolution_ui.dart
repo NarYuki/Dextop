@@ -76,9 +76,9 @@ extension _ResolutionUi on _HomeScreenState {
                               Expanded(
                                 child: Text(
                                   currentLocalizations().displayMagnification,
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium,
+                                  style: Theme.of(context)
+                                      .textTheme
+                                      .titleMedium,
                                 ),
                               ),
                               Text('$workspaceMagnificationPercent%'),
@@ -120,7 +120,10 @@ extension _ResolutionUi on _HomeScreenState {
                             padding: EdgeInsets.symmetric(horizontal: 8),
                             child: Row(
                               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                              children: [Text('100%'), Text('200%')],
+                              children: [
+                                Text(localText(context, 'ui100')),
+                                Text(localText(context, 'ui200')),
+                              ],
                             ),
                           ),
                           SwitchListTile(

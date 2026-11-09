@@ -253,8 +253,14 @@ static void rumble(int fd, int pad, const struct input_event *event) {
     syscall(SYS_sendto, fd, frame, sizeof(frame), MSG_NOSIGNAL | MSG_DONTWAIT, NULL, 0);
 }
 
+/* USB storage (linux_android_disk.c): writes to /dev/sdX go to Dextop. */
+ssize_t dextop_disk_write(int fd, const void *buffer, size_t count, int *handled);
+
 typedef ssize_t (*write_fn)(int, const void *, size_t);
 ssize_t write(int fd, const void *buffer, size_t count) {
+    int handled = 0;
+    ssize_t written = dextop_disk_write(fd, buffer, count, &handled);
+    if (handled) return written;
     int pad = pad_of(fd);
     if (pad >= 0) {
         const struct input_event *events = buffer;

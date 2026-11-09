@@ -1,3 +1,5 @@
+import '../l10n/inline_text.dart';
+
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -13,27 +15,16 @@ class LinuxMacosPanel extends StatelessWidget {
   Widget build(BuildContext context) => Column(
     crossAxisAlignment: CrossAxisAlignment.stretch,
     children: [
-      LinuxSection(
-        linuxText(
-          context,
-          'macOS 互換（試験的）',
-          'macOS compatibility (experimental)',
-        ),
-      ),
+      LinuxSection(linuxText(context, 'uiMacOSCompatibilityExperimental')),
       LinuxGroup(
         children: [
           M3EListItem(
             leading: const Icon(M3EIcons.info_outline_rounded),
-            headline: linuxText(
-              context,
-              'ローカルの .app を実行',
-              'Run local .app bundles',
-            ),
+            headline: linuxText(context, 'uiRunLocalAppBundles'),
             supportingMaxLines: null,
             supportingText: linuxText(
               context,
-              '互換環境が必要です。対応状況はアプリごとに異なり、SwiftUI と Intel アプリの実行は未対応です。',
-              'Requires a compatibility runtime. Support varies by app; SwiftUI and Intel apps are not supported yet.',
+              'uiRequiresACompatibilityRuntimeSupportVariesByAppSwiftUIAndIntelAppsAreNotSupportedYet',
             ),
           ),
         ],
@@ -41,13 +32,7 @@ class LinuxMacosPanel extends StatelessWidget {
       if (containers.isEmpty)
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Text(
-            linuxText(
-              context,
-              '先に Linux 環境をセットアップしてください。',
-              'Set up a Linux container first.',
-            ),
-          ),
+          child: Text(linuxText(context, 'uiSetUpALinuxContainerFirst')),
         ),
       for (final container in containers)
         _MacosContainer(
@@ -72,7 +57,7 @@ class _MacosContainerState extends State<_MacosContainer> {
   Map<Object?, Object?>? status;
   String? error;
   bool busy = false;
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
 
   @override
   void initState() {
@@ -121,23 +106,23 @@ class _MacosContainerState extends State<_MacosContainer> {
     final value = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(t('macOS アプリを登録', 'Register a macOS app')),
+        title: Text(t('uiRegisterAMacOSApp')),
         content: TextField(
           onChanged: (value) => path = value,
           autofocus: true,
           decoration: InputDecoration(
-            labelText: t('Linux 内の .app のパス', '.app path inside Linux'),
-            hintText: '/root/Applications/Example.app',
+            labelText: t('uiAppPathInsideLinux'),
+            hintText: localText(context, 'uiRootApplicationsExampleApp'),
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(t('キャンセル', 'Cancel')),
+            child: Text(t('uiCancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, path.trim()),
-            child: Text(t('登録', 'Register')),
+            child: Text(t('uiRegister')),
           ),
         ],
       ),
@@ -151,21 +136,16 @@ class _MacosContainerState extends State<_MacosContainer> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(t('登録を解除', 'Remove registration')),
-        content: Text(
-          t(
-            'アプリ本体と保存データは残ります。',
-            'The application bundle and saved data will be kept.',
-          ),
-        ),
+        title: Text(t('uiRemoveRegistration')),
+        content: Text(t('uiTheApplicationBundleAndSavedDataWillBeKept')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(t('キャンセル', 'Cancel')),
+            child: Text(t('uiCancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(t('解除', 'Remove')),
+            child: Text(t('uiRemove5442faae')),
           ),
         ],
       ),
@@ -189,38 +169,26 @@ class _MacosContainerState extends State<_MacosContainer> {
           children: [
             M3EListItem(
               leading: const Icon(M3EIcons.computer_rounded),
-              headline: t('互換環境', 'Compatibility runtime'),
+              headline: t('uiCompatibilityRuntime'),
               supportingMaxLines: null,
               supportingText: status == null
                   ? error == null
-                        ? t('確認中…', 'Checking…')
-                        : t('状態を確認できませんでした', 'Could not check runtime status')
+                        ? t('uiChecking')
+                        : t('uiCouldNotCheckRuntimeStatus')
                   : present
-                  ? t(
-                      '配置済み・アプリの互換性は未検証',
-                      'Components installed; app compatibility is unverified',
-                    )
-                  : t(
-                      '未導入または必要なファイルが不足しています',
-                      'Not installed or required files are missing',
-                    ),
+                  ? t('uiComponentsInstalledAppCompatibilityIsUnverified')
+                  : t('uiNotInstalledOrRequiredFilesAreMissing'),
               trailing: const Icon(M3EIcons.refresh_rounded),
               onTap: busy ? null : _load,
             ),
             if (!present && status != null)
               M3EListItem(
                 leading: const Icon(M3EIcons.download_rounded),
-                headline: t('互換環境をインストール', 'Install compatibility runtime'),
+                headline: t('uiInstallCompatibilityRuntime'),
                 supportingMaxLines: null,
                 supportingText: status?['bundleAvailable'] == true
-                    ? t(
-                        'Dextop に同梱された互換環境を検証して追加します',
-                        'Verify and install the runtime bundled with Dextop',
-                      )
-                    : t(
-                        'このバージョンにはインストール用の互換環境が同梱されていません',
-                        'This version does not include an installable runtime',
-                      ),
+                    ? t('uiVerifyAndInstallTheRuntimeBundledWithDextop')
+                    : t('uiThisVersionDoesNotIncludeAnInstallableRuntime'),
                 trailing: const Icon(M3EIcons.chevron_right_rounded),
                 onTap: busy || status?['bundleAvailable'] != true
                     ? null
@@ -228,11 +196,8 @@ class _MacosContainerState extends State<_MacosContainer> {
               ),
             M3EListItem(
               leading: const Icon(M3EIcons.add_rounded),
-              headline: t('アプリを登録', 'Register an application'),
-              supportingText: t(
-                '登録したアプリはアプリ一覧に表示されます',
-                'Registered apps appear in the application list',
-              ),
+              headline: t('uiRegisterAnApplication'),
+              supportingText: t('uiRegisteredAppsAppearInTheApplicationList'),
               supportingMaxLines: null,
               trailing: const Icon(M3EIcons.chevron_right_rounded),
               onTap: busy || !present ? null : _register,
@@ -244,7 +209,7 @@ class _MacosContainerState extends State<_MacosContainer> {
                 supportingMaxLines: null,
                 supportingText: app['present'] == true
                     ? app['bundle'] as String?
-                    : t('アプリが見つかりません', 'Application bundle not found'),
+                    : t('uiApplicationBundleNotFound'),
                 trailing: const Icon(M3EIcons.remove_circle_outline_rounded),
                 onTap: busy ? null : () => _remove(app),
               ),

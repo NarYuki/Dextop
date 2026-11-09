@@ -55,7 +55,6 @@ class _DextopAppState extends State<DextopApp> {
         'multi_touch_upgrade_notice_acknowledged',
         true,
       );
-      await preferences.setString('last_launched_app_version', '1.1.0');
     }
     if (mounted) {
       setState(() {

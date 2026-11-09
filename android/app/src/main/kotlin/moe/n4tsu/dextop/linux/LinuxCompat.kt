@@ -19,13 +19,17 @@ internal object LinuxCompat {
         "androidMode" to LinuxExecutionMode.android(context),
         "phantomLimited" to LinuxPhantomProcesses.limited(context),
         "phantomFixable" to (context.checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
-            PackageManager.PERMISSION_GRANTED || LinuxContainerClient.privilegeAvailable(context)),
+            PackageManager.PERMISSION_GRANTED || privilegedService(context)),
         "camera" to granted(context, Manifest.permission.CAMERA),
         "microphone" to granted(context, Manifest.permission.RECORD_AUDIO),
         // The whole shared storage may be shown too, besides the picked folders.
         "wholeStorageAvailable" to true,
         "wholeStorage" to android.os.Environment.isExternalStorageManager(),
     )
+
+    /** Standard permissions never use the privileged service, even where one is running. */
+    private fun privilegedService(context: Context) =
+        !LinuxExecutionMode.android(context) && LinuxContainerClient.privilegeAvailable(context)
 
     private fun granted(context: Context, permission: String) =
         context.checkSelfPermission(permission) == PackageManager.PERMISSION_GRANTED
@@ -40,7 +44,7 @@ internal object LinuxCompat {
         if (granted(context, Manifest.permission.WRITE_SECURE_SETTINGS) &&
             runCatching { Settings.Global.putString(context.contentResolver, "settings_enable_monitor_phantom_procs", "false") }
                 .getOrDefault(false) && !LinuxPhantomProcesses.limited(context)) return true
-        if (LinuxContainerClient.privilegeAvailable(context)) {
+        if (privilegedService(context)) {
             runCatching {
                 moe.n4tsu.dextop.PrivilegedAccess("DextopLinuxCompat").execute(
                     "/system/bin/settings", "put", "global", "settings_enable_monitor_phantom_procs", "false")
@@ -54,7 +58,7 @@ internal object LinuxCompat {
     private fun permissionOf(kind: String) = when (kind) {
         "camera" -> Manifest.permission.CAMERA
         "microphone" -> Manifest.permission.RECORD_AUDIO
-        else -> throw IllegalArgumentException("Unknown permission")
+        else -> throw IllegalArgumentException(moe.n4tsu.dextop.localText("uiUnknownPermission"))
     }
 
     /** With privilege the grant needs no dialog, as for USB devices; false when Android must ask. Off the main thread. */

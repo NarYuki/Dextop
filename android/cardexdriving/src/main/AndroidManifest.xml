@@ -9,7 +9,7 @@
         android:allowBackup="false"
         android:icon="@mipmap/ic_cardex_driving"
         android:roundIcon="@mipmap/ic_cardex_driving"
-        android:label="Dextop・Driving">
+        android:label="@string/companion_driving_name">
         <meta-data
             android:name="com.google.android.gms.car.application"
             android:resource="@xml/automotive_app_desc" />

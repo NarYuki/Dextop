@@ -116,7 +116,7 @@ internal object LinuxContainerClient {
             if (!epochs.owns(attempt)) return@onMain
             val service = binder?.takeIf { it.isBinderAlive }?.let(ILinuxContainerService.Stub::asInterface)
             if (service == null) {
-                failConnection(this, IllegalStateException("Linux service binder is unavailable"))
+                failConnection(this, IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxServiceBinderIsUnavailable")))
                 return@onMain
             }
             candidate = service
@@ -129,9 +129,9 @@ internal object LinuxContainerClient {
                     val report = service.probe()
                     val uid = Regex("uid=(\\d+)").find(report)?.groupValues?.get(1)?.toIntOrNull()
                     check(if (attempt.android) uid == android.os.Process.myUid() else uid in setOf(0, 2000)) {
-                        "Linux execution UID does not match the selected mode"
+                        moe.n4tsu.dextop.localText("uiLinuxExecutionUIDDoesNotMatchTheSelectedMode")
                     }
-                    check(epochs.owns(attempt)) { "Linux connection changed during initialization" }
+                    check(epochs.owns(attempt)) { moe.n4tsu.dextop.localText("uiLinuxConnectionChangedDuringInitialization") }
                     val stale = version != LinuxContainerService.PROTOCOL_VERSION || !code.contains(context.applicationInfo.sourceDir)
                     if (stale) {
                         if (protocolRestarts++ == 0) {
@@ -147,17 +147,17 @@ internal object LinuxContainerClient {
                             }
                             return@execute
                         }
-                        error("Linux service protocol or APK version does not match; reconnect Dextop")
+                        error(moe.n4tsu.dextop.localText("uiLinuxServiceProtocolOrAPKVersionDoesNotMatchReconnectDextop"))
                     }
                     service.initialize(context.applicationInfo.nativeLibraryDir, runtimeCallback(attempt))
-                    check(epochs.owns(attempt)) { "Linux connection changed during initialization" }
+                    check(epochs.owns(attempt)) { moe.n4tsu.dextop.localText("uiLinuxConnectionChangedDuringInitialization") }
                     runCatching { LinuxKeyring.publish(context, service) }
                         .onFailure { Log.w(TAG, "Cannot hand over keyring passwords", it) }
                 }.onSuccess {
                     onMain {
                         if (!epochs.owns(attempt)) return@onMain
                         if (LinuxExecutionMode.android(context) != attempt.android) {
-                            failConnection(this, IllegalStateException("Linux execution mode changed; reconnect"))
+                            failConnection(this, IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxExecutionModeChangedReconnect")))
                             return@onMain
                         }
                         binding = false
@@ -191,12 +191,12 @@ internal object LinuxContainerClient {
             binding = false
             activeConnection = null
             appContext?.let { releaseBinding(it, this) }
-            failPending(IllegalStateException("Linux runtime disconnected; retry the operation"))
+            failPending(IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxRuntimeDisconnectedRetryTheOperation")))
             dispatch { it.onConnectionChanged(false) }
         }
         override fun onBindingDied(name: ComponentName?) = onServiceDisconnected(name)
         override fun onNullBinding(name: ComponentName?) = onMain {
-            failConnection(this, IllegalStateException("Linux runtime returned an empty binding"))
+            failConnection(this, IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxRuntimeReturnedAnEmptyBinding")))
         }
     }
 
@@ -257,7 +257,7 @@ internal object LinuxContainerClient {
                     val burst = appContext?.getSystemService(android.media.AudioManager::class.java)
                         ?.getProperty(android.media.AudioManager.PROPERTY_OUTPUT_FRAMES_PER_BUFFER)
                     players[id] = LinuxAudioPlayer(id, port, burst) {
-                        check(remote === service && !epochs.switching) { "Linux service disconnected" }
+                        check(remote === service && !epochs.switching) { moe.n4tsu.dextop.localText("uiLinuxServiceDisconnected") }
                         service.openAudioStream(id)
                     }
                 } }
@@ -333,14 +333,14 @@ internal object LinuxContainerClient {
         // Covers every provider and the entire handshake, including rejected/late callbacks.
         mainHandler.postDelayed({
             if (epochs.owns(attempt) && binding) failConnection(connection,
-                IllegalStateException("Linux runtime did not connect within 15 seconds; retry the operation"))
+                IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxRuntimeDidNotConnectWithin15SecondsRetryTheOperation")))
         }, 15_000)
         when {
             androidMode -> runCatching {
                 check(context.applicationContext.bindService(
                     android.content.Intent(context, LinuxRuntimeService::class.java), connection,
                     Context.BIND_AUTO_CREATE or Context.BIND_IMPORTANT or Context.BIND_INCLUDE_CAPABILITIES
-                )) { "Cannot bind Android Linux runtime" }
+                )) { moe.n4tsu.dextop.localText("uiCannotBindAndroidLinuxRuntime") }
             }.onFailure { failConnection(connection, it) }
             embedded -> {
                 val binder = embeddedBinder?.takeIf { it.isBinderAlive }
@@ -352,8 +352,8 @@ internal object LinuxContainerClient {
                             context.applicationInfo.sourceDir, context.applicationInfo.nativeLibraryDir,
                             moe.n4tsu.dextop.privilege.PublisherKeys.issue(context, moe.n4tsu.dextop.privilege.PublisherKeys.LINUX))
                         val result = DistributionPrivilegeRuntime.execute(arrayOf("/system/bin/sh", "-c", command))
-                            ?: error("Dextop built-in access is not running")
-                        check(result.exitCode == 0) { "Linux service launch failed: ${result.error}" }
+                            ?: error(moe.n4tsu.dextop.localText("uiDextopBuiltInAccessIsNotRunning"))
+                        check(result.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLinuxServiceLaunchFailed0"), result.error) }
                     }.onFailure { error -> onMain { failConnection(connection, error) } }
                 }
             }
@@ -364,11 +364,11 @@ internal object LinuxContainerClient {
 
     /** Explicit mode changes stop sessions only after the user confirms. Storage is never removed. */
     fun switchExecution(context: Context, mode: String, stop: Boolean, done: () -> Unit, failed: (Throwable) -> Unit): Unit = onMain {
-        if (mode !in setOf(LinuxExecutionMode.PRIVILEGED, LinuxExecutionMode.ANDROID)) {
-            failed(IllegalArgumentException("Unknown Linux execution mode")); return@onMain
+        if (mode != LinuxExecutionMode.ANDROID && (mode != LinuxExecutionMode.PRIVILEGED || !LinuxExecutionMode.privilegedSupported)) {
+            failed(IllegalArgumentException(moe.n4tsu.dextop.localText("uiUnknownLinuxExecutionMode"))); return@onMain
         }
         if (epochs.switching) {
-            failed(IllegalStateException("Linux execution mode is already changing")); return@onMain
+            failed(IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxExecutionModeIsAlreadyChanging"))); return@onMain
         }
         if (mode == LinuxExecutionMode.read(context)) { done(); return@onMain }
         val oldConnection = activeConnection
@@ -379,20 +379,20 @@ internal object LinuxContainerClient {
         remote = null
         binding = false
         activeConnection = null
-        failPending(IllegalStateException("Linux execution mode is changing; retry the operation"))
+        failPending(IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxExecutionModeIsChangingRetryTheOperation")))
         // A blocked Binder call must not leave the settings page loading forever.
         mainHandler.postDelayed({
             if (epochs.finishSwitch(switchId)) {
                 oldConnection?.let { releaseBinding(context, it) }
-                failed(IllegalStateException("Stopping the previous Linux runtime timed out; the execution mode was not changed"))
+                failed(IllegalStateException(moe.n4tsu.dextop.localText("uiStoppingThePreviousLinuxRuntimeTimedOutTheExecutionModeWasNotChanged")))
                 dispatch { it.onConnectionChanged(false) }
             }
         }, 45_000)
         controlCalls.execute {
             runCatching {
-                fun currentSwitch() = check(epochs.ownsSwitch(switchId)) { "Linux mode switch was cancelled or timed out" }
+                fun currentSwitch() = check(epochs.ownsSwitch(switchId)) { moe.n4tsu.dextop.localText("uiLinuxModeSwitchWasCancelledOrTimedOut") }
                 currentSwitch()
-                check(!LinuxStoreJobs.hasActiveJobs()) { "Wait for Store operations to finish before switching Linux execution mode" }
+                check(!LinuxStoreJobs.hasActiveJobs()) { moe.n4tsu.dextop.localText("uiWaitForStoreOperationsToFinishBeforeSwitchingLinuxExecutionMode") }
                 if (current != null) {
                     val list = org.json.JSONArray(current.listContainers())
                     val active = (0 until list.length()).map(list::getJSONObject).filter {
@@ -400,9 +400,9 @@ internal object LinuxContainerClient {
                             it.optBoolean("integrationsRunning") || it.optString("state") in setOf("installing", "updating")
                     }
                     check(active.none { it.optString("state") in setOf("installing", "updating") }) {
-                        "Wait for Linux installation or repair to finish before changing execution mode"
+                        moe.n4tsu.dextop.localText("uiWaitForLinuxInstallationOrRepairToFinishBeforeChangingExecutionMode")
                     }
-                    check(active.isEmpty() || stop) { "Linux sessions are running; confirm stopping them before switching modes" }
+                    check(active.isEmpty() || stop) { moe.n4tsu.dextop.localText("uiLinuxSessionsAreRunningConfirmStoppingThemBeforeSwitchingModes") }
                     (if (stop) (0 until list.length()).map(list::getJSONObject) else active).forEach { item ->
                         currentSwitch()
                         current.resetSession(item.getString("id"), true)
@@ -448,17 +448,17 @@ internal object LinuxContainerClient {
     /** Runs [action] on a background thread once connected; [onError] runs on the main thread. */
     fun <T> call(context: Context, action: (ILinuxContainerService) -> T, onResult: (T) -> Unit, onError: (Throwable) -> Unit): Unit = onMain {
         if (epochs.switching) {
-            onError(IllegalStateException("Linux execution mode is changing; retry the operation"))
+            onError(IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxExecutionModeIsChangingRetryTheOperation")))
             return@onMain
         }
         val wrapped: (ILinuxContainerService) -> Unit = { service ->
             calls.execute {
                 runCatching {
-                    check(LinuxContainerClient.service() === service) { "Linux execution mode or connection changed; retry the operation" }
+                    check(LinuxContainerClient.service() === service) { moe.n4tsu.dextop.localText("uiLinuxExecutionModeOrConnectionChangedRetryTheOperation") }
                     action(service)
                 }.onSuccess { result -> mainHandler.post {
                     LinuxCallResult.deliver(result, LinuxContainerClient.service() === service, onResult) {
-                        onError(IllegalStateException("Linux execution mode or connection changed; retry the operation"))
+                        onError(IllegalStateException(moe.n4tsu.dextop.localText("uiLinuxExecutionModeOrConnectionChangedRetryTheOperation")))
                     }
                 } }.onFailure { error -> mainHandler.post { onError(error) } }
             }
@@ -466,7 +466,7 @@ internal object LinuxContainerClient {
         val service = service()
         if (service != null) { wrapped(service); return@onMain }
         if (!privilegeAvailable(context)) {
-            onError(IllegalStateException("Complete Dextop setup to enable built-in access"))
+            onError(IllegalStateException(moe.n4tsu.dextop.localText("uiCompleteDextopSetupToEnableBuiltInAccess")))
             return@onMain
         }
         pending += PendingCall(wrapped, onError)

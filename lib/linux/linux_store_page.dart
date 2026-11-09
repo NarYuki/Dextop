@@ -202,7 +202,7 @@ class LinuxStore extends ChangeNotifier {
       if (!supported) {
         apps = const [];
         throw StateError(
-          'Store supports Debian and Ubuntu only. Arch is not supported.',
+          currentUiText('uiStoreSupportsDebianAndUbuntuOnlyArchIsNotSupported'),
         );
       }
       // The cached catalog and the installed state do not wait for each other or for the
@@ -290,9 +290,9 @@ class LinuxStore extends ChangeNotifier {
                       (page?['total'] as num?)?.toInt(),
                     ),
                   );
-                  if (page == null) throw StateError('Missing catalog page');
+                  if (page == null) throw StateError(currentUiText('uiMissingCatalogPage'));
                   if (page['more'] != true) break;
-                  if (batch.isEmpty) throw StateError('Incomplete catalog');
+                  if (batch.isEmpty) throw StateError(currentUiText('uiIncompleteCatalog'));
                   offset += batch.length;
                 }
                 return snapshot;
@@ -735,14 +735,14 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
     builder: (sheet) => ListenableBuilder(
       listenable: store,
       builder: (context, _) {
-        String t(String ja, String en) => linuxText(context, ja, en);
+        String t(String key) => linuxText(context, key);
         final theme = Theme.of(context);
         final entries = store.jobs.entries.toList();
         String action(String value) => switch (value) {
-          'remove' => t('削除', 'Remove'),
-          'upgrade' => t('アップデート', 'Update'),
-          'repair' => t('修復', 'Repair'),
-          _ => t('インストール', 'Install'),
+          'remove' => t('uiRemove'),
+          'upgrade' => t('uiUpdate'),
+          'repair' => t('uiRepair'),
+          _ => t('uiInstall'),
         };
         return Padding(
           padding: const EdgeInsets.fromLTRB(24, 0, 16, 24),
@@ -750,16 +750,13 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Text(
-                t('インストールキュー', 'Install queue'),
-                style: theme.textTheme.titleLarge,
-              ),
+              Text(t('uiInstallQueue'), style: theme.textTheme.titleLarge),
               const SizedBox(height: 12),
               if (entries.isEmpty)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   child: Text(
-                    t('実行中・待機中の処理はありません', 'Nothing is running or waiting'),
+                    t('uiNothingIsRunningOrWaiting'),
                     style: theme.textTheme.bodyMedium,
                   ),
                 ),
@@ -780,20 +777,14 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              store.jobName(
-                                entry.key,
-                                all: t('すべてのパッケージ', 'All packages'),
-                              ),
+                              store.jobName(entry.key, all: t('uiAllPackages')),
                               style: theme.textTheme.titleSmall,
                             ),
                             Text(
                               [
                                 action(entry.value.action),
                                 if (entry.value.queued)
-                                  inlineFormat(
-                                    t('待機中 ({0} 番目)', 'Waiting (#{0})'),
-                                    [index + 1],
-                                  )
+                                  inlineFormat(t('uiWaiting0'), [index + 1])
                                 else if (entry.value.percent >= 0)
                                   entry.value.percentLabel,
                                 if (!entry.value.queued &&
@@ -802,7 +793,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                                 if (!entry.value.queued &&
                                     entry.value.percent < 0 &&
                                     entry.value.line.isEmpty)
-                                  t('準備しています', 'Preparing'),
+                                  t('uiPreparingb266c1c6'),
                               ].join(' · '),
                               style: theme.textTheme.bodySmall,
                               maxLines: 2,
@@ -815,7 +806,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                         M3EIconButton(
                           variant: M3EIconButtonVariant.standard,
                           icon: const Icon(M3EIcons.close_rounded),
-                          tooltip: t('取り消す', 'Cancel'),
+                          tooltip: t('uiCancel47dfc0fc'),
                           onPressed: () => store.cancel(entry.key),
                         ),
                     ],
@@ -835,7 +826,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
     List<String> packages,
     String output,
   ) async {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final external = packages.any((p) => p.contains(':'));
     final issues = external
         ? const <(String, String)>[]
@@ -847,7 +838,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
       }
       return;
     }
-    showStoreLog(context, t('失敗しました', 'Failed'), output);
+    showStoreLog(context, t('uiFailed'), output);
   }
 
   /// "What is in which state; repair it?" for what [LinuxStore.diagnose] found.
@@ -856,37 +847,24 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
     bool failed = false,
   }) async {
     if (!mounted) return false;
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final onlyLocked = issues.every((issue) => issue.$1 == 'locked');
     String describe((String, String) issue) {
       final detail = issue.$2.trim();
       return switch (issue.$1) {
         'interrupted' =>
           detail.isEmpty
-              ? t(
-                  '前回のパッケージ処理が途中で止まっています。',
-                  'An earlier package operation was cut off.',
-                )
+              ? t('uiAnEarlierPackageOperationWasCutOff')
               : inlineFormat(
-                  t(
-                    '前回のパッケージ処理が途中で止まっています（未完了: {0}）。',
-                    'An earlier package operation was cut off (unfinished: {0}).',
-                  ),
+                  t('uiAnEarlierPackageOperationWasCutOffUnfinished0'),
                   [detail],
                 ),
         'broken' =>
           detail.isEmpty
-              ? t('パッケージの依存関係が壊れています。', 'Package dependencies are broken.')
-              : inlineFormat(
-                  t(
-                    'パッケージの依存関係が壊れています（{0}）。',
-                    'Package dependencies are broken ({0}).',
-                  ),
-                  [detail],
-                ),
+              ? t('uiPackageDependenciesAreBroken')
+              : inlineFormat(t('uiPackageDependenciesAreBroken0'), [detail]),
         _ => t(
-          '別のパッケージ管理(ソフトウェアセンターなど)が動作中です。終わるまで待ってから続けます。',
-          'Another package manager (a software centre, for example) is working. Dextop waits for it to finish.',
+          'uiAnotherPackageManagerASoftwareCentreForExampleIsWorkingDextopWaitsForItToFinish',
         ),
       };
     }
@@ -897,33 +875,32 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
         builder: (dialog) => M3EDialog(
           icon: const Icon(M3EIcons.build_rounded),
           title: failed
-              ? t('インストールできませんでした', 'The installation failed')
+              ? t('uiTheInstallationFailed')
               : onlyLocked
-              ? t('パッケージ管理が使用中です', 'The package manager is busy')
-              : t('パッケージの修復が必要です', 'Packages need a repair'),
+              ? t('uiThePackageManagerIsBusy')
+              : t('uiPackagesNeedARepair'),
           content: Text(
             [
               for (final issue in issues) describe(issue),
               if (!onlyLocked)
                 t(
-                  '修復(中断した処理の完了と依存関係の修正)をしてから続けますか？',
-                  'Repair them (finish the cut-off operation and fix dependencies) and go on?',
+                  'uiRepairThemFinishTheCutOffOperationAndFixDependenciesAndGoOn',
                 ),
             ].join('\n\n'),
           ),
           actions: [
             M3EButton.text(
               onPressed: () => Navigator.pop(dialog, false),
-              child: Text(t('キャンセル', 'Cancel')),
+              child: Text(t('uiCancel')),
             ),
             M3EButton.filled(
               onPressed: () => Navigator.pop(dialog, true),
               child: Text(
                 onlyLocked
-                    ? t('待って続ける', 'Wait and go on')
+                    ? t('uiWaitAndGoOn')
                     : failed
-                    ? t('修復して再試行', 'Repair and retry')
-                    : t('修復して続ける', 'Repair and go on'),
+                    ? t('uiRepairAndRetry')
+                    : t('uiRepairAndGoOn'),
               ),
             ),
           ],
@@ -935,7 +912,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
 
   void _finished(String action, List<String> packages, bool ok, String output) {
     if (!mounted) return;
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final app = packages.length == 1 ? store.byPackage(packages.first) : null;
     final name =
         app?.name ??
@@ -953,8 +930,8 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
       case 'install':
         M3ESnackbar.show(
           context,
-          message: inlineFormat(t('{0} をインストールしました', '{0} installed'), [name]),
-          actionLabel: app == null ? null : t('ホーム画面に追加', 'Add to Home'),
+          message: inlineFormat(t('ui0Installed'), [name]),
+          actionLabel: app == null ? null : t('uiAddToHome'),
           onAction: app == null ? null : () => addToHome(context, store, app),
           // With an action the snackbar would otherwise stay until dismissed.
           duration: const Duration(seconds: 6),
@@ -962,16 +939,16 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
       case 'remove':
         M3ESnackbar.show(
           context,
-          message: inlineFormat(t('{0} を削除しました', '{0} removed'), [name]),
+          message: inlineFormat(t('ui0Removed'), [name]),
         );
       default:
-        M3ESnackbar.show(context, message: t('アップデートしました', 'Updated'));
+        M3ESnackbar.show(context, message: t('uiUpdated'));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     return ListenableBuilder(
       listenable: store,
       builder: (context, _) {
@@ -1004,7 +981,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
               M3EIconButton(
                 variant: M3EIconButtonVariant.standard,
                 icon: const Icon(M3EIcons.settings_rounded),
-                tooltip: t('信頼するストアソース', 'Trusted Store sources'),
+                tooltip: t('uiTrustedStoreSources'),
                 onPressed: () async {
                   await Navigator.of(context).push(
                     MaterialPageRoute<void>(
@@ -1022,9 +999,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                         ? M3EIcons.close_rounded
                         : M3EIcons.search_rounded,
                   ),
-                  tooltip: searching
-                      ? t('検索を閉じる', 'Close search')
-                      : t('検索', 'Search'),
+                  tooltip: searching ? t('uiCloseSearch') : t('uiSearch'),
                   onPressed: () => setState(() {
                     searching = !searching;
                     if (!searching) search.clear();
@@ -1038,14 +1013,14 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                   label: Text('${store.jobs.length}'),
                   child: const Icon(M3EIcons.download_rounded),
                 ),
-                tooltip: t('インストールキュー', 'Install queue'),
+                tooltip: t('uiInstallQueue'),
                 onPressed: _showQueue,
               ),
               if (widget.containers.length > 1)
                 M3EIconButton(
                   variant: M3EIconButtonVariant.standard,
                   icon: const Icon(M3EIcons.dns_rounded),
-                  tooltip: t('コンテナ', 'Container'),
+                  tooltip: t('uiContainer'),
                   onPressed: _chooseContainer,
                 ),
             ],
@@ -1074,7 +1049,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                                 expandOnFocus: false,
                                 margin: 0,
                                 focusedMargin: 0,
-                                hintText: t('Linuxアプリを検索', 'Search Linux apps'),
+                                hintText: t('uiSearchLinuxApps'),
                                 leading: const Icon(M3EIcons.search_rounded),
                                 showClearButton: true,
                               ),
@@ -1086,20 +1061,20 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                       onTabSelected: (i) => setState(() => tab = i),
                       tabs: [
                         M3ETab(
-                          label: t('おすすめ', 'Recommended'),
+                          label: t('uiRecommended'),
                           icon: const Icon(M3EIcons.storefront_rounded),
                         ),
                         M3ETab(
-                          label: t('インストール済み', 'Installed'),
+                          label: t('uiInstalled'),
                           icon: const Icon(M3EIcons.download_done_rounded),
                         ),
                         M3ETab(
-                          label: t('アップデート', 'Updates'),
+                          label: t('uiUpdates'),
                           icon: const Icon(M3EIcons.system_update_rounded),
                           badgeCount: updates.isEmpty ? null : updates.length,
                         ),
                         M3ETab(
-                          label: 'Windows',
+                          label: localText(context, 'uiWindowsPlatform'),
                           icon: const Icon(M3EIcons.window_rounded),
                         ),
                       ],
@@ -1129,11 +1104,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
               if (store.sourceErrors.isNotEmpty)
                 M3EListItem(
                   supportingMaxLines: null,
-                  headline: linuxText(
-                    context,
-                    '一部のソースを読み込めません',
-                    'Some sources could not be loaded',
-                  ),
+                  headline: linuxText(context, 'uiSomeSourcesCouldNotBeLoaded'),
                   supportingText: store.sourceErrors.join('\n'),
                   onTap: () => showStoreLog(
                     context,
@@ -1156,7 +1127,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
 
   /// The sidebar of a tablet-sized window: search, the sections and the categories.
   Widget _sidebar(int updateCount) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final theme = Theme.of(context);
     Widget item(
       IconData icon,
@@ -1181,14 +1152,14 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
             expandOnFocus: false,
             margin: 0,
             focusedMargin: 0,
-            hintText: t('Linuxアプリを検索', 'Search Linux apps'),
+            hintText: t('uiSearchLinuxApps'),
             leading: const Icon(M3EIcons.search_rounded),
             showClearButton: true,
           ),
           const SizedBox(height: 16),
           item(
             M3EIcons.storefront_rounded,
-            t('おすすめ', 'Recommended'),
+            t('uiRecommended'),
             selected: tab == 0 && category == null,
             onTap: () => setState(() {
               tab = 0;
@@ -1197,27 +1168,27 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
           ),
           item(
             M3EIcons.download_done_rounded,
-            t('インストール済み', 'Installed'),
+            t('uiInstalled'),
             selected: tab == 1,
             onTap: () => setState(() => tab = 1),
           ),
           item(
             M3EIcons.system_update_rounded,
-            t('アップデート', 'Updates'),
+            t('uiUpdates'),
             selected: tab == 2,
             badge: updateCount == 0 ? null : updateCount,
             onTap: () => setState(() => tab = 2),
           ),
           item(
             M3EIcons.window_rounded,
-            t('Windows アプリ', 'Windows apps'),
+            t('uiWindowsApps'),
             selected: tab == 3,
             onTap: () => setState(() => tab = 3),
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
             child: Text(
-              t('カテゴリ', 'Categories'),
+              t('uiCategories'),
               style: theme.textTheme.titleSmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -1254,7 +1225,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
 
   /// Shown before the catalog while enabled sources still need their tools in this container.
   Widget _setup() {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final theme = Theme.of(context);
     return ListView(
       padding: const EdgeInsets.all(24),
@@ -1266,15 +1237,14 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
         ),
         const SizedBox(height: 16),
         Text(
-          t('ストアのセットアップ', 'Store setup'),
+          t('uiStoreSetup'),
           style: theme.textTheme.headlineSmall,
           textAlign: TextAlign.center,
         ),
         const SizedBox(height: 8),
         Text(
           t(
-            '有効にした配布元のツールがこの Linux にまだありません。準備すると、そのアプリが Store に表示されます。',
-            'The tools of the enabled sources are not in this Linux yet. Set them up to list their apps.',
+            'uiTheToolsOfTheEnabledSourcesAreNotInThisLinuxYetSetThemUpToListTheirApps',
           ),
           textAlign: TextAlign.center,
         ),
@@ -1285,14 +1255,11 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
             headline: name == 'flathub' ? 'Flathub' : 'deb-get',
             supportingText: store.preparing.containsKey(name)
                 ? (store.preparing[name]!.isEmpty
-                      ? t('準備しています…', 'Setting up…')
+                      ? t('uiSettingUp')
                       : store.preparing[name]!)
                 : name == 'flathub'
-                ? t(
-                    'Flatpak をインストールし Flathub を追加',
-                    'Install Flatpak and add Flathub',
-                  )
-                : t('deb-get の定義を取得', 'Fetch deb-get definitions'),
+                ? t('uiInstallFlatpakAndAddFlathub')
+                : t('uiFetchDebGetDefinitions'),
             leading: Icon(
               name == 'flathub'
                   ? M3EIcons.apps_rounded
@@ -1306,7 +1273,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                   )
                 : M3EButton.filled(
                     onPressed: () => store.prepareSource(name),
-                    child: Text(t('準備', 'Set up')),
+                    child: Text(t('uiSetUp7ed05dac')),
                   ),
           ),
         const SizedBox(height: 16),
@@ -1319,11 +1286,11 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                       store.prepareSource(name);
                     }
                   },
-            child: Text(t('すべて準備', 'Set up all')),
+            child: Text(t('uiSetUpAll')),
           ),
         M3EButton.text(
           onPressed: () => setState(() => store.setupSkipped = true),
-          child: Text(t('APT だけで続ける', 'Continue with APT only')),
+          child: Text(t('uiContinueWithAPTOnly')),
         ),
       ],
     );
@@ -1332,17 +1299,17 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
   Widget _body(List<StoreApp> updates) => _catalogBody(updates);
 
   Widget _catalogProgress() {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final name = switch (store.catalogSource) {
       'flathub' => 'Flathub',
       final String name => name,
       _ => '',
     };
     final status = name.isEmpty
-        ? t('ストアを準備しています', 'Preparing the Store')
+        ? t('uiPreparingTheStore')
         : store.catalogRefreshing
-        ? t('$nameを更新しています', 'Updating $name')
-        : t('$nameを読み込んでいます', 'Loading $name');
+        ? inlineFormat(t('uiUpdating0'), [name])
+        : inlineFormat(t('uiLoading0'), [name]);
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -1364,7 +1331,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
   }
 
   Widget _catalogBody(List<StoreApp> updates) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     if (store.loading) return Center(child: _catalogProgress());
     if (store.unprepared.isNotEmpty && !store.setupSkipped) return _setup();
     if (store.error != null && store.apps.isEmpty) {
@@ -1386,7 +1353,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
         if (list.isEmpty) {
           return _Empty(
             icon: M3EIcons.inventory_2_rounded,
-            text: t('Storeからインストールしたアプリはまだありません', 'No apps installed yet'),
+            text: t('uiNoAppsInstalledYet'),
           );
         }
         return _list(list);
@@ -1412,8 +1379,8 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                     Expanded(
                       child: Text(
                         store.updates.isEmpty
-                            ? t('すべて最新です', 'Everything is up to date')
-                            : t('アップデートがあります', 'Updates available'),
+                            ? t('uiEverythingIsUpToDate')
+                            : t('uiUpdatesAvailable'),
                         style: Theme.of(context).textTheme.titleMedium,
                       ),
                     ),
@@ -1423,7 +1390,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                           : M3EButton.filled(
                               icon: const Icon(M3EIcons.upgrade_rounded),
                               onPressed: () => store.run('upgrade', const []),
-                              label: Text(t('すべて更新', 'Update all')),
+                              label: Text(t('uiUpdateAll')),
                             ),
                   ],
                 ),
@@ -1434,15 +1401,12 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                 hasScrollBody: false,
                 child: _Empty(
                   icon: M3EIcons.check_circle_outline_rounded,
-                  text: t('更新が必要なパッケージはありません', 'No packages need updating'),
+                  text: t('uiNoPackagesNeedUpdating'),
                 ),
               ),
-            if (apps.isNotEmpty) ...[
-              _header(t('アプリ', 'Apps')),
-              _sliverList(apps),
-            ],
+            if (apps.isNotEmpty) ...[_header(t('uiApps')), _sliverList(apps)],
             if (others.isNotEmpty) ...[
-              _header(t('システムとライブラリ', 'System and libraries')),
+              _header(t('uiSystemAndLibraries')),
               SliverPadding(
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 sliver: M3EList.sliver(
@@ -1461,7 +1425,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                           : M3EButton.tonal(
                               onPressed: () =>
                                   store.run('upgrade', [update.name]),
-                              child: Text(t('更新', 'Update')),
+                              child: Text(t('uiUpdateb96ba6bc')),
                             ),
                     );
                   },
@@ -1492,7 +1456,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
                   child: Text(
-                    t('カテゴリ', 'Categories'),
+                    t('uiCategories'),
                     style: Theme.of(context).textTheme.titleMedium,
                   ),
                 ),
@@ -1527,14 +1491,14 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
             if (query.isEmpty &&
                 category == null &&
                 recommended.isNotEmpty) ...[
-              _header(t('おすすめ', 'Recommended')),
+              _header(t('uiRecommended')),
               _sliverList(recommended),
-              _header(t('すべてのアプリ', 'All apps')),
+              _header(t('uiAllApps')),
             ],
             if (query.isNotEmpty) _searchOptions(),
             _sliverList(filtered),
             if (query.isNotEmpty && store.searchAllPackages) ...[
-              _header(t('その他の apt パッケージ', 'Other apt packages')),
+              _header(t('uiOtherAptPackages')),
               AptPackagesSliver(
                 store: store,
                 query: query,
@@ -1542,7 +1506,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
               ),
             ],
             if (query.isNotEmpty && store.searchWindows) ...[
-              _header(t('Windows アプリ', 'Windows apps')),
+              _header(t('uiWindowsApps')),
               WindowsResultsSliver(store: store, query: query, limit: 10),
             ],
           ],
@@ -1552,7 +1516,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
 
   /// What a search also covers besides the distribution's applications.
   Widget _searchOptions() {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final side = linuxWide(context) ? 24.0 : 16.0;
     return SliverToBoxAdapter(
       child: Padding(
@@ -1563,7 +1527,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
           children: [
             if (store.sources['apt'] == true)
               M3EChip(
-                label: t('すべての apt パッケージ', 'All apt packages'),
+                label: t('uiAllAptPackages'),
                 type: M3EChipType.filter,
                 selected: store.searchAllPackages,
                 onPressed: () => setState(
@@ -1571,7 +1535,7 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                 ),
               ),
             M3EChip(
-              label: t('Windows アプリ (winget)', 'Windows apps (winget)'),
+              label: t('uiWindowsAppsWinget'),
               type: M3EChipType.filter,
               selected: store.searchWindows,
               onPressed: () =>
@@ -1665,16 +1629,16 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
 
 String categoryName(BuildContext context, String category) {
   return switch (category) {
-    'Office' => localText(context, 'オフィス', 'Office'),
-    'Graphics' => localText(context, 'グラフィックス', 'Graphics'),
-    'AudioVideo' => localText(context, '音楽と動画', 'Audio & Video'),
-    'Network' => localText(context, 'インターネット', 'Internet'),
-    'Development' => localText(context, '開発', 'Development'),
-    'Education' => localText(context, '教育', 'Education'),
-    'Game' => localText(context, 'ゲーム', 'Games'),
-    'Science' => localText(context, '科学', 'Science'),
-    'Utility' => localText(context, 'ユーティリティ', 'Utilities'),
-    'System' => localText(context, 'システム', 'System'),
+    'Office' => localText(context, 'uiOffice'),
+    'Graphics' => localText(context, 'uiGraphics'),
+    'AudioVideo' => localText(context, 'uiAudioVideo'),
+    'Network' => localText(context, 'uiInternet'),
+    'Development' => localText(context, 'uiDevelopment'),
+    'Education' => localText(context, 'uiEducation'),
+    'Game' => localText(context, 'uiGames'),
+    'Science' => localText(context, 'uiScience'),
+    'Utility' => localText(context, 'uiUtilities'),
+    'System' => localText(context, 'uiSystem'),
     _ => category,
   };
 }
@@ -1728,7 +1692,7 @@ class StoreAppTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final job = store.jobs[app.package];
     final installed = store.installed.contains(app.package);
     final Widget trailing;
@@ -1737,19 +1701,19 @@ class StoreAppTile extends StatelessWidget {
     } else if (installed && store.upgradable.contains(app.package)) {
       trailing = M3EButton.filled(
         onPressed: () => store.run('upgrade', [app.package]),
-        child: Text(t('更新', 'Update')),
+        child: Text(t('uiUpdateb96ba6bc')),
       );
     } else if (installed) {
       trailing = M3EButton.tonal(
         onPressed: store.entryFor(app) == null
             ? null
             : () => openStoreApp(context, store, app),
-        child: Text(t('開く', 'Open')),
+        child: Text(t('uiOpen')),
       );
     } else {
       trailing = M3EButton.filled(
         onPressed: () => store.run('install', [app.package]),
-        child: Text(t('入手', 'Get')),
+        child: Text(t('uiGet')),
       );
     }
     return M3EListItem(
@@ -1805,7 +1769,7 @@ void showStoreLog(BuildContext context, String title, String output) {
       actions: [
         M3EButton.text(
           onPressed: () => Navigator.pop(context),
-          child: const Text('OK'),
+          child: Text(localText(context, 'uiOK')),
         ),
       ],
     ),
@@ -1852,7 +1816,7 @@ class StoreAppPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final theme = Theme.of(context);
     return ListenableBuilder(
       listenable: store,
@@ -1936,7 +1900,7 @@ class StoreAppPage extends StatelessWidget {
                                   onPressed: entry == null
                                       ? null
                                       : () => openStoreApp(context, store, app),
-                                  label: Text(t('開く', 'Open')),
+                                  label: Text(t('uiOpen')),
                                 ),
                               ),
                               const SizedBox(width: 8),
@@ -1949,7 +1913,7 @@ class StoreAppPage extends StatelessWidget {
                                   onPressed: entry == null
                                       ? null
                                       : () => addToHome(context, store, app),
-                                  label: Text(t('ホーム画面に追加', 'Add to Home')),
+                                  label: Text(t('uiAddToHome')),
                                 ),
                               ),
                             ],
@@ -1961,14 +1925,10 @@ class StoreAppPage extends StatelessWidget {
                                 M3EListItem(
                                   supportingMaxLines: null,
                                   headline: upgradable
-                                      ? t('アップデートがあります', 'Update available')
-                                      : t(
-                                          '開発元の最新版に更新',
-                                          'Update to the latest upstream version',
-                                        ),
+                                      ? t('uiUpdateAvailable')
+                                      : t('uiUpdateToTheLatestUpstreamVersion'),
                                   supportingText: t(
-                                    '新しいバージョンをインストールします',
-                                    'Installs the newer version',
+                                    'uiInstallsTheNewerVersion',
                                   ),
                                   leading: const Icon(
                                     M3EIcons.system_update_rounded,
@@ -1976,15 +1936,14 @@ class StoreAppPage extends StatelessWidget {
                                   trailing: M3EButton.tonal(
                                     onPressed: () =>
                                         store.run('upgrade', [app.package]),
-                                    child: Text(t('更新', 'Update')),
+                                    child: Text(t('uiUpdateb96ba6bc')),
                                   ),
                                 ),
                               M3EListItem(
                                 supportingMaxLines: null,
-                                headline: t('アンインストール', 'Uninstall'),
+                                headline: t('uiUninstall'),
                                 supportingText: t(
-                                  'コンテナから削除します',
-                                  'Removes it from the container',
+                                  'uiRemovesItFromTheContainer',
                                 ),
                                 leading: Icon(
                                   M3EIcons.delete_outline_rounded,
@@ -2003,7 +1962,7 @@ class StoreAppPage extends StatelessWidget {
                           size: M3EButtonSize.sm,
                           icon: const Icon(M3EIcons.download_rounded),
                           onPressed: () => store.run('install', [app.package]),
-                          label: Text(t('インストール', 'Install')),
+                          label: Text(t('uiInstall')),
                         ),
                       ),
               ),
@@ -2016,12 +1975,10 @@ class StoreAppPage extends StatelessWidget {
                 Text(
                   store.flatpakCompatibility
                       ? t(
-                          '互換実行モード：Flatpak のサンドボックス・権限制限は適用されません。ソフトウェア描画を使用します。',
-                          'Compatibility mode: Flatpak sandbox and permission restrictions are not enforced. Uses software rendering.',
+                          'uiCompatibilityModeFlatpakSandboxAndPermissionRestrictionsAreNotEnforcedUsesSoftwareRendering',
                         )
                       : t(
-                          '標準 Flatpak で起動します。名前空間が使えない端末では Linux 設定の「Flatpak の互換実行」を有効にしてください。',
-                          'Uses standard Flatpak execution. On devices without namespaces, enable Flatpak compatibility execution in Linux settings.',
+                          'uiUsesStandardFlatpakExecutionOnDevicesWithoutNamespacesEnableFlatpakCompatibilityExecutionInLinuxSett',
                         ),
                 ),
               ],
@@ -2060,28 +2017,23 @@ class StoreAppPage extends StatelessWidget {
   }
 
   Future<void> _confirmRemove(BuildContext context) async {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final ok = await M3EDialog.show<bool>(
       context,
       dialog: M3EDialog(
-        title: inlineFormat(t('{0} をアンインストールしますか？', 'Uninstall {0}?'), [
-          app.name,
-        ]),
+        title: inlineFormat(t('uiUninstall0'), [app.name]),
         icon: const Icon(M3EIcons.delete_outline_rounded),
         content: Text(
-          inlineFormat(
-            t('コンテナから {0} を削除します。', 'Removes {0} from the container.'),
-            [app.package],
-          ),
+          inlineFormat(t('uiRemoves0FromTheContainer'), [app.package]),
         ),
         actions: [
           M3EButton.text(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(t('キャンセル', 'Cancel')),
+            child: Text(t('uiCancel')),
           ),
           M3EButton.filled(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(t('アンインストール', 'Uninstall')),
+            child: Text(t('uiUninstall')),
           ),
         ],
       ),
@@ -2135,23 +2087,23 @@ class _Progress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final theme = Theme.of(context);
     final phase = switch (job.phase) {
-      'download' => t('ダウンロード', 'Downloading'),
-      'install' => t('パッケージ処理', 'Installing packages'),
-      'remove' => t('削除処理', 'Removing packages'),
-      'update' => t('リスト更新', 'Updating lists'),
-      'resolve' => t('依存関係の確認', 'Resolving dependencies'),
+      'download' => t('uiDownloading'),
+      'install' => t('uiInstallingPackages'),
+      'remove' => t('uiRemovingPackages'),
+      'update' => t('uiUpdatingLists'),
+      'resolve' => t('uiResolvingDependencies'),
       'flatpak' => 'Flatpak',
       _ => '',
     };
     final detail = job.line.isNotEmpty
         ? job.line
         : switch (job.action) {
-            'remove' => t('アンインストールしています', 'Uninstalling'),
-            'upgrade' => t('アップデートしています', 'Updating'),
-            _ => t('インストールしています', 'Installing'),
+            'remove' => t('uiUninstalling'),
+            'upgrade' => t('uiUpdating'),
+            _ => t('uiInstalling0d0d9a98'),
           };
     final line = phase.isEmpty ? detail : '$phase · $detail';
     // The pill takes the place of the button it replaced.

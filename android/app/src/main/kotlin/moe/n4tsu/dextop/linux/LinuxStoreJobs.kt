@@ -47,12 +47,12 @@ internal object LinuxStoreJobs {
                 val script = "mkdir -p $LOG_DIR; pacman -R --noconfirm -- ${quote(packageId)} > $log 2>&1; status=\$?; tail -n 40 $log; exit \$status"
                 run(Job(container, "remove", listOf(name)), name, script, log, ::sourceProgress, onJob = capture)
             }
-            else -> error("This application's uninstall method is not supported")
+            else -> error(moe.n4tsu.dextop.localText("uiThisApplicationSUninstallMethodIsNotSupported"))
         }
-        check(started) { "Another operation for this application is already in progress" }
+        check(started) { moe.n4tsu.dextop.localText("uiAnotherOperationForThisApplicationIsAlreadyInProgress") }
         val job = checkNotNull(owned)
         while (job.state in setOf("queued", "running")) Thread.sleep(200)
-        check(job.state == "done") { job.output.takeLast(4000).ifBlank { "Uninstall failed: ${job.state}" } }
+        check(job.state == "done") { job.output.takeLast(4000).ifBlank { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUninstallFailed0"), job.state) } }
     }
 
     class Job(val container: String, val action: String, val packages: List<String>) {
@@ -88,26 +88,26 @@ internal object LinuxStoreJobs {
         runCatching {
             val manager = context.getSystemService(android.app.NotificationManager::class.java)
             val japanese = context.resources.configuration.locales[0].language == "ja"
-            fun text(ja: String, en: String) = moe.n4tsu.dextop.InlineStrings.pick(context.resources.configuration.locales[0], ja, en)
+            fun text(key: String) = moe.n4tsu.dextop.InlineStrings.pick(context.resources.configuration.locales[0], key)
             val channel = "linux_store_installs"
             manager.createNotificationChannel(android.app.NotificationChannel(channel,
-                text("アプリのインストール", "App installations"), android.app.NotificationManager.IMPORTANCE_LOW))
+                text("uiAppInstallations"), android.app.NotificationManager.IMPORTANCE_LOW))
             if (job.state == "cancelled") { manager.cancel(job.notificationId); return }
             val active = job.state == "running" || job.state == "queued"
             val title = job.packages.joinToString(", ") { labels[key(job.container, it)] ?: it }.take(180)
-                .ifEmpty { text("アプリの更新", "App updates") }
+                .ifEmpty { text("uiAppUpdates") }
             val status = when (job.state) {
-                "queued" -> text("順番を待っています", "Waiting in queue")
+                "queued" -> text("uiWaitingInQueue")
                 "done" -> when (job.action) {
-                    "remove" -> text("アンインストール完了", "Uninstalled")
-                    "upgrade" -> text("更新完了", "Updated")
-                    else -> text("インストール完了", "Installed")
+                    "remove" -> text("uiUninstalled")
+                    "upgrade" -> text("uiUpdated5f3850de")
+                    else -> text("uiInstalledc7fce754")
                 }
-                "failed" -> text("処理に失敗しました。ストアで確認してください", "Failed. Check the Store for details")
+                "failed" -> text("uiFailedCheckTheStoreForDetails")
                 else -> when (job.action) {
-                    "remove" -> text("アンインストール中", "Uninstalling")
-                    "upgrade" -> text("更新中", "Updating")
-                    else -> text("インストール中", "Installing")
+                    "remove" -> text("uiUninstalling5fcbecf6")
+                    "upgrade" -> text("uiUpdating246dcabf")
+                    else -> text("uiInstalling")
                 } + if (job.percent >= 0) " ${"%.1f".format(java.util.Locale.ROOT, job.percent.coerceIn(0.0, 100.0))}%" else ""
             }
             val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)
@@ -333,7 +333,7 @@ internal object LinuxStoreJobs {
 
     private fun execute(job: Job, script: String, progressCommand: String, progress: (Job, String) -> Unit) {
         val service = LinuxContainerClient.service()
-        if (service == null) { job.state = "failed"; job.output = "Linux is not connected"; return }
+        if (service == null) { job.state = "failed"; job.output = moe.n4tsu.dextop.localText("uiLinuxIsNotConnected"); return }
         val poller = Thread({
             while (job.state == "running") {
                 runCatching {

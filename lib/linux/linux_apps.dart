@@ -75,6 +75,7 @@ class LinuxAppList extends ChangeNotifier {
   List<LinuxAppEntry> apps = const [];
   Set<String> shortcuts = const {};
   bool loading = false;
+  bool operationsEnabled = true;
   String? error;
 
   /// Open windows by application key ("container:desktopId").
@@ -135,7 +136,12 @@ class LinuxAppList extends ChangeNotifier {
   }
 
   Future<void> refreshInstallations() async {
-    if (!trackInstallations || _pollingInstallations || _disposed) return;
+    if (!operationsEnabled ||
+        !trackInstallations ||
+        _pollingInstallations ||
+        _disposed) {
+      return;
+    }
     _pollingInstallations = true;
     final generation = _modeGeneration;
     try {
@@ -185,7 +191,7 @@ class LinuxAppList extends ChangeNotifier {
   }
 
   Future<void> refreshSessions() async {
-    if (_disposed || _pollingSessions) return;
+    if (!operationsEnabled || _disposed || _pollingSessions) return;
     _pollingSessions = true;
     final generation = _modeGeneration;
     try {
@@ -224,6 +230,13 @@ class LinuxAppList extends ChangeNotifier {
 
   Future<void> load(String container) => loadAll([container]);
 
+  void showCached(List<LinuxAppEntry> entries) {
+    resetForExecutionMode();
+    operationsEnabled = false;
+    apps = entries;
+    notifyListeners();
+  }
+
   /// Retire all snapshots and pending replies from the previous execution mode.
   void resetForExecutionMode() {
     if (_disposed) return;
@@ -242,7 +255,7 @@ class LinuxAppList extends ChangeNotifier {
   }
 
   Future<void> loadAll(List<String> containers) async {
-    if (_disposed) return;
+    if (!operationsEnabled || _disposed) return;
     final generation = ++_loadGeneration;
     _containers = List.of(containers);
     loading = true;
@@ -344,7 +357,7 @@ class LinuxAppList extends ChangeNotifier {
     String container,
     LinuxAppEntry entry,
   ) async {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     try {
       final silent = await _silentInstall(context);
       if (silent == null || !context.mounted) return;
@@ -359,19 +372,10 @@ class LinuxAppList extends ChangeNotifier {
       M3ESnackbar.show(
         context,
         message: status == 'permission'
-            ? t(
-                '「不明なアプリのインストール」を許可してから、もう一度追加してください',
-                'Allow installing unknown apps, then add it again',
-              )
+            ? t('uiAllowInstallingUnknownAppsThenAddItAgain')
             : status == 'installed'
-            ? inlineFormat(
-                t('{0} をホーム画面に追加しました', 'Added {0} to the home screen'),
-                [entry.name],
-              )
-            : inlineFormat(
-                t('{0} をホーム画面に追加しています', 'Adding {0} to the home screen'),
-                [entry.name],
-              ),
+            ? inlineFormat(t('uiAdded0ToTheHomeScreen'), [entry.name])
+            : inlineFormat(t('uiAdding0ToTheHomeScreen'), [entry.name]),
       );
     } on PlatformException catch (e) {
       if (context.mounted) {
@@ -392,29 +396,26 @@ class LinuxAppList extends ChangeNotifier {
     if (info['pinned'] == true || !available || mode == 'manual') return false;
     if (mode == 'auto') return true;
     if (!context.mounted) return null;
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final auto = await M3EDialog.show<bool>(
       context,
       dialog: Builder(
         builder: (dialog) => M3EDialog(
           icon: const Icon(M3EIcons.install_mobile_rounded),
-          title: t('ランチャーを自動でインストールしますか？', 'Install launchers automatically?'),
+          title: t('uiInstallLaunchersAutomatically'),
           content: Text(
             t(
-              'Shizuku・Stellar・内蔵バインダで、ホーム画面のランチャーを確認なしでインストールします。'
-                  '「手動」を選ぶと、Android のインストール画面で毎回確認します。あとで Linux の設定から変更できます。',
-              'Dextop installs the small home-screen APK without confirmation through Shizuku, Stellar or its built-in access. '
-                  'With "Manually", Android asks each time. You can change this later in the Linux settings.',
+              'uiDextopInstallsTheSmallHomeScreenAPKWithoutConfirmationThroughShizukuStellarOrItsBuiltInAccessWithMan',
             ),
           ),
           actions: [
             M3EButton.text(
               onPressed: () => Navigator.pop(dialog, false),
-              child: Text(t('手動', 'Manually')),
+              child: Text(t('uiManually')),
             ),
             M3EButton.filled(
               onPressed: () => Navigator.pop(dialog, true),
-              child: Text(t('自動でインストール', 'Install automatically')),
+              child: Text(t('uiInstallAutomatically')),
             ),
           ],
         ),
@@ -560,7 +561,7 @@ class _AppCellState extends State<_AppCell>
   );
   bool pressed = false;
 
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
 
   @override
   void initState() {
@@ -696,9 +697,9 @@ class _AppCellState extends State<_AppCell>
                 if (installation != null)
                   Text(
                     installation.queued
-                        ? t('待機中', 'Queued')
+                        ? t('uiQueued')
                         : installation.percent < 0
-                        ? t('インストール中', 'Installing')
+                        ? t('uiInstalling')
                         : installation.percentLabel,
                     maxLines: 1,
                     style: theme.textTheme.labelSmall?.copyWith(
@@ -738,8 +739,8 @@ class _AppCellState extends State<_AppCell>
               const SizedBox(height: 12),
               Text(
                 installation.queued
-                    ? t('インストール待機中', 'Waiting to install')
-                    : t('インストール中', 'Installing'),
+                    ? t('uiWaitingToInstall')
+                    : t('uiInstalling'),
               ),
               if (installation.queued) ...[
                 const SizedBox(height: 16),
@@ -753,7 +754,7 @@ class _AppCellState extends State<_AppCell>
                         });
                     await widget.list.refreshInstallations();
                   },
-                  child: Text(t('キューから削除', 'Remove from queue')),
+                  child: Text(t('uiRemoveFromQueue')),
                 ),
               ],
             ],
@@ -786,10 +787,7 @@ class _AppCellState extends State<_AppCell>
                         ),
                         if (count > 0)
                           Text(
-                            inlineFormat(
-                              t('{0} 個のセッションが開いています', '{0} sessions open'),
-                              [count],
-                            ),
+                            inlineFormat(t('ui0SessionsOpen'), [count]),
                             style: Theme.of(sheet).textTheme.bodySmall,
                           ),
                       ],
@@ -799,46 +797,39 @@ class _AppCellState extends State<_AppCell>
               ),
             ),
             LinuxMenuRow(
-              title: t('開く', 'Open'),
+              title: t('uiOpen'),
               icon: M3EIcons.play_arrow_rounded,
               onTap: () => Navigator.pop(sheet, 'open'),
             ),
             if (count > 0)
               LinuxMenuRow(
-                title: t('新しいセッションで開く', 'Open in a new session'),
+                title: t('uiOpenInANewSession'),
                 icon: M3EIcons.add_to_queue_rounded,
                 onTap: () => Navigator.pop(sheet, 'new'),
               ),
             LinuxMenuRow(
-              title: pinned
-                  ? t('ホーム画面から削除', 'Remove from Home')
-                  : t('ホーム画面に追加', 'Add to Home'),
-              subtitle: pinned
-                  ? null
-                  : t('Androidのアプリとして表示します', 'Shows it like an Android app'),
+              title: pinned ? t('uiRemoveFromHome') : t('uiAddToHome'),
+              subtitle: pinned ? null : t('uiShowsItLikeAnAndroidApp'),
               icon: pinned
                   ? M3EIcons.delete_outline_rounded
                   : M3EIcons.add_to_home_screen_rounded,
               onTap: () => Navigator.pop(sheet, 'home'),
             ),
             LinuxMenuRow(
-              title: t('動作方式', 'How it runs'),
-              subtitle: t(
-                '表示方式・描画方式・OpenGL のバージョン',
-                'Display system, renderer and OpenGL version',
-              ),
+              title: t('uiHowItRuns'),
+              subtitle: t('uiDisplaySystemRendererAndOpenGLVersion'),
               icon: M3EIcons.tune_rounded,
               onTap: () => Navigator.pop(sheet, 'mode'),
             ),
             if (count > 0)
               LinuxMenuRow(
-                title: t('アプリを閉じる', 'Close app'),
-                subtitle: t('開いているウィンドウをすべて閉じます', 'Closes all of its windows'),
+                title: t('uiCloseApp'),
+                subtitle: t('uiClosesAllOfItsWindows'),
                 icon: M3EIcons.close_rounded,
                 onTap: () => Navigator.pop(sheet, 'close'),
               ),
             LinuxMenuRow(
-              title: t('アンインストール', 'Uninstall'),
+              title: t('uiUninstall'),
               icon: M3EIcons.delete_forever_rounded,
               onTap: () => Navigator.pop(sheet, 'uninstall'),
             ),
@@ -883,24 +874,17 @@ class _AppCellState extends State<_AppCell>
       context,
       dialog: Builder(
         builder: (dialog) => M3EDialog(
-          title: inlineFormat(t('{0} をアンインストールしますか？', 'Uninstall {0}?'), [
-            entry.name,
-          ]),
+          title: inlineFormat(t('uiUninstall0'), [entry.name]),
           icon: const Icon(M3EIcons.delete_forever_rounded),
-          content: Text(
-            t(
-              'このアプリのパッケージをコンテナから削除します。',
-              'Removes the app\'s package from the container.',
-            ),
-          ),
+          content: Text(t('uiRemovesTheAppSPackageFromTheContainer')),
           actions: [
             M3EButton.text(
               onPressed: () => Navigator.pop(dialog, false),
-              child: Text(t('キャンセル', 'Cancel')),
+              child: Text(t('uiCancel')),
             ),
             M3EButton.filled(
               onPressed: () => Navigator.pop(dialog, true),
-              child: Text(t('アンインストール', 'Uninstall')),
+              child: Text(t('uiUninstall')),
             ),
           ],
         ),
@@ -910,23 +894,19 @@ class _AppCellState extends State<_AppCell>
     try {
       final done = await LinuxBackupsUi.duringOperation<bool>(
         context,
-        t('アンインストールしています', 'Uninstalling the app'),
+        t('uiUninstallingTheApp'),
         entry.name,
         () => LinuxAppList.uninstall(entry),
       );
       if (!context.mounted) return;
       if (!done) {
-        throw StateError(
-          t('アプリをアンインストールできませんでした', 'Could not uninstall the app'),
-        );
+        throw StateError(t('uiCouldNotUninstallTheApp'));
       }
       await widget.onReload();
       if (context.mounted) {
         M3ESnackbar.show(
           context,
-          message: inlineFormat(t('{0} をアンインストールしました', '{0} uninstalled'), [
-            entry.name,
-          ]),
+          message: inlineFormat(t('ui0Uninstalled'), [entry.name]),
         );
       }
     } catch (error) {
@@ -943,7 +923,7 @@ Future<void> showLinuxSessionPicker(
   LinuxAppEntry entry,
   List<LinuxAppSession> sessions,
 ) {
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
   return M3EBottomSheet.show<void>(
     context,
     builder: (sheet) {
@@ -960,7 +940,7 @@ Future<void> showLinuxSessionPicker(
                 const SizedBox(width: 12),
                 Expanded(
                   child: Text(
-                    t('どのウィンドウを開きますか？', 'Which window?'),
+                    t('uiWhichWindow'),
                     style: theme.textTheme.titleLarge,
                   ),
                 ),
@@ -1050,7 +1030,7 @@ Future<void> showLinuxSessionPicker(
                   Navigator.pop(sheet);
                   LinuxAppList.launch(entry.container, entry);
                 },
-                label: Text(t('新しいセッションで開く', 'Open in a new session')),
+                label: Text(t('uiOpenInANewSession')),
               ),
             ),
           ],

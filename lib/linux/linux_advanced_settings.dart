@@ -23,7 +23,10 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
 
   /// Full privilege needs Dextop's setup; until then only Android can be chosen.
   bool privilegeReady = false;
-  String t(String ja, String en) => linuxText(context, ja, en);
+
+  /// False in the Google Play build, which has no full privilege to choose.
+  bool privilegeOffered = false;
+  String t(String key) => linuxText(context, key);
 
   @override
   void initState() {
@@ -37,10 +40,12 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
           .invokeMethod<String>('executionMode')
           .timeout(const Duration(seconds: 10));
       final ready = await linuxPrivilegeReady();
+      final offered = await linuxPrivilegedModeOffered();
       if (mounted) {
         setState(() {
-          mode = value ?? 'privileged';
+          mode = value ?? 'android';
           privilegeReady = ready;
+          privilegeOffered = offered;
         });
       }
     } on Exception catch (e) {
@@ -64,21 +69,20 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
       context: context,
       builder: (context) => AlertDialog(
         icon: const Icon(Icons.admin_panel_settings_rounded),
-        title: Text(t('Linux の実行方式を切り替える', 'Change Linux execution mode')),
+        title: Text(t('uiChangeLinuxExecutionMode')),
         content: Text(
           t(
-            '実行中の Linux アプリを終了して切り替えます。先に作業を保存してください。方式ごとに環境を保持し、既存環境は削除・上書きしません。Android では、通常のアプリ権限で動く新しい環境をセットアップします。',
-            'Running Linux apps will close. Save your work first. Each mode keeps its own environment; existing data is not deleted or overwritten. Android sets up a new environment running with ordinary app permissions.',
+            'uiRunningLinuxAppsWillCloseSaveYourWorkFirstEachModeKeepsItsOwnEnvironmentExistingDataIsNotDeletedOrOv',
           ),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context, false),
-            child: Text(t('キャンセル', 'Cancel')),
+            child: Text(t('uiCancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(t('切り替える', 'Switch')),
+            child: Text(t('uiSwitch')),
           ),
         ],
       ),
@@ -112,46 +116,44 @@ class _LinuxAdvancedSettingsPageState extends State<LinuxAdvancedSettingsPage> {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: M3EAppBar.top(
-      titleText: t('Linux の高度な設定', 'Advanced Linux settings'),
+      titleText: t('uiAdvancedLinuxSettings'),
       automaticallyImplyLeading: true,
     ),
     body: ListView(
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
-        LinuxSection(t('実行方式', 'Execution mode')),
+        LinuxSection(t('uiExecutionMode')),
         if (error != null)
           Padding(padding: const EdgeInsets.all(8), child: Text(error!)),
         if ((mode == null && error == null) || saving)
           const LinearProgressIndicator(),
         if (mode == null && error != null)
-          M3EButton.outlined(onPressed: _load, label: Text(t('再試行', 'Retry'))),
+          M3EButton.outlined(
+            onPressed: _load,
+            label: Text(t('uiRetry9da540e4')),
+          ),
         LinuxGroup(
           children: [
-            LinuxChoice<String>(
-              value: 'privileged',
-              groupValue: mode ?? '',
-              enabled: !saving && mode != null && privilegeReady,
-              onChanged: _choose,
-              icon: Icons.admin_panel_settings_rounded,
-              title: t('完全特権（従来方式）', 'Full privilege (existing mode)'),
-              subtitle: privilegeReady
-                  ? t(
-                      '既定の方式。これまでの Linux 環境をそのまま使用します。',
-                      'Default. Uses your existing Linux environment.',
-                    )
-                  : linuxPrivilegeUnavailableText(context),
-            ),
             LinuxChoice<String>(
               value: 'android',
               groupValue: mode ?? '',
               enabled: !saving && mode != null,
               onChanged: _choose,
               icon: Icons.security_rounded,
-              title: t('Android（試験的）', 'Android (experimental)'),
-              subtitle: t(
-                '通常のアプリ権限で動かします。',
-                'Runs with ordinary app permissions.',
-              ),
+              title: t('uiAndroidExperimental'),
+              subtitle: t('uiRunsWithOrdinaryAppPermissions'),
+            ),
+            if (privilegeOffered) LinuxChoice<String>(
+              value: 'privileged',
+              groupValue: mode ?? '',
+              enabled: !saving && mode != null && privilegeReady,
+              onChanged: _choose,
+              icon: Icons.admin_panel_settings_rounded,
+              title: t('uiFullPrivilegeExistingMode'),
+              subtitle: [
+                t('uiDefaultUsesYourExistingLinuxEnvironment'),
+                if (!privilegeReady) linuxPrivilegeUnavailableText(context),
+              ].join('\n'),
             ),
           ],
         ),

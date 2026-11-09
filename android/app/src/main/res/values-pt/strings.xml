@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <string name="quick_settings_display_tile_label">Ecrã Dextop</string>
     <string name="dextop_swipe_ime_label">Entrada por deslize do Dextop</string>
     <string name="accessibility_service_description">Controla a tela virtual, a entrada e o painel de controle do Dextop</string>
     <string name="embedded_pairing_channel">Configuração de acesso integrado</string>

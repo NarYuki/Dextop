@@ -33,7 +33,7 @@ internal object LinuxMicrophone {
                     val linux = service()
                     val allowed = app.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
                     val wanted = if (linux == null || !allowed) emptySet() else
-                        containers().filter { runCatching { linux.microphoneWanted(it) }.getOrDefault(false) }.toSet()
+                        containers().filter { LinuxSharing.remote(it).optBoolean("microphone") && runCatching { linux.microphoneWanted(it) }.getOrDefault(false) }.toSet()
                     synchronized(active) {
                         active.keys.filter { it !in wanted }.forEach { active.remove(it)?.interrupt() }
                         for (id in wanted) if (active[id]?.isAlive != true) {
@@ -45,6 +45,8 @@ internal object LinuxMicrophone {
             }
         }, "DextopLinuxMicWatch").apply { isDaemon = true; start() }
     }
+
+    fun revoke(id: String) { synchronized(active) { active.remove(id)?.interrupt() } }
 
     @SuppressLint("MissingPermission") // Checked by the watcher before it records.
     private fun record(linux: ILinuxContainerService, id: String) {
@@ -60,7 +62,8 @@ internal object LinuxMicrophone {
                 val buffer = ByteArray(RATE / 50 * 2) // 20 ms
                 while (!Thread.currentThread().isInterrupted) {
                     val read = recorder.read(buffer, 0, buffer.size)
-                    if (read > 0) output.write(buffer, 0, read) else if (read < 0) break
+                    if (read > 0 && !Thread.currentThread().isInterrupted) output.write(buffer, 0, read)
+                    else if (read < 0) break
                 }
             }
             stream.close()

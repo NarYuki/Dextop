@@ -17,19 +17,11 @@ internal data class LinuxDistro(
     val imageDistro: String,
     val imageRelease: String,
     val family: LinuxPackageFamily,
-    /** A prebuilt root filesystem used instead of the image server's. */
-    val image: LinuxImage? = null,
 ) {
     fun toJson(): JSONObject = JSONObject()
         .put("id", id)
         .put("name", displayName)
         .put("family", family.name.lowercase())
-}
-
-/** A root filesystem tarball (.tar.xz or .tar.zst) pinned by SHA-256. */
-internal data class LinuxImage(val url: String, val sha256: String, val size: Long) {
-    /** The GitHub release tag the image was published under (linuxfs-r9, desktop-kde-r2). */
-    fun release(): String = url.substringBeforeLast('/').substringAfterLast('/')
 }
 
 internal object LinuxCatalog {
@@ -108,38 +100,13 @@ internal object LinuxCatalog {
         LinuxDistro("debian", "Debian 13 (trixie)", "debian", "trixie", LinuxPackageFamily.APT),
         LinuxDistro("ubuntu", "Ubuntu 24.04 LTS (noble)", "ubuntu", "noble", LinuxPackageFamily.APT),
         LinuxDistro("archlinux", "Arch Linux ARM", "archlinux", "current", LinuxPackageFamily.PACMAN),
-        // DroidDeck's Linux runtime (GPL-3.0, Droid-Deck/DroidDeck tools/linuxfs): Arch Linux ARM
-        // with gamescope, Xwayland, Mesa 26.2 (Turnip for KGSL, Zink) and its Steam session
-        // scripts. It contains no Valve software; Steam is fetched from Valve at first use.
-        LinuxDistro(
-            DROIDDECK_RUNTIME, "DroidDeck runtime (Arch Linux ARM, Steam)", "archlinux", "current",
-            LinuxPackageFamily.PACMAN,
-            LinuxImage(
-                "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/linuxfs-r9/linuxfs.tar.zst",
-                "d3240c1531531615b0dd06b6ad56e92db9015a8641eb18c3a613835ae45992e7",
-                790_907_606,
-            ),
-        ),
-    )
-
-    const val DROIDDECK_RUNTIME = "droiddeck"
-
-    /**
-     * DroidDeck's desktop package (tools/desktop-kde, release.env): KDE Plasma
-     * 6 as SteamOS's desktop mode, with KWin nested in a host compositor.
-     * Extracted over the DroidDeck runtime.
-     */
-    val DROIDDECK_DESKTOP = LinuxImage(
-        "https://github.com/Droid-Deck/DroidDeck-Components/releases/download/desktop-kde-r2/desktop-kde.tar.zst",
-        "9ba832677b498654136c69d8c8330434d17e4d53cd099acac9bde3ba429b35bf",
-        846_933_224,
     )
 
     fun find(id: String): LinuxDistro? = distros.firstOrNull { it.id == id }
 
-    // Keep the legacy descriptor for installed containers; do not offer new DD containers.
+    // Only Debian is currently offered for new containers.
     fun toJson(): String = JSONArray().apply {
-        distros.filterNot { it.id == DROIDDECK_RUNTIME }.forEach { put(it.toJson()) }
+        distros.filter { it.id == "debian" }.forEach { put(it.toJson()) }
     }.toString()
 
     /**
@@ -154,12 +121,6 @@ internal object LinuxCatalog {
         printf '127.0.0.1 localhost\n::1 localhost ip6-localhost\n' > /etc/hosts
         mkdir -p /tmp /root && chmod 1777 /tmp
     """.trimIndent()
-
-    /**
-     * DroidDeck's runtime only gets name resolution: its Mesa, gamescope and
-     * other builds are not in pacman's database, so pacman stays untouched.
-     */
-    fun runtimeConfigureScript(): String = CONFIGURE_COMMON + "\n"
 
     fun configureScript(family: LinuxPackageFamily): String {
         val common = CONFIGURE_COMMON
@@ -300,60 +261,6 @@ internal object LinuxCatalog {
         WAYLAND_DISPLAY=${LinuxXwaylandHost.displayName(display)} $X_SERVER_ENV "${'$'}XROOT" Xwayland :${'$'}D -nolock -geometry ${width}x$height -dpi ${xDpi(dpi)} \
             -shm -noreset -nolisten tcp -auth ${LinuxXAuth.GUEST} +extension XTEST +extension DAMAGE +extension Composite >/tmp/xvfb-${'$'}D.log 2>&1 &
     """.trimIndent()
-
-    /**
-     * The guest half of a Wayland-only display (DroidDeck's runtime, which
-     * has no Xvfb): the runtime directory Dextop's compositor listens in and
-     * the session bus. Runs until the session is stopped.
-     */
-    fun waylandAppsScript(display: Int): String = """
-        D=$display
-        export XDG_RUNTIME_DIR=/tmp/runtime-root
-        mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
-        trap 'kill ${'$'}DBPID 2>/dev/null' EXIT HUP INT TERM
-        if command -v dbus-daemon >/dev/null; then
-            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || { chmod u+w /etc/machine-id 2>/dev/null; dbus-uuidgen >/etc/machine-id 2>/dev/null; }
-            export DBUS_SESSION_BUS_ADDRESS=unix:abstract=/tmp/dextop-dbus-${'$'}D
-            mkdir -p /etc/dextop
-            printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
-                ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
-                '<busconfig><include>/usr/share/dbus-1/session.conf</include>' \
-                '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/></busconfig>' >/etc/dextop/dbus-session.conf
-            dbus-daemon --config-file=/etc/dextop/dbus-session.conf --address=${'$'}DBUS_SESSION_BUS_ADDRESS \
-                --fork --print-pid >/tmp/dbus-${'$'}D.log 2>&1
-            DBPID=${'$'}(head -1 /tmp/dbus-${'$'}D.log)
-            # A system bus too: many applications (software centres, network and disk tools)
-            # give up without one. Its own permissive configuration, since the stock one
-            # switches to the messagebus user, which PRoot's shell user cannot. A system bus delivers
-            # nothing a policy does not allow receiving, not even the reply to Hello: every client
-            # (gnome-keyring-daemon among them) would wait on it for D-Bus's 25 seconds.
-            export DBUS_SYSTEM_BUS_ADDRESS=$SYSTEM_BUS_ADDRESS
-            mkdir -p /run/dbus
-            $BUS_PROBE
-            # A bus that does not answer (one an earlier version started, which delivered no replies) is replaced.
-            if dextop_bus system && ! timeout -k 1 3 dbus-send --system --reply-timeout=2000 --print-reply \
-                --dest=org.freedesktop.DBus /org/freedesktop/DBus org.freedesktop.DBus.Peer.Ping >/dev/null 2>&1; then
-                dextop_stop_system_bus; sleep 0.3
-            fi
-            if ! dextop_bus system; then
-            # No bus runs: a socket file left by an earlier session would make its bind fail.
-            rm -f /run/dbus/system_bus_socket
-            printf '%s\n' '<!DOCTYPE busconfig PUBLIC "-//freedesktop//DTD D-Bus Bus Configuration 1.0//EN"' \
-                ' "http://www.freedesktop.org/standards/dbus/1.0/busconfig.dtd">' \
-                "<busconfig><type>system</type><listen>${'$'}DBUS_SYSTEM_BUS_ADDRESS</listen><keep_umask/>" \
-                '<listen>unix:path=/run/dbus/system_bus_socket</listen><servicedir>/etc/dextop/system-services</servicedir>' \
-                '<auth>EXTERNAL</auth><auth>ANONYMOUS</auth><allow_anonymous/>' \
-                '<policy context="default"><allow user="*"/><allow own="*"/>' \
-                '<allow send_destination="*"/><allow receive_sender="*"/></policy>' \
-                '</busconfig>' >/etc/dextop/dbus-system-${'$'}D.conf
-            dextop_stop_system_bus
-            dbus-daemon --config-file=/etc/dextop/dbus-system-${'$'}D.conf --fork >/tmp/dbus-system-${'$'}D.log 2>&1
-            fi
-        fi
-        $KEYRING_UNLOCK
-        echo dextop-wayland-ready
-        while :; do sleep 3600 || exit; done
-    """.trimIndent() + "\n"
 
     /** Runs [command] (a desktop entry's Exec line) as an application of display [display]. */
     fun launchScript(display: Int, command: String, wayland: Boolean = false, waylandGpu: Boolean = true,
@@ -643,6 +550,12 @@ internal object LinuxCatalog {
     private const val GPU_PREFIX = "/opt/dextop-mesa"
 
     /** Whether the GPU package drives [gpuModel] (KGSL's gpu_model, such as "Adreno750v2"). */
+    /**
+     * Shell condition for choosing Turnip. Prebuilt images hold the driver on every device, so
+     * its file alone does not mean this GPU can run it.
+     */
+    fun turnipUsableCheck(capable: Boolean = LinuxGraphics.turnipCapable) = "$capable && [ -f $TURNIP_ICD ]"
+
     fun turnipSupports(gpuModel: String?) = gpuModel != null &&
         (gpuModel.startsWith("Adreno6") || gpuModel.startsWith("Adreno7") || gpuModel.startsWith("Adreno8"))
 

@@ -233,7 +233,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         ) {
             val running = instance
             if (running?.stopping == true) {
-                completion(Result.failure(IllegalStateException("Dextop is still finishing its previous session")))
+                completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiDextopIsStillFinishingItsPreviousSession"))))
                 return
             }
             // Dextop Auto's display never has system decorations (createDirectAutoDisplay), so a
@@ -251,7 +251,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 val requested = Config(width, height, density, secure, effectiveDecorations, autoOnly, forceFreeform)
                 Handler(Looper.getMainLooper()).post {
                     runCatching {
-                        check(instance === running && !running.serviceDestroyed) { "Dextop service changed before the display could be updated" }
+                        check(instance === running && !running.serviceDestroyed) { moe.n4tsu.dextop.localText("uiDextopServiceChangedBeforeTheDisplayCouldBeUpdated") }
                         if (autoOnly) running.replaceAutoDestinationSurface(autoSurface)
                         val next = running.effectiveConfig(requested)
                         running.resizeActiveDisplay(next, "resolution changed from Android UI")
@@ -277,7 +277,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 ComponentName.unflattenFromString(it)?.flattenToString() == component
             }
             if (BuildConfig.DISTRIBUTION_CHANNEL == "github") {
-                pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
+                pendingStartResult?.invoke(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiADextopStartIsAlreadyInProgress"))))
                 pendingStartResult = completion
                 pending = Config(width, height, density, secure, effectiveDecorations, autoOnly, forceFreeform)
                 pendingAutoSurface = autoSurface?.takeIf { autoOnly }
@@ -318,18 +318,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             if (!enabled) {
                 completion(Result.failure(IllegalStateException(
-                    "Enable Dextop in Android Accessibility settings before starting"
+                    moe.n4tsu.dextop.localText("uiEnableDextopInAndroidAccessibilitySettingsBeforeStarting")
                 )))
                 return
             }
             val connected = instance
             if (connected == null) {
                 completion(Result.failure(IllegalStateException(
-                    "Dextop Accessibility is enabled but not connected. Open Accessibility settings and reconnect Dextop"
+                    moe.n4tsu.dextop.localText("uiDextopAccessibilityIsEnabledButNotConnectedOpenAccessibilitySettingsAndReconnectDextop")
                 )))
                 return
             }
-            pendingStartResult?.invoke(Result.failure(IllegalStateException("A Dextop start is already in progress")))
+            pendingStartResult?.invoke(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiADextopStartIsAlreadyInProgress"))))
             pendingStartResult = completion
             pending = Config(width, height, density, secure, effectiveDecorations, autoOnly, forceFreeform)
             pendingAutoSurface = autoSurface?.takeIf { autoOnly }
@@ -2239,7 +2239,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 arrayOf(Int::class.javaPrimitiveType, Boolean::class.javaPrimitiveType,
                     Boolean::class.javaPrimitiveType, Int::class.javaPrimitiveType)
             )
-        } ?: error("IActivityTaskManager.getTasks(int,boolean,boolean,int) unavailable")
+        } ?: error(moe.n4tsu.dextop.localText("uiIActivityTaskManagerGetTasksIntBooleanBooleanIntUnavailable"))
         val tasks = getTasks.invoke(service, 64, true, false, displayId)
             as? List<*> ?: return@runCatching false
         val recents = tasks.firstOrNull { task ->
@@ -2249,7 +2249,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         if (current == wanted) return@runCatching true
         val resizeTask = taskManagerInterface.methods.firstOrNull {
             it.name == "resizeTask" && it.parameterTypes.size == 3
-        } ?: error("IActivityTaskManager.resizeTask unavailable")
+        } ?: error(moe.n4tsu.dextop.localText("uiIActivityTaskManagerResizeTaskUnavailable"))
         val taskId = intField(recents, "taskId")
         resizeTask.invoke(service, taskId, Rect(wanted), 0)
         OperationLog.i(
@@ -2268,7 +2268,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun taskConfiguration(task: Any): Any =
         task.javaClass.getField("configuration").get(task)
-            ?: error("RunningTaskInfo.configuration unavailable")
+            ?: error(moe.n4tsu.dextop.localText("uiRunningTaskInfoConfigurationUnavailable"))
 
     private fun activityTypeOf(task: Any): Int {
         val configuration = taskConfiguration(task)
@@ -2600,8 +2600,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                                     if (bounds.width() < usable.width() - 2 || bounds.height() < usable.height() - 2 ||
                                         usable.contains(bounds)) continue
                                     val id = task.taskId
-                                    check(bridge.setWindowingMode(task, 5)) { "Unable to change task windowing mode task=$id" }
-                                    check(bridge.setBounds(task, Rect(usable))) { "Unable to resize task=$id" }
+                                    check(bridge.setWindowingMode(task, 5)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToChangeTaskWindowingModeTask0"), id) }
+                                    check(bridge.setBounds(task, Rect(usable))) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToResizeTask0"), id) }
                                     OperationLog.i(this@MirrorService, "CarCompanion",
                                         "fullscreen overlap corrected task=$id display=$displayId from=$bounds to=$usable")
                                 }
@@ -3642,7 +3642,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // lower-corner positions and prevents the EventHub bridge from
             // treating their taps as pointer gestures.
             addView(TextView(this@MirrorService).apply {
-                text = "FN"
+                text = localText("uiKeyFn")
                 typeface = laptopTypeface
                 textSize = 10f
                 gravity = Gravity.CENTER
@@ -3674,7 +3674,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 bottomMargin = dp(10)
             })
             addView(TextView(this@MirrorService).apply {
-                text = "MENU"
+                text = localText("uiKeyMenu")
                 typeface = laptopTypeface
                 textSize = 10f
                 gravity = Gravity.CENTER
@@ -5837,7 +5837,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // context has no window token and an empty result there must not
             // be mistaken for a confirmed non-foldable device.
             val activity = MainActivity.currentActivity()
-                ?: throw IllegalStateException("no activity window for folding API")
+                ?: throw IllegalStateException(moe.n4tsu.dextop.localText("uiNoActivityWindowForFoldingAPI"))
             val info = WindowInfoTracker.getOrCreate(activity)
                 .getCurrentWindowLayoutInfo(activity)
             val features = info.displayFeatures.filterIsInstance<FoldingFeature>()
@@ -5960,16 +5960,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
 
     private val laptopShortcutLabels = mapOf(
-        KeyEvent.KEYCODE_C to "Copy",
-        KeyEvent.KEYCODE_V to "Paste",
-        KeyEvent.KEYCODE_X to "Cut",
-        KeyEvent.KEYCODE_A to "Sel all",
-        KeyEvent.KEYCODE_Z to "Undo",
-        KeyEvent.KEYCODE_S to "Save",
-        KeyEvent.KEYCODE_N to "New",
-        KeyEvent.KEYCODE_P to "Print",
-        KeyEvent.KEYCODE_F to "Find",
-        KeyEvent.KEYCODE_W to "Close"
+        KeyEvent.KEYCODE_C to localText("uiCopy"),
+        KeyEvent.KEYCODE_V to moe.n4tsu.dextop.localText("uiPaste"),
+        KeyEvent.KEYCODE_X to moe.n4tsu.dextop.localText("uiCut"),
+        KeyEvent.KEYCODE_A to localText("uiSelectAll"),
+        KeyEvent.KEYCODE_Z to moe.n4tsu.dextop.localText("uiUndo"),
+        KeyEvent.KEYCODE_S to localText("uiSave"),
+        KeyEvent.KEYCODE_N to moe.n4tsu.dextop.localText("uiNew"),
+        KeyEvent.KEYCODE_P to localText("uiPrint"),
+        KeyEvent.KEYCODE_F to moe.n4tsu.dextop.localText("uiFind"),
+        KeyEvent.KEYCODE_W to localText("uiClose")
     )
 
     private fun laptopKeyButton(key: LaptopKey): TextView = LaptopKeyTextView(
@@ -6388,17 +6388,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun laptopSwipeLanguageChoices(): List<Pair<LaptopSwipeDecoder.Language, String>> {
         val all = listOf(
-            LaptopSwipeDecoder.Language.EN to "English",
-            LaptopSwipeDecoder.Language.FR to "Français",
-            LaptopSwipeDecoder.Language.DE to "Deutsch",
-            LaptopSwipeDecoder.Language.ES to "Español",
-            LaptopSwipeDecoder.Language.IT to "Italiano",
-            LaptopSwipeDecoder.Language.PT to "Português",
-            LaptopSwipeDecoder.Language.RU to "Русский",
-            LaptopSwipeDecoder.Language.UK to "Українська",
-            LaptopSwipeDecoder.Language.KO to "한국어",
-            LaptopSwipeDecoder.Language.JA to "日本語",
-            LaptopSwipeDecoder.Language.ZH_PINYIN to "中文拼音",
+            LaptopSwipeDecoder.Language.EN to localText("uiLanguageEnglish"),
+            LaptopSwipeDecoder.Language.FR to localText("uiLanguageFrench"),
+            LaptopSwipeDecoder.Language.DE to localText("uiLanguageGerman"),
+            LaptopSwipeDecoder.Language.ES to localText("uiLanguageSpanish"),
+            LaptopSwipeDecoder.Language.IT to localText("uiLanguageItalian"),
+            LaptopSwipeDecoder.Language.PT to localText("uiLanguagePortuguese"),
+            LaptopSwipeDecoder.Language.RU to localText("uiLanguageRussian"),
+            LaptopSwipeDecoder.Language.UK to localText("uiLanguageUkrainian"),
+            LaptopSwipeDecoder.Language.KO to localText("uiLanguageKorean"),
+            LaptopSwipeDecoder.Language.JA to localText("uiLanguageJapanese"),
+            LaptopSwipeDecoder.Language.ZH_PINYIN to localText("uiLanguagePinyin"),
         )
         val raw = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
             .getString("flutter.laptop_swipe_languages_json", null)
@@ -8167,7 +8167,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     Int::class.javaPrimitiveType,
                 )
             )
-        } ?: error("IActivityTaskManager.getTasks(int,boolean,boolean,int) unavailable")
+        } ?: error(moe.n4tsu.dextop.localText("uiIActivityTaskManagerGetTasksIntBooleanBooleanIntUnavailable"))
         val tasks = getTasks.invoke(service, 128, true, false, displayId) as? List<*>
             ?: return@runCatching false
         val task = tasks.firstOrNull { candidate ->
@@ -8180,7 +8180,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }?.invoke(service, taskId, 5, false)
         val resizeTask = taskManagerInterface.methods.firstOrNull {
             it.name == "resizeTask" && it.parameterTypes.size == 3
-        } ?: error("IActivityTaskManager.resizeTask unavailable")
+        } ?: error(moe.n4tsu.dextop.localText("uiIActivityTaskManagerResizeTaskUnavailable"))
         resizeTask.invoke(service, taskId, Rect(wanted), 0)
         OperationLog.i(
             this,
@@ -9296,7 +9296,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         .setAutoplay(true)
                         .build()
                     session.remoteMediaClient?.load(request)
-                        ?: error("Default Media Receiver media client is unavailable")
+                        ?: error(moe.n4tsu.dextop.localText("uiDefaultMediaReceiverMediaClientIsUnavailable"))
                     OperationLog.i(this, "Cast", "compatibility video load requested url=$streamUrl")
                     // The accessibility control panel must not remain in the
                     // active render/input path while a second recording
@@ -9846,7 +9846,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             return linkedMapOf(
                 "id" to displayId,
-                "name" to (display?.name ?: "Display $displayId"),
+                "name" to (display?.name ?: moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiDisplay0"), displayId)),
                 "x" to region.left.toDouble(),
                 "y" to region.top.toDouble(),
                 "widthDp" to region.width().toDouble(),
@@ -11735,7 +11735,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         root?.postDelayed({
             runCatching {
                 if (!active || targetDisplayId < 0) {
-                    error("The active display is unavailable for orientation change")
+                    error(moe.n4tsu.dextop.localText("uiTheActiveDisplayIsUnavailableForOrientationChange"))
                 }
                 if (laptopModeActive) {
                     applyLaptopGeometryWhenLaidOut(
@@ -12021,7 +12021,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             try {
                 check(inputDispatcher.send(event, targetDisplayId)) {
-                    "InputManager rejected multi-touch event action=${event.actionMasked}"
+                    moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiInputManagerRejectedMultiTouchEventAction0"), event.actionMasked)
                 }
                 injectedDirectTouchActive = when (event.actionMasked) {
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> false
@@ -12282,7 +12282,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             )
             phoneOwnedDisplay = owned
             val display = getSystemService(DisplayManager::class.java).getDisplay(owned.displayId)
-                ?: error("The direct Dextop display ${owned.displayId} is unavailable")
+                ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiTheDirectDextopDisplay0IsUnavailable"), owned.displayId))
             OperationLog.i(
                 this,
                 "DisplayBackend",
@@ -12333,7 +12333,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private fun createDirectAutoDisplay(decorations: Boolean) {
         val destination = autoDestinationSurface
-            ?: error("The Dextop Car Companion destination surface is unavailable")
+            ?: error(moe.n4tsu.dextop.localText("uiTheDextopCarCompanionDestinationSurfaceIsUnavailable"))
         val platform = VirtualDisplayPlatform.inspect()
         val service = privilegedAccess.service(
             "display",
@@ -12392,7 +12392,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 createDirectAutoDisplay(true)
                 return
             }
-            error("The desktop HOME activity could not be launched")
+            error(moe.n4tsu.dextop.localText("uiTheDesktopHOMEActivityCouldNotBeLaunched"))
         }
         if (showSystemDecorations && desktopEnvironment.platformManaged && !forceFreeformSession) {
             listOf(250L, 700L, 1_500L).forEach { delay ->
@@ -12449,7 +12449,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             outputHeight,
             density,
         ) == true
-        check(updated) { "Unable to move the Android Auto desktop to the new host surface" }
+        check(updated) { moe.n4tsu.dextop.localText("uiUnableToMoveTheAndroidAutoDesktopToTheNewHostSurface") }
         applyAutoLogicalSize()
         OperationLog.i(
             this,
@@ -12502,7 +12502,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 return
             }
             val error = IllegalStateException(
-                "Overlay display cleanup timed out; refusing to create a duplicate display " +
+                moe.n4tsu.dextop.localText("uiOverlayDisplayCleanupTimedOutRefusingToCreateADuplicateDisplay") +
                         "ids=${remaining.sorted()} knownBeforeClear=${staleOverlays.sorted()}"
             )
             displayCreationInProgress = false
@@ -12544,7 +12544,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 waitForOverlay(existing, width, height, attempt + 1)
             }
             else {
-                val error = IllegalStateException("Overlay display creation timed out")
+                val error = IllegalStateException(moe.n4tsu.dextop.localText("uiOverlayDisplayCreationTimedOut"))
                 displayCreationInProgress = false
                 completeStart(Result.failure(error))
                 Log.e(logTag, "overlay display creation timed out", error)
@@ -12659,7 +12659,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 if (retryHomeLaunchWithSystemDecorations(width, height)) {
                     return@runCatching
                 }
-                error("The desktop HOME activity could not be launched")
+                error(moe.n4tsu.dextop.localText("uiTheDesktopHOMEActivityCouldNotBeLaunched"))
             }
             // Some Samsung builds require the display to advertise system
             // decorations while HOME is launched, then create both their DeX
@@ -12919,7 +12919,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 return true
             }
             val failure = IllegalStateException(
-                "Privileged HOME launch failed: ${result.error.ifBlank { result.output }}",
+                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiPrivilegedHOMELaunchFailed0"), result.error.ifBlank { result.output }),
                 direct.exceptionOrNull(),
             )
             OperationLog.e(this, "DesktopHome", "HOME launch failed display=$targetDisplayId", failure)
@@ -13104,7 +13104,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 // Extended: the display renders off screen and the phone mirrors its part,
                 // as the external screen does.
                 check(owned.resize(directDisplaySurface(), targetWidth, targetHeight, density)) {
-                    "Unable to move the direct Dextop display off screen"
+                    moe.n4tsu.dextop.localText("uiUnableToMoveTheDirectDextopDisplayOffScreen")
                 }
                 OperationLog.i(this, "DisplayBackend", "direct Plasma display off screen for extended desktop " +
                     "desktop=${targetWidth}x$targetHeight phone=$phoneRegion")
@@ -13114,7 +13114,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             val surface = host.holder.surface
             check(surface.isValid) { NativeStrings.text("nativeMirrorSurfaceUnavailable") }
             check(owned.resize(surface, targetWidth, targetHeight, density)) {
-                "Unable to bind the direct Dextop display to the host Surface"
+                moe.n4tsu.dextop.localText("uiUnableToBindTheDirectDextopDisplayToTheHostSurface")
             }
             mirrorHostWidth = hostWidth
             mirrorHostHeight = hostHeight
@@ -13418,7 +13418,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // the phone's coming back) binds at the new size when it arrives (attachMirror);
             // the forced size below must still change now.
             val updated = surface == null || owned.resize(surface, targetWidth, targetHeight, density)
-            check(updated) { "Unable to resize the direct Dextop display" }
+            check(updated) { moe.n4tsu.dextop.localText("uiUnableToResizeTheDirectDextopDisplay") }
             OperationLog.i(
                 this,
                 "DisplayBackend",
@@ -13448,7 +13448,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "Auto-owned display buffer resize applied=$updated desktop=${targetWidth}x${targetHeight}/$density"
             )
             if (!updated) {
-                throw IllegalStateException("Unable to resize the Android Auto desktop buffer")
+                throw IllegalStateException(moe.n4tsu.dextop.localText("uiUnableToResizeTheAndroidAutoDesktopBuffer"))
             }
             applyAutoLogicalSize()
         }
@@ -13855,7 +13855,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 } ?: type.methods.firstOrNull {
                     it.name == "disableForUser" && it.parameterTypes.size == 4
                 }
-            } ?: error("No compatible StatusBar disable operation for $target")
+            } ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiNoCompatibleStatusBarDisableOperationFor0"), target))
             val integerCount = method.parameterTypes.count { it == Int::class.javaPrimitiveType }
             var integerIndex = 0
             val args: Array<Any?> = method.parameterTypes.map { parameter ->
@@ -14094,7 +14094,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         finishCarPan()
         autoOnlySession = false
         AutoSplitPlacement.clear()
-        completeStart(Result.failure(IllegalStateException("Dextop was stopped before startup completed")))
+        completeStart(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiDextopWasStoppedBeforeStartupCompleted"))))
         Log.i(logTag, "stopped; cleanup ready for a new session")
     }
 
@@ -14115,7 +14115,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                     Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
                     remaining.joinToString(":")
                 )
-            ) { "Unable to detach the Dextop accessibility service" }
+            ) { moe.n4tsu.dextop.localText("uiUnableToDetachTheDextopAccessibilityService") }
             if (remaining.isEmpty()) {
                 Settings.Secure.putInt(contentResolver, Settings.Secure.ACCESSIBILITY_ENABLED, 0)
             }

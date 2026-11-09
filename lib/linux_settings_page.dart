@@ -14,6 +14,7 @@ import 'linux/linux_scale_setting.dart';
 import 'linux/linux_widgets.dart';
 import 'linux/linux_store_sources.dart';
 import 'linux/linux_advanced_settings.dart';
+import 'linux/linux_privilege_warning.dart';
 import 'linux/linux_compat.dart';
 import 'linux/linux_resources.dart';
 import 'linux/linux_first_run.dart';
@@ -66,7 +67,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
   String? _page;
 
   /// 'privileged' or 'android', for the General category's summary.
-  String executionMode = 'privileged';
+  String executionMode = 'android';
+
+  /// False in the Google Play build, whose only execution mode needs no advanced settings.
+  bool privilegedModeOffered = false;
 
   @override
   void initState() {
@@ -92,6 +96,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           ? false
           : await _channel.invokeMethod<bool>('clipboardSync') ?? false;
       final mode = await _channel.invokeMethod<String>('executionMode');
+      final offered = await linuxPrivilegedModeOffered();
       final keyboardButton =
           await _channel.invokeMethod<bool>('keyboardButtonVisible') ?? true;
       final appTheme = _forContainer
@@ -112,7 +117,8 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           clipboardSync = clipboard;
           keyboardButtonVisible = keyboardButton;
           colorTheme = appTheme;
-          executionMode = mode ?? 'privileged';
+          executionMode = mode ?? 'android';
+          privilegedModeOffered = offered;
         });
       }
     } on PlatformException catch (exception) {
@@ -172,15 +178,14 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       context: context,
       builder: (dialog) => StatefulBuilder(
         builder: (context, setDialogState) => AlertDialog(
-          title: Text(linuxText(context, 'Linux専用DNS', 'Linux DNS')),
+          title: Text(linuxText(context, 'uiLinuxDNS')),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 linuxText(
                   context,
-                  'IPアドレスを1行に1つ、最大3つ入力します。空欄はAndroidのDNSに従います。',
-                  'Enter up to three IP addresses, one per line. Leave empty to use Android DNS.',
+                  'uiEnterUpToThreeIPAddressesOnePerLineLeaveEmptyToUseAndroidDNS',
                 ),
               ),
               const SizedBox(height: 16),
@@ -191,7 +196,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
                 maxLines: 4,
                 keyboardType: TextInputType.multiline,
                 decoration: InputDecoration(
-                  hintText: '1.1.1.1\n2606:4700:4700::1111',
+                  hintText: localText(context, 'ui11112606470047001111'),
                   errorText: validation,
                 ),
               ),
@@ -200,7 +205,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialog),
-              child: Text(linuxText(context, 'キャンセル', 'Cancel')),
+              child: Text(linuxText(context, 'uiCancel')),
             ),
             TextButton(
               onPressed: () {
@@ -214,15 +219,14 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
                   setDialogState(
                     () => validation = linuxText(
                       context,
-                      '有効なIPアドレスを最大3つ入力してください',
-                      'Enter up to three valid IP addresses',
+                      'uiEnterUpToThreeValidIPAddresses',
                     ),
                   );
                   return;
                 }
                 Navigator.pop(dialog, servers);
               },
-              child: Text(linuxText(context, '保存', 'Save')),
+              child: Text(linuxText(context, 'uiSave')),
             ),
           ],
         ),
@@ -258,7 +262,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
   }
 
   /// The device test's last result, for Settings > Graphics.
-  Widget _gpuProbeGroup(String Function(String, String) t) {
+  Widget _gpuProbeGroup(String Function(String) t) {
     final running = settings?['gpuProbeRunning'] == true;
     final chosen = settings?['gpuChosen'] == true;
     final probe = (settings?['gpuProbe'] as Map?)?.cast<Object?, Object?>();
@@ -266,30 +270,26 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
     String fps(Object? value) =>
         value is num ? value.toStringAsFixed(value < 10 ? 1 : 0) : '-';
     final measured = probe?['gpuFps'] != null || probe?['cpuFps'] != null
-        ? t(
-            'GPU ${fps(probe?['gpuFps'])} fps / CPU ${fps(probe?['cpuFps'])} fps',
-            'GPU ${fps(probe?['gpuFps'])} fps / CPU ${fps(probe?['cpuFps'])} fps',
-          )
+        ? inlineFormat(t('uiGPU0FpsCPU1Fps'), [
+            fps(probe?['gpuFps']),
+            fps(probe?['cpuFps']),
+          ])
         : null;
     final summary = running
-        ? t('テストしています（30 秒ほど）…', 'Testing (about 30 seconds)…')
+        ? t('uiTestingAbout30Seconds')
         : switch (state) {
             'passed' => t(
-              'GPU で安定して描画できました。GPU を推奨します（軽い描画のテストのため、3D の重い処理ではこの差より大きく速くなります）',
-              'The GPU drew reliably. The GPU is recommended (the test scene is light; heavy 3D work gains much more than this)',
+              'uiTheGPUDrewReliablyTheGPUIsRecommendedTheTestSceneIsLightHeavy3DWorkGainsMuchMoreThanThis',
             ),
             'slow' => t(
-              'GPU は安定していましたが、CPU より明らかに遅くなりました。CPU 描画を推奨します',
-              'The GPU was stable but clearly slower than the processor. Software rendering is recommended',
+              'uiTheGPUWasStableButClearlySlowerThanTheProcessorSoftwareRenderingIsRecommended',
             ),
             'failed' => t(
-              'GPU で正しく描画できませんでした。CPU 描画を推奨します',
-              'The GPU did not draw correctly. Software rendering is recommended',
+              'uiTheGPUDidNotDrawCorrectlySoftwareRenderingIsRecommended',
             ),
-            'unavailable' => t('テストを実行できませんでした', 'The test could not run'),
+            'unavailable' => t('uiTheTestCouldNotRun'),
             _ => t(
-              'まだテストしていません。GPU と CPU で同じ描画を行い、GPU が安定して遅くなければ GPU を推奨します',
-              'Not tested yet. The same drawing runs on the GPU and the processor; the GPU is recommended when it is stable and not slower',
+              'uiNotTestedYetTheSameDrawingRunsOnTheGPUAndTheProcessorTheGPUIsRecommendedWhenItIsStableAndNotSlower',
             ),
           };
     final details = [
@@ -300,13 +300,13 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       if (!running && (probe?['error'] as String? ?? '').isNotEmpty)
         probe!['error'] as String,
       if (!running && !chosen && state != null)
-        t('推奨設定を使っています', 'Using the recommended setting'),
+        t('uiUsingTheRecommendedSetting'),
     ].join('\n');
     return LinuxGroup(
       children: [
         M3EListItem(
           supportingMaxLines: null,
-          headline: t('この端末をテスト', 'Test this device'),
+          headline: t('uiTestThisDevice'),
           supportingText: details,
           leading: running
               ? const SizedBox(
@@ -319,19 +319,14 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
               ? null
               : TextButton(
                   onPressed: saving ? null : _testGpu,
-                  child: Text(
-                    state == null ? t('テスト', 'Test') : t('再テスト', 'Test again'),
-                  ),
+                  child: Text(state == null ? t('uiTest') : t('uiTestAgain')),
                 ),
         ),
         if (chosen && state != null && !running)
           M3EListItem(
             supportingMaxLines: null,
-            headline: t('推奨設定を使う', 'Use the recommended setting'),
-            supportingText: t(
-              'GPU の選択をテスト結果に任せます',
-              'Lets the test result choose the renderer',
-            ),
+            headline: t('uiUseTheRecommendedSetting'),
+            supportingText: t('uiLetsTheTestResultChooseTheRenderer'),
             leading: const Icon(M3EIcons.auto_awesome_rounded),
             onTap: saving ? null : () => _save({'gpuRecommended': true}),
           ),
@@ -390,31 +385,30 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       if (value != current && !saving) _save({key: value});
     }
 
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final modeName = executionMode == 'android'
-        ? t('Android（試験的）', 'Android (experimental)')
-        : t('完全特権', 'Full privilege');
+        ? t('uiAndroidExperimental')
+        : t('uiFullPrivilege');
     final gpuName = switch (globalGpu) {
       'virgl' => l.linuxGpuHardware,
       'software' => l.linuxGpuSoftware,
       _ => l.linuxGpuTurnip,
     };
     final themeName = switch (colorTheme) {
-      'light' => t('ライト', 'Light'),
-      'dark' => t('ダーク', 'Dark'),
-      _ => t('自動', 'Automatic'),
+      'light' => t('uiLight'),
+      'dark' => t('uiDark'),
+      _ => t('uiAutomatic'),
     };
 
     List<Widget> general() => [
-      LinuxGroup(
+      if (privilegedModeOffered) LinuxGroup(
         children: [
           M3EListItem(
             supportingMaxLines: null,
-            headline: linuxText(context, '高度な設定', 'Advanced settings'),
+            headline: linuxText(context, 'uiAdvancedSettings'),
             supportingText: linuxText(
               context,
-              'Linux の実行方式と特権アクセス',
-              'Linux execution mode and privileged access',
+              'uiLinuxExecutionModeAndPrivilegedAccess',
             ),
             leading: const Icon(Icons.admin_panel_settings_rounded),
             trailing: const Icon(Icons.chevron_right_rounded),
@@ -455,14 +449,14 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       ),
     ];
     List<Widget> network() => [
-      LinuxSection(t('Linux専用ネットワーク設定', 'Linux network settings')),
+      LinuxSection(t('uiLinuxNetworkSettings')),
       LinuxGroup(
         children: [
           M3EListItem(
-            headline: t('DNSサーバー', 'DNS servers'),
+            headline: t('uiDNSServers'),
             supportingText:
                 (settings?['dnsServers'] as List? ?? const []).isEmpty
-                ? t('自動（AndroidのDNS）', 'Automatic (Android DNS)')
+                ? t('uiAutomaticAndroidDNS')
                 : (settings!['dnsServers'] as List).join('\n'),
             supportingMaxLines: null,
             leading: const Icon(M3EIcons.dns_rounded),
@@ -475,30 +469,26 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         padding: const EdgeInsets.all(8),
         child: Text(
           t(
-            'Linux内の名前解決に適用します。Android全体のネットワーク設定は変更しません。独自のDNSを使うアプリには適用されない場合があります。',
-            'Applies to name resolution inside Linux. Android network settings stay unchanged. Apps using their own DNS may bypass this setting.',
+            'uiAppliesToNameResolutionInsideLinuxAndroidNetworkSettingsStayUnchangedAppsUsingTheirOwnDNSMayBypassTh',
           ),
         ),
       ),
     ];
     List<Widget> display() => [
       if (!_forContainer) ...[
-        LinuxSection(t('キーボードボタン', 'Keyboard button')),
+        LinuxSection(t('uiKeyboardButton')),
         LinuxGroup(
           children: [
             LinuxToggle(
               value: keyboardButtonVisible,
               onChanged: saving ? null : _setKeyboardButtonVisible,
               icon: M3EIcons.keyboard_rounded,
-              title: t('鉛筆ボタンを表示', 'Show pencil button'),
-              subtitle: t(
-                'タップでキーボードを表示します。ドラッグで移動でき、位置は保存されます。',
-                'Tap to show the keyboard. Drag to move; the position is saved.',
-              ),
+              title: t('uiShowPencilButton'),
+              subtitle: t('uiTapToShowTheKeyboardDragToMoveThePositionIsSaved'),
             ),
           ],
         ),
-        LinuxSection(t('表示倍率', 'Display scale')),
+        LinuxSection(t('uiDisplayScale')),
         LinuxScaleSetting(
           value: (settings?['uiScale'] as num?)?.toInt() ?? 100,
           t: t,
@@ -528,10 +518,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             icon: M3EIcons.bolt_rounded,
             title: l.linuxGpuTurnip,
             subtitle: !turnipSupported
-                ? t(
-                    'Adreno 6xx〜8xx 専用です。この GPU では使えません',
-                    'For Adreno 6xx–8xx only; not for this GPU',
-                  )
+                ? t('uiForAdreno6xx8xxOnlyNotForThisGPU')
                 : turnipReady
                 ? l.linuxGpuTurnipDescription
                 : '${l.linuxGpuTurnipDescription}\n${l.linuxGpuTurnipSetup}',
@@ -570,13 +557,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           style: theme.textTheme.bodySmall,
         ),
       ),
-      LinuxSection(
-        linuxText(
-          context,
-          'Linux・Windows アプリのテーマ',
-          'Theme of Linux and Windows apps',
-        ),
-      ),
+      LinuxSection(linuxText(context, 'uiThemeOfLinuxAndWindowsApps')),
       LinuxGroup(
         children: [
           LinuxChoice<String>(
@@ -584,26 +565,22 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             groupValue: colorTheme,
             onChanged: _setTheme,
             icon: M3EIcons.brightness_auto_rounded,
-            title: linuxText(context, '自動', 'Automatic'),
-            subtitle: linuxText(
-              context,
-              'Android のダーク・ライト設定に合わせます',
-              "Follows Android's dark or light setting",
-            ),
+            title: linuxText(context, 'uiAutomatic'),
+            subtitle: linuxText(context, 'uiFollowsAndroidSDarkOrLightSetting'),
           ),
           LinuxChoice<String>(
             value: 'light',
             groupValue: colorTheme,
             onChanged: _setTheme,
             icon: M3EIcons.light_mode_rounded,
-            title: linuxText(context, 'ライト', 'Light'),
+            title: linuxText(context, 'uiLight'),
           ),
           LinuxChoice<String>(
             value: 'dark',
             groupValue: colorTheme,
             onChanged: _setTheme,
             icon: M3EIcons.dark_mode_rounded,
-            title: linuxText(context, 'ダーク', 'Dark'),
+            title: linuxText(context, 'uiDark'),
           ),
         ],
       ),
@@ -612,44 +589,40 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         child: Text(
           linuxText(
             context,
-            '次に起動したアプリから反映されます。開いているアプリは起動し直すと切り替わります。',
-            'Applies to apps started from now on; open apps switch when started again.',
+            'uiAppliesToAppsStartedFromNowOnOpenAppsSwitchWhenStartedAgain',
           ),
           style: theme.textTheme.bodySmall,
         ),
       ),
     ];
     List<Widget> integration() => [
-      LinuxSection(linuxText(context, 'Android との連携', 'Android integration')),
+      LinuxSection(linuxText(context, 'uiAndroidIntegration')),
       LinuxGroup(
         children: [
           LinuxToggle(
             value: clipboardSync,
             onChanged: _setClipboardSync,
             icon: M3EIcons.content_paste_rounded,
-            title: linuxText(context, 'クリップボードを共有', 'Share the clipboard'),
+            title: linuxText(context, 'uiShareTheClipboard'),
             subtitle: linuxText(
               context,
-              'Linux アプリでコピーした文字を Android に、Android でコピーした文字を Linux アプリに渡します',
-              'Text copied in Linux apps goes to Android, and text copied in Android goes to Linux apps',
+              'uiTextCopiedInLinuxAppsGoesToAndroidAndTextCopiedInAndroidGoesToLinuxApps',
             ),
           ),
         ],
       ),
-      LinuxSection(linuxText(context, 'ホーム画面のランチャー', 'Home-screen launchers')),
+      LinuxSection(linuxText(context, 'uiHomeScreenLaunchers')),
       if (privilegedLaunchers)
         LinuxGroup(
           children: [
             M3EListItem(
               headline: linuxText(
                 context,
-                '特権アクセスで自動インストール',
-                'Installed through privileged access',
+                'uiInstalledThroughPrivilegedAccess',
               ),
               supportingText: linuxText(
                 context,
-                'Shizuku・Stellar・内蔵バインダで、ランチャーを確認なしでインストール・削除します。',
-                'Launchers are installed and removed without confirmation through Shizuku, Stellar or the built-in binder.',
+                'uiLaunchersAreInstalledAndRemovedWithoutConfirmationThroughShizukuStellarOrTheBuiltInBinder',
               ),
               supportingMaxLines: null,
               leading: const Icon(M3EIcons.bolt_rounded),
@@ -660,15 +633,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         LinuxGroup(
           children: [
             M3EListItem(
-              headline: linuxText(
-                context,
-                'ショートカットとして追加',
-                'Added as shortcuts',
-              ),
+              headline: linuxText(context, 'uiAddedAsShortcuts'),
               supportingText: linuxText(
                 context,
-                'Linux アプリはホーム画面のショートカットとして追加されます。追加するときはホームアプリが確認します。削除はホーム画面からショートカットを外してください。',
-                'Linux apps are added as home-screen shortcuts; the home app confirms each one. Remove them from the home screen.',
+                'uiLinuxAppsAreAddedAsHomeScreenShortcutsTheHomeAppConfirmsEachOneRemoveThemFromTheHomeScreen',
               ),
               supportingMaxLines: null,
               leading: const Icon(M3EIcons.add_to_home_screen_rounded),
@@ -679,15 +647,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         LinuxGroup(
           children: [
             M3EListItem(
-              headline: linuxText(
-                context,
-                'Android のインストール画面で追加',
-                "Added through Android's installer",
-              ),
+              headline: linuxText(context, 'uiAddedThroughAndroidSInstaller'),
               supportingText: linuxText(
                 context,
-                'ランチャーを追加・削除するたびに、Android のインストール確認画面が表示されます。',
-                'Android asks to confirm each launcher you add or remove.',
+                'uiAndroidAsksToConfirmEachLauncherYouAddOrRemove',
               ),
               supportingMaxLines: null,
               leading: const Icon(M3EIcons.install_mobile_rounded),
@@ -702,7 +665,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
               groupValue: launcherMode,
               onChanged: _setLauncherMode,
               icon: M3EIcons.help_outline_rounded,
-              title: linuxText(context, '初回に確認する', 'Ask the first time'),
+              title: linuxText(context, 'uiAskTheFirstTime'),
             ),
             LinuxChoice<String>(
               value: 'auto',
@@ -711,17 +674,15 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
               enabled: silentAvailable || launcherMode == 'auto',
               onChanged: _setLauncherMode,
               icon: M3EIcons.bolt_rounded,
-              title: linuxText(context, '自動でインストール', 'Install automatically'),
+              title: linuxText(context, 'uiInstallAutomatically'),
               subtitle: silentAvailable
                   ? linuxText(
                       context,
-                      'Shizuku・Stellar・内蔵バインダで、確認なしでインストールします',
-                      'Installs without confirmation through Shizuku, Stellar or the built-in binder',
+                      'uiInstallsWithoutConfirmationThroughShizukuStellarOrTheBuiltInBinder',
                     )
                   : linuxText(
                       context,
-                      'Shizuku・Stellar・内蔵バインダの特権アクセスを設定すると選べます',
-                      'Available once privileged access through Shizuku, Stellar or the built-in binder is set up',
+                      'uiAvailableOncePrivilegedAccessThroughShizukuStellarOrTheBuiltInBinderIsSetUp',
                     ),
             ),
             LinuxChoice<String>(
@@ -729,11 +690,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
               groupValue: launcherMode,
               onChanged: _setLauncherMode,
               icon: M3EIcons.install_mobile_rounded,
-              title: linuxText(context, '手動でインストール', 'Install manually'),
+              title: linuxText(context, 'uiInstallManually'),
               subtitle: linuxText(
                 context,
-                'Android のインストール確認画面を毎回表示します',
-                'Android asks to confirm each installation',
+                'uiAndroidAsksToConfirmEachInstallation',
               ),
             ),
           ],
@@ -766,7 +726,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
                 groupValue: wm,
                 onChanged: (v) => choose('wm', v, wm),
                 icon: M3EIcons.web_asset_rounded,
-                title: 'Dextop',
+                title: t('uiDextopProduct'),
                 subtitle: l.linuxWmDextopDescription,
               ),
             ],
@@ -795,10 +755,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             icon: M3EIcons.bolt_rounded,
             title: l.linuxGpuTurnip,
             subtitle: !turnipSupported
-                ? t(
-                    'Adreno 6xx〜8xx 専用です。この GPU では使えません',
-                    'For Adreno 6xx–8xx only; not for this GPU',
-                  )
+                ? t('uiForAdreno6xx8xxOnlyNotForThisGPU')
                 : turnipReady
                 ? l.linuxGpuTurnipDescription
                 : '${l.linuxGpuTurnipDescription}\n${l.linuxGpuTurnipSetup}',
@@ -837,6 +794,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           style: theme.textTheme.bodySmall,
         ),
       ),
+      LinuxCompatPanel(containerId: widget.containerId),
     ];
 
     Widget category(String id, IconData icon, String title, String summary) =>
@@ -856,76 +814,61 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           category(
             'general',
             M3EIcons.tune_rounded,
-            t('一般', 'General'),
-            '$modeName · ${t('既定の Linux 環境', 'Default environment')}',
+            t('uiGeneral'),
+            '$modeName · ${t('uiDefaultEnvironment')}',
           ),
           category(
             'display',
             M3EIcons.palette_rounded,
-            t('表示とグラフィックス', 'Display and graphics'),
+            t('uiDisplayAndGraphics'),
             '$gpuName · $themeName',
           ),
           category(
             'network',
             M3EIcons.dns_rounded,
-            t('ネットワーク', 'Network'),
-            t('Linux専用DNS', 'Linux DNS'),
+            t('uiNetwork'),
+            t('uiLinuxDNS'),
           ),
           category(
             'integration',
             M3EIcons.phone_android_rounded,
-            t('Android統合と権限', 'Android integration and permissions'),
-            t(
-              '連携・権限・互換性・SSH・VNC・カレンダー',
-              'Integration, permissions, compatibility, SSH, VNC and calendars',
-            ),
+            t('uiAndroidIntegrationAndPermissions'),
+            t('uiIntegrationPermissionsCompatibilitySSHVNCAndCalendars'),
           ),
           category(
             'services',
             M3EIcons.settings_applications_rounded,
-            t('サービスと印刷', 'Services and printing'),
-            t(
-              'systemd互換サービス・Androidへの印刷',
-              'Service compatibility and Android printing',
-            ),
+            t('uiServicesAndPrinting'),
+            t('uiServiceCompatibilityAndAndroidPrinting'),
           ),
           category(
             'resources',
             M3EIcons.monitor_heart_rounded,
-            t('リソース', 'Resources'),
-            t(
-              'プロセス・CPU・GPU・ストレージ・ハードウェア・コンテナとドライバの情報',
-              'Processes, CPU, GPU, storage, hardware, containers and drivers',
-            ),
+            t('uiResources'),
+            t('uiProcessesCPUGPUStorageHardwareContainersAndDrivers'),
           ),
           category(
             'store',
             M3EIcons.storefront_rounded,
             'Store',
-            t('配布元と準備', 'Sources and their setup'),
+            t('uiSourcesAndTheirSetup'),
           ),
           if (macosCompatibilityEnabled)
             category(
               'macos',
               M3EIcons.computer_rounded,
-              t('macOS 互換', 'macOS compatibility'),
-              t(
-                '互換環境とローカルアプリの登録',
-                'Compatibility runtime and local app registration',
-              ),
+              t('uiMacOSCompatibility4f7a9442'),
+              t('uiCompatibilityRuntimeAndLocalAppRegistration'),
             ),
         ],
       ),
-      LinuxSection(t('初期化', 'Reset')),
+      LinuxSection(t('uiReset')),
       LinuxGroup(
         children: [
           M3EListItem(
             supportingMaxLines: null,
-            headline: t('Linux を初期化', 'Reset Linux'),
-            supportingText: t(
-              'Linux の全データを削除し、初期セットアップ前の状態に戻します',
-              'Deletes all Linux data, back to before the first setup',
-            ),
+            headline: t('uiResetLinux'),
+            supportingText: t('uiDeletesAllLinuxDataBackToBeforeTheFirstSetup'),
             leading: Icon(
               M3EIcons.restart_alt_rounded,
               color: theme.colorScheme.error,
@@ -939,14 +882,14 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
     final page = _forContainer ? 'container' : _page;
     final title = switch (page) {
       'container' => l.linuxContainerSettings,
-      'general' => t('一般', 'General'),
-      'display' => t('表示とグラフィックス', 'Display and graphics'),
-      'network' => t('ネットワーク', 'Network'),
-      'integration' => t('Android統合と権限', 'Android integration and permissions'),
+      'general' => t('uiGeneral'),
+      'display' => t('uiDisplayAndGraphics'),
+      'network' => t('uiNetwork'),
+      'integration' => t('uiAndroidIntegrationAndPermissions'),
       'store' => 'Store',
-      'resources' => t('リソース', 'Resources'),
-      'services' => t('サービスと印刷', 'Services and printing'),
-      'macos' => t('macOS 互換', 'macOS compatibility'),
+      'resources' => t('uiResources'),
+      'services' => t('uiServicesAndPrinting'),
+      'macos' => t('uiMacOSCompatibility4f7a9442'),
       _ => l.linuxSettingsTitle,
     };
     final content = switch (page) {
@@ -956,8 +899,8 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'network' => network(),
       'integration' => [
         ...integration(),
-        const LinuxCompatPanel(),
-        LinuxSection(t('SSH・VNC・カレンダー', 'SSH, VNC and calendars')),
+        LinuxCompatPanel(containerId: widget.containerId),
+        LinuxSection(t('uiSSHVNCAndCalendars')),
         LinuxIntegrationsPanel(
           containers: containers,
           features: const {'ssh', 'vnc', 'calendar'},
@@ -1027,27 +970,26 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
   }
 
   Future<void> _resetLinux() async {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final confirmed = await M3EDialog.show<bool>(
       context,
       dialog: Builder(
         builder: (dialogContext) => M3EDialog(
-          title: t('Linux を初期化しますか？', 'Reset Linux?'),
+          title: t('uiResetLinux29825e1a'),
           icon: const Icon(M3EIcons.restart_alt_rounded),
           content: Text(
             t(
-              '両方の実行方式のすべての Linux 環境（中のアプリとファイルを含む）、Linux 設定、Store・アクセス許可・コントローラーの設定まで、Linux の全データを削除します。元に戻せません。',
-              'All Linux data is deleted: every environment of both execution modes with its apps and files, the Linux settings, and the Store, access and controller choices. This cannot be undone.',
+              'uiAllLinuxDataIsDeletedEveryEnvironmentOfBothExecutionModesWithItsAppsAndFilesTheLinuxSettingsAndTheSt',
             ),
           ),
           actions: [
             M3EButton.text(
               onPressed: () => Navigator.pop(dialogContext, false),
-              child: Text(t('キャンセル', 'Cancel')),
+              child: Text(t('uiCancel')),
             ),
             M3EButton.filled(
               onPressed: () => Navigator.pop(dialogContext, true),
-              child: Text(t('初期化', 'Reset')),
+              child: Text(t('uiReset')),
             ),
           ],
         ),
@@ -1056,10 +998,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
     if (confirmed != true || !mounted) return;
     setState(() => saving = true);
     // Progress of the reset, shown until it is done: (fraction or null, what runs now).
-    final progress = ValueNotifier<(double?, String)>((
-      null,
-      t('準備しています…', 'Preparing…'),
-    ));
+    final progress = ValueNotifier<(double?, String)>((null, t('uiPreparing')));
     final navigator = Navigator.of(context);
     unawaited(
       showDialog<void>(
@@ -1068,7 +1007,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
         builder: (dialogContext) => PopScope(
           canPop: false,
           child: M3EDialog(
-            title: t('Linux を初期化しています', 'Resetting Linux'),
+            title: t('uiResettingLinux'),
             icon: const Icon(M3EIcons.restart_alt_rounded),
             content: ValueListenableBuilder<(double?, String)>(
               valueListenable: progress,
@@ -1097,33 +1036,27 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       for (final (index, container) in list.indexed) {
         progress.value = (
           index / total,
-          inlineFormat(
-            t(
-              'Linux 環境を削除しています（{0}/{1}）\n{2}',
-              'Deleting Linux environments ({0}/{1})\n{2}',
-            ),
-            [index + 1, list.length, container['name'] ?? container['id']],
-          ),
+          inlineFormat(t('uiDeletingLinuxEnvironments012'), [
+            index + 1,
+            list.length,
+            container['name'] ?? container['id'],
+          ]),
         );
         await _channel.invokeMethod<bool>('remove', {'id': container['id']});
       }
       progress.value = (
         list.length / total,
-        t(
-          '設定と、もう一方の実行方式のデータを削除しています',
-          "Deleting the settings and the other execution mode's data",
-        ),
+        t('uiDeletingTheSettingsAndTheOtherExecutionModeSData'),
       );
       final result = await _channel.invokeMapMethod<String, Object?>(
         'resetLinux',
       );
-      progress.value = (1, t('完了しました', 'Done'));
+      progress.value = (1, t('uiDone'));
       if (result?['privilegedLeft'] == true && mounted) {
         M3ESnackbar.show(
           context,
           message: t(
-            '特権アクセスに接続していないため、完全特権方式のデータ（/data/local/tmp/dextop/linux）は削除できませんでした',
-            'Not connected to privileged access, so the full-privilege data (/data/local/tmp/dextop/linux) was not deleted',
+            'uiNotConnectedToPrivilegedAccessSoTheFullPrivilegeDataDataLocalTmpDextopLinuxWasNotDeleted',
           ),
         );
       }

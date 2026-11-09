@@ -138,7 +138,7 @@ internal class PlasmaSystemControls(
             "LTE", "LTE_CA" -> "LTE"
             "HSPAP", "HSPA", "HSDPA", "HSUPA", "UMTS", "TD_SCDMA", "EVDO_0", "EVDO_A", "EVDO_B", "EHRPD" -> "3G"
             "EDGE", "GPRS", "GSM", "CDMA", "1XRTT", "IDEN" -> "2G"
-            "IWLAN" -> "Wi-Fi Calling"
+            "IWLAN" -> moe.n4tsu.dextop.localText("uiWiFiCalling")
             else -> raw
         }
     }

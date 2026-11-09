@@ -61,7 +61,7 @@ internal object LinuxHidSysfs {
         val hidName = "0003:%04X:%04X.%04X".format(key.vendor, key.product, index + 1)
         val hid = File(usbInterface, hidName)
         val hidraw = File(hid, "hidraw/${key.node}")
-        check(hidraw.mkdirs()) { "Cannot create ${hidraw.path}" }
+        check(hidraw.mkdirs()) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotCreate0"), hidraw.path) }
         val guestBusDevice = "$GUEST_DEVICES/usb1/$port"
         val guestHidraw = "$guestBusDevice/$port:1.0/$hidName/hidraw/${key.node}"
         val devnum = index + 2

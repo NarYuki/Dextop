@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'linux/linux_error_log.dart';
+import 'linux/linux_backups.dart';
 import 'linux/linux_privilege_warning.dart';
 
 import 'package:flutter/foundation.dart';
@@ -94,26 +95,22 @@ class LinuxSetupPage extends StatefulWidget {
 
 class _LinuxSetupPageState extends State<LinuxSetupPage> {
   static const locales = <String, String>{
-    'en_US': 'English',
-    'ja_JP': '日本語',
-    'zh_CN': '简体中文',
-    'zh_TW': '繁體中文',
-    'ko_KR': '한국어',
-    'ru_RU': 'Русский',
-    'pt_BR': 'Português (Brasil)',
-    'de_DE': 'Deutsch',
-    'fr_FR': 'Français',
-    'es_ES': 'Español',
+    'en_US': 'uiLanguageEnglish',
+    'ja_JP': 'uiLanguageJapanese',
+    'zh_CN': 'uiLanguageChineseSimplified',
+    'zh_TW': 'uiLanguageChineseTraditional',
+    'ko_KR': 'uiLanguageKorean',
+    'ru_RU': 'uiLanguageRussian',
+    'pt_BR': 'uiLanguagePortugueseBrazil',
+    'de_DE': 'uiLanguageGerman',
+    'fr_FR': 'uiLanguageFrench',
+    'es_ES': 'uiLanguageSpanish',
   };
   final name = TextEditingController();
   late String distro;
-  String profile = 'complete';
-  String displayBackend = 'wayland';
   String locale = 'en_US';
   String ime = 'none';
   bool cjkFonts = false;
-  bool graphics = true;
-  bool themes = true;
   final apps = <String>{'files', 'editor'};
 
   /// Step 9: a fresh Linux account, also used to unlock its encrypted keyring.
@@ -125,13 +122,19 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   // First setup only (steps 7 and 8).
   static const _channel = MethodChannel('app.freedextop/linux');
-  String executionMode = 'privileged';
+  String executionMode = 'android';
 
   /// Full privilege needs Dextop's setup; until then only Android can be chosen.
   bool privilegeReady = false;
+
+  /// False in the Google Play build, which has no full privilege to choose.
+  bool privilegeOffered = false;
+
+  /// Until known, step 7 stays in the flow so that the first page has a position.
+  bool executionModeChecked = false;
   bool debGet = false;
   bool flathub = false;
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
 
   void moveTo(int next) => setState(() {
     movingForward = next > step;
@@ -146,14 +149,17 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   AppLocalizations get l => AppLocalizations.of(context);
   bool get updating => widget.containerId != null;
 
-  /// DroidDeck's runtime brings its own desktop, fonts and input methods,
-  /// so only the system and app choices apply.
-  bool get runtime => distro == 'droiddeck';
   List<int> get flow => [
-    if (widget.firstRun) ...[7, 8],
-    ...(runtime
-        ? [0, 4, if (!updating) 9, 5]
-        : [0, 1, 2, 3, 4, if (!updating) 9, 5]),
+    if (widget.firstRun) ...[
+      if (privilegeOffered || !executionModeChecked) 7,
+      8,
+    ],
+    0,
+    2,
+    3,
+    4,
+    if (!updating) 9,
+    5,
   ];
 
   /// Validate account credentials before starting installation.
@@ -177,22 +183,18 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
           'systemd-timesync',
         }.contains(username.text)) {
       return t(
-        'ユーザー名は英小文字で始まる31文字以内の英小文字・数字・_・-にしてください。システム用の名前は使えません。',
-        'Use a non-system username of up to 31 lowercase letters, digits, _ or -, starting with a letter',
+        'uiUseANonSystemUsernameOfUpTo31LowercaseLettersDigitsOrStartingWithALetter',
       );
     }
     if (keyringPassword.text.contains(RegExp(r'[\r\n\x00]')) ||
         keyringPassword.text.length > 1024) {
-      return t(
-        'パスワードに改行は使えません（最大1024文字）',
-        'No line breaks; maximum 1024 characters',
-      );
+      return t('uiNoLineBreaksMaximum1024Characters');
     }
     if (keyringPassword.text.length < 8) {
-      return t('8 文字以上にしてください', 'Use at least 8 characters');
+      return t('uiUseAtLeast8Characters');
     }
     if (keyringConfirm.text != keyringPassword.text) {
-      return t('確認用のパスワードが一致しません', 'The passwords do not match');
+      return t('uiThePasswordsDoNotMatch');
     }
     return null;
   }
@@ -201,10 +203,14 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   Future<void> _loadExecutionMode() async {
     final ready = await linuxPrivilegeReady();
+    final offered = await linuxPrivilegedModeOffered();
     final value = await _channel.invokeMethod<String>('executionMode');
     if (!mounted) return;
     setState(() {
       privilegeReady = ready;
+      privilegeOffered = offered;
+      executionModeChecked = true;
+      if (!offered && step == 7) step = 8;
       if (value != null) executionMode = value;
       if (!ready) executionMode = 'android';
     });
@@ -243,13 +249,9 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     final saved = widget.initialOptions;
     if (saved.isNotEmpty) {
       username.text = saved['username'] as String? ?? username.text;
-      profile = saved['profile'] as String? ?? profile;
-      displayBackend = saved['displayBackend'] as String? ?? displayBackend;
       locale = saved['locale'] as String? ?? locale;
       ime = saved['ime'] as String? ?? ime;
       cjkFonts = saved['cjkFonts'] as bool? ?? cjkFonts;
-      graphics = saved['graphics'] as bool? ?? graphics;
-      themes = saved['themes'] as bool? ?? themes;
       apps
         ..clear()
         ..addAll((saved['apps'] as List? ?? []).whereType<String>());
@@ -270,13 +272,10 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     if (!updating) 'username': username.text,
     if (!updating && operationId == null)
       'accountPassword': keyringPassword.text,
-    'profile': profile,
-    'displayBackend': displayBackend,
+    'displayBackend': widget.initialOptions['displayBackend'] as String? ?? 'wayland',
     'locale': locale,
     'cjkFonts': cjkFonts,
     'ime': ime,
-    'graphics': graphics,
-    'themes': themes,
     'apps': apps.toList()..sort(),
   };
 
@@ -351,15 +350,12 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     if (executionMode == 'privileged' && !await linuxPrivilegeReady()) {
       throw Exception(unavailable);
     }
-    // Full privilege is the default choice: its warning is shown before it is used, once.
+    // Explicitly selecting the privileged shell requires accepting its warning once.
     if (executionMode == 'privileged' &&
         !await linuxPrivilegedWarningAccepted()) {
       if (!mounted || !await showLinuxPrivilegedWarning(context)) {
         throw Exception(
-          t(
-            '完全特権の確認がキャンセルされました。実行方式を選び直してください。',
-            'Full privilege was not confirmed. Choose the execution mode again.',
-          ),
+          t('uiFullPrivilegeWasNotConfirmedChooseTheExecutionModeAgain'),
         );
       }
     }
@@ -423,14 +419,13 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   Widget build(BuildContext context) {
     final titles = {
       0: l.linuxSetupSystem,
-      1: l.linuxSetupDesktop,
       2: l.linuxSetupLanguage,
       3: l.linuxSetupInput,
       4: l.linuxSetupApps,
       5: l.linuxSetupReview,
-      7: t('Linux の動かし方', 'How Linux runs'),
-      8: t('Store の配布元', 'Store sources'),
-      9: t('Linuxユーザー', 'Linux user'),
+      7: t('uiHowLinuxRuns'),
+      8: t('uiStoreSources'),
+      9: t('uiLinuxUser'),
     };
     final theme = Theme.of(context);
     return PopScope(
@@ -596,13 +591,22 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
       const SizedBox(height: 16),
       Text(
         t(
-          'Dextop で Linux を使うための初期セットアップです。Linux の動かし方、Store の配布元、Linux 環境の中身を順に選びます。どれもあとから Linux 設定で変更できます。',
-          'This first setup prepares Linux in Dextop: how it runs, the Store sources, then what the Linux environment contains. Everything can be changed later in Linux settings.',
+          'uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt',
         ),
       ),
       const SizedBox(height: 24),
       optionGroup([
         LinuxChoice<String>(
+          value: 'android',
+          groupValue: executionMode,
+          onChanged: (value) => setState(() => executionMode = value),
+          icon: M3EIcons.security_rounded,
+          title: t('uiAndroidExperimental'),
+          subtitle: t(
+            'uiRunsWithOrdinaryAppPermissionsDevelopmentBrowsersAndGamesWorkAndroidSystemStorageStaysOutOfReach',
+          ),
+        ),
+        if (privilegeOffered) LinuxChoice<String>(
           value: 'privileged',
           groupValue: executionMode,
           enabled: privilegeReady,
@@ -612,32 +616,20 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
             }
           },
           icon: M3EIcons.admin_panel_settings_rounded,
-          title: t('完全特権', 'Full privilege'),
-          subtitle: privilegeReady
-              ? t(
-                  'Shizuku・Stellar・内蔵バインダなどの特権アクセスで動かします。Android のファイル領域やコントローラー・音声デバイスを直接扱えます。',
-                  'Runs through privileged access such as Shizuku, Stellar or the built-in binder. Reaches Android files, controllers and audio devices directly.',
-                )
-              : linuxPrivilegeUnavailableText(context),
-        ),
-        LinuxChoice<String>(
-          value: 'android',
-          groupValue: executionMode,
-          onChanged: (value) => setState(() => executionMode = value),
-          icon: M3EIcons.security_rounded,
-          title: t('Android（試験的）', 'Android (experimental)'),
-          subtitle: t(
-            '通常のアプリ権限で動かします。開発・ブラウザ・ゲームも動きます。Android のシステム領域には触れません。',
-            'Runs with ordinary app permissions. Development, browsers and games work. Android system storage stays out of reach.',
-          ),
+          title: t('uiFullPrivilege'),
+          subtitle: [
+            t(
+              'uiRunsThroughPrivilegedAccessSuchAsShizukuStellarOrTheBuiltInBinderReachesAndroidFilesControllersAndAu',
+            ),
+            if (!privilegeReady) linuxPrivilegeUnavailableText(context),
+          ].join('\n'),
         ),
       ]),
     ],
     8 => [
       Text(
         t(
-          'Store に並べるアプリの入手先です。APT は常に使えます。deb-get と Flathub は、Linux 環境のインストール後に自動で準備します。',
-          'Where Store apps come from. APT is always available; deb-get and Flathub are set up automatically after the Linux environment is installed.',
+          'uiWhereStoreAppsComeFromAPTIsAlwaysAvailableDebGetAndFlathubAreSetUpAutomaticallyAfterTheLinuxEnvironm',
         ),
       ),
       const SizedBox(height: 24),
@@ -646,34 +638,28 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
           value: true,
           onChanged: null,
           icon: M3EIcons.inventory_2_rounded,
-          title: 'Debian / Ubuntu APT',
-          subtitle: t('ディストリビューションの公式パッケージ', 'Official distribution packages'),
+          title: localText(context, 'uiAptProduct'),
+          subtitle: t('uiOfficialDistributionPackages'),
         ),
         LinuxToggle(
           value: debGet,
           onChanged: (value) => setState(() => debGet = value),
           icon: M3EIcons.download_rounded,
-          title: 'deb-get',
-          subtitle: t(
-            '開発元が配布する DEB パッケージ（Chrome・VS Code など）',
-            'DEB packages from app developers (Chrome, VS Code and more)',
-          ),
+          title: localText(context, 'uiDebGetProduct'),
+          subtitle: t('uiDEBPackagesFromAppDevelopersChromeVSCodeAndMore'),
         ),
         LinuxToggle(
           value: flathub,
           onChanged: (value) => setState(() => flathub = value),
           icon: M3EIcons.apps_rounded,
-          title: 'Flathub',
-          subtitle: t('Flatpak アプリ', 'Flatpak applications'),
+          title: localText(context, 'uiFlathubProduct'),
+          subtitle: t('uiFlatpakApplications'),
         ),
       ]),
       Padding(
         padding: const EdgeInsets.all(12),
         child: Text(
-          t(
-            'Store は Debian と Ubuntu に対応しています。',
-            'The Store supports Debian and Ubuntu.',
-          ),
+          t('uiTheStoreSupportsDebianAndUbuntu'),
           style: Theme.of(context).textTheme.bodySmall,
         ),
       ),
@@ -681,19 +667,15 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     9 => [
       Text(
         t(
-          '通常のアプリやターミナルで使うLinuxユーザーを作成します。管理操作はsudoを使います。同じパスワードをキーリングにも設定し、Linux起動時に自動でロックを解除します。パスワードはAndroid Keystoreで暗号化して保存します。',
-          'Create the Linux user for apps and terminals. Use sudo for administration. The same password protects the keyring, which unlocks automatically when Linux starts. Dextop stores the password encrypted with Android Keystore.',
+          'uiCreateTheLinuxUserForAppsAndTerminalsUseSudoForAdministrationTheSamePasswordProtectsTheKeyringWhichU',
         ),
       ),
       const SizedBox(height: 24),
       M3ETextField(
         variant: M3ETextFieldVariant.outlined,
         controller: username,
-        label: t('ユーザー名', 'Username'),
-        supportingText: t(
-          '英小文字・数字・_・-（英小文字で開始）',
-          'Lowercase letters, digits, _ or -; start with a letter',
-        ),
+        label: t('uiUsername'),
+        supportingText: t('uiLowercaseLettersDigitsOrStartWithALetter'),
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: 16),
@@ -702,11 +684,8 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         controller: keyringPassword,
         obscureText: true,
         showPasswordToggle: true,
-        label: t('パスワード', 'Password'),
-        supportingText: t(
-          '8文字以上。sudo・SSH・キーリングで使用します。',
-          'At least 8 characters. Used for sudo, SSH and the keyring.',
-        ),
+        label: t('uiPassword'),
+        supportingText: t('uiAtLeast8CharactersUsedForSudoSSHAndTheKeyring'),
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: 12),
@@ -715,7 +694,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         controller: keyringConfirm,
         obscureText: true,
         showPasswordToggle: true,
-        label: t('パスワード（確認）', 'Confirm password'),
+        label: t('uiConfirmPassword'),
         errorText: keyringConfirm.text.isEmpty ? null : keyringProblem,
         onChanged: (_) => setState(() {}),
       ),
@@ -743,7 +722,9 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         ])
       else
         optionGroup([
-          for (final entry in widget.catalog)
+          for (final entry in widget.catalog.where(
+            (entry) => entry['id'] == 'debian',
+          ))
             LinuxChoice<String>(
               value: entry['id'] as String,
               groupValue: distro,
@@ -751,66 +732,16 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
               title: entry['name'] as String,
             ),
         ]),
-    ],
-    1 => [
-      Text(
-        l.linuxSetupDisplayBackend,
-        style: Theme.of(context).textTheme.titleMedium,
-      ),
-      const SizedBox(height: 12),
-      optionGroup([
-        LinuxChoice<String>(
-          value: 'wayland',
-          groupValue: displayBackend,
-          onChanged: (value) => setState(() => displayBackend = value),
-          title: 'Wayland',
-          subtitle: l.linuxSetupWaylandDetail,
+      if (!updating) ...[
+        const SizedBox(height: 12),
+        M3EButton.text(
+          onPressed: () async {
+            await LinuxBackupsUi.showSnapshots(context);
+            await widget.refresh();
+          },
+          child: Text(t('uiRestoreFromASnapshotOrBackup')),
         ),
-        LinuxChoice<String>(
-          value: 'xvfb',
-          groupValue: displayBackend,
-          onChanged: (value) => setState(() => displayBackend = value),
-          title: 'Xvfb',
-          subtitle: l.linuxSetupXvfbDetail,
-        ),
-      ]),
-      const SizedBox(height: 24),
-      optionGroup([
-        for (final entry in {
-          'minimal': (l.linuxSetupMinimal, l.linuxSetupMinimalDetail),
-          'complete': (l.linuxSetupComplete, l.linuxSetupCompleteDetail),
-        }.entries)
-          LinuxChoice<String>(
-            value: entry.key,
-            groupValue: profile,
-            onChanged: (value) => setState(() {
-              profile = value;
-              themes = graphics = profile == 'complete';
-              if (profile == 'complete') {
-                apps.addAll(['files', 'editor']);
-              } else {
-                apps.clear();
-              }
-            }),
-            title: entry.value.$1,
-            subtitle: entry.value.$2,
-          ),
-      ]),
-      const SizedBox(height: 16),
-      optionGroup([
-        toggle(
-          l.linuxSetupThemes,
-          l.linuxSetupThemesDetail,
-          themes,
-          (value) => setState(() => themes = value),
-        ),
-        toggle(
-          l.linuxSetupGraphics,
-          l.linuxSetupGraphicsDetail,
-          graphics,
-          (value) => setState(() => graphics = value),
-        ),
-      ]),
+      ],
     ],
     2 => [
       Text(l.linuxSetupLocaleDetail),
@@ -823,7 +754,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         items: [
           for (final entry in locales.entries)
             M3EDropdownItem(
-              label: entry.value,
+              label: t(entry.value),
               value: entry.key,
               selected: entry.key == locale,
             ),
@@ -864,17 +795,10 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
             onChanged: (value) => setState(() => ime = value),
             title: entry.key == 'none'
                 ? entry.value
-                : inlineFormat(t('{0}（試験的）', '{0} (experimental)'), [
-                    entry.value,
-                  ]),
+                : inlineFormat(t('ui0Experimental'), [entry.value]),
             subtitle: entry.key == 'none' ? l.linuxSetupNoImeDetail : null,
           ),
       ]),
-    ],
-    4 when runtime => [
-      Text(l.linuxSetupDroidDeckNote),
-      const SizedBox(height: 16),
-      optionGroup([appToggle('steam', l.linuxSetupSteamDetail)]),
     ],
     4 => [
       optionGroup([
@@ -916,16 +840,16 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     _ => [
       optionGroup([
         if (widget.firstRun) ...[
-          summary(
+          if (privilegeOffered) summary(
             M3EIcons.security_rounded,
-            t('Linux の動かし方', 'How Linux runs'),
+            t('uiHowLinuxRuns'),
             executionMode == 'android'
-                ? t('Android（試験的）', 'Android (experimental)')
-                : t('完全特権', 'Full privilege'),
+                ? t('uiAndroidExperimental')
+                : t('uiFullPrivilege'),
           ),
           summary(
             M3EIcons.storefront_rounded,
-            t('Store の配布元', 'Store sources'),
+            t('uiStoreSources'),
             ['APT', if (debGet) 'deb-get', if (flathub) 'Flathub'].join(' · '),
           ),
         ],
@@ -934,29 +858,10 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
           name.text.trim().isEmpty ? distroName : name.text.trim(),
           distroName,
         ),
-        if (runtime)
-          summary(
-            M3EIcons.space_dashboard_outlined,
-            l.linuxSetupDesktop,
-            l.linuxSetupDroidDeckNote,
-          )
-        else ...[
-          summary(
-            M3EIcons.monitor_rounded,
-            l.linuxSetupDisplayBackend,
-            displayBackend == 'wayland' ? 'Wayland' : 'Xvfb',
-          ),
-          summary(
-            M3EIcons.space_dashboard_outlined,
-            profile == 'minimal' ? l.linuxSetupMinimal : l.linuxSetupComplete,
-            [
-              if (themes) l.linuxSetupThemes,
-              if (graphics) l.linuxSetupGraphics,
-            ].join(' · '),
-          ),
+        ...[
           summary(
             M3EIcons.language_rounded,
-            locales[locale] ?? locale,
+            locales.containsKey(locale) ? t(locales[locale]!) : locale,
             [
               if (cjkFonts || ime != 'none') l.linuxSetupFonts,
               imeName,
@@ -973,8 +878,8 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         if (!updating)
           summary(
             M3EIcons.key_rounded,
-            t('Linuxユーザー・キーリング', 'Linux user and keyring'),
-            '${username.text} · ${t('共通パスワード・自動ロック解除', 'Shared password, automatic unlock')}',
+            t('uiLinuxUserAndKeyring'),
+            '${username.text} · ${t('uiSharedPasswordAutomaticUnlock')}',
           ),
       ]),
       const SizedBox(height: 16),

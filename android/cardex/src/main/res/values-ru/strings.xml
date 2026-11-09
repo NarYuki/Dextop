@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the shared UI catalogs. -->
+<resources>
+    <string name="app_name" formatted="false">"Dextop Car Companion"</string>
+    <string name="opening_dextop" formatted="false">"Открытие Dextop…"</string>
+    <string name="relay_description" formatted="false">"Dextop Car Companion соединяет Android Auto с Dextop."</string>
+    <string name="dextop_required" formatted="false">"Dextop не установлен или его подпись не совпадает с Dextop Car Companion."</string>
+    <string name="open_again" formatted="false">"Открыть Dextop"</string>
+    <string name="ready" formatted="false">"Dextop Car Companion готов"</string>
+    <string name="not_ready" formatted="false">"Подключение Dextop недоступно"</string>
+    <string name="start" formatted="false">"Начать"</string>
+    <string name="open_phone" formatted="false">"Запустить Dextop"</string>
+    <string name="guide_title" formatted="false">"Запуск Dextop в Android Auto"</string>
+    <string name="guide_description" formatted="false">"Запись показывает экран Android Auto. Повторите действия на экране автомобиля для запуска Dextop."</string>
+    <string name="connection" formatted="false">"Подключение"</string>
+    <string name="dextop_installed" formatted="false">"Dextop установлен"</string>
+    <string name="dextop_missing" formatted="false">"Требуется Dextop"</string>
+    <string name="signature_verified" formatted="false">"Защищённая ретрансляция доступна"</string>
+    <string name="signature_mismatch" formatted="false">"Обновите Dextop до версии, поддерживающей этот Companion"</string>
+    <string name="auto_mode" formatted="false">"Экран Android Auto"</string>
+    <string name="phone_mode" formatted="false">"Companion на телефоне"</string>
+    <string name="android_auto_connected" formatted="false">"Android Auto подключён"</string>
+    <string name="android_auto_disconnected" formatted="false">"Android Auto не подключён"</string>
+    <string name="automotive_connected" formatted="false">"Android Automotive OS подключена"</string>
+    <string name="parked_note" formatted="false">"Рабочий стол доступен во время стоянки."</string>
+    <string name="starting" formatted="false">"Запуск Dextop…"</string>
+    <string name="stop" formatted="false">"Остановить"</string>
+    <string name="controls" formatted="false">"Управление"</string>
+    <string name="auto_controls" formatted="false">"Управление Auto"</string>
+    <string name="swipe_hint" formatted="false">"Проведите вправо от левого края для открытия панели."</string>
+    <string name="back" formatted="false">"Назад"</string>
+    <string name="home" formatted="false">"Главный экран"</string>
+    <string name="recents" formatted="false">"Недавние приложения"</string>
+    <string name="reconnect" formatted="false">"Переподключить видео"</string>
+    <string name="restart_desktop" formatted="false">"Перезапустить рабочий стол"</string>
+    <string name="close" formatted="false">"Закрыть"</string>
+    <string name="workspace" formatted="false">"Рабочее пространство"</string>
+    <string name="save_workspace" formatted="false">"Добавить текущее расположение приложений"</string>
+    <string name="no_workspaces" formatted="false">"Нет сохраненных рабочих пространств"</string>
+    <string name="display_scale" formatted="false">"Масштаб интерфейса"</string>
+    <string name="display_scale_description" formatted="false">"Уменьшает элементы для компактных автомобильных экранов."</string>
+    <string name="companion_parking_name" formatted="false">"Dextop・Parking"</string>
+    <string name="companion_driving_name" formatted="false">"Dextop・Driving"</string>
+</resources>

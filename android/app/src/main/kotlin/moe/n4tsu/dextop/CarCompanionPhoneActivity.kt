@@ -89,8 +89,8 @@ class CarCompanionPhoneActivity : Activity(), SurfaceHolder.Callback {
             addView(mirror, FrameLayout.LayoutParams(-1, -1))
         }
         modeButton = TextView(this).apply {
-            text = localText("スマホにミラーリング", "Mirror to phone")
-            contentDescription = localText("このスマホにナビ画面をミラーリング", "Mirror the navigation display on this phone")
+            text = localText("uiMirrorToPhone")
+            contentDescription = localText("uiMirrorTheNavigationDisplayOnThisPhone")
             textSize = 15f
             gravity = Gravity.CENTER
             setTextColor(Color.WHITE)
@@ -153,7 +153,7 @@ class CarCompanionPhoneActivity : Activity(), SurfaceHolder.Callback {
         trackpad.visibility = if (visible) View.GONE else View.VISIBLE
         mirror.visibility = if (visible) View.VISIBLE else View.GONE
         if (visible) mirror.bringToFront()
-        modeButton.text = if (visible) localText("トラックパッドに戻る", "Back to trackpad") else localText("スマホにミラーリング", "Mirror to phone")
+        modeButton.text = if (visible) localText("uiBackToTrackpad") else localText("uiMirrorToPhone")
         val nextInput = if (visible) mirror else trackpad
         MirrorService.attachCarCompanionPhoneTrackpad(
             nextInput,
@@ -174,7 +174,7 @@ class CarCompanionPhoneActivity : Activity(), SurfaceHolder.Callback {
             attachMirror(reason)
             return
         }
-        modeButton.text = localText("ミラーリングに接続中…", "Connecting the mirror…")
+        modeButton.text = localText("uiConnectingTheMirror")
         sendBroadcast(
             Intent("roro.stellar.intent.action.REQUEST_BINDER")
                 .setPackage("roro.stellar.manager")
@@ -182,7 +182,7 @@ class CarCompanionPhoneActivity : Activity(), SurfaceHolder.Callback {
         fun retry(attempt: Int) {
             if (!mirrorVisible || generation != mirrorAttachGeneration) return
             if (mirrorController.privilegedAccessAvailable()) {
-                modeButton.text = localText("トラックパッドに戻る", "Back to trackpad")
+                modeButton.text = localText("uiBackToTrackpad")
                 syncCurrentSource()
                 attachMirror("$reason after privilege recovery")
                 return
@@ -196,7 +196,7 @@ class CarCompanionPhoneActivity : Activity(), SurfaceHolder.Callback {
                 }
                 mirrorHandler.postDelayed({ retry(attempt + 1) }, 100L)
             } else {
-                modeButton.text = localText("ミラーリングを再試行", "Retry mirroring")
+                modeButton.text = localText("uiRetryMirroring")
             }
         }
         retry(0)

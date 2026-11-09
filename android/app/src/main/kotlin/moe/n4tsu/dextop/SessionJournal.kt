@@ -38,7 +38,7 @@ internal class SessionJournal(private val context: Context) {
             .putInt("density", density)
             .putBoolean("decorations", decorations)
             .putLong("updated_at", System.currentTimeMillis())
-            .commit()) { "Unable to persist the Dextop recovery journal" }
+            .commit()) { moe.n4tsu.dextop.localText("uiUnableToPersistTheDextopRecoveryJournal") }
     }
 
     fun rememberGlobal(key: String, value: String?) {
@@ -46,7 +46,7 @@ internal class SessionJournal(private val context: Context) {
         check(preferences.edit()
             .putBoolean("global_present_$key", value != null)
             .putString("global_value_$key", value.orEmpty())
-            .commit()) { "Unable to persist the original value of $key" }
+            .commit()) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToPersistTheOriginalValueOf0"), key) }
     }
 
     fun rememberSystem(key: String, value: String?) {
@@ -54,7 +54,7 @@ internal class SessionJournal(private val context: Context) {
         check(preferences.edit()
             .putBoolean("system_present_$key", value != null)
             .putString("system_value_$key", value.orEmpty())
-            .commit()) { "Unable to persist the original value of $key" }
+            .commit()) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToPersistTheOriginalValueOf0"), key) }
     }
 
     fun restoreSystemKeys(keys: Collection<String>) {
@@ -72,7 +72,7 @@ internal class SessionJournal(private val context: Context) {
                 privilegedAccess.execute("settings", "delete", "system", key)
             }
             check(result.succeeded) {
-                "Unable to restore $key: ${result.error.ifBlank { result.output }}"
+                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToRestore01"), key, result.error.ifBlank { result.output })
             }
         }
     }
@@ -82,7 +82,7 @@ internal class SessionJournal(private val context: Context) {
         keys.forEach { key ->
             editor.remove("system_present_$key").remove("system_value_$key")
         }
-        check(editor.commit()) { "Unable to discard persisted system-setting snapshots" }
+        check(editor.commit()) { moe.n4tsu.dextop.localText("uiUnableToDiscardPersistedSystemSettingSnapshots") }
     }
 
     fun rememberPhoneRotation(frozen: Boolean, rotation: Int) {
@@ -90,7 +90,7 @@ internal class SessionJournal(private val context: Context) {
         check(preferences.edit()
             .putBoolean("phone_rotation_frozen", frozen)
             .putInt("phone_rotation_value", rotation)
-            .commit()) { "Unable to persist the original phone rotation state" }
+            .commit()) { moe.n4tsu.dextop.localText("uiUnableToPersistTheOriginalPhoneRotationState") }
     }
 
     fun phoneRotationState(): PhoneRotationState? {
@@ -115,7 +115,7 @@ internal class SessionJournal(private val context: Context) {
                     preferences.getString("global_value_$key", "")
                 } else null
                 check(Settings.Global.putString(resolver, key, value)) {
-                    "Unable to restore $key"
+                    moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToRestore0"), key)
                 }
             }
         }
@@ -126,9 +126,9 @@ internal class SessionJournal(private val context: Context) {
             resolver,
             DisplayMirrorBackend.DISPLAY_SPECIFICATION,
             overlay
-        )) { "Unable to restore the original overlay display setting" }
+        )) { moe.n4tsu.dextop.localText("uiUnableToRestoreTheOriginalOverlayDisplaySetting") }
         val actual = Settings.Global.getString(resolver, DisplayMirrorBackend.DISPLAY_SPECIFICATION)
-        check(actual == overlay) { "The original overlay display setting was not restored" }
+        check(actual == overlay) { moe.n4tsu.dextop.localText("uiTheOriginalOverlayDisplaySettingWasNotRestored") }
         restoreWallpaperDimensions()
         return true
     }

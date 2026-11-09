@@ -40,6 +40,7 @@ ANDROID_RESOURCE_DIRS = {
     "pt_BR": "values-pt-rBR",
 }
 ANDROID_KEYS = {
+    "androidDisplayTileLabel": "quick_settings_display_tile_label",
     "androidSwipeImeLabel": "dextop_swipe_ime_label",
     "androidAccessibilityServiceDescription": "accessibility_service_description",
     "androidEmbeddedPairingChannel": "embedded_pairing_channel",
@@ -120,7 +121,6 @@ def render_android(arb: dict[str, str], default: bool) -> str:
         lines.extend([
             '    <string name="app_name" translatable="false">Dextop</string>',
             '    <string name="quick_settings_tile_label" translatable="false">Dextop</string>',
-            '    <string name="quick_settings_display_tile_label" translatable="false">Dextop Display</string>',
         ])
     for arb_key, resource_key in ANDROID_KEYS.items():
         lines.append(f'    <string name="{resource_key}">{escape(arb[arb_key])}</string>')
@@ -150,9 +150,6 @@ def main() -> None:
     for path, contents in android_outputs.items():
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(contents, encoding="utf-8", newline="\n")
-    # Text written in place as Japanese/English pairs (lib/l10n/inline).
-    import generate_inline_strings
-    generate_inline_strings.generate()
 
 
 if __name__ == "__main__":

@@ -377,7 +377,7 @@ internal class NetworkApplet(
         val (glyph, title) = when (status.transport) {
             PlasmaSystemControls.Transport.WIFI -> Glyph.WIFI to "Wi-Fi"
             PlasmaSystemControls.Transport.CELLULAR -> Glyph.CELLULAR to (status.carrierName ?: t("nativePlasmaMobileData"))
-            PlasmaSystemControls.Transport.ETHERNET -> Glyph.ETHERNET to "Ethernet"
+            PlasmaSystemControls.Transport.ETHERNET -> Glyph.ETHERNET to moe.n4tsu.dextop.localText("uiEthernet")
             PlasmaSystemControls.Transport.OTHER -> Glyph.NETWORK to t("nativePlasmaConnected")
             PlasmaSystemControls.Transport.NONE ->
                 (if (status.airplaneMode) Glyph.AIRPLANE else Glyph.WIFI_OFF) to t("nativePlasmaDisconnected")

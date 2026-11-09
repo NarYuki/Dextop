@@ -70,13 +70,13 @@ internal object LinuxNetworkLink {
     }
 
     fun validateDnsAddress(text: String) {
-        require(text.length <= 45 && text.matches(Regex("[0-9a-fA-F:.]+"))) { "Enter a numeric IPv4 or IPv6 DNS address" }
+        require(text.length <= 45 && text.matches(Regex("[0-9a-fA-F:.]+"))) { moe.n4tsu.dextop.localText("uiEnterANumericIPv4OrIPv6DNSAddress") }
         if (':' !in text) {
             val parts = text.split('.')
-            require(parts.size == 4 && parts.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() in 0..255 }) { "Invalid IPv4 DNS address" }
+            require(parts.size == 4 && parts.all { it.isNotEmpty() && it.length <= 3 && it.all(Char::isDigit) && it.toInt() in 0..255 }) { moe.n4tsu.dextop.localText("uiInvalidIPv4DNSAddress") }
         }
         val address = InetAddress.getByName(text)
-        require(!address.isAnyLocalAddress && !address.isLinkLocalAddress && !address.isMulticastAddress) { "Invalid DNS server address" }
+        require(!address.isAnyLocalAddress && !address.isLinkLocalAddress && !address.isMulticastAddress) { moe.n4tsu.dextop.localText("uiInvalidDNSServerAddress") }
     }
 
     fun stageResolver(root: File, resolver: String) = write(root, "etc/resolv.conf", resolver)

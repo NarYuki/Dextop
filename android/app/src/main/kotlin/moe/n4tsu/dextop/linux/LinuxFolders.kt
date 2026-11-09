@@ -70,16 +70,27 @@ internal object LinuxFolders {
     private val columns = arrayOf(Document.COLUMN_DOCUMENT_ID, Document.COLUMN_DISPLAY_NAME,
         Document.COLUMN_MIME_TYPE, Document.COLUMN_SIZE, Document.COLUMN_LAST_MODIFIED)
     /** Document ids by "<folder>/<path>"; ids of other providers are found by walking. */
-    private val ids = ConcurrentHashMap<String, String>()
+    private val idCaches = ConcurrentHashMap<String, ConcurrentHashMap<String, String>>()
+    private fun ids(context: Context) = idCaches.getOrPut(root(context).absolutePath) { ConcurrentHashMap() }
     private val lock = Any()
 
     /** The placeholder tree; inside the Android mode's storage, so a Linux reset removes it. */
-    fun root(context: Context) = File(context.noBackupFilesDir, "linux-android/folders")
+    fun root(context: Context): File {
+        val scope = context as Scope
+        return File(context.noBackupFilesDir, "linux-${scope.mode}/folders/${scope.id}")
+    }
 
     /** Whether /media/android shows the picked folders: the Android mode (full privilege reads /storage). */
     fun active(context: Context) = LinuxExecutionMode.android(context)
 
-    private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+    private class Scope(context: Context, val id: String, val mode: String) : android.content.ContextWrapper(context)
+    fun scope(context: Context, id: String, mode: String = LinuxExecutionMode.read(context)): Context {
+        require(id.matches(Regex("c[a-zA-Z0-9]+")))
+        require(mode in setOf("android", "privileged"))
+        return Scope(context, id, mode)
+    }
+    private fun prefs(context: Context) = context.getSharedPreferences(
+        if (context is Scope) "$PREFS-${context.mode}-${context.id}" else "$PREFS-unassigned", Context.MODE_PRIVATE)
 
     private fun folders(context: Context): Map<String, Uri> =
         prefs(context).all.mapNotNull { (name, uri) -> (uri as? String)?.let { name to Uri.parse(it) } }.toMap()
@@ -93,7 +104,9 @@ internal object LinuxFolders {
     }
 
     fun pick(context: Context) {
+        val scope = context as Scope
         context.startActivity(Intent(context, LinuxFolderPickerActivity::class.java)
+            .putExtra("container", scope.id).putExtra("mode", scope.mode)
             .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
@@ -101,9 +114,12 @@ internal object LinuxFolders {
      * Adds the folder the picker returned, named as Android names it. The list is saved before
      * this returns, so Linux settings shows it when the picker closes; the folder is read after.
      */
-    fun add(context: Context, tree: Uri) {
+    @Synchronized fun add(context: Context, tree: Uri) {
         context.contentResolver.takePersistableUriPermission(tree,
             Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+        val registry = context.getSharedPreferences("linux-folder-owners", Context.MODE_PRIVATE)
+        val owners = registry.getStringSet(tree.toString(), emptySet()).orEmpty() + root(context).absolutePath
+        check(registry.edit().putStringSet(tree.toString(), owners).commit())
         val existing = folders(context)
         if (tree in existing.values) return
         val label = runCatching { info(context, tree, DocumentsContract.getTreeDocumentId(tree))?.name }.getOrNull()
@@ -118,19 +134,42 @@ internal object LinuxFolders {
         }, "DextopLinuxFolderRead").start()
     }
 
-    fun remove(context: Context, name: String) {
+    @Synchronized fun remove(context: Context, name: String) {
         val tree = folders(context)[name] ?: return
         prefs(context).edit().remove(name).commit()
-        if (tree !in folders(context).values) runCatching {
+        val registry = context.getSharedPreferences("linux-folder-owners", Context.MODE_PRIVATE)
+        val owner = root(context).absolutePath
+        val owners = registry.getStringSet(tree.toString(), emptySet()).orEmpty() - owner
+        registry.edit().apply { if (owners.isEmpty()) remove(tree.toString()) else putStringSet(tree.toString(), owners) }.commit()
+        if (owners.isEmpty()) runCatching {
             context.contentResolver.releasePersistableUriPermission(tree,
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
         }
-        forget(name, "")
+        forget(context, name, "")
         synchronized(lock) { deleteTree(File(root(context), name)) }
     }
 
     /** Linux reset: every picked folder and its grant. */
     fun clear(context: Context) {
+        if (context !is Scope) {
+            val registry = context.getSharedPreferences("linux-folder-owners", Context.MODE_PRIVATE)
+            registry.all.keys.forEach { uri -> runCatching {
+                context.contentResolver.releasePersistableUriPermission(Uri.parse(uri),
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            } }
+            registry.edit().clear().commit()
+            val legacy = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            legacy.all.values.filterIsInstance<String>().forEach { uri -> runCatching {
+                context.contentResolver.releasePersistableUriPermission(Uri.parse(uri),
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION)
+            } }
+            legacy.edit().clear().commit()
+            // The Linux data reset removes placeholder files. Remove all per-container assignments too.
+            File(context.applicationInfo.dataDir, "shared_prefs").listFiles().orEmpty()
+                .filter { it.name.startsWith("$PREFS-") && it.extension == "xml" }
+                .forEach { context.getSharedPreferences(it.nameWithoutExtension, Context.MODE_PRIVATE).edit().clear().commit() }
+            return
+        }
         for (name in folders(context).keys) remove(context, name)
         prefs(context).edit().clear().commit()
     }
@@ -215,7 +254,7 @@ internal object LinuxFolders {
     private fun children(context: Context, tree: Uri, id: String): List<Entry> =
         context.contentResolver.query(DocumentsContract.buildChildDocumentsUriUsingTree(tree, id), columns, null, null, null)
             ?.use { cursor -> buildList { while (cursor.moveToNext()) add(entry(cursor)) } }
-            ?: throw IOException("No listing for $id")
+            ?: throw IOException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiNoListingFor0"), id))
 
     private fun resolve(context: Context, target: Target): Entry? {
         val treeId = DocumentsContract.getTreeDocumentId(target.tree)
@@ -224,15 +263,15 @@ internal object LinuxFolders {
         if (target.tree.authority == EXTERNAL_STORAGE)
             return info(context, target.tree, if (treeId.endsWith(":")) treeId + target.rel else "$treeId/${target.rel}")
         val key = "${target.name}/${target.rel}"
-        ids[key]?.let { id -> info(context, target.tree, id)?.takeIf { it.name == target.leaf }?.let { return it } }
+        ids(context)[key]?.let { id -> info(context, target.tree, id)?.takeIf { it.name == target.leaf }?.let { return it } }
         val parent = resolve(context, Target(target.name, target.tree, target.parent)) ?: return null
         if (!parent.directory) return null
-        return children(context, target.tree, parent.id).firstOrNull { it.name == target.leaf }?.also { ids[key] = it.id }
+        return children(context, target.tree, parent.id).firstOrNull { it.name == target.leaf }?.also { ids(context)[key] = it.id }
     }
 
-    private fun forget(name: String, rel: String) {
+    private fun forget(context: Context, name: String, rel: String) {
         val key = if (rel.isEmpty()) name else "$name/$rel"
-        ids.keys.removeAll { it == key || it.startsWith("$key/") }
+        ids(context).keys.removeAll { it == key || it.startsWith("$key/") }
     }
 
     private fun open(context: Context, socket: LocalSocket, flags: Int, target: Target): Int {
@@ -271,7 +310,7 @@ internal object LinuxFolders {
             DocumentsContract.renameDocument(resolver, uri, target.leaf)?.let { uri = it }
             entry = info(context, target.tree, DocumentsContract.getDocumentId(uri)) ?: throw Errno(EIO)
         }
-        ids["${target.name}/${target.rel}"] = entry.id
+        ids(context)["${target.name}/${target.rel}"] = entry.id
         synchronized(lock) {
             val file = shadow(context, target)
             if (directory) file.mkdirs() else placeholder(file, 0, System.currentTimeMillis())
@@ -293,7 +332,7 @@ internal object LinuxFolders {
         // A provider deletes a directory with everything in it; rmdir only takes an empty one.
         if (directory && children(context, target.tree, entry.id).isNotEmpty()) return ENOTEMPTY
         if (!DocumentsContract.deleteDocument(context.contentResolver, uri(target, entry.id))) return EIO
-        forget(target.name, target.rel)
+        forget(context, target.name, target.rel)
         synchronized(lock) { deleteTree(shadow(context, target)) }
         return 0
     }
@@ -333,8 +372,8 @@ internal object LinuxFolders {
                 discard = { DocumentsContract.deleteDocument(resolver, it) },
             )
         } finally {
-            forget(from.name, from.rel)
-            forget(to.name, to.rel)
+            forget(context, from.name, from.rel)
+            forget(context, to.name, to.rel)
         }
         if (result != 0) return result
         synchronized(lock) {
@@ -364,7 +403,7 @@ internal object LinuxFolders {
             for (entry in entries) {
                 if (!valid(entry.name) || !names.add(entry.name)) continue
                 val child = Target(target.name, target.tree, if (target.rel.isEmpty()) entry.name else "${target.rel}/${entry.name}")
-                ids["${child.name}/${child.rel}"] = entry.id
+                ids(context)["${child.name}/${child.rel}"] = entry.id
                 val file = File(dir, entry.name)
                 if (entry.directory) {
                     if (!file.isDirectory || Files.isSymbolicLink(file.toPath())) { deleteTree(file); file.mkdir() }
@@ -416,7 +455,9 @@ class LinuxFolderPickerActivity : android.app.Activity() {
         super.onActivityResult(requestCode, resultCode, data)
         val tree = data?.data
         if (resultCode == RESULT_OK && tree != null) {
-            runCatching { LinuxFolders.add(applicationContext, tree) }.onFailure { Log.w("DextopLinuxFolders", "Cannot add folder", it) }
+            runCatching { LinuxFolders.add(LinuxFolders.scope(applicationContext,
+                intent.getStringExtra("container") ?: error(moe.n4tsu.dextop.localText("uiInvalidContainerId")),
+                intent.getStringExtra("mode") ?: error(moe.n4tsu.dextop.localText("uiInvalidContainerId"))), tree) }.onFailure { Log.w("DextopLinuxFolders", "Cannot add folder", it) }
         }
         finish()
     }
