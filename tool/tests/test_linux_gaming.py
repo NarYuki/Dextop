@@ -1,3 +1,5 @@
+import gzip
+import hashlib
 import importlib.machinery
 import io
 import os
@@ -10,6 +12,8 @@ from pathlib import Path
 import tempfile
 from types import SimpleNamespace
 import unittest
+import urllib.error
+import urllib.request
 from unittest.mock import patch
 
 RESOURCES = Path(__file__).resolve().parents[2] / 'android/app/src/main/resources/moe/n4tsu/dextop/linux'
@@ -112,6 +116,53 @@ class GamingTest(unittest.TestCase):
         self.assertIn('enable-shm = no', config)
         self.assertIn('enable-memfd = no', config)
         self.assertNotIn('PULSE_CLIENTCONFIG', source)
+
+    def respond(self, table):
+        def opened(url, timeout=None):
+            answer = table[url]
+            if isinstance(answer, int):
+                raise urllib.error.HTTPError(url, answer, 'gone', {}, None)
+            return io.BytesIO(answer)
+        return opened
+
+    def test_a_deleted_fex_build_is_replaced_by_the_listed_one(self):
+        package = b'fex package'
+        listed = 'pool/main/f/fex-emu-armv8.0/fex-emu-armv8.0_2612-1~n_arm64.deb'
+        index = gzip.compress((
+            'Package: other\nFilename: pool/x.deb\n\n'
+            f'Package: fex-emu-armv8.0\nVersion: 2612-1~n\nFilename: {listed}\n'
+            f'SHA256: {hashlib.sha256(package).hexdigest()}\n').encode())
+        table = {self.gaming.FEX_URL: 404, self.gaming.FEX_INDEX: index,
+                 f'{self.gaming.FEX_REPOSITORY}/{listed}': package}
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(urllib.request, 'urlopen', self.respond(table)), patch.object(sys, 'stderr', io.StringIO()):
+            target = Path(tmp) / 'fex.deb'
+            self.gaming.download_fex(str(target))
+            self.assertEqual(target.read_bytes(), package)
+
+    def test_a_replaced_fex_build_must_match_its_listed_digest(self):
+        listed = 'pool/main/f/fex-emu-armv8.0/fex-emu-armv8.0_2612-1~n_arm64.deb'
+        index = gzip.compress(f'Package: fex-emu-armv8.0\nVersion: 2612-1~n\nFilename: {listed}\nSHA256: {"0" * 64}\n'.encode())
+        table = {self.gaming.FEX_URL: 404, self.gaming.FEX_INDEX: index,
+                 f'{self.gaming.FEX_REPOSITORY}/{listed}': b'tampered'}
+        with tempfile.TemporaryDirectory() as tmp, \
+                patch.object(urllib.request, 'urlopen', self.respond(table)), patch.object(sys, 'stderr', io.StringIO()):
+            with self.assertRaisesRegex(RuntimeError, 'SHA-256 mismatch'):
+                self.gaming.download_fex(str(Path(tmp) / 'fex.deb'))
+
+    def test_fex_errors_other_than_not_found_are_reported(self):
+        with patch.object(urllib.request, 'urlopen', self.respond({self.gaming.FEX_URL: 503})), \
+                self.assertRaises(urllib.error.HTTPError):
+            self.gaming.download_fex('/nonexistent')
+
+    def test_a_pruned_steam_runtime_uses_the_published_stable_digest(self):
+        digest = 'a' * 64
+        table = {self.gaming.RUNTIME_URL: 404,
+                 self.gaming.RUNTIME_LATEST + 'SHA256SUMS': f'{digest} *SteamLinuxRuntime_4.tar.xz\n'.encode(),
+                 self.gaming.RUNTIME_LATEST + 'SteamLinuxRuntime_4.tar.xz': b'runtime'}
+        with patch.object(urllib.request, 'urlopen', self.respond(table)), patch.object(sys, 'stderr', io.StringIO()):
+            source, expected = self.gaming.open_runtime()
+        self.assertEqual((source.read(), expected), (b'runtime', digest))
 
     def test_debian_payload_extraction_does_not_require_dpkg(self):
         with tempfile.TemporaryDirectory() as tmp:

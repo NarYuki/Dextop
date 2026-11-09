@@ -2874,7 +2874,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linuxSetupDoneDetail =>
-      'Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.';
+      'Open your apps from the Linux tab.';
 
   @override
   String get linuxSetupNext => 'Continue';

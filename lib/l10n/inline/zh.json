@@ -154,7 +154,7 @@
   "uiHowLinuxRuns": "Linux 的运行方式",
   "uiStoreSources": "Store 来源",
   "uiLinuxUser": "Linux 用户",
-  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "这是在 Dextop 中使用 Linux 的首次设置：依次选择 Linux 的运行方式、Store 来源和 Linux 环境的内容。之后都可以在 Linux 设置中更改。",
+  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "这是在 Dextop 中使用 Linux 的首次设置：依次选择 Linux 的运行方式、Linux 环境、Store 来源和环境的内容。之后都可以在 Linux 设置中更改。",
   "uiRunsThroughPrivilegedAccessSuchAsShizukuStellarOrTheBuiltInBinderReachesAndroidFilesControllersAndAu": "以高级权限运行容器。",
   "uiRunsWithOrdinaryAppPermissionsDevelopmentBrowsersAndGamesWorkAndroidSystemStorageStaysOutOfReach": "默认方式，以应用权限运行。",
   "uiWhereStoreAppsComeFromAPTIsAlwaysAvailableDebGetAndFlathubAreSetUpAutomaticallyAfterTheLinuxEnvironm": "Store 中应用的来源。APT 始终可用；deb-get 和 Flathub 会在 Linux 环境安装后自动准备。",
@@ -1563,5 +1563,12 @@
   "uiContainerSharingEnabled": "已与此容器共享。点按可停用",
   "uiContainerStorageEnabled": "整个存储空间已通过 /media/storage 与此容器共享。点按可停用",
   "uiContainerStorageDisabled": "点按可与此容器共享整个存储空间。必要时会请求 Android 访问权限。",
-  "uiUSBStorageDevSdX": "USB 存储设备（Linux 中为 /dev/sdX）"
+  "uiUSBStorageDevSdX": "USB 存储设备（Linux 中为 /dev/sdX）",
+  "uiLinuxImageInformationIsInvalid": "Linux 映像信息无效。",
+  "uiThisLinuxImageNeedsANewerVersionOfDextop": "此 Linux 映像需要较新版本的 Dextop。",
+  "uiTheLinuxImageDownloadWasInterruptedCheckYourConnectionAndTryAgain": "Linux 映像下载已中断。请检查网络连接后重试。",
+  "uiTheDownloadedLinuxImageCouldNotBeSaved": "无法保存已下载的 Linux 映像。",
+  "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "USB 存储设备尚未就绪。请检查是否已插入磁盘。",
+  "uiCouldNotReadTheUSBStorageCapacity": "无法读取 USB 存储设备的容量。",
+  "uiUSBStorageErrorErrno0": "USB 存储设备错误（errno {0}）"
 }

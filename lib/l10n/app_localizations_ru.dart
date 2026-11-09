@@ -2900,7 +2900,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get linuxSetupDoneDetail =>
-      'Откройте рабочий стол на вкладке Linux или запускайте отдельные приложения Linux из Plasma. В Fcitx 5 способы ввода переключаются сочетанием Ctrl+Space.';
+      'Откройте приложения на вкладке Linux.';
 
   @override
   String get linuxSetupNext => 'Далее';

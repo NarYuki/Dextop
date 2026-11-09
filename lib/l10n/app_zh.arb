@@ -904,7 +904,7 @@
   "linuxSetupReview": "确认设置内容",
   "linuxSetupProgress": "正在准备工作区",
   "linuxSetupDone": "Linux 已准备就绪",
-  "linuxSetupDoneDetail": "可在 Linux 标签页打开桌面，或从 Plasma 启动单个 Linux 应用。Fcitx 5 用 Ctrl+Space 切换输入法。",
+  "linuxSetupDoneDetail": "可以从 Linux 标签页打开应用。",
   "linuxSetupNext": "下一步",
   "linuxSetupBack": "返回",
   "linuxSetupApply": "开始设置",

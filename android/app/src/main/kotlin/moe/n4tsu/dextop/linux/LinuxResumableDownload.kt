@@ -38,7 +38,7 @@ internal object LinuxResumableDownload {
             val after = target.length()
             if (after == size) return
             stalled = if (after > before) 0 else stalled + 1
-            if (stalled >= MAX_STALLED_ATTEMPTS) throw failure ?: IOException("Download made no progress")
+            if (stalled >= MAX_STALLED_ATTEMPTS) throw failure ?: IOException(moe.n4tsu.dextop.localText("uiTheLinuxImageDownloadWasInterruptedCheckYourConnectionAndTryAgain"))
             if (failure != null) pause(minOf(1_000L * stalled.coerceAtLeast(1), 8_000L))
         }
     }
@@ -56,7 +56,7 @@ internal object LinuxResumableDownload {
             val append = when (val code = connection.responseCode) {
                 HttpURLConnection.HTTP_PARTIAL -> {
                     if (connection.getHeaderField("Content-Range")?.startsWith("bytes $offset-") != true) {
-                        throw IOException("Unexpected Content-Range")
+                        throw IOException(moe.n4tsu.dextop.localText("uiTheLinuxImageDownloadWasInterruptedCheckYourConnectionAndTryAgain"))
                     }
                     true
                 }

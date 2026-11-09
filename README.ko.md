@@ -58,6 +58,7 @@ Dextop은 Android 기기에 가상 디스플레이를 만들고 스마트폰만�
 - [x] 중단된 세션 복구 및 임시 Android 설정 복원
 - [x] 앱 로그, 기능 감지 결과, 폴백 결과 및 기기 사양을 포함하는 상세 진단 보고서
 - [x] 기능별 결과와 자동 이메일 작성을 지원하는 현지화된 기기 호환성 보고서
+- [x] Debian 13 Linux 앱(Store, GPU 가속, Steam 지원)
 - [x] 일본어, 영어, 중국어, 한국어 및 러시아어 인터페이스
 
 ## 호환성
@@ -175,6 +176,14 @@ Dextop 1.5.0 이상에는 일반적인 사용에 필요한 액세스 기능이 �
 ### Nightly 빌드
 
 [GitHub Actions](https://github.com/NarYuki/Dextop/actions)에서 최신 개발 빌드를 받을 수 있습니다. 아직 안정 버전에 포함되지 않은 변경 사항을 사용하려면 가장 최근에 성공한 **Debug APK** 워크플로 실행을 열고 Nightly 아티팩트를 다운로드하세요. 아티팩트에는 서로 일치하는 Dextop 및 Dextop Car Companion 디버그 APK가 포함됩니다. Nightly 빌드는 최신 소스에서 생성되는 베타 빌드이므로 미완성 기능이나 회귀 문제가 포함될 수 있습니다.
+
+## Linux
+
+Dextop 2.0.0은 arm64 기기에서 Debian 13 앱을 Android 창 또는 Dextop 데스크톱에서 실행합니다. **Linux** 탭에서 설정하세요. 인터넷 연결과 수 GB의 여유 공간이 필요합니다.
+
+Dextop은 데스크톱 구성 요소와 GPU 드라이버가 포함된 서명된 이미지를 다운로드한 뒤, 선택한 언어, 입력 방법, 앱을 설치합니다. 중단된 다운로드는 자동으로 이어집니다. Linux만 사용하려면 Dextop 설정의 첫 화면에서 **Linux 컨테이너로 이동**을 선택하세요.
+
+Linux는 기본적으로 앱 권한만으로 실행됩니다. GitHub 버전은 고급 특권 셸 방식도 제공하지만 Google Play 버전은 앱 권한만 제공합니다. Store는 항상 APT를 사용할 수 있고 deb-get과 Flathub를 추가할 수 있습니다. 자세한 내용은 [Linux 안내](docs/wiki/Linux.md)(영어)를 참고하세요.
 
 ## Android Auto 빠른 시작
 

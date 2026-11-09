@@ -2919,7 +2919,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get linuxSetupDoneDetail =>
-      'Abra o ambiente de trabalho no separador Linux ou inicie aplicações Linux individuais a partir do Plasma. No Fcitx 5, use Ctrl+Espaço para mudar de método de introdução.';
+      'Abra as suas aplicações no separador Linux.';
 
   @override
   String get linuxSetupNext => 'Continuar';
@@ -6227,7 +6227,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get linuxSetupDoneDetail =>
-      'Abra a área de trabalho na guia Linux ou inicie apps Linux individuais pelo Plasma. No Fcitx 5, use Ctrl+Espaço para alternar o método de entrada.';
+      'Abra os seus apps na aba Linux.';
 
   @override
   String get linuxSetupNext => 'Continuar';

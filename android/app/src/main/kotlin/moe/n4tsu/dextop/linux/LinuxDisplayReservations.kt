@@ -5,7 +5,7 @@ internal class LinuxDisplayReservations {
     private val pending = HashSet<Int>()
 
     @Synchronized fun reserve(used: Set<Int>, sockets: String? = null): Int {
-        val display = if (sockets == null) LinuxRuntime.freeDisplay(used + pending)
+        val display = if (sockets == null) LinuxRuntime.freeDisplay(used + pending, available = LinuxRuntime::x11SocketFree)
             else LinuxRuntime.freeDisplay(used + pending, sockets)
         pending.add(display)
         return display

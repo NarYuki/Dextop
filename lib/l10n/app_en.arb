@@ -904,7 +904,7 @@
   "linuxSetupReview": "Ready to set up",
   "linuxSetupProgress": "Preparing your workspace",
   "linuxSetupDone": "Your Linux workspace is ready",
-  "linuxSetupDoneDetail": "Open the desktop from the Linux tab, or launch individual Linux apps from Plasma. For Fcitx 5, use Ctrl+Space to switch input methods.",
+  "linuxSetupDoneDetail": "Open your apps from the Linux tab.",
   "linuxSetupNext": "Continue",
   "linuxSetupBack": "Back",
   "linuxSetupApply": "Start setup",

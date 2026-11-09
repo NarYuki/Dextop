@@ -21,6 +21,10 @@ class LinuxDisplayReservationsTest {
         } finally { pool.shutdownNow() }
     }
 
+    @Test fun skipsDisplaysHeldWhereSocketListsCannotShowThem() {
+        assertEquals(12, LinuxRuntime.freeDisplay(emptySet(), "", available = { it >= 12 }))
+    }
+
     @Test fun respectsServersOutsideThisService() {
         val reservations = LinuxDisplayReservations()
         assertEquals(12, reservations.reserve(setOf(11), "000 @/tmp/.X11-unix/X10"))

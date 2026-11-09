@@ -58,6 +58,7 @@ You can report bugs, submit device reports, and request features there.
 - [x] Interrupted-session recovery and restoration of temporary Android settings
 - [x] Detailed diagnostic reports containing app logs, capability probes, fallback results, and device specifications
 - [x] Localized device compatibility reports with per-feature results and automatic email composition
+- [x] Linux applications on Debian 13, with a Store, GPU acceleration, and Steam
 - [x] Japanese, English, Chinese, Korean, and Russian interfaces
 
 ## Compatibility
@@ -160,8 +161,8 @@ _Community-submitted and reviewed device report_
 ## System requirements
 
 - Android 13 or later. Most devices require Android 14 or later for a usable desktop environment.
-- Current release: **Dextop 1.7.0**
-- Android Auto companions: **Dextop・Parking 2.0.0** and **Dextop・Driving 2.0.0**
+- Current release: **Dextop 2.0.0**
+- Android Auto companions: **Dextop・Parking 2.1.0** and **Dextop・Driving 2.1.0**
 
 Dextop 1.5.0 and later include the access service needed for normal operation, so no external app or separate privileged service is required. Setup and first use can be completed with Dextop alone; Android may still show system permission or wireless-debugging pairing screens when required by the device.
 
@@ -176,6 +177,14 @@ Alternatively, download the latest signed APK from [GitHub Releases](https://git
 ### Nightly builds
 
 The latest development build is available from [GitHub Actions](https://github.com/NarYuki/Dextop/actions). Open the newest successful **Debug APK** workflow run and download its Nightly artifact to try changes that have not reached a stable release yet. The artifact contains matching Dextop and Dextop Car Companion debug APKs. Nightly builds are beta builds generated from the latest source and may contain unfinished features or regressions.
+
+## Linux
+
+Dextop 2.0.0 runs Debian 13 applications on arm64 devices, as Android windows or on the Dextop desktop. Open the **Linux** tab to set it up. An internet connection and several GB of free storage are required.
+
+Dextop downloads a signed, prebuilt image with the desktop components and GPU drivers, then installs the language, input method, and applications you choose. Interrupted downloads resume automatically. To use only Linux, select **Go to Linux containers** on the first page of Dextop's setup.
+
+Linux runs with ordinary app permissions by default. The GitHub build also offers an advanced Privileged Shell mode; the Google Play build offers ordinary app permissions only. The Store always offers APT, with optional deb-get and Flathub sources. See the [Linux guide](docs/wiki/Linux.md).
 
 ## Android Auto quick start
 

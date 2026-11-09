@@ -3,9 +3,9 @@
 ## Requirements
 
 - Android 13 or later
-- Current release: Dextop 1.7.0
-- Dextop・Parking 2.0.0 requires Android 15 or later
-- Dextop・Driving 2.0.0 requires Android 13 or later
+- Current release: Dextop 2.0.0
+- Dextop・Parking 2.1.0 requires Android 15 or later
+- Dextop・Driving 2.1.0 requires Android 13 or later
 
 Dextop 1.5.0 and later include the privileged access runtime needed for normal operation. No external app or separate privileged service is required, and setup can be completed with Dextop alone. Android may still show system permission or wireless-debugging pairing screens when required by the device.
 

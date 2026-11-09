@@ -90,15 +90,15 @@ internal object LinuxUsbDisk {
                 requestSense()
                 Thread.sleep(150)
             }
-            if (!ready) throw IOException("The USB storage is not ready (no medium?)")
+            if (!ready) throw IOException(moe.n4tsu.dextop.localText("uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted"))
             val capacity = ByteArray(8)
-            check(command(byteArrayOf(0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0), capacity, 0, 8, true) == 0) { "READ CAPACITY failed" }
+            check(command(byteArrayOf(0x25, 0, 0, 0, 0, 0, 0, 0, 0, 0), capacity, 0, 8, true) == 0) { moe.n4tsu.dextop.localText("uiCouldNotReadTheUSBStorageCapacity") }
             var last = ByteBuffer.wrap(capacity).int.toLong() and 0xffffffffL
             sectorSize = ByteBuffer.wrap(capacity, 4, 4).int
             if (last == 0xffffffffL) {
                 val long = ByteArray(32)
                 val cdb = ByteArray(16).apply { this[0] = 0x9e.toByte(); this[1] = 0x10; this[13] = 32 }
-                check(command(cdb, long, 0, 32, true) == 0) { "READ CAPACITY(16) failed" }
+                check(command(cdb, long, 0, 32, true) == 0) { moe.n4tsu.dextop.localText("uiCouldNotReadTheUSBStorageCapacity") }
                 last = ByteBuffer.wrap(long).long
                 sectorSize = ByteBuffer.wrap(long, 8, 4).int
             }
@@ -288,7 +288,7 @@ internal object LinuxUsbDisk {
         }
     }
 
-    class ErrnoException(val errno: Int) : IOException("errno $errno")
+    class ErrnoException(val errno: Int) : IOException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUSBStorageErrorErrno0"), errno))
 
 
     private val disks = java.util.concurrent.ConcurrentHashMap<String, Disk>()

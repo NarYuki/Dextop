@@ -2775,7 +2775,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get linuxSetupDoneDetail =>
-      'Linux タブからデスクトップを開くか、Plasma から Linux アプリを起動できます。Fcitx 5 の入力切り替えは Ctrl+Space です。';
+      'Linux タブからアプリを開けます。';
 
   @override
   String get linuxSetupNext => '次へ';

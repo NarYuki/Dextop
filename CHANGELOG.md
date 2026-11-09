@@ -1,5 +1,61 @@
 # Changelog
 
+## 2.0.0
+
+### 日本語
+
+#### 新機能
+
+- Debian 13 の Linux アプリを Android のウィンドウや Dextop のデスクトップで使えるようになりました。
+- Linux の Store を追加しました。APT に加えて deb-get と Flathub を利用できます。
+- Steam のインストールと、GPU ウィンドウ、AppImage、コンテナのスナップショットに対応しました。
+- Dextop のセットアップを完了しなくても Linux だけを使えるようになりました。
+
+#### 改善
+
+- Linux 環境を署名済みの事前ビルドイメージから導入するようにしました。ダウンロードは中断しても続きから再開します。
+- Linux は既定でアプリ権限のみで動作します。Google Play 版はこの方式のみです。
+- 多言語対応を拡充しました。
+
+#### 修正
+
+- Android 17 以降で Car Companion の Play 署名を認識できない可能性がある問題を修正しました。
+- 他のアプリから Dextop のデスクトップを開始・停止できないようにしました。
+- Linux 専用の利用時に更新通知が繰り返し表示される問題を修正しました。
+
+#### Car Companion 2.1.0
+
+##### 改善
+
+- 多言語対応を拡充しました。
+
+### English
+
+#### New
+
+- Run Debian 13 applications as Android windows or on the Dextop desktop.
+- Added a Linux Store with APT, plus optional deb-get and Flathub sources.
+- Added Steam installation, GPU windows, AppImage support, and container snapshots.
+- Linux can now be used without completing Dextop's own setup.
+
+#### Improvements
+
+- Linux environments now install from signed, prebuilt images, and interrupted downloads resume.
+- Linux runs with ordinary app permissions by default. The Google Play build offers only this mode.
+- Expanded localization.
+
+#### Fixes
+
+- Fixed Car Companion's Play signatures possibly not being recognized on Android 17 and later.
+- Other apps can no longer start or stop the Dextop desktop.
+- Fixed the update notice repeating when using only Linux.
+
+#### Car Companion 2.1.0
+
+##### Improvements
+
+- Expanded localization.
+
 ## 1.7.0
 
 ### 日本語

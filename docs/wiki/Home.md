@@ -9,12 +9,13 @@ Dextop creates a controllable virtual desktop display on Android using its built
 
 The production release is available from [Google Play](https://play.google.com/store/apps/details?id=moe.n4tsu.gpdextop). Signed APKs and release assets remain available from [GitHub Releases](https://github.com/NarYuki/Dextop/releases/latest).
 
-Current versions: **Dextop 1.7.0**, **Dextop・Parking 2.0.0**, and **Dextop・Driving 2.0.0**.
+Current versions: **Dextop 2.0.0**, **Dextop・Parking 2.1.0**, and **Dextop・Driving 2.1.0**.
 
 ## User documentation
 
 - [Installation and initial setup](Installation-and-Setup)
 - [Using Dextop](Using-Dextop)
+- [Linux](Linux)
 - [Android Auto and Dextop Car Companion](Android-Auto)
 - [Features and settings](Features-and-Settings)
 - [Input and gestures](Input-and-Gestures)
