@@ -33,7 +33,7 @@ internal class DesktopModeConfigurator(
                 val previous = Settings.Global.getString(resolver, key)
                 savedGlobals += SavedGlobal(key, previous)
                 sessionJournal.rememberGlobal(key, previous)
-                check(Settings.Global.putString(resolver, key, value)) { "setting rejected" }
+                check(Settings.Global.putString(resolver, key, value)) { moe.n4tsu.dextop.localText("uiSettingRejected") }
                 StrategyAttempt("global:$key", true, "$previous -> ${value ?: "<deleted>"}")
             }.getOrElse {
                 OperationLog.w(context, "DesktopMode", "optional global setting failed key=$key", it)

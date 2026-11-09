@@ -203,9 +203,9 @@ class EmbeddedPairingReceiver : BroadcastReceiver() {
             val outcome = runCatching {
                 runBlocking {
                     val pairing = DistributionPrivilegeBootstrap.pair(context, code)
-                    check(pairing.paired) { pairing.detail ?: "Pairing failed" }
+                    check(pairing.paired) { pairing.detail ?: moe.n4tsu.dextop.localText("uiPairingFailed") }
                     val start = DistributionPrivilegeBootstrap.connectAndStart(context)
-                    check(start.started) { start.detail ?: "The embedded service did not start" }
+                    check(start.started) { start.detail ?: moe.n4tsu.dextop.localText("uiTheEmbeddedServiceDidNotStart") }
                 }
             }
             Log.i(

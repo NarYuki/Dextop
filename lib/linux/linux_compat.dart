@@ -9,7 +9,9 @@ import 'linux_widgets.dart';
 
 /// Linux settings → Compatibility and permissions: Android's limits and grants for Linux.
 class LinuxCompatPanel extends StatefulWidget {
-  const LinuxCompatPanel({super.key});
+  const LinuxCompatPanel({super.key, this.containerId});
+
+  final String? containerId;
 
   @override
   State<LinuxCompatPanel> createState() => _LinuxCompatPanelState();
@@ -20,15 +22,18 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
   static const _channel = MethodChannel('app.freedextop/linux');
   static const _usb = MethodChannel('app.freedextop/linux/usb');
   Map<Object?, Object?>? status;
+  List<Map<Object?, Object?>> containers = const [];
+  String? selectedId;
   bool busy = false;
   String? error;
 
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    selectedId = widget.containerId;
     _load();
     // USB devices come and go while the page is open; Android reports each change.
     _usb.setMethodCallHandler((call) async {
@@ -51,9 +56,28 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
 
   Future<void> _load() async {
     try {
+      final list =
+          (await _channel.invokeListMethod<Object?>('list') ?? const [])
+              .whereType<Map<Object?, Object?>>()
+              .where((c) => c['state'] == 'installed')
+              .toList();
+      if (!mounted) return;
+      containers = list;
+      if (!list.any((c) => c['id'] == selectedId)) {
+        selectedId = widget.containerId != null || list.isEmpty
+            ? null
+            : list.first['id'] as String;
+      }
+      if (selectedId == null) {
+        setState(() => status = const {});
+        return;
+      }
+      final id = selectedId;
       final next = await _channel.invokeMapMethod<Object?, Object?>(
         'compatStatus',
+        {'id': id},
       );
+      if (selectedId != id) return;
       if (mounted) setState(() => status = next);
     } on PlatformException catch (e) {
       if (mounted) setState(() => error = e.message);
@@ -66,12 +90,29 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
       error = null;
     });
     try {
-      await _channel.invokeMethod<Object?>(method, arguments);
+      await _channel.invokeMethod<Object?>(method, {
+        'id': selectedId,
+        ...?arguments,
+      });
     } on PlatformException catch (e) {
       if (mounted) setState(() => error = e.message);
     } finally {
       if (mounted) setState(() => busy = false);
       await _load();
+    }
+  }
+
+  Future<void> _toggle(String kind, bool enabled) async {
+    if (!enabled) {
+      await _run('setContainerGrant', {'kind': kind, 'enabled': false});
+      return;
+    }
+    await _run('setContainerGrant', {'kind': kind, 'enabled': true});
+    if (!mounted || error != null) return;
+    if (kind == 'wholeStorage') {
+      if (status?['wholeStorage'] != true) await _run('openStorageAccess');
+    } else if (status?[kind] != true) {
+      await _run('requestPermission', {'kind': kind});
     }
   }
 
@@ -84,11 +125,13 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
   Widget build(BuildContext context) {
     final s = status;
     if (s == null) {
+      if (error != null) return Text(error!);
       return const Padding(
         padding: EdgeInsets.only(top: 24),
         child: M3EProgressIndicator.linearWavy(),
       );
     }
+    if (selectedId == null) return const SizedBox.shrink();
     final android = s['androidMode'] == true;
     final limited = s['phantomLimited'] == true;
     final camera = s['camera'] == true;
@@ -102,6 +145,29 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
+        if (widget.containerId == null) ...[
+          LinuxSection(t('uiContainer')),
+          LinuxGroup(
+            children: [
+              for (final container in containers)
+                LinuxChoice<String>(
+                  value: container['id'] as String,
+                  groupValue: selectedId!,
+                  enabled: !busy,
+                  onChanged: (id) {
+                    setState(() {
+                      selectedId = id;
+                      status = null;
+                    });
+                    _load();
+                  },
+                  icon: M3EIcons.folder_rounded,
+                  title:
+                      container['name'] as String? ?? container['id'] as String,
+                ),
+            ],
+          ),
+        ],
         if (busy) const M3EProgressIndicator.linearWavy(),
         if (error != null)
           Padding(
@@ -111,28 +177,23 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
-        // The limit and storage grants concern Linux running as this app; full privilege runs
-        // as the shell user, which neither applies to.
+        _note(t('uiContainerSharingScope')),
+        // Android's process limit is app-wide; sharing below belongs to the selected container.
         if (android) ...[
-          LinuxSection(t('プロセス', 'Processes')),
+          LinuxSection(t('uiProcesses')),
           LinuxGroup(
             children: [
               M3EListItem(
-                headline: t('子プロセス数の制限', 'Child process limit'),
+                headline: t('uiChildProcessLimit'),
                 supportingText: limited
                     ? s['phantomFixable'] == true
                           ? t(
-                              'Android がアプリの子プロセスを 32 個までに制限し、超えた分を終了させます。タップで解除します。',
-                              'Android limits an app to 32 child processes and ends the rest. Tap to lift it.',
+                              'uiAndroidLimitsAnAppTo32ChildProcessesAndEndsTheRestTapToLiftIt',
                             )
                           : t(
-                              'Android がアプリの子プロセスを 32 個までに制限し、超えた分を終了させます。タップで開発者向けオプションを開き、「子プロセスの制限を無効にする」をオンにしてください。',
-                              'Android limits an app to 32 child processes and ends the rest. Tap to open Developer options and turn on "Disable child process restrictions".',
+                              'uiAndroidLimitsAnAppTo32ChildProcessesAndEndsTheRestTapToOpenDeveloperOptionsAndTurnOnDisableChildProc',
                             )
-                    : t(
-                        '解除済み。Linux のプロセス数は制限されません。',
-                        'Lifted. Linux processes are not limited.',
-                      ),
+                    : t('uiLiftedLinuxProcessesAreNotLimited'),
                 supportingMaxLines: null,
                 leading: const Icon(M3EIcons.account_tree_rounded),
                 trailing: _state(!limited),
@@ -140,110 +201,92 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
               ),
             ],
           ),
-          LinuxSection(t('ストレージ', 'Storage')),
-          if (foldersActive) ...[
-            LinuxGroup(
-              children: [
-                for (final folder in folders)
-                  M3EListItem(
-                    headline: folder['name'] as String? ?? '',
-                    supportingText: folder['granted'] == true
-                        ? folder['path'] as String? ?? ''
-                        : t(
-                            'Android の許可がなくなりました。削除して選び直してください。',
-                            'Android no longer allows this folder. Remove it and pick it again.',
-                          ),
-                    supportingMaxLines: null,
-                    leading: const Icon(M3EIcons.folder_rounded),
-                    trailing: M3EIconButton(
-                      variant: M3EIconButtonVariant.standard,
-                      icon: const Icon(M3EIcons.delete_outline_rounded),
-                      tooltip: t('削除', 'Remove'),
-                      onPressed: busy
-                          ? null
-                          : () =>
-                                _run('removeFolder', {'name': folder['name']}),
-                    ),
-                  ),
+        ],
+        LinuxSection(t('uiStorage')),
+        if (foldersActive && s['wholeStorage'] != true) ...[
+          LinuxGroup(
+            children: [
+              for (final folder in folders)
                 M3EListItem(
-                  headline: t('フォルダを追加', 'Add a folder'),
-                  supportingText: t(
-                    'Android のフォルダ選択画面で、Linux から使うフォルダを選びます。USB メモリのフォルダも選べます。',
-                    'Pick a folder for Linux in Android\'s folder picker. Folders on USB drives work too.',
-                  ),
-                  supportingMaxLines: null,
-                  leading: const Icon(M3EIcons.create_new_folder_rounded),
-                  onTap: busy ? null : () => _run('addFolder'),
-                ),
-              ],
-            ),
-            _note(
-              t(
-                '選んだフォルダは Linux の /media/android/<名前> に表示されます。Dextop が中継するため直接のアクセスより遅く、libc を通さずにファイルを開くアプリでは中身を読み書きできません。',
-                'Picked folders appear in Linux under /media/android/<name>. Dextop relays them, so they are slower than direct access, and apps that open files without libc cannot read or write their contents.',
-              ),
-            ),
-          ],
-          if (s['wholeStorageAvailable'] == true) ...[
-            const SizedBox(height: 16),
-            LinuxGroup(
-              children: [
-                M3EListItem(
-                  headline: t('ストレージ全体', 'Whole storage'),
-                  supportingText: s['wholeStorage'] == true
-                      ? t(
-                          '全ファイルへのアクセスを許可済み。内部ストレージと USB ストレージ全体が Linux の /media/storage に表示されます（Linux の再起動後）。',
-                          'All files access is allowed. Internal and USB storage appear in Linux under /media/storage (after Linux restarts).',
-                        )
+                  headline: folder['name'] as String? ?? '',
+                  supportingText: folder['granted'] == true
+                      ? folder['path'] as String? ?? ''
                       : t(
-                          'フォルダを選ぶ代わりに、内部ストレージと USB ストレージ全体を Linux の /media/storage から直接使えます。タップで全ファイルへのアクセスを許可します。',
-                          'Instead of picking folders, use all internal and USB storage directly from Linux under /media/storage. Tap to allow All files access.',
+                          'uiAndroidNoLongerAllowsThisFolderRemoveItAndPickItAgain',
                         ),
                   supportingMaxLines: null,
-                  leading: const Icon(M3EIcons.sd_storage_rounded),
-                  trailing: _state(s['wholeStorage'] == true),
-                  onTap: busy ? null : () => _run('openStorageAccess'),
+                  leading: const Icon(M3EIcons.folder_rounded),
+                  trailing: M3EIconButton(
+                    variant: M3EIconButtonVariant.standard,
+                    icon: const Icon(M3EIcons.delete_outline_rounded),
+                    tooltip: t('uiRemove'),
+                    onPressed: busy
+                        ? null
+                        : () => _run('removeFolder', {'name': folder['name']}),
+                  ),
                 ),
-              ],
+              M3EListItem(
+                headline: t('uiAddAFolder'),
+                supportingText: t(
+                  'uiPickAFolderForLinuxInAndroidSFolderPickerFoldersOnUSBDrivesWorkToo',
+                ),
+                supportingMaxLines: null,
+                leading: const Icon(M3EIcons.create_new_folder_rounded),
+                onTap: busy ? null : () => _run('addFolder'),
+              ),
+            ],
+          ),
+          _note(
+            t(
+              'uiPickedFoldersAppearInLinuxUnderMediaAndroidNameDextopRelaysThemSoTheyAreSlowerThanDirectAccessAndApp',
             ),
-          ],
+          ),
         ],
-        LinuxSection(t('カメラとマイク', 'Camera and microphone')),
+        if (s['wholeStorageAvailable'] == true) ...[
+          const SizedBox(height: 16),
+          LinuxGroup(
+            children: [
+              M3EListItem(
+                headline: t('uiWholeStorage'),
+                supportingText: s['wholeStorage'] == true
+                    ? t('uiContainerStorageEnabled')
+                    : t('uiContainerStorageDisabled'),
+                supportingMaxLines: null,
+                leading: const Icon(M3EIcons.sd_storage_rounded),
+                trailing: _state(s['wholeStorage'] == true),
+                onTap: busy
+                    ? null
+                    : () => _toggle('wholeStorage', s['wholeStorage'] != true),
+              ),
+            ],
+          ),
+        ],
+        LinuxSection(t('uiCameraAndMicrophone')),
         LinuxGroup(
           children: [
             M3EListItem(
-              headline: t('カメラ', 'Camera'),
+              headline: t('uiCamera'),
               supportingText: camera
-                  ? t('許可済み', 'Allowed')
-                  : t(
-                      'Linux アプリからカメラを使うために必要です。タップで許可します。',
-                      'Needed for Linux apps to use the camera. Tap to allow.',
-                    ),
+                  ? t('uiContainerSharingEnabled')
+                  : t('uiNeededForLinuxAppsToUseTheCameraTapToAllow'),
               supportingMaxLines: null,
               leading: const Icon(M3EIcons.photo_camera_rounded),
               trailing: _state(camera),
-              onTap: camera || busy
-                  ? null
-                  : () => _run('requestPermission', {'kind': 'camera'}),
+              onTap: busy ? null : () => _toggle('camera', !camera),
             ),
             M3EListItem(
-              headline: t('マイク', 'Microphone'),
+              headline: t('uiMicrophone'),
               supportingText: microphone
-                  ? t('許可済み', 'Allowed')
-                  : t(
-                      'Linux アプリから音声を入力するために必要です。タップで許可します。',
-                      'Needed for Linux apps to record audio. Tap to allow.',
-                    ),
+                  ? t('uiContainerSharingEnabled')
+                  : t('uiNeededForLinuxAppsToRecordAudioTapToAllow'),
               supportingMaxLines: null,
               leading: const Icon(M3EIcons.mic_rounded),
               trailing: _state(microphone),
-              onTap: microphone || busy
-                  ? null
-                  : () => _run('requestPermission', {'kind': 'microphone'}),
+              onTap: busy ? null : () => _toggle('microphone', !microphone),
             ),
           ],
         ),
-        LinuxSection(t('USB 機器', 'USB devices')),
+        LinuxSection(t('uiUSBDevices')),
         if (!android) ...[
           LinuxGroup(
             children: [
@@ -253,10 +296,9 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
                 enabled: !busy,
                 onChanged: (v) => _run('setUsbPolicy', {'policy': v}),
                 icon: M3EIcons.done_all_rounded,
-                title: t('一律に許可', 'Allow all'),
+                title: t('uiAllowAll'),
                 subtitle: t(
-                  '接続した USB 機器を、確認なしで Linux から使えるようにします。',
-                  'Every connected USB device is available to Linux without asking.',
+                  'uiEveryConnectedUSBDeviceIsAvailableToLinuxWithoutAsking',
                 ),
               ),
               LinuxChoice<String>(
@@ -265,10 +307,9 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
                 enabled: !busy,
                 onChanged: (v) => _run('setUsbPolicy', {'policy': v}),
                 icon: M3EIcons.help_outline_rounded,
-                title: t('都度許可', 'Ask each time'),
+                title: t('uiAskEachTime'),
                 subtitle: t(
-                  '下の一覧でオンにした機器だけを使い、接続するたびに Android が確認します。',
-                  'Only devices turned on below are used, and Android asks each time one is connected.',
+                  'uiOnlyDevicesTurnedOnBelowAreUsedAndAndroidAsksEachTimeOneIsConnected',
                 ),
               ),
             ],
@@ -279,10 +320,9 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
           LinuxGroup(
             children: [
               M3EListItem(
-                headline: t('接続中の USB 機器はありません', 'No USB devices connected'),
+                headline: t('uiNoUSBDevicesConnected'),
                 supportingText: t(
-                  'USB 機器を接続すると、ここで Linux から使えるようにできます。',
-                  'Connect a USB device to make it available to Linux here.',
+                  'uiConnectAUSBDeviceToMakeItAvailableToLinuxHere',
                 ),
                 supportingMaxLines: null,
                 leading: const Icon(M3EIcons.usb_rounded),
@@ -304,33 +344,31 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
                   icon: device['kind'] == 'serial'
                       ? M3EIcons.cable_rounded
                       : device['kind'] == 'fido'
-                          ? M3EIcons.key_rounded
-                          : M3EIcons.usb_rounded,
+                      ? M3EIcons.key_rounded
+                      : device['kind'] == 'storage'
+                      ? M3EIcons.storage_rounded
+                      : M3EIcons.usb_rounded,
                   title: device['name'] as String? ?? '',
                   subtitle: [
                     device['ids'] as String? ?? '',
                     device['kind'] == 'serial'
-                        ? t('USB シリアル', 'USB serial')
+                        ? t('uiUSBSerial')
                         : device['kind'] == 'fido'
-                            ? t('セキュリティキー (FIDO)', 'Security key (FIDO)')
-                            : t('USB 機器', 'USB device'),
+                        ? t('uiSecurityKeyFIDO')
+                        : device['kind'] == 'storage'
+                        ? t('uiUSBStorageDevSdX')
+                        : t('uiUSBDevice'),
                     device['permission'] == true
-                        ? t('アクセス許可済み', 'access granted')
-                        : t('アクセス未許可', 'no access yet'),
+                        ? t('uiAccessGranted')
+                        : t('uiNoAccessYet'),
                   ].join(' · '),
                 ),
             ],
           ),
         _note(
           android
-              ? t(
-                  'Android 方式では、機器ごとに Android が使用の許可を確認します。',
-                  'In the Android mode, Android asks before each device is used.',
-                )
-              : t(
-                  '特権アクセスで Android の許可を自動で与えます。',
-                  'Privileged access grants Android access automatically.',
-                ),
+              ? t('uiInTheAndroidModeAndroidAsksBeforeEachDeviceIsUsed')
+              : t('uiPrivilegedAccessGrantsAndroidAccessAutomatically'),
         ),
       ],
     );

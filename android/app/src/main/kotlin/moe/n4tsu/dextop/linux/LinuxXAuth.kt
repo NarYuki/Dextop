@@ -32,7 +32,7 @@ internal object LinuxXAuth {
         val staged = File(file.parentFile, ".x-cookie.staged")
         staged.writeBytes(cookie)
         restrict(staged)
-        check(staged.renameTo(file)) { "Cannot store the X cookie" }
+        check(staged.renameTo(file)) { moe.n4tsu.dextop.localText("uiCannotStoreTheXCookie") }
         return cookie
     }
 
@@ -69,12 +69,12 @@ internal object LinuxXAuth {
         val kept = ByteArrayOutputStream()
         var offset = 0
         fun number(): Int {
-            require(offset + 2 <= previous.size) { "Truncated Xauthority" }
+            require(offset + 2 <= previous.size) { moe.n4tsu.dextop.localText("uiTruncatedXauthority") }
             return ((previous[offset++].toInt() and 255) shl 8) or (previous[offset++].toInt() and 255)
         }
         fun field(): ByteArray {
             val size = number()
-            require(size <= previous.size - offset) { "Truncated Xauthority field" }
+            require(size <= previous.size - offset) { moe.n4tsu.dextop.localText("uiTruncatedXauthorityField") }
             return previous.copyOfRange(offset, offset + size).also { offset += size }
         }
         while (offset < previous.size) {
@@ -101,7 +101,7 @@ internal object LinuxXAuth {
         restrict(staged)
         if (!staged.renameTo(file)) {
             staged.delete()
-            error("Cannot store Xauthority")
+            error(moe.n4tsu.dextop.localText("uiCannotStoreXauthority"))
         }
     }
 

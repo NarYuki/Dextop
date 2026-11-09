@@ -83,15 +83,15 @@ internal object LinuxStorage {
         val base = root.toPath().toAbsolutePath().normalize()
         val prefixes = parts.map { base.resolve(it.path.removePrefix("/")).normalize() }
         require(path.startsWith('/') && path.length <= 4096 && '\u0000' !in path)
-        require(path.split('/').none { it == ".." || it == "." }) { "Invalid storage path" }
+        require(path.split('/').none { it == ".." || it == "." }) { moe.n4tsu.dextop.localText("uiInvalidStoragePath") }
         val start = base.resolve(path.removePrefix("/")).normalize()
-        require(start.startsWith(prefixes[index]) && start.startsWith(base)) { "Path is outside this category" }
+        require(start.startsWith(prefixes[index]) && start.startsWith(base)) { moe.n4tsu.dextop.localText("uiPathIsOutsideThisCategory") }
         var ancestor = base
         for (component in base.relativize(start)) {
             ancestor = ancestor.resolve(component)
-            require(!Files.isSymbolicLink(ancestor)) { "Symbolic links cannot be browsed" }
+            require(!Files.isSymbolicLink(ancestor)) { moe.n4tsu.dextop.localText("uiSymbolicLinksCannotBeBrowsed") }
         }
-        require(Files.isDirectory(start, java.nio.file.LinkOption.NOFOLLOW_LINKS)) { "Storage directory is unavailable" }
+        require(Files.isDirectory(start, java.nio.file.LinkOption.NOFOLLOW_LINKS)) { moe.n4tsu.dextop.localText("uiStorageDirectoryIsUnavailable") }
         val sizes = HashMap<Path, Long>()
         Files.walkFileTree(start, object : SimpleFileVisitor<Path>() {
             override fun preVisitDirectory(dir: Path, attrs: BasicFileAttributes): FileVisitResult {

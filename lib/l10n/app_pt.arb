@@ -854,7 +854,7 @@
   "nativePlasmaTimeUntilFull": "%1$s até carga completa",
   "nativePlasmaHoursMinutes": "%1$d h %2$d min",
   "nativePlasmaMinutes": "%1$d min",
-  "nativePlasmaApplying": "A aplicar…",
+  "nativePlasmaApplying": "A aplicar…",
   "linuxUnsupportedDevice": "O Linux requer um dispositivo arm64.",
   "linuxRequiresPlasma": "O Linux só está disponível com o Dextop Plasma v2.",
   "linuxSwitchToPlasma": "Mudar para o Plasma v2",
@@ -894,7 +894,7 @@
   "linuxPhaseFinish": "A concluir",
   "linuxPhaseStep": "Passo {step} de {total}",
   "linuxSetupTitle": "Configuração do Linux",
-  "linuxSetupIntro": "Crie um espaço de trabalho Linux à sua medida. Escolha um ambiente de trabalho, o idioma, o método de introdução e as aplicações.",
+  "linuxSetupIntro": "Crie um espaço de trabalho Linux à sua medida. Escolha o idioma, o método de introdução e as aplicações.",
   "linuxSetupExisting": "Adicione funcionalidades a este ambiente Linux. Os ficheiros e as aplicações existentes são mantidos. Reabra o ambiente de trabalho depois da configuração para aplicar as definições.",
   "linuxSetupSystem": "O seu ambiente Linux",
   "linuxSetupDesktop": "Prepare o ambiente de trabalho",
@@ -940,7 +940,6 @@
   "linuxSetupOffice": "Pacote de escritório",
   "linuxSetupOfficeDetail": "LibreOffice — documentos, folhas de cálculo e apresentações. Requer uma transferência maior e mais espaço de armazenamento.",
   "linuxSetupSteamDetail": "Steam da Valve (ARM64). Obtido da Valve na primeira utilização; o Steam instala o Proton e o FEX.",
-  "linuxSetupDroidDeckNote": "O runtime do DroidDeck já inclui o próprio ambiente KDE Plasma (KWin, Xwayland), fontes e métodos de entrada; por isso as etapas de IceWM, idioma e entrada são ignoradas.",
   "linuxSetupStorage": "Mantenha vários GB de armazenamento livre. O tamanho da transferência e da instalação depende da distribuição e das aplicações escolhidas. A instalação continua se sair deste ecrã.",
   "linuxSetupAdditive": "As aplicações não selecionadas não são removidas. A configuração adiciona os pacotes escolhidos e atualiza as definições de idioma e de sessão.",
   "linuxSetupNothingExtra": "Sem aplicações opcionais",
@@ -990,7 +989,7 @@
   "nativePlasmaClearAll": "Limpar tudo",
   "linuxGpuTurnip": "Turnip + Zink (recomendado)",
   "linuxGpuTurnipDescription": "As apps Linux usam a GPU Adreno diretamente (Vulkan e OpenGL 4.6). O mais rápido, ideal para jogos.",
-  "linuxGpuTurnipSetup": "Ative os gráficos 3D na configuração do contentor (a compilação demora cerca de 30 minutos). Até lá é usado o VirGL.",
+  "linuxGpuTurnipSetup": "Repare o contentor para o utilizar. Até lá é usado o VirGL.",
   "linuxSetupPhaseGpu": "A compilar o controlador da GPU (Turnip)",
   "linuxSetupDisplayBackend": "Sistema de apresentação",
   "linuxSetupXvfbDetail": "Usa o X11 para as aplicações e o ambiente IceWM.",
@@ -1025,5 +1024,6 @@
     }
   },
   "nativeShortcutStartDisplayLong": "Iniciar ou parar o ecrã virtual do Dextop",
-  "nativeShortcutStartDisplay": "Iniciar Dextop"
+  "nativeShortcutStartDisplay": "Iniciar Dextop",
+  "androidDisplayTileLabel": "Ecrã Dextop"
 }

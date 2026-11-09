@@ -28,12 +28,10 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   void dispose() {
     // A demo overlay is transient and must not remain behind the theme page
     // after leaving it.
-    const MethodChannel(
-      'app.freedextop/display',
-    ).invokeMethod('hideLaptopDemo');
-    const MethodChannel(
-      'app.freedextop/display',
-    ).invokeMethod('restoreOverlayAfterSettings');
+    const MethodChannel('app.freedextop/display')
+        .invokeMethod('hideLaptopDemo');
+    const MethodChannel('app.freedextop/display')
+        .invokeMethod('restoreOverlayAfterSettings');
     super.dispose();
   }
 
@@ -114,12 +112,10 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
   @override
   void initState() {
     super.initState();
-    const MethodChannel(
-      'app.freedextop/display',
-    ).invokeMethod('exitLaptopPreview');
-    const MethodChannel(
-      'app.freedextop/display',
-    ).invokeMethod('hideOverlayForSettings');
+    const MethodChannel('app.freedextop/display')
+        .invokeMethod('exitLaptopPreview');
+    const MethodChannel('app.freedextop/display')
+        .invokeMethod('hideOverlayForSettings');
     _load();
   }
 
@@ -168,9 +164,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
     }
     // Keep a running laptop deck in sync when a theme is selected or edited
     // from the settings page. The native overlay re-renders in place.
-    await const MethodChannel(
-      'app.freedextop/display',
-    ).invokeMethod<void>('laptopKeyboardTheme', {'themeId': _selected});
+    await const MethodChannel('app.freedextop/display')
+        .invokeMethod<void>('laptopKeyboardTheme', {'themeId': _selected});
   }
 
   Color _color(Map<String, dynamic> theme, String key) {
@@ -229,9 +224,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _showDeleteDialog(Map<String, dynamic> theme) async {
     if (_builtIns.any((item) => item['id'] == theme['id'])) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesBuiltIn)));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesBuiltIn)));
       return;
     }
     final confirmed = await showDialog<bool>(
@@ -263,9 +257,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _showRealLaptopPreview(String themeId) async {
     final shown =
-        await const MethodChannel(
-          'app.freedextop/display',
-        ).invokeMethod<bool>('previewLaptopOverlay', {'themeId': themeId}) ??
+        await const MethodChannel('app.freedextop/display')
+            .invokeMethod<bool>('previewLaptopOverlay', {'themeId': themeId}) ??
         false;
     if (!shown && mounted) {
       ScaffoldMessenger.of(
@@ -635,7 +628,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                 child: theme['showTrackpadLabel'] != false
                     ? Center(
                         child: Text(
-                          'TRACKPAD',
+                          localText(context, 'uiTRACKPAD'),
                           style: TextStyle(
                             color: _color(theme, 'trackpadText'),
                             letterSpacing: 2,

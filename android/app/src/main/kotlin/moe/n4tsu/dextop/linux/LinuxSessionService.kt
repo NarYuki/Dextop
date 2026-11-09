@@ -63,7 +63,7 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
     private val icons = ConcurrentHashMap<String, Map<String, Bitmap>>()
 
     private val japanese get() = Locale.getDefault().language == "ja"
-    private fun t(ja: String, en: String) = moe.n4tsu.dextop.localText(ja, en)
+    private fun t(key: String) = moe.n4tsu.dextop.localText(key)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -72,9 +72,9 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
         instance = this
         val manager = getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL_RUNNING,
-            t("Linux の実行状態", "Linux status"), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
+            t("uiLinuxStatus"), NotificationManager.IMPORTANCE_LOW).apply { setShowBadge(false) })
         manager.createNotificationChannel(NotificationChannel(CHANNEL_APPS,
-            t("Linux アプリの通知", "Linux app notifications"), NotificationManager.IMPORTANCE_DEFAULT))
+            t("uiLinuxAppNotifications"), NotificationManager.IMPORTANCE_DEFAULT))
         LinuxContainerClient.addListener(this)
     }
 
@@ -139,12 +139,12 @@ class LinuxSessionService : Service(), LinuxContainerClient.Listener {
         val apps = LinuxAndroidWindows.runningApps()
         val containers = runningContainers
         val title = when (containers.size) {
-            0 -> t("Linux コンテナ実行中", "Linux container running")
-            1 -> moe.n4tsu.dextop.InlineStrings.format(t("Linux コンテナ実行中・{0}", "Linux container running · {0}"), containers[0])
-            else -> moe.n4tsu.dextop.InlineStrings.format(t("Linux コンテナ {0} 個が実行中", "{0} Linux containers running"), containers.size)
+            0 -> t("uiLinuxContainerRunning")
+            1 -> moe.n4tsu.dextop.InlineStrings.format(t("uiLinuxContainerRunning0"), containers[0])
+            else -> moe.n4tsu.dextop.InlineStrings.format(t("ui0LinuxContainersRunning"), containers.size)
         }
-        val text = if (apps.isEmpty()) t("実行中のアプリはありません", "No apps running")
-            else moe.n4tsu.dextop.InlineStrings.format(t("実行中のアプリ {0} 個: ", "{0} apps running: "), apps.size) + apps.joinToString(", ")
+        val text = if (apps.isEmpty()) t("uiNoAppsRunning")
+            else moe.n4tsu.dextop.InlineStrings.format(t("ui0AppsRunning"), apps.size) + apps.joinToString(", ")
         val open = PendingIntent.getActivity(this, 0,
             packageManager.getLaunchIntentForPackage(packageName)?.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 ?: Intent(), PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)

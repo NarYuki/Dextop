@@ -130,10 +130,10 @@ internal fun WifiList(state: WifiState, modifier: Modifier = Modifier) {
     val networks = state.networks
     LazyColumn(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         if (networks == null) item {
-            Text(tr("ネットワークを検索しています…", "Searching for networks…"), color = colors.onSurfaceVariant,
+            Text(tr("uiSearchingForNetworks"), color = colors.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
         } else if (networks.isEmpty()) item {
-            Text(if (state.enabled) tr("ネットワークが見つかりません", "No networks found") else tr("Wi-Fi はオフです", "Wi-Fi is off"),
+            Text(if (state.enabled) tr("uiNoNetworksFound") else tr("uiWiFiIsOff"),
                 color = colors.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(16.dp))
         }
         items(networks.orEmpty(), key = { it.ssid }) { network ->
@@ -151,12 +151,12 @@ internal fun WifiList(state: WifiState, modifier: Modifier = Modifier) {
                         Text(network.ssid, style = MaterialTheme.typography.titleSmall, color = tint, maxLines = 1,
                             overflow = TextOverflow.Ellipsis)
                         val status = when {
-                            state.connecting == network.ssid -> tr("接続しています…", "Connecting…")
-                            state.failed == network.ssid -> tr("接続できませんでした", "Couldn't connect")
-                            network.connected -> tr("接続済み", "Connected")
-                            network.saved -> tr("保存済み", "Saved")
+                            state.connecting == network.ssid -> tr("uiConnecting")
+                            state.failed == network.ssid -> tr("uiCouldnTConnect")
+                            network.connected -> tr("uiConnected")
+                            network.saved -> tr("uiSaved")
                             network.secured -> null
-                            else -> tr("オープン", "Open")
+                            else -> tr("uiOpen52ad6e32")
                         }
                         if (status != null) Text(status, style = MaterialTheme.typography.bodySmall,
                             color = if (network.connected) colors.onPrimaryContainer else colors.onSurfaceVariant)
@@ -174,7 +174,7 @@ internal fun WifiList(state: WifiState, modifier: Modifier = Modifier) {
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = CircleShape,
-                            placeholder = { Text(tr("パスワード", "Password")) },
+                            placeholder = { Text(tr("uiPassword")) },
                             visualTransformation = PasswordVisualTransformation(),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                             keyboardActions = KeyboardActions(onGo = { state.connect(network, password) }),
@@ -275,10 +275,10 @@ internal class BookPanels(private val context: Context, private val host: BookHo
             }
             AnimatedVisibility(powerMenu) {
                 Column(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(colors.surfaceContainerHigh)) {
-                    PowerRow("bedtime", tr("スリープ", "Sleep")) { host.leave(LeaveAction.SLEEP) }
-                    PowerRow("restart_alt", tr("Dextop Book を再起動", "Restart Dextop Book")) { host.leave(LeaveAction.RESTART) }
-                    PowerRow("desktop_windows", tr("Android のデスクトップに切り替え", "Switch to the Android desktop")) { host.leave(LeaveAction.LOGOUT) }
-                    PowerRow("logout", tr("セッションを終了", "End session")) { host.leave(LeaveAction.SHUTDOWN) }
+                    PowerRow("bedtime", tr("uiSleep")) { host.leave(LeaveAction.SLEEP) }
+                    PowerRow("restart_alt", tr("uiRestartDextopBook")) { host.leave(LeaveAction.RESTART) }
+                    PowerRow("desktop_windows", tr("uiSwitchToTheAndroidDesktop")) { host.leave(LeaveAction.LOGOUT) }
+                    PowerRow("logout", tr("uiEndSession")) { host.leave(LeaveAction.SHUTDOWN) }
                 }
             }
             val brightness = power?.brightness ?: .5f
@@ -302,57 +302,57 @@ internal class BookPanels(private val context: Context, private val host: BookHo
                 val wifiOn = n?.wifiEnabled ?: true
                 BigTile(Modifier.weight(1f), if (wifiOn) "wifi" else "wifi_off", "Wi-Fi",
                     when {
-                        !wifiOn -> tr("オフ", "Off")
+                        !wifiOn -> tr("uiOffb5dc78ef")
                         ssid != null -> ssid!!
-                        n?.transport == PlasmaSystemControls.Transport.CELLULAR -> n.carrierName ?: tr("モバイルデータ", "Mobile data")
-                        else -> tr("未接続", "Not connected")
+                        n?.transport == PlasmaSystemControls.Transport.CELLULAR -> n.carrierName ?: tr("uiMobileData")
+                        else -> tr("uiNotConnected")
                     }, wifiOn,
                     onIcon = { toggle { host.controls.setWifiEnabled(!wifiOn) } },
                     onClick = { page = "internet"; wifi.networks = null; wifi.scan() })
                 val btOn = n?.bluetoothEnabled ?: false
                 BigTile(Modifier.weight(1f), if (btOn) "bluetooth" else "bluetooth_disabled", "Bluetooth",
-                    if (btOn) tr("オン", "On") else tr("オフ", "Off"), btOn,
+                    if (btOn) tr("uiOn") else tr("uiOffb5dc78ef"), btOn,
                     onIcon = { toggle { host.controls.setBluetooth(!btOn) } },
                     onClick = { page = "bluetooth" })
             }
             val tiles = buildList {
-                add(Tile("do_not_disturb_on", tr("通知をミュート", "Do Not Disturb"), dnd) { dnd = !dnd; toggle { host.controls.setDoNotDisturb(!host.controls.doNotDisturb()) } })
-                add(Tile("battery_saver", tr("バッテリー セーバー", "Battery Saver"), power?.batterySaver == true) {
+                add(Tile("do_not_disturb_on", tr("uiDoNotDisturb"), dnd) { dnd = !dnd; toggle { host.controls.setDoNotDisturb(!host.controls.doNotDisturb()) } })
+                add(Tile("battery_saver", tr("uiBatterySaver"), power?.batterySaver == true) {
                     val next = power?.batterySaver != true
                     power = power?.copy(batterySaver = next)
                     toggle { host.controls.setBatterySaver(next) }
                 })
-                add(Tile("airplanemode_active", tr("機内モード", "Airplane mode"), n?.airplaneMode == true) {
+                add(Tile("airplanemode_active", tr("uiAirplaneMode"), n?.airplaneMode == true) {
                     val next = n?.airplaneMode != true
                     toggle { host.controls.setAirplaneMode(next) }
                 })
-                if (n?.simPresent == true) add(Tile("signal_cellular_alt", tr("モバイルデータ", "Mobile data"), n.mobileDataEnabled) {
+                if (n?.simPresent == true) add(Tile("signal_cellular_alt", tr("uiMobileData"), n.mobileDataEnabled) {
                     val next = !n.mobileDataEnabled
                     toggle { host.controls.setMobileData(next) }
                 })
-                add(Tile("nightlight", tr("夜間モード", "Night Light"), nightLight) {
+                add(Tile("nightlight", tr("uiNightLight"), nightLight) {
                     val next = !nightLight
                     nightLight = next
                     toggle { host.controls.setNightLight(next) }
                 })
-                add(Tile(if (micBlocked) "mic_off" else "mic", tr("マイクへのアクセス", "Microphone access"), !micBlocked) {
+                add(Tile(if (micBlocked) "mic_off" else "mic", tr("uiMicrophoneAccess"), !micBlocked) {
                     micBlocked = !micBlocked
                     val blocked = micBlocked
                     host.background { host.controls.setSensorBlocked("microphone", blocked) }
                 })
-                add(Tile(if (cameraBlocked) "videocam_off" else "videocam", tr("カメラへのアクセス", "Camera access"), !cameraBlocked) {
+                add(Tile(if (cameraBlocked) "videocam_off" else "videocam", tr("uiCameraAccess"), !cameraBlocked) {
                     cameraBlocked = !cameraBlocked
                     val blocked = cameraBlocked
                     host.background { host.controls.setSensorBlocked("camera", blocked) }
                 })
-                add(Tile("calculate", tr("電卓", "Calculator"), false) { openCalculator() })
-                add(Tile("accessibility_new", tr("ユーザー補助", "Accessibility"), false) {
+                add(Tile("calculate", tr("uiCalculator"), false) { openCalculator() })
+                add(Tile("accessibility_new", tr("uiAccessibility"), false) {
                     host.closePanel(); host.openSystemSettings(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
                 })
-                add(Tile("edit_notifications", tr("通知の設定", "Notification settings"), false) {
+                add(Tile("edit_notifications", tr("uiNotificationSettings"), false) {
                     host.closePanel(); host.openSystemSettings(Intent(Settings.ACTION_ALL_APPS_NOTIFICATION_SETTINGS))
                 })
-                add(Tile("screen_rotation", tr("画面の設定", "Display settings"), false) {
+                add(Tile("screen_rotation", tr("uiDisplaySettings"), false) {
                     host.closePanel(); host.openSystemSettings(Intent(Settings.ACTION_DISPLAY_SETTINGS))
                 })
             }
@@ -436,11 +436,11 @@ internal class BookPanels(private val context: Context, private val host: BookHo
         val colors = MaterialTheme.colorScheme
         LaunchedEffect(Unit) { wifi.enabled = network?.wifiEnabled ?: true }
         Column(Modifier.padding(20.dp).heightIn(max = 560.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PageHeader(tr("インターネット", "Internet"), tr("ネットワークをタップして接続", "Tap a network to connect"),
+            PageHeader(tr("uiInternet"), tr("uiTapANetworkToConnect"),
                 Intent(Settings.ACTION_WIFI_SETTINGS))
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { wifi.switchWifi(!wifi.enabled) }
                 .padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text("Wi-Fi", style = MaterialTheme.typography.titleMedium, color = colors.onSurface, modifier = Modifier.weight(1f))
+                Text(tr("uiWiFi"), style = MaterialTheme.typography.titleMedium, color = colors.onSurface, modifier = Modifier.weight(1f))
                 Switch(checked = wifi.enabled, onCheckedChange = { wifi.switchWifi(it) })
             }
             WifiList(wifi, Modifier.weight(1f, fill = false).heightIn(min = 120.dp, max = 380.dp))
@@ -448,7 +448,7 @@ internal class BookPanels(private val context: Context, private val host: BookHo
                 .clickable { host.closePanel(); host.openSystemSettings(Intent(Settings.ACTION_WIRELESS_SETTINGS)) }.padding(14.dp),
                 horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
                 Sym("settings", colors.onSurface, 20.dp)
-                Text(tr("ネットワークとインターネットの設定", "Network & internet settings"), style = MaterialTheme.typography.labelLarge,
+                Text(tr("uiNetworkInternetSettings"), style = MaterialTheme.typography.labelLarge,
                     color = colors.onSurface, modifier = Modifier.padding(start = 10.dp))
             }
         }
@@ -462,13 +462,13 @@ internal class BookPanels(private val context: Context, private val host: BookHo
             PageHeader("Bluetooth", null, Intent(Settings.ACTION_BLUETOOTH_SETTINGS))
             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).clickable { toggle { host.controls.setBluetooth(!on) } }
                 .padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                Text(tr("Bluetooth を使用", "Use Bluetooth"), style = MaterialTheme.typography.titleMedium, color = colors.onSurface,
+                Text(tr("uiUseBluetooth"), style = MaterialTheme.typography.titleMedium, color = colors.onSurface,
                     modifier = Modifier.weight(1f))
                 Switch(checked = on, onCheckedChange = { value -> network = network?.copy(bluetoothEnabled = value); toggle { host.controls.setBluetooth(value) } })
             }
-            BookListItem(tr("新しいデバイスとペア設定", "Pair new device"), null, "add", RoundedCornerShape(20.dp),
+            BookListItem(tr("uiPairNewDevice"), null, "add", RoundedCornerShape(20.dp),
                 onClick = { host.closePanel(); host.openSystemSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) })
-            BookListItem(tr("接続済みのデバイス", "Connected devices"), tr("ペア設定済みのデバイスを管理", "Manage paired devices"),
+            BookListItem(tr("uiConnectedDevices"), tr("uiManagePairedDevices"),
                 "devices", RoundedCornerShape(20.dp),
                 onClick = { host.closePanel(); host.openSystemSettings(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) })
         }
@@ -484,13 +484,13 @@ internal class BookPanels(private val context: Context, private val host: BookHo
     private fun SoundPage() {
         val colors = MaterialTheme.colorScheme
         Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-            PageHeader(tr("サウンド", "Sound"), output?.let { trf("出力: {0}", "Output: {0}", it) }, Intent(Settings.ACTION_SOUND_SETTINGS))
+            PageHeader(tr("uiSound"), output?.let { trf("uiOutput0", it) }, Intent(Settings.ACTION_SOUND_SETTINGS))
             streams.forEach { stream ->
                 val (symbol, label) = when (stream.stream) {
-                    AudioManager.STREAM_MUSIC -> "music_note" to tr("メディア", "Media")
-                    AudioManager.STREAM_RING -> "ring_volume" to tr("着信音", "Ring")
-                    AudioManager.STREAM_NOTIFICATION -> "notifications" to tr("通知", "Notifications")
-                    else -> "alarm" to tr("アラーム", "Alarm")
+                    AudioManager.STREAM_MUSIC -> "music_note" to tr("uiMedia")
+                    AudioManager.STREAM_RING -> "ring_volume" to tr("uiRing")
+                    AudioManager.STREAM_NOTIFICATION -> "notifications" to tr("uiNotifications")
+                    else -> "alarm" to tr("uiAlarm")
                 }
                 Text(label, style = MaterialTheme.typography.labelLarge, color = colors.onSurfaceVariant, modifier = Modifier.padding(start = 6.dp))
                 BookSlider(stream.level, symbol, onChange = { level ->
@@ -520,14 +520,14 @@ internal class BookPanels(private val context: Context, private val host: BookHo
         BookPanelSurface(420.dp) {
             Column(Modifier.padding(16.dp)) {
                 Row(Modifier.fillMaxWidth().padding(start = 8.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Text(if (dnd) tr("サイレント", "Silent") else tr("通知", "Notifications"), style = MaterialTheme.typography.titleMedium,
+                    Text(if (dnd) tr("uiSilent") else tr("uiNotifications"), style = MaterialTheme.typography.titleMedium,
                         color = colors.onSurface, modifier = Modifier.weight(1f))
                     BookIconButton("close", { host.closePanel() }, tint = colors.onSurface)
                 }
                 if (items.isEmpty()) {
                     Column(Modifier.fillMaxWidth().padding(vertical = 40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                         Sym("notifications_off", colors.onSurfaceVariant, 40.dp)
-                        Text(tr("通知はありません", "No notifications"), style = MaterialTheme.typography.bodyLarge,
+                        Text(tr("uiNoNotifications"), style = MaterialTheme.typography.bodyLarge,
                             color = colors.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
                     }
                 } else {
@@ -543,7 +543,7 @@ internal class BookPanels(private val context: Context, private val host: BookHo
                     Box(Modifier.weight(1f).height(48.dp).clip(CircleShape).background(colors.surfaceContainerHighest)
                         .clickable(enabled = items.any { it.clearable }) { items.filter { it.clearable }.forEach(host::dismissNotification) },
                         contentAlignment = Alignment.Center) {
-                        Text(tr("すべて消去", "Clear all"), style = MaterialTheme.typography.labelLarge, color = colors.onSurface)
+                        Text(tr("uiClearAll"), style = MaterialTheme.typography.labelLarge, color = colors.onSurface)
                     }
                     BookIconButton(if (dnd) "notifications_off" else "edit_notifications", {
                         dnd = !dnd
@@ -659,7 +659,7 @@ internal class BookPanels(private val context: Context, private val host: BookHo
                         }
                     }
                     Column(Modifier.weight(1f)) {
-                        Text(media?.title ?: tr("再生中のメディアはありません", "Nothing playing"), style = MaterialTheme.typography.titleMedium,
+                        Text(media?.title ?: tr("uiNothingPlaying"), style = MaterialTheme.typography.titleMedium,
                             color = colors.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)
                         media?.artist?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, maxLines = 1) }
                     }
@@ -674,7 +674,7 @@ internal class BookPanels(private val context: Context, private val host: BookHo
                     Row(Modifier.fillMaxWidth().clip(CircleShape).background(colors.surfaceContainerHighest)
                         .clickable { host.closePanel(); host.launch(media.packageName) }.padding(12.dp),
                         horizontalArrangement = Arrangement.Center) {
-                        Text(tr("アプリを開く", "Open app"), style = MaterialTheme.typography.labelLarge, color = colors.onSurface)
+                        Text(tr("uiOpenApp"), style = MaterialTheme.typography.labelLarge, color = colors.onSurface)
                     }
                 }
             }
@@ -690,7 +690,7 @@ internal class BookPanels(private val context: Context, private val host: BookHo
             Row(Modifier.clickable { onToggle(!alwaysShow) }.padding(start = 20.dp, end = 12.dp, top = 10.dp, bottom = 10.dp),
                 verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 Sym(if (alwaysShow) "visibility" else "visibility_off", colors.onSurface, 22.dp)
-                Text(tr("タスクバーを常に表示", "Always show Taskbar"), style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
+                Text(tr("uiAlwaysShowTaskbar"), style = MaterialTheme.typography.bodyLarge, color = colors.onSurface)
                 Switch(checked = alwaysShow, onCheckedChange = onToggle)
             }
         }

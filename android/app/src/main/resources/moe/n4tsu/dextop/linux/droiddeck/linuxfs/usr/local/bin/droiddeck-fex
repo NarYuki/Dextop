@@ -1,0 +1,666 @@
+#!/usr/bin/python3
+import contextlib
+import fcntl
+import filecmp
+import gzip
+import json
+import os
+import re
+import runpy
+import shutil
+import struct
+import subprocess
+import sys
+
+HOME = os.environ.get("HOME") or "/root"
+STEAM_ROOT = os.path.join(HOME, ".local", "share", "Steam")
+LIBRARIES = ("/mnt/droiddeck", "/mnt/droiddeck-sd")
+STATE = os.path.join(HOME, ".local", "share", "droiddeck-fex")
+CONFIG_DIR = os.path.join(STATE, "config")
+DATA_DIR = os.path.join(STATE, "data")
+CACHE_DIR = os.path.join(HOME, ".cache", "droiddeck-fex")
+STATUS_FILE = os.path.join(STATE, "status.json")
+WANTED = os.path.join(HOME, ".config", "droiddeck", "fex-wanted")
+GAME_ENVIRONMENT = os.path.join(HOME, ".config", "droiddeck", "game-environment.json")
+BIN_DIR = os.path.dirname(os.path.abspath(__file__))
+PRELOADS = "/usr/local/lib/droiddeck-fex"
+URUNTIME = "/usr/local/lib/droiddeck/uruntime"
+HOST_PRELOAD = "/etc/ld.so.preload"
+FEX_APPID = "3127680"
+SNIPER_APPID = "1628350"
+INSTALL_DIRS = {FEX_APPID: "FEX-Emu", SNIPER_APPID: "SteamLinuxRuntime_sniper"}
+MARKER = ".droiddeck-fex"
+LAYOUT = 1
+GUEST_LIBDIRS = (("x86_64", "lib/x86_64-linux-gnu"), ("i386", "lib/i386-linux-gnu"))
+PRELOAD_NAMES = ("libblsession.so", "libfakeinput.so")
+FAULT_REPORT = "libfaultreport.so"
+THUNK_AUDIT = "libthunkaudit.so"
+THUNK_AUDIT_GUEST = "/usr/lib/x86_64-linux-gnu/droiddeck/" + THUNK_AUDIT
+VULKAN_PIN = "libvulkan-thunk.so"
+VULKAN_THUNK = "libvulkan-guest.so"
+RUNTIME_LIBRARIES = (("libc.so.6", b"GLIBC_"), ("libstdc++.so.6", b"GLIBCXX_"))
+VERSION_NAME = re.compile(rb"GLIBC(?:XX)?_[0-9][0-9.]*[0-9]")
+BUNDLE_DEPTH = 3
+THUNKS = {"GL": 1, "Vulkan": 1}
+X86 = {3: "i386", 62: "x86_64"}
+ARM = {40: "arm", 183: "arm64"}
+SCAN_DEPTH = 4
+SCAN_LIMIT = 4000
+MODES = ("auto", "on", "off")
+STEAM_VERBS = ("run", "waitforexitandrun")
+ESCAPE = re.compile(rb"\\([0-7]{3})")
+
+
+def say(message):
+    print("droiddeck-fex: %s" % message, file=sys.stderr, flush=True)
+
+
+def read_text(path):
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            return f.read()
+    except OSError:
+        return None
+
+
+def write_if_changed(path, data, mode=0o644):
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    try:
+        with open(path, "rb") as f:
+            if f.read() == data:
+                return False
+    except OSError:
+        pass
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    tmp = "%s.%d.tmp" % (path, os.getpid())
+    with open(tmp, "wb") as f:
+        f.write(data)
+    os.chmod(tmp, mode)
+    os.replace(tmp, path)
+    return True
+
+
+def copy_if_changed(source, target):
+    if os.path.isfile(target) and filecmp.cmp(source, target, shallow=False):
+        return False
+    os.makedirs(os.path.dirname(target), exist_ok=True)
+    tmp = "%s.%d.tmp" % (target, os.getpid())
+    shutil.copyfile(source, tmp)
+    os.chmod(tmp, 0o755)
+    os.replace(tmp, target)
+    return True
+
+
+@contextlib.contextmanager
+def locked():
+    os.makedirs(STATE, exist_ok=True)
+    with open(os.path.join(STATE, "lock"), "w") as handle:
+        fcntl.flock(handle, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(handle, fcntl.LOCK_UN)
+
+
+def libraries():
+    roots = [STEAM_ROOT]
+    text = read_text(os.path.join(STEAM_ROOT, "steamapps", "libraryfolders.vdf")) or ""
+    roots += [path.replace("\\\\", "\\") for path in re.findall(r'"path"\s+"((?:[^"\\]|\\.)*)"', text)]
+    roots += LIBRARIES
+    seen, found = set(), []
+    for root in roots:
+        real = os.path.realpath(root)
+        if real not in seen and os.path.isdir(os.path.join(root, "steamapps")):
+            seen.add(real)
+            found.append(root)
+    return found
+
+
+def app_dir(appid):
+    for library in libraries():
+        steamapps = os.path.join(library, "steamapps")
+        match = re.search(r'"installdir"\s+"([^"]+)"', read_text(os.path.join(steamapps, "appmanifest_%s.acf" % appid)) or "")
+        for name in filter(None, (match.group(1) if match else None, INSTALL_DIRS.get(appid))):
+            path = os.path.join(steamapps, "common", name)
+            if os.path.isdir(path):
+                return path
+    return None
+
+
+def first_dir(prefix, candidates):
+    for candidate in candidates:
+        path = os.path.join(prefix, candidate)
+        if os.path.isdir(path):
+            return path
+    return None
+
+
+def fex_install():
+    prefixes = []
+    tool = app_dir(FEX_APPID)
+    if tool:
+        prefixes += [(os.path.join(tool, sub), True) for sub in ("usr", "", "files/usr", "files")]
+    prefixes.append(("/usr", False))
+    for prefix, portable in prefixes:
+        binary = next((os.path.join(prefix, "bin", name) for name in ("FEX", "FEXInterpreter")
+                       if os.access(os.path.join(prefix, "bin", name), os.X_OK)), None)
+        if not binary:
+            continue
+        server = os.path.join(prefix, "bin", "FEXServer")
+        thunks_db = os.path.join(prefix, "share", "fex-emu", "ThunksDB.json")
+        return {
+            "bin": binary,
+            "server": server if os.access(server, os.X_OK) else shutil.which("FEXServer"),
+            "portable": portable,
+            "host_thunks": first_dir(prefix, ("lib/aarch64-linux-gnu/fex-emu/HostThunks", "lib/fex-emu/HostThunks", "lib64/fex-emu/HostThunks")),
+            "guest_thunks": first_dir(prefix, ("share/fex-emu/GuestThunks",)),
+            "thunks_db": thunks_db if os.path.isfile(thunks_db) else None,
+        }
+    return None
+
+
+def platform_version(path):
+    return tuple(int(part) for part in re.findall(r"\d+", os.path.basename(path)))
+
+
+def runtime_platform():
+    runtime = app_dir(SNIPER_APPID)
+    if not runtime:
+        return None
+    try:
+        entries = os.listdir(runtime)
+    except OSError:
+        return None
+    platforms = [os.path.join(runtime, entry) for entry in entries if entry.startswith("sniper_platform_")]
+    platforms = [path for path in platforms if os.path.isdir(os.path.join(path, "files"))
+                 and os.path.isfile(os.path.join(path, "usr-mtree.txt.gz"))]
+    return max(platforms, key=platform_version, default=None)
+
+
+def unescape(raw):
+    return ESCAPE.sub(lambda match: bytes([int(match.group(1), 8)]), raw)
+
+
+def in_root(root, link, target):
+    if not target.startswith(b"/"):
+        return target
+    relative = target.lstrip(b"/")
+    if relative == b"usr" or relative.startswith(b"usr/"):
+        relative = relative[4:]
+    return os.path.relpath(os.path.join(root, relative), os.path.dirname(link))
+
+
+def materialize(platform):
+    mtree = os.path.join(platform, "usr-mtree.txt.gz")
+    info = os.stat(mtree)
+    stamp = "%d %d %d\n" % (LAYOUT, info.st_size, info.st_mtime_ns)
+    root = os.fsencode(os.path.join(platform, "files"))
+    marker = os.path.join(os.fsdecode(root), MARKER)
+    if read_text(marker) == stamp:
+        return False
+    links = []
+    with gzip.open(mtree, "rb") as source:
+        for line in source:
+            parts = line.split()
+            if not parts or parts[0].startswith(b"#"):
+                continue
+            fields = dict(part.split(b"=", 1) for part in parts[1:] if b"=" in part)
+            relative = os.path.normpath(unescape(parts[0]))
+            if os.path.isabs(relative) or relative == b".." or relative.startswith(b"../"):
+                continue
+            dest = os.path.join(root, relative)
+            kind = fields.get(b"type")
+            if kind == b"dir":
+                os.makedirs(dest, exist_ok=True)
+            elif kind == b"file" and b"contents" in fields:
+                blob = os.path.join(root, os.path.normpath(unescape(fields[b"contents"])))
+                links.append((dest, os.path.relpath(blob, os.path.dirname(dest))))
+            elif kind == b"link" and b"link" in fields:
+                links.append((dest, in_root(root, dest, unescape(fields[b"link"]))))
+    for dest, target in links:
+        if os.path.islink(dest):
+            if os.readlink(dest) == target:
+                continue
+            os.unlink(dest)
+        elif os.path.lexists(dest):
+            continue
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        os.symlink(target, dest)
+    usr = os.path.join(root, b"usr")
+    if not os.path.lexists(usr):
+        os.symlink(b".", usr)
+    write_if_changed(marker, stamp)
+    return True
+
+
+def host_preloads():
+    listed = read_text(HOST_PRELOAD) or ""
+    return [name for name in PRELOAD_NAMES if name in listed]
+
+
+def install_preloads(root):
+    shipped = {}
+    for arch, libdir in GUEST_LIBDIRS:
+        for name in PRELOAD_NAMES + (FAULT_REPORT,):
+            source = os.path.join(PRELOADS, arch, name)
+            if os.path.isfile(source):
+                copy_if_changed(source, os.path.join(root, libdir, "droiddeck", name))
+                shipped.setdefault(name, set()).add(arch)
+    for name in (THUNK_AUDIT, VULKAN_PIN):
+        source = os.path.join(PRELOADS, "x86_64", name)
+        if os.path.isfile(source):
+            copy_if_changed(source, os.path.join(root, "lib/x86_64-linux-gnu/droiddeck", name))
+    wanted = [name for name in host_preloads() if name in shipped]
+    if len(shipped.get(FAULT_REPORT, ())) == len(GUEST_LIBDIRS):
+        wanted.append(FAULT_REPORT)
+    write_if_changed(os.path.join(root, "etc", "ld.so.preload"), "".join("/usr/$LIB/droiddeck/%s\n" % name for name in wanted))
+
+
+def write_config(fex, root):
+    config = {"Config": {"RootFS": root}}
+    if fex["host_thunks"] and fex["guest_thunks"] and fex["thunks_db"]:
+        config["Config"]["ThunkHostLibs"] = fex["host_thunks"]
+        config["Config"]["ThunkGuestLibs"] = fex["guest_thunks"]
+        config["ThunksDB"] = dict(THUNKS)
+        write_if_changed(os.path.join(CONFIG_DIR, "ThunksConfig.json"), json.dumps({"ThunksDB": dict(THUNKS)}, indent=2) + "\n")
+    write_if_changed(os.path.join(CONFIG_DIR, "Config.json"), json.dumps(config, indent=2) + "\n")
+
+
+def link_steam_sdk():
+    for sdk, candidates in (("sdk64", ("linux64", "ubuntu12_64")), ("sdk32", ("linux32", "ubuntu12_32"))):
+        link = os.path.join(HOME, ".steam", sdk)
+        if os.path.lexists(link):
+            continue
+        want = "x86_64" if sdk == "sdk64" else "i386"
+        for candidate in candidates:
+            directory = os.path.join(STEAM_ROOT, candidate)
+            if elf_arch(os.path.join(directory, "steamclient.so")) == want:
+                os.makedirs(os.path.dirname(link), exist_ok=True)
+                os.symlink(directory, link)
+                break
+
+
+def steam_running():
+    for pid in os.listdir("/proc"):
+        if not pid.isdigit():
+            continue
+        try:
+            with open("/proc/%s/cmdline" % pid, "rb") as f:
+                first = f.read().split(b"\0", 1)[0]
+        except OSError:
+            continue
+        if first.endswith(b"steamrtarm64/steam"):
+            return True
+    return False
+
+
+def request_install():
+    os.makedirs(os.path.dirname(WANTED), exist_ok=True)
+    write_if_changed(WANTED, "1\n")
+    if not steam_running():
+        return []
+    try:
+        compat = runpy.run_path(os.path.join(BIN_DIR, "steam-compatibility"))
+        return compat["request_fex"](STEAM_ROOT, set())
+    except Exception as error:
+        say("could not ask the client to install FEX (%s)" % error)
+        return []
+
+
+def describe(fex, platform):
+    return {
+        "fex": fex["bin"] if fex else None,
+        "server": fex["server"] if fex else None,
+        "thunks": bool(fex and fex["host_thunks"] and fex["guest_thunks"] and fex["thunks_db"]),
+        "runtime": platform,
+        "steamclient64": os.path.realpath(os.path.join(HOME, ".steam", "sdk64", "steamclient.so"))
+        if elf_arch(os.path.join(HOME, ".steam", "sdk64", "steamclient.so")) == "x86_64" else None,
+        "ready": bool(fex and fex["server"] and platform),
+    }
+
+
+def prepare():
+    with locked():
+        fex = fex_install()
+        platform = runtime_platform()
+        status = describe(fex, platform)
+        if not status["ready"]:
+            missing = []
+            tool = app_dir(FEX_APPID)
+            if not fex and tool:
+                say("FEX is installed at %s but holds no FEX or FEXInterpreter in usr/bin, bin or files; it has: %s"
+                    % (tool, ", ".join(sorted(os.listdir(tool))[:20])))
+            if not fex:
+                missing.append("FEX (Steam app %s)" % FEX_APPID)
+            elif not fex["server"]:
+                missing.append("FEXServer beside %s" % fex["bin"])
+            if not platform:
+                missing.append("Steam Linux Runtime 3.0 (sniper, Steam app %s)" % SNIPER_APPID)
+            requested = request_install()
+            say("x86 Linux programs need %s; %s" % (" and ".join(missing),
+                "the Steam client was asked to install it" if requested else "open Steam once and it is installed for you"))
+            write_if_changed(STATUS_FILE, json.dumps(status, indent=2) + "\n")
+            return None
+        root = os.path.join(platform, "files")
+        if materialize(platform):
+            say("prepared %s as the x86 runtime" % os.path.basename(platform))
+        install_preloads(root)
+        write_config(fex, root)
+        fex["rootfs"] = root
+        try:
+            link_steam_sdk()
+        except OSError:
+            pass
+        status = describe(fex, platform)
+        write_if_changed(STATUS_FILE, json.dumps(status, indent=2) + "\n")
+        with contextlib.suppress(OSError):
+            os.unlink(WANTED)
+        return fex
+
+
+def elf_arch(path):
+    try:
+        with open(path, "rb") as f:
+            head = f.read(20)
+    except OSError:
+        return None
+    if len(head) < 20 or head[:4] != b"\x7fELF":
+        return None
+    machine = struct.unpack_from("<H" if head[5] == 1 else ">H", head, 18)[0]
+    return X86.get(machine) or ARM.get(machine) or "other"
+
+
+def scan(folder):
+    counts = {"x86": 0, "arm": 0}
+    seen = 0
+    base = folder.rstrip("/").count("/")
+    for directory, dirs, files in os.walk(folder):
+        if directory.count("/") - base >= SCAN_DEPTH:
+            dirs[:] = []
+        for name in files:
+            seen += 1
+            if seen > SCAN_LIMIT:
+                return counts
+            arch = elf_arch(os.path.join(directory, name))
+            if arch in X86.values():
+                counts["x86"] += 1
+            elif arch in ARM.values():
+                counts["arm"] += 1
+    return counts
+
+
+def needs_fex(path):
+    arch = elf_arch(path)
+    if arch is not None:
+        return arch in X86.values()
+    folder = path if os.path.isdir(path) else os.path.dirname(os.path.abspath(path))
+    counts = scan(folder)
+    return counts["x86"] > 0 and counts["arm"] == 0
+
+
+def is_arm(path):
+    return elf_arch(path) in ARM.values()
+
+
+def split_paths(value):
+    return [part for part in re.split(r"[:\s]+", value or "") if part]
+
+
+def data_dir(env):
+    runtime = env.get("XDG_RUNTIME_DIR")
+    if runtime and os.path.isdir(runtime) and os.access(runtime, os.W_OK):
+        return os.path.join(runtime, "fex")
+    return DATA_DIR
+
+
+def guest_environment(fex, env):
+    result = dict(env)
+    data = data_dir(env)
+    for directory in (CONFIG_DIR, data, CACHE_DIR):
+        os.makedirs(directory, exist_ok=True)
+    result["FEX_APP_CONFIG_LOCATION"] = CONFIG_DIR + "/"
+    result["FEX_APP_DATA_LOCATION"] = data + "/"
+    result["FEX_APP_CACHE_LOCATION"] = CACHE_DIR + "/"
+    result.setdefault("FEX_SILENTLOG", "0")
+    result.setdefault("FEX_OUTPUTLOG", "stderr")
+    if fex["portable"]:
+        result["FEX_PORTABLE"] = "1"
+    else:
+        result.pop("FEX_PORTABLE", None)
+    for name in ("FEX_ROOTFS", "FEX_THUNKHOSTLIBS", "FEX_THUNKGUESTLIBS"):
+        if name in result and not os.path.exists(result[name]):
+            result.pop(name)
+    if fex.get("rootfs"):
+        result["FEX_ROOTFS"] = fex["rootfs"]
+    if fex.get("rootfs") and fex.get("host_thunks") and fex.get("guest_thunks") and fex.get("thunks_db"):
+        result["FEX_THUNKHOSTLIBS"] = fex["host_thunks"]
+        result["FEX_THUNKGUESTLIBS"] = fex["guest_thunks"]
+        result["FEX_THUNKCONFIG"] = os.path.join(CONFIG_DIR, "ThunksConfig.json")
+    preload = [part for part in split_paths(result.get("LD_PRELOAD")) if os.path.exists(part) and not is_arm(part)]
+    library_path = [part for part in (result.get("LD_LIBRARY_PATH") or "").split(":")
+                    if part and "steamrtarm64" not in part and "aarch64" not in part]
+    for name, parts in (("LD_PRELOAD", preload), ("LD_LIBRARY_PATH", library_path)):
+        if parts:
+            result[name] = ":".join(parts)
+        else:
+            result.pop(name, None)
+    return result
+
+
+def version_names(path):
+    try:
+        with open(path, "rb") as f:
+            return set(VERSION_NAME.findall(f.read()))
+    except OSError:
+        return set()
+
+
+def bundled_libraries(folder):
+    wanted = [name for name, _ in RUNTIME_LIBRARIES]
+    found = {}
+    seen = 0
+    base = folder.rstrip("/").count("/")
+    for directory, dirs, files in os.walk(folder):
+        seen += len(files)
+        if seen > SCAN_LIMIT:
+            break
+        if directory.count("/") - base >= BUNDLE_DEPTH:
+            dirs[:] = []
+        for name in wanted:
+            if name in files and name not in found:
+                found[name] = os.path.join(directory, name)
+    return found
+
+
+def vulkan_thunk_loads(fex, folder):
+    needed = version_names(os.path.join(fex["guest_thunks"], VULKAN_THUNK))
+    if not needed:
+        return False
+    found = bundled_libraries(folder)
+    for name, prefix in RUNTIME_LIBRARIES:
+        library = found.get(name) or os.path.join(fex["rootfs"], "lib/x86_64-linux-gnu", name)
+        if not {version for version in needed if version.startswith(prefix)} <= version_names(library):
+            return False
+    return True
+
+
+def resolve(program, env):
+    if "/" in program:
+        return os.path.abspath(program)
+    return shutil.which(program, path=env.get("PATH")) or program
+
+
+def launch(command, env, mode, decide=None):
+    program = resolve(command[0], env)
+    use = mode == "on" or (mode == "auto" and needs_fex(decide or program))
+    if not use:
+        return os.execvpe(command[0], command, env)
+    fex = prepare()
+    if fex is None:
+        return 126
+    guest = guest_environment(fex, env)
+    x86_64 = elf_arch(program) != "i386"
+    thunks = "on" if "FEX_THUNKCONFIG" in guest else "off"
+    folder = decide if decide and os.path.isdir(decide) else os.path.dirname(program)
+    if thunks == "on" and x86_64 and all(os.path.isfile(os.path.join(PRELOADS, "x86_64", name)) for name in (THUNK_AUDIT, VULKAN_PIN)) \
+            and vulkan_thunk_loads(fex, folder):
+        guest["LD_AUDIT"] = ":".join([THUNK_AUDIT_GUEST] + split_paths(guest.get("LD_AUDIT")))
+        thunks = "on, its own Vulkan loader too"
+    say("running %s with %s (runtime %s, thunks %s)" % (program, fex["bin"], guest.get("FEX_ROOTFS", "none"), thunks))
+    return os.execve(fex["bin"], [fex["bin"], program] + command[1:], guest)
+
+
+def game_environment(env):
+    try:
+        game_env = runpy.run_path(os.path.join(BIN_DIR, "droiddeck-game-env"))
+        app = game_env["game_id"](env) or env.get("SteamAppId") or env.get("SteamGameId")
+        if not app:
+            return env
+        with open(GAME_ENVIRONMENT, encoding="utf-8") as source:
+            return game_env["apply_config"](env, json.load(source), str(app))
+    except FileNotFoundError:
+        return env
+    except Exception as error:
+        say("game settings were not applied (%s)" % error)
+        return env
+
+
+def appimage_offset(path):
+    with open(path, "rb") as f:
+        head = f.read(64)
+    if head[:4] != b"\x7fELF":
+        raise ValueError("not an ELF file")
+    order = "<" if head[5] == 1 else ">"
+    if head[4] == 2:
+        shoff, = struct.unpack_from(order + "Q", head, 0x28)
+        shentsize, shnum = struct.unpack_from(order + "HH", head, 0x3A)
+    else:
+        shoff, = struct.unpack_from(order + "I", head, 0x20)
+        shentsize, shnum = struct.unpack_from(order + "HH", head, 0x2E)
+    return shoff + shentsize * shnum
+
+
+def clear_extracted():
+    for stale in ("squashfs-root", "AppDir"):
+        if os.path.islink(stale):
+            os.unlink(stale)
+        else:
+            shutil.rmtree(stale, ignore_errors=True)
+
+
+def extracted():
+    if os.path.isdir("AppDir") and not os.path.lexists("squashfs-root"):
+        os.symlink("AppDir", "squashfs-root")
+    return os.path.isdir("squashfs-root")
+
+
+def want_fex():
+    with locked():
+        status = describe(fex_install(), runtime_platform())
+        if not status["ready"]:
+            request_install()
+            write_if_changed(STATUS_FILE, json.dumps(status, indent=2) + "\n")
+
+
+def extract(image):
+    image = os.path.abspath(image)
+    clear_extracted()
+    x86 = elf_arch(image) in X86.values()
+    if os.access(URUNTIME, os.X_OK):
+        status = subprocess.call([URUNTIME, "--appimage-extract"], stdout=subprocess.DEVNULL,
+                                 env=dict(os.environ, TARGET_APPIMAGE=image))
+        if status == 0 and extracted():
+            if x86:
+                want_fex()
+            return 0
+        say("uruntime could not extract it (status %d)" % status)
+        clear_extracted()
+    fex = prepare() if x86 else None
+    if fex is not None:
+        status = subprocess.call([fex["bin"], image, "--appimage-extract"], stdout=subprocess.DEVNULL,
+                                 env=guest_environment(fex, dict(os.environ)))
+        if status == 0 and extracted():
+            return 0
+        say("the image's own runtime could not extract it under FEX (status %d)" % status)
+    unsquashfs = shutil.which("unsquashfs")
+    if unsquashfs:
+        clear_extracted()
+        status = subprocess.call([unsquashfs, "-q", "-n", "-o", str(appimage_offset(image)), "-d", "squashfs-root", image],
+                                 stdout=subprocess.DEVNULL)
+        if status == 0:
+            if x86:
+                want_fex()
+            return 0
+        say("unsquashfs could not extract it (status %d)" % status)
+    elif fex is None:
+        say("this AppImage could not be unpacked here: no AppImage runtime for ARM64, no FEX yet and no unsquashfs")
+    return 1
+
+
+def parse_run(args):
+    mode, decide = os.environ.get("DROIDDECK_FEX", "auto"), None
+    while args and args[0].startswith("--"):
+        option = args.pop(0)
+        if option == "--":
+            break
+        if option in ("--mode", "--for") and args:
+            value = args.pop(0)
+            if option == "--mode":
+                mode = value
+            else:
+                decide = value
+        else:
+            raise ValueError("unknown option %s" % option)
+    if mode not in MODES:
+        raise ValueError("--mode takes %s" % ", ".join(MODES))
+    return mode, decide, args
+
+
+def main(argv):
+    if not argv:
+        say("usage: droiddeck-fex steam VERB CMD... | run [--mode auto|on|off] [--for PATH] [--] CMD... | needs PATH | extract IMAGE | prepare | status")
+        return 2
+    action, args = argv[0], list(argv[1:])
+    if action == "steam":
+        if not args:
+            return 2
+        verb, command = args[0], args[1:]
+        if verb not in STEAM_VERBS:
+            return 0
+        if not command:
+            return 2
+        return launch(command, game_environment(dict(os.environ)), os.environ.get("DROIDDECK_FEX", "auto"))
+    if action == "run":
+        try:
+            mode, decide, command = parse_run(args)
+        except ValueError as error:
+            say(str(error))
+            return 2
+        if not command:
+            return 2
+        return launch(command, dict(os.environ), mode, decide)
+    if action == "needs":
+        if len(args) != 1:
+            return 2
+        needed = needs_fex(args[0])
+        print("fex" if needed else "native")
+        return 0 if needed else 1
+    if action == "extract":
+        if len(args) != 1:
+            return 2
+        return extract(args[0])
+    if action == "prepare":
+        return 0 if prepare() else 1
+    if action == "status":
+        with locked():
+            status = describe(fex_install(), runtime_platform())
+            write_if_changed(STATUS_FILE, json.dumps(status, indent=2) + "\n")
+        print(json.dumps(status, indent=2))
+        return 0 if status["ready"] else 1
+    say("unknown action %s" % action)
+    return 2
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

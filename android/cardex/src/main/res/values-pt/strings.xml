@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the shared UI catalogs. -->
+<resources>
+    <string name="app_name" formatted="false">"Dextop Car Companion"</string>
+    <string name="opening_dextop" formatted="false">"A abrir o Dextop…"</string>
+    <string name="relay_description" formatted="false">"O Dextop Car Companion liga o Android Auto ao Dextop."</string>
+    <string name="dextop_required" formatted="false">"O Dextop não está instalado ou a assinatura não corresponde ao Dextop Car Companion."</string>
+    <string name="open_again" formatted="false">"Abrir o Dextop"</string>
+    <string name="ready" formatted="false">"O Dextop Car Companion está pronto"</string>
+    <string name="not_ready" formatted="false">"A ligação Dextop está indisponível"</string>
+    <string name="start" formatted="false">"Começar"</string>
+    <string name="open_phone" formatted="false">"Iniciar Dextop"</string>
+    <string name="guide_title" formatted="false">"Iniciar o Dextop no Android Auto"</string>
+    <string name="guide_description" formatted="false">"Esta gravação mostra o ecrã Android Auto. Siga-a no ecrã do carro para iniciar o Dextop."</string>
+    <string name="connection" formatted="false">"Ligação"</string>
+    <string name="dextop_installed" formatted="false">"Dextop instalado"</string>
+    <string name="dextop_missing" formatted="false">"É necessário o Dextop"</string>
+    <string name="signature_verified" formatted="false">"Retransmissão segura disponível"</string>
+    <string name="signature_mismatch" formatted="false">"Atualize o Dextop para uma versão que suporte este Companion"</string>
+    <string name="auto_mode" formatted="false">"Ecrã Android Auto"</string>
+    <string name="phone_mode" formatted="false">"Companion do telemóvel"</string>
+    <string name="android_auto_connected" formatted="false">"Android Auto ligado"</string>
+    <string name="android_auto_disconnected" formatted="false">"Android Auto não ligado"</string>
+    <string name="automotive_connected" formatted="false">"Android Automotive OS ligado"</string>
+    <string name="parked_note" formatted="false">"O ambiente de trabalho está disponível com o veículo estacionado."</string>
+    <string name="starting" formatted="false">"A iniciar o Dextop…"</string>
+    <string name="stop" formatted="false">"Parar"</string>
+    <string name="controls" formatted="false">"Controlos"</string>
+    <string name="auto_controls" formatted="false">"Controlos Auto"</string>
+    <string name="swipe_hint" formatted="false">"Deslize para a direita a partir da margem esquerda para abrir este painel."</string>
+    <string name="back" formatted="false">"Voltar"</string>
+    <string name="home" formatted="false">"Início"</string>
+    <string name="recents" formatted="false">"Aplicações recentes"</string>
+    <string name="reconnect" formatted="false">"Restabelecer vídeo"</string>
+    <string name="restart_desktop" formatted="false">"Reiniciar o ambiente de trabalho"</string>
+    <string name="close" formatted="false">"Fechar"</string>
+    <string name="workspace" formatted="false">"Espaço de trabalho"</string>
+    <string name="save_workspace" formatted="false">"Adicionar a disposição atual das aplicações"</string>
+    <string name="no_workspaces" formatted="false">"Nenhum espaço de trabalho salvo"</string>
+    <string name="display_scale" formatted="false">"Escala do ecrã"</string>
+    <string name="display_scale_description" formatted="false">"Reduz os elementos para caberem melhor em ecrãs compactos do carro."</string>
+    <string name="companion_parking_name" formatted="false">"Dextop・Parking"</string>
+    <string name="companion_driving_name" formatted="false">"Dextop・Driving"</string>
+</resources>

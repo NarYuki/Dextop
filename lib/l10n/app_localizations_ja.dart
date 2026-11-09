@@ -2123,7 +2123,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get multiTouchUpgradeTitle => 'アプリが更新され、ジェスチャーが変更されました。';
 
   @override
-  String get multiTouchUpgradeBody => '';
+  String get multiTouchUpgradeBody => 'マルチタッチに対応し、ジェスチャー操作が更新されました。';
 
   @override
   String get multiTouchUpgradeLandscape => '横向きの場合\\n画面左から右に3本指でスワイプ';
@@ -2628,7 +2628,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      '完全特権方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。';
+      '特権シェル方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。';
 
   @override
   String get linuxEnable => 'Linux を有効にする';
@@ -2743,7 +2743,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get linuxSetupIntro =>
-      '使い方に合わせて Linux を準備します。デスクトップ、言語、入力方法、アプリを順番に選びましょう。';
+      '使い方に合わせて Linux を準備します。言語、入力方法、アプリを順番に選びましょう。';
 
   @override
   String get linuxSetupExisting =>
@@ -2897,10 +2897,6 @@ class AppLocalizationsJa extends AppLocalizations {
   @override
   String get linuxSetupSteamDetail =>
       'Valve の Steam（ARM64 版）。初回に Valve から取得します。Proton と FEX は Steam が入れます。';
-
-  @override
-  String get linuxSetupDroidDeckNote =>
-      'DroidDeck ランタイムは KDE Plasma デスクトップ（KWin・Xwayland）とフォント・入力メソッドを内蔵しているため、IceWM・言語・入力の手順は省きます。';
 
   @override
   String get linuxSetupStorage =>
@@ -3063,7 +3059,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get linuxGpuTurnipSetup =>
-      'コンテナのセットアップで「3D グラフィックス」を有効にすると使えます（ビルドに 30 分ほどかかります）。それまでは VirGL を使います。';
+      'コンテナを修復すると使えます。それまでは VirGL を使います。';
 
   @override
   String get linuxSetupPhaseGpu => 'GPU ドライバー（Turnip）をビルド中';
@@ -3154,4 +3150,7 @@ class AppLocalizationsJa extends AppLocalizations {
 
   @override
   String get nativeShortcutStartDisplay => 'Dextop を起動';
+
+  @override
+  String get androidDisplayTileLabel => 'Dextopディスプレイ';
 }

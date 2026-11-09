@@ -403,8 +403,8 @@ internal class DesktopSettingsApplet(
     private val density = resources.displayMetrics.density
     private var current = settings
     private fun dp(value: Float) = (value * density).toInt()
-    private fun tr(ja: String, en: String) =
-        moe.n4tsu.dextop.InlineStrings.pick(resources.configuration.locales[0], ja, en)
+    private fun tr(key: String) =
+        moe.n4tsu.dextop.InlineStrings.pick(resources.configuration.locales[0], key)
 
     private fun change(next: PlasmaSettings) {
         current = next
@@ -425,9 +425,9 @@ internal class DesktopSettingsApplet(
         addView(View(context).apply { setBackgroundColor(palette.separator) }, LayoutParams(-1, 1))
 
         val pages = listOf(
-            Triple(tr("外観", "Appearance"), Glyph.WALLPAPER, ::appearancePage),
-            Triple(tr("タスクバー", "Taskbar"), Glyph.DESKTOP, ::taskbarPage),
-            Triple(tr("ワークスペース", "Workspace"), Glyph.OVERVIEW, ::workspacePage),
+            Triple(tr("uiAppearance"), Glyph.WALLPAPER, ::appearancePage),
+            Triple(tr("uiTaskbar"), Glyph.DESKTOP, ::taskbarPage),
+            Triple(tr("uiWorkspace"), Glyph.OVERVIEW, ::workspacePage),
         )
         val content = FrameLayout(context)
         val scroll = android.widget.ScrollView(context).apply {
@@ -539,7 +539,7 @@ internal class DesktopSettingsApplet(
                 rightMargin = dp(8f); bottomMargin = dp(6f)
             })
         }
-        return page(tr("外観", "Appearance"),
+        return page(tr("uiAppearance"),
             group(
                 segmentedRow(t("nativePlasmaColorScheme"), null,
                     listOf("dark" to t("nativePlasmaBreezeDark"), "light" to t("nativePlasmaBreezeLight"),
@@ -551,29 +551,27 @@ internal class DesktopSettingsApplet(
             ))
     }
 
-    private fun taskbarPage(): View = page(tr("タスクバー", "Taskbar"),
+    private fun taskbarPage(): View = page(tr("uiTaskbar"),
         group(
-            switchRow(tr("フローティングパネル", "Floating panel"),
-                tr("ウィンドウが触れていないとき、パネルを画面の端から浮かせます",
-                    "Lifts the panel off the screen edge while no window touches it"),
+            switchRow(tr("uiFloatingPanel"),
+                tr("uiLiftsThePanelOffTheScreenEdgeWhileNoWindowTouchesIt"),
                 current.floatingPanel) { current.copy(floatingPanel = it) },
         ),
         group(
-            switchRow(tr("モバイル回線の種類を表示", "Show the mobile network type"),
-                tr("電波のアイコンの下に LTE や 5G などを表示します", "Shows LTE, 5G and so on under the signal icon"),
+            switchRow(tr("uiShowTheMobileNetworkType"),
+                tr("uiShowsLTE5GAndSoOnUnderTheSignalIcon"),
                 current.trayNetworkType) { current.copy(trayNetworkType = it) },
-            switchRow(tr("電池残量を表示", "Show the battery percentage"),
-                tr("電池のアイコンの下に残量をパーセントで表示します", "Shows the charge as a percentage under the battery icon"),
+            switchRow(tr("uiShowTheBatteryPercentage"),
+                tr("uiShowsTheChargeAsAPercentageUnderTheBatteryIcon"),
                 current.trayBatteryPercent) { current.copy(trayBatteryPercent = it) },
         ))
 
-    private fun workspacePage(): View = page(tr("ワークスペース", "Workspace"),
+    private fun workspacePage(): View = page(tr("uiWorkspace"),
         group(
             row(t("nativePlasmaVirtualDesktops"), null,
                 SettingsStepper(context, palette, current.virtualDesktops, 1, 6) { change(current.copy(virtualDesktops = it)) }),
-            switchRow(tr("ホットコーナー", "Hot corner"),
-                tr("ポインターを左上の角へ動かすとオーバービューを開きます",
-                    "Opens the overview when the pointer reaches the top-left corner"),
+            switchRow(tr("uiHotCorner"),
+                tr("uiOpensTheOverviewWhenThePointerReachesTheTopLeftCorner"),
                 current.hotCorner) { current.copy(hotCorner = it) },
             segmentedRow(t("nativePlasmaAnimationSpeed"), null,
                 listOf("0" to t("nativePlasmaInstant"), "0.5" to "0.5×", "1" to "1×", "2" to "2×"),

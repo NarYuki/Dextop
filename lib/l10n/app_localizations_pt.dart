@@ -2887,7 +2887,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get linuxSetupIntro =>
-      'Crie um espaço de trabalho Linux à sua medida. Escolha um ambiente de trabalho, o idioma, o método de introdução e as aplicações.';
+      'Crie um espaço de trabalho Linux à sua medida. Escolha o idioma, o método de introdução e as aplicações.';
 
   @override
   String get linuxSetupExisting =>
@@ -3042,10 +3042,6 @@ class AppLocalizationsPt extends AppLocalizations {
   @override
   String get linuxSetupSteamDetail =>
       'Steam da Valve (ARM64). Obtido da Valve na primeira utilização; o Steam instala o Proton e o FEX.';
-
-  @override
-  String get linuxSetupDroidDeckNote =>
-      'O runtime do DroidDeck já inclui o próprio ambiente KDE Plasma (KWin, Xwayland), fontes e métodos de entrada; por isso as etapas de IceWM, idioma e entrada são ignoradas.';
 
   @override
   String get linuxSetupStorage =>
@@ -3215,7 +3211,7 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get linuxGpuTurnipSetup =>
-      'Ative os gráficos 3D na configuração do contentor (a compilação demora cerca de 30 minutos). Até lá é usado o VirGL.';
+      'Repare o contentor para o utilizar. Até lá é usado o VirGL.';
 
   @override
   String get linuxSetupPhaseGpu => 'A compilar o controlador da GPU (Turnip)';
@@ -3311,6 +3307,9 @@ class AppLocalizationsPt extends AppLocalizations {
 
   @override
   String get nativeShortcutStartDisplay => 'Iniciar Dextop';
+
+  @override
+  String get androidDisplayTileLabel => 'Ecrã Dextop';
 }
 
 /// The translations for Portuguese, as used in Brazil (`pt_BR`).
@@ -6196,7 +6195,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get linuxSetupIntro =>
-      'Crie um espaço de trabalho Linux do seu jeito. Escolha uma área de trabalho, o idioma, o método de entrada e os apps.';
+      'Crie um espaço de trabalho Linux do seu jeito. Escolha o idioma, o método de entrada e os apps.';
 
   @override
   String get linuxSetupExisting =>
@@ -6351,10 +6350,6 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   @override
   String get linuxSetupSteamDetail =>
       'Steam da Valve (ARM64). Baixado da Valve no primeiro uso; o Steam instala o Proton e o FEX.';
-
-  @override
-  String get linuxSetupDroidDeckNote =>
-      'O runtime do DroidDeck já inclui o próprio ambiente KDE Plasma (KWin, Xwayland), fontes e métodos de entrada; por isso as etapas de IceWM, idioma e entrada são puladas.';
 
   @override
   String get linuxSetupStorage =>
@@ -6523,7 +6518,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get linuxGpuTurnipSetup =>
-      'Ative os gráficos 3D na configuração do contêiner (a compilação leva cerca de 30 minutos). Até lá é usado o VirGL.';
+      'Repare o contêiner para usá-lo. Até lá é usado o VirGL.';
 
   @override
   String get linuxSetupPhaseGpu => 'Compilando o driver da GPU (Turnip)';
@@ -6619,4 +6614,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
 
   @override
   String get nativeShortcutStartDisplay => 'Iniciar Dextop';
+
+  @override
+  String get androidDisplayTileLabel => 'Tela Dextop';
 }

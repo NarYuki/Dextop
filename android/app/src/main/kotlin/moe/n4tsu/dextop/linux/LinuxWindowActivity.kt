@@ -211,7 +211,7 @@ internal open class LinuxWindowActivity : Activity() {
                 setTextColor(Color.rgb(0x9c, 0xca, 0xff))
                 setTextSize(TypedValue.COMPLEX_UNIT_SP, 14f)
                 setPadding(dp(16), dp(10), dp(16), dp(10))
-                text = text("キャンセル", "Cancel")
+                text = text("uiCancel")
                 setOnClickListener { finishAndRemoveTask() }
             }
             addView(statusAction, LinearLayout.LayoutParams(-2, -2).apply { topMargin = dp(16) })
@@ -254,7 +254,7 @@ internal open class LinuxWindowActivity : Activity() {
         launchIcon = intent.getByteArrayExtra(EXTRA_ICON)?.let { BitmapFactory.decodeByteArray(it, 0, it.size) }
         statusTitle.text = launchLabel.orEmpty()
         launchIcon?.let { statusIcon.setImageBitmap(it); statusIcon.visibility = View.VISIBLE }
-        setPhase(text("準備しています", "Preparing"))
+        setPhase(text("uiPreparingb266c1c6"))
         // The task is the application from the start: its name and icon, not Dextop's.
         launchLabel?.let {
             @Suppress("DEPRECATION")
@@ -311,7 +311,7 @@ internal open class LinuxWindowActivity : Activity() {
         intent.putExtra(EXTRA_XID, xid)
         LinuxAndroidWindows.attached(this, container, xid)
         describe(info)
-        setPhase(text("ウィンドウを接続しています", "Connecting the window"))
+        setPhase(text("uiConnectingTheWindow"))
         if (floating) {
             // Android may impose minimum freeform task bounds. The viewport must still
             // retain the client's size instead of magnifying a non-resizable GTK dialog.
@@ -499,7 +499,7 @@ internal open class LinuxWindowActivity : Activity() {
         true
     }.getOrDefault(false)
 
-    private fun text(ja: String, en: String) = moe.n4tsu.dextop.localText(ja, en)
+    private fun text(key: String) = moe.n4tsu.dextop.localText(key)
 
     /** The launch's current step ("Starting the container"…), timed while it lasts. */
     fun setPhase(value: String) {
@@ -523,7 +523,7 @@ internal open class LinuxWindowActivity : Activity() {
         statusText.text = message.lineSequence().firstOrNull().orEmpty()
         statusDetail.maxLines = 12
         statusDetail.text = message.lineSequence().drop(1).filter { it.isNotBlank() }.toList().takeLast(12).joinToString("\n")
-        statusAction.text = text("閉じる", "Close")
+        statusAction.text = text("uiClose")
     }
 
     fun closedByLinux() {
@@ -595,7 +595,7 @@ internal open class LinuxWindowActivity : Activity() {
                 if (request.attempts < 6) root.postDelayed({ attempt() }, (100L shl (request.attempts - 1)))
                 else {
                     android.util.Log.e("DextopLinuxWindow", "Attach failed container=$container xid=$target: $message")
-                    if (target == xid) showError(text("ウィンドウを表示できませんでした", "Unable to display the window") + "\n$message")
+                    if (target == xid) showError(text("uiUnableToDisplayTheWindow") + "\n$message")
                 }
             }
             LinuxContainerClient.call(this, {

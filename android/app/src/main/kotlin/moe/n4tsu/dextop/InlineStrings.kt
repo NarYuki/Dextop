@@ -1,35 +1,36 @@
 package moe.n4tsu.dextop
 
 import java.util.Locale
+import java.util.Properties
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * Text written in place as a Japanese/English pair. Other languages look the English up in
- * the tables tool/generate_inline_strings.py builds from lib/l10n/inline/<locale>.json and
- * ships as resources/moe/n4tsu/dextop/l10n/inline_<locale>.json; missing ones stay English.
+ * Resolves catalog keys from generated resources in the requested locale.
+ * All supported locales, including Japanese and English, live in translation files.
  */
 internal object InlineStrings {
     private val tables = ConcurrentHashMap<String, Map<String, String>>()
 
-    private fun key(locale: Locale) =
+    private fun localeKey(locale: Locale) =
         if (locale.language == "pt" && locale.country == "BR") "pt_BR" else locale.language
 
     private fun table(name: String): Map<String, String> = tables.getOrPut(name) {
         runCatching {
-            val text = InlineStrings::class.java.getResourceAsStream("/moe/n4tsu/dextop/l10n/inline_$name.json")
-                ?.bufferedReader(Charsets.UTF_8)?.use { it.readText() } ?: return@runCatching emptyMap()
-            val json = org.json.JSONObject(text)
-            json.keys().asSequence().associateWith { json.getString(it) }
+            val stream = InlineStrings::class.java.getResourceAsStream("/moe/n4tsu/dextop/l10n/inline_$name.properties")
+                ?: return@runCatching emptyMap()
+            val properties = Properties()
+            stream.bufferedReader(Charsets.UTF_8).use { properties.load(it) }
+            properties.stringPropertyNames().associateWith { properties.getProperty(it) }
         }.getOrDefault(emptyMap())
     }
 
-    fun pick(locale: Locale, ja: String, en: String): String =
-        if (locale.language == "ja") ja else table(key(locale))[en] ?: en
+    fun pick(locale: Locale, key: String): String =
+        table(localeKey(locale))[key] ?: table("en")[key] ?: key
 
     /** Fills {0}, {1}… of a text chosen by [pick] (interpolated text is looked up as a template). */
     fun format(template: String, vararg args: Any?): String =
         Regex("""\{(\d+)\}""").replace(template) { m -> args.getOrNull(m.groupValues[1].toInt())?.toString() ?: m.value }
 }
 
-/** [ja] or [en] in the device language, translated for the other languages. */
-internal fun localText(ja: String, en: String, locale: Locale = Locale.getDefault()) = InlineStrings.pick(locale, ja, en)
+/** Resolves [key] in the device language. */
+internal fun localText(key: String, locale: Locale = Locale.getDefault()) = InlineStrings.pick(locale, key)

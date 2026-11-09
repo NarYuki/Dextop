@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/linux/linux_apps.dart';
+import 'package:free_dextop/linux/linux_apps.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

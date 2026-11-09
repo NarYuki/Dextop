@@ -42,7 +42,7 @@ class LinuxErrorLine extends StatelessWidget {
           const SizedBox(width: 8),
           M3EButton.text(
             onPressed: () => showLinuxErrorLog(context, title, text),
-            child: Text(linuxText(context, 'エラーを表示', 'Show error')),
+            child: Text(linuxText(context, 'uiShowError')),
           ),
         ],
       ),
@@ -56,7 +56,7 @@ Future<void> showLinuxErrorLog(
   String title,
   String text,
 ) {
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
   return M3EBottomSheet.show<void>(
     context,
     builder: (sheet) {
@@ -114,15 +114,15 @@ Future<void> showLinuxErrorLog(
                   onPressed: () async {
                     await Clipboard.setData(ClipboardData(text: text));
                     if (sheet.mounted) {
-                      M3ESnackbar.show(sheet, message: t('コピーしました', 'Copied'));
+                      M3ESnackbar.show(sheet, message: t('uiCopied'));
                     }
                   },
-                  child: Text(t('コピー', 'Copy')),
+                  child: Text(t('uiCopy')),
                 ),
                 const SizedBox(width: 8),
                 M3EButton.filled(
                   onPressed: () => Navigator.pop(sheet),
-                  child: Text(t('閉じる', 'Close')),
+                  child: Text(t('uiClose')),
                 ),
               ],
             ),

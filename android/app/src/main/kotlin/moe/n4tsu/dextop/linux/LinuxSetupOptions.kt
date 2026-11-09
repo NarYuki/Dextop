@@ -5,40 +5,32 @@ import org.json.JSONObject
 
 /** Persisted, validated choices shared by installation, repair and later setup. */
 internal data class LinuxSetupOptions(
-    val profile: String = "minimal",
     val locale: String = "en_US",
     val cjkFonts: Boolean = true,
     val ime: String = "none",
-    val graphics: Boolean = false,
-    val themes: Boolean = false,
     val apps: Set<String> = emptySet(),
     val displayBackend: String = "xvfb",
     val username: String = "",
 ) {
     init {
         if (username.isNotEmpty()) LinuxUser.validate(username)
-        require(displayBackend in setOf("xvfb", "wayland")) { "Unknown display backend" }
-        require(profile in setOf("minimal", "complete")) { "Unknown desktop profile" }
-        require(locale in LOCALES) { "Unsupported locale" }
-        require(ime in setOf("none", "mozc", "pinyin", "hangul")) { "Unsupported input method" }
-        require(apps.all { it in APPS }) { "Unknown application" }
+        require(displayBackend in setOf("xvfb", "wayland")) { moe.n4tsu.dextop.localText("uiUnknownDisplayBackend") }
+        require(locale in LOCALES) { moe.n4tsu.dextop.localText("uiUnsupportedLocale") }
+        require(ime in setOf("none", "mozc", "pinyin", "hangul")) { moe.n4tsu.dextop.localText("uiUnsupportedInputMethod") }
+        require(apps.all { it in APPS }) { moe.n4tsu.dextop.localText("uiUnknownApplication") }
     }
 
     fun validate(distro: LinuxDistro): LinuxSetupOptions = apply {
         require(distro.id != "ubuntu" || apps.none { it == "firefox" || it == "chromium" }) {
-            "Firefox and Chromium require Snap on this Ubuntu image; choose Debian, Arch or Google Chrome instead"
+            moe.n4tsu.dextop.localText("uiFirefoxAndChromiumRequireSnapOnThisUbuntuImageChooseDebianArchOrGoogleChromeInstead")
         }
         require(distro.family == LinuxPackageFamily.APT || "chrome" !in apps) {
-            "Google Chrome installation is available for Debian and Ubuntu"
-        }
-        require(distro.id != LinuxCatalog.DROIDDECK_RUNTIME || apps.all { it == "steam" }) {
-            "The DroidDeck runtime takes Steam only; add other applications from its KDE desktop"
+            moe.n4tsu.dextop.localText("uiGoogleChromeInstallationIsAvailableForDebianAndUbuntu")
         }
     }
 
     fun toJson(): JSONObject = JSONObject()
-        .put("profile", profile).put("locale", locale).put("cjkFonts", cjkFonts)
-        .put("ime", ime).put("graphics", graphics).put("themes", themes)
+        .put("locale", locale).put("cjkFonts", cjkFonts).put("ime", ime)
         .put("apps", JSONArray(apps.sorted())).put("displayBackend", displayBackend).put("username", username)
 
     companion object {
@@ -49,9 +41,8 @@ internal data class LinuxSetupOptions(
             if (json == null) return LinuxSetupOptions()
             val apps = json.optJSONArray("apps") ?: JSONArray()
             return LinuxSetupOptions(
-                json.optString("profile", "minimal"), json.optString("locale", "en_US"),
+                json.optString("locale", "en_US"),
                 json.optBoolean("cjkFonts", true), json.optString("ime", "none"),
-                json.optBoolean("graphics", false), json.optBoolean("themes", false),
                 (0 until apps.length()).map { apps.getString(it) }.toSet(),
                 json.optString("displayBackend", "xvfb"), json.optString("username", ""),
             )
@@ -67,13 +58,12 @@ internal object LinuxSetupPlan {
     private val MATERIA_THEME: String by lazy {
         java.util.Base64.getEncoder().encodeToString(checkNotNull(
             javaClass.getResourceAsStream("/moe/n4tsu/dextop/linux/icewm/Materia-Manjaro-Dark-1.0.tar.bz2")
-        ) { "Missing IceWM theme" }.use { it.readBytes() })
+        ) { moe.n4tsu.dextop.localText("uiMissingIceWMTheme") }.use { it.readBytes() })
     }
 
     /** [turnip]: the GPU can run Turnip (Adreno 6xx–8xx), so the setup builds it. */
     fun steps(distro: LinuxDistro, options: LinuxSetupOptions, turnip: Boolean = LinuxGraphics.turnipCapable): List<Step> {
         options.validate(distro)
-        if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) return runtimeSteps(options, turnip)
         val apt = distro.family == LinuxPackageFamily.APT
         fun install(packages: List<String>): String = if (packages.isEmpty()) "" else if (apt)
             "export DEBIAN_FRONTEND=noninteractive\napt-get install -y --no-install-recommends ${packages.joinToString(" ")}\n"
@@ -104,7 +94,7 @@ internal object LinuxSetupPlan {
                 when (options.ime) { "mozc" -> "fcitx5-mozc"; "pinyin" -> "fcitx5-chinese-addons"; else -> "fcitx5-hangul" })
             if (input.isNotEmpty()) add(Step("input", "set -e\n" + install(input)))
 
-            if (options.themes) add(Step("desktop", "set -e\n" + install(if (apt)
+            add(Step("desktop", "set -e\n" + install(if (apt)
                 listOf("icewm-common", "adwaita-icon-theme", "gnome-themes-extra", "gtk2-engines-pixbuf", "bzip2")
                 else listOf("adwaita-icon-theme", "gnome-themes-extra", "bzip2")) + """
                 mkdir -p /root/.icewm /root/.config/gtk-3.0 /usr/share/icewm/themes
@@ -122,17 +112,12 @@ internal object LinuxSetupPlan {
                 fi
             """.trimIndent() + "\n"))
 
-            if (options.graphics) add(Step("graphics", "set -e\n" + install(if (apt)
+            add(Step("graphics", "set -e\n" + install(if (apt)
                 listOf("libgl1-mesa-dri", "libegl-mesa0", "libglx-mesa0", "mesa-utils", "mesa-vulkan-drivers", "vulkan-tools")
                 else listOf("mesa", "mesa-utils"))))
             // Turnip for the device's Adreno GPU through Android's KGSL driver; OpenGL runs on it through Zink.
             // Only where it can run (Adreno 6xx–8xx); other GPUs use VirGL, which needs no driver in the container.
-            if (options.graphics && apt && turnip) add(Step("gpu", LinuxCatalog.turnipScript()))
-            // DroidDeck's runtime brings Turnip for KGSL in its own Mesa.
-            if (options.graphics && distro.id == LinuxCatalog.DROIDDECK_RUNTIME && turnip) add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
-            // DroidDeck's desktop (Plasma, KWin nested in Dextop's compositor) for its window manager choice.
-            if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) add(Step("droiddeck-desktop", LinuxSteam.droidDeckDesktopScript()))
-
+            if (apt && turnip) add(Step("gpu", LinuxCatalog.turnipScript()))
             val packages = buildList {
                 if ("firefox" in options.apps) add(if (apt) "firefox-esr" else "firefox")
                 // Firefox decodes H.264 and AAC with the system FFmpeg; without it videos do not play.
@@ -161,25 +146,6 @@ internal object LinuxSetupPlan {
         }
     }
 
-    /**
-     * DroidDeck's runtime and desktop package are complete and their builds
-     * (Mesa, gamescope, KWin) are not in pacman's database, so no step
-     * installs packages: Dextop only registers the runtime's Turnip, adds the
-     * launcher of DroidDeck's desktop and, when asked, fetches Steam with the
-     * runtime's own droiddeck-steam-install.
-     */
-    private fun runtimeSteps(options: LinuxSetupOptions, turnip: Boolean): List<Step> = buildList {
-        if (turnip) add(Step("gpu", LinuxSteam.runtimeTurnipScript()))
-        add(Step("droiddeck-desktop", LinuxSteam.droidDeckDesktopScript()))
-        if ("steam" in options.apps) add(Step("steam", LinuxSteam.installScript(apt = false, steamMode = false) { "" }))
-        add(Step("integration", """
-            set -e
-            mkdir -p /etc/dextop
-            printf '%s\n' 'export LANG=${options.locale}.UTF-8' >/etc/dextop/session.env
-            printf '%s\n' wayland >${LinuxSessionCompatibility.WSI_CONFIG}
-        """.trimIndent() + "\n"))
-    }
-
     private fun integration(options: LinuxSetupOptions, apt: Boolean): String {
         val environment = buildString {
             appendLine("export LANG=${options.locale}.UTF-8")
@@ -200,7 +166,7 @@ internal object LinuxSetupPlan {
             appendLine(if (options.ime != "none") "fcitx5 -d >/tmp/dextop-fcitx-\${DISPLAY##*:}.log 2>&1" else ":")
             appendLine("DEXTOP_START")
         }
-        val menu = if (options.themes) {
+        val menu = run {
             val title = when (options.locale) {
                 "ja_JP" -> "アプリケーション"; "zh_CN" -> "应用程序"; "zh_TW" -> "應用程式"; "ko_KR" -> "프로그램"
                 "ru_RU" -> "Приложения"; "pt_BR" -> "Aplicativos"; "de_DE" -> "Anwendungen"; "fr_FR" -> "Applications"
@@ -215,7 +181,7 @@ internal object LinuxSetupPlan {
                 DEXTOP_MENU
                 fi
             """.trimIndent() + "\n"
-        } else ""
+        }
         return files + menu + (if (options.ime != "none") """
             if [ -f /root/.config/fcitx5/profile ] && [ ! -f /root/.config/fcitx5/profile.before-dextop ]; then
                 cp /root/.config/fcitx5/profile /root/.config/fcitx5/profile.before-dextop

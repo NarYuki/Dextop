@@ -24,22 +24,18 @@ class LinuxLaunchActivity : Activity() {
         val container = intent.getStringExtra(EXTRA_CONTAINER)
         val desktop = intent.getStringExtra(EXTRA_DESKTOP)
         if (container.isNullOrBlank() || desktop.isNullOrBlank()) {
-            unusable(moe.n4tsu.dextop.localText("このショートカットは無効です", "This shortcut is not valid"))
+            unusable(moe.n4tsu.dextop.localText("uiThisShortcutIsNotValid"))
         } else when (availability(container, desktop)) {
-            Availability.NO_CONTAINER -> unusable(moe.n4tsu.dextop.localText(
-                "このショートカットのコンテナは存在しません", "This shortcut's container no longer exists"))
-            Availability.NO_APP -> unusable(moe.n4tsu.dextop.localText(
-                "このアプリはコンテナにインストールされていません", "This app is no longer installed in its container"))
+            Availability.NO_CONTAINER -> unusable(moe.n4tsu.dextop.localText("uiThisShortcutSContainerNoLongerExists"))
+            Availability.NO_APP -> unusable(moe.n4tsu.dextop.localText("uiThisAppIsNoLongerInstalledInItsContainer"))
             else -> if (LinuxShortcutInstaller.validLaunch(this, container, desktop, intent.getStringExtra(EXTRA_TOKEN))) {
                 LinuxAndroidWindows.launch(this, container, desktop, intent.getStringExtra(EXTRA_LABEL), launcherIcon(container, desktop))
             } else if (LinuxShortcutInstaller.outdatedLauncher(this, container, desktop)) {
                 // A launcher made before the launch proof: rebuilt with it, then tapped again.
                 LinuxShortcutInstaller.upgradeIfOld(this, container, desktop)
-                android.widget.Toast.makeText(this, moe.n4tsu.dextop.localText("古いランチャーを作り直しています。完了後にもう一度開いてください", "Rebuilding this old launcher. Open it again once it is done"), android.widget.Toast.LENGTH_LONG).show()
+                android.widget.Toast.makeText(this, moe.n4tsu.dextop.localText("uiRebuildingThisOldLauncherOpenItAgainOnceItIsDone"), android.widget.Toast.LENGTH_LONG).show()
             } else {
-                unusable(moe.n4tsu.dextop.localText(
-                    "このショートカットは無効です。Dextop からホーム画面に追加し直してください",
-                    "This shortcut is not valid. Add the app to the home screen again from Dextop"))
+                unusable(moe.n4tsu.dextop.localText("uiThisShortcutIsNotValidAddTheAppToTheHomeScreenAgainFromDextop"))
             }
         }
         finish()

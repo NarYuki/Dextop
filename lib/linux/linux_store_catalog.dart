@@ -1,3 +1,4 @@
+import '../l10n/inline_text.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:isolate';
@@ -105,7 +106,7 @@ class StoreSource {
       'https://deb.debian.org/debian/dists/trixie/main/dep11/Components-arm64.yml.gz',
       'https://deb.debian.org/debian/dists/trixie/contrib/dep11/Components-arm64.yml.gz',
     ]),
-    _ => throw UnsupportedError('Store supports Debian and Ubuntu only'),
+    _ => throw UnsupportedError(currentUiText('uiStoreSupportsDebianAndUbuntuOnly')),
   };
 }
 
@@ -228,7 +229,7 @@ class StoreCatalog {
         if (response.statusCode != 200) {
           await response.drain<void>();
           throw HttpException(
-            'Catalog download failed: ${response.statusCode}',
+            inlineFormat(currentUiText('uiCatalogDownloadFailed0'), [response.statusCode]),
             uri: Uri.parse(url),
           );
         }
@@ -260,8 +261,7 @@ class StoreCatalog {
           () => _decode(cache.readAsStringSync()),
         );
       }
-      throw const HttpException(
-        'The application catalog could not be downloaded',
+      throw HttpException(currentUiText('uiTheApplicationCatalogCouldNotBeDownloaded'),
       );
     }
     onProgress?.call(const StoreCatalogProgress(false, 0, 1));

@@ -11,7 +11,7 @@ internal class LinuxXwaylandHost private constructor(
         fun displayName(display: Int) = "wayland-x11-$display"
         fun start(containerId: String, display: Int, width: Int, height: Int): LinuxXwaylandHost =
             LinuxXwaylandHost(containerId, display, width, height).also {
-                check(it.compositor.running) { it.stop(); "Xwayland host compositor did not start" }
+                check(it.compositor.running) { it.stop(); moe.n4tsu.dextop.localText("uiXwaylandHostCompositorDidNotStart") }
             }
     }
 

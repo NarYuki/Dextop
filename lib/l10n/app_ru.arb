@@ -854,7 +854,7 @@
   "nativePlasmaTimeUntilFull": "До полной зарядки %1$s",
   "nativePlasmaHoursMinutes": "%1$d ч %2$d мин",
   "nativePlasmaMinutes": "%1$d мин",
-  "nativePlasmaApplying": "Применение…",
+  "nativePlasmaApplying": "Применение…",
   "linuxUnsupportedDevice": "Linux работает только на устройствах arm64.",
   "linuxRequiresPlasma": "Linux доступен только с Dextop Plasma v2.",
   "linuxSwitchToPlasma": "Перейти на Plasma v2",
@@ -894,7 +894,7 @@
   "linuxPhaseFinish": "Завершение",
   "linuxPhaseStep": "Шаг {step} из {total}",
   "linuxSetupTitle": "Настройка Linux",
-  "linuxSetupIntro": "Создайте рабочее пространство Linux под себя: выберите рабочий стол, язык, способ ввода и приложения.",
+  "linuxSetupIntro": "Создайте рабочее пространство Linux под себя: выберите язык, способ ввода и приложения.",
   "linuxSetupExisting": "Добавьте возможности в это окружение Linux. Существующие файлы и приложения сохраняются. Чтобы применить настройки, после завершения откройте рабочий стол заново.",
   "linuxSetupSystem": "Ваше окружение Linux",
   "linuxSetupDesktop": "Настройте рабочий стол",
@@ -940,7 +940,6 @@
   "linuxSetupOffice": "Офисный пакет",
   "linuxSetupOfficeDetail": "LibreOffice — документы, таблицы и презентации. Требует большей загрузки и больше места.",
   "linuxSetupSteamDetail": "Steam от Valve (ARM64). Загружается у Valve при первом запуске; Proton и FEX Steam устанавливает сам.",
-  "linuxSetupDroidDeckNote": "Среда DroidDeck содержит собственный рабочий стол KDE Plasma (KWin, Xwayland), шрифты и методы ввода, поэтому шаги IceWM, языка и ввода пропускаются.",
   "linuxSetupStorage": "Оставьте несколько ГБ свободного места. Объём загрузки и установки зависит от дистрибутива и выбранных приложений. Установка продолжится, даже если покинуть этот экран.",
   "linuxSetupAdditive": "Невыбранные приложения не удаляются. Настройка добавляет выбранные пакеты и обновляет параметры языка и сеанса.",
   "linuxSetupNothingExtra": "Без дополнительных приложений",
@@ -990,7 +989,7 @@
   "nativePlasmaClearAll": "Очистить всё",
   "linuxGpuTurnip": "Turnip + Zink (рекомендуется)",
   "linuxGpuTurnipDescription": "Приложения Linux используют GPU Adreno напрямую (Vulkan и OpenGL 4.6). Быстрее всего, подходит для игр.",
-  "linuxGpuTurnipSetup": "Включите 3D-графику в настройке контейнера (сборка займёт около 30 минут). До этого используется VirGL.",
+  "linuxGpuTurnipSetup": "Восстановите контейнер, чтобы использовать его. До этого используется VirGL.",
   "linuxSetupPhaseGpu": "Сборка драйвера GPU (Turnip)",
   "linuxSetupDisplayBackend": "Система отображения",
   "linuxSetupXvfbDetail": "X11 для приложений и рабочего стола IceWM.",
@@ -1025,5 +1024,6 @@
     }
   },
   "nativeShortcutStartDisplayLong": "Запустить или остановить виртуальный дисплей Dextop",
-  "nativeShortcutStartDisplay": "Запустить Dextop"
+  "nativeShortcutStartDisplay": "Запустить Dextop",
+  "androidDisplayTileLabel": "Экран Dextop"
 }

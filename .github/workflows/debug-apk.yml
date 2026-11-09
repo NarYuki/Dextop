@@ -40,6 +40,9 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
+      - name: Check UI localization
+        run: python3 tool/check_localization.py
+
       - name: Analyze
         run: flutter analyze
 
@@ -51,14 +54,21 @@ jobs:
 
       - name: Run Android unit tests
         working-directory: android
-        run: ./gradlew testGithubDebugUnitTest
+        run: ./gradlew :app:testGithubDebugUnitTest :cardex:testDebugUnitTest
 
       - name: Build Debug APK
         run: flutter build apk --flavor github --debug --dart-define=DISTRIBUTION_CHANNEL=github
 
-      - name: Build Dextop Car Companion Debug APK
+      - name: Build Parking and Driving Debug APKs
         working-directory: android
-        run: ./gradlew :cardex:assembleDebug
+        run: ./gradlew :cardex:assembleDebug :cardexdriving:assembleDebug
+
+      - name: Check packaged UI localization
+        run: >-
+          python3 tool/check_apk_localization.py
+          --app build/app/outputs/flutter-apk/app-github-debug.apk
+          --companion build/cardex/outputs/apk/debug/cardex-debug.apk
+          build/cardexdriving/outputs/apk/debug/cardexdriving-debug.apk
 
       - name: Upload Nightly APKs
         uses: actions/upload-artifact@v4
@@ -67,5 +77,6 @@ jobs:
           path: |
             build/app/outputs/flutter-apk/app-github-debug.apk
             build/cardex/outputs/apk/debug/cardex-debug.apk
+            build/cardexdriving/outputs/apk/debug/cardexdriving-debug.apk
           if-no-files-found: error
           retention-days: 14

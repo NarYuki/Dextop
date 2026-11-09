@@ -29,7 +29,7 @@ internal object LinuxGpuRuntime {
         archive.parentFile?.mkdirs()
         val bytes = requireNotNull(javaClass.getResourceAsStream(RESOURCE)).use { it.readBytes() }
         val digest = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
-        check(digest == SHA256) { "Packaged Mesa runtime checksum mismatch" }
+        check(digest == SHA256) { moe.n4tsu.dextop.localText("uiPackagedMesaRuntimeChecksumMismatch") }
         // Decompressed here: a fresh image has no xz for tar -J (the Android mode sets up new ones).
         org.tukaani.xz.XZInputStream(bytes.inputStream()).use { input -> archive.outputStream().use { input.copyTo(it) } }
         execute(installScript())

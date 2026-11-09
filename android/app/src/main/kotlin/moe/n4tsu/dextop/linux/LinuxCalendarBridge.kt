@@ -36,7 +36,7 @@ internal object LinuxCalendarBridge {
         context.contentResolver.query(CalendarContract.Calendars.CONTENT_URI,
             arrayOf("_id", "calendar_displayName", "account_name", "calendar_color"), "visible=1", null, "calendar_displayName ASC")?.use { cursor ->
             while (cursor.moveToNext() && rows.size < 100) rows += mapOf("id" to cursor.getLong(0).toString(),
-                "name" to (cursor.getString(1) ?: "Calendar"), "account" to (cursor.getString(2) ?: ""), "color" to cursor.getInt(3))
+                "name" to (cursor.getString(1) ?: moe.n4tsu.dextop.localText("uiCalendar")), "account" to (cursor.getString(2) ?: ""), "color" to cursor.getInt(3))
         }
         return mapOf("granted" to true, "calendars" to rows)
     }

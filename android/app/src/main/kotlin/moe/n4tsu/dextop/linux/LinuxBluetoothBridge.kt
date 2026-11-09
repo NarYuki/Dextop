@@ -51,10 +51,10 @@ internal class LinuxBluetoothBridge(private val roots: () -> List<File>) {
                     directory.mkdirs()
                     directory.listFiles().orEmpty().filter { it.name.matches(Regex("[a-f0-9]{32}[.]json")) }.take(32).forEach { request ->
                         val result = runCatching {
-                            require(!Files.isSymbolicLink(request.toPath())) { "Bluetooth request must be a regular file" }
-                            require(request.length() <= 8192) { "Bluetooth request is too large" }
+                            require(!Files.isSymbolicLink(request.toPath())) { moe.n4tsu.dextop.localText("uiBluetoothRequestMustBeARegularFile") }
+                            require(request.length() <= 8192) { moe.n4tsu.dextop.localText("uiBluetoothRequestIsTooLarge") }
                             val value = JSONObject(request.readText())
-                            require(value.optLong("deadline") > SystemClock.elapsedRealtime()) { "Bluetooth request expired" }
+                            require(value.optLong("deadline") > SystemClock.elapsedRealtime()) { moe.n4tsu.dextop.localText("uiBluetoothRequestExpired") }
                             backend.action(value)
                         }.getOrElse { error ->
                             JSONObject().put("ok", false).put("error", error.cause?.message ?: error.message ?: "Bluetooth request failed")
@@ -89,7 +89,7 @@ internal class LinuxBluetoothBridge(private val roots: () -> List<File>) {
 @android.annotation.SuppressLint("MissingPermission", "BlockedPrivateApi") // Shell-only bridge with explicit hidden-API exemptions.
 private class AndroidBluetooth {
     private fun <T> mainCall(block: () -> T): T {
-        val main = Looper.getMainLooper() ?: error("No Android main looper")
+        val main = Looper.getMainLooper() ?: error(moe.n4tsu.dextop.localText("uiNoAndroidMainLooper"))
         if (Looper.myLooper() == main) return block()
         val task = FutureTask(block)
         Handler(main).post(task)
@@ -134,7 +134,7 @@ private class AndroidBluetooth {
                     .apply { isAccessible = true }.invoke(null, context.attributionSource)
             }
         } else context.getSystemService(BluetoothManager::class.java).adapter
-        requireNotNull(result as? BluetoothAdapter) { "Android Bluetooth adapter unavailable" }
+        requireNotNull(result as? BluetoothAdapter) { moe.n4tsu.dextop.localText("uiAndroidBluetoothAdapterUnavailable") }
     }
     private val discovered = ConcurrentHashMap<String, BluetoothDevice>()
     private val signal = ConcurrentHashMap<String, Int>()
@@ -238,25 +238,25 @@ private class AndroidBluetooth {
             "power" -> {
                 val enable = request.getBoolean("value")
                 val accepted = adapter.javaClass.getMethod(if (enable) "enable" else "disable").invoke(adapter) as Boolean
-                check(accepted) { "Android rejected Bluetooth power change" }; return success()
+                check(accepted) { moe.n4tsu.dextop.localText("uiAndroidRejectedBluetoothPowerChange") }; return success()
             }
             "startDiscovery" -> {
                 val classic = adapter.isDiscovering || adapter.startDiscovery().also { classicOwned = it }
                 var lowEnergy = leScanning
                 if (!leScanning) runCatching {
-                    val scanner = adapter.bluetoothLeScanner ?: error("Bluetooth LE scanner unavailable")
+                    val scanner = adapter.bluetoothLeScanner ?: error(moe.n4tsu.dextop.localText("uiBluetoothLEScannerUnavailable"))
                     leScanning = true
                     scanner.startScan(null, ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_BALANCED).build(), leCallback)
                     lowEnergy = true
                 }.onFailure { leScanning = false; Log.w("LinuxBluetooth", "Cannot start BLE discovery", it) }
-                check(classic || lowEnergy) { "Android could not start discovery" }
+                check(classic || lowEnergy) { moe.n4tsu.dextop.localText("uiAndroidCouldNotStartDiscovery") }
                 return success()
             }
             "stopDiscovery" -> { stopDiscovery(); return success() }
-            "adapterAlias" -> { check(adapter.setName(request.getString("value").take(80))) { "Android rejected adapter name" }; return success() }
+            "adapterAlias" -> { check(adapter.setName(request.getString("value").take(80))) { moe.n4tsu.dextop.localText("uiAndroidRejectedAdapterName") }; return success() }
             else -> {
                 val address = request.getString("address").uppercase()
-                require(BluetoothAdapter.checkBluetoothAddress(address)) { "Invalid Bluetooth address" }
+                require(BluetoothAdapter.checkBluetoothAddress(address)) { moe.n4tsu.dextop.localText("uiInvalidBluetoothAddress") }
                 val device = discovered[address] ?: adapter.getRemoteDevice(address)
                 discovered[address] = device
                 when (action) {
@@ -264,22 +264,22 @@ private class AndroidBluetooth {
                         if (device.bondState == BluetoothDevice.BOND_BONDED) return success()
                         errors.remove(address); ownedPairs.add(address)
                         if (request.optBoolean("agent")) agentPairs.add(address)
-                        if (!device.createBond()) { ownedPairs.remove(address); agentPairs.remove(address); error("Android rejected pairing") }
+                        if (!device.createBond()) { ownedPairs.remove(address); agentPairs.remove(address); error(moe.n4tsu.dextop.localText("uiAndroidRejectedPairing")) }
                         return success("paired")
                     }
                     "connect", "disconnect" -> {
                         val status = device.javaClass.getMethod(action).invoke(device)
-                        check(status !is Int || status == 0) { "Android Bluetooth $action failed ($status)" }
+                        check(status !is Int || status == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiAndroidBluetooth0Failed1"), action, status) }
                         return success(if (action == "connect") "connected" else "disconnected")
                     }
-                    "remove" -> { check(device.javaClass.getMethod("removeBond").invoke(device) == true) { "Android rejected removing the bond" }; return success("unpaired") }
+                    "remove" -> { check(device.javaClass.getMethod("removeBond").invoke(device) == true) { moe.n4tsu.dextop.localText("uiAndroidRejectedRemovingTheBond") }; return success("unpaired") }
                     "cancelPairing" -> { device.javaClass.getMethod("cancelBondProcess").invoke(device); return success() }
                     "confirm" -> { check(device.javaClass.getMethod("setPairingConfirmation", Boolean::class.javaPrimitiveType).invoke(device, request.getBoolean("value")) == true); return success() }
                     "pin" -> { check(device.javaClass.getMethod("setPin", ByteArray::class.java).invoke(device, request.getString("value").toByteArray(Charsets.UTF_8)) == true); return success() }
                     "passkey" -> { check(device.javaClass.getMethod("setPasskey", Int::class.javaPrimitiveType).invoke(device, request.getInt("value")) == true); return success() }
-                    "trust" -> { check(request.getBoolean("value") && device.bondState == BluetoothDevice.BOND_BONDED) { "Android trusts bonded devices; unpair to revoke trust" }; return success() }
+                    "trust" -> { check(request.getBoolean("value") && device.bondState == BluetoothDevice.BOND_BONDED) { moe.n4tsu.dextop.localText("uiAndroidTrustsBondedDevicesUnpairToRevokeTrust") }; return success() }
                     "alias" -> { val result = device.javaClass.getMethod("setAlias", String::class.java).invoke(device, request.getString("value").take(80)); check(result !is Int || result == 0); return success() }
-                    else -> error("Unsupported Bluetooth action: $action")
+                    else -> error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnsupportedBluetoothAction0"), action))
                 }
             }
         }

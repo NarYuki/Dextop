@@ -128,7 +128,7 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
                 autoSession.stop()
                 if (modeSelected && controller.selectedSource() == SOURCE_AUTO) {
                     surface.post {
-                        showAutoMenu(localized("Auto用ディスプレイが切断されました", "The Auto display was removed"))
+                        showAutoMenu(localized("uiTheAutoDisplayWasRemoved"))
                     }
                 }
             }
@@ -297,14 +297,12 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
 
         panel.addView(label("Dextop", 28f, Color.WHITE, true), LinearLayout.LayoutParams(-1, -2))
         panel.addView(
-            label(localized("Android Auto", "Android Auto"), 16f, Color.rgb(193, 187, 207), false),
+            label(localized("uiAndroidAuto"), 16f, Color.rgb(193, 187, 207), false),
             LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(2) }
         )
         panel.addView(
             label(
-                localized(
-                    "Android Autoで表示するDextopの方法を選択してください。",
-                    "Choose how Dextop should appear in Android Auto."
+                localized("uiChooseHowDextopShouldAppearInAndroidAuto"
                 ),
                 15f,
                 Color.rgb(211, 207, 218),
@@ -315,9 +313,9 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
 
         val status = label(
             message ?: if (MirrorService.isActive()) {
-                localized("準備できました", "Ready")
+                localized("uiReady")
             } else {
-                localized("表示方法を選択してください", "Select a display mode")
+                localized("uiSelectADisplayMode")
             },
             15f,
             Color.rgb(215, 190, 255),
@@ -331,27 +329,21 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
 
         addModeButton(
             panel,
-            localized("Dextopをミラーリング", "Mirror Dextop"),
-            localized(
-                "起動中のDextopデスクトップをそのまま表示します。",
-                "Show the currently running Dextop desktop."
+            localized("uiMirrorDextop"),
+            localized("uiShowTheCurrentlyRunningDextopDesktop"
             ),
             SOURCE_DEXTOP
         )
         addModeButton(
             panel,
-            localized("Auto用仮想ディスプレイを作成", "Create an Auto virtual display"),
-            localized(
-                "車載画面の解像度に合わせてDextopを準備して表示します。",
-                "Prepare Dextop using the head-unit size and display it."
+            localized("uiCreateAnAutoVirtualDisplay"),
+            localized("uiPrepareDextopUsingTheHeadUnitSizeAndDisplayIt"
             ),
             SOURCE_AUTO
         )
         panel.addView(
             label(
-                localized(
-                    "選択後も端末の戻る操作でこのメニューへ戻れます。",
-                    "Use the Android Auto back action to return to this menu."
+                localized("uiUseTheAndroidAutoBackActionToReturnToThisMenu"
                 ),
                 13f,
                 Color.rgb(166, 160, 174),
@@ -392,9 +384,7 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
 
     private fun selectMode(source: String) {
         if (source == SOURCE_DEXTOP && !MirrorService.isActive()) {
-            menuStatus?.text = localized(
-                "起動中のDextopがありません。Auto用仮想ディスプレイを選択してください。",
-                "No Dextop session is running. Choose the Auto virtual display option."
+            menuStatus?.text = localized("uiNoDextopSessionIsRunningChooseTheAutoVirtualDisplayOption"
             )
             return
         }
@@ -403,13 +393,11 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
         // is already running: the two sessions are intentionally independent.
         if (source == SOURCE_AUTO) {
             if (MirrorService.ownsPhoneSession()) {
-                menuStatus?.text = localized(
-                    "端末側のDextopを終了してからAuto用ディスプレイを開始してください。",
-                    "Stop the phone Dextop session before starting the Auto display."
+                menuStatus?.text = localized("uiStopThePhoneDextopSessionBeforeStartingTheAutoDisplay"
                 )
                 return
             }
-            menuStatus?.text = localized("準備しています…", "Preparing…")
+            menuStatus?.text = localized("uiPreparing")
             val (width, height) = hostSize()
             val dpi = resources.displayMetrics.densityDpi.coerceAtLeast(160)
             // Keep the normal overlay undecorated. System decorations are a
@@ -421,8 +409,8 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
                         controller.selectSource(SOURCE_AUTO)
                         startProjection()
                     }.onFailure { error ->
-                        menuStatus?.text = InlineStrings.format(localized("Dextopを準備できませんでした: {0}", "Dextop could not be prepared: {0}"),
-                            error.message ?: localized("不明なエラー", "unknown error"))
+                        menuStatus?.text = InlineStrings.format(localized("uiDextopCouldNotBePrepared0"),
+                            error.message ?: localized("uiUnknownError"))
                     }
                 }
             }
@@ -502,8 +490,8 @@ class AndroidAutoMirrorActivity : Activity(), SurfaceHolder.Callback {
     private fun dp(value: Int): Int =
         (value * resources.displayMetrics.density).roundToInt().coerceAtLeast(1)
 
-    private fun localized(japanese: String, english: String): String =
-        InlineStrings.pick(resources.configuration.locales[0], japanese, english)
+    private fun localized(key: String): String =
+        InlineStrings.pick(resources.configuration.locales[0], key)
 }
 
 /**
@@ -554,11 +542,11 @@ internal class AutoDisplaySession(private val activity: Context) {
             return
         }
         if (creating) {
-            callback(Result.failure(IllegalStateException("Android Auto display creation is already in progress")))
+            callback(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiAndroidAutoDisplayCreationIsAlreadyInProgress"))))
             return
         }
         if (stopping) {
-            callback(Result.failure(IllegalStateException("Android Auto display cleanup is still in progress")))
+            callback(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiAndroidAutoDisplayCleanupIsStillInProgress"))))
             return
         }
         if (!privilegedAccess.isAvailable()) {
@@ -592,7 +580,7 @@ internal class AutoDisplaySession(private val activity: Context) {
                         activity.contentResolver,
                         DisplayMirrorBackend.DISPLAY_SPECIFICATION,
                         sanitized
-                    )) { "Unable to remove stale Android Auto overlay requests" }
+                    )) { moe.n4tsu.dextop.localText("uiUnableToRemoveStaleAndroidAutoOverlayRequests") }
                     OperationLog.i(activity, "AndroidAuto", "removed stale Auto overlay entries before start")
                 }
             }
@@ -628,7 +616,7 @@ internal class AutoDisplaySession(private val activity: Context) {
                 activity.contentResolver,
                 DisplayMirrorBackend.DISPLAY_SPECIFICATION,
                 requested
-            )) { "Unable to request Android Auto overlay display" }
+            )) { moe.n4tsu.dextop.localText("uiUnableToRequestAndroidAutoOverlayDisplay") }
             OperationLog.i(activity, "AndroidAuto", "requested independent overlay spec=$spec")
             // Keep a separate owner for the Auto display even when a phone
             // Dextop session is already running. The journal is shared by
@@ -773,7 +761,7 @@ internal class AutoDisplaySession(private val activity: Context) {
                     waitForDisplay(existing, width, height, density, secure, decorations, attempt + 1)
                 }, 100L)
             } else {
-                fail(IllegalStateException("Android Auto overlay display creation timed out"))
+                fail(IllegalStateException(moe.n4tsu.dextop.localText("uiAndroidAutoOverlayDisplayCreationTimedOut")))
             }
             return
         }
@@ -782,7 +770,7 @@ internal class AutoDisplaySession(private val activity: Context) {
             desktopConfigurator?.configureDisplay(displayId)
             if (!launchHome(displayId)) {
                 if (!decorations && retryHomeWithSystemDecorations(width, height, density, secure)) return
-                error("The Android Auto Dextop HOME activity could not be launched")
+                error(moe.n4tsu.dextop.localText("uiTheAndroidAutoDextopHOMEActivityCouldNotBeLaunched"))
             }
             isActive = true
             creating = false
@@ -916,7 +904,7 @@ internal class AutoDisplaySession(private val activity: Context) {
                     activity.contentResolver,
                     DisplayMirrorBackend.DISPLAY_SPECIFICATION,
                     requested
-                )) { "Unable to request decorated Android Auto overlay display" }
+                )) { moe.n4tsu.dextop.localText("uiUnableToRequestDecoratedAndroidAutoOverlayDisplay") }
                 waitForDisplay(existing, width, height, density, secure, decorations = true, attempt = 0)
             }.onFailure { fail(it) }
         }, 450L)
@@ -948,7 +936,7 @@ internal class AutoDisplaySession(private val activity: Context) {
             activity.contentResolver,
             DisplayMirrorBackend.DISPLAY_SPECIFICATION,
             entries.joinToString(";")
-        )) { "Unable to remove Android Auto overlay display" }
+        )) { moe.n4tsu.dextop.localText("uiUnableToRemoveAndroidAutoOverlayDisplay") }
     }
 
     private fun verifyOverlayRemoval(spec: String, attempt: Int = 0, finished: () -> Unit = {}) {

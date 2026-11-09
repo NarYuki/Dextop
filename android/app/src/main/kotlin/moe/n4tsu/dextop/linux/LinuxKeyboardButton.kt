@@ -43,7 +43,7 @@ internal class LinuxKeyboardButton(
         setImageResource(android.R.drawable.ic_menu_edit)
         setBackgroundColor(0x66000000)
         alpha = .55f
-        contentDescription = moe.n4tsu.dextop.localText("キーボード", "Keyboard")
+        contentDescription = moe.n4tsu.dextop.localText("uiKeyboard")
         isLongClickable = false
         setOnClickListener { action() }
         val size = (44 * resources.displayMetrics.density).roundToInt()

@@ -24,17 +24,17 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
   static const _blackBerryAutoStartKey = 'blackberry_auto_start';
   static const _channel = MethodChannel('app.freedextop/display');
   static const _languages = <(String, String)>[
-    ('en', 'English'),
-    ('fr', 'Français'),
-    ('de', 'Deutsch'),
-    ('es', 'Español'),
-    ('it', 'Italiano'),
-    ('pt', 'Português'),
-    ('ru', 'Русский'),
-    ('uk', 'Українська'),
-    ('ko', '한국어'),
-    ('ja', '日本語'),
-    ('zh-pinyin', '中文拼音'),
+    ('en', 'uiLanguageEnglish'),
+    ('fr', 'uiLanguageFrench'),
+    ('de', 'uiLanguageGerman'),
+    ('es', 'uiLanguageSpanish'),
+    ('it', 'uiLanguageItalian'),
+    ('pt', 'uiLanguagePortuguese'),
+    ('ru', 'uiLanguageRussian'),
+    ('uk', 'uiLanguageUkrainian'),
+    ('ko', 'uiLanguageKorean'),
+    ('ja', 'uiLanguageJapanese'),
+    ('zh-pinyin', 'uiLanguagePinyin'),
   ];
 
   Set<String> _enabled = {'en'};
@@ -154,7 +154,7 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
             for (final language in available)
               ListTile(
                 leading: const Icon(Icons.language_rounded),
-                title: Text(language.$2),
+                title: Text(localText(context, language.$2)),
                 onTap: () => Navigator.pop(context, language.$1),
               ),
           ],
@@ -277,7 +277,7 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
               )) ...[
                 ListTile(
                   leading: const Icon(Icons.language_rounded),
-                  title: Text(language.$2),
+                  title: Text(localText(context, language.$2)),
                   trailing: language.$1 == 'en'
                       ? Text(l.keyboardSwipeDefaultLanguage)
                       : IconButton(

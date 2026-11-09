@@ -1,11 +1,9 @@
 #!/usr/bin/env python3
-"""Finds the inline Japanese/English text pairs and rewrites interpolated ones as templates.
+"""Legacy literal parser used by check_localization.py to reject embedded text pairs.
 
-Linux and Dextop Auto UI code writes its text in place, as `t('ja', 'en')`,
-`linuxText(context, 'ja', 'en')` (Dart) or `tr("ja", "en")` (Kotlin). Other languages
-look the English text up in lib/l10n/inline/<locale>.json (see generate_inline_strings.py).
-Text with interpolation cannot be looked up after it is built, so `--rewrite` turns
-such calls into the template forms `tf(...)`/`linuxTextf(...)`/`trf(...)` with {0}, {1}.
+Runtime call sites now contain only catalog keys. The parser still recognizes
+the former Japanese/English call syntax so the localization check can catch
+regressions. Translation text belongs in lib/l10n/inline/<locale>.json.
 
   inline_strings.py --list      print every English text, one JSON string per line
   inline_strings.py --rewrite   rewrite interpolated calls in place

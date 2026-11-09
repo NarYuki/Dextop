@@ -49,7 +49,7 @@ internal object LinuxDeviceBridge {
         server = initial
         accept(app, initial)
         // Android may have changed the picked folders while Dextop was not running.
-        Thread({ runCatching { LinuxFolders.syncAll(app) } }, "DextopLinuxFoldersSync").apply { isDaemon = true; start() }
+        // Folder trees are synchronized for their owning container during publication.
     }
 
     private fun accept(app: Context, server: LocalServerSocket) {
@@ -132,10 +132,10 @@ internal object LinuxDeviceBridge {
     }
 
     /** What Linux reads from /tmp/dextop-devices.conf; ports are named as Linux would name them. */
-    fun state(context: Context): String = buildString {
+    fun state(context: Context, policy: org.json.JSONObject = org.json.JSONObject()): String = buildString {
         append("socket $socketName\n")
-        if (LinuxFolders.active(context)) append("folders\n")
-        append(LinuxCameraBridge.state(context))
+        if (LinuxFolders.active(context) && !policy.optBoolean("wholeStorage")) append("folders\n")
+        if (policy.optBoolean("camera")) append(LinuxCameraBridge.state(context))
         var usb = 0
         var acm = 0
         manager(context)?.deviceList.orEmpty().values.sortedBy { it.deviceName }.forEach { device ->
@@ -143,6 +143,20 @@ internal object LinuxDeviceBridge {
             val acmPort = UsbSerialProber.getDefaultProber().probeDevice(device)?.javaClass?.simpleName == "CdcAcmSerialDriver"
             val tty = if (acmPort) "ttyACM${acm++}" else "ttyUSB${usb++}"
             append("serial $tty ${device.deviceName}\n")
+        }
+        // USB storage, as Linux names SCSI disks (sda, sdb...): taken from Android once enabled.
+        storageDevices(context).forEachIndexed { index, device ->
+            // Lent to Android while mounted: Linux keeps seeing the disk as it was (opening it is busy).
+            // (Known by identity: the phone may have enumerated the stick anew under another name.)
+            val line = if (LinuxUsbDisk.isLent(device)) diskLines[LinuxUsb.key(device)]?.split(' ')?.toMutableList()
+                ?.also { it[2] = device.deviceName }?.joinToString(" ") else {
+                val disk = LinuxUsbDisk.disk(context, device) ?: return@forEachIndexed
+                val parts = disk.partitions().joinToString(",") { "${it.number}:${it.start}:${it.length}" }.ifEmpty { "-" }
+                val name = disk.model.ifBlank { listOfNotNull(device.manufacturerName, device.productName).joinToString(" ") }.ifBlank { "USB storage" }
+                "disk ${diskName(index)} ${device.deviceName} ${disk.size} ${disk.sectorSize} ${if (disk.readOnly) 1 else 0} $parts " +
+                    android.util.Base64.encodeToString(name.toByteArray(), android.util.Base64.NO_WRAP)
+            }
+            line?.let { diskLines[LinuxUsb.key(device)] = it; append(it).append('\n') }
         }
         // Security keys, numbered as hidraw nodes; LinuxHidSysfs lists them for udev.
         var hidraw = 0
@@ -153,6 +167,48 @@ internal object LinuxDeviceBridge {
             append("hid hidraw${hidraw++} ${device.deviceName} %04x %04x ".format(device.vendorId, device.productId))
             append(key.descriptor.joinToString("") { "%02x".format(it) })
             append(' ').append(android.util.Base64.encodeToString(name.toByteArray(), android.util.Base64.NO_WRAP)).append('\n')
+        }
+    }
+
+    /** The USB storage Linux may use, in the order they are named sda, sdb... */
+    private fun storageDevices(context: Context): List<UsbDevice> =
+        manager(context)?.deviceList.orEmpty().values.sortedBy { it.deviceName }.filter { device ->
+            LinuxUsb.enabled(context, device) && manager(context)?.hasPermission(device) == true &&
+                LinuxUsbDisk.storageInterface(device) != null
+        }
+
+    private fun diskName(index: Int) = "sd" + ('a' + index)
+
+    /** The last manifest line of each disk, kept while Android holds it mounted. */
+    private val diskLines = java.util.concurrent.ConcurrentHashMap<String, String>()
+
+    /**
+     * "M <device> <partition>": mount through Android (LinuxUsbDisk.mount); "N <uuid>": unmount.
+     * The answer is one line: "0 <path in Linux>" or "<errno> <message>". The volume is reached
+     * through the whole-storage sharing (/storage bound at /media/storage), so it must be on.
+     */
+    private fun mountRequest(context: Context, socket: LocalSocket, request: String) {
+        val output = socket.outputStream
+        fun answer(text: String) { output.write((text.replace('\n', ' ') + "\n").toByteArray()); output.flush() }
+        try {
+            val container = LinuxContainerClient.service()?.processContainer(socket.peerCredentials.pid).orEmpty()
+            if (!LinuxSharing.wholeStorageEnabled(context, LinuxSharing.remote(container)))
+                throw LinuxUsbDisk.MountException(13, "Turn on sharing of the whole storage for this container in Linux settings (mounted USB storage appears below /media/storage)")
+            val parts = request.split(' ')
+            if (request.startsWith("M ")) {
+                val device = storageDevices(context).firstOrNull { it.deviceName == parts.getOrNull(1) }
+                    ?: throw LinuxUsbDisk.MountException(6, "The USB storage is not available to Linux")
+                val path = LinuxUsbDisk.mount(context, device, parts.getOrNull(2)?.toIntOrNull() ?: 0)
+                answer("0 /media${path}")
+            } else {
+                LinuxUsbDisk.unmount(context, parts.getOrNull(1).orEmpty())
+                answer("0 ")
+            }
+        } catch (error: LinuxUsbDisk.MountException) {
+            answer("${error.errno} ${error.message}")
+        } catch (error: Exception) {
+            Log.w(TAG, "Mount request failed", error)
+            answer("5 ${error.message ?: error.javaClass.simpleName}")
         }
     }
 
@@ -229,17 +285,23 @@ internal object LinuxDeviceBridge {
         Thread({
             // Written when it changes, and every 30 seconds in case a session emptied /tmp.
             val written = HashMap<String, Pair<String, Long>>()
+            val syncedFolders = HashSet<String>()
             while (true) {
                 runCatching {
                     val linux = service() ?: return@runCatching
                     attachListener(app, linux)
                     val list = org.json.JSONArray(linux.listContainers())
-                    val text = state(app)
                     val now = android.os.SystemClock.elapsedRealtime()
                     for (i in 0 until list.length()) {
                         val item = list.getJSONObject(i)
                         if (item.optString("state") != "installed") continue
                         val id = item.getString("id")
+                        val policy = org.json.JSONObject(linux.containerSharing(id))
+                        policy.put("wholeStorage", LinuxSharing.wholeStorageEnabled(app, policy))
+                        val text = state(app, policy)
+                        if (LinuxFolders.active(app) && !policy.optBoolean("wholeStorage") &&
+                            syncedFolders.add("${LinuxExecutionMode.read(app)}:$id"))
+                            LinuxFolders.syncAll(LinuxFolders.scope(app, id))
                         // A session starting (it may empty /tmp) changes these too.
                         val key = "$text${item.optBoolean("running")}${item.optBoolean("appsRunning")}${item.optInt("audioGeneration")}"
                         val last = written[id]
@@ -264,7 +326,7 @@ internal object LinuxDeviceBridge {
         while (bytes.size() < 8192) {
             val remaining = (deadline - android.os.SystemClock.elapsedRealtime()).coerceAtLeast(0).toInt()
             if (remaining == 0 || android.system.Os.poll(arrayOf(poll), remaining) == 0)
-                throw java.net.SocketTimeoutException("Device handshake timed out")
+                throw java.net.SocketTimeoutException(moe.n4tsu.dextop.localText("uiDeviceHandshakeTimedOut"))
             val b = input.read()
             if (b < 0 || b == '\n'.code) break
             bytes.write(b)
@@ -272,20 +334,49 @@ internal object LinuxDeviceBridge {
         return bytes.toString(Charsets.UTF_8.name())
     }
 
+    private val cameraSockets = java.util.concurrent.ConcurrentHashMap<LocalSocket, String>()
+    fun revokeCamera(id: String) {
+        cameraSockets.filterValues { it == id }.keys.forEach(::closeSocket)
+    }
+
     private fun serve(context: Context, socket: LocalSocket, uid: Int) {
         val input = DataInputStream(socket.inputStream)
         // A Binder-passed shell socket can be read/written by the app, but SELinux
         // denies setsockopt. Bound the handshake with poll instead of SO_RCVTIMEO.
         val request = readLine(input, socket)
+        val scoped = request.startsWith("F ") || request.startsWith("C ")
+        val container = if (scoped) LinuxContainerClient.service()?.processContainer(socket.peerCredentials.pid)
+            ?.takeIf { it.isNotEmpty() } ?: return else ""
+        val policy = if (scoped) LinuxSharing.remote(container) else org.json.JSONObject()
         // Picked folders (LinuxFolders) belong to the Android mode, which runs as this app.
         if (request.startsWith("F ")) {
-            if (uid == android.os.Process.myUid()) LinuxFolders.serve(context, socket, request)
+            if (uid == android.os.Process.myUid() && !LinuxSharing.wholeStorageEnabled(context, policy))
+                LinuxFolders.serve(LinuxFolders.scope(context, container), socket, request)
             return
         }
         // Cameras are not USB devices; Linux sees each one as /dev/videoN.
         if (request.startsWith("C ")) {
-            if (context.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED)
-                LinuxCameraBridge.serve(context, socket, input, request.drop(2))
+            if (policy.optBoolean("camera") && context.checkSelfPermission(android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                cameraSockets[socket] = container
+                try {
+                    if (LinuxSharing.remote(container).optBoolean("camera"))
+                        LinuxCameraBridge.serve(context, socket, input, request.drop(2))
+                } finally { cameraSockets.remove(socket) }
+            }
+            return
+        }
+        // "B <device> <partition>": a USB storage disk or one of its partitions (LinuxUsbDisk).
+        if (request.startsWith("M ") || request.startsWith("N ")) {
+            mountRequest(context, socket, request)
+            return
+        }
+        if (request.startsWith("B ")) {
+            val parts = request.split(' ')
+            val disks = storageDevices(context)
+            val index = disks.indexOfFirst { it.deviceName == parts.getOrNull(1) }
+            val partition = parts.getOrNull(2)?.toIntOrNull()
+            if (index < 0 || partition == null || partition !in 0..15) socket.outputStream.write(1)
+            else LinuxUsbDisk.serve(context, socket, input, disks[index], partition, index)
             return
         }
         val name = request.drop(2)

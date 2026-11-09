@@ -355,6 +355,25 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   /// Linux only: no Dextop permissions, so Linux runs with ordinary app permissions.
   Future<void> openLinuxOnly() async {
     if (loading) return;
+    // This path skips the setup's first page, so its notice is shown here.
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text(l.setupPhaseTerms),
+        content: SingleChildScrollView(child: Text(l.setupDisclaimer)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialog, false),
+            child: Text(l.back),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialog, true),
+            child: Text(l.continueLabel),
+          ),
+        ],
+      ),
+    );
+    if (accepted != true || !mounted) return;
     setState(() => loading = true);
     try {
       // The execution mode lives on the Linux channel, not the display one.
@@ -436,9 +455,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             TextButton.icon(
               onPressed: loading ? null : openLinuxOnly,
               icon: const PenguinIcon(),
-              label: Text(
-                localText(context, 'Linuxコンテナへ', 'Go to Linux containers'),
-              ),
+              label: Text(localText(context, 'uiGoToLinuxContainers')),
             ),
           ],
         ],

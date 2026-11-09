@@ -24,7 +24,6 @@ import android.widget.FrameLayout
 import android.widget.TextView
 import moe.n4tsu.dextop.plasma.LinuxPointerForwarder
 import moe.n4tsu.dextop.plasma.LinuxPointerState
-import org.json.JSONObject
 import kotlin.math.roundToInt
 
 /**
@@ -37,19 +36,8 @@ class LinuxDesktopActivity : Activity() {
         private const val EXTRA_CONTAINER = "container"
         private const val EXTRA_NAME = "name"
 
-        /**
-         * Opens [container]'s desktop. A DroidDeck container's desktop is its Plasma application,
-         * opened like any Linux application; the others get this window, one per container.
-         */
-        fun open(context: Context, container: String, name: String) {
-            LinuxContainerClient.call(context, { linux ->
-                JSONObject(linux.linuxSettings()).optJSONObject("containers")?.optJSONObject(container)?.optString("wmEffective")
-            }, { wm ->
-                if (wm == LinuxWindowManager.DROIDDECK.id) {
-                    LinuxAndroidWindows.launch(context, container, LinuxSteam.DROIDDECK_DESKTOP_ENTRY, name)
-                } else start(context, container, name)
-            }) { start(context, container, name) }
-        }
+        /** Opens one desktop window per container. */
+        fun open(context: Context, container: String, name: String) = start(context, container, name)
 
         private fun start(context: Context, container: String, name: String) {
             context.startActivity(Intent(context, LinuxDesktopActivity::class.java)
@@ -70,7 +58,7 @@ class LinuxDesktopActivity : Activity() {
     private var screenHeight = 0
     private var generation = 0
 
-    private fun text(ja: String, en: String) = moe.n4tsu.dextop.localText(ja, en)
+    private fun text(key: String) = moe.n4tsu.dextop.localText(key)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -85,7 +73,7 @@ class LinuxDesktopActivity : Activity() {
         status = TextView(this).apply {
             setTextColor(Color.WHITE)
             gravity = Gravity.CENTER
-            text = text("Linux のデスクトップを起動しています", "Starting the Linux desktop")
+            text = text("uiStartingTheLinuxDesktop")
         }
         root.addView(status, FrameLayout.LayoutParams(-1, -1))
         LinuxKeyboardButton(root) { screen.showKeyboard() }
@@ -126,7 +114,7 @@ class LinuxDesktopActivity : Activity() {
         LinuxContainerClient.call(this, { linux ->
             linux.startDesktop(container, w, h, dpi)
             linux.updateDisplay(container, false, w, h, dpi, refresh)
-            check(linux.attachSurface(container, surface)) { text("Linux のデスクトップを表示できませんでした", "Unable to draw the Linux desktop") }
+            check(linux.attachSurface(container, surface)) { text("uiUnableToDrawTheLinuxDesktop") }
         }, {
             if (attempt != generation) return@call
             screenWidth = w

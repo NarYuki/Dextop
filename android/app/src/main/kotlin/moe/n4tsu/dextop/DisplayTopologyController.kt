@@ -50,7 +50,7 @@ class DisplayTopologyController(private val context: Context) {
         }
         val primaryOverlayId = requestedOverlays.sorted().first()
         val overlay = eligible.firstOrNull { it.displayId == primaryOverlayId }
-            ?: error("The Dextop overlay display is not available")
+            ?: error(moe.n4tsu.dextop.localText("uiTheDextopOverlayDisplayIsNotAvailable"))
         fun node(display: android.view.Display): Node {
             val metrics = android.util.DisplayMetrics()
             @Suppress("DEPRECATION")
@@ -122,7 +122,7 @@ class DisplayTopologyController(private val context: Context) {
                 parcel.recycle()
             }
         }
-        check(editor.commit()) { "Unable to save the original display topology" }
+        check(editor.commit()) { moe.n4tsu.dextop.localText("uiUnableToSaveTheOriginalDisplayTopology") }
     }
 
     fun read(): Map<String, Any> = runCatching {
@@ -147,7 +147,7 @@ class DisplayTopologyController(private val context: Context) {
             display.getRealMetrics(metrics)
             linkedMapOf<String, Any>(
                 "id" to id,
-                "name" to (display.name ?: "Display $id"),
+                "name" to (display.name ?: moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiDisplay0"), id)),
                 "x" to rect.left.toDouble(),
                 "y" to rect.top.toDouble(),
                 "widthDp" to rect.width().toDouble(),
@@ -224,7 +224,7 @@ class DisplayTopologyController(private val context: Context) {
     }.getOrElse {
         linkedMapOf(
             "supported" to false,
-            "reason" to (it.cause?.message ?: it.message ?: "Display information is unavailable"),
+            "reason" to (it.cause?.message ?: it.message ?: moe.n4tsu.dextop.localText("uiDisplayInformationIsUnavailable")),
             "displays" to emptyList<Map<String, Any>>()
         )
     }
@@ -239,7 +239,7 @@ class DisplayTopologyController(private val context: Context) {
         display.getRealMetrics(metrics)
         return linkedMapOf(
             "id" to display.displayId,
-            "name" to (display.name ?: "Display ${display.displayId}"),
+            "name" to (display.name ?: moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiDisplay0"), display.displayId)),
             "x" to 0.0,
             "y" to 0.0,
             "widthDp" to (metrics.widthPixels * 160f / metrics.densityDpi.coerceAtLeast(1)).toDouble(),
@@ -264,7 +264,7 @@ class DisplayTopologyController(private val context: Context) {
     }
 
     fun rearrange(rawPositions: Map<*, *>): Map<String, Any> {
-        check(isSupported()) { "Display topology is unavailable on this framework" }
+        check(isSupported()) { moe.n4tsu.dextop.localText("uiDisplayTopologyIsUnavailableOnThisFramework") }
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         val current = readTopology() ?: run {
             val manager = context.getSystemService(DisplayManager::class.java)
@@ -278,7 +278,7 @@ class DisplayTopologyController(private val context: Context) {
                         metrics.densityDpi.coerceAtLeast(1), POSITION_RIGHT, 0f, mutableListOf())
                 }
             }
-            val root = nodes.firstOrNull() ?: error("No displays are present")
+            val root = nodes.firstOrNull() ?: error(moe.n4tsu.dextop.localText("uiNoDisplaysArePresent"))
             root.children.addAll(nodes.drop(1))
             Topology(root, root.displayId)
         }
@@ -306,8 +306,8 @@ class DisplayTopologyController(private val context: Context) {
         val nodes = current.root?.flatten()
             ?.filter { it.displayId in activeIds }
             ?.associateBy { it.displayId }
-            ?: error("No displays are present")
-        check(nodes.keys == positions.keys) { "Positions must include every active display" }
+            ?: error(moe.n4tsu.dextop.localText("uiNoDisplaysArePresent"))
+        check(nodes.keys == positions.keys) { moe.n4tsu.dextop.localText("uiPositionsMustIncludeEveryActiveDisplay") }
         val rootId = current.primaryDisplayId.takeIf(nodes::containsKey) ?: nodes.keys.first()
         val root = nodes.getValue(rootId).copy(children = mutableListOf())
         val placed = linkedMapOf(rootId to root)
@@ -357,15 +357,15 @@ class DisplayTopologyController(private val context: Context) {
     ): Map<String, Any> {
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         val display = context.getSystemService(DisplayManager::class.java).getDisplay(displayId)
-            ?: error("The selected display is no longer connected")
+            ?: error(moe.n4tsu.dextop.localText("uiTheSelectedDisplayIsNoLongerConnected"))
         check(display.displayId != MirrorService.topologyOverlayDisplayId()) {
-            "Change the Dextop session resolution from the home screen"
+            moe.n4tsu.dextop.localText("uiChangeTheDextopSessionResolutionFromTheHomeScreen")
         }
         val mode = display.supportedModes.firstOrNull {
             it.physicalWidth == width &&
                 it.physicalHeight == height &&
                 kotlin.math.abs(it.refreshRate - refreshRate) < .1f
-        } ?: error("This display does not support the selected mode")
+        } ?: error(moe.n4tsu.dextop.localText("uiThisDisplayDoesNotSupportTheSelectedMode"))
         val result = privilegedAccess.execute(
             "cmd",
             "display",
@@ -376,7 +376,7 @@ class DisplayTopologyController(private val context: Context) {
             displayId.toString()
         )
         check(result.succeeded) {
-            result.error.ifBlank { result.output.ifBlank { "The display mode could not be applied" } }
+            result.error.ifBlank { result.output.ifBlank { moe.n4tsu.dextop.localText("uiTheDisplayModeCouldNotBeApplied") } }
         }
         // A number of vendor builds accept the preferred-mode request while
         // retaining the old physical HDMI mode.  Treat that as a failed
@@ -386,14 +386,14 @@ class DisplayTopologyController(private val context: Context) {
         var applied = false
         while (android.os.SystemClock.uptimeMillis() < deadline) {
             val active = context.getSystemService(DisplayManager::class.java).getDisplay(displayId)?.mode
-                ?: error("The selected display is no longer connected")
+                ?: error(moe.n4tsu.dextop.localText("uiTheSelectedDisplayIsNoLongerConnected"))
             applied = active.physicalWidth == mode.physicalWidth &&
                 active.physicalHeight == mode.physicalHeight &&
                 kotlin.math.abs(active.refreshRate - mode.refreshRate) < .1f
             if (applied) break
             Thread.sleep(100)
         }
-        check(applied) { "Android saved the requested mode, but the connected display did not switch its output mode" }
+        check(applied) { moe.n4tsu.dextop.localText("uiAndroidSavedTheRequestedModeButTheConnectedDisplayDidNotSwitchItsOutputMode") }
         OperationLog.i(
             context,
             "DisplayTopology",
@@ -406,7 +406,7 @@ class DisplayTopologyController(private val context: Context) {
     fun setDensity(displayId: Int, dpi: Int): Map<String, Any> {
         checkPhysical(displayId)
         val result = privilegedAccess.execute("wm", "density", if (dpi > 0) dpi.toString() else "reset", "-d", displayId.toString())
-        check(result.succeeded) { result.error.ifBlank { result.output.ifBlank { "The scale could not be applied" } } }
+        check(result.succeeded) { result.error.ifBlank { result.output.ifBlank { moe.n4tsu.dextop.localText("uiTheScaleCouldNotBeApplied") } } }
         OperationLog.i(context, "DisplayTopology", "density display=$displayId dpi=$dpi")
         return availableDisplays()
     }
@@ -422,7 +422,7 @@ class DisplayTopologyController(private val context: Context) {
         checkPhysical(displayId)
         require(rotation in 0..3)
         val result = privilegedAccess.execute("wm", "user-rotation", "-d", displayId.toString(), "lock", rotation.toString())
-        check(result.succeeded) { result.error.ifBlank { result.output.ifBlank { "The orientation could not be applied" } } }
+        check(result.succeeded) { result.error.ifBlank { result.output.ifBlank { moe.n4tsu.dextop.localText("uiTheOrientationCouldNotBeApplied") } } }
         OperationLog.i(context, "DisplayTopology", "rotation display=$displayId rotation=$rotation")
         Thread.sleep(250)
         return availableDisplays()
@@ -431,9 +431,9 @@ class DisplayTopologyController(private val context: Context) {
     private fun checkPhysical(displayId: Int) {
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         context.getSystemService(DisplayManager::class.java).getDisplay(displayId)
-            ?: error("The selected display is no longer connected")
+            ?: error(moe.n4tsu.dextop.localText("uiTheSelectedDisplayIsNoLongerConnected"))
         check(displayId != MirrorService.topologyOverlayDisplayId()) {
-            "Change the Dextop session resolution from the home screen"
+            moe.n4tsu.dextop.localText("uiChangeTheDextopSessionResolutionFromTheHomeScreen")
         }
     }
 
@@ -528,7 +528,7 @@ class DisplayTopologyController(private val context: Context) {
     }
 
     private fun unsupportedTransaction(method: String): Nothing =
-        throw UnsupportedOperationException("$method is unavailable on this framework")
+        throw UnsupportedOperationException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("ui0IsUnavailableOnThisFramework"), method))
 
     private fun resolveTransactionCodes(): TransactionCodes? = runCatching {
         // The Stub fields are hidden on Android, but this app already ships
@@ -573,7 +573,7 @@ class DisplayTopologyController(private val context: Context) {
         try {
             data.writeInterfaceToken(DISPLAY_INTERFACE)
             write(data)
-            check(binder.transact(code, data, reply, 0)) { "Display service rejected topology transaction" }
+            check(binder.transact(code, data, reply, 0)) { moe.n4tsu.dextop.localText("uiDisplayServiceRejectedTopologyTransaction") }
             return read(data, reply)
         } finally {
             reply.recycle()

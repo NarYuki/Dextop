@@ -153,11 +153,9 @@ val generateNativeStrings by tasks.registering(Exec::class) {
     inputs.files(
         fileTree(rootProject.file("../lib/l10n")) {
             include("app_*.arb")
-            include("inline/*.json")
         }
     )
     outputs.file(file("src/main/kotlin/moe/n4tsu/dextop/NativeStrings.kt"))
-    outputs.dir(file("src/main/resources/moe/n4tsu/dextop/l10n"))
 }
 
 tasks.configureEach {

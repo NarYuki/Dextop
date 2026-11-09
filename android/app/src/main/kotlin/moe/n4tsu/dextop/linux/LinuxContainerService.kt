@@ -36,7 +36,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes APK-approved macOS runtime installation (AIDL transaction 65).
-        const val PROTOCOL_VERSION = 43
+        const val PROTOCOL_VERSION = 44
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         /** [GPU_CRASH_LIMIT] GPU crashes within this long turn the GPU off for the session. */
@@ -52,16 +52,16 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     @Volatile private var audioClientUid = -1
     @Volatile private var deviceListener: android.net.LocalServerSocket? = null
     @Synchronized override fun startDeviceBridgeListener(name: String) {
-        check(android.os.Binder.getCallingUid() == audioClientUid) { "Device caller is not the connected application" }
-        check(!closed) { "Linux service is closed" }
+        check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiDeviceCallerIsNotTheConnectedApplication") }
+        check(!closed) { moe.n4tsu.dextop.localText("uiLinuxServiceIsClosed") }
         require(name.matches(Regex("dextop-devices-[a-f0-9]{32}")))
         val listener = android.net.LocalServerSocket(name)
         deviceListener?.close()
         deviceListener = listener
     }
     override fun acceptDeviceBridge(): android.os.ParcelFileDescriptor {
-        check(android.os.Binder.getCallingUid() == audioClientUid) { "Device caller is not the connected application" }
-        val listener = checkNotNull(deviceListener) { "Device listener is not running" }
+        check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiDeviceCallerIsNotTheConnectedApplication") }
+        val listener = checkNotNull(deviceListener) { moe.n4tsu.dextop.localText("uiDeviceListenerIsNotRunning") }
         while (!closed && deviceListener === listener) {
             listener.accept().use { socket ->
                 val peer = socket.peerCredentials
@@ -70,19 +70,19 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 }
             }
         }
-        error("Device listener was replaced")
+        error(moe.n4tsu.dextop.localText("uiDeviceListenerWasReplaced"))
     }
     override fun openMicrophoneStream(containerId: String): android.os.ParcelFileDescriptor {
-        check(android.os.Binder.getCallingUid() == audioClientUid) { "Audio caller is not the connected application" }
-        return checkNotNull(audio) { "Audio unavailable" }.openMicrophone(containerId)
+        check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiAudioCallerIsNotTheConnectedApplication") }
+        return checkNotNull(audio) { moe.n4tsu.dextop.localText("uiAudioUnavailable") }.openMicrophone(containerId)
     }
     override fun microphoneWanted(containerId: String): Boolean {
-        check(android.os.Binder.getCallingUid() == audioClientUid) { "Audio caller is not the connected application" }
+        check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiAudioCallerIsNotTheConnectedApplication") }
         return audio?.microphoneWanted(containerId) == true
     }
     override fun openAudioStream(containerId: String): android.os.ParcelFileDescriptor {
-        check(android.os.Binder.getCallingUid() == audioClientUid) { "Audio caller is not the connected application" }
-        return checkNotNull(audio) { "Audio unavailable" }.openStream(containerId)
+        check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiAudioCallerIsNotTheConnectedApplication") }
+        return checkNotNull(audio) { moe.n4tsu.dextop.localText("uiAudioUnavailable") }.openStream(containerId)
     }
     @Volatile private var callback: ILinuxContainerCallback? = null
     private val installer = Executors.newSingleThreadExecutor { Thread(it, "DextopLinuxInstall") }
@@ -93,26 +93,28 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val process = ProcessBuilder("/system/bin/du", "-sk", directory.absolutePath)
             .redirectError(File("/dev/null")).start()
         try {
-            check(process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) { "Container size measurement timed out" }
+            check(process.waitFor(30, java.util.concurrent.TimeUnit.SECONDS)) { moe.n4tsu.dextop.localText("uiContainerSizeMeasurementTimedOut") }
             // Bound-device placeholders can be unreadable. du still prints the accessible
             // container's total with exit 1, as finish() has always used; other failures fail.
             check(process.exitValue() in 0..1)
             Math.multiplyExact(process.inputStream.bufferedReader().use { it.readText() }.trim().substringBefore('\t').substringBefore(' ').toLong(), 1024L)
         } finally { if (process.isAlive) process.destroyForcibly() }
-    }, { if (!closed) notifyChanged() })
+    }, { if (!closed) notifyChanged() },
+        restore = { id, fallback -> LinuxContainerSizeSnapshot.read(LinuxPaths.container(id), fallback) },
+        persist = { id, bytes -> LinuxContainerSizeSnapshot.write(LinuxPaths.container(id), bytes) })
     private val cancelled = ConcurrentHashMap.newKeySet<String>()
     private val activeProcesses = ConcurrentHashMap<String, Process>()
 
     private val integrations by lazy { LinuxIntegration(
         { requireProot() },
-        { id -> LinuxCatalog.find(readConfig(id)?.optString("distro").orEmpty())?.family ?: error("Unknown distribution") },
+        { id -> LinuxCatalog.find(readConfig(id)?.optString("distro").orEmpty())?.family ?: error(moe.n4tsu.dextop.localText("uiUnknownDistribution")) },
         { id -> startDesktop(id, 1280, 720, 160) },
         { id, message -> log(id, message) },
         { notifyChanged() },
     ) }
     private fun integrationCaller(id: String) {
-        check(android.os.Binder.getCallingUid() == audioClientUid) { "Integration caller is not the connected application" }
-        check(readConfig(id)?.optString("state") == "installed") { "Linux environment is not installed" }
+        check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiIntegrationCallerIsNotTheConnectedApplication") }
+        check(readConfig(id)?.optString("state") == "installed") { moe.n4tsu.dextop.localText("uiLinuxEnvironmentIsNotInstalled") }
     }
     override fun integrationStatus(containerId: String): String {
         integrationCaller(containerId)
@@ -138,6 +140,23 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun protocolVersion(): Int = PROTOCOL_VERSION
+
+    override fun containerSharing(containerId: String): String = LinuxSharing.read(containerId).toString()
+
+    override fun setContainerSharing(containerId: String, policy: String) {
+        check(readConfig(containerId) != null)
+        val next = LinuxSharing.normalize(JSONObject(policy))
+        val previous = LinuxSharing.read(containerId)
+        // Existing PRoot mounts and already-open descriptors cannot be withdrawn in place.
+        if (previous.optBoolean("wholeStorage") != next.optBoolean("wholeStorage")) {
+            resetSession(containerId, true)
+        }
+        LinuxSharing.write(containerId, next)
+        notifyChanged()
+    }
+
+    override fun processContainer(pid: Int): String =
+        LinuxRuntime.containerOf(pid).orEmpty()
 
     override fun ownsProcess(pid: Int): Boolean {
         val self = android.os.Process.myPid()
@@ -196,17 +215,17 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun uninstallLauncher(packageName: String) {
-        if (androidContext != null) throw SecurityException("Package removal belongs to the explicit privilege broker")
+        if (androidContext != null) throw SecurityException(moe.n4tsu.dextop.localText("uiPackageRemovalBelongsToTheExplicitPrivilegeBroker"))
         require(packageName.matches(Regex(Regex.escape(LinuxShortcutInstaller.PACKAGE_PREFIX) + "a[0-9a-f]{20}")))
         val process = ProcessBuilder("/system/bin/pm", "uninstall", "--user", "current", packageName).redirectErrorStream(true).start()
         val output = process.inputStream.bufferedReader().readText().trim()
-        check(process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0) { "Launcher removal failed: $output" }
+        check(process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLauncherRemovalFailed0"), output) }
     }
 
     override fun installLauncher(apk: android.os.ParcelFileDescriptor, size: Long, installerPackage: String): String {
         if (androidContext != null) {
             apk.close()
-            throw SecurityException("Silent package installation belongs to the explicit privilege broker")
+            throw SecurityException(moe.n4tsu.dextop.localText("uiSilentPackageInstallationBelongsToTheExplicitPrivilegeBroker"))
         }
         require(installerPackage == "moe.n4tsu.dextop" || installerPackage == "moe.n4tsu.gpdextop")
         require(size in 1..(32L * 1024 * 1024))
@@ -222,13 +241,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }.apply { isDaemon = true; start() }
         try {
             android.os.ParcelFileDescriptor.AutoCloseInputStream(apk).use { input ->
-                process.outputStream.use { stream -> check(input.copyTo(stream) == size) { "Incomplete launcher APK" } }
+                process.outputStream.use { stream -> check(input.copyTo(stream) == size) { moe.n4tsu.dextop.localText("uiIncompleteLauncherAPK") } }
             }
-            check(process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) { "Launcher install timed out" }
+            check(process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS)) { moe.n4tsu.dextop.localText("uiLauncherInstallTimedOut") }
             reader.join(2_000)
             val message = synchronized(output) { output.toString().trim() }
             check(process.exitValue() == 0 && message.lineSequence().any { it.trim() == "Success" }) {
-                "Launcher install failed: $message"
+                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLauncherInstallFailed0"), message)
             }
             return message
         } finally {
@@ -278,13 +297,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     @Synchronized
     override fun initialize(nativeLibraryDir: String, callback: ILinuxContainerCallback?) {
-        check(!closed) { "Linux runtime is closed; reconnect" }
+        check(!closed) { moe.n4tsu.dextop.localText("uiLinuxRuntimeIsClosedReconnect") }
         val caller = android.os.Binder.getCallingUid()
         // Wayland clients name the compositor after the process serving their socket (fastfetch's WM).
         runCatching {
             android.os.Process::class.java.getMethod("setArgV0", String::class.java).invoke(null, LinuxAppSession.WM_NAME)
         }
-        check(audioClientUid == -1 || audioClientUid == caller) { "Linux service already belongs to another application" }
+        check(audioClientUid == -1 || audioClientUid == caller) { moe.n4tsu.dextop.localText("uiLinuxServiceAlreadyBelongsToAnotherApplication") }
         audioClientUid = caller
         if (androidContext != null) {
             LinuxSysStandIns.context = androidContext
@@ -315,7 +334,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             val config = readConfig(id) ?: return@forEach
             if (config.optString("state") == "installed") runCatching {
                 LinuxSessionCompatibility.install(LinuxPaths.rootfs(id), nativeLibraryDir, LinuxProot.socketNamespace(id),
-                    xvfb = config.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME)
+                    xvfb = true)
             }.onFailure { log(id, "Linux compatibility setup failed: ${it.message}") }
             if (config.optString("state") == "installing") writeConfig(id, config.put("state", "failed"))
             if (config.optString("state") == "updating") writeConfig(id, config.put("state", "installed").put("error", "Setup was interrupted; run setup again"))
@@ -365,7 +384,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     override fun install(name: String, distroId: String): String = installWithOptions(name, distroId, "{}")
 
     override fun installWithOptions(name: String, distroId: String, optionsJson: String): String {
-        val distro = LinuxCatalog.find(distroId) ?: throw IllegalArgumentException("Unknown distribution $distroId")
+        val distro = LinuxCatalog.find(distroId) ?: throw IllegalArgumentException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownDistribution0"), distroId))
         val requested = JSONObject(optionsJson)
         val (_, password) = LinuxUser.credentials(requested)
         val passwordHash = LinuxPasswordHash.create(password.toByteArray(Charsets.UTF_8))
@@ -413,18 +432,21 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun repair(containerId: String): Boolean {
         val config = readConfig(containerId) ?: return false
-        return setup(containerId, config.optJSONObject("setupOptions")?.toString() ?: "{}")
+        return applySetup(containerId, config.optJSONObject("setupOptions")?.toString() ?: "{}", repair = true)
     }
 
+    override fun setup(containerId: String, optionsJson: String): Boolean = applySetup(containerId, optionsJson, repair = false)
+
+    /** [repair] reinstalls what the image already held; adding features only runs what they need. */
     @Synchronized
-    override fun setup(containerId: String, optionsJson: String): Boolean {
+    private fun applySetup(containerId: String, optionsJson: String, repair: Boolean): Boolean {
         val config = readConfig(containerId) ?: return false
         if (config.optString("state") in setOf("installing", "updating")) return false
         val distro = LinuxCatalog.find(config.optString("distro")) ?: return false
         val requested = JSONObject(optionsJson)
         val previousName = config.optJSONObject("setupOptions")?.optString("username", "").orEmpty()
         if (previousName.isNotEmpty()) {
-            require(!requested.has("username") || requested.optString("username") == previousName) { "Changing an existing Linux account is not supported" }
+            require(!requested.has("username") || requested.optString("username") == previousName) { moe.n4tsu.dextop.localText("uiChangingAnExistingLinuxAccountIsNotSupported") }
             requested.put("username", previousName)
         }
         val options = LinuxSetupOptions.fromJson(requested).validate(distro)
@@ -440,7 +462,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 runInstall(containerId, distro)
                 return@execute
             }
-            val ok = runCatching { configure(containerId, distro) }.onFailure { fail(containerId, it) }.isSuccess
+            val ok = runCatching { configure(containerId, distro, repair) }.onFailure { fail(containerId, it) }.isSuccess
             if (ok) finish(containerId)
         }
         return true
@@ -448,7 +470,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun runCommand(containerId: String, command: String, timeoutSeconds: Int): String {
         val runner = requireProot()
-        check(LinuxPaths.rootfs(containerId).isDirectory) { "Container $containerId is not installed" }
+        check(LinuxPaths.rootfs(containerId).isDirectory) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
         // Store jobs: an Android-mode container set up before these steps gets DNS and apt fixed first.
         prepareAndroid(containerId)
         val result = runner.run(runner.guest(containerId, command, fakeRoot = true, extraEnvironment = listOf("HOME=${LinuxUser.home(containerId)}")), timeoutSeconds.toLong().coerceIn(1, 3_600))
@@ -456,10 +478,10 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun installMacosRuntime(containerId: String): String = synchronized(appLifecycleLocks.getOrPut(containerId) { Any() }) {
-        val approval = checkNotNull(LinuxMacosRuntimeBundle.approval()) { "This APK has no approved macOS runtime bundle" }
+        val approval = checkNotNull(LinuxMacosRuntimeBundle.approval()) { moe.n4tsu.dextop.localText("uiThisAPKHasNoApprovedMacOSRuntimeBundle") }
         val runner = requireProot()
         val root = LinuxPaths.rootfs(containerId)
-        check(root.isDirectory) { "Linux container is not installed" }
+        check(root.isDirectory) { moe.n4tsu.dextop.localText("uiLinuxContainerIsNotInstalled") }
         val base = File(LinuxPaths.container(containerId), "runtime").apply { check(isDirectory || mkdirs()) }
         val temporary = java.nio.file.Files.createTempDirectory(base.toPath(), "macos-install-").toFile()
         val archive = File(temporary, "runtime.tar.gz")
@@ -468,19 +490,19 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             prepareAndroid(containerId)
             LinuxSessionCompatibility.stage(root, runner.nativeLibraryDir, LinuxProot.socketNamespace(containerId))
             val preparation = runner.run(runner.guest(containerId, LinuxMacosRuntimeBundle.PREPARE, fakeRoot = true), 600)
-            check(preparation.exitCode == 0) { preparation.output.takeLast(4000).ifBlank { "macOS runtime preparation failed" } }
+            check(preparation.exitCode == 0) { preparation.output.takeLast(4000).ifBlank { moe.n4tsu.dextop.localText("uiMacOSRuntimePreparationFailed") } }
             val result = runner.run(runner.guest(containerId, LinuxMacosRuntimeBundle.command(approval),
                 extraBinds = listOf("${archive.absolutePath}:/run/dextop-macos-runtime.tar.gz")), 600)
-            check(result.exitCode == 0) { result.output.takeLast(4000).ifBlank { "macOS runtime installation failed" } }
+            check(result.exitCode == 0) { result.output.takeLast(4000).ifBlank { moe.n4tsu.dextop.localText("uiMacOSRuntimeInstallationFailed") } }
             val json = result.output.lineSequence().lastOrNull { it.trimStart().startsWith('{') }
-                ?: error("macOS installation did not return a result")
+                ?: error(moe.n4tsu.dextop.localText("uiMacOSInstallationDidNotReturnAResult"))
             JSONObject(json).toString()
         } finally { archive.delete(); temporary.delete() }
     }
 
     override fun openTerminal(containerId: String, rows: Int, cols: Int): android.os.ParcelFileDescriptor {
         val runner = requireProot()
-        check(LinuxPaths.rootfs(containerId).isDirectory) { "Container $containerId is not installed" }
+        check(LinuxPaths.rootfs(containerId).isDirectory) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
         integrations.restore(containerId)
         val family = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family
         audio?.ensure(containerId, family)
@@ -491,7 +513,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val master = LinuxPty.nativeSpawn(builder.command().toTypedArray(),
             builder.environment().map { (name, value) -> "$name=$value" }.toTypedArray(),
             "/", rows.coerceIn(2, 500), cols.coerceIn(2, 1000), pid)
-        check(master >= 0) { "Could not open a terminal (errno ${-master})" }
+        check(master >= 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCouldNotOpenATerminalErrno0"), -master) }
         Thread({ log(containerId, "Terminal ${pid[0]} ended: ${LinuxPty.nativeWaitFor(pid[0])}") }, "DextopTerminalWait").apply {
             isDaemon = true
             start()
@@ -509,7 +531,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     @Synchronized
     override fun resetSession(containerId: String, force: Boolean): Boolean {
-        check(readConfig(containerId)?.optString("state") !in setOf("installing", "updating")) { "Setup is running; cancel it first" }
+        check(readConfig(containerId)?.optString("state") !in setOf("installing", "updating")) { moe.n4tsu.dextop.localText("uiSetupIsRunningCancelItFirst") }
         runtimeGenerations.merge(containerId, 1, Int::plus)
         integrations.stop(containerId)
         // Kill orphan trees before losing their display identities.
@@ -541,10 +563,22 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         return try {
             start().also { runtimeStates[id] = "running" }
         } catch (error: Throwable) {
+            if (error is LinuxWaylandUnavailable) useXvfb(id)
             val message = "${error.message ?: error.javaClass.simpleName}\n${runtimeLogs(id)}"
             runtimeFailure(id, message)
             throw IllegalStateException(message.take(24000), error)
         }
+    }
+
+    /** Wayland is not selectable, so a device or session that cannot run it needs this way out. */
+    private fun useXvfb(id: String) {
+        val config = readConfig(id) ?: return
+        val options = config.optJSONObject("setupOptions") ?: return
+        if (options.optString("displayBackend") == "xvfb") return
+        writeConfig(id, config.put("setupOptions", options.put("displayBackend", "xvfb")))
+        runCatching { File(LinuxPaths.rootfs(id), "etc/dextop/display-backend").writeText("xvfb\n") }
+        log(id, "Wayland is unavailable; this container now uses Xvfb")
+        notifyChanged()
     }
 
     private fun monitor(id: String, alive: () -> Boolean, owned: () -> Boolean) {
@@ -564,7 +598,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     override fun startDesktop(containerId: String, width: Int, height: Int, dpi: Int): Int {
         sessions[containerId]?.takeIf { it.alive }?.let { return it.display }
         sessions.remove(containerId)?.stop()
-        check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
+        check(readConfig(containerId)?.optString("state") == "installed") { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
         return withDisplay { display ->
         startRenderer(containerId)
         val keyring = takeKeyring(containerId)
@@ -648,7 +682,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         sessions.values.map { it.display }.toSet() + appSessions.values.map { it.display }
 
     override fun guestLog(containerId: String, name: String, maxBytes: Int, truncate: Boolean): String {
-        require(GUEST_LOG.matches(name)) { "Invalid guest log $name" }
+        require(GUEST_LOG.matches(name)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiInvalidGuestLog0"), name) }
         val file = File(LinuxPaths.rootfs(containerId), "tmp/$name")
         if (truncate) { file.writeText(""); return "" }
         if (!file.isFile) return ""
@@ -660,16 +694,19 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun setGuestState(containerId: String, name: String, content: String) {
-        require(GUEST_STATE.matches(name) && content.length <= 16 * 1024) { "Invalid guest state $name" }
+        require(GUEST_STATE.matches(name) && content.length <= 16 * 1024) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiInvalidGuestState0"), name) }
         val directory = File(LinuxPaths.rootfs(containerId), "tmp")
-        check(directory.isDirectory) { "Container $containerId is not installed" }
+        check(directory.isDirectory) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
         // Readers see either the old or the new file, never a partial one.
         val staged = File(directory, ".$name.staged")
         staged.writeText(content)
-        check(staged.renameTo(File(directory, name))) { "Cannot write guest state $name" }
+        check(staged.renameTo(File(directory, name))) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotWriteGuestState0"), name) }
         // Security keys in it get sysfs entries, for udev to find their hidraw nodes.
         if (name == "dextop-devices.conf") runCatching { LinuxHidSysfs.update(containerId, content) }
             .onFailure { log(containerId, "Security key entries failed: ${it.message}") }
+        // USB storage in it gets block-device sysfs entries and /proc/partitions lines.
+        if (name == "dextop-devices.conf") runCatching { LinuxDiskSysfs.update(containerId, content) }
+            .onFailure { log(containerId, "USB storage entries failed: ${it.message}") }
     }
 
     override fun listApps(containerId: String, locale: String): String {
@@ -686,17 +723,14 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             return session.display
         }
         appSessions.remove(containerId)?.stop()
-        check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
+        check(readConfig(containerId)?.optString("state") == "installed") { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
         return withDisplay { display ->
         startRenderer(containerId)
-        // DroidDeck's runtime has no Xvfb: its X clients go through KWin's Xwayland.
-        val runtime = readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME
-        if (runtime) stageDroidDeckFiles(containerId)
         val selectedWayland = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend") == "wayland"
         val keyring = takeKeyring(containerId)
         val session = try { runtimeStart(containerId) { LinuxAppSession.start(
             requireProot(), containerId, display,
-            width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 640), waylandOnly = runtime, requireWayland = selectedWayland, xwayland = selectedWayland && !runtime,
+            width.coerceIn(320, 7680), height.coerceIn(240, 4320), dpi.coerceIn(72, 640), requireWayland = selectedWayland, xwayland = selectedWayland,
             keyring = keyring,
         ) { event ->
             if (event.optString("type") == "tray-wine-metadata") {
@@ -736,15 +770,14 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     private fun launchAppLocked(containerId: String, desktopId: String, software: Boolean, x11: Boolean, framed: Boolean) {
-        val session = appSessions[containerId]?.takeIf { it.alive } ?: error("Application display is not running")
-        val entry = LinuxDesktopEntries.find(LinuxPaths.rootfs(containerId), desktopId) ?: error("Unknown application $desktopId")
+        val session = appSessions[containerId]?.takeIf { it.alive } ?: error(moe.n4tsu.dextop.localText("uiApplicationDisplayIsNotRunning"))
+        val entry = LinuxDesktopEntries.find(LinuxPaths.rootfs(containerId), desktopId) ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownApplication0"), desktopId))
         if (session.restoreHiddenApplication(entry.startupWMClass)) {
             log(containerId, "Restored hidden application window: ${entry.id}")
             return
         }
-        val droidDeck = LinuxSettings.windowManager(containerId) == LinuxWindowManager.DROIDDECK
-        // DroidDeck's desktop and the Steam mode size their nested output from the session's screen.
-        val sized = entry.id == LinuxSteam.DROIDDECK_DESKTOP_ENTRY || entry.id == LinuxSteam.STEAM_MODE_ENTRY
+        // Steam mode sizes its nested output from the session's screen.
+        val sized = entry.id == LinuxSteam.STEAM_MODE_ENTRY
         val flatpak = if (entry.flatpakId.isNotEmpty() && LinuxSettings.read().optBoolean("flatpakCompatibility")) {
             log(containerId, "Flatpak compatibility mode: no Flatpak sandbox or portal permission enforcement")
             LinuxFlatpak.plan(LinuxPaths.rootfs(containerId), entry.flatpakId)
@@ -762,7 +795,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val gpuMode = LinuxSettings.gpuMode(containerId)
         val waylandGpu = gpuMode == LinuxGpuMode.TURNIP && graphics?.turnipWaylandInstalled(containerId) == true
         // A GPU window (gamescope): the X11 program's frames stay on the GPU. An X11 retry leaves it.
-        val gpuWindow = mode.optString("display") == LinuxGpuWindow.MODE && !x11 && !softwareRendering && !droidDeck
+        val gpuWindow = mode.optString("display") == LinuxGpuWindow.MODE && !x11 && !softwareRendering
         if (gpuWindow) LinuxGpuWindow.prepare(LinuxPaths.rootfs(containerId), waylandGpu, session.wayland?.running == true)
         val program = (if (softwareRendering) "env DEXTOP_SOFTWARE_RENDERING=1 LIBGL_ALWAYS_SOFTWARE=1 GALLIUM_DRIVER=llvmpipe "
             else if (glOverride.isNotEmpty()) "env $glOverride" else "") +
@@ -777,20 +810,23 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         log(containerId, "launch ${entry.id}: $command")
         val backend = readConfig(containerId)?.optJSONObject("setupOptions")?.optString("displayBackend", "") ?: ""
-        check(backend != "wayland" || session.wayland?.running == true) { "The selected Wayland compositor is unavailable; restart the Linux application session" }
+        if (backend == "wayland" && session.wayland?.running != true) {
+            useXvfb(containerId)
+            throw LinuxWaylandUnavailable()
+        }
         // Turnip's X11 package does not include the Wayland EGL/WSI driver.
         // Its distro EGL can still create windows and submit empty buffers, so
         // process/connection success cannot trigger the existing failure retry.
         // Keep GPU rendering through Xwayland until the Wayland driver is installed.
-        val toolkitAvailable = droidDeck || gpuMode != LinuxGpuMode.TURNIP || waylandGpu
+        val toolkitAvailable = gpuMode != LinuxGpuMode.TURNIP || waylandGpu
         val display = mode.optString("display")
         val wayland = gpuWindow || !x11 && display != "x11" && session.wayland?.running == true && (display == "wayland" ||
-            entry.displayBackend != "x11" && toolkitAvailable && (droidDeck || backend == "wayland" || backend.isEmpty() && waylandGpu))
+            entry.displayBackend != "x11" && toolkitAvailable && (backend == "wayland" || backend.isEmpty() && waylandGpu))
         if (!toolkitAvailable && !x11) log(containerId, "${entry.name}: using X11 + Zink; native Wayland GPU driver is not installed")
         val appLog = "app-${entry.id.replace(Regex("[^A-Za-z0-9._-]"), "_")}.log"
         val macos = if (entry.runtime == "macos") macosLifecycle.prepare(File(LinuxPaths.container(containerId), "runtime/macos-control")) else null
         val process = try { requireProot().guest(containerId, LinuxCatalog.launchScript(session.display, command, wayland = wayland,
-            waylandGpu = droidDeck || waylandGpu, appLog = appLog, androidWindows = !framed, uiScale = LinuxSettings.uiScale(containerId, entry.id)),
+            waylandGpu = waylandGpu, appLog = appLog, androidWindows = !framed, uiScale = LinuxSettings.uiScale(containerId, entry.id)),
             extraBinds = flatpak?.binds.orEmpty() + macos?.binds.orEmpty(),
             extraEnvironment = flatpak?.environment.orEmpty() + macos?.environment.orEmpty())
             .redirectErrorStream(true).start()
@@ -817,7 +853,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 val displayFailure = code != 0 && android.os.SystemClock.elapsedRealtime() - started < GPU_CRASH_WINDOW_MS &&
                     listOf("could not connect to display", "failed to connect to wayland", "could not load the qt platform plugin")
                         .any { output.contains(it, ignoreCase = true) }
-                if (current && wayland && !droidDeck && !chromiumGpuFailure && (gpuCrash || displayFailure)) {
+                if (current && wayland && !chromiumGpuFailure && (gpuCrash || displayFailure)) {
                     log(containerId, "${entry.name} failed on Wayland (exit $code); retrying on X11 with GPU rendering preserved")
                     status("launch-status") { put("line", "Wayland startup failed; retrying on X11") }
                     runCatching { launchApp(containerId, desktopId, software = software, x11 = true, framed = framed) }
@@ -928,17 +964,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         LinuxSessionCompatibility.stage(LinuxPaths.rootfs(containerId), requireProot().nativeLibraryDir, LinuxProot.socketNamespace(containerId))
         listenForAccountPassword(containerId)
         val distro = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)
-        // DroidDeck's runtime is used as DroidDeck ships it: Turnip on KGSL, no VirGL,
-        // and pacman never runs (its own builds are not in pacman's database).
-        if (distro?.id == LinuxCatalog.DROIDDECK_RUNTIME) {
-            audio?.ensure(containerId, distro.family, install = false)
-            return
-        }
         if (distro?.family == LinuxPackageFamily.APT && LinuxSettings.gpuMode(containerId) == LinuxGpuMode.TURNIP &&
             graphics?.turnipInstalled(containerId) == true) {
             LinuxGpuRuntime.prepare(LinuxPaths.rootfs(containerId)) { script ->
                 val result = requireProot().run(requireProot().guest(containerId, script), timeoutSeconds = 60)
-                check(result.exitCode == 0) { "GPU runtime setup failed: ${result.output.takeLast(2000)}" }
+                check(result.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiGPURuntimeSetupFailed0"), result.output.takeLast(2000)) }
                 if (result.output.isNotBlank()) log(containerId, result.output)
             }
         }
@@ -946,7 +976,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             .onFailure { log(containerId, "Steam launcher setup failed: ${it.message}") }
         val hardware = graphics?.ensure(containerId) { line -> log(containerId, line) } == true
         check(hardware || LinuxSettings.gpuMode(containerId) == LinuxGpuMode.SOFTWARE) {
-            "The selected GPU renderer is unavailable. Repair the graphics runtime or select another hardware renderer in Linux settings."
+            moe.n4tsu.dextop.localText("uiTheSelectedGPURendererIsUnavailableRepairTheGraphicsRuntimeOrSelectAnotherHardwareRendererInLinuxSet")
         }
         prepareAndroid(containerId)
         ensureFakeroot(containerId, distro?.family)
@@ -1033,7 +1063,6 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     /** Whether [containerId] can run the device test: installed, with the graphics tools. */
     private fun probeReady(containerId: String) = readConfig(containerId)?.optString("state") == "installed" &&
-        readConfig(containerId)?.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME &&
         File(LinuxPaths.rootfs(containerId), "usr/bin/glxgears").isFile
 
     /** The device test, by itself, when no renderer was chosen and this device has no current result. */
@@ -1086,7 +1115,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     private fun runGpuProbe(containerId: String): JSONObject {
-        val graphics = checkNotNull(graphics) { "Linux graphics are not initialized" }
+        val graphics = checkNotNull(graphics) { moe.n4tsu.dextop.localText("uiLinuxGraphicsAreNotInitialized") }
         val candidate = graphics.candidate(containerId)
             ?: return JSONObject().put("version", LinuxGpuProbe.VERSION).put("at", System.currentTimeMillis())
                 .put("state", "unavailable").put("recommended", LinuxGpuMode.SOFTWARE.id)
@@ -1094,10 +1123,10 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val proot = requireProot()
         if (candidate == LinuxGpuMode.TURNIP) LinuxGpuRuntime.prepare(LinuxPaths.rootfs(containerId)) { script ->
             val result = proot.run(proot.guest(containerId, script), timeoutSeconds = 60)
-            check(result.exitCode == 0) { "GPU runtime setup failed: ${result.output.takeLast(2000)}" }
+            check(result.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiGPURuntimeSetupFailed0"), result.output.takeLast(2000)) }
         }
         if (candidate == LinuxGpuMode.HARDWARE) check(graphics.ensureFor(containerId) { line -> log(containerId, line) }) {
-            "The VirGL renderer did not start"
+            moe.n4tsu.dextop.localText("uiTheVirGLRendererDidNotStart")
         }
         val variables = (graphics.environmentFor(containerId, LinuxGpuMode.TURNIP) +
             graphics.environmentFor(containerId, LinuxGpuMode.HARDWARE)).map { it.substringBefore('=') }
@@ -1141,7 +1170,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     @Synchronized
     private fun startFileJob(type: String, container: String, work: (JSONObject) -> Any?) {
-        check(fileJob?.let { synchronized(it) { it.optString("state") } } != "running") { "Another backup or AppImage job is running" }
+        check(fileJob?.let { synchronized(it) { it.optString("state") } } != "running") { moe.n4tsu.dextop.localText("uiAnotherBackupOrAppImageJobIsRunning") }
         val job = JSONObject().put("type", type).put("container", container).put("state", "running").put("bytes", 0L)
         fileJob = job
         notifyChanged()
@@ -1167,8 +1196,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun createSnapshot(containerId: String) {
-        check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
-        check(!containerBusy(containerId)) { "Stop the container's sessions and applications first" }
+        check(readConfig(containerId)?.optString("state") == "installed") { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
+        check(!containerBusy(containerId)) { moe.n4tsu.dextop.localText("uiStopTheContainerSSessionsAndApplicationsFirst") }
         startFileJob("snapshot", containerId) { job ->
             val file = LinuxBackups.create(containerId, bytes(job))
             log(containerId, "Snapshot saved: ${file.name} (${file.length() / 1_048_576} MiB)")
@@ -1191,7 +1220,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         log(id, "Restored from a backup of ${config.optString("restoredFrom")}")
         runCatching {
             LinuxSessionCompatibility.install(LinuxPaths.rootfs(id), requireProot().nativeLibraryDir, LinuxProot.socketNamespace(id),
-                xvfb = config.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME)
+                xvfb = true)
         }.onFailure { log(id, "Linux compatibility setup failed: ${it.message}") }
         notifyChanged()
         return id
@@ -1199,19 +1228,19 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     override fun restoreSnapshot(file: String) {
         val snapshot = LinuxBackups.file(file)
-        check(snapshot.isFile) { "Snapshot $file does not exist" }
+        check(snapshot.isFile) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiSnapshot0DoesNotExist"), file) }
         startFileJob("restore", "") { job -> restoreAs(job) { snapshot.inputStream() } }
     }
 
     @Synchronized
     override fun deleteSnapshot(file: String): Boolean {
-        check(fileJob?.let { synchronized(it) { it.optString("state") } } != "running") { "A backup job is running" }
+        check(fileJob?.let { synchronized(it) { it.optString("state") } } != "running") { moe.n4tsu.dextop.localText("uiABackupJobIsRunning") }
         return LinuxBackups.file(file).delete().also { notifyChanged() }
     }
 
     override fun exportSnapshot(file: String, output: android.os.ParcelFileDescriptor) {
         val snapshot = LinuxBackups.file(file)
-        if (!snapshot.isFile) { output.close(); error("Snapshot $file does not exist") }
+        if (!snapshot.isFile) { output.close(); error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiSnapshot0DoesNotExist"), file)) }
         startFileJob("export", file.substringBefore('-')) { job ->
             val progress = bytes(job)
             android.os.ParcelFileDescriptor.AutoCloseOutputStream(output).use { stream ->
@@ -1248,7 +1277,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun installAppImage(containerId: String, file: android.os.ParcelFileDescriptor, fileName: String): String {
-        if (readConfig(containerId)?.optString("state") != "installed") { file.close(); error("Container $containerId is not installed") }
+        if (readConfig(containerId)?.optString("state") != "installed") { file.close(); error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId)) }
         val slug = LinuxAppImage.slug(fileName)
         startFileJob("appimage", containerId) { job ->
             val root = LinuxPaths.rootfs(containerId)
@@ -1275,14 +1304,14 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                     }
                 }
                 val image = LinuxAppImage.inspect(staged)
-                check(staged.renameTo(hostFile)) { "Cannot save the AppImage" }
+                check(staged.renameTo(hostFile)) { moe.n4tsu.dextop.localText("uiCannotSaveTheAppImage") }
                 hostFile.setReadable(true, false); hostFile.setExecutable(true, false)
                 val proot = requireProot()
                 log(containerId, "AppImage $slug: unpacking (image at byte ${image.offset})")
                 val tools = proot.run(proot.guest(containerId, LinuxAppImage.TOOLS_SCRIPT, fakeRoot = true), 900) { log(containerId, it) }
-                check(tools.exitCode == 0) { "squashfs-tools could not be installed (exit ${tools.exitCode})" }
+                check(tools.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiSquashfsToolsCouldNotBeInstalledExit0"), tools.exitCode) }
                 val unpacked = proot.run(proot.guest(containerId, LinuxAppImage.unpackScript(guestFile, image.offset, guestDir)), 900) { log(containerId, it) }
-                check(unpacked.exitCode == 0) { "The AppImage could not be unpacked (exit ${unpacked.exitCode}): ${unpacked.output.takeLast(500)}" }
+                check(unpacked.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiTheAppImageCouldNotBeUnpackedExit01"), unpacked.exitCode, unpacked.output.takeLast(500)) }
                 val (entryName, contents, name) = LinuxAppImage.desktopEntry(root, guestDir, guestFile, slug)
                 val applications = File(root, home.removePrefix("/") + "/.local/share/applications")
                 applications.mkdirs()
@@ -1299,13 +1328,13 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun removeAppImage(containerId: String, desktopId: String): Boolean {
-        require(desktopId.startsWith(LinuxAppImage.ENTRY_PREFIX) && desktopId.endsWith(".desktop") && '/' !in desktopId) { "Not an AppImage entry" }
+        require(desktopId.startsWith(LinuxAppImage.ENTRY_PREFIX) && desktopId.endsWith(".desktop") && '/' !in desktopId) { moe.n4tsu.dextop.localText("uiNotAnAppImageEntry") }
         val root = LinuxPaths.rootfs(containerId)
         val home = LinuxUser.home(root)
         val entry = File(root, home.removePrefix("/") + "/.local/share/applications/$desktopId")
         if (!entry.isFile) return false
         val slug = desktopId.removePrefix(LinuxAppImage.ENTRY_PREFIX).removeSuffix(".desktop")
-        require(slug == LinuxAppImage.slug(slug)) { "Invalid AppImage entry" }
+        require(slug == LinuxAppImage.slug(slug)) { moe.n4tsu.dextop.localText("uiInvalidAppImageEntry") }
         val applications = File(root, home.removePrefix("/") + "/Applications")
         LinuxRootfsArchive.deleteTree(File(applications, ".$slug"))
         File(applications, "$slug.AppImage").delete()
@@ -1317,7 +1346,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun containerUsage(containerId: String) {
-        check(readConfig(containerId) != null) { "Unknown container $containerId" }
+        check(readConfig(containerId) != null) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownContainer0"), containerId) }
         startFileJob("usage", containerId) { job ->
             val root = LinuxPaths.rootfs(containerId)
             LinuxStorage.usage(root, LinuxUser.home(root), bytes(job))
@@ -1327,14 +1356,14 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun storageBreakdown(containerId: String, category: String, path: String, offset: Int): String {
-        check(readConfig(containerId)?.optString("state") == "installed") { "Container is not installed" }
+        check(readConfig(containerId)?.optString("state") == "installed") { moe.n4tsu.dextop.localText("uiContainerIsNotInstalled") }
         val root = LinuxPaths.rootfs(containerId)
         return LinuxStorage.breakdown(root, LinuxUser.home(root), category, path, offset).toString()
     }
 
     override fun appUninstallTarget(containerId: String, desktopId: String): String {
         val root = LinuxPaths.rootfs(containerId)
-        val entry = LinuxDesktopEntries.find(root, desktopId) ?: error("Application was not found")
+        val entry = LinuxDesktopEntries.find(root, desktopId) ?: error(moe.n4tsu.dextop.localText("uiApplicationWasNotFound"))
         if (entry.flatpakId.isNotEmpty()) return JSONObject().put("source", "flathub").put("package", entry.flatpakId).toString()
         val family = LinuxCatalog.find(readConfig(containerId)?.optString("distro").orEmpty())?.family
         val paths = listOf("/usr/share/applications/$desktopId", "/usr/local/share/applications/$desktopId",
@@ -1342,12 +1371,12 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val script = when (family) {
             LinuxPackageFamily.APT -> "dpkg-query -S -- $paths 2>/dev/null | head -n 1"
             LinuxPackageFamily.PACMAN -> "pacman -Qoq -- $paths 2>/dev/null | head -n 1"
-            else -> error("This container's package manager is not supported")
+            else -> error(moe.n4tsu.dextop.localText("uiThisContainerSPackageManagerIsNotSupported"))
         }
         val result = JSONObject(runCommand(containerId, script, 30))
         val output = result.optString("output").trim().lineSequence().firstOrNull().orEmpty()
         val pkg = if (family == LinuxPackageFamily.APT) output.substringBefore(": ").substringBefore(',') else output
-        require(pkg.matches(Regex("[A-Za-z0-9][A-Za-z0-9+._:-]*"))) { "No installed package owns this application; it may have been added manually" }
+        require(pkg.matches(Regex("[A-Za-z0-9][A-Za-z0-9+._:-]*"))) { moe.n4tsu.dextop.localText("uiNoInstalledPackageOwnsThisApplicationItMayHaveBeenAddedManually") }
         val records = File(root, "etc/dextop-deb-get/installed")
         val debget = records.isFile && records.useLines { lines -> lines.any { it.substringBefore(' ') == pkg } }
         return JSONObject().put("source", if (family == LinuxPackageFamily.PACMAN) "pacman" else if (debget) "deb-get" else "apt")
@@ -1355,9 +1384,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun cleanContainer(containerId: String) {
-        check(readConfig(containerId)?.optString("state") == "installed") { "Container $containerId is not installed" }
+        check(readConfig(containerId)?.optString("state") == "installed") { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
         // /tmp holds the sessions' sockets and display files: only while nothing runs.
-        check(!containerBusy(containerId)) { "Stop the container's sessions and applications first" }
+        check(!containerBusy(containerId)) { moe.n4tsu.dextop.localText("uiStopTheContainerSSessionsAndApplicationsFirst") }
         startFileJob("clean", containerId) { _ ->
             val root = LinuxPaths.rootfs(containerId)
             val before = LinuxStorage.usage(root, LinuxUser.home(root)).optLong("total")
@@ -1435,9 +1464,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val display = application?.display ?: desktop?.display ?: return
         if ((application?.displayConfiguration ?: desktop?.displayConfiguration) == config) return
         runCatching {
-            if (application?.wayland != null && readConfig(containerId)?.optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME) {
-                application.updateDisplay(config)
-            } else if (application?.usesXwayland == true || desktop?.usesXwayland == true) {
+            if (application?.usesXwayland == true || desktop?.usesXwayland == true) {
                 val previousDpi = (application?.displayConfiguration ?: desktop?.displayConfiguration)?.dpi
                 application?.updateDisplay(config); desktop?.updateDisplay(config)
                 // Xwayland takes its size from the compositor, but its DPI (the desktop's scale on
@@ -1452,12 +1479,12 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 val result = requireProot().run(requireProot().guest(containerId, LinuxCatalog.updateDisplayScript(display, config, apps)), 15)
                 android.util.Log.i("DextopLaunch", "updateDisplay script ${config.width}x${config.height}@${config.refreshMilliHz} " +
                     "took ${android.os.SystemClock.uptimeMillis() - began}ms")
-                check(result.exitCode == 0) { "Linux display update failed: ${result.output.takeLast(2000)}" }
+                check(result.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLinuxDisplayUpdateFailed0"), result.output.takeLast(2000)) }
                 application?.updateDisplay(config); desktop?.updateDisplay(config)
             }
             callback(containerId) { it.onWindowEvent(containerId, JSONObject().put("type", "display-config").put("apps", apps)
                 .put("w", config.width).put("h", config.height).put("refreshMilliHz", config.refreshMilliHz).toString()) }
-        }.onFailure { log(containerId, "Linux display update failed: ${it.message}") }
+        }.onFailure { log(containerId, moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLinuxDisplayUpdateFailed0"), it.message)) }
     }
 
     override fun relativePointer(containerId: String, xid: Int, action: Int, dx: Int, dy: Int, button: Int) {
@@ -1486,7 +1513,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     @Synchronized
     override fun setKeyringSecret(containerId: String, secret: String, persistent: Boolean) {
-        check(!closed) { "Linux service is closed" }
+        check(!closed) { moe.n4tsu.dextop.localText("uiLinuxServiceIsClosed") }
         LinuxPaths.container(containerId)
         if (secret.isEmpty()) keyringSecrets.remove(containerId) else {
             keyringSecrets[containerId] = LinuxSealedSecret.seal(secret.toByteArray(Charsets.UTF_8)) to persistent
@@ -1605,7 +1632,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     override fun acknowledgeAccountPassword(containerId: String, password: String) {
-        check(android.os.Binder.getCallingUid() == audioClientUid) { "Password caller is not the connected application" }
+        check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiPasswordCallerIsNotTheConnectedApplication") }
         val current = pendingAccountPasswords[containerId] ?: return
         val matches = current.useBytes { saved ->
             val received = password.toByteArray(Charsets.UTF_8)
@@ -1666,58 +1693,102 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     // region install pipeline
     private fun runInstall(id: String, distro: LinuxDistro) {
-        distro.image?.let { image ->
-            runCatching {
-                progress(id, "prepare", -1, image.url.substringAfterLast('/'))
-                val tarball = File(LinuxPaths.container(id), image.url.substringAfterLast('/'))
-                val actual = fetch(id, image, tarball)
-                progress(id, "verify", -1, actual.take(16))
-                check(actual.equals(image.sha256, ignoreCase = true)) { "SHA-256 mismatch: expected ${image.sha256}, got $actual" }
-                log(id, "SHA-256 verified $actual (${image.url})")
-                extract(id, tarball)
-                tarball.delete()
-                if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) {
-                    // DroidDeck's markers: droiddeck-session reports /.version, the desktop package its tag.
-                    File(LinuxPaths.rootfs(id), ".version").writeText(image.release())
-                    installOverlay(id, LinuxCatalog.DROIDDECK_DESKTOP)
-                    File(LinuxPaths.rootfs(id), ".droiddeck-pkg-desktop-kde").writeText(LinuxCatalog.DROIDDECK_DESKTOP.release())
-                    stageDroidDeckFiles(id)
-                }
-                readConfig(id)?.let { writeConfig(id, it.put("imageReady", true)) }
-                configure(id, distro)
-            }.onSuccess { finish(id) }.onFailure { fail(id, it) }
-            return
-        }
         runCatching {
             progress(id, "prepare", -1, "${distro.imageDistro}/${distro.imageRelease}")
-            val build = latestBuild(distro)
-            log(id, "image ${distro.imageDistro}/${distro.imageRelease}/${LinuxCatalog.ARCHITECTURE} build $build")
-            val base = "${LinuxCatalog.IMAGE_SERVER}/images/${distro.imageDistro}/${distro.imageRelease}/" +
-                "${LinuxCatalog.ARCHITECTURE}/${LinuxCatalog.VARIANT}/$build"
-            val expected = text("$base/SHA256SUMS").lineSequence()
-                .map { it.trim().split(Regex("\\s+")) }
-                .firstOrNull { it.size == 2 && it[1].trimStart('*') == "rootfs.tar.xz" }?.get(0)
-                ?: error("rootfs.tar.xz is missing from SHA256SUMS")
-            val tarball = File(LinuxPaths.container(id), "rootfs.tar.xz")
-            val actual = download(id, "$base/rootfs.tar.xz", tarball)
-            progress(id, "verify", -1, actual.take(16))
-            check(actual.equals(expected, ignoreCase = true)) { "SHA-256 mismatch: expected $expected, got $actual" }
-            log(id, "SHA-256 verified $actual")
+            val prebuilt = prebuiltImage(id, distro)
+            val tarball = if (prebuilt != null) downloadPrebuilt(id, prebuilt) else downloadLinuxContainers(id, distro)
             extract(id, tarball)
             readConfig(id)?.let { writeConfig(id, it.put("imageReady", true)) }
             tarball.delete()
+            if (prebuilt != null) check(File(LinuxPaths.rootfs(id), LinuxImageManifest.MARKER).isFile) { "Prebuilt image has no marker" }
             configure(id, distro)
         }.onSuccess { finish(id) }.onFailure { fail(id, it) }
     }
 
+    /**
+     * The signed prebuilt Debian image. A missing or invalid manifest fails the installation; only
+     * `setprop debug.dextop.linux_image linuxcontainers` selects the full setup, for debugging.
+     */
+    private fun prebuiltImage(id: String, distro: LinuxDistro): LinuxPrebuiltImage? {
+        if (distro.id != "debian") return null
+        if (LinuxImageManifest.linuxContainersForced()) {
+            log(id, "prebuilt image disabled by debug.dextop.linux_image")
+            return null
+        }
+        return LinuxImageManifest.parse(text(LinuxImageManifest.URL), protocol = PROTOCOL_VERSION)
+    }
+
+    private fun downloadPrebuilt(id: String, image: LinuxPrebuiltImage): File {
+        log(id, "prebuilt image ${image.version}")
+        // Named by content and shared between installations, so a later attempt continues this one.
+        val cache = File(LinuxPaths.base, "image-cache").apply { mkdirs() }
+        val part = File(cache, "${image.sha256}.part")
+        cache.listFiles()?.filter { it != part }?.forEach { it.delete() }
+        var lastPercent = -1
+        LinuxResumableDownload.download(
+            part, image.size,
+            connect = { offset -> connect(image.url).apply { if (offset > 0) setRequestProperty("Range", "bytes=$offset-") } },
+            checkCancelled = { checkCancelled(id) },
+            onProgress = { received ->
+                val percent = (received * 100 / image.size).toInt()
+                if (percent != lastPercent) {
+                    lastPercent = percent
+                    progress(id, "download", percent, "$received/${image.size}")
+                }
+            },
+        )
+        progress(id, "verify", -1, "")
+        val actual = sha256(id, part)
+        if (!actual.equals(image.sha256, ignoreCase = true)) {
+            part.delete()
+            error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiSHA256MismatchExpected0Got1"), image.sha256, actual))
+        }
+        log(id, "SHA-256 verified $actual")
+        val tarball = File(LinuxPaths.container(id), "rootfs.tar.zst")
+        check(part.renameTo(tarball)) { "Cannot move the downloaded image" }
+        return tarball
+    }
+
+    private fun sha256(id: String, file: File): String {
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(BUFFER)
+            while (true) {
+                checkCancelled(id)
+                val read = input.read(buffer)
+                if (read < 0) break
+                digest.update(buffer, 0, read)
+            }
+        }
+        return digest.digest().joinToString("") { "%02x".format(it) }
+    }
+
+    /** The original path, kept for debugging: stock image plus the complete setup on the device. */
+    private fun downloadLinuxContainers(id: String, distro: LinuxDistro): File {
+        val build = latestBuild(distro)
+        log(id, "image ${distro.imageDistro}/${distro.imageRelease}/${LinuxCatalog.ARCHITECTURE} build $build")
+        val base = "${LinuxCatalog.IMAGE_SERVER}/images/${distro.imageDistro}/${distro.imageRelease}/" +
+            "${LinuxCatalog.ARCHITECTURE}/${LinuxCatalog.VARIANT}/$build"
+        val expected = text("$base/SHA256SUMS").lineSequence()
+            .map { it.trim().split(Regex("\\s+")) }
+            .firstOrNull { it.size == 2 && it[1].trimStart('*') == "rootfs.tar.xz" }?.get(0)
+            ?: error(moe.n4tsu.dextop.localText("uiRootfsTarXzIsMissingFromSHA256SUMS"))
+        val tarball = File(LinuxPaths.container(id), "rootfs.tar.xz")
+        val actual = download(id, "$base/rootfs.tar.xz", tarball)
+        progress(id, "verify", -1, actual.take(16))
+        check(actual.equals(expected, ignoreCase = true)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiSHA256MismatchExpected0Got1"), expected, actual) }
+        log(id, "SHA-256 verified $actual")
+        return tarball
+    }
+
     private fun checkCancelled(id: String) {
-        if (id in cancelled) throw InterruptedException("Installation cancelled")
+        if (id in cancelled) throw InterruptedException(moe.n4tsu.dextop.localText("uiInstallationCancelled"))
     }
 
     private fun latestBuild(distro: LinuxDistro): String {
         val prefix = "${distro.imageDistro};${distro.imageRelease};${LinuxCatalog.ARCHITECTURE};${LinuxCatalog.VARIANT};"
         val line = text(LinuxCatalog.IMAGE_INDEX).lineSequence().firstOrNull { it.startsWith(prefix) }
-            ?: error("No ${LinuxCatalog.ARCHITECTURE} image for ${distro.imageDistro} ${distro.imageRelease}")
+            ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiNo0ImageFor12"), LinuxCatalog.ARCHITECTURE, distro.imageDistro, distro.imageRelease))
         return line.split(';')[4]
     }
 
@@ -1730,7 +1801,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     private fun text(url: String): String = connect(url).run {
         try {
-            check(responseCode == 200) { "HTTP $responseCode for $url" }
+            check(responseCode == 200) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiHTTP0For1"), responseCode, url) }
             inputStream.bufferedReader().readText()
         } finally {
             disconnect()
@@ -1738,37 +1809,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
 
     /** Downloads [url] to [target] and returns its SHA-256. */
-    /**
-     * Like DroidDeck's installer, an archive left by an earlier attempt is kept
-     * and reused when it is complete and matches, instead of downloading it again.
-     */
-    private fun fetch(id: String, image: LinuxImage, target: File): String {
-        if (target.isFile && target.length() == image.size) {
-            progress(id, "verify", -1, target.name)
-            val digest = MessageDigest.getInstance("SHA-256")
-            target.inputStream().use { input ->
-                val buffer = ByteArray(BUFFER)
-                while (true) {
-                    checkCancelled(id)
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    digest.update(buffer, 0, read)
-                }
-            }
-            val actual = digest.digest().joinToString("") { "%02x".format(it) }
-            if (actual.equals(image.sha256, ignoreCase = true)) {
-                log(id, "reusing the downloaded ${target.name}")
-                return actual
-            }
-        }
-        return download(id, image.url, target)
-    }
-
     private fun download(id: String, url: String, target: File): String {
         val digest = MessageDigest.getInstance("SHA-256")
         val connection = connect(url)
         try {
-            check(connection.responseCode == 200) { "HTTP ${connection.responseCode} for $url" }
+            check(connection.responseCode == 200) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiHTTP0For1"), connection.responseCode, url) }
             val total = connection.contentLengthLong
             var received = 0L
             var lastPercent = -1
@@ -1804,11 +1849,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         try {
             unpack(id, tarball, staging)
             check(File(staging, "bin/sh").exists() || File(staging, "usr/bin/sh").exists()) {
-                "Root filesystem extraction completed without a shell"
+                moe.n4tsu.dextop.localText("uiRootFilesystemExtractionCompletedWithoutAShell")
             }
             checkCancelled(id)
             LinuxRootfsArchive.deleteTree(rootfs)
-            check(staging.renameTo(rootfs)) { "Cannot commit extracted root filesystem" }
+            check(staging.renameTo(rootfs)) { moe.n4tsu.dextop.localText("uiCannotCommitExtractedRootFilesystem") }
             File(rootfs, "dev").mkdirs()
             log(id, "extracted (in-process tar; no traced Android executable)")
         } catch (error: Exception) {
@@ -1824,7 +1869,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         progress(id, "extract", -1, "")
         val decompressor = if (tarball.name.endsWith(".zst")) {
             val tool = File(requireProot().nativeLibraryDir, "libzstd_cat.so")
-            check(tool.canExecute()) { "zstd decompressor is not packaged" }
+            check(tool.canExecute()) { moe.n4tsu.dextop.localText("uiZstdDecompressorIsNotPackaged") }
             ProcessBuilder(tool.absolutePath).redirectInput(tarball).redirectError(ProcessBuilder.Redirect.INHERIT).start()
         } else null
         try {
@@ -1836,81 +1881,48 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                     lastMiB = mib
                 }
             }
-            decompressor?.let { check(it.waitFor() == 0) { "zstd decompression failed (exit ${it.exitValue()})" } }
+            decompressor?.let { check(it.waitFor() == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiZstdDecompressionFailedExit0"), it.exitValue()) } }
         } finally {
             decompressor?.destroy()
         }
     }
 
-    /** DroidDeck stages its session files before every session; so does Dextop. */
-    private fun stageDroidDeckFiles(id: String) {
-        LinuxDroidDeckFiles.stage(LinuxPaths.rootfs(id), requireProot().nativeLibraryDir) { log(id, it) }
-        LinuxSteam.writeDroidDeckDesktop(LinuxPaths.rootfs(id))
-    }
-
-    /** Downloads [image], checks it and extracts it over [id]'s root filesystem (DroidDeck's desktop package). */
-    private fun installOverlay(id: String, image: LinuxImage) {
-        val name = image.url.substringAfterLast('/')
-        progress(id, "prepare", -1, name)
-        val tarball = File(LinuxPaths.container(id), name)
-        try {
-            val actual = fetch(id, image, tarball)
-            progress(id, "verify", -1, actual.take(16))
-            check(actual.equals(image.sha256, ignoreCase = true)) { "SHA-256 mismatch: expected ${image.sha256}, got $actual" }
-            log(id, "SHA-256 verified $actual (${image.url})")
-            val staging = File(LinuxPaths.container(id), "overlay-extract")
-            LinuxRootfsArchive.deleteTree(staging)
-            try {
-                unpack(id, tarball, staging)
-                LinuxRootfsArchive.merge(staging, LinuxPaths.rootfs(id))
-                log(id, "installed $name over the root filesystem")
-            } finally {
-                LinuxRootfsArchive.deleteTree(staging)
-            }
-            tarball.delete()
-        } catch (error: Exception) {
-            // A complete, matching download is reused by the next attempt.
-            if (tarball.length() != image.size) tarball.delete()
-            throw error
-        }
-    }
-
-    private fun configure(id: String, distro: LinuxDistro) {
+    private fun configure(id: String, distro: LinuxDistro, repair: Boolean = false) {
         val runner = requireProot()
+        val prebuilt = !repair && File(LinuxPaths.rootfs(id), LinuxImageManifest.MARKER).isFile
         checkCancelled(id)
         val options = LinuxSetupOptions.fromJson(readConfig(id)?.optJSONObject("setupOptions")).validate(distro)
         progress(id, "configure", -1, "")
         prepareAndroid(id)
-        val runtime = distro.id == LinuxCatalog.DROIDDECK_RUNTIME
-        val configureScript = if (runtime) LinuxCatalog.runtimeConfigureScript() else LinuxCatalog.configureScript(distro.family)
+        val configureScript = if (prebuilt) "true\n" else LinuxCatalog.configureScript(distro.family)
         val configured = runner.run(runner.guest(id, configureScript, fakeRoot = true), 600, onProcess = { activeProcesses[id] = it }) { log(id, it) }
-        check(configured.exitCode == 0) { "Configuration failed (exit ${configured.exitCode})" }
+        check(configured.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiConfigurationFailedExit0"), configured.exitCode) }
         checkCancelled(id)
-        // DroidDeck's runtime and desktop package bring everything; pacman would replace its own builds.
-        if (!runtime) provisionPackages(id, distro, runner)
+        provisionPackages(id, distro, runner, baked = prebuilt)
         if (options.username.isNotEmpty() && LinuxUser.name(LinuxPaths.rootfs(id)) == null) {
             progress(id, "account", -1, "")
             LinuxSessionCompatibility.stage(LinuxPaths.rootfs(id), runner.nativeLibraryDir, LinuxProot.socketNamespace(id))
-            val passwordHash = pendingAccountHashes[id] ?: error("Reopen Dextop to unlock the account setup password, then retry setup")
+            val passwordHash = pendingAccountHashes[id] ?: error(moe.n4tsu.dextop.localText("uiReopenDextopToUnlockTheAccountSetupPasswordThenRetrySetup"))
             val uid = android.system.Os.getuid().takeIf { it > 0 } ?: 1000
             val script = "exec python3 /usr/local/libexec/dextop-user-setup ${options.username} $uid"
             val result = runner.run(runner.guest(id, script, fakeRoot = true), 600,
                 onProcess = { activeProcesses[id] = it }, input = passwordHash) { log(id, it) }
-            check(result.exitCode == 0) { "Linux account setup failed (exit ${result.exitCode}); see installation log" }
+            check(result.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLinuxAccountSetupFailedExit0SeeInstallationLog"), result.exitCode) }
             pendingAccountHashes.remove(id)
         }
-        setupSteps(id, distro, options, runner)
+        setupSteps(id, distro, options, runner, prebuilt)
     }
 
-    private fun provisionPackages(id: String, distro: LinuxDistro, runner: LinuxProot) {
+    private fun provisionPackages(id: String, distro: LinuxDistro, runner: LinuxProot, baked: Boolean = false) {
         progress(id, "refresh", -1, "")
         val refreshed = runner.run(runner.guest(id, LinuxCatalog.refreshScript(distro.family), fakeRoot = true), 1_800, onProcess = { activeProcesses[id] = it }) { line ->
             log(id, line)
             // apt: "Get:12 http://deb.debian.org/debian trixie/main arm64 Packages [9,670 kB]".
             if (line.startsWith("Get:") || line.startsWith("Hit:")) progress(id, "refresh", -1, line.substringAfter(' ').take(80))
         }
-        check(refreshed.exitCode == 0) { "Package index refresh failed (exit ${refreshed.exitCode})" }
+        check(refreshed.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiPackageIndexRefreshFailedExit0"), refreshed.exitCode) }
         checkCancelled(id)
+        if (baked) return
         progress(id, "provision", -1, "")
         var total = 0
         var done = 0
@@ -1934,11 +1946,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 }
             }
         }
-        check(provisioned.exitCode == 0) { "Package installation failed (exit ${provisioned.exitCode})" }
+        check(provisioned.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiPackageInstallationFailedExit0"), provisioned.exitCode) }
     }
 
-    private fun setupSteps(id: String, distro: LinuxDistro, options: LinuxSetupOptions, runner: LinuxProot) {
-        for (step in LinuxSetupPlan.steps(distro, options)) {
+    private fun setupSteps(id: String, distro: LinuxDistro, options: LinuxSetupOptions, runner: LinuxProot, prebuilt: Boolean = false) {
+        for (step in LinuxSetupPlan.steps(distro, options).filterNot { prebuilt && it.phase in LinuxImageManifest.BAKED_PHASES }) {
             checkCancelled(id)
             // Steam's FEX preflight needs socket emulation before finish() can run.
             if (step.phase == "steam") {
@@ -1954,14 +1966,14 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                 }
             } finally { activeProcesses.remove(id) }
             checkCancelled(id)
-            check(result.exitCode == 0) { "${step.phase} failed (exit ${result.exitCode}); see installation log" }
+            check(result.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("ui0FailedExit1SeeInstallationLog"), step.phase, result.exitCode) }
         }
     }
 
     private fun finish(id: String) {
         val config = readConfig(id) ?: return
         LinuxSessionCompatibility.install(LinuxPaths.rootfs(id), requireProot().nativeLibraryDir,
-            LinuxProot.socketNamespace(id), xvfb = config.optString("distro") != LinuxCatalog.DROIDDECK_RUNTIME)
+            LinuxProot.socketNamespace(id), xvfb = true)
         activeProcesses.remove(id)
         progress(id, "finish", -1, "")
         val bytes = runCatching {
@@ -1991,7 +2003,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
 
     // region state
     private fun requireProot(): LinuxProot =
-        proot?.takeIf { it.available() } ?: error("proot is unavailable; initialize() was not called")
+        proot?.takeIf { it.available() } ?: error(moe.n4tsu.dextop.localText("uiProotIsUnavailableInitializeWasNotCalled"))
 
     private fun containerIds(): List<String> =
         LinuxPaths.containers.listFiles()?.filter { File(it, "config.json").isFile }?.map { it.name }.orEmpty()
@@ -2004,7 +2016,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val file = LinuxPaths.config(id)
         val temp = File(file.parentFile, "config.json.tmp")
         temp.writeText(config.toString(2))
-        check(temp.renameTo(file)) { "Cannot save Linux container configuration" }
+        check(temp.renameTo(file)) { moe.n4tsu.dextop.localText("uiCannotSaveLinuxContainerConfiguration") }
     }
 
     private fun log(id: String, line: String) {

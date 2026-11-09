@@ -3,7 +3,7 @@ package moe.n4tsu.dextop.linux
 /** Per-process toolkit scale. Never changes Android display density or another app's X server. */
 internal object LinuxUiScale {
     fun validate(percent: Int): Int {
-        require(percent in 50..300) { "Display scale must be between 50% and 300%" }
+        require(percent in 50..300) { moe.n4tsu.dextop.localText("uiDisplayScaleMustBeBetween50And300") }
         return percent
     }
 

@@ -25,14 +25,7 @@ internal enum class LinuxGpuMode(val id: String) {
 /** How a container's windows reach Plasma. */
 internal enum class LinuxWindowManager(val id: String) {
     /** Xvfb with Dextop's X window manager (per-app windows) and IceWM for the desktop. */
-    DEXTOP("dextop"),
-
-    /**
-     * DroidDeck's layout: Dextop's Wayland compositor as the host, KDE
-     * Plasma's KWin nested in it with Xwayland for X applications, and
-     * gamescope windows for GPU applications (droiddeck-desktop, droiddeck-gpu).
-     */
-    DROIDDECK("droiddeck");
+    DEXTOP("dextop");
 
     companion object {
         fun of(id: String?) = entries.firstOrNull { it.id == id } ?: DEXTOP
@@ -95,7 +88,7 @@ internal object LinuxSettings {
         if (update.has("uiScale")) merged.put("uiScale", LinuxUiScale.validate(update.getInt("uiScale")))
         if (update.has("dnsServers")) {
             val servers = update.getJSONArray("dnsServers")
-            require(servers.length() <= 3) { "Use up to three DNS servers" }
+            require(servers.length() <= 3) { moe.n4tsu.dextop.localText("uiUseUpToThreeDNSServers") }
             val values = (0 until servers.length()).map { servers.getString(it) }
             values.forEach(LinuxNetworkLink::validateDnsAddress)
             LinuxNetworkLink.resolver(values)
@@ -165,11 +158,8 @@ internal object LinuxSettings {
         return LinuxNetworkLink.resolver((0 until servers.length()).map { servers.getString(it) })
     }
 
-    /** [id]'s window manager: its own choice, else DroidDeck's for the DroidDeck runtime. */
     fun windowManager(id: String): LinuxWindowManager =
-        readContainer(id).optString("wm").takeIf { it.isNotEmpty() }?.let(LinuxWindowManager::of)
-            ?: if (load(LinuxPaths.config(id)).optString("distro") == LinuxCatalog.DROIDDECK_RUNTIME) LinuxWindowManager.DROIDDECK
-            else LinuxWindowManager.DEXTOP
+        LinuxWindowManager.of(readContainer(id).optString("wm"))
 
     val gpuMode: LinuxGpuMode get() = supported(LinuxGpuMode.of(read().optString("gpu")))
 

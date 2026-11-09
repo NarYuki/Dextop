@@ -4184,7 +4184,7 @@ abstract class AppLocalizations {
   /// No description provided for @multiTouchUpgradeBody.
   ///
   /// In ja, this message translates to:
-  /// **''**
+  /// **'マルチタッチに対応し、ジェスチャー操作が更新されました。'**
   String get multiTouchUpgradeBody;
 
   /// No description provided for @multiTouchUpgradeLandscape.
@@ -5174,7 +5174,7 @@ abstract class AppLocalizations {
   /// No description provided for @linuxRequiresPrivilege.
   ///
   /// In ja, this message translates to:
-  /// **'完全特権方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。'**
+  /// **'特権シェル方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。'**
   String get linuxRequiresPrivilege;
 
   /// No description provided for @linuxEnable.
@@ -5663,12 +5663,6 @@ abstract class AppLocalizations {
   /// **'Valve の Steam（ARM64 版）。初回に Valve から取得します。Proton と FEX は Steam が入れます。'**
   String get linuxSetupSteamDetail;
 
-  /// No description provided for @linuxSetupDroidDeckNote.
-  ///
-  /// In ja, this message translates to:
-  /// **'DroidDeck ランタイムは KDE Plasma デスクトップ（KWin・Xwayland）とフォント・入力メソッドを内蔵しているため、IceWM・言語・入力の手順は省きます。'**
-  String get linuxSetupDroidDeckNote;
-
   /// No description provided for @linuxSetupStorage.
   ///
   /// In ja, this message translates to:
@@ -6136,6 +6130,12 @@ abstract class AppLocalizations {
   /// In ja, this message translates to:
   /// **'Dextop を起動'**
   String get nativeShortcutStartDisplay;
+
+  /// No description provided for @androidDisplayTileLabel.
+  ///
+  /// In ja, this message translates to:
+  /// **'Dextopディスプレイ'**
+  String get androidDisplayTileLabel;
 }
 
 class _AppLocalizationsDelegate

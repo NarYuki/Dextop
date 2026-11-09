@@ -42,14 +42,14 @@ internal class LinuxAudio(
         "PULSE_SERVER=$PULSE_SERVER", "PULSE_COOKIE=${LinuxUser.home(containerId)}/.config/pulse/dextop-cookie")
 
     @Synchronized fun openStream(containerId: String): ParcelFileDescriptor {
-        check(running(containerId)) { "Container audio is not running" }
+        check(running(containerId)) { moe.n4tsu.dextop.localText("uiContainerAudioIsNotRunning") }
         val builder = proot().guest(containerId,
             "exec parec --raw --device=dextop.monitor --format=s16le --rate=48000 --channels=2 " +
                 "--latency-msec=20 --process-time-msec=5 --client-name='Dextop audio output'")
         val pid = IntArray(1)
         val descriptor = LinuxPty.nativeSpawnPipe(builder.command().toTypedArray(),
             builder.environment().map { "${it.key}=${it.value}" }.toTypedArray(), pid)
-        check(descriptor >= 0) { "Cannot open audio pipe: ${-descriptor}" }
+        check(descriptor >= 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotOpenAudioPipe0"), -descriptor) }
         Thread({ LinuxPty.nativeWaitFor(pid[0]) }, "DextopAudioWait").apply { isDaemon = true; start() }
         return ParcelFileDescriptor.adoptFd(descriptor)
     }
@@ -155,7 +155,7 @@ internal class LinuxAudio(
 
     /** Write end of the container's microphone; Android's recording is played into its input sink. */
     @Synchronized fun openMicrophone(containerId: String): ParcelFileDescriptor {
-        check(running(containerId)) { "Container audio is not running" }
+        check(running(containerId)) { moe.n4tsu.dextop.localText("uiContainerAudioIsNotRunning") }
         val process = proot().guest(containerId,
             "exec pacat --playback --raw --device=dextop_mic --format=s16le --rate=48000 --channels=1 " +
                 "--latency-msec=30 --client-name='Android microphone'").redirectErrorStream(true).start()

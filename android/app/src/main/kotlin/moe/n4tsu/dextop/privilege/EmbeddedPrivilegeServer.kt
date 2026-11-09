@@ -14,7 +14,7 @@ import org.lsposed.hiddenapibypass.HiddenApiBypass
 object EmbeddedPrivilegeServer {
     @JvmStatic
     fun main(arguments: Array<String>) {
-        val packageName = arguments.firstOrNull() ?: error("Missing package name")
+        val packageName = arguments.firstOrNull() ?: error(moe.n4tsu.dextop.localText("uiMissingPackageName"))
         arguments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { nativeInputLibrary ->
             System.setProperty("moe.n4tsu.dextop.embedded_input_library", nativeInputLibrary)
         }
@@ -75,7 +75,7 @@ object EmbeddedPrivilegeServer {
             .flatMap { it.methods.asIterable() }
             .first { it.name == "getContentProviderExternal" }
         val acquired = acquire.invoke(activityManager, authority, 0, null, authority)
-            ?: error("Provider unavailable: $authority")
+            ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiProviderUnavailable0"), authority))
         val provider = runCatching {
             acquired.javaClass.getDeclaredField("provider").apply { isAccessible = true }.get(acquired)
         }.getOrElse { acquired }
@@ -127,10 +127,10 @@ object EmbeddedPrivilegeServer {
             data.enforceInterface(EmbeddedPrivilegeProtocol.descriptor)
             return when (code) {
                 EmbeddedPrivilegeProtocol.transactService -> {
-                    val serviceName = data.readString() ?: error("Missing service name")
+                    val serviceName = data.readString() ?: error(moe.n4tsu.dextop.localText("uiMissingServiceName"))
                     val remoteCode = data.readInt()
                     val remoteFlags = data.readInt()
-                    val target = systemService(serviceName) ?: error("Service unavailable: $serviceName")
+                    val target = systemService(serviceName) ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiServiceUnavailable0"), serviceName))
                     val nested = Parcel.obtain()
                     try {
                         nested.appendFrom(data, data.dataPosition(), data.dataAvail())

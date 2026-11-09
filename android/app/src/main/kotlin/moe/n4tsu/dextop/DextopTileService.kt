@@ -27,6 +27,7 @@ class DextopTileService : TileService() {
         val intent = Intent(this, MainActivity::class.java).apply {
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
             action = ACTION_OPEN_LAST_WORKSPACE
+            DextopIntentToken.attach(this@DextopTileService, this)
         }
         if (Build.VERSION.SDK_INT >= 34) {
             startActivityAndCollapse(

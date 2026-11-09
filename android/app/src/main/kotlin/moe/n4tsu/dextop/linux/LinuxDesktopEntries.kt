@@ -37,7 +37,7 @@ internal object LinuxDesktopEntries {
     }
 
     fun find(rootfs: File, id: String): Entry? {
-        require('/' !in id && '\\' !in id) { "Invalid desktop entry id" }
+        require('/' !in id && '\\' !in id) { moe.n4tsu.dextop.localText("uiInvalidDesktopEntryId") }
         for (path in APPLICATION_ROOTS.map { it.replace("/root", LinuxUser.home(rootfs)) }.asReversed()) {
             resolve(rootfs, "$path/$id")?.let { return parse(rootfs, it, "", launcher = false) }
         }

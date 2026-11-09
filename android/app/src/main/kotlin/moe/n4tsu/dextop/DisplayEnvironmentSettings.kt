@@ -58,14 +58,14 @@ class DisplayEnvironmentSettings(private val context: Context) {
         }
         val target = when (id) {
             "autoHideTaskbar" -> "global" to ANDROID_TASKBAR_FORCE_HIDE_KEY
-            else -> error("Unknown display environment setting: $id")
+            else -> error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownDisplayEnvironmentSetting0"), id))
         }
         check(privilegedAccess.isAvailable()) { NativeStrings.text("nativeShizukuUnavailable") }
         val command = privilegedAccess.execute(
             "settings", "put", target.first, target.second, if (enabled) "1" else "0"
         )
         check(command.succeeded) {
-            "Android rejected ${target.second}: ${command.error.ifBlank { command.output }}"
+            moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiAndroidRejected01"), target.second, command.error.ifBlank { command.output })
         }
         OperationLog.i(
             context,

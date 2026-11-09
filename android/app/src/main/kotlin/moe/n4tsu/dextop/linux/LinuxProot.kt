@@ -19,7 +19,7 @@ internal object LinuxPaths {
     }
 
     fun container(id: String): File {
-        require(id.matches(Regex("c[a-zA-Z0-9]+"))) { "Invalid container id" }
+        require(id.matches(Regex("c[a-zA-Z0-9]+"))) { moe.n4tsu.dextop.localText("uiInvalidContainerId") }
         return File(containers, id)
     }
     fun rootfs(id: String) = File(container(id), "rootfs")
@@ -99,11 +99,15 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         addAll(runCatching { LinuxSysStandIns.binds() }.getOrDefault(emptyList()))
         // Android's shared storage and mounted USB volumes; later mounts appear under it too. The
         // Android mode sees the folders picked in Linux settings (LinuxFolders) instead.
-        if (androidMode) {
-            add("${File(LinuxPaths.base, "folders").apply { mkdirs() }.absolutePath}:${LinuxFolders.GUEST}")
-            // With "All files access", the whole storage as well.
-            if (File("/storage").isDirectory && android.os.Environment.isExternalStorageManager()) add("/storage:/media/storage")
-        } else if (File("/storage").isDirectory) add("/storage:/media/android")
+        val wholeStorage = LinuxSharing.allowed(id, "wholeStorage") &&
+            (!androidMode || android.os.Environment.isExternalStorageManager())
+        if (wholeStorage && File("/storage").isDirectory) {
+            add("/storage:/media/storage")
+            // Retain existing shell-mode paths, gated by the same explicit container grant.
+            if (!androidMode) add("/storage:/media/android")
+        } else if (androidMode) {
+            add("${File(LinuxPaths.base, "folders/$id").apply { mkdirs() }.absolutePath}:${LinuxFolders.GUEST}")
+        }
         File(runtime, "empty").apply { mkdirs() }.let {
             add("${it.absolutePath}:/sys/fs/selinux")
             // Android exposes PCI entries whose attributes the shell cannot read.
@@ -114,18 +118,20 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         add("$nativeLibraryDir:$GUEST_LIBRARY_DIR")
         // Security keys relayed as /dev/hidrawN, as udev finds them (LinuxHidSysfs).
         runCatching { LinuxHidSysfs.binds(id) }.getOrNull()?.let(::addAll)
+        // USB storage relayed as /dev/sdX: /sys/block, /sys/dev/block and /proc/partitions (LinuxDiskSysfs).
+        runCatching { LinuxDiskSysfs.binds(id) }.getOrNull()?.let(::addAll)
         // Keep installed distro packages intact. Only this daemon's process
         // loads the loopback policy; Steam and user servers keep normal binds.
         val faked = File(LinuxPaths.rootfs(id), "usr/bin/faked-tcp")
         if (faked.isFile) {
-            check(File(nativeLibraryDir, "libdextop_faked.so").isFile) { "Missing fakeroot loopback policy" }
+            check(File(nativeLibraryDir, "libdextop_faked.so").isFile) { moe.n4tsu.dextop.localText("uiMissingFakerootLoopbackPolicy") }
             val wrapper = File(runtime, "faked-loopback")
             val script = "#!/bin/sh\nexec env LD_PRELOAD=\"$GUEST_LIBRARY_DIR/libdextop_faked.so\${LD_PRELOAD:+:\$LD_PRELOAD}\" /run/dextop-faked-original \"\$@\"\n"
             if (!wrapper.isFile || wrapper.readText() != script) {
                 val staged = File.createTempFile("faked-", ".staged", runtime)
                 try {
                     staged.writeText(script)
-                    check(staged.setExecutable(true, false) && staged.renameTo(wrapper)) { "Cannot stage fakeroot policy" }
+                    check(staged.setExecutable(true, false) && staged.renameTo(wrapper)) { moe.n4tsu.dextop.localText("uiCannotStageFakerootPolicy") }
                 } finally { staged.delete() }
             }
             add("${faked.absolutePath}:/run/dextop-faked-original")

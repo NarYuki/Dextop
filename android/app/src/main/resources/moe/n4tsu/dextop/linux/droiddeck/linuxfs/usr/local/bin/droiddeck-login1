@@ -1,0 +1,243 @@
+#!/usr/bin/python3
+"""Steam's login1 sleep notifications, backed by DroidDeck's session pause.
+
+Android owns device power. Suspend here pauses the guest through SessionService;
+the app's Resume action thaws it and completes PrepareForSleep(false). Steam
+must see this service before startup or it can stay black after its idle timer.
+"""
+import importlib.machinery
+import importlib.util
+import os
+from pathlib import Path
+import re
+import sys
+import uuid
+
+import gi
+
+gi.require_version("Gio", "2.0")
+from gi.repository import Gio, GLib
+
+NAME = "org.freedesktop.login1"
+ROOT = "/org/freedesktop/login1"
+INTERFACE = NAME + ".Manager"
+UPOWER = "org.freedesktop.UPower"
+UPOWER_ROOT = "/org/freedesktop/UPower"
+NATIVE_PREPARE_MS = 1500
+INTROSPECTION = """
+<node>
+  <interface name="org.freedesktop.login1.Manager">
+    <method name="Suspend"><arg type="b" direction="in"/></method>
+    <method name="SuspendWithFlags"><arg type="t" direction="in"/></method>
+    <method name="CanSuspend"><arg type="s" direction="out"/></method>
+    <property name="PreparingForSleep" type="b" access="read"/>
+    <signal name="PrepareForSleep"><arg type="b"/></signal>
+  </interface>
+</node>
+"""
+UPOWER_INTROSPECTION = """
+<node>
+  <interface name="org.freedesktop.UPower">
+    <method name="Suspend"/>
+  </interface>
+</node>
+"""
+
+
+class LoginManager:
+    def __init__(self, bus, directory):
+        self.bus = bus
+        self.directory = Path(directory)
+        self.request = self.directory / "steam-sleep"
+        self.state = self.directory / "steam-sleep-state"
+        self.wake = self.directory / "steam-wake"
+        self.native_request = self.directory / "steam-native-sleep"
+        self.native_ready = self.directory / "steam-native-ready"
+        self.pending = None
+        self.timeout = None
+        self.preparation = None
+        info = Gio.DBusNodeInfo.new_for_xml(INTROSPECTION).interfaces[0]
+        self.registration = bus.register_object(ROOT, info, self.method, self.property, None)
+        upower_info = Gio.DBusNodeInfo.new_for_xml(UPOWER_INTROSPECTION).interfaces[0]
+        self.upower_registration = bus.register_object(UPOWER_ROOT, upower_info, self.method, None, None)
+        self.monitor = Gio.File.new_for_path(str(self.directory)).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+        self.monitor.connect("changed", self.changed)
+
+    def property(self, connection, sender, path, interface, name):
+        if name == "PreparingForSleep":
+            return GLib.Variant("b", self.pending is not None)
+        return None
+
+    def notify(self, sleeping):
+        self.bus.emit_signal(None, ROOT, INTERFACE, "PrepareForSleep", GLib.Variant("(b)", (sleeping,)))
+        self.bus.emit_signal(None, ROOT, "org.freedesktop.DBus.Properties", "PropertiesChanged",
+                             GLib.Variant("(sa{sv}as)", (INTERFACE, {
+                                 "PreparingForSleep": GLib.Variant("b", sleeping),
+                             }, [])))
+        print("== login1: " + ("pausing the session" if sleeping else "session resumed"), flush=True)
+
+    def method(self, connection, sender, path, interface, name, args, reply):
+        if name == "CanSuspend":
+            reply.return_value(GLib.Variant("(s)", ("yes",)))
+        elif name in ("Suspend", "SuspendWithFlags"):
+            if self.pending:
+                reply.return_dbus_error(NAME + ".OperationInProgress", "The session is already pausing")
+                return
+            self.pending = uuid.uuid4().hex
+            self.notify(True)
+            reply.return_value(None)
+            self.bus.flush(None, self.publish_after_flush, self.pending)
+
+    def publish_after_flush(self, connection, result, token):
+        try:
+            connection.flush_finish(result)
+        except GLib.Error as error:
+            print("== login1: cannot complete suspend handshake: " + str(error), file=sys.stderr)
+            self.resume()
+            return
+        if self.pending == token:
+            self.publish(self.request)
+
+    def publish(self, request):
+        self.check_state()
+        if self.pending is None:
+            return False
+        try:
+            staged = request.with_suffix(".tmp")
+            staged.write_text(self.pending + "\n")
+            staged.replace(request)
+            self.timeout = GLib.timeout_add_seconds(5, self.check_ack)
+        except OSError as error:
+            print("== login1: cannot request pause: " + str(error), file=sys.stderr)
+            self.resume()
+        return False
+
+    def prepare_native(self):
+        try:
+            token = self.native_request.read_text().strip()
+            self.native_request.unlink(missing_ok=True)
+        except OSError:
+            return
+        if not re.fullmatch(r"[a-f0-9]{32}", token) or self.pending is not None:
+            return
+        if self.read_state() == token + ":awake":
+            return
+        self.pending = token
+        self.notify(True)
+        self.bus.flush(None, self.prepare_after_flush, token)
+
+    def prepare_after_flush(self, connection, result, token):
+        try:
+            connection.flush_finish(result)
+        except GLib.Error as error:
+            print("== login1: cannot prepare native sleep: " + str(error), file=sys.stderr)
+            self.resume()
+            return
+        self.check_state()
+        if self.pending == token:
+            self.preparation = GLib.timeout_add(NATIVE_PREPARE_MS, self.finish_preparation, token)
+
+    def finish_preparation(self, token):
+        self.preparation = None
+        if self.pending == token:
+            self.publish(self.native_ready)
+        return False
+
+    def changed(self, monitor, file, other, event):
+        if file.get_basename() == self.native_request.name or (other and other.get_basename() == self.native_request.name):
+            self.prepare_native()
+        if file.get_basename() == self.wake.name or (other and other.get_basename() == self.wake.name):
+            if self.wake.exists():
+                self.wake.unlink(missing_ok=True)
+                self.resume(force=True)
+        if file.get_basename() == self.state.name or (other and other.get_basename() == self.state.name):
+            self.check_state()
+
+    def read_state(self):
+        try:
+            return self.state.read_text().strip()
+        except OSError:
+            return ""
+
+    def check_state(self):
+        if self.pending and self.read_state() == self.pending + ":awake":
+            self.resume()
+
+    def check_ack(self):
+        self.timeout = None
+        if self.pending and self.read_state() != self.pending + ":paused":
+            self.request.unlink(missing_ok=True)
+            self.native_ready.unlink(missing_ok=True)
+            self.resume()
+        return False
+
+    def resume(self, force=False):
+        if self.pending is None:
+            if force:
+                self.notify(True)
+                self.bus.flush(None, self.finish_recovery, None)
+            return
+        self.pending = None
+        if self.preparation is not None:
+            GLib.source_remove(self.preparation)
+            self.preparation = None
+        if self.timeout is not None:
+            GLib.source_remove(self.timeout)
+            self.timeout = None
+        self.notify(False)
+
+    def finish_recovery(self, connection, result, _data):
+        try:
+            connection.flush_finish(result)
+        except GLib.Error as error:
+            print("== login1: cannot flush wake recovery: " + str(error), file=sys.stderr)
+        if self.pending is None:
+            self.notify(False)
+
+
+def load_netmanager():
+    path = Path(__file__).resolve().with_name("droiddeck-netmanager")
+    loader = importlib.machinery.SourceFileLoader("droiddeck_netmanager", str(path))
+    spec = importlib.util.spec_from_loader(loader.name, loader)
+    module = importlib.util.module_from_spec(spec)
+    loader.exec_module(module)
+    return module
+
+
+def main():
+    directory = os.environ.get("BL_LAUNCH_DIR")
+    if not directory or not Path(directory).is_dir():
+        sys.exit("droiddeck-login1: no DroidDeck session directory")
+    ready = Path(directory) / "steam-sleep-ready"
+    ready.unlink(missing_ok=True)
+    loop = GLib.MainLoop()
+    manager = []
+    acquired_names = set()
+
+    def connected(bus, name):
+        if not manager:
+            manager.append(LoginManager(bus, directory))
+
+    def acquired(bus, name):
+        acquired_names.add(name)
+        if acquired_names == {NAME, UPOWER}:
+            ready.write_text("ready\n")
+
+    def lost(bus, name):
+        ready.unlink(missing_ok=True)
+        loop.quit()
+
+    owners = [Gio.bus_own_name(Gio.BusType.SYSTEM, name, Gio.BusNameOwnerFlags.NONE, connected, acquired, lost)
+              for name in (NAME, UPOWER)]
+    if "--with-netmanager" in sys.argv[1:]:
+        owners.append(load_netmanager().own(loop))
+    try:
+        loop.run()
+    finally:
+        ready.unlink(missing_ok=True)
+        for owner in owners:
+            Gio.bus_unown_name(owner)
+
+
+if __name__ == "__main__":
+    main()

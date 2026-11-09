@@ -29,6 +29,7 @@ internal object LinuxSessionCompatibility {
         stageScript(root, "dextop-systemd", "usr/local/libexec/dextop-systemd")
         stageScript(root, "dextop-systemctl", "usr/local/libexec/dextop-systemctl")
         stageScript(root, "dextop-journalctl", "usr/local/libexec/dextop-journalctl")
+        stageScript(root, "dextop-ui.json", "usr/local/libexec/dextop-ui.json", executable = false)
         stageScript(root, "dextop-integrate", "usr/local/libexec/dextop-integrate")
         stageScript(root, "dextop-print-backend", "usr/local/libexec/dextop-print-backend")
         stageScript(root, "dextop-user-setup", "usr/local/libexec/dextop-user-setup")
@@ -55,14 +56,14 @@ internal object LinuxSessionCompatibility {
         stageScript(root, "macos/asset_catalog_cache.py", "usr/local/lib/dextop/macos/asset_catalog_cache.py")
         stageScript(root, "macos/runtime_archive.py", "usr/local/lib/dextop/macos/runtime_archive.py")
         val source = File(nativeLibraryDir, LIBRARY)
-        check(source.isFile) { "Linux session compatibility library is not packaged" }
+        check(source.isFile) { moe.n4tsu.dextop.localText("uiLinuxSessionCompatibilityLibraryIsNotPackaged") }
         val target = File(root, GUEST_PRELOAD.removePrefix("/"))
         target.parentFile?.mkdirs()
         val bytes = source.readBytes()
         if (!target.isFile || !target.readBytes().contentEquals(bytes)) {
             val temporary = File(target.parentFile, target.name + ".staged")
             temporary.writeBytes(bytes)
-            check(temporary.setReadable(true, false)) { "Cannot read Linux session compatibility library" }
+            check(temporary.setReadable(true, false)) { moe.n4tsu.dextop.localText("uiCannotReadLinuxSessionCompatibilityLibrary") }
             Files.move(temporary.toPath(), target.toPath(), REPLACE_EXISTING)
         }
         val preload = File(root, "etc/ld.so.preload")
@@ -158,14 +159,14 @@ internal object LinuxSessionCompatibility {
         javaClass.getResourceAsStream("/moe/n4tsu/dextop/linux/$name")?.use { it.readBytes() }
             ?.toString(Charsets.UTF_8)?.replace("\r\n", "\n")?.toByteArray()
 
-    private fun stageScript(root: File, name: String, path: String) {
+    private fun stageScript(root: File, name: String, path: String, executable: Boolean = true) {
         val target = File(root, path)
         val bytes = script(name) ?: return
         if (target.isFile && target.readBytes().contentEquals(bytes)) return
         target.parentFile?.mkdirs()
         val temporary = File(target.parentFile, target.name + ".staged")
         temporary.writeBytes(bytes)
-        temporary.setExecutable(true, false)
+        temporary.setExecutable(executable, false)
         temporary.setReadable(true, false)
         Files.move(temporary.toPath(), target.toPath(), REPLACE_EXISTING)
     }
@@ -179,17 +180,17 @@ internal object LinuxSessionCompatibility {
             target.parentFile?.mkdirs()
             val temporary = File(target.parentFile, target.name + ".staged")
             temporary.writeBytes(bytes)
-            check(temporary.setReadable(true, false)) { "Cannot read Vulkan capability layer" }
+            check(temporary.setReadable(true, false)) { moe.n4tsu.dextop.localText("uiCannotReadVulkanCapabilityLayer") }
             Files.move(temporary.toPath(), target.toPath(), REPLACE_EXISTING)
         }
         val bytes = checkNotNull(javaClass.getResourceAsStream(
             "/moe/n4tsu/dextop/linux/gaming/libdextop_vk_xvfb-aarch64.bin")) {
-            "Xvfb Vulkan capability layer is not packaged"
+            moe.n4tsu.dextop.localText("uiXvfbVulkanCapabilityLayerIsNotPackaged")
         }.use { it.readBytes() }
         val metadata = checkNotNull(javaClass.getResourceAsStream(
-            "/moe/n4tsu/dextop/linux/gaming/dextop-wine-tray-x86_64.exe")) { "Wine tray metadata bridge is not packaged" }.use { it.readBytes() }
+            "/moe/n4tsu/dextop/linux/gaming/dextop-wine-tray-x86_64.exe")) { moe.n4tsu.dextop.localText("uiWineTrayMetadataBridgeIsNotPackaged") }.use { it.readBytes() }
         replace(LinuxProotFastPath.LIBRARY, checkNotNull(javaClass.getResourceAsStream(
-            "/moe/n4tsu/dextop/linux/gaming/libblfastpath-aarch64.bin")) { "PRoot fast path is not packaged" }.use { it.readBytes() })
+            "/moe/n4tsu/dextop/linux/gaming/libblfastpath-aarch64.bin")) { moe.n4tsu.dextop.localText("uiPRootFastPathIsNotPackaged") }.use { it.readBytes() })
         replace("/usr/local/lib/dextop/dextop-wine-tray.exe", metadata)
         replace(library, bytes)
         // Flatpak replaces /usr but preserves /usr/local. The WSI capability

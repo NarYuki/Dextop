@@ -8,6 +8,8 @@ internal class LinuxContainerSizes(
     private val measure: (String) -> Long,
     private val changed: () -> Unit,
     private val now: () -> Long = { System.nanoTime() / 1_000_000 },
+    private val restore: (String, Long) -> Long = { _, fallback -> fallback },
+    private val persist: (String, Long) -> Unit = { _, _ -> },
 ) : AutoCloseable {
     private class Entry(var bytes: Long) {
         var measured: Long? = null
@@ -21,7 +23,7 @@ internal class LinuxContainerSizes(
 
     @Synchronized fun read(id: String, fallback: Long): Long {
         if (closed) return fallback
-        val entry = entries.getOrPut(id) { Entry(fallback) }
+        val entry = entries.getOrPut(id) { Entry(restore(id, fallback)) }
         val time = now()
         val stale = entry.dirty
         if (!entry.pending && stale && entry.attempted?.let { time - it >= 5_000 } != false) {
@@ -35,6 +37,10 @@ internal class LinuxContainerSizes(
                         if (closed || entries[id] !== entry) return@execute
                         entry.pending = false
                         result.fold(onSuccess = { bytes ->
+                            if (runCatching { persist(id, bytes) }.isFailure) {
+                                entry.dirty = true
+                                return@fold false
+                            }
                             val different = entry.bytes != bytes
                             entry.bytes = bytes
                             entry.measured = now()
@@ -52,7 +58,7 @@ internal class LinuxContainerSizes(
     /** A view entry may reuse a five-minute measurement; mutations explicitly request a refresh. */
     @Synchronized fun request(id: String, fallback: Long, force: Boolean = false) {
         if (closed) return
-        val entry = entries.getOrPut(id) { Entry(fallback) }
+        val entry = entries.getOrPut(id) { Entry(restore(id, fallback)) }
         if (force || entry.measured?.let { now() - it >= 5 * 60_000 } != false) {
             if (force || !entry.dirty) {
                 entry.dirty = true

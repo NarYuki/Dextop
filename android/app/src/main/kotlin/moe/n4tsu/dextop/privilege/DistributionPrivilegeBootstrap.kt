@@ -130,7 +130,7 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
         context: Context,
         code: String,
     ): EmbeddedPrivilegeContract.PairingResult {
-        require(code.matches(Regex("[0-9]{6}"))) { "A six-digit pairing code is required" }
+        require(code.matches(Regex("[0-9]{6}"))) { moe.n4tsu.dextop.localText("uiASixDigitPairingCodeIsRequired") }
         configurePersistentIdentity(context)
         // Keep the endpoint that enabled the notification. Re-discovering at
         // code-submit time races Android closing the short-lived pairing ad.
@@ -150,7 +150,7 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
             }
         }
         check(pairingHost != null) {
-            lastFailure?.message ?: "The pairing endpoint rejected all local connection candidates"
+            lastFailure?.message ?: moe.n4tsu.dextop.localText("uiThePairingEndpointRejectedAllLocalConnectionCandidates")
         }
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_PAIRED, true).apply()
@@ -277,7 +277,7 @@ object DistributionPrivilegeBootstrap : EmbeddedPrivilegeContract {
                     override fun onStartDiscoveryFailed(type: String, errorCode: Int) {
                         stop()
                         if (continuation.isActive) continuation.resumeWith(Result.failure(
-                            IllegalStateException("Wireless debugging discovery failed ($errorCode)"),
+                            IllegalStateException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiWirelessDebuggingDiscoveryFailed0"), errorCode)),
                         ))
                     }
                     override fun onStopDiscoveryFailed(type: String, errorCode: Int) = Unit

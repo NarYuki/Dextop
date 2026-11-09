@@ -134,26 +134,26 @@ internal class BookSettingsContent(
     private class Page(val id: String, val symbol: String, val title: String, val summary: String)
 
     private val pages get() = listOf(
-        Page("style", "palette", tr("壁紙とスタイル", "Wallpaper & style"), tr("壁紙、ダークモード", "Wallpaper, dark theme")),
-        Page("taskbar", "dock_to_bottom", tr("タスクバー", "Taskbar"), tr("表示、固定したアプリ", "Visibility, pinned apps")),
-        Page("statusbar", "toolbar", tr("ステータスバー", "Status bar"), tr("ライブ アクティビティ、アイコン", "Live activity, icons")),
-        Page("desktop", "grid_view", tr("デスクトップ", "Desktop"), tr("アイコン、ショートカット", "Icons, shortcuts")),
-        Page("widgets", "widgets", tr("ウィジェット", "Widgets"), tr("追加、削除", "Add, remove")),
-        Page("windows", "web_asset", tr("ウィンドウ", "Windows"), tr("ホットコーナー、仮想デスクトップ、アニメーション", "Hot corner, virtual desktops, animations")),
-        Page("experimental", "interests", tr("試験運用中の機能", "Experimental"), tr("Linux のデスクトップ フォルダ", "Linux desktop folder")),
-        Page("about", "info", tr("Dextop Book について", "About Dextop Book"), tr("バージョン", "Version")),
+        Page("style", "palette", tr("uiWallpaperStyle"), tr("uiWallpaperDarkTheme")),
+        Page("taskbar", "dock_to_bottom", tr("uiTaskbar"), tr("uiVisibilityPinnedApps")),
+        Page("statusbar", "toolbar", tr("uiStatusBar"), tr("uiLiveActivityIcons")),
+        Page("desktop", "grid_view", tr("uiDesktop"), tr("uiIconsShortcuts")),
+        Page("widgets", "widgets", tr("uiWidgets"), tr("uiAddRemove")),
+        Page("windows", "web_asset", tr("uiWindows"), tr("uiHotCornerVirtualDesktopsAnimations")),
+        Page("experimental", "interests", tr("uiExperimental"), tr("uiLinuxDesktopFolder")),
+        Page("about", "info", tr("uiAboutDextopBook"), tr("uiVersion")),
     )
 
     private val searchIndex get() = listOf(
-        "style" to tr("壁紙", "Wallpaper"), "style" to tr("ダークモード", "Dark theme"), "style" to tr("表示サイズ", "Display size"),
-        "taskbar" to tr("タスクバーを常に表示", "Always show taskbar"), "taskbar" to tr("固定したアプリ", "Pinned apps"),
-        "statusbar" to tr("ライブ アクティビティ", "Live activity"), "statusbar" to tr("通知アイコン", "Notification icons"),
-        "statusbar" to tr("電池残量（%）", "Battery percentage"),
-        "desktop" to tr("デスクトップ アイコン", "Desktop icons"), "desktop" to tr("ショートカット", "Shortcuts"),
-        "widgets" to tr("ウィジェットを追加", "Add widgets"),
-        "windows" to tr("ホットコーナー", "Hot corner"), "windows" to tr("仮想デスクトップ", "Virtual desktops"),
-        "windows" to tr("アニメーション", "Animations"), "about" to tr("バージョン", "Version"),
-        "experimental" to tr("Linux のデスクトップ フォルダ", "Linux desktop folder"),
+        "style" to tr("uiWallpaper"), "style" to tr("uiDarkTheme"), "style" to tr("uiDisplaySize"),
+        "taskbar" to tr("uiAlwaysShowTaskbar8dd4e498"), "taskbar" to tr("uiPinnedApps"),
+        "statusbar" to tr("uiLiveActivity2bfbd5db"), "statusbar" to tr("uiNotificationIcons"),
+        "statusbar" to tr("uiBatteryPercentage"),
+        "desktop" to tr("uiDesktopIcons"), "desktop" to tr("uiShortcuts"),
+        "widgets" to tr("uiAddWidgets"),
+        "windows" to tr("uiHotCorner"), "windows" to tr("uiVirtualDesktops"),
+        "windows" to tr("uiAnimations"), "about" to tr("uiVersion"),
+        "experimental" to tr("uiLinuxDesktopFolder"),
     )
 
     private val settings get() = host.settings()
@@ -165,7 +165,7 @@ internal class BookSettingsContent(
         val colors = MaterialTheme.colorScheme
         Row(Modifier.fillMaxSize().background(colors.surfaceContainerLow)) {
             Column(Modifier.width(340.dp).fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SearchPill(query, { query = it }, tr("設定を検索", "Search settings"))
+                SearchPill(query, { query = it }, tr("uiSearchSettings"))
                 Spacer(Modifier.height(4.dp))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     items(pages, key = { it.id }) { p ->
@@ -203,10 +203,10 @@ internal class BookSettingsContent(
         val needle = query.trim().lowercase()
         val hits = searchIndex.filter { (_, name) -> name.lowercase().contains(needle) } +
             pages.filter { it.title.lowercase().contains(needle) }.map { it.id to it.title }
-        Text(tr("検索結果", "Search results"), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface,
+        Text(tr("uiSearchResults"), style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.padding(bottom = 20.dp))
         if (hits.isEmpty()) {
-            Text(tr("一致する設定はありません", "No matching settings"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(tr("uiNoMatchingSettings"), color = MaterialTheme.colorScheme.onSurfaceVariant)
             return
         }
         BookGroup(rows = hits.distinct().map { (id, name) ->
@@ -224,18 +224,18 @@ internal class BookSettingsContent(
         val colors = MaterialTheme.colorScheme
         val dark = BookTheme.dark(context, settings)
         val preview = remember(dark) { BookTheme.wallpaper(640, 360, dark) }
-        Section(tr("壁紙", "Wallpaper"))
+        Section(tr("uiWallpaper"))
         Row(horizontalArrangement = Arrangement.spacedBy(16.dp), modifier = Modifier.padding(bottom = 24.dp)) {
             WallpaperChoice(Modifier.weight(1f), "Dextop Book", preview, settings.wallpaper != "system") {
                 apply(settings.copy(wallpaper = "plasma"))
             }
-            WallpaperChoice(Modifier.weight(1f), tr("スマートフォンの壁紙", "Phone wallpaper"), null, settings.wallpaper == "system") {
+            WallpaperChoice(Modifier.weight(1f), tr("uiPhoneWallpaper"), null, settings.wallpaper == "system") {
                 apply(settings.copy(wallpaper = "system"))
             }
         }
-        Section(tr("表示サイズ", "Display size"))
+        Section(tr("uiDisplaySize"))
         val scale = BookStore.displayScale(context)
-        val scales = listOf(0 to tr("自動", "Auto"), 100 to "100%", 125 to "125%", 150 to "150%", 175 to "175%", 200 to "200%")
+        val scales = listOf(0 to tr("uiAuto"), 100 to "100%", 125 to "125%", 150 to "150%", 175 to "175%", 200 to "200%")
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
             scales.forEachIndexed { index, (value, label) ->
                 SegmentedButton(selected = scale == value, onClick = {
@@ -245,18 +245,17 @@ internal class BookSettingsContent(
                 }, shape = SegmentedButtonDefaults.itemShape(index, scales.size)) { Text(label) }
             }
         }
-        Text(tr("外部ディスプレイでの文字やウィンドウの大きさ。自動はモニターの実際の大きさから決めます（96 dpi で 100%）。",
-            "How large text and windows are on the external screen. Auto follows the monitor's physical size (96 dpi is 100 %)."),
+        Text(tr("uiHowLargeTextAndWindowsAreOnTheExternalScreenAutoFollowsTheMonitorSPhysicalSize96DpiIs100"),
             style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp, bottom = 20.dp))
-        Section(tr("ダークモード", "Dark theme"))
-        val options = listOf("system" to tr("システムに合わせる", "Match system"), "light" to tr("ライト", "Light"), "dark" to tr("ダーク", "Dark"))
+        Section(tr("uiDarkTheme"))
+        val options = listOf("system" to tr("uiMatchSystem"), "light" to tr("uiLight"), "dark" to tr("uiDark"))
         SingleChoiceSegmentedButtonRow(Modifier.fillMaxWidth().padding(bottom = 20.dp)) {
             options.forEachIndexed { index, (value, label) ->
                 SegmentedButton(selected = settings.colorScheme == value, onClick = { apply(settings.copy(colorScheme = value)) },
                     shape = SegmentedButtonDefaults.itemShape(index, options.size)) { Text(label) }
             }
         }
-        Text(tr("色は Android の壁紙の色（Material You）から作られます。", "Colours come from your Android wallpaper (Material You)."),
+        Text(tr("uiColoursComeFromYourAndroidWallpaperMaterialYou"),
             style = MaterialTheme.typography.bodyMedium, color = colors.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp))
     }
 
@@ -279,14 +278,13 @@ internal class BookSettingsContent(
     @Composable
     private fun TaskbarPage() {
         BookGroup(null, listOf(
-            { shape -> BookSwitchItem(tr("タスクバーを常に表示", "Always show taskbar"),
+            { shape -> BookSwitchItem(tr("uiAlwaysShowTaskbar8dd4e498"),
                 BookStore.flag(context, BookStore.ALWAYS_SHOW_TASKBAR, true), { BookStore.setFlag(context, BookStore.ALWAYS_SHOW_TASKBAR, it); tick++ },
-                shape, summary = tr("オフにすると、ウィンドウと重なるときに隠れ、画面の下端で表示されます",
-                    "When off, it hides while a window overlaps it and comes back at the bottom edge"), symbol = "dock_to_bottom") },
+                shape, summary = tr("uiWhenOffItHidesWhileAWindowOverlapsItAndComesBackAtTheBottomEdge"), symbol = "dock_to_bottom") },
         ))
         val pinned = host.pinnedApps()
-        Section(tr("固定したアプリ", "Pinned apps"))
-        if (pinned.isEmpty()) Text(tr("ランチャーからアプリをタスクバーへドラッグすると固定できます", "Drag apps from the launcher onto the taskbar to pin them"),
+        Section(tr("uiPinnedApps"))
+        if (pinned.isEmpty()) Text(tr("uiDragAppsFromTheLauncherOntoTheTaskbarToPinThem"),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp))
         else BookGroup(null, pinned.map { app ->
             row { shape -> AppRow(app.icon, app.label, shape) { BookIconButton("close", { host.setPinned(app.packageName, false); tick++ }) } }
@@ -307,13 +305,13 @@ internal class BookSettingsContent(
     @Composable
     private fun StatusBarPage() {
         BookGroup(null, listOf(
-            { shape -> BookSwitchItem(tr("ライブ アクティビティ", "Live activity"), BookStore.flag(context, BookStore.LIVE_ACTIVITY, true),
+            { shape -> BookSwitchItem(tr("uiLiveActivity2bfbd5db"), BookStore.flag(context, BookStore.LIVE_ACTIVITY, true),
                 { BookStore.setFlag(context, BookStore.LIVE_ACTIVITY, it); tick++ }, shape,
-                summary = tr("再生中のメディアをステータスバーに表示", "Shows what's playing in the status bar"), symbol = "graphic_eq") },
-            { shape -> BookSwitchItem(tr("通知アイコン", "Notification icons"), BookStore.flag(context, BookStore.NOTIFICATION_ICONS, true),
+                summary = tr("uiShowsWhatSPlayingInTheStatusBar"), symbol = "graphic_eq") },
+            { shape -> BookSwitchItem(tr("uiNotificationIcons"), BookStore.flag(context, BookStore.NOTIFICATION_ICONS, true),
                 { BookStore.setFlag(context, BookStore.NOTIFICATION_ICONS, it); tick++ }, shape,
-                summary = tr("通知のあるアプリを時計の横に表示", "Shows apps with notifications next to the clock"), symbol = "notifications") },
-            { shape -> BookSwitchItem(tr("電池残量（%）", "Battery percentage"), settings.trayBatteryPercent,
+                summary = tr("uiShowsAppsWithNotificationsNextToTheClock"), symbol = "notifications") },
+            { shape -> BookSwitchItem(tr("uiBatteryPercentage"), settings.trayBatteryPercent,
                 { apply(settings.copy(trayBatteryPercent = it)) }, shape, symbol = "battery_full") },
         ))
     }
@@ -322,14 +320,14 @@ internal class BookSettingsContent(
     private fun DesktopPage() {
         val apps = host.apps().associateBy { it.packageName }
         BookGroup(null, listOf(
-            { shape -> BookSwitchItem(tr("デスクトップ アイコンを表示", "Show desktop icons"), BookStore.flag(context, BookStore.DESKTOP_ICONS, true),
+            { shape -> BookSwitchItem(tr("uiShowDesktopIcons87d001c7"), BookStore.flag(context, BookStore.DESKTOP_ICONS, true),
                 { BookStore.setFlag(context, BookStore.DESKTOP_ICONS, it); tick++ }, shape,
-                summary = tr("ランチャーからアプリをデスクトップへドラッグすると追加できます", "Drag apps from the launcher onto the desktop to add them"),
+                summary = tr("uiDragAppsFromTheLauncherOntoTheDesktopToAddThem"),
                 symbol = "grid_view") },
         ))
         val shortcuts = BookStore.shortcuts(context)
-        Section(tr("ショートカット", "Shortcuts"))
-        if (shortcuts.isEmpty()) Text(tr("デスクトップにショートカットはありません", "No shortcuts on the desktop"),
+        Section(tr("uiShortcuts"))
+        if (shortcuts.isEmpty()) Text(tr("uiNoShortcutsOnTheDesktop"),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(start = 16.dp))
         else BookGroup(null, shortcuts.map { shortcut ->
             row { shape ->
@@ -344,12 +342,12 @@ internal class BookSettingsContent(
     private fun WidgetsPage() {
         val placed = BookStore.widgets(context)
         BookGroup(null, buildList<@Composable (Shape) -> Unit> {
-            add { shape -> BookListItem(tr("ウィジェットを追加", "Add widgets"), tr("Android アプリのウィジェットを選ぶ", "Pick an Android app widget"),
+            add { shape -> BookListItem(tr("uiAddWidgets"), tr("uiPickAnAndroidAppWidget"),
                 "add_circle", shape, onClick = { host.openWidgetGallery() }) }
             placed.forEach { widget ->
                 val info = widgets.info(widget.appWidgetId)
                 add { shape ->
-                    AppRow(info?.let(widgets::appIcon), info?.let(widgets::label) ?: tr("使用できないウィジェット", "Unavailable widget"), shape) {
+                    AppRow(info?.let(widgets::appIcon), info?.let(widgets::label) ?: tr("uiUnavailableWidget"), shape) {
                         BookIconButton("delete", { removeWidget(widget.appWidgetId); tick++ })
                     }
                 }
@@ -360,13 +358,13 @@ internal class BookSettingsContent(
     @Composable
     private fun WindowsPage() {
         BookGroup(null, listOf(
-            { shape -> BookSwitchItem(tr("ホットコーナー", "Hot corner"), settings.hotCorner, { apply(settings.copy(hotCorner = it)) }, shape,
-                summary = tr("左上の角でウィンドウの概要を開く", "The top-left corner opens the overview"), symbol = "open_with") },
-            { shape -> BookListItem(tr("仮想デスクトップ", "Virtual desktops"), trf("{0} 個", "{0}", settings.virtualDesktops), "select_all", shape) {
+            { shape -> BookSwitchItem(tr("uiHotCorner"), settings.hotCorner, { apply(settings.copy(hotCorner = it)) }, shape,
+                summary = tr("uiTheTopLeftCornerOpensTheOverview"), symbol = "open_with") },
+            { shape -> BookListItem(tr("uiVirtualDesktops"), trf("ui0", settings.virtualDesktops), "select_all", shape) {
                 BookIconButton("remove", { apply(settings.copy(virtualDesktops = (settings.virtualDesktops - 1).coerceAtLeast(1))) })
                 BookIconButton("add", { apply(settings.copy(virtualDesktops = (settings.virtualDesktops + 1).coerceAtMost(6))) })
             } },
-            { shape -> BookSwitchItem(tr("アニメーション", "Animations"), settings.animationSpeed > 0f,
+            { shape -> BookSwitchItem(tr("uiAnimations"), settings.animationSpeed > 0f,
                 { apply(settings.copy(animationSpeed = if (it) 1f else 0f)) }, shape, symbol = "air") },
         ))
     }
@@ -374,17 +372,15 @@ internal class BookSettingsContent(
     @Composable
     private fun ExperimentalPage() {
         val installed = linuxInstalled()
-        Text(tr("これらの機能は開発中で、動作が変わったり不安定だったりすることがあります。",
-            "These features are in development and may change or misbehave."),
+        Text(tr("uiTheseFeaturesAreInDevelopmentAndMayChangeOrMisbehave"),
             style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, bottom = 16.dp))
         BookGroup(null, listOf(
-            { shape -> BookSwitchItem(tr("Linux のデスクトップ フォルダ", "Linux desktop folder"),
+            { shape -> BookSwitchItem(tr("uiLinuxDesktopFolder"),
                 installed && BookStore.flag(context, BookStore.LINUX_DESKTOP_FOLDER, false),
                 { BookStore.setFlag(context, BookStore.LINUX_DESKTOP_FOLDER, it); tick++ }, shape,
-                summary = if (installed) tr("Linux コンテナの ~/Desktop をデスクトップに表示し、フォルダを作成・名前変更・削除できます",
-                    "Shows the Linux container's ~/Desktop on the desktop, where folders can be made, renamed and removed")
-                else tr("Linux コンテナをインストールすると使えます", "Available once a Linux container is installed"),
+                summary = if (installed) tr("uiShowsTheLinuxContainerSDesktopOnTheDesktopWhereFoldersCanBeMadeRenamedAndRemoved")
+                else tr("uiAvailableOnceALinuxContainerIsInstalled"),
                 symbol = "folder", enabled = installed) },
         ))
     }
@@ -393,8 +389,8 @@ internal class BookSettingsContent(
     private fun AboutPage() {
         val version = remember { runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() }
         BookGroup(null, listOf(
-            { shape -> BookListItem(tr("Dextop のバージョン", "Dextop version"), version ?: "—", "description", shape) },
-            { shape -> BookListItem(tr("デバイス", "Device"), "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}", "smartphone", shape) },
+            { shape -> BookListItem(tr("uiDextopVersion"), version ?: "—", "description", shape) },
+            { shape -> BookListItem(tr("uiDevice"), "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}", "smartphone", shape) },
         ))
     }
 }
@@ -418,10 +414,10 @@ internal class BookWidgetPicker(
         val apps = remember(providers) { providers.groupBy { it.provider.packageName } }
         Row(Modifier.fillMaxSize().background(colors.surfaceContainerLow)) {
             Column(Modifier.width(320.dp).fillMaxHeight().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                SearchPill(query, { query = it }, tr("ウィジェットを検索", "Search widgets"))
+                SearchPill(query, { query = it }, tr("uiSearchWidgets"))
                 LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     item {
-                        NavCard("star", tr("すべて", "All"), trf("{0} 個のウィジェット", "{0} widgets", providers.size), app == null) { app = null }
+                        NavCard("star", tr("uiAll"), trf("ui0Widgets", providers.size), app == null) { app = null }
                     }
                     items(apps.keys.toList(), key = { it }) { pkg ->
                         val first = apps.getValue(pkg).first()
@@ -433,7 +429,7 @@ internal class BookWidgetPicker(
                 (query.isBlank() || widgets.label(it).contains(query, true) || widgets.appLabel(it).contains(query, true)) }
             Box(Modifier.weight(1f).fillMaxHeight().padding(top = 16.dp, end = 16.dp, bottom = 16.dp)
                 .clip(RoundedCornerShape(24.dp)).background(colors.surface)) {
-                if (shown.isEmpty()) Text(tr("ウィジェットが見つかりません", "No widgets found"), color = colors.onSurfaceVariant,
+                if (shown.isEmpty()) Text(tr("uiNoWidgetsFound"), color = colors.onSurfaceVariant,
                     modifier = Modifier.align(Alignment.Center))
                 LazyVerticalGrid(GridCells.Adaptive(220.dp), Modifier.fillMaxSize().padding(16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -453,7 +449,7 @@ internal class BookWidgetPicker(
             DrawableIcon(icon, 36.dp)
             Column(Modifier.weight(1f)) {
                 Text(label, style = MaterialTheme.typography.titleSmall, color = colors.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(trf("{0} 個のウィジェット", "{0} widgets", count), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
+                Text(trf("ui0Widgets", count), style = MaterialTheme.typography.bodySmall, color = colors.onSurfaceVariant)
             }
         }
     }

@@ -3,11 +3,18 @@ package moe.n4tsu.dextop.linux
 import java.io.File
 import kotlin.test.Test
 import kotlin.test.assertContains
+import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
 class LinuxSetupPlanTest {
+    @Test fun newContainerCatalogOffersOnlyDebianAndHasNoDdRuntime() {
+        val catalog = org.json.JSONArray(LinuxCatalog.toJson())
+        kotlin.test.assertEquals(1, catalog.length())
+        kotlin.test.assertEquals("debian", catalog.getJSONObject(0).getString("id"))
+        kotlin.test.assertNull(LinuxCatalog.find("droiddeck"))
+    }
     @Test fun toolkitIntegrationIsPresentInMinimalProvisionAndOfficeSetup() {
         val provision = LinuxCatalog.provisionScript(LinuxPackageFamily.APT)
         assertContains(provision, "qt5ct qt6ct")
@@ -115,9 +122,6 @@ class LinuxSetupPlanTest {
         assertContains(script, "sha256sum -c --quiet")
         assertContains(script, "libdextop_blsession.so")
         assertContains(script, "-no-cef-sandbox -cef-ozone-platform=x11")
-        val runtime = LinuxCatalog.find(LinuxCatalog.DROIDDECK_RUNTIME)!!
-        assertTrue(runtime.image!!.url.endsWith(".tar.zst"))
-        assertContains(scripts(runtime, LinuxSetupOptions(graphics = true)), "libvulkan_freedreno.so")
     }
 
     @Test fun turnipCoversAdreno6To8() {
@@ -159,14 +163,26 @@ class LinuxSetupPlanTest {
     }
 
     @Test fun gpusOtherThanAdrenoSkipTurnip() {
-        val options = LinuxSetupOptions(graphics = true)
+        val options = LinuxSetupOptions()
         assertTrue(LinuxSetupPlan.steps(debian, options, turnip = true).any { it.phase == "gpu" })
         assertFalse(LinuxSetupPlan.steps(debian, options, turnip = false).any { it.phase == "gpu" })
     }
 
-    @Test fun minimalSetupDoesNotInstallOptionalDesktopOrBrowserPackages() {
+    @Test fun theBakedDriverIsOnlyChosenOnGpusThatCanRunIt() {
+        assertEquals("false && [ -f ${LinuxCatalog.TURNIP_ICD} ]", LinuxCatalog.turnipUsableCheck(capable = false))
+        assertEquals("true && [ -f ${LinuxCatalog.TURNIP_ICD} ]", LinuxCatalog.turnipUsableCheck(capable = true))
+    }
+
+    @Test fun prebuiltImagesLeaveOnlyUserChoicesToTheDevice() {
+        val options = LinuxSetupOptions(locale = "ja_JP", ime = "mozc", apps = setOf("firefox"))
+        val phases = LinuxSetupPlan.steps(debian, options, turnip = true)
+            .map { it.phase }.filterNot { it in LinuxImageManifest.BAKED_PHASES }
+        assertEquals(listOf("language", "input", "applications", "integration"), phases)
+    }
+
+    @Test fun setupWithoutChoicesInstallsNoInputMethodOrBrowserPackages() {
         val plan = LinuxSetupPlan.steps(debian, LinuxSetupOptions(cjkFonts = false), turnip = true)
-        assertFalse(plan.any { it.phase in setOf("input", "desktop", "graphics", "applications") })
+        assertFalse(plan.any { it.phase in setOf("input", "applications") })
         val script = plan.joinToString("\n") { it.script }
         assertFalse(script.contains("fonts-noto-cjk"))
         assertContains(script, "fonts-noto-core")
@@ -174,7 +190,7 @@ class LinuxSetupPlanTest {
     }
 
     @Test fun japaneseSetupInstallsAndActivatesInputMethodAndSessionLocale() {
-        val script = scripts(debian, LinuxSetupOptions(locale = "ja_JP", ime = "mozc", cjkFonts = false, graphics = true))
+        val script = scripts(debian, LinuxSetupOptions(locale = "ja_JP", ime = "mozc", cjkFonts = false))
         assertContains(script, "fcitx5-mozc")
         assertContains(script, "fonts-noto-cjk")
         assertContains(script, "DefaultIM=mozc")
@@ -213,11 +229,10 @@ class LinuxSetupPlanTest {
     @Test fun generatesScriptsForAllSupportedDistributionsAndInputMethods() {
         val directory = System.getProperty("dextop.setup.scriptDirectory")?.let { File(it).apply { mkdirs() } }
         for (distro in LinuxCatalog.distros) for (ime in listOf("none", "mozc", "pinyin", "hangul")) {
-            val apps = if (distro.id == LinuxCatalog.DROIDDECK_RUNTIME) setOf("steam")
-                else if (distro.id == "ubuntu") setOf("chrome", "files", "editor", "office")
+            val apps = if (distro.id == "ubuntu") setOf("chrome", "files", "editor", "office")
                 else if (distro.family == LinuxPackageFamily.PACMAN) setOf("firefox", "chromium", "files", "editor", "office", "steam")
                 else LinuxSetupOptions.APPS
-            val plan = LinuxSetupPlan.steps(distro, LinuxSetupOptions("complete", "ja_JP", true, ime, true, true, apps), turnip = true)
+            val plan = LinuxSetupPlan.steps(distro, LinuxSetupOptions("ja_JP", true, ime, apps), turnip = true)
             assertTrue(plan.last().phase == "integration")
             plan.forEachIndexed { i, step -> directory?.let {
                 File(it, "${distro.id}-$ime-$i.sh").writeText(step.script)

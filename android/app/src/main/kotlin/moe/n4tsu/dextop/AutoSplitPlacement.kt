@@ -38,8 +38,8 @@ internal object AutoSplitPlacement {
     @Synchronized fun begin(context: Context, bridge: TaskBridge, task: TaskSnapshot, displayId: Int, area: Rect) {
         if (this.task != null) return
         // Remove the selected leaf from phone split-screen, not its split root.
-        check(bridge.extractToDisplay(task, displayId)) { "Unable to return split task=${task.taskId}" }
-        check(bridge.sendToBack(task)) { "Unable to hide split task=${task.taskId}" }
+        check(bridge.extractToDisplay(task, displayId)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToReturnSplitTask0"), task.taskId) }
+        check(bridge.sendToBack(task)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnableToHideSplitTask0"), task.taskId) }
         this.context = context.applicationContext
         this.bridge = bridge
         this.task = task

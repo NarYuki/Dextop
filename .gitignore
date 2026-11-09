@@ -122,3 +122,5 @@ local/
 
 # Native crash dumps
 core.[0-9]*
+# DroidDeck's guest programs under usr/local/bin are packaged resources.
+!/android/app/src/main/resources/moe/n4tsu/dextop/linux/droiddeck/linuxfs/usr/local/

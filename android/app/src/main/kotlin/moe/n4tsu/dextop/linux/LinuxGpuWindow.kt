@@ -25,7 +25,7 @@ internal object LinuxGpuWindow {
         unset DISPLAY MESA_VK_WSI_DEBUG LIBGL_ALWAYS_SOFTWARE
         export XDG_RUNTIME_DIR=${'$'}{XDG_RUNTIME_DIR:-/tmp/runtime-root} XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=${'$'}{WAYLAND_DISPLAY:-wayland-0}
         mkdir -p "${'$'}XDG_RUNTIME_DIR" && chmod 700 "${'$'}XDG_RUNTIME_DIR"
-        if [ -f ${LinuxCatalog.TURNIP_ICD} ]; then
+        if ${LinuxCatalog.turnipUsableCheck()}; then
             export VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD} VK_DRIVER_FILES=${LinuxCatalog.TURNIP_ICD}
         fi
         export MESA_LOADER_DRIVER_OVERRIDE=zink GALLIUM_DRIVER=zink LIBGL_KOPPER_DRI2=true
@@ -39,19 +39,19 @@ internal object LinuxGpuWindow {
      * driver ([waylandGpu]), the session's Wayland compositor, Python and Xwayland.
      */
     fun prepare(root: File, waylandGpu: Boolean, compositor: Boolean) {
-        check(waylandGpu) { "GPU windows need Turnip with its Wayland driver; select Turnip and run the container's setup again" }
-        check(compositor) { "GPU windows need Dextop's Wayland compositor; restart the Linux application session" }
-        check(File(root, "usr/bin/python3").exists()) { "GPU windows need python3 in the container (apt install python3)" }
-        check(File(root, "usr/bin/Xwayland").exists()) { "GPU windows need Xwayland in the container (apt install xwayland)" }
+        check(waylandGpu) { moe.n4tsu.dextop.localText("uiGPUWindowsNeedTurnipWithItsWaylandDriverSelectTurnipAndRunTheContainerSSetupAgain") }
+        check(compositor) { moe.n4tsu.dextop.localText("uiGPUWindowsNeedDextopSWaylandCompositorRestartTheLinuxApplicationSession") }
+        check(File(root, "usr/bin/python3").exists()) { moe.n4tsu.dextop.localText("uiGPUWindowsNeedPython3InTheContainerAptInstallPython3") }
+        check(File(root, "usr/bin/Xwayland").exists()) { moe.n4tsu.dextop.localText("uiGPUWindowsNeedXwaylandInTheContainerAptInstallXwayland") }
         LinuxSteam.stageGamescope(root)
         File(root, LAUNCHER.removePrefix("/")).apply {
             parentFile?.mkdirs()
             if (!isFile || readText() != script) {
                 val staged = File(parentFile, "$name.staged")
                 staged.writeText(script)
-                check(staged.setExecutable(true, false) && staged.renameTo(this)) { "Cannot write $LAUNCHER" }
+                check(staged.setExecutable(true, false) && staged.renameTo(this)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotWrite0"), LAUNCHER) }
             }
-            check(setExecutable(true, false)) { "Cannot make $LAUNCHER executable" }
+            check(setExecutable(true, false)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotMake0Executable"), LAUNCHER) }
         }
     }
 

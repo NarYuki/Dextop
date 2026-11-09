@@ -854,7 +854,7 @@
   "nativePlasmaTimeUntilFull": "%1$s 后充满",
   "nativePlasmaHoursMinutes": "%1$d 小时 %2$d 分钟",
   "nativePlasmaMinutes": "%1$d 分钟",
-  "nativePlasmaApplying": "正在切换…",
+  "nativePlasmaApplying": "正在切换…",
   "linuxUnsupportedDevice": "Linux 仅支持 arm64 设备。",
   "linuxRequiresPlasma": "仅在使用 Dextop Plasma v2 时才能使用 Linux。",
   "linuxSwitchToPlasma": "切换到 Plasma v2",
@@ -894,7 +894,7 @@
   "linuxPhaseFinish": "正在完成",
   "linuxPhaseStep": "第 {step}/{total} 步",
   "linuxSetupTitle": "Linux 设置",
-  "linuxSetupIntro": "按照你的使用方式准备 Linux。依次选择桌面、语言、输入法和应用。",
+  "linuxSetupIntro": "按照你的使用方式准备 Linux。依次选择语言、输入法和应用。",
   "linuxSetupExisting": "为此 Linux 环境添加功能。现有的文件和应用会保留。完成后重新打开桌面即可应用设置。",
   "linuxSetupSystem": "选择 Linux 环境",
   "linuxSetupDesktop": "准备桌面",
@@ -940,7 +940,6 @@
   "linuxSetupOffice": "办公套件",
   "linuxSetupOfficeDetail": "LibreOffice — 文档、电子表格和演示文稿。需要下载更多内容并占用更多存储空间。",
   "linuxSetupSteamDetail": "Valve 的 Steam（ARM64 版）。首次使用时从 Valve 获取；Proton 和 FEX 由 Steam 自行安装。",
-  "linuxSetupDroidDeckNote": "DroidDeck 运行时自带 KDE Plasma 桌面（KWin、Xwayland）、字体和输入法，因此跳过 IceWM、语言和输入步骤。",
   "linuxSetupStorage": "请预留数 GB 可用存储空间。下载量和安装大小取决于发行版和所选应用。离开此界面后安装仍会继续。",
   "linuxSetupAdditive": "未选择的应用不会被删除。设置会添加所选软件包，并更新语言和会话设置。",
   "linuxSetupNothingExtra": "无可选应用",
@@ -990,7 +989,7 @@
   "nativePlasmaClearAll": "全部清除",
   "linuxGpuTurnip": "Turnip + Zink（推荐）",
   "linuxGpuTurnipDescription": "Linux 应用直接使用 Adreno GPU（Vulkan 和 OpenGL 4.6）。最快，适合游戏。",
-  "linuxGpuTurnipSetup": "在容器设置中启用 3D 图形后可用（构建约需 30 分钟）。在此之前使用 VirGL。",
+  "linuxGpuTurnipSetup": "修复容器后可用。在此之前使用 VirGL。",
   "linuxSetupPhaseGpu": "正在构建 GPU 驱动（Turnip）",
   "linuxSetupDisplayBackend": "显示系统",
   "linuxSetupXvfbDetail": "应用和 IceWM 桌面使用 X11 显示。",
@@ -1025,5 +1024,6 @@
     }
   },
   "nativeShortcutStartDisplayLong": "启动或停止 Dextop 虚拟显示器",
-  "nativeShortcutStartDisplay": "启动 Dextop"
+  "nativeShortcutStartDisplay": "启动 Dextop",
+  "androidDisplayTileLabel": "Dextop 显示器"
 }

@@ -3,7 +3,7 @@ package moe.n4tsu.dextop.linux
 import android.content.Context
 
 /**
- * Host-owned choice; existing installations keep the privileged backend.
+ * Host-owned choice; Android is the default and explicitly saved choices are retained.
  *
  * [PRIVILEGED] runs Linux in the shell-user service, as before. [ANDROID] runs it under
  * Dextop's own app UID and uses nothing privileged.
@@ -11,19 +11,24 @@ import android.content.Context
 internal object LinuxExecutionMode {
     const val PRIVILEGED = "privileged"
     const val ANDROID = "android"
-    /** Earlier development builds stored the Android mode as "hybrid". */
-    private const val LEGACY_ANDROID = "hybrid"
     private const val PREFS = "linux-execution"
 
     private fun prefs(context: Context) = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
     fun read(context: Context): String =
-        if (prefs(context).getString("mode", PRIVILEGED) in setOf(ANDROID, LEGACY_ANDROID)) ANDROID else PRIVILEGED
+        resolve(prefs(context).getString("mode", null))
+
+    /** The Google Play build runs Linux with ordinary app permissions only. */
+    val privilegedSupported: Boolean get() = moe.n4tsu.dextop.BuildConfig.DISTRIBUTION_CHANNEL != "play"
+
+    /** Missing, legacy Android ("hybrid"), unknown and unsupported values use ordinary app permissions. */
+    fun resolve(stored: String?, privilegedAllowed: Boolean = privilegedSupported): String =
+        if (stored == PRIVILEGED && privilegedAllowed) PRIVILEGED else ANDROID
 
     fun android(context: Context) = read(context) == ANDROID
 
     fun write(context: Context, mode: String) {
-        require(mode == PRIVILEGED || mode == ANDROID)
+        require(mode == ANDROID || (mode == PRIVILEGED && privilegedSupported))
         check(prefs(context).edit().putString("mode", mode).commit())
     }
 

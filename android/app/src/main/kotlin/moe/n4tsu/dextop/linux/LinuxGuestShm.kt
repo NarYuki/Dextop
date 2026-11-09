@@ -33,7 +33,7 @@ internal object LinuxGuestShm {
             return false
         }
         val passed = runCatching {
-            check(x.shmOpcode >= 0) { "the X server has no MIT-SHM" }
+            check(x.shmOpcode >= 0) { moe.n4tsu.dextop.localText("uiTheXServerHasNoMITSHM") }
             dir.mkdirs()
             dir.setWritable(true, false); dir.setReadable(true, false); dir.setExecutable(true, false)
             val segmentFile = File(dir, "shm.dextop-test.${android.os.Process.myPid()}")
@@ -45,7 +45,7 @@ internal object LinuxGuestShm {
                 val segment = x.allocateId()
                 val attached = x.shmAttachSysV(segment, shmid)
                 if (attached) x.shmDetach(segment)
-                check(attached) { "the X server refused a System V segment" }
+                check(attached) { moe.n4tsu.dextop.localText("uiTheXServerRefusedASystemVSegment") }
             } finally {
                 segmentFile.delete()
             }

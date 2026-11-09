@@ -11,7 +11,7 @@ void main() {
   const channel = MethodChannel('app.freedextop/linux');
 
   testWidgets(
-    'unavailable access guides users to built-in setup and refreshes afterwards',
+    'unavailable access guides users to the selected provider and refreshes afterwards',
     (tester) async {
       SharedPreferences.setMockInitialValues({'linux_enabled': false});
       var available = false;
@@ -38,6 +38,7 @@ void main() {
           supportedLocales: AppLocalizations.supportedLocales,
           home: LinuxPage(
             onSwitchToPlasmaV2: () async {},
+            privilegeConnectionLabel: 'Connect Stellar',
             onSetupPrivilege: () async {
               openedSetup = true;
               available = true;
@@ -47,16 +48,17 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(
-        find.textContaining('Full privilege needs privileged access'),
+        find.textContaining('Privileged Shell needs privileged access'),
         findsOneWidget,
       );
       expect(find.text('Change the execution mode'), findsOneWidget);
       expect(find.text('Set up Linux'), findsNothing);
-      await tester.tap(find.text('Set up the built-in binder'));
+      expect(find.text('Set up the built-in binder'), findsNothing);
+      await tester.tap(find.text('Connect Stellar'));
       await tester.pumpAndSettle();
       expect(openedSetup, isTrue);
       expect(
-        find.textContaining('Full privilege needs privileged access'),
+        find.textContaining('Privileged Shell needs privileged access'),
         findsNothing,
       );
       expect(find.text('Set up Linux'), findsOneWidget);

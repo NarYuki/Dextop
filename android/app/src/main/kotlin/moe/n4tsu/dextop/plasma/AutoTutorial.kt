@@ -56,44 +56,34 @@ internal class AutoTutorial(
     private class Step(val targets: List<String>, val page: String?, val task: Task, val gesture: Gesture,
                        val title: String, val text: String, val tip: String = "")
 
-    private fun tr(ja: String, en: String) = moe.n4tsu.dextop.InlineStrings.pick(resources.configuration.locales[0], ja, en)
+    private fun tr(key: String) = moe.n4tsu.dextop.InlineStrings.pick(resources.configuration.locales[0], key)
     private fun dp(n: Int) = (n * unit).roundToInt()
     private fun dpf(n: Float) = n * unit
 
     private val steps = listOf(
-        Step(listOf("page"), "home", Task.NEXT, Gesture.NONE, tr("ホーム画面", "Home"),
-            tr("地図と音楽のショートカット、再生中のメディア、お気に入りのアプリが並びます。",
-                "Maps and music shortcuts, what is playing and your favorite apps.")),
-        Step(listOf("home"), "home", Task.PRESS, Gesture.TAP, tr("ホームボタンを押す", "Press the Home button"),
-            tr("光っているボタンを押してください。ホームで押すと、すべてのアプリの一覧が開きます。",
-                "Press the lit button. On Home it opens the list of all apps.")),
-        Step(listOf("page"), "apps", Task.NEXT, Gesture.NONE, tr("アプリ一覧", "All apps"),
-            tr("アプリを押すと車の画面で開きます。開いたアプリは左のバーに並び、押すと切り替わります。",
-                "Press an app to open it on the car screen. Open apps line up in the bar; press one to switch.")),
-        Step(listOf("display"), "apps", Task.PRESS, Gesture.TAP, tr("画面ボタンを押す", "Press the Screen button"),
-            tr("1画面・2画面の切り替え、拡大率、全画面表示、すべて閉じるがここにあります。",
-                "Switch between one and two apps, set the zoom, go full screen or close all.")),
-        Step(listOf("status"), "home", Task.PRESS, Gesture.TAP, tr("時計を押す", "Press the clock"),
-            tr("設定が開きます。テーマやバーの幅、Android Auto での操作を変えられます。",
-                "Settings open: theme, bar width and how Android Auto input works.")),
-        Step(listOf("back"), "settings", Task.PRESS, Gesture.TAP, tr("戻るボタンを押す", "Press the Back button"),
-            tr("開いているページを閉じます。アプリの中では一つ前の画面に戻ります。",
-                "Closes the page that is open; in an app, goes back one screen.")),
-        Step(emptyList(), "home", Task.TAP, Gesture.TAP, tr("練習: タップ", "Practice: tap"),
-            tr("光っている丸をタップしてください。", "Tap the glowing dot.")),
-        Step(emptyList(), "home", Task.SCROLL, Gesture.SCROLL, tr("練習: スクロール", "Practice: scroll"),
-            if (driving) tr("枠の中を一度タップしてから、1.5秒以内に上へスワイプしてください。",
-                "Tap inside the frame once, then swipe up within 1.5 seconds.")
-            else tr("枠の中を上へスワイプしてください。", "Swipe up inside the frame."),
-            if (driving) tr("タップした場所がスクロールの基点になります。タップはボタンも押すので、アプリでは押しても何も起きない場所を選んでください。",
-                "The tapped spot is where the scroll happens. A tap also presses buttons, so in apps pick a spot that does nothing when pressed.") else ""),
-        Step(emptyList(), "home", Task.PINCH, Gesture.PINCH, tr("練習: ピンチ", "Practice: pinch"),
-            if (driving) tr("四角をタップしてから、2本指で広げて拡大してください。",
-                "Tap the square, then spread two fingers to enlarge it.")
-            else tr("四角を2本指で広げて拡大してください。", "Spread two fingers on the square to enlarge it.")),
-        Step(emptyList(), "home", Task.NEXT, Gesture.NONE, tr("準備ができました", "You're all set"),
-            tr("この説明は設定のクイックコントロールの下からいつでも見直せます。",
-                "Find this again any time in the button under Quick controls in Settings.")),
+        Step(listOf("page"), "home", Task.NEXT, Gesture.NONE, tr("uiHome"),
+            tr("uiMapsAndMusicShortcutsWhatIsPlayingAndYourFavoriteApps")),
+        Step(listOf("home"), "home", Task.PRESS, Gesture.TAP, tr("uiPressTheHomeButton"),
+            tr("uiPressTheLitButtonOnHomeItOpensTheListOfAllApps")),
+        Step(listOf("page"), "apps", Task.NEXT, Gesture.NONE, tr("uiAllAppsdd832b82"),
+            tr("uiPressAnAppToOpenItOnTheCarScreenOpenAppsLineUpInTheBarPressOneToSwitch")),
+        Step(listOf("display"), "apps", Task.PRESS, Gesture.TAP, tr("uiPressTheScreenButton"),
+            tr("uiSwitchBetweenOneAndTwoAppsSetTheZoomGoFullScreenOrCloseAll")),
+        Step(listOf("status"), "home", Task.PRESS, Gesture.TAP, tr("uiPressTheClock"),
+            tr("uiSettingsOpenThemeBarWidthAndHowAndroidAutoInputWorks")),
+        Step(listOf("back"), "settings", Task.PRESS, Gesture.TAP, tr("uiPressTheBackButton"),
+            tr("uiClosesThePageThatIsOpenInAnAppGoesBackOneScreen")),
+        Step(emptyList(), "home", Task.TAP, Gesture.TAP, tr("uiPracticeTap"),
+            tr("uiTapTheGlowingDot")),
+        Step(emptyList(), "home", Task.SCROLL, Gesture.SCROLL, tr("uiPracticeScroll"),
+            if (driving) tr("uiTapInsideTheFrameOnceThenSwipeUpWithin15Seconds")
+            else tr("uiSwipeUpInsideTheFrame"),
+            if (driving) tr("uiTheTappedSpotIsWhereTheScrollHappensATapAlsoPressesButtonsSoInAppsPickASpotThatDoesNothingWhenPresse") else ""),
+        Step(emptyList(), "home", Task.PINCH, Gesture.PINCH, tr("uiPracticePinch"),
+            if (driving) tr("uiTapTheSquareThenSpreadTwoFingersToEnlargeIt")
+            else tr("uiSpreadTwoFingersOnTheSquareToEnlargeIt")),
+        Step(emptyList(), "home", Task.NEXT, Gesture.NONE, tr("uiYouReAllSet"),
+            tr("uiFindThisAgainAnyTimeInTheButtonUnderQuickControlsInSettings")),
     )
 
     private enum class Phase { WELCOME, REVEAL, COACH, LEAVING }
@@ -129,11 +119,11 @@ internal class AutoTutorial(
         gravity = Gravity.CENTER
     }
     private val welcomeTitle = text(30f, colors.text, bold = true, lines = 2).apply {
-        text = tr("Dextop Autoへようこそ", "Welcome to Dextop Auto")
+        text = tr("uiWelcomeToDextopAuto")
         gravity = Gravity.CENTER
     }
     private val welcomeText = text(15f, colors.secondary, lines = 2).apply {
-        text = tr("スマホのアプリを車の画面で使えます", "Your phone's apps on the car screen")
+        text = tr("uiYourPhoneSAppsOnTheCarScreen")
         gravity = Gravity.CENTER
     }
 
@@ -148,9 +138,9 @@ internal class AutoTutorial(
     private val body = text(14f, colors.secondary, lines = 5)
     private val tip = text(12f, colors.secondary, lines = 4)
     private val dots = LinearLayout(context).apply { gravity = Gravity.CENTER_VERTICAL }
-    private val back = button(tr("戻る", "Back"), filled = false) { go(index - 1) }
+    private val back = button(tr("uiBack"), filled = false) { go(index - 1) }
     private val next = button("", filled = true) { if (index == steps.lastIndex) finish() else go(index + 1) }
-    private val skip = button(tr("スキップ", "Skip"), filled = false) { finish() }
+    private val skip = button(tr("uiSkip"), filled = false) { finish() }
     private var cardX = Float.NaN
     private var cardY = Float.NaN
 
@@ -224,7 +214,7 @@ internal class AutoTutorial(
         tip.visibility = if (step.tip.isEmpty()) GONE else VISIBLE
         back.visibility = if (index == 0) INVISIBLE else VISIBLE
         skip.visibility = if (index == steps.lastIndex) INVISIBLE else VISIBLE
-        next.text = if (index == steps.lastIndex) tr("始める", "Start") else tr("次へ", "Next")
+        next.text = if (index == steps.lastIndex) tr("uiStart2b94f9b0") else tr("uiNext")
         completed = false
         pressing = false
         touched = false
@@ -259,7 +249,7 @@ internal class AutoTutorial(
     private fun complete() {
         if (completed || phase != Phase.COACH) return
         completed = true
-        title.text = tr("できました", "Nice")
+        title.text = tr("uiNice")
         val shown = index
         postDelayed({ if (index == shown && phase == Phase.COACH) go(index + 1) }, DONE_MS)
         invalidate()

@@ -31,11 +31,13 @@ class LinuxPage extends StatefulWidget {
     super.key,
     required this.onSwitchToPlasmaV2,
     this.onSetupPrivilege,
+    this.privilegeConnectionLabel,
   });
 
   /// Selects Plasma v2 as the window manager (owned by the home screen).
   final Future<void> Function() onSwitchToPlasmaV2;
   final Future<void> Function()? onSetupPrivilege;
+  final String? privilegeConnectionLabel;
 
   @override
   State<LinuxPage> createState() => _LinuxPageState();
@@ -129,14 +131,16 @@ class _LinuxPageState extends State<LinuxPage> {
   List<_LinuxContainer> get installedContainers =>
       containers.where((c) => !c.inactive && c.state == 'installed').toList();
 
-  /// The containers whose applications are listed: the default one, or all.
+  /// Only the preferred installed container, falling back to the first installed one.
   List<_LinuxContainer> get appContainers {
     final installed = installedContainers;
     final preferred = installed.where((c) => c.id == defaultContainer).toList();
-    return preferred.isNotEmpty ? preferred : installed;
+    return preferred.isNotEmpty
+        ? preferred.take(1).toList()
+        : installed.take(1).toList();
   }
 
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
 
   @override
   void initState() {
@@ -219,7 +223,7 @@ class _LinuxPageState extends State<LinuxPage> {
               .timeout(const Duration(seconds: 10)) ??
           const {};
       if (!mounted || request != _statusRequest) return;
-      final mode = next['executionMode'] as String? ?? 'privileged';
+      final mode = next['executionMode'] as String? ?? 'android';
       if (_executionMode != mode) {
         _executionMode = mode;
         _dataGeneration++;
@@ -240,12 +244,15 @@ class _LinuxPageState extends State<LinuxPage> {
         status = next;
         loading = false;
       });
+      apps.operationsEnabled = usable;
       if (enabled && usable) {
         await _channel
             .invokeMethod('connect')
             .timeout(const Duration(seconds: 10));
         await _refreshContainers();
         if (mounted && request == _statusRequest) await _maybeFirstRun();
+      } else if (supportedDevice) {
+        await _loadOfflineOverview(request);
       }
     } on Exception catch (e) {
       if (mounted && request == _statusRequest) {
@@ -256,6 +263,34 @@ class _LinuxPageState extends State<LinuxPage> {
         });
       }
     }
+  }
+
+  /// The last successful lists remain visible without contacting a privileged service.
+  Future<void> _loadOfflineOverview(int request) async {
+    final cached = await _channel.invokeMapMethod<Object?, Object?>(
+      'offlineOverview',
+    );
+    if (!mounted || request != _statusRequest || usable) return;
+    setState(() {
+      containers = ((cached?['containers'] as List?) ?? const [])
+          .cast<Map<Object?, Object?>>()
+          .map(_LinuxContainer.new)
+          .toList();
+      _containersLoaded = true;
+      defaultContainer =
+          cached?['defaultContainer'] as String? ?? defaultContainer;
+      firstRun = false;
+      _appsSignature = '';
+    });
+    final ids = appContainers.map((c) => c.id).toSet();
+    apps.showCached([
+      for (final raw in (cached?['apps'] as List?) ?? const [])
+        if (raw is Map && ids.contains(raw['container']))
+          LinuxAppEntry(
+            raw.cast<Object?, Object?>(),
+            raw['container'] as String,
+          ),
+    ]);
   }
 
   /// Linux is not set up yet: the tab offers the first setup instead of its apps and containers.
@@ -353,8 +388,10 @@ class _LinuxPageState extends State<LinuxPage> {
     }
   }
 
-  Future<void> _loadApps() =>
-      apps.loadAll([for (final c in appContainers) c.id]);
+  Future<void> _loadApps() async {
+    if (!usable) return;
+    await apps.loadAll([for (final c in appContainers) c.id]);
+  }
 
   Future<void> _reload() async {
     await _load();
@@ -390,34 +427,42 @@ class _LinuxPageState extends State<LinuxPage> {
     return '${value.toStringAsFixed(unit == 0 ? 0 : 1)} ${units[unit]}';
   }
 
-  /// Install phases in order; the step shown is the phase's position.
-  static const _phases = [
-    'prepare',
-    'download',
-    'verify',
-    'extract',
-    'configure',
-    'refresh',
-    'provision',
-    'language',
-    'input',
-    'desktop',
-    'graphics',
-    'applications',
-    'integration',
-    'finish',
-  ];
+  /// The phases this operation runs, in order; the step shown is the phase's position here.
+  List<String> _phasesOf(_LinuxContainer container) {
+    final options = container.setupOptions;
+    final ime = options['ime'];
+    return [
+      if (container.state != 'updating') ...[
+        'prepare',
+        'download',
+        'verify',
+        'extract',
+      ],
+      'configure',
+      'refresh',
+      'language',
+      if (ime != null && ime != 'none') 'input',
+      if ((options['apps'] as List?)?.isNotEmpty ?? false) 'applications',
+      'integration',
+      'finish',
+    ];
+  }
 
   String _phaseLabel(AppLocalizations l, String phase) =>
       phase == 'error' ? l.linuxStateFailed : linuxSetupPhaseLabel(l, phase);
 
   /// "Step 3 of 8 · Extracting", or the plain state before the first report.
-  String _phaseTitle(AppLocalizations l, _Progress? current) {
+  String _phaseTitle(
+    AppLocalizations l,
+    _Progress? current,
+    _LinuxContainer container,
+  ) {
     if (current == null) return l.linuxStateInstalling;
-    final step = _phases.indexOf(current.phase);
+    final phases = _phasesOf(container);
+    final step = phases.indexOf(current.phase);
     final label = _phaseLabel(l, current.phase);
     if (step < 0) return label;
-    return '${l.linuxPhaseStep(step + 1, _phases.length)} · $label';
+    return '${l.linuxPhaseStep(step + 1, phases.length)} · $label';
   }
 
   /// Detail under the progress bar: transferred size, package name, percentage.
@@ -468,7 +513,7 @@ class _LinuxPageState extends State<LinuxPage> {
               });
               if (accepted != true) {
                 throw StateError(
-                  'Linux setup is already running or unavailable',
+                  currentUiText('uiLinuxSetupIsAlreadyRunningOrUnavailable'),
                 );
               }
               id = targetId;
@@ -550,14 +595,12 @@ class _LinuxPageState extends State<LinuxPage> {
     try {
       final removed = await LinuxBackupsUi.duringOperation<bool?>(
         context,
-        t('コンテナを削除しています', 'Deleting the container'),
+        t('uiDeletingTheContainer'),
         container.name,
         () => _channel.invokeMethod<bool>('remove', {'id': container.id}),
       );
       if (removed != true) {
-        throw StateError(
-          t('コンテナを削除できませんでした', 'Could not delete the container'),
-        );
+        throw StateError(t('uiCouldNotDeleteTheContainer'));
       }
       await _refreshContainers();
     } catch (exception) {
@@ -593,10 +636,7 @@ class _LinuxPageState extends State<LinuxPage> {
     if (installed.isEmpty) {
       M3ESnackbar.show(
         context,
-        message: t(
-          'Store は Debian／Ubuntu のコンテナに対応しています',
-          'Store supports Debian and Ubuntu containers',
-        ),
+        message: t('uiStoreSupportsDebianAndUbuntuContainers'),
       );
       return;
     }
@@ -639,17 +679,19 @@ class _LinuxPageState extends State<LinuxPage> {
       );
     }
     final ready = enabled && usable && !firstRun;
+    final showContents =
+        enabled && supportedDevice && (!firstRun || !privilege);
     final wide = linuxWide(context);
     final tabs = M3ESegmentedButton<int>(
       segments: [
         M3ESegment(
           value: 0,
-          label: t('アプリ', 'Apps'),
+          label: t('uiApps'),
           icon: const Icon(M3EIcons.apps_rounded),
         ),
         M3ESegment(
           value: 1,
-          label: t('コンテナ', 'Containers'),
+          label: t('uiContainers'),
           icon: const Icon(M3EIcons.dns_rounded),
         ),
       ],
@@ -683,7 +725,7 @@ class _LinuxPageState extends State<LinuxPage> {
             slivers: [
               SliverToBoxAdapter(
                 child: wide
-                    ? _wideHeader(l, theme, ready ? tabs : null)
+                    ? _wideHeader(l, theme, showContents ? tabs : null)
                     : _header(l, theme),
               ),
               if (!enabled || !usable) ..._setupNotices(l, theme),
@@ -692,7 +734,7 @@ class _LinuxPageState extends State<LinuxPage> {
                 SliverToBoxAdapter(
                   child: _notice(M3EIcons.error_outline_rounded, error!),
                 ),
-              if (ready) ...[
+              if (showContents) ...[
                 if (!wide)
                   SliverToBoxAdapter(
                     child: Padding(
@@ -700,10 +742,20 @@ class _LinuxPageState extends State<LinuxPage> {
                       child: tabs,
                     ),
                   ),
-                if (tab == 0)
-                  ..._appsSlivers(theme)
-                else
-                  ..._containerSlivers(l, theme),
+                SliverOpacity(
+                  opacity: usable ? 1 : 0.38,
+                  sliver: SliverIgnorePointer(
+                    ignoring: !usable,
+                    sliver: ExcludeFocus(
+                      excluding: !usable,
+                      child: SliverMainAxisGroup(
+                        slivers: tab == 0
+                            ? _appsSlivers(theme)
+                            : _containerSlivers(l, theme),
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ],
           ),
@@ -731,7 +783,7 @@ class _LinuxPageState extends State<LinuxPage> {
             M3EButton.tonal(
               icon: const Icon(M3EIcons.storefront_rounded),
               onPressed: _openStore,
-              label: const Text('Store'),
+              label: Text(localText(context, 'uiStore')),
             ),
           const SizedBox(width: 4),
           M3EIconButton(
@@ -772,7 +824,7 @@ class _LinuxPageState extends State<LinuxPage> {
                 M3EButton.tonal(
                   icon: const Icon(M3EIcons.storefront_rounded),
                   onPressed: _openStore,
-                  label: const Text('Store'),
+                  label: Text(localText(context, 'uiStore')),
                 ),
               const SizedBox(width: 4),
               M3EIconButton(
@@ -806,22 +858,18 @@ class _LinuxPageState extends State<LinuxPage> {
                 color: theme.colorScheme.primary,
               ),
               const SizedBox(height: 16),
-              Text(
-                t('Linux をセットアップ', 'Set up Linux'),
-                style: theme.textTheme.headlineSmall,
-              ),
+              Text(t('uiSetUpLinux'), style: theme.textTheme.headlineSmall),
               const SizedBox(height: 8),
               Text(
                 t(
-                  'Linux の動かし方、Store の配布元、Linux 環境の中身を順に選んで、最初の Linux 環境を作成します。',
-                  'Choose how Linux runs, the Store sources and what the environment contains, then create your first Linux environment.',
+                  'uiChooseHowLinuxRunsTheStoreSourcesAndWhatTheEnvironmentContainsThenCreateYourFirstLinuxEnvironment',
                 ),
               ),
               const SizedBox(height: 20),
               M3EButton.filled(
                 icon: const Icon(M3EIcons.arrow_forward_rounded),
                 onPressed: _startFirstRun,
-                label: Text(t('セットアップする', 'Set up')),
+                label: Text(t('uiSetUp')),
               ),
             ],
           ),
@@ -855,7 +903,7 @@ class _LinuxPageState extends State<LinuxPage> {
                     );
                     if (mounted) await _load();
                   },
-                  label: Text(t('実行方式を変更', 'Change the execution mode')),
+                  label: Text(t('uiChangeTheExecutionMode')),
                 ),
                 if (widget.onSetupPrivilege != null) ...[
                   const SizedBox(height: 12),
@@ -866,7 +914,7 @@ class _LinuxPageState extends State<LinuxPage> {
                       if (mounted) await _load();
                     },
                     label: Text(
-                      t('内蔵バインダをセットアップ', 'Set up the built-in binder'),
+                      widget.privilegeConnectionLabel ?? l.uiRestorePrivileges,
                     ),
                   ),
                 ],
@@ -908,7 +956,7 @@ class _LinuxPageState extends State<LinuxPage> {
             const M3ELoadingIndicator(),
             const SizedBox(height: 16),
             Text(
-              t('コンテナを読み込んでいます…', 'Loading containers…'),
+              t('uiLoadingContainers'),
               style: theme.textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
@@ -926,18 +974,20 @@ class _LinuxPageState extends State<LinuxPage> {
           .firstOrNull;
       if (elsewhere != null) {
         final environment = elsewhere.inactiveMode == 'android'
-            ? t('Android環境', 'Android environment')
-            : t('特権環境', 'privileged environment');
+            ? t('uiAndroidEnvironment')
+            : t('uiPrivilegedEnvironment');
         return [
           SliverFillRemaining(
             hasScrollBody: false,
             child: _emptyState(
               theme,
               M3EIcons.dns_rounded,
-              t('$environmentに切り替えてください', 'Switch to the $environment'),
-              t(
-                '今のモードにはコンテナがありません。$environmentのコンテナのアプリは、切り替えると使えます。',
-                'This mode has no containers. The $environment containers\' apps are available after switching.',
+              inlineFormat(t('uiSwitchToThe0'), [environment]),
+              inlineFormat(
+                t(
+                  'uiThisModeHasNoContainersThe0ContainersAppsAreAvailableAfterSwitching',
+                ),
+                [environment],
               ),
               M3EButton.filled(
                 icon: const Icon(M3EIcons.add_rounded),
@@ -945,9 +995,7 @@ class _LinuxPageState extends State<LinuxPage> {
                   _setTab(1);
                   _addContainer();
                 },
-                label: Text(
-                  t('このモードでコンテナを作成', 'Create a container in this mode'),
-                ),
+                label: Text(t('uiCreateAContainerInThisMode')),
               ),
             ),
           ),
@@ -959,18 +1007,15 @@ class _LinuxPageState extends State<LinuxPage> {
           child: _emptyState(
             theme,
             M3EIcons.dns_rounded,
-            t('まだコンテナがありません', 'No containers yet'),
-            t(
-              'コンテナを作成すると、ここにLinuxアプリが並びます。',
-              'Create a container and its Linux apps appear here.',
-            ),
+            t('uiNoContainersYet'),
+            t('uiCreateAContainerAndItsLinuxAppsAppearHere'),
             M3EButton.filled(
               icon: const Icon(M3EIcons.add_rounded),
               onPressed: () {
                 _setTab(1);
                 _addContainer();
               },
-              label: Text(t('コンテナを作成', 'Create a container')),
+              label: Text(t('uiCreateAContainer')),
             ),
           ),
         ),
@@ -991,15 +1036,12 @@ class _LinuxPageState extends State<LinuxPage> {
                 ? _emptyState(
                     theme,
                     M3EIcons.storefront_rounded,
-                    t('アプリがありません', 'No apps'),
-                    t(
-                      'Storeからアプリをインストールしましょう。',
-                      'Install apps from the Store.',
-                    ),
+                    t('uiNoApps'),
+                    t('uiInstallAppsFromTheStore'),
                     M3EButton.filled(
                       icon: const Icon(M3EIcons.storefront_rounded),
                       onPressed: _openStore,
-                      label: Text(t('Storeを開く', 'Open the Store')),
+                      label: Text(t('uiOpenTheStore')),
                     ),
                   )
                 : const SizedBox.shrink(),
@@ -1075,7 +1117,6 @@ class _LinuxPageState extends State<LinuxPage> {
             ),
           ),
         ),
-        SliverToBoxAdapter(child: _restoreButton()),
       ];
     }
     return [
@@ -1085,29 +1126,11 @@ class _LinuxPageState extends State<LinuxPage> {
           children: [
             for (final container in containers)
               _containerCard(l, theme, container),
-            _restoreButton(),
           ],
         ),
       ),
     ];
   }
-
-  /// Snapshots on the device and backup files from elsewhere, restored as new containers.
-  Widget _restoreButton() => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-    child: Align(
-      alignment: Alignment.centerLeft,
-      child: M3EButton.text(
-        onPressed: () async {
-          await LinuxBackupsUi.showSnapshots(context);
-          await _refreshContainers();
-        },
-        child: Text(
-          t('スナップショットとバックアップから復元', 'Restore from a snapshot or backup'),
-        ),
-      ),
-    ),
-  );
 
   Widget _containerCard(
     AppLocalizations l,
@@ -1127,11 +1150,11 @@ class _LinuxPageState extends State<LinuxPage> {
     final subtitle = [
       _distroName(container.distro),
       if (deleting)
-        t('削除中', 'Deleting')
+        t('uiDeleting')
       else
         switch (container.state) {
           'installed' => l.linuxStateInstalled,
-          'installing' || 'updating' => _phaseTitle(l, current),
+          'installing' || 'updating' => _phaseTitle(l, current, container),
           _ => l.linuxStateFailed,
         },
       if (!installing)
@@ -1236,16 +1259,12 @@ class _LinuxPageState extends State<LinuxPage> {
             // One line on the card; the whole text in its own overlay.
             if (!installing && container.runtimeError != null)
               LinuxErrorLine(
-                title: inlineFormat(t('{0} のエラー', '{0}: error'), [
-                  container.name,
-                ]),
+                title: inlineFormat(t('ui0Error'), [container.name]),
                 text: container.runtimeError!,
               ),
             if (!installing && container.error != null)
               LinuxErrorLine(
-                title: inlineFormat(t('{0} のエラー', '{0}: error'), [
-                  container.name,
-                ]),
+                title: inlineFormat(t('ui0Error'), [container.name]),
                 text: container.error!,
               ),
           ],
@@ -1257,8 +1276,8 @@ class _LinuxPageState extends State<LinuxPage> {
   /// A container of the execution mode that is not selected: grayed out and not operable.
   Widget _inactiveContainerCard(ThemeData theme, _LinuxContainer container) {
     final environment = container.inactiveMode == 'android'
-        ? t('Android環境', 'Android environment')
-        : t('特権環境', 'privileged environment');
+        ? t('uiAndroidEnvironment')
+        : t('uiPrivilegedEnvironment');
     final muted = theme.colorScheme.onSurface.withValues(alpha: 0.38);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
@@ -1284,10 +1303,7 @@ class _LinuxPageState extends State<LinuxPage> {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        t(
-                          '$environmentに切り替えてください',
-                          'Switch to the $environment',
-                        ),
+                        inlineFormat(t('uiSwitchToThe0'), [environment]),
                         style: theme.textTheme.bodySmall?.copyWith(
                           color: muted,
                         ),
@@ -1323,11 +1339,7 @@ class _LinuxPageState extends State<LinuxPage> {
           if (installed)
             ('desktop', l.linuxOpenDesktop, M3EIcons.desktop_windows_rounded),
           if (installed)
-            (
-              'terminal',
-              t('ターミナルを開く', 'Open terminal'),
-              M3EIcons.terminal_rounded,
-            ),
+            ('terminal', t('uiOpenTerminal'), M3EIcons.terminal_rounded),
           if (!installing)
             ('reset', l.linuxSessionReset, M3EIcons.restart_alt_rounded),
           if (!installing)
@@ -1339,28 +1351,12 @@ class _LinuxPageState extends State<LinuxPage> {
           if (!installing)
             ('repair', l.linuxRepair, M3EIcons.home_repair_service_rounded),
           if (installed)
-            (
-              'appimage',
-              t('AppImage を追加', 'Add an AppImage'),
-              M3EIcons.add_box_rounded,
-            ),
+            ('appimage', t('uiAddAnAppImage'), M3EIcons.add_box_rounded),
           if (installed)
-            (
-              'snapshot',
-              t('スナップショットを作成', 'Create a snapshot'),
-              M3EIcons.inventory_2_rounded,
-            ),
+            ('snapshot', t('uiCreateASnapshot'), M3EIcons.inventory_2_rounded),
           if (installed)
-            (
-              'storage',
-              t('ストレージの使用量', 'Storage use'),
-              M3EIcons.storage_rounded,
-            ),
-          (
-            'snapshots',
-            t('スナップショットとバックアップ', 'Snapshots and backups'),
-            M3EIcons.history_rounded,
-          ),
+            ('storage', t('uiStorageUse'), M3EIcons.storage_rounded),
+          ('snapshots', t('uiSnapshotsAndBackups'), M3EIcons.history_rounded),
           ('log', l.linuxShowLog, M3EIcons.description_rounded),
           ('delete', l.linuxDelete, M3EIcons.delete_forever_rounded),
         ];
@@ -1433,10 +1429,7 @@ class _LinuxPageState extends State<LinuxPage> {
             if (mounted) {
               M3ESnackbar.show(
                 context,
-                message: t(
-                  'スナップショットの前にコンテナを停止してください（強制停止）',
-                  'Stop the container first (Force stop)',
-                ),
+                message: t('uiStopTheContainerFirstForceStop'),
               );
             }
           } else {

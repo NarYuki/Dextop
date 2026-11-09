@@ -124,31 +124,31 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
         host.waitingSince = android.os.SystemClock.elapsedRealtime()
         waiting += host
         host.window.decorView.postDelayed({
-            if (host in waiting) host.showError(moe.n4tsu.dextop.localText("アプリのウィンドウがまだ開いていません。起動ログを確認してください", "The application has not opened a window yet. Check its launch log"))
+            if (host in waiting) host.showError(moe.n4tsu.dextop.localText("uiTheApplicationHasNotOpenedAWindowYetCheckItsLaunchLog"))
         }, 30_000)
         val metrics = host.windowManager.maximumWindowMetrics.bounds
         val dpi = host.resources.displayMetrics.densityDpi
         val refresh = host.display?.refreshRate ?: 60f
-        fun phase(ja: String, en: String) = host.runOnUiThread {
-            host.setPhase(moe.n4tsu.dextop.localText(ja, en))
+        fun phase(key: String) = host.runOnUiThread {
+            host.setPhase(moe.n4tsu.dextop.localText(key))
         }
-        phase("Linux サービスに接続しています", "Connecting to the Linux service")
+        phase("uiConnectingToTheLinuxService")
         LinuxContainerClient.connect(host)
         val clicked = android.os.SystemClock.uptimeMillis()
         LinuxContainerClient.call(host, { linux ->
             val queued = android.os.SystemClock.uptimeMillis()
-            phase("コンテナとアプリ表示を起動しています", "Starting the container and its display")
+            phase("uiStartingTheContainerAndItsDisplay")
             linux.startApps(container, metrics.width(), metrics.height(), dpi)
             val started = android.os.SystemClock.uptimeMillis()
             linux.updateDisplay(container, true, metrics.width(), metrics.height(), dpi, refresh)
             android.util.Log.i("DextopLaunch", "android $desktopId queue=${queued - clicked}ms startApps=${started - queued}ms " +
                 "updateDisplay=${android.os.SystemClock.uptimeMillis() - started}ms")
             host.launchLabel?.let { label ->
-                host.runOnUiThread { host.setPhase(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} を起動しています", "Starting {0}"), label)) }
-            } ?: phase("アプリを起動しています", "Starting the app")
+                host.runOnUiThread { host.setPhase(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiStarting0"), label)) }
+            } ?: phase("uiStartingTheApp")
             LinuxTheme.apply(host.applicationContext, linux, container)
             linux.launchApp(container, desktopId)
-            phase("ウィンドウが開くのを待っています", "Waiting for its window")
+            phase("uiWaitingForItsWindow")
         }, {}) { error ->
             waiting -= host
             host.showError(error.message ?: error.toString())
@@ -276,7 +276,7 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
             // reuse a window) leaves its launch window waiting: after a grace period it gives
             // way to the application's window.
             "launch-exit" -> if (event.optInt("code") == 0) waitingFor(containerId, event).forEach { host ->
-                host.setPhase(moe.n4tsu.dextop.localText("既存のウィンドウを確認しています", "Looking for its existing window"))
+                host.setPhase(moe.n4tsu.dextop.localText("uiLookingForItsExistingWindow"))
                 host.window.decorView.postDelayed({ if (host in waiting) handOff(host) }, HANDOFF_GRACE_MS)
             }
             // An application's failure reaches only the windows waiting for it.
@@ -396,9 +396,8 @@ internal object LinuxAndroidWindows : LinuxContainerClient.Listener {
             }
             waiting -= host
             host.showError(host.launchLabel?.let {
-                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} は終了しました。ウィンドウは開かれませんでした",
-                    "{0} ended without opening a window"), it)
-            } ?: moe.n4tsu.dextop.localText("アプリは終了しました。ウィンドウは開かれませんでした", "The app ended without opening a window"))
+                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("ui0EndedWithoutOpeningAWindow"), it)
+            } ?: moe.n4tsu.dextop.localText("uiTheAppEndedWithoutOpeningAWindow"))
             return
         }
         waiting -= host

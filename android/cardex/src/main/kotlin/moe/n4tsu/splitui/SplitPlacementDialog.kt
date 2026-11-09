@@ -18,8 +18,8 @@ class SplitPlacementDialog(private val activity: Activity, private val action: (
         val actions = mutableListOf<String>()
         val icons = mutableListOf<String>()
         if (state.optString("side").isEmpty()) {
-            labels += "左 / Left"; actions += "left"
-            labels += "右 / Right"; actions += "right"
+            labels += "左 / Left"; actions += moe.n4tsu.cardex.CarStrings.text(activity, "uiLeftab86e757")
+            labels += "右 / Right"; actions += moe.n4tsu.cardex.CarStrings.text(activity, "uiRight0a3e1aa7")
         } else {
             val apps = state.getJSONArray("apps")
             for (i in 0 until apps.length()) {
@@ -32,8 +32,8 @@ class SplitPlacementDialog(private val activity: Activity, private val action: (
         val themedContext = android.view.ContextThemeWrapper(activity, android.R.style.Theme_Material_Dialog_Alert)
         fun dp(value: Int) = (value * activity.resources.displayMetrics.density).toInt()
         val builder = AlertDialog.Builder(themedContext)
-            .setTitle(if (state.optString("side").isEmpty()) "配置先を選択 / Place app"
-                else "反対側のアプリ / Other app ${state.optInt("page") + 1}/${state.optInt("pages")}")
+            .setTitle(if (state.optString("side").isEmpty()) moe.n4tsu.cardex.CarStrings.text(activity, "uiPlaceApp")
+                else moe.n4tsu.cardex.CarStrings.text(activity, "uiOtherApp01e72283cc", state.optInt("page") + 1, state.optInt("pages")))
             .setAdapter(object : android.widget.ArrayAdapter<String>(themedContext, android.R.layout.simple_list_item_1, labels) {
                 override fun getView(position: Int, convertView: android.view.View?, parent: android.view.ViewGroup): android.view.View {
                     val view = super.getView(position, convertView, parent) as android.widget.TextView
@@ -54,10 +54,10 @@ class SplitPlacementDialog(private val activity: Activity, private val action: (
                 }
             }) { _, index -> action(actions[index]) }
             .setCancelable(false)
-            .setNegativeButton("Cancel") { _, _ -> action("cancel") }
+            .setNegativeButton(moe.n4tsu.cardex.CarStrings.text(activity, "uiCancel47dfc0fc")) { _, _ -> action("cancel") }
         if (state.optString("side").isNotEmpty()) {
-            if (state.optInt("page") > 0) builder.setNeutralButton("▲ Previous") { _, _ -> action("previous") }
-            if (state.optInt("page") + 1 < state.optInt("pages")) builder.setPositiveButton("▼ Next") { _, _ -> action("next") }
+            if (state.optInt("page") > 0) builder.setNeutralButton(moe.n4tsu.cardex.CarStrings.text(activity, "uiPrevious")) { _, _ -> action("previous") }
+            if (state.optInt("page") + 1 < state.optInt("pages")) builder.setPositiveButton(moe.n4tsu.cardex.CarStrings.text(activity, "uiNext")) { _, _ -> action("next") }
         }
         if (state.optString("error").isNotEmpty()) builder.setMessage(state.getString("error"))
         dialog = builder.show()

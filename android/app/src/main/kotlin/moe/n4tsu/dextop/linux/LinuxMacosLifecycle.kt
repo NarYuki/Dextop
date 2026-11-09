@@ -17,7 +17,7 @@ internal class LinuxMacosLifecycle {
     private val controls = ConcurrentHashMap<Process, Control>()
 
     fun prepare(base: File): Control {
-        check(base.isDirectory || base.mkdirs()) { "Cannot create macOS session controls" }
+        check(base.isDirectory || base.mkdirs()) { moe.n4tsu.dextop.localText("uiCannotCreateMacOSSessionControls") }
         return Control(Files.createTempDirectory(base.toPath(), "session-").toFile())
     }
 
@@ -37,7 +37,7 @@ internal class LinuxMacosLifecycle {
         owned.forEach { (process, _) ->
             val remaining = (deadline - System.nanoTime()).coerceAtLeast(0)
             check(!process.isAlive || process.waitFor(remaining, TimeUnit.NANOSECONDS)) {
-                "macOS is still stopping; the Linux session has been kept running. Try again after startup completes."
+                moe.n4tsu.dextop.localText("uiMacOSIsStillStoppingTheLinuxSessionHasBeenKeptRunningTryAgainAfterStartupCompletes")
             }
             finished(process)
         }

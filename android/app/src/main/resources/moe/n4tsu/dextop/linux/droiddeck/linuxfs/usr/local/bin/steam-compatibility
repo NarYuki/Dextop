@@ -1,0 +1,1274 @@
+#!/usr/bin/python3
+import json
+import os
+import re
+import runpy
+import shutil
+import sys
+
+TOOL = "droiddeck-proton-arm64"
+TOOL_11 = "droiddeck-proton-11-arm64"
+LEGACY_TOOL = "bannerlator-proton-arm64"
+LABEL_FILE = "/etc/steam-compatibility-label"
+PROTON_ARM64_APPID = "4427310"
+LAUNCHER = "droiddeck-proton"
+LEGACY_LAUNCHER = "bannerlator-proton"
+LIBRARY = "/mnt/droiddeck"
+SOURCES = ("Proton Experimental (ARM64)", "Proton 11.0 (ARM64)")
+OWN_TOOLS = ((TOOL, SOURCES), (TOOL_11, ("Proton 11.0 (ARM64)",)))
+FEX_TOOL = "droiddeck-fex"
+FEX_LAUNCHER = "droiddeck-fex-tool"
+FEX_FILES = ("toolmanifest.vdf", "compatibilitytool.vdf", FEX_LAUNCHER)
+FEX_APPID = "3127680"
+SNIPER_APPID = "1628350"
+FEX_DEPENDENCIES = (FEX_APPID, SNIPER_APPID)
+REQUEST_HANDOFF_SECONDS = 30
+PLAYABLE_TYPES = frozenset(("game", "demo", "application", "beta"))
+COMPAT_DIR = os.path.join(os.environ.get("HOME", "/root"), ".local", "share", "droiddeck-compat")
+OWN_FILES = ("toolmanifest.vdf", "compatibilitytool.vdf", LAUNCHER)
+COMPAT_TOOL_VDF = """"compatibilitytools"
+{
+	"compat_tools"
+	{
+		"%s"
+		{
+			"install_path" "."
+			"display_name" "%s"
+			"from_oslist" "windows"
+			"to_oslist" "linux"
+		}
+	}
+}
+"""
+TOOL_MANIFEST_VDF = """"manifest"
+{
+	"version" "2"
+	"commandline" "/%s %%verb%%"
+	"use_sessions" "1"
+	"compatmanager_layer_name" "proton"
+}
+""" % LAUNCHER
+
+
+BL_STORE_SETUP = """
+bl_store_launch() {
+  [ "${verb:-}" = waitforexitandrun ] || return 0
+  if [ -x /usr/local/bin/droiddeck-open-url ]; then
+    mkdir -p /tmp/droiddeck-browser
+    ln -sfn /usr/local/bin/droiddeck-open-url /tmp/droiddeck-browser/xdg-open
+    [ -n "${BL_LAUNCH_DIR:-}" ] && printf '%s
+' "$BL_LAUNCH_DIR" > /tmp/droiddeck-browser/launch-dir
+    PATH="/tmp/droiddeck-browser:$PATH"; export PATH
+  fi
+  if [ "${BL_DEBUG_BROWSER:-}" = 1 ]; then
+    WINEDEBUG="${WINEDEBUG:+$WINEDEBUG,}+shell,+winebrowser"; export WINEDEBUG
+  fi
+  [ -x /usr/local/bin/droiddeck-store-launch ] || return 0
+  /usr/local/bin/droiddeck-store-launch "$@"
+  [ $? -eq 10 ] && BL_STORE_EXIT=1
+  return 0
+}
+
+bl_run() {
+  if [ -n "${BL_STORE_EXIT:-}" ]; then
+    "$@"
+    rc=$?
+    /usr/local/bin/droiddeck-store-launch --exited "${BL_STORE_ARGS[@]}" || true
+    exit $rc
+  fi
+  exec "$@"
+}
+"""
+
+BL_COMPONENTS_SETUP = """
+bl_components() {
+  base=$1
+  cm_dir="${HOME:-/root}/.local/share/droiddeck-components"
+  cm_list="$cm_dir/desired.tsv"
+  [ "${verb:-}" = waitforexitandrun ] || return 0
+  case "${STEAM_COMPAT_DATA_PATH:-}" in ''|*/compatdata/0|*/compatdata/0/|*/compatdata/0-*) return 0 ;; esac
+  [ -f "$cm_list" ] || return 0
+  cm_app=${STEAM_COMPAT_DATA_PATH}
+  while [[ "$cm_app" == */ ]]; do cm_app=${cm_app%/}; done
+  cm_app=${cm_app##*/}
+  if [[ "$cm_app" =~ ^(-?)([0-9]+)$ ]]; then
+    cm_sign=${BASH_REMATCH[1]}
+    cm_digits=${BASH_REMATCH[2]}
+    while [[ ${#cm_digits} -gt 1 && "$cm_digits" == 0* ]]; do cm_digits=${cm_digits#0}; done
+    if [[ ${#cm_digits} -le 10 ]]; then
+      cm_app=$((10#$cm_digits))
+      [ "$cm_sign" = "-" ] && cm_app=$((-cm_app))
+      if (( cm_app >= -2147483648 && cm_app <= 4294967295 && cm_app != 0 )); then
+        (( cm_app < 0 )) && cm_app=$((cm_app + 4294967296))
+      else
+        cm_app=""
+      fi
+    else
+      cm_app=""
+    fi
+  else
+    cm_app=""
+  fi
+  if [ -z "$cm_app" ]; then
+    echo "droiddeck-proton: components: invalid game prefix, left as it is" >&2
+    return 0
+  fi
+  cm_tool=${base##*/}
+  cm_build=$(awk 'NR == 1 { print $2 }' "$base/version" 2>/dev/null)
+  cm_fixed=0
+  cm_checked=0
+  cm_selected=$(awk -F '\\t' -v app="$cm_app" -v tool="$cm_tool" -v build="$cm_build" '
+    $2 == tool && $3 == build {
+      rows[++count] = $0
+      scopes[count] = $1
+      comps[count] = $4
+      if ($1 == app) specific[$4] = 1
+    }
+    END {
+      for (i = 1; i <= count; i++)
+        if (scopes[i] == app || (scopes[i] == "*" && !specific[comps[i]])) print rows[i]
+    }
+  ' "$cm_list")
+  local cm_rows=() cm_files=() row h p
+  local -A cm_sums=()
+  while IFS=$'\\t' read -r scope t want comp rel sum src; do
+    [ -n "$scope" ] || continue
+    cm_rows+=("$comp"$'\\t'"$rel"$'\\t'"$sum"$'\\t'"$src")
+    [ "$src" != "-" ] && [ -f "$base/$rel" ] && cm_files+=("$base/$rel")
+  done <<< "$cm_selected"
+  if [ ${#cm_files[@]} -gt 0 ]; then
+    while read -r h p; do cm_sums["$p"]=$h; done < <(sha256sum -- "${cm_files[@]}" 2>/dev/null)
+  fi
+  for row in "${cm_rows[@]}"; do
+    IFS=$'\\t' read -r comp rel sum src <<< "$row"
+    cm_checked=$((cm_checked + 1))
+    f="$base/$rel"
+    if [ "$src" = "-" ]; then
+      if [ -e "$f" ]; then rm -f "$f" && cm_fixed=$((cm_fixed + 1)); fi
+      continue
+    fi
+    if [ -f "$f" ] && [ "${cm_sums[$f]:-}" = "$sum" ]; then continue; fi
+    if [ ! -f "$src" ]; then
+      echo "droiddeck-proton: components: $comp source missing ($src), left as it is" >&2
+      continue
+    fi
+    mkdir -p "$(dirname "$f")"
+    cp -f "$src" "$f.bl-new" && mv -f "$f.bl-new" "$f" || continue
+    case "$rel" in *.so) chmod 755 "$f" ;; *) chmod 644 "$f" ;; esac
+    cm_fixed=$((cm_fixed + 1))
+  done
+  [ "$cm_checked" -gt 0 ] && echo "droiddeck-proton: components: checked $cm_checked file(s) in $cm_tool for app $cm_app" >&2
+  if [ "$cm_fixed" -gt 0 ]; then
+    echo "droiddeck-proton: components: re-applied $cm_fixed of $cm_checked file(s) in $cm_tool before this launch" >&2
+    printf '%s\\t%s\\t%s\\n' "$(date +%s)" "$cm_tool" "$cm_fixed" >> "$cm_dir/reapplied.log"
+  fi
+}
+"""
+
+BL_GAME_CPUS_SETUP = """
+bl_game_cpus() {
+  [ -n "${BL_GAME_CPUS:-}" ] || return 0
+  command -v taskset >/dev/null 2>&1 || return 0
+  BL_TASKSET="taskset -c $BL_GAME_CPUS"
+  echo "droiddeck-proton: game cores $BL_GAME_CPUS" >&2
+}
+"""
+
+BL_LIBPATH_SETUP = """
+bl_libpath() {
+  export PROTON_USE_PIPEWIRE=${PROTON_USE_PIPEWIRE:-0}
+  [ -n "${LD_LIBRARY_PATH:-}" ] || return 0
+  local kept= dir old_ifs=$IFS
+  IFS=:
+  for dir in $LD_LIBRARY_PATH; do
+    case $dir in
+      "" | */steamrtarm64 | */steamrtarm64/*) ;;
+      *) kept=${kept:+$kept:}$dir ;;
+    esac
+  done
+  IFS=$old_ifs
+  if [ -n "$kept" ]; then export LD_LIBRARY_PATH="$kept"; else unset LD_LIBRARY_PATH; fi
+}
+"""
+
+BL_IDTECH3_SETUP = """
+bl_idtech3() {
+  BL_EXTRA_ARGS=()
+  case "${SteamAppId:-${STEAM_COMPAT_APP_ID:-}}" in
+    2200|2350|9010|6020) ;;
+    *) return 0 ;;
+  esac
+  case " $* " in
+    *r_fullscreen*|*r_mode*|*r_customwidth*|*r_customheight*)
+      echo "droiddeck-proton: Quake-engine title; its launch options set the video mode, left as they are" >&2
+      return 0 ;;
+  esac
+  w=${BL_WIDTH:-1280}
+  h=${BL_HEIGHT:-720}
+  BL_EXTRA_ARGS=(+set r_fullscreen 0 +set r_mode -1 +set r_customwidth "$w" +set r_customheight "$h")
+  echo "droiddeck-proton: Quake-engine title: windowed at ${w}x${h}" >&2
+}
+"""
+
+BL_DIRECTAUDIO_SETUP = """
+bl_directaudio() {
+  base=$1
+  [ -n "${BL_DIRECTAUDIO:-}" ] || return 0
+  [ -d "$BL_DIRECTAUDIO" ] || return 0
+  version=$("$base/files/bin-arm64/wine" --version 2>/dev/null)
+  major=${version#wine-}
+  major=${major%%.*}
+  if [ "$major" != "11" ]; then
+    echo "droiddeck-proton: DirectAudio left off - it is built for Wine 11 and this Proton is '${version:-unknown}'. Pairing them would be silent rather than broken, so it is not worth guessing." >&2
+    return 0
+  fi
+  winepulse="$base/files/lib/wine/aarch64-unix/winepulse.so"
+  if [ ! -f "$winepulse" ]; then
+    echo "droiddeck-proton: DirectAudio left off - no winepulse.so to read this Proton's audio interface from" >&2
+    return 0
+  fi
+  if grep -aq PsCreateSystemThread "$winepulse"; then set=linux-wine11-systhread; else set=linux-wine11; fi
+  da="$BL_DIRECTAUDIO/$set"
+  if [ ! -d "$da/lib/wine" ]; then
+    echo "droiddeck-proton: DirectAudio left off - no driver set for the $set interface is staged" >&2
+    return 0
+  fi
+  WINEDLLPATH="$da/lib/wine${WINEDLLPATH:+:$WINEDLLPATH}"
+  export WINEDLLPATH
+  WINE_AUDIO_DRIVER="directaudio,pulse"
+  export WINE_AUDIO_DRIVER
+  pfx="${STEAM_COMPAT_DATA_PATH:-}/pfx"
+  reg="$pfx/user.reg"
+  if [ -f "$reg" ]; then
+    for pair in system32:aarch64-windows syswow64:i386-windows; do
+      dir="$pfx/drive_c/windows/${pair%%:*}"
+      src="$da/lib/wine/${pair#*:}/winedirectaudio.drv"
+      if [ -d "$dir" ] && [ -f "$src" ] && [ "$(readlink "$dir/winedirectaudio.drv" 2>/dev/null)" != "$src" ]; then
+        ln -sfn "$src" "$dir/winedirectaudio.drv.bl-new" && mv -f "$dir/winedirectaudio.drv.bl-new" "$dir/winedirectaudio.drv"
+      fi
+    done
+    key='[Software\\\\Wine\\\\Drivers]'
+    if [ "$(readlink "$pfx/drive_c/windows/system32/winedirectaudio.drv" 2>/dev/null)" != "$da/lib/wine/aarch64-windows/winedirectaudio.drv" ]; then
+      echo "droiddeck-proton: DirectAudio could not be placed in the prefix; Proton's own audio stays" >&2
+    elif ! BL_KEY="$key" awk 'index($0, "[") == 1 { inside = index($0, ENVIRON["BL_KEY"] " ") == 1 } inside && index($0, "\\"Audio\\"=") == 1 { last = $0 } END { exit last != "\\"Audio\\"=\\"directaudio,pulse\\"" }' "$reg" 2>/dev/null; then
+      printf '\\n%s %s\\n"Audio"="directaudio,pulse"\\n' "$key" "$(date +%s)" >> "$reg"
+      echo "droiddeck-proton: DirectAudio selected in the prefix" >&2
+      srv="${BL_WINE_SERVER_BASE:-/tmp/.wine-$(id -u)}/server-$(printf '%x-%x' $(stat -c '%d %i' "$pfx" 2>/dev/null || echo 0 0))/socket"
+      if [ -S "$srv" ]; then
+        echo "droiddeck-proton: a wineserver is already running for this prefix; DirectAudio may only engage on the next launch" >&2
+      fi
+    fi
+  else
+    echo "droiddeck-proton: no prefix yet - DirectAudio takes effect the next time this game starts" >&2
+  fi
+  echo "droiddeck-proton: DirectAudio ready (Wine $major, $set)" >&2
+}
+"""
+
+LAUNCHER_SH = """#!/bin/bash
+verb=$1; shift
+steam_root=${STEAM_COMPAT_CLIENT_INSTALL_PATH:-${XDG_DATA_HOME:-$HOME/.local/share}/Steam}
+for fake in /usr/local/lib/libfakeinput.so /usr/local/lib/libblsession.so; do
+  if [ -f "$fake" ]; then
+    case ":${LD_PRELOAD:-}:" in
+      *":$fake:"*) ;;
+      *) LD_PRELOAD="$fake${LD_PRELOAD:+:$LD_PRELOAD}"; export LD_PRELOAD ;;
+    esac
+  fi
+done
+audit=/usr/local/lib/libblaudit.so
+if [ -n "${PROOT_FP_KEY:-}" ] && [ -f "$audit" ]; then
+  case ":${LD_AUDIT:-}:" in
+    *":$audit:"*) ;;
+    *) LD_AUDIT="$audit${LD_AUDIT:+:$LD_AUDIT}"; export LD_AUDIT ;;
+  esac
+fi
+depot=
+libraries=$(printf '%%s\\n' "$steam_root" /mnt/droiddeck-sd; sed -n 's/^[[:space:]]*"path"[[:space:]]*"\\(.*\\)"[[:space:]]*$/\\1/p' "$steam_root/steamapps/libraryfolders.vdf" 2>/dev/null)
+for name in %s; do
+ best=0
+ while IFS= read -r library; do
+  candidate="$library/steamapps/common/$name"
+  [ -d "$candidate/files/bin-arm64" ] && [ -x "$candidate/proton" ] || continue
+  build=0
+  read -r build _ 2>/dev/null < "$candidate/version"
+  case $build in "" | *[!0-9]*) build=0 ;; esac
+  if [ -z "$depot" ] || [ "$build" -gt "$best" ]; then
+    depot=$candidate
+    best=$build
+  fi
+ done <<< "$libraries"
+ [ -n "$depot" ] && break
+done
+if [ -n "$depot" ]; then
+  bl_components "$depot"
+  bl_directaudio "$depot"
+  bl_game_cpus
+  bl_idtech3 "$@"
+  bl_libpath
+  BL_STORE_PROTON="$depot/proton"; export BL_STORE_PROTON
+  bl_store_launch "$@"
+  BL_STORE_ARGS=("$@")
+  bl_run ${BL_TASKSET:-} /usr/local/bin/droiddeck-game-env "$depot/proton" "$verb" "$@" "${BL_EXTRA_ARGS[@]}"
+fi
+echo "droiddeck-proton: no ARM64 Proton depot yet - the client downloads one as this tool's dependency; retry the launch once it has" >&2
+exit 1
+"""
+LAUNCHER_TEMPLATE = LAUNCHER_SH
+
+
+def launcher_sh(sources=SOURCES):
+    return (LAUNCHER_TEMPLATE % " ".join('"%s"' % n for n in sources)).replace(
+        "verb=$1; shift", "verb=$1; shift\n" + BL_DIRECTAUDIO_SETUP + BL_GAME_CPUS_SETUP + BL_IDTECH3_SETUP
+        + BL_COMPONENTS_SETUP + BL_LIBPATH_SETUP + BL_STORE_SETUP, 1)
+
+
+LAUNCHER_SH = launcher_sh()
+
+EXTRA_WRAPPER = "droiddeck-proton-wrap"
+LEGACY_EXTRA_WRAPPER = "bannerlator-proton-wrap"
+ORIGINAL_SUFFIX = ".droiddeck-orig"
+LEGACY_ORIGINAL_SUFFIX = ".bannerlator-orig"
+EXTRA_MANIFEST_VDF = """"manifest"
+{
+	"version" "2"
+	"commandline" "/%s %%verb%%"
+	"use_sessions" "1"
+	"compatmanager_layer_name" "proton"
+}
+""" % EXTRA_WRAPPER
+EXTRA_WRAPPER_SH = """#!/bin/bash
+verb=$1; shift
+here=$(dirname "$0")
+for fake in /usr/local/lib/libfakeinput.so /usr/local/lib/libblsession.so; do
+  if [ -f "$fake" ]; then
+    case ":${LD_PRELOAD:-}:" in
+      *":$fake:"*) ;;
+      *) LD_PRELOAD="$fake${LD_PRELOAD:+:$LD_PRELOAD}"; export LD_PRELOAD ;;
+    esac
+  fi
+done
+audit=/usr/local/lib/libblaudit.so
+if [ -n "${PROOT_FP_KEY:-}" ] && [ -f "$audit" ]; then
+  case ":${LD_AUDIT:-}:" in
+    *":$audit:"*) ;;
+    *) LD_AUDIT="$audit${LD_AUDIT:+:$LD_AUDIT}"; export LD_AUDIT ;;
+  esac
+fi
+bl_components "$here"
+bl_directaudio "$here"
+bl_game_cpus
+bl_idtech3 "$@"
+bl_libpath
+BL_STORE_PROTON="$here/%s"; export BL_STORE_PROTON
+bl_store_launch "$@"
+BL_STORE_ARGS=("$@")
+bl_run ${BL_TASKSET:-} /usr/local/bin/droiddeck-game-env "$BL_STORE_PROTON" "$verb" "$@" "${BL_EXTRA_ARGS[@]}"
+"""
+EXTRA_COMPAT_TOOL_VDF = """"compatibilitytools"
+{
+	"compat_tools"
+	{
+		"%s"
+		{
+			"install_path" "."
+			"display_name" "%s"
+			"from_oslist" "windows"
+			"to_oslist" "linux"
+		}
+	}
+}
+"""
+
+
+FEX_COMPAT_TOOL_VDF = """"compatibilitytools"
+{
+	"compat_tools"
+	{
+		"%s"
+		{
+			"install_path" "."
+			"display_name" "%s"
+			"from_oslist" "linux"
+			"to_oslist" "linux"
+		}
+	}
+}
+"""
+FEX_MANIFEST_VDF = """"manifest"
+{
+	"version" "2"
+	"commandline" "/%s %%verb%%"
+	"use_tool_subprocess_reaper" "1"
+}
+""" % FEX_LAUNCHER
+FEX_LAUNCHER_SH = """#!/bin/bash
+verb=$1; shift
+case $verb in
+  getcompatpath | getnativepath) printf '%s\\n' "$1"; exit 0 ;;
+esac
+exec /usr/local/bin/droiddeck-fex steam "$verb" "$@"
+"""
+
+
+TOKEN = re.compile(r'\s*(?:"((?:[^"\\]|\\.)*)"|([{}])|//[^\n]*)')
+
+
+def tokenize(text):
+    tokens = []
+    pos = 0
+    while pos < len(text):
+        m = TOKEN.match(text, pos)
+        if not m or m.end() == pos:
+            break
+        pos = m.end()
+        if m.group(2):
+            tokens.append(m.group(2))
+        elif m.group(1) is not None:
+            tokens.append('"' + m.group(1) + '"')
+    return tokens
+
+
+def find_block(tokens, path):
+    """Index of the '{' opening the block at path, or None."""
+    depth, want, i = 0, 0, 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t == "{":
+            depth += 1
+        elif t == "}":
+            depth -= 1
+            if depth < want:
+                return None
+        elif depth == want and i + 1 < len(tokens) and tokens[i + 1] == "{":
+            if t.lower() == '"%s"' % path[want].lower():
+                if want == len(path) - 1:
+                    return i + 1
+                want += 1
+        i += 1
+    return None
+
+
+def block_end(tokens, start):
+    depth = 0
+    for i in range(start, len(tokens)):
+        if tokens[i] == "{":
+            depth += 1
+        elif tokens[i] == "}":
+            depth -= 1
+            if depth == 0:
+                return i
+    return len(tokens)
+
+
+def serialize(tokens):
+    out, depth, i = [], 0, 0
+    while i < len(tokens):
+        t = tokens[i]
+        if t == "}":
+            depth -= 1
+            out.append("\t" * depth + "}")
+            i += 1
+        elif i + 1 < len(tokens) and tokens[i + 1] == "{":
+            out.append("\t" * depth + t)
+            out.append("\t" * depth + "{")
+            depth += 1
+            i += 2
+        else:
+            out.append("\t" * depth + t + "\t\t" + tokens[i + 1])
+            i += 2
+    return "\n".join(out) + "\n"
+
+
+def write_changed(path, text, mode=None):
+    """Writes `text` to `path` only when it differs, through a rename so a reader never sees half a
+    file. The session runs this script every 15 s for as long as the client does; rewriting files
+    that have not changed cost a python start's worth of writes each time, and config.vdf is the
+    client's own, which it may be writing at that moment. Returns whether anything was written."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            same = f.read() == text
+    except OSError:
+        same = False
+    if not same:
+        tmp = path + ".droiddeck"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+        if mode is not None:
+            os.chmod(tmp, mode)
+        os.replace(tmp, path)
+    elif mode is not None and (os.stat(path).st_mode & 0o7777) != mode:
+        os.chmod(path, mode)
+    return not same
+
+
+def display_name(base):
+    try:
+        with open(LABEL_FILE, encoding="utf-8") as f:
+            label = f.read().strip().replace('"', "'").replace("\\", "")
+    except OSError:
+        label = ""
+    return "%s (%s)" % (base, label) if label else base
+
+
+def first_key(path, section):
+    """The single key naming a block inside `section`, or None. Used to keep a third-party tool's
+    own internal name, so a mapping the user already made against it keeps working."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            tokens = tokenize(f.read())
+    except OSError:
+        return None
+    block = find_block(tokens, section)
+    if block is None:
+        return None
+    for i in range(block + 1, block_end(tokens, block)):
+        if tokens[i] == "}":
+            break
+        if i + 1 < len(tokens) and tokens[i + 1] == "{":
+            return tokens[i].strip('"')
+    return None
+
+
+def manifest_entry_point(path):
+    """The script a toolmanifest's commandline runs, relative to the tool directory."""
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            tokens = tokenize(f.read())
+    except OSError:
+        return None
+    for i in range(len(tokens) - 1):
+        if tokens[i].lower() == '"commandline"':
+            command = tokens[i + 1].strip('"').split()
+            if command:
+                return command[0].lstrip("/")
+    return None
+
+
+def adopt_extras(tools):
+    """Makes every other Proton in compatibilitytools.d launchable here, and returns the tool names
+    to leave alone in CompatToolMapping - the whole point of installing one is to pick it per game,
+    so register_default must not repoint it back at ours."""
+    adopted = {}
+    try:
+        entries = sorted(os.listdir(tools))
+    except OSError:
+        return adopted
+    for entry in entries:
+        if entry in dict(OWN_TOOLS) or entry == FEX_TOOL or entry.startswith("."):
+            continue
+        tool_dir = os.path.join(tools, entry)
+        manifest = os.path.join(tool_dir, "toolmanifest.vdf")
+        if not os.path.isdir(tool_dir) or not os.path.isfile(manifest):
+            continue
+        original = manifest + ORIGINAL_SUFFIX
+        legacy = manifest + LEGACY_ORIGINAL_SUFFIX
+        if not os.path.isfile(original) and os.path.isfile(legacy):
+            try:
+                os.replace(legacy, original)
+            except OSError:
+                continue
+        if not os.path.isfile(original):
+            try:
+                shutil.copy2(manifest, original)
+            except OSError:
+                continue
+        entry_point = manifest_entry_point(original)
+        if not entry_point or entry_point in (EXTRA_WRAPPER, LEGACY_EXTRA_WRAPPER):
+            entry_point = "proton"
+        if not os.path.exists(os.path.join(tool_dir, entry_point)):
+            print("steam-compatibility: %s has no %s; left alone" % (entry, entry_point))
+            continue
+        compat_vdf = os.path.join(tool_dir, "compatibilitytool.vdf")
+        name = first_key(compat_vdf, ["compatibilitytools", "compat_tools"]) or entry
+        wrapper = os.path.join(tool_dir, EXTRA_WRAPPER)
+        try:
+            body = (EXTRA_WRAPPER_SH % entry_point).replace(
+                    'here=$(dirname "$0")',
+                    'here=$(dirname "$0")\n' + BL_DIRECTAUDIO_SETUP + BL_GAME_CPUS_SETUP + BL_IDTECH3_SETUP
+                    + BL_COMPONENTS_SETUP + BL_LIBPATH_SETUP + BL_STORE_SETUP, 1)
+            write_changed(wrapper, body, 0o755)
+            write_changed(manifest, EXTRA_MANIFEST_VDF)
+            write_changed(compat_vdf, EXTRA_COMPAT_TOOL_VDF % (name, display_name(entry)))
+            legacy_wrapper = os.path.join(tool_dir, LEGACY_EXTRA_WRAPPER)
+            if os.path.isfile(legacy_wrapper):
+                os.unlink(legacy_wrapper)
+        except OSError as e:
+            print("steam-compatibility: could not adopt %s (%s)" % (entry, e))
+            continue
+        adopted[name] = entry
+    return adopted
+
+
+NOT_GAMES = frozenset((
+    "228980",
+    "1070560",
+    "1391110",
+    "1628350",
+    "1493710",
+    "3127680",
+    "4183110",
+    "4185400",
+    "4427310",
+    "4628740",
+))
+
+
+def libraries(steam_root):
+    found = [steam_root]
+    try:
+        with open(os.path.join(steam_root, "steamapps", "libraryfolders.vdf"), encoding="utf-8", errors="replace") as f:
+            found += [path.replace("\\\\", "\\") for path in re.findall(r'"path"\s+"((?:[^"\\]|\\.)*)"', f.read())]
+    except OSError:
+        pass
+    found.append(LIBRARY + "-sd")
+    return list(dict.fromkeys(found))
+
+
+def installed_apps(steam_root):
+    """App ids of the titles the client has installed, tools and runtimes excluded."""
+    apps = set()
+    for library in libraries(steam_root):
+        steamapps = os.path.join(library, "steamapps")
+        try:
+            names = os.listdir(steamapps)
+        except OSError:
+            continue
+        for name in names:
+            m = re.fullmatch(r"appmanifest_(\d+)\.acf", name)
+            if m and m.group(1) not in NOT_GAMES:
+                apps.add(m.group(1))
+    return sorted(apps, key=int)
+
+
+APPINFO_CACHE = {}
+STEAM_PLAY_MANIFESTS = 891390
+
+
+def launch_programs(config):
+    """The Windows and Linux programs an app's launch options start, relative to its folder (lowercase, "/")."""
+    launch = config.get("launch") if isinstance(config, dict) else None
+    found = []
+    for option in launch.values() if isinstance(launch, dict) else ():
+        if not isinstance(option, dict) or not option.get("executable"):
+            continue
+        settings = option.get("config") if isinstance(option.get("config"), dict) else {}
+        oslist = str(settings.get("oslist", "")).lower()
+        if oslist and "windows" not in oslist and "linux" not in oslist:
+            continue
+        found.append(os.path.normpath(str(option["executable"]).replace("\\", "/")).lstrip("/").lower())
+    return found
+
+
+def appinfo_entries(path):
+    import struct
+    try:
+        stamp = os.stat(path).st_mtime_ns
+    except OSError:
+        return {}
+    cached = APPINFO_CACHE.get(path)
+    if cached and cached[0] == stamp:
+        return cached[1]
+    try:
+        with open(path, "rb") as f:
+            data = f.read()
+    except OSError:
+        return {}
+    if len(data) < 8:
+        return {}
+    magic = struct.unpack_from("<I", data, 0)[0]
+    if magic not in (0x07564427, 0x07564428, 0x07564429):
+        return {}
+    offset = 8
+    strings = None
+    try:
+        if magic == 0x07564429:
+            table = struct.unpack_from("<q", data, offset)[0]
+            offset += 8
+            count = struct.unpack_from("<I", data, table)[0]
+            position = table + 4
+            strings = []
+            for _ in range(count):
+                end = data.index(b"\0", position)
+                strings.append(data[position:end].decode("utf-8", "replace"))
+                position = end + 1
+    except (ValueError, IndexError, struct.error):
+        return {}
+    header = 4 + 4 + 8 + 20 + 4 + (20 if magic >= 0x07564428 else 0)
+
+    def section(position):
+        result = {}
+        while True:
+            kind = data[position]
+            position += 1
+            if kind == 8:
+                return result, position
+            if strings is not None:
+                key = strings[struct.unpack_from("<I", data, position)[0]]
+                position += 4
+            else:
+                end = data.index(b"\0", position)
+                key = data[position:end].decode("utf-8", "replace")
+                position = end + 1
+            if kind == 0:
+                result[key], position = section(position)
+            elif kind == 1:
+                end = data.index(b"\0", position)
+                result[key] = data[position:end].decode("utf-8", "replace")
+                position = end + 1
+            elif kind == 2:
+                result[key] = struct.unpack_from("<i", data, position)[0]
+                position += 4
+            elif kind == 7:
+                result[key] = struct.unpack_from("<Q", data, position)[0]
+                position += 8
+            else:
+                raise ValueError("unknown appinfo field type %d" % kind)
+
+    found = {}
+    while offset + 8 <= len(data):
+        try:
+            app, size = struct.unpack_from("<II", data, offset)
+        except struct.error:
+            break
+        if app == 0:
+            break
+        start = offset + 8
+        offset = start + size
+        try:
+            info = section(start + header)[0].get("appinfo", {})
+        except (ValueError, IndexError, struct.error):
+            continue
+        if not isinstance(info, dict):
+            continue
+        common = info.get("common", {}) if isinstance(info.get("common"), dict) else {}
+        deck = common.get("steam_deck_compatibility")
+        configuration = deck.get("configuration") if isinstance(deck, dict) else None
+        recommended = configuration.get("recommended_runtime", "") if isinstance(configuration, dict) else ""
+        entry = {
+            "oslist": {part.strip().lower() for part in str(common.get("oslist", "")).split(",") if part.strip()},
+            "osarch": str(common.get("osarch", "")).lower(),
+            "type": str(common.get("type", "")).lower(),
+            "recommended": str(recommended),
+            "launch": launch_programs(info.get("config")),
+        }
+        if app == STEAM_PLAY_MANIFESTS:
+            extended = info.get("extended", {})
+            mappings = extended.get("app_mappings", {}) if isinstance(extended, dict) else {}
+            entry["app_mappings"] = {str(m.get("appid", key)): str(m.get("tool", "")) for key, m in mappings.items()
+                                     if isinstance(m, dict)} if isinstance(mappings, dict) else {}
+        found[str(app)] = entry
+    APPINFO_CACHE[path] = (stamp, found)
+    return found
+
+
+def appinfo_platforms(path, wanted):
+    entries = appinfo_entries(path)
+    return {app: (entries[app]["oslist"], entries[app]["osarch"], entries[app]["type"]) for app in wanted if app in entries}
+
+
+def valve_picks(steam_root):
+    entries = appinfo_entries(os.path.join(steam_root, "appcache", "appinfo.vdf"))
+    mapped = {app for app, tool in entries.get(str(STEAM_PLAY_MANIFESTS), {}).get("app_mappings", {}).items() if tool}
+    picks = set()
+    for app, entry in entries.items():
+        if app in NOT_GAMES or entry["type"] not in PLAYABLE_TYPES:
+            continue
+        if entry["oslist"] and "windows" not in entry["oslist"]:
+            continue
+        if entry["recommended"] or app in mapped:
+            picks.add(app)
+    return sorted(picks, key=int)
+
+
+def native_targets(steam_root, apps):
+    wanted = {str(app) for app in apps if str(app) not in NOT_GAMES}
+    if not wanted:
+        return {}
+    targets = {}
+    for app, (oslist, osarch, kind) in appinfo_platforms(os.path.join(steam_root, "appcache", "appinfo.vdf"), wanted).items():
+        if kind not in PLAYABLE_TYPES or "linux" not in oslist:
+            continue
+        if "arm64" in osarch or "aarch64" in osarch:
+            targets[app] = None
+            continue
+        if "windows" in oslist:
+            targets[app] = NATIVE_CHOICE
+            continue
+        targets[app] = FEX_TOOL
+    return targets
+
+
+def fex_missing(steam_root):
+    missing = []
+    for app in FEX_DEPENDENCIES:
+        if not any(os.path.isfile(os.path.join(library, "steamapps", "appmanifest_%s.acf" % app))
+                   for library in libraries(steam_root)):
+            missing.append(app)
+    return missing
+
+
+def fex_wanted_marker():
+    return os.path.join(os.environ.get("HOME", "/root"), ".config", "droiddeck", "fex-wanted")
+
+
+def request_fex(steam_root, asked):
+    import subprocess
+    client = os.path.join(steam_root, "steamrtarm64", "steam")
+    missing = fex_missing(steam_root)
+    if not os.access(client, os.X_OK) or any(app in asked for app in missing):
+        return []
+    for app in missing:
+        asked.add(app)
+        try:
+            process = subprocess.Popen([client, "steam://install/%s" % app], stdout=subprocess.DEVNULL,
+                                       stderr=subprocess.DEVNULL, start_new_session=True)
+        except OSError:
+            continue
+        try:
+            process.wait(timeout=REQUEST_HANDOFF_SECONDS)
+        except subprocess.TimeoutExpired:
+            pass
+        return [app]
+    return []
+
+
+def read_json(path):
+    try:
+        with open(path, encoding="utf-8") as f:
+            value = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def write_json(path, value):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    return write_changed(path, json.dumps(value, indent=1, sort_keys=True) + "\n")
+
+
+class locked:
+    def __init__(self, directory=None):
+        self.path = os.path.join(directory or COMPAT_DIR, "lock")
+
+    def __enter__(self):
+        import fcntl
+        os.makedirs(os.path.dirname(self.path), exist_ok=True)
+        self.fd = os.open(self.path, os.O_RDWR | os.O_CREAT, 0o644)
+        fcntl.flock(self.fd, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc):
+        os.close(self.fd)
+
+
+def state_path(name, directory=None):
+    return os.path.join(directory or COMPAT_DIR, name)
+
+
+def unrunnable(name, runnable):
+    low = name.lower()
+    return low not in runnable and (low.startswith("proton") or low == LEGACY_TOOL or low.startswith("droiddeck-proton"))
+
+
+def app_order(app):
+    return (len(app), app)
+
+
+DEFERRED_GAME_TOOL = object()
+NATIVE_CHOICE = object()
+
+
+def plan_mapping(current, installed, runnable, default, auto, native=None, picks=(), overrides=None, managed=None,
+                 native_choices=()):
+    runnable = {n.lower() for n in runnable}
+    installed = set(installed)
+    picks = set(picks)
+    native = native or {}
+    overrides = overrides or {}
+    managed = set(auto) if managed is None else set(managed)
+    native_choices = set(native_choices)
+    changes, kept = {}, {}
+    if current.get("0", "") != default:
+        changes["0"] = default
+    for app in sorted((set(current) | installed | picks | set(auto) | set(overrides) | native_choices) - {"0"}, key=app_order):
+        name = current.get(app, "")
+        if app in overrides:
+            target = overrides[app]
+            if target is DEFERRED_GAME_TOOL:
+                continue
+            target = target or default
+            if name != target:
+                changes[app] = target
+            if overrides[app] is None:
+                kept[app] = target
+            continue
+        mine = auto.get(app)
+        target = native.get(app, default)
+        if not name and app in native_choices:
+            target = NATIVE_CHOICE
+        stale = unrunnable(name, runnable)
+        if name and not stale and (mine is None or name != mine):
+            continue
+        if target is NATIVE_CHOICE:
+            if not name and (app in native_choices or app in current or app in managed):
+                kept[app] = NATIVE_CHOICE
+                continue
+            target = default
+        if target is None:
+            if stale:
+                target = default
+                if name != target:
+                    changes[app] = target
+                continue
+            else:
+                if name and app in managed and name == mine:
+                    changes[app] = None
+                continue
+        if not name and app not in installed and app not in picks:
+            continue
+        if name != target:
+            changes[app] = target
+        kept[app] = target
+    return changes, kept
+
+
+def followers(state, current):
+    if "auto" in state:
+        return state["auto"]
+    return {app: name for app, name in current.items() if app != "0" and name == TOOL}
+
+
+def tool_entry(name, display, path, valve):
+    return {"name": name, "display": display, "dir": os.path.basename(path) if path else "", "valve": valve}
+
+
+def tool_catalog(steam_root, extras=None):
+    tools = os.path.join(steam_root, "compatibilitytools.d")
+    catalog = []
+    for name, sources in OWN_TOOLS:
+        depot = find_source(steam_root, sources)
+        if depot is None and name != TOOL:
+            continue
+        catalog.append(tool_entry(name, display_name(
+            os.path.basename(depot).replace(" (ARM64)", " ARM64") if depot else "Proton ARM64"), depot, True))
+    if extras is None:
+        extras = {}
+        try:
+            entries = sorted(os.listdir(tools))
+        except OSError:
+            entries = []
+        for entry in entries:
+            tool_dir = os.path.join(tools, entry)
+            if entry in dict(OWN_TOOLS) or not any(os.path.isfile(os.path.join(tool_dir, w)) for w in (EXTRA_WRAPPER, LEGACY_EXTRA_WRAPPER)):
+                continue
+            extras[first_key(os.path.join(tool_dir, "compatibilitytool.vdf"), ["compatibilitytools", "compat_tools"]) or entry] = entry
+    for name, entry in sorted(extras.items()):
+        catalog.append(tool_entry(name, display_name(entry), os.path.join(tools, entry), False))
+    return catalog
+
+
+def requested_tool(request, catalog):
+    name = request.get("name")
+    if isinstance(name, str) and any(t["name"] == name for t in catalog):
+        return name
+    for tool in catalog:
+        if tool["dir"] and tool["dir"] == request.get("dir") and tool["valve"] == bool(request.get("valve")):
+            return tool["name"]
+    return None
+
+
+def game_requests(directory=None):
+    value = read_json(state_path("games.json", directory))
+    if value.get("version") != 1 or not isinstance(value.get("games"), dict):
+        return {}
+    return value["games"]
+
+
+def requested_games(requests, catalog, runnable=None):
+    """App id -> requested tool, None for inherit, or DEFERRED_GAME_TOOL while unavailable."""
+    runnable = None if runnable is None else set(runnable)
+    resolved = {}
+    for app, request in requests.items():
+        if not isinstance(app, str) or not re.fullmatch(r"[1-9][0-9]*", app) or int(app) > 0xFFFFFFFF:
+            continue
+        if request is None:
+            resolved[app] = None
+            continue
+        if (not isinstance(request, dict) or not isinstance(request.get("dir"), str) or
+                not request["dir"] or not isinstance(request.get("valve"), bool)):
+            continue
+        tool = requested_tool(request, catalog)
+        if tool is None or runnable is not None and tool not in runnable:
+            resolved[app] = DEFERRED_GAME_TOOL
+        else:
+            resolved[app] = tool
+    return resolved
+
+
+def now_ms():
+    import time
+    return int(time.time() * 1000)
+
+
+def choose_default(steam_default, state, request, catalog, adopt_steam=True, apply_request=True, now=None):
+    state = dict(state)
+    names = [t["name"] for t in catalog]
+    seq = request.get("seq")
+    seq = seq if isinstance(seq, int) else 0
+    if apply_request and seq > int(state.get("applied", 0) or 0):
+        wanted = requested_tool(request, catalog)
+        state["applied"] = seq
+        if wanted:
+            if wanted != state.get("default"):
+                state.update(default=wanted, seq=now or now_ms(), source="app")
+        else:
+            print("steam-compatibility: the app asked for %s, which is not installed; kept %s" % (
+                request.get("name") or request.get("dir"), state.get("default") or TOOL))
+    elif adopt_steam and steam_default in names and steam_default != state.get("default"):
+        state.update(default=steam_default, seq=now or now_ms(), source="steam")
+    if state.get("default") not in names:
+        state["default"] = TOOL
+    return state["default"], state
+
+
+def mapping_block(tokens):
+    steam = find_block(tokens, ["InstallConfigStore", "Software", "Valve", "Steam"])
+    if steam is None:
+        return None
+    mapping = find_block(tokens[steam + 1:], ["CompatToolMapping"])
+    if mapping is None:
+        end = block_end(tokens, steam)
+        tokens[end:end] = ['"CompatToolMapping"', "{", "}"]
+        return end + 1
+    return mapping + steam + 1
+
+
+def read_mapping(tokens, mapping):
+    current = {}
+    end = block_end(tokens, mapping)
+    i = mapping + 1
+    while i < end:
+        if i + 1 < end and tokens[i + 1] == "{":
+            close = block_end(tokens, i + 1)
+            name = ""
+            for j in range(i + 2, close - 1):
+                if tokens[j] == '"name"':
+                    name = tokens[j + 1].strip('"')
+                    break
+            current[tokens[i].strip('"')] = name
+            i = close + 1
+        else:
+            i += 2
+    return current
+
+
+def read_config_mapping(config_path):
+    """Read per-app choices without creating or rewriting the client's mapping block."""
+    try:
+        with open(config_path, encoding="utf-8", errors="replace") as f:
+            tokens = tokenize(f.read())
+    except OSError:
+        return None
+    depth = 0
+    for token in tokens:
+        if token == "{":
+            depth += 1
+        elif token == "}":
+            depth -= 1
+            if depth < 0:
+                return None
+    if depth != 0:
+        return None
+    steam = find_block(tokens, ["InstallConfigStore", "Software", "Valve", "Steam"])
+    if steam is None:
+        return None
+    mapping = find_block(tokens[steam + 1:], ["CompatToolMapping"])
+    return read_mapping(tokens, mapping + steam + 1) if mapping is not None else {}
+
+
+def set_mapping(tokens, mapping, app, tool):
+    block = find_block(tokens[mapping + 1:], [app])
+    if tool is None:
+        if block is not None:
+            block += mapping + 1
+            del tokens[block - 1:block_end(tokens, block) + 1]
+        return
+    if block is None:
+        tokens[mapping + 1:mapping + 1] = [
+            '"%s"' % app, "{", '"name"', '"%s"' % tool, '"config"', '""', '"priority"', '"75"' if app == "0" else '"250"', "}"]
+        return
+    block += mapping + 1
+    end = block_end(tokens, block)
+    for i in range(block + 1, end):
+        if tokens[i] == '"name"':
+            tokens[i + 1] = '"%s"' % tool
+            return
+    tokens[block + 1:block + 1] = ['"name"', '"%s"' % tool]
+
+
+def steam_running():
+    try:
+        pids = [p for p in os.listdir("/proc") if p.isdigit()]
+    except OSError:
+        return False
+    for pid in pids:
+        try:
+            with open("/proc/%s/cmdline" % pid, "rb") as f:
+                argv0 = f.read().split(b"\0", 1)[0]
+        except OSError:
+            continue
+        if argv0.endswith(b"steamrtarm64/steam"):
+            return True
+    return False
+
+
+def live_helper_running(directory=None):
+    try:
+        with open(state_path("live.pid", directory)) as f:
+            pid = int(f.read().split()[0])
+        os.kill(pid, 0)
+        return True
+    except (OSError, ValueError, IndexError):
+        return False
+
+
+def register_default(config_path, apps=(), protect=(), default=None, catalog=None, directory=None, settle=False, picks=()):
+    """Writes the mapping: the "0" default and every title that follows it (see plan_mapping).
+    With settle, the default itself is decided first (see choose_default): before the client
+    starts, config.vdf holds what the client last kept, menu changes included."""
+    with locked(directory):
+        state = read_json(state_path("state.json", directory))
+        with open(config_path, encoding="utf-8", errors="replace") as f:
+            original = f.read()
+        tokens = tokenize(original)
+        mapping = mapping_block(tokens)
+        if mapping is None:
+            return state.get("default") or TOOL
+        current = read_mapping(tokens, mapping)
+        if catalog is None:
+            catalog = tool_catalog(os.path.dirname(os.path.dirname(os.path.abspath(config_path))),
+                                   dict(protect) if isinstance(protect, dict) else {name: name for name in protect})
+        names = [t["name"] for t in catalog]
+        if default is None:
+            if settle:
+                default, state = choose_default(current.get("0", ""), state, read_json(state_path("request.json", directory)), catalog)
+            else:
+                default = state.get("default") if state.get("default") in names else TOOL
+        steam_root = os.path.dirname(os.path.dirname(os.path.abspath(config_path)))
+        overrides = requested_games(game_requests(directory), catalog)
+        changes, auto = plan_mapping(
+            current, apps, names, default, followers(state, current),
+            native_targets(steam_root, set(apps) | set(picks)), picks,
+            overrides, state.get("auto", {}).keys() if isinstance(state.get("auto"), dict) else (),
+            state.get("native", ()))
+        for app, tool in changes.items():
+            set_mapping(tokens, mapping, app, tool)
+        text = serialize(tokens)
+        if text != serialize(tokenize(original)):
+            write_changed(config_path, text)
+        state["auto"] = {app: tool for app, tool in auto.items() if tool is not NATIVE_CHOICE}
+        state["native"] = sorted(app for app, tool in auto.items() if tool is NATIVE_CHOICE)
+        state["tools"] = catalog
+        state.setdefault("default", default)
+        write_json(state_path("state.json", directory), state)
+    return default
+
+
+def depot_build(depot):
+    """The build number a depot's version file starts with; 0 when there is none."""
+    try:
+        with open(os.path.join(depot, "version"), encoding="utf-8", errors="replace") as f:
+            first = f.read().split(None, 1)
+    except OSError:
+        return 0
+    return int(first[0]) if first and first[0].isdigit() else 0
+
+
+def find_source(steam_root, sources=SOURCES):
+    """The first of `sources` the client has downloaded, newest across the libraries holding it."""
+    for name in sources:
+        found = [os.path.join(root, "steamapps", "common", name) for root in libraries(steam_root)
+                 if os.path.isdir(os.path.join(root, "steamapps", "common", name, "files", "bin-arm64"))]
+        if found:
+            return max(found, key=depot_build)
+    return None
+
+
+def build_tool(tool_dir, depot, sources=SOURCES, name=TOOL):
+    """Our own manifests and the launcher, named after `depot`. The depot is run at launch time."""
+    if os.path.islink(tool_dir):
+        os.unlink(tool_dir)
+    elif os.path.isdir(tool_dir) and set(os.listdir(tool_dir)) - set(OWN_FILES):
+        shutil.rmtree(tool_dir)
+    os.makedirs(tool_dir, exist_ok=True)
+    write_changed(os.path.join(tool_dir, "toolmanifest.vdf"), TOOL_MANIFEST_VDF)
+    write_changed(os.path.join(tool_dir, "compatibilitytool.vdf"), COMPAT_TOOL_VDF % (name, display_name(
+        os.path.basename(depot).replace(" (ARM64)", " ARM64") if depot else "Proton ARM64")))
+    write_changed(os.path.join(tool_dir, LAUNCHER), launcher_sh(sources), 0o755)
+
+
+def build_fex_tool(tool_dir):
+    if os.path.islink(tool_dir):
+        os.unlink(tool_dir)
+    elif os.path.isdir(tool_dir) and set(os.listdir(tool_dir)) - set(FEX_FILES):
+        shutil.rmtree(tool_dir)
+    os.makedirs(tool_dir, exist_ok=True)
+    write_changed(os.path.join(tool_dir, "toolmanifest.vdf"), FEX_MANIFEST_VDF)
+    write_changed(os.path.join(tool_dir, "compatibilitytool.vdf"), FEX_COMPAT_TOOL_VDF % (FEX_TOOL, display_name("Linux x86 (FEX)")))
+    write_changed(os.path.join(tool_dir, FEX_LAUNCHER), FEX_LAUNCHER_SH, 0o755)
+
+
+def remove_tool(tool_dir):
+    if os.path.isdir(tool_dir) and not os.path.islink(tool_dir) and not set(os.listdir(tool_dir)) - set(OWN_FILES) - {LEGACY_LAUNCHER}:
+        shutil.rmtree(tool_dir)
+
+
+def main():
+    steam_root = sys.argv[1]
+    tools = os.path.join(steam_root, "compatibilitytools.d")
+    os.makedirs(tools, exist_ok=True)
+    legacy = os.path.join(tools, LEGACY_TOOL)
+    if os.path.islink(legacy):
+        os.unlink(legacy)
+    elif os.path.isdir(legacy):
+        shutil.rmtree(legacy)
+    for name, sources in OWN_TOOLS:
+        depot = find_source(steam_root, sources)
+        if depot is None and name != TOOL:
+            remove_tool(os.path.join(tools, name))
+            continue
+        build_tool(os.path.join(tools, name), depot, sources, name)
+        print("steam-compatibility: registered %s (%s)" % (
+            name, "depot %s present" % os.path.basename(depot) if depot else
+            "no ARM64 Proton depot yet; the session asks the client to fetch it"))
+    build_fex_tool(os.path.join(tools, FEX_TOOL))
+    print("steam-compatibility: registered %s" % FEX_TOOL)
+    extras = adopt_extras(tools)
+    for name, directory in sorted(extras.items()):
+        print("steam-compatibility: adopted %s as %s" % (directory, name))
+    catalog = tool_catalog(steam_root, extras)
+    config = os.path.join(steam_root, "config", "config.vdf")
+    if live_helper_running():
+        with locked():
+            state = read_json(state_path("state.json"))
+            state["tools"] = catalog
+            write_json(state_path("state.json"), state)
+        print("steam-compatibility: the live helper keeps the client's mapping; tools listed")
+    elif os.path.isfile(config):
+        apps = installed_apps(steam_root)
+        picks = valve_picks(steam_root)
+        default = register_default(config, apps, protect=extras, catalog=catalog, settle=not steam_running(), picks=picks)
+        print("steam-compatibility: default, %d installed title(s) and %d title(s) with a Valve pick set to %s" % (len(apps), len(picks), default))
+    sync = os.path.join(os.path.dirname(os.path.realpath(__file__)), "droiddeck-esync")
+    if os.path.isfile(sync):
+        try:
+            summary = runpy.run_path(sync)["reconcile"](steam_root, os.environ)
+        except Exception as e:
+            summary = "droiddeck-esync: reconcile failed (%s)" % e
+        if summary:
+            print("steam-compatibility: %s" % summary)
+
+
+if __name__ == "__main__":
+    main()

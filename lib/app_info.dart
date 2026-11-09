@@ -334,12 +334,11 @@ class _MacosCompatibilityExperimentalTileState
       secondary: const Icon(Icons.computer_rounded),
       value: enabled,
       onChanged: loading ? null : _update,
-      title: Text(linuxText(context, 'macOS互換', 'macOS compatibility')),
+      title: Text(linuxText(context, 'uiMacOSCompatibility')),
       subtitle: Text(
         linuxText(
           context,
-          'Linux設定にmacOS互換の設定を表示します。対応するアプリは限られています。',
-          'Show macOS compatibility in Linux settings. App support is limited.',
+          'uiShowMacOSCompatibilityInLinuxSettingsAppSupportIsLimited',
         ),
       ),
     ),

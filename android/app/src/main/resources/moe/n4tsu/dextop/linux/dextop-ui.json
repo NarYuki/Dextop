@@ -1,0 +1,37 @@
+{
+  "ja": {
+    "uiAndroidCalendar": "Androidカレンダー",
+    "uiCalendarNoTitle": "無題",
+    "uiICalendar": "iCalendar"
+  },
+  "en": {
+    "uiAndroidCalendar": "Android Calendar",
+    "uiCalendarNoTitle": "(No title)",
+    "uiICalendar": "iCalendar"
+  },
+  "ko": {
+    "uiAndroidCalendar": "Android 캘린더",
+    "uiCalendarNoTitle": "(제목 없음)",
+    "uiICalendar": "iCalendar"
+  },
+  "zh": {
+    "uiAndroidCalendar": "Android 日历",
+    "uiCalendarNoTitle": "（无标题）",
+    "uiICalendar": "iCalendar"
+  },
+  "ru": {
+    "uiAndroidCalendar": "Календарь Android",
+    "uiCalendarNoTitle": "(Без названия)",
+    "uiICalendar": "iCalendar"
+  },
+  "pt": {
+    "uiAndroidCalendar": "Calendário Android",
+    "uiCalendarNoTitle": "(Sem título)",
+    "uiICalendar": "iCalendar"
+  },
+  "pt_BR": {
+    "uiAndroidCalendar": "Calendário Android",
+    "uiCalendarNoTitle": "(Sem título)",
+    "uiICalendar": "iCalendar"
+  }
+}

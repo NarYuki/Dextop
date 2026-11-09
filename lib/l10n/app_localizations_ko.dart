@@ -2756,7 +2756,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get linuxSetupIntro =>
-      '사용 방식에 맞게 Linux를 준비합니다. 데스크톱, 언어, 입력 방법, 앱을 차례로 고르세요.';
+      '사용 방식에 맞게 Linux를 준비합니다. 언어, 입력 방법, 앱을 차례로 고르세요.';
 
   @override
   String get linuxSetupExisting =>
@@ -2907,10 +2907,6 @@ class AppLocalizationsKo extends AppLocalizations {
   @override
   String get linuxSetupSteamDetail =>
       'Valve의 Steam(ARM64). 처음 사용할 때 Valve에서 받으며, Proton과 FEX는 Steam이 설치합니다.';
-
-  @override
-  String get linuxSetupDroidDeckNote =>
-      'DroidDeck 런타임에는 KDE Plasma 데스크톱(KWin, Xwayland)과 글꼴, 입력기가 포함되어 있어 IceWM·언어·입력 단계를 건너뜁니다.';
 
   @override
   String get linuxSetupStorage =>
@@ -3072,7 +3068,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get linuxGpuTurnipSetup =>
-      '컨테이너 설정에서 3D 그래픽을 켜면 사용할 수 있습니다(빌드에 약 30분). 그 전까지는 VirGL을 사용합니다.';
+      '컨테이너를 복구하면 사용할 수 있습니다. 그 전까지는 VirGL을 사용합니다.';
 
   @override
   String get linuxSetupPhaseGpu => 'GPU 드라이버(Turnip) 빌드 중';
@@ -3164,4 +3160,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get nativeShortcutStartDisplay => 'Dextop 시작';
+
+  @override
+  String get androidDisplayTileLabel => 'Dextop 디스플레이';
 }

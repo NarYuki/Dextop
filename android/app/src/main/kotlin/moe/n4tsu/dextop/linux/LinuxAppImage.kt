@@ -21,22 +21,22 @@ internal object LinuxAppImage {
     /** The SquashFS offset of [file], or an error saying why it is not an AppImage this can run. */
     fun inspect(file: File): Image = RandomAccessFile(file, "r").use { input ->
         val header = ByteArray(64)
-        require(input.length() > 64 && input.read(header) == 64) { "The file is too small to be an AppImage" }
+        require(input.length() > 64 && input.read(header) == 64) { moe.n4tsu.dextop.localText("uiTheFileIsTooSmallToBeAnAppImage") }
         require(header[0] == 0x7f.toByte() && header[1] == 'E'.code.toByte() && header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte()) {
-            "Not an AppImage (no ELF runtime)"
+            moe.n4tsu.dextop.localText("uiNotAnAppImageNoELFRuntime")
         }
-        require(header[4].toInt() == 2 && header[5].toInt() == 1) { "Only 64-bit AppImages are supported" }
+        require(header[4].toInt() == 2 && header[5].toInt() == 1) { moe.n4tsu.dextop.localText("uiOnly64BitAppImagesAreSupported") }
         fun u16(at: Int) = (header[at].toInt() and 0xff) or ((header[at + 1].toInt() and 0xff) shl 8)
         fun u64(at: Int) = (0 until 8).fold(0L) { value, i -> value or ((header[at + i].toLong() and 0xff) shl (8 * i)) }
         val machine = u16(18)
-        require(machine != MACHINE_X86_64) { "This AppImage is built for x86-64; Linux here runs ARM64 programs. Look for an aarch64 (ARM64) build." }
-        require(machine == MACHINE_AARCH64) { "This AppImage is not built for ARM64" }
+        require(machine != MACHINE_X86_64) { moe.n4tsu.dextop.localText("uiThisAppImageIsBuiltForX8664LinuxHereRunsARM64ProgramsLookForAnAarch64ARM64Build") }
+        require(machine == MACHINE_AARCH64) { moe.n4tsu.dextop.localText("uiThisAppImageIsNotBuiltForARM64") }
         val offset = u64(40) + u16(58).toLong() * u16(60)
-        require(offset in 64 until input.length()) { "Not an AppImage (no image after its runtime)" }
+        require(offset in 64 until input.length()) { moe.n4tsu.dextop.localText("uiNotAnAppImageNoImageAfterItsRuntime") }
         input.seek(offset)
         val magic = ByteArray(4)
         input.readFully(magic)
-        require(String(magic, Charsets.ISO_8859_1) == "hsqs") { "Only type 2 AppImages (SquashFS) are supported" }
+        require(String(magic, Charsets.ISO_8859_1) == "hsqs") { moe.n4tsu.dextop.localText("uiOnlyType2AppImagesSquashFSAreSupported") }
         Image(offset, machine)
     }
 

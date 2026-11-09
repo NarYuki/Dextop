@@ -854,11 +854,11 @@
   "nativePlasmaTimeUntilFull": "%1$s until full",
   "nativePlasmaHoursMinutes": "%1$d h %2$d min",
   "nativePlasmaMinutes": "%1$d min",
-  "nativePlasmaApplying": "Applying…",
+  "nativePlasmaApplying": "Applying…",
   "linuxUnsupportedDevice": "Linux requires an arm64 device.",
   "linuxRequiresPlasma": "Linux is available only with Dextop Plasma v2.",
   "linuxSwitchToPlasma": "Switch to Plasma v2",
-  "linuxRequiresPrivilege": "Full privilege needs privileged access such as Shizuku, Stellar or the built-in binder. Start Shizuku or Stellar, or set up the built-in binder.",
+  "linuxRequiresPrivilege": "Privileged Shell needs privileged access such as Shizuku, Stellar or the built-in binder. Start Shizuku or Stellar, or set up the built-in binder.",
   "linuxEnable": "Enable Linux",
   "linuxEnableDescription": "Create and manage containers and open Linux apps from Plasma",
   "linuxNoContainers": "No containers yet. Use Add container to create one.",
@@ -894,7 +894,7 @@
   "linuxPhaseFinish": "Finishing",
   "linuxPhaseStep": "Step {step} of {total}",
   "linuxSetupTitle": "Linux setup",
-  "linuxSetupIntro": "Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.",
+  "linuxSetupIntro": "Create a Linux workspace that suits you. Choose a language, input method and applications.",
   "linuxSetupExisting": "Add features to this Linux environment. Existing files and applications are kept. Reopen the desktop after setup to apply the settings.",
   "linuxSetupSystem": "Your Linux environment",
   "linuxSetupDesktop": "Make it your desktop",
@@ -940,7 +940,6 @@
   "linuxSetupOffice": "Office suite",
   "linuxSetupOfficeDetail": "LibreOffice — documents, spreadsheets and presentations. Requires a larger download and more storage.",
   "linuxSetupSteamDetail": "Valve's Steam (ARM64). Fetched from Valve at first use; Steam installs Proton and FEX itself.",
-  "linuxSetupDroidDeckNote": "DroidDeck's runtime ships its own KDE Plasma desktop (KWin, Xwayland), fonts and input methods, so the IceWM, language and input steps are skipped.",
   "linuxSetupStorage": "Keep several GB of free storage available. Downloads and installation size depend on the distribution and selected apps. Installation continues if you leave this screen.",
   "linuxSetupAdditive": "Unselected apps are not removed. Setup adds selected packages and updates the language and session settings.",
   "linuxSetupNothingExtra": "No optional applications",
@@ -990,7 +989,7 @@
   "nativePlasmaClearAll": "Clear all",
   "linuxGpuTurnip": "Turnip + Zink (recommended)",
   "linuxGpuTurnipDescription": "Linux apps use the Adreno GPU directly (Vulkan and OpenGL 4.6). Fastest, and suited to games.",
-  "linuxGpuTurnipSetup": "Turn on 3D graphics in the container setup to use it (the build takes about 30 minutes). Until then VirGL is used.",
+  "linuxGpuTurnipSetup": "Repair the container to use it. Until then VirGL is used.",
   "linuxSetupPhaseGpu": "Building the GPU driver (Turnip)",
   "linuxSetupDisplayBackend": "Display system",
   "linuxSetupXvfbDetail": "Use X11 for applications and the IceWM desktop.",
@@ -1025,5 +1024,6 @@
     }
   },
   "nativeShortcutStartDisplayLong": "Start or stop the Dextop virtual display",
-  "nativeShortcutStartDisplay": "Start Dextop"
+  "nativeShortcutStartDisplay": "Start Dextop",
+  "androidDisplayTileLabel": "Dextop Display"
 }

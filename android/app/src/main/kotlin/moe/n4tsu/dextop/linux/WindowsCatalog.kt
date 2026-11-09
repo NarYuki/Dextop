@@ -64,7 +64,7 @@ internal object WindowsCatalog {
             connection.readTimeout = 60_000
             connection.inputStream.use { stream -> archive.outputStream().use { stream.copyTo(it) } }
             ZipFile(archive).use { zip ->
-                val entry = zip.getEntry("Public/index.db") ?: error("The winget catalogue has no index")
+                val entry = zip.getEntry("Public/index.db") ?: error(moe.n4tsu.dextop.localText("uiTheWingetCatalogueHasNoIndex"))
                 zip.getInputStream(entry).use { input -> target.outputStream().use { input.copyTo(it) } }
             }
         } finally {
@@ -144,7 +144,7 @@ internal object WindowsCatalog {
      * dextop-windows) or why none fits.
      */
     fun details(context: Context, id: String): Map<String, Any?> {
-        val pkg = find(context, id) ?: error("$id is not in the winget catalogue")
+        val pkg = find(context, id) ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("ui0IsNotInTheWingetCatalogue"), id))
         val m = manifest(pkg.path)
         @Suppress("UNCHECKED_CAST")
         val installers = (m["Installers"] as? List<Map<String, Any?>>).orEmpty().map { installer ->
@@ -171,8 +171,8 @@ internal object WindowsCatalog {
         val name = m["PackageName"] as? String ?: pkg.name
         val spec = chosen?.let { (installer, type, _) ->
             val hash = installer["InstallerSha256"] as? String
-            require(hash != null && hash.matches(Regex("[A-Fa-f0-9]{64}"))) { "Missing or invalid installer SHA-256" }
-            require((installer["InstallerUrl"] as? String)?.startsWith("https://") == true) { "Installer requires HTTPS" }
+            require(hash != null && hash.matches(Regex("[A-Fa-f0-9]{64}"))) { moe.n4tsu.dextop.localText("uiMissingOrInvalidInstallerSHA256") }
+            require((installer["InstallerUrl"] as? String)?.startsWith("https://") == true) { moe.n4tsu.dextop.localText("uiInstallerRequiresHTTPS") }
             val nested = (installer["NestedInstallerFiles"] as? List<*>)?.firstOrNull() as? Map<*, *>
             JSONObject()
                 .put("id", pkg.id).put("name", name).put("version", m["PackageVersion"] as? String ?: pkg.version)

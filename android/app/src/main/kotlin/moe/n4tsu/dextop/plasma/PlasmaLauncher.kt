@@ -105,7 +105,7 @@ internal object PlasmaSearch {
         fun parse(): Double {
             val value = expression()
             skipSpaces()
-            check(position == text.length) { "trailing input" }
+            check(position == text.length) { moe.n4tsu.dextop.localText("uiTrailingInput") }
             return value
         }
 
@@ -161,13 +161,13 @@ internal object PlasmaSearch {
                 position++
                 val value = expression()
                 skipSpaces()
-                check(text.getOrNull(position) == ')') { "missing )" }
+                check(text.getOrNull(position) == ')') { moe.n4tsu.dextop.localText("uiMissing") }
                 position++
                 return value
             }
             val start = position
             while (position < text.length && (text[position].isDigit() || text[position] == '.')) position++
-            check(position > start) { "number expected" }
+            check(position > start) { moe.n4tsu.dextop.localText("uiNumberExpected") }
             return text.substring(start, position).toDouble()
         }
     }

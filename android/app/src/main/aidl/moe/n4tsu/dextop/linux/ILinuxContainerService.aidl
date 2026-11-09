@@ -174,4 +174,7 @@ interface ILinuxContainerService {
     String appUninstallTarget(String containerId, String desktopId) = 84;
     /** Explicit size refresh on view entry or a completed storage mutation. */
     void refreshContainerSize(String containerId, boolean force) = 85;
+    String containerSharing(String containerId) = 86;
+    void setContainerSharing(String containerId, String policy) = 87;
+    String processContainer(int pid) = 88;
 }

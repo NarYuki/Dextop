@@ -2715,7 +2715,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linuxSetupTitle => 'Linux 设置';
 
   @override
-  String get linuxSetupIntro => '按照你的使用方式准备 Linux。依次选择桌面、语言、输入法和应用。';
+  String get linuxSetupIntro => '按照你的使用方式准备 Linux。依次选择语言、输入法和应用。';
 
   @override
   String get linuxSetupExisting =>
@@ -2865,10 +2865,6 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get linuxSetupSteamDetail =>
       'Valve 的 Steam（ARM64 版）。首次使用时从 Valve 获取；Proton 和 FEX 由 Steam 自行安装。';
-
-  @override
-  String get linuxSetupDroidDeckNote =>
-      'DroidDeck 运行时自带 KDE Plasma 桌面（KWin、Xwayland）、字体和输入法，因此跳过 IceWM、语言和输入步骤。';
 
   @override
   String get linuxSetupStorage =>
@@ -3029,7 +3025,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get linuxGpuTurnipSetup =>
-      '在容器设置中启用 3D 图形后可用（构建约需 30 分钟）。在此之前使用 VirGL。';
+      '修复容器后可用。在此之前使用 VirGL。';
 
   @override
   String get linuxSetupPhaseGpu => '正在构建 GPU 驱动（Turnip）';
@@ -3118,4 +3114,7 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get nativeShortcutStartDisplay => '启动 Dextop';
+
+  @override
+  String get androidDisplayTileLabel => 'Dextop 显示器';
 }

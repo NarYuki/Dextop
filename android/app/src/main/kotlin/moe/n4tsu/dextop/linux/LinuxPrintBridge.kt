@@ -33,7 +33,7 @@ internal object LinuxPrintBridge {
     fun poll(context: Context, service: ILinuxContainerService, containers: List<String>) {
         val manager = context.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(NotificationChannel(CHANNEL,
-            moe.n4tsu.dextop.localText("Linuxから印刷", "Print from Linux"), NotificationManager.IMPORTANCE_DEFAULT))
+            moe.n4tsu.dextop.localText("uiPrintFromLinux"), NotificationManager.IMPORTANCE_DEFAULT))
         val active = HashSet<String>()
         for (id in containers) {
             val jobs = JSONObject(service.integrationStatus(id)).optJSONArray("printJobs") ?: JSONArray()
@@ -43,7 +43,7 @@ internal object LinuxPrintBridge {
                 val key = "$id:$jobId"
                 active += key
                 if (!shown.add(key)) continue
-                val title = job.optString("title").ifBlank { "Linux document" }
+                val title = job.optString("title").ifBlank { moe.n4tsu.dextop.localText("uiLinuxDocument") }
                 val open = PendingIntent.getActivity(context, key.hashCode(),
                     Intent(context, LinuxPrintActivity::class.java).putExtra("container", id).putExtra("job", jobId).putExtra("title", title),
                     PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
@@ -53,16 +53,16 @@ internal object LinuxPrintBridge {
                 manager.notify(key.hashCode(), Notification.Builder(context, CHANNEL)
                     .setSmallIcon(moe.n4tsu.dextop.R.drawable.ic_qs_dextop)
                     .setContentTitle(title)
-                    .setContentText(moe.n4tsu.dextop.localText("タップしてAndroidで印刷", "Tap to print with Android"))
+                    .setContentText(moe.n4tsu.dextop.localText("uiTapToPrintWithAndroid"))
                     .setContentIntent(open).setAutoCancel(false)
-                    .addAction(Notification.Action.Builder(null, moe.n4tsu.dextop.localText("印刷", "Print"), open).build())
-                    .addAction(Notification.Action.Builder(null, moe.n4tsu.dextop.localText("破棄", "Discard"), discard).build()).build())
+                    .addAction(Notification.Action.Builder(null, moe.n4tsu.dextop.localText("uiPrint"), open).build())
+                    .addAction(Notification.Action.Builder(null, moe.n4tsu.dextop.localText("uiDiscard"), discard).build()).build())
             }
         }
         for (key in shown.toList()) if (key !in active) { manager.cancel(key.hashCode()); shown.remove(key) }
     }
 
-    fun open(context: Context, id: String, job: String, title: String = "Linux document") {
+    fun open(context: Context, id: String, job: String, title: String = moe.n4tsu.dextop.localText("uiLinuxDocument")) {
         require(job.matches(Regex("[a-f0-9]{32}")))
         context.startActivity(Intent(context, LinuxPrintActivity::class.java).putExtra("container", id)
             .putExtra("job", job).putExtra("title", title.take(256)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -92,7 +92,7 @@ class LinuxPrintActivity : Activity() {
         super.onCreate(savedInstanceState)
         val id = intent.getStringExtra("container") ?: return finish()
         val jobId = intent.getStringExtra("job") ?: return finish()
-        val title = intent.getStringExtra("title")?.take(256) ?: "Linux document"
+        val title = intent.getStringExtra("title")?.take(256) ?: moe.n4tsu.dextop.localText("uiLinuxDocument")
         if (!jobId.matches(Regex("[a-f0-9]{32}"))) return finish()
         LinuxContainerClient.call(this, { service ->
             val file = File.createTempFile("dextop-print-", ".pdf", cacheDir)
@@ -105,13 +105,13 @@ class LinuxPrintActivity : Activity() {
                             val count = input.read(buffer)
                             if (count < 0) break
                             bytes += count
-                            check(bytes <= 64L*1024*1024) { "Print document exceeds 64 MiB" }
+                            check(bytes <= 64L*1024*1024) { moe.n4tsu.dextop.localText("uiPrintDocumentExceeds64MiB") }
                             output.write(buffer, 0, count)
                         }
                     }
                 }
                 val pages = PdfRenderer(ParcelFileDescriptor.open(file, ParcelFileDescriptor.MODE_READ_ONLY)).use { it.pageCount }
-                check(pages > 0) { "The print document has no pages" }
+                check(pages > 0) { moe.n4tsu.dextop.localText("uiThePrintDocumentHasNoPages") }
                 file to pages
             } catch (error: Throwable) { file.delete(); throw error }
         }, { (file, pages) ->
@@ -128,7 +128,7 @@ class LinuxPrintActivity : Activity() {
                         runCatching {
                             val all = ranges.any { it.start == 0 && it.end >= pages-1 }
                             val source = if (all) file.inputStream() else {
-                                val service = checkNotNull(LinuxContainerClient.service()) { "Linux disconnected" }
+                                val service = checkNotNull(LinuxContainerClient.service()) { moe.n4tsu.dextop.localText("uiLinuxDisconnected") }
                                 val selection = JSONArray(ranges.map { range -> JSONArray(listOf(range.start, minOf(range.end, pages-1))) })
                                 ParcelFileDescriptor.AutoCloseInputStream(service.filterIntegrationPrint(id, jobId, selection.toString()))
                             }
@@ -159,7 +159,7 @@ class LinuxPrintActivity : Activity() {
     }
     private fun failure(error: Throwable) {
         if (isFinishing || isDestroyed) return
-        AlertDialog.Builder(this).setTitle(moe.n4tsu.dextop.localText("印刷できません", "Cannot print"))
+        AlertDialog.Builder(this).setTitle(moe.n4tsu.dextop.localText("uiCannotPrint"))
             .setMessage(error.message).setPositiveButton(android.R.string.ok) { _, _ -> finish() }
             .setOnCancelListener { finish() }.show()
     }

@@ -22,7 +22,7 @@ internal class AndroidKeystorePrivateKeyStore(context: Context) : KadbPrivateKey
         if (!encryptedFile.isFile) return@synchronized null
         val payload = encryptedFile.readBytes()
         require(payload.size > HEADER_SIZE && payload[0] == FORMAT_VERSION) {
-            "Invalid encrypted ADB identity"
+            moe.n4tsu.dextop.localText("uiInvalidEncryptedADBIdentity")
         }
         val iv = payload.copyOfRange(1, HEADER_SIZE)
         val ciphertext = payload.copyOfRange(HEADER_SIZE, payload.size)
@@ -42,7 +42,7 @@ internal class AndroidKeystorePrivateKeyStore(context: Context) : KadbPrivateKey
             stream.write(payload)
             stream.fd.sync()
         }
-        check(temporary.renameTo(encryptedFile)) { "Unable to commit encrypted ADB identity" }
+        check(temporary.renameTo(encryptedFile)) { moe.n4tsu.dextop.localText("uiUnableToCommitEncryptedADBIdentity") }
         eraseLegacyPlaintext()
     }
 

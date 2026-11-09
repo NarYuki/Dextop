@@ -34,7 +34,7 @@ internal class LinuxDesktopSession(
         fun start(proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int, xwayland: Boolean = false, keyring: ByteArray? = null): LinuxDesktopSession {
             // The X server of this display takes connections only with the container's cookie.
             LinuxXAuth.prepare(containerId, display)
-            val host = if (xwayland) LinuxXwaylandHost.start(containerId, display, width, height) else null
+            val host = if (xwayland) startXwaylandHost(containerId, display, width, height) else null
             var startedProcess: Process? = null
             try {
                 val fbFile = File(LinuxPaths.rootfs(containerId), "tmp/dextop-fb-$display/Xvfb_screen0")
@@ -61,7 +61,7 @@ internal class LinuxDesktopSession(
                 while (SystemClock.uptimeMillis() < deadline && (client == null || (!xwayland && framebuffer == null) || !startupReady.get())) {
                     if (!process.isAlive) {
                         client?.close()
-                        error("X server/session exited (exit ${process.exitValue()})")
+                        error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiXServerSessionExitedExit0"), process.exitValue()))
                     }
                     if (!xwayland && framebuffer == null) framebuffer = runCatching { XvfbFramebuffer.open(fbFile) }.getOrNull()
                     if (client == null) client = runCatching { X11Client.connect(display) }.getOrNull()
@@ -70,7 +70,7 @@ internal class LinuxDesktopSession(
                 if (client == null || (!xwayland && framebuffer == null) || !startupReady.get()) {
                     client?.close()
                     LinuxRuntime.terminate(process)
-                    error("X display :$display did not start")
+                    error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiXDisplay0DidNotStart0ac67227"), display))
                 }
                 return LinuxDesktopSession(containerId, display, process, client, framebuffer, host, if (xwayland) width else framebuffer!!.width, if (xwayland) height else framebuffer!!.height).also {
                     it.viewportWidth = width; it.viewportHeight = height; it.begin()
@@ -206,7 +206,7 @@ internal class LinuxDesktopSession(
 
     fun updateDisplay(config: LinuxDisplayConfiguration) {
         xwaylandHost?.updateDisplay(config)
-        require(framebuffer == null || config.width <= framebuffer.width && config.height <= framebuffer.height) { "Xvfb framebuffer is too small; restart this Linux desktop" }
+        require(framebuffer == null || config.width <= framebuffer.width && config.height <= framebuffer.height) { moe.n4tsu.dextop.localText("uiXvfbFramebufferIsTooSmallRestartThisLinuxDesktop") }
         synchronized(surfaceLock) {
             viewportWidth = config.width; viewportHeight = config.height
             frameIntervalNanos = config.frameIntervalNanos; displayConfiguration = config

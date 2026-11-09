@@ -34,6 +34,9 @@ import android.view.View
 import android.widget.FrameLayout
 import moe.n4tsu.dextop.DisplayEnvironmentSettings
 import moe.n4tsu.dextop.linux.LinuxContainerClient
+import moe.n4tsu.dextop.linux.LinuxAppContainers
+import moe.n4tsu.dextop.linux.LinuxModeContainers
+import moe.n4tsu.dextop.linux.LinuxExecutionMode
 import moe.n4tsu.dextop.linux.LinuxSteam
 import moe.n4tsu.dextop.linux.LinuxKeymap
 import moe.n4tsu.dextop.linux.LinuxWindowViewport
@@ -110,7 +113,7 @@ internal abstract class CompositedWindowShell(
     private val handler = Handler(Looper.getMainLooper())
     private val displayContext: Context = service.createDisplayContext(
         service.getSystemService(DisplayManager::class.java).getDisplay(displayId)
-            ?: error("Dextop display $displayId is unavailable"),
+            ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiDextopDisplay0IsUnavailable"), displayId)),
     )
     private val layer = OverlayLayer(
         displayContext,
@@ -129,7 +132,7 @@ internal abstract class CompositedWindowShell(
     private val linuxDisplayExecutor = Executors.newSingleThreadExecutor { Thread(it, "DextopLinuxDisplay") }
     private val linuxDisplayUpdates = moe.n4tsu.dextop.linux.LinuxDisplayUpdates(linuxDisplayExecutor) { id, apps, config ->
         runCatching {
-            checkNotNull(LinuxContainerClient.service()) { "Linux service is unavailable" }
+            checkNotNull(LinuxContainerClient.service()) { moe.n4tsu.dextop.localText("uiLinuxServiceIsUnavailable") }
                 .updateDisplay(id, apps, config.width, config.height, config.dpi, config.refreshMilliHz / 1000f)
         }.onFailure { error ->
             host.log("Linux display update failed: ${error.message}")
@@ -1440,7 +1443,7 @@ internal abstract class CompositedWindowShell(
             LinuxContainerClient.service() != null || linuxAppsCache.isFile
 
     /**
-     * Loads the applications of every installed container for Kickoff. With
+     * Loads the preferred installed container's applications for Kickoff. With
      * [resumeWindows], application displays still running from an earlier
      * Plasma session send their windows again.
      */
@@ -1450,8 +1453,10 @@ internal abstract class CompositedWindowShell(
     private val linuxAppsCache get() = java.io.File(service.filesDir, "plasma-linux-apps.json")
 
     private fun linuxAppsFrom(listing: JSONArray, resources: android.content.res.Resources, fallback: Int): List<PlasmaApp> {
-        val multiple = listing.length() > 1
-        return (0 until listing.length()).map(listing::getJSONObject).flatMap { container ->
+        val containers = (0 until listing.length()).map(listing::getJSONObject)
+        val preferred = LinuxModeContainers.preferred(service, LinuxExecutionMode.read(service))
+        val selected = LinuxAppContainers.select(containers.map { it.getString("id") }, preferred)
+        return containers.filter { it.getString("id") == selected }.take(1).flatMap { container ->
             val id = container.getString("id")
             val entries = container.optJSONArray("entries") ?: JSONArray()
             (0 until entries.length()).map(entries::getJSONObject).map { entry ->
@@ -1465,7 +1470,7 @@ internal abstract class CompositedWindowShell(
                 } ?: GlyphDrawable(Glyph.WINDOW, fallback)
                 PlasmaApp(
                     "$LINUX_APP_PREFIX$id:${entry.optString("id")}",
-                    if (multiple) "$name (${container.optString("name")})" else name,
+                    name,
                     icon, LINUX_APP_CATEGORY, entry.optString("startupWMClass"),
                 )
             }
@@ -1502,7 +1507,8 @@ internal abstract class CompositedWindowShell(
             val installed = (0 until containers.length()).map(containers::getJSONObject)
                 .filter { it.optString("state") == "installed" }
             val preferred = runCatching { JSONObject(linux.linuxSettings()).optString("defaultContainer") }.getOrDefault("")
-            (installed.firstOrNull { it.optString("id") == preferred } ?: installed.singleOrNull())
+            val selected = LinuxAppContainers.select(installed.map { it.getString("id") }, preferred)
+            installed.firstOrNull { it.optString("id") == selected }
                 ?.takeIf { !it.optBoolean("appsRunning") }?.let { container ->
                     val id = container.getString("id")
                     linux.startApps(id, screenWidth, screenHeight, dpi)
@@ -1546,10 +1552,12 @@ internal abstract class CompositedWindowShell(
                     }
                 }
             }
-            // The default container chosen in the Linux settings; "" lists every container.
-            val preferred = runCatching { JSONObject(linux.linuxSettings()).optString("defaultContainer") }.getOrDefault("")
-            val shown = installed.filter { preferred.isEmpty() || it.optString("id") == preferred }
-                .ifEmpty { installed }
+            val mode = LinuxExecutionMode.read(service)
+            val settings = linux.linuxSettings()
+            LinuxModeContainers.rememberSettings(service, mode, settings)
+            val preferred = JSONObject(settings).optString("defaultContainer")
+            val selected = LinuxAppContainers.select(installed.map { it.getString("id") }, preferred)
+            val shown = installed.filter { it.optString("id") == selected }.take(1)
 
             desktopContainerId = (shown.firstOrNull { it.optString("id") == preferred } ?: shown.firstOrNull())?.getString("id")
             BookStore.pruneLinuxDesktopCache(service, installed.map { it.getString("id") }.toSet())
@@ -1640,22 +1648,22 @@ internal abstract class CompositedWindowShell(
             placeholder.icon = app?.icon ?: placeholder.icon
             placeholder.linuxLaunchKey = packageName
             placeholder.view.titleBar.invalidate()
-            placeholder.view.showStatus(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("{0} を起動しています", "Starting {0}"), name))
+            placeholder.view.showStatus(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiStarting0"), name))
             linuxLaunches += LinuxLaunch(packageName, containerId, desktopId, placeholder)
             invalidateDesktopPanel()
             root.postDelayed({
                 if (!placeholder.closing && windows.contains(placeholder) && placeholder.linuxXid == 0) {
                     LinuxContainerClient.call(service, { it.runtimeLogs(containerId) }, { logs ->
-                        if (!placeholder.closing && placeholder.linuxXid == 0) placeholder.view.showError(moe.n4tsu.dextop.localText("アプリが 30 秒以内にウィンドウを開きませんでした。", "Application did not open a window within 30 seconds.") + "\n$logs")
+                        if (!placeholder.closing && placeholder.linuxXid == 0) placeholder.view.showError(moe.n4tsu.dextop.localText("uiApplicationDidNotOpenAWindowWithin30Seconds") + "\n$logs")
                     }) { error -> if (!placeholder.closing && placeholder.linuxXid == 0) placeholder.view.showError(error.message ?: error.toString()) }
                 }
             }, 30_000)
         }
-        fun phase(ja: String, en: String) = root.post {
+        fun phase(key: String) = root.post {
             launchWindow?.takeIf { !it.closing && it.linuxXid == 0 }?.view
-                ?.showStatus(moe.n4tsu.dextop.localText(ja, en))
+                ?.showStatus(moe.n4tsu.dextop.localText(key))
         }
-        phase("Linuxサービスに接続しています", "Connecting to the Linux service")
+        phase("uiConnectingToTheLinuxService3e564d0d")
         val screenWidth = width
         val screenHeight = height
         val dpi = densityDpi
@@ -1664,15 +1672,15 @@ internal abstract class CompositedWindowShell(
         linuxLaunchClicked[containerId] = clicked
         LinuxContainerClient.call(service, { linux ->
             val queued = SystemClock.uptimeMillis()
-            phase("コンテナを起動しています", "Starting the container")
+            phase("uiStartingTheContainer")
             linux.startApps(containerId, screenWidth, screenHeight, dpi)
             val started = SystemClock.uptimeMillis()
-            phase("ディスプレイを設定しています", "Configuring the display")
+            phase("uiConfiguringTheDisplay")
             linux.updateDisplay(containerId, true, screenWidth, screenHeight, dpi, linuxRefreshRate())
             val updated = SystemClock.uptimeMillis()
-            phase("アプリを起動しています", "Starting the app")
+            phase("uiStartingTheApp")
             linux.launchFramedApp(containerId, desktopId)
-            phase("アプリのウィンドウを待っています", "Waiting for the application window")
+            phase("uiWaitingForTheApplicationWindow")
             Log.i("DextopLaunch", "plasma $desktopId queue=${queued - clicked}ms startApps=${started - queued}ms " +
                 "updateDisplay=${updated - started}ms launch=${SystemClock.uptimeMillis() - updated}ms")
         }, {}) { error -> showLinuxError(containerId, error.message ?: error.toString(), false) }
@@ -2114,7 +2122,7 @@ internal abstract class CompositedWindowShell(
             // takes the application's size, around its own centre.
             into.packageName = "linuxwin:$containerId:${wmClass.lowercase()}"
             into.linuxAwaitingFirstFrame = true
-            into.view.showStatus(moe.n4tsu.dextop.localText("ウィンドウを接続しています", "Connecting the window"))
+            into.view.showStatus(moe.n4tsu.dextop.localText("uiConnectingTheWindow"))
             into
         } else {
             createWindow("linuxwin:$containerId:${wmClass.lowercase()}", clampFrame(Rect(origin.left, origin.top, origin.left + w, origin.top + h)))
@@ -2199,9 +2207,9 @@ internal abstract class CompositedWindowShell(
             else linux.attachWindow(id, xid, surface) }, { attached ->
             if (!attached) {
                 host.log("Plasma v2 Linux window 0x${xid.toString(16)} could not be drawn")
-                if (window.linuxAwaitingFirstFrame) window.view.showError(moe.n4tsu.dextop.localText("ウィンドウを接続できませんでした", "Could not connect the window"))
+                if (window.linuxAwaitingFirstFrame) window.view.showError(moe.n4tsu.dextop.localText("uiCouldNotConnectTheWindow"))
             } else if (window.linuxAwaitingFirstFrame && !window.closing) {
-                window.view.showStatus(moe.n4tsu.dextop.localText("最初のフレームを待っています", "Waiting for the first frame"))
+                window.view.showStatus(moe.n4tsu.dextop.localText("uiWaitingForTheFirstFrame"))
             }
         }) { error -> host.log("Plasma v2 Linux window attach failed: ${error.message}") }
     }
@@ -2428,14 +2436,7 @@ internal abstract class CompositedWindowShell(
             if (existing.minimized) restoreFromMinimize(existing) else activate(existing)
             return
         }
-        // DroidDeck's layout: Plasma's KWin runs as a Wayland window of the application display.
-        LinuxContainerClient.call(service, { linux ->
-            JSONObject(linux.linuxSettings()).optJSONObject("containers")?.optJSONObject(containerId)?.optString("wmEffective")
-        }, { wm ->
-            if (wm == moe.n4tsu.dextop.linux.LinuxWindowManager.DROIDDECK.id) {
-                launchLinuxApp("$LINUX_APP_PREFIX$containerId:${moe.n4tsu.dextop.linux.LinuxSteam.DROIDDECK_DESKTOP_ENTRY}")
-            } else openXDesktop(containerId, name)
-        }) { openXDesktop(containerId, name) }
+        openXDesktop(containerId, name)
     }
 
     private fun openXDesktop(containerId: String, name: String) {
@@ -2459,7 +2460,7 @@ internal abstract class CompositedWindowShell(
             status("nativeLinuxDesktopStartingContainer")
             linux.startDesktop(id, w, h, densityDpi)
             linux.updateDisplay(id, false, w, h, densityDpi, linuxRefreshRate())
-            check(linux.attachSurface(id, surface)) { "Unable to draw the Linux desktop" }
+            check(linux.attachSurface(id, surface)) { moe.n4tsu.dextop.localText("uiUnableToDrawTheLinuxDesktop") }
         }, {
             window.linuxWidth = w
             window.linuxHeight = h
@@ -2471,7 +2472,7 @@ internal abstract class CompositedWindowShell(
                     val state = runCatching { linux?.desktopState(id) }.getOrNull() ?: 0
                     if (state == 0) {
                         val logs = runCatching { linux?.runtimeLogs(id) }.getOrNull().orEmpty()
-                        root.post { if (!window.closing) window.view.showError(moe.n4tsu.dextop.localText("Linux セッションが停止しました。", "Linux session stopped.") + "\n$logs") }
+                        root.post { if (!window.closing) window.view.showError(moe.n4tsu.dextop.localText("uiLinuxSessionStopped") + "\n$logs") }
                         break
                     }
                     if (state == 2) status(null)
@@ -4740,15 +4741,15 @@ internal abstract class CompositedWindowShell(
             val icons = BookStore.flag(service, BookStore.DESKTOP_ICONS, true)
             val linux = desktopContainer() != null
             showMenu(listOfNotNull(
-                if (linux) MenuItem(tr("新しいフォルダ", "New folder"), Glyph.PLUS) {
+                if (linux) MenuItem(tr("uiNewFolder"), Glyph.PLUS) {
                     bookUi?.newLinuxFolder(RectF(rawX, rawY, rawX + 1, rawY + 1))
                 } else null,
-                MenuItem(tr("ウィジェットを追加", "Add widgets"), Glyph.PLUS) { openWidgetGallery() },
-                MenuItem(tr("壁紙とスタイル", "Wallpaper & style"), Glyph.WALLPAPER) { openBookSettings("style") },
-                MenuItem(if (icons) tr("デスクトップ アイコンを隠す", "Hide desktop icons") else tr("デスクトップ アイコンを表示", "Show desktop icons"),
+                MenuItem(tr("uiAddWidgets"), Glyph.PLUS) { openWidgetGallery() },
+                MenuItem(tr("uiWallpaperStyle"), Glyph.WALLPAPER) { openBookSettings("style") },
+                MenuItem(if (icons) tr("uiHideDesktopIcons") else tr("uiShowDesktopIcons87d001c7"),
                     Glyph.DESKTOP) { BookStore.setFlag(service, BookStore.DESKTOP_ICONS, !icons) },
-                MenuItem(tr("概要", "Overview"), Glyph.OVERVIEW, separatorBefore = true) { toggleOverview() },
-                MenuItem(tr("Dextop Book の設定", "Dextop Book settings"), Glyph.SETTINGS) { openBookSettings(null) },
+                MenuItem(tr("uiOverview"), Glyph.OVERVIEW, separatorBefore = true) { toggleOverview() },
+                MenuItem(tr("uiDextopBookSettings"), Glyph.SETTINGS) { openBookSettings(null) },
             ), rawX, rawY)
             return
         }

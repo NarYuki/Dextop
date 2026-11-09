@@ -109,7 +109,7 @@ internal object LinuxSteam {
         java.io.File(root, LAUNCHER.removePrefix("/")).apply {
             parentFile?.mkdirs()
             if (!isFile || readText() != launcherScript) writeText(launcherScript)
-            check(setExecutable(true, false)) { "Cannot make Steam launcher executable" }
+            check(setExecutable(true, false)) { moe.n4tsu.dextop.localText("uiCannotMakeSteamLauncherExecutable") }
         }
         stageCommandAlias(root)
         java.io.File(root, "root/.local/share/applications/dextop-steam.desktop").apply {
@@ -186,7 +186,7 @@ internal object LinuxSteam {
     )
 
     private fun gamingResource(name: String) = requireNotNull(LinuxSteam::class.java.getResourceAsStream("/moe/n4tsu/dextop/linux/$name")) {
-        "Game runtime resource $name is not packaged"
+        moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiGameRuntimeResource0IsNotPackaged"), name)
     }
 
     /** The x86 compatibility libraries must match the guest, not Android's ARM64 ABI. */
@@ -208,20 +208,20 @@ internal object LinuxSteam {
                     val staged = java.io.File.createTempFile(name + ".", ".staged", parentFile)
                     try {
                         staged.writeBytes(bytes)
-                        check(staged.setExecutable(true, false)) { "Cannot make $relative executable" }
+                        check(staged.setExecutable(true, false)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotMake0Executable"), relative) }
                         java.nio.file.Files.move(staged.toPath(), toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
                     } finally {
                         staged.delete()
                     }
                 }
-                check(setExecutable(true, false)) { "Cannot make $relative executable" }
+                check(setExecutable(true, false)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotMake0Executable"), relative) }
             }
         }
     }
 
     private val installer: String by lazy {
         requireNotNull(LinuxSteam::class.java.getResourceAsStream("/moe/n4tsu/dextop/linux/droiddeck-steam-install")) {
-            "droiddeck-steam-install is not packaged"
+            moe.n4tsu.dextop.localText("uiDroiddeckSteamInstallIsNotPackaged")
         }.bufferedReader().use { LinuxScript.text(it.readText()) }
     }
 
@@ -336,7 +336,7 @@ internal object LinuxSteam {
             unset DISPLAY DBUS_SESSION_BUS_ADDRESS MESA_VK_WSI_DEBUG LIBGL_ALWAYS_SOFTWARE
             export XDG_RUNTIME_DIR=/tmp/runtime-root XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=wayland-0
             mkdir -p "${'$'}XDG_RUNTIME_DIR" && chmod 700 "${'$'}XDG_RUNTIME_DIR"
-            if [ -f ${LinuxCatalog.TURNIP_ICD} ]; then
+            if ${LinuxCatalog.turnipUsableCheck()}; then
                 export VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD} VK_DRIVER_FILES=${LinuxCatalog.TURNIP_ICD}
             fi
             # The size of the Steam Deck Mode window, so gamescope is not resized to it later.
@@ -601,7 +601,7 @@ internal object LinuxSteam {
         java.io.File(root, STEAM_MODE_LAUNCHER.removePrefix("/")).apply {
             parentFile?.mkdirs()
             if (!isFile || readText() != steamModeLauncher) writeText(steamModeLauncher)
-            check(setExecutable(true, false)) { "Cannot make the Steam mode launcher executable" }
+            check(setExecutable(true, false)) { moe.n4tsu.dextop.localText("uiCannotMakeTheSteamModeLauncherExecutable") }
         }
         java.io.File(root, "root/.local/share/applications/$STEAM_MODE_ENTRY").apply {
             parentFile?.mkdirs()
@@ -609,72 +609,4 @@ internal object LinuxSteam {
         }
     }
 
-    /** Desktop entry Plasma launches to open the DroidDeck desktop; hidden from the launcher. */
-    const val DROIDDECK_DESKTOP_ENTRY = "dextop-droiddeck-desktop.desktop"
-    private const val DROIDDECK_DESKTOP_LAUNCHER = "/usr/local/bin/dextop-droiddeck-desktop"
-
-    /**
-     * DroidDeck's desktop mode: SessionService starts `droiddeck-session lxqt`
-     * with the guest environment below (addClientEnvironment), and the session
-     * execs droiddeck-desktop (Plasma, KWin nested through kwin_wayland_wrapper)
-     * on wayland-0, which Dextop's compositor serves. The socket shim's
-     * LD_PRELOAD stays, so the environment is not cleared with env -i.
-     */
-    private val droidDeckDesktopLauncher = """
-        #!/bin/sh
-        unset DISPLAY DBUS_SESSION_BUS_ADDRESS MESA_LOADER_DRIVER_OVERRIDE GALLIUM_DRIVER
-        export HOME=${'$'}{HOME:-/root} USER=${'$'}{USER:-root} PATH=/usr/local/bin:/usr/bin:/bin TERM=xterm-256color LANG=C.UTF-8
-        export XDG_RUNTIME_DIR=/tmp/runtime-root XDG_SESSION_TYPE=wayland WAYLAND_DISPLAY=wayland-0
-        export GAMESCOPE_FORCE_GENERAL_QUEUE=1 MESA_LOADER_DRIVER_OVERRIDE=zink GALLIUM_DRIVER=zink LIBGL_KOPPER_DRI2=true
-        [ -f ${LinuxCatalog.TURNIP_ICD} ] && export VK_ICD_FILENAMES=${LinuxCatalog.TURNIP_ICD}
-        export MESA_DISK_CACHE_DATABASE=1 GLIBC_TUNABLES=glibc.pthread.rseq=0:glibc.malloc.top_pad=16777216
-        export BL_WIDTH=${'$'}{DEXTOP_WIDTH:-1280} BL_HEIGHT=${'$'}{DEXTOP_HEIGHT:-720} BL_FPS=0 BL_REFRESH=60
-        mkdir -p "${'$'}XDG_RUNTIME_DIR" && chmod 700 "${'$'}XDG_RUNTIME_DIR"
-        exec /usr/local/bin/droiddeck-session lxqt
-    """.trimIndent() + "\n"
-
-    private val droidDeckDesktopEntry = listOf(
-        "[Desktop Entry]", "Type=Application", "Name=DroidDeck Desktop", "Exec=$DROIDDECK_DESKTOP_LAUNCHER",
-        "Icon=plasma", "NoDisplay=true",
-    ).joinToString("\n", postfix = "\n")
-
-    /** Writes the launcher and its entry from outside the guest; staged before every session. */
-    fun writeDroidDeckDesktop(root: java.io.File) {
-        java.io.File(root, DROIDDECK_DESKTOP_LAUNCHER.removePrefix("/")).apply {
-            parentFile?.mkdirs()
-            writeText(droidDeckDesktopLauncher)
-            setExecutable(true, false)
-        }
-        java.io.File(root, "root/.local/share/applications/$DROIDDECK_DESKTOP_ENTRY").apply {
-            parentFile?.mkdirs()
-            writeText(droidDeckDesktopEntry)
-        }
-    }
-
-    fun droidDeckDesktopScript(): String = buildString {
-        appendLine("set -e")
-        appendLine("cat >$DROIDDECK_DESKTOP_LAUNCHER <<'DEXTOP_DESKTOP'")
-        append(droidDeckDesktopLauncher)
-        appendLine("DEXTOP_DESKTOP")
-        appendLine("chmod 755 $DROIDDECK_DESKTOP_LAUNCHER")
-        appendLine("mkdir -p /root/.local/share/applications")
-        appendLine("cat >/root/.local/share/applications/$DROIDDECK_DESKTOP_ENTRY <<'DEXTOP_ENTRY'")
-        append(droidDeckDesktopEntry)
-        appendLine("DEXTOP_ENTRY")
-    }
-
-    /**
-     * DroidDeck's runtime builds Mesa with Turnip for KGSL; Dextop's Turnip
-     * manifest points at that driver instead of installing a GPU package.
-     */
-    fun runtimeTurnipScript(): String = """
-        set -e
-        for driver in /usr/lib/libvulkan_freedreno.so /usr/lib/aarch64-linux-gnu/libvulkan_freedreno.so; do
-            [ -f "${'$'}driver" ] || continue
-            mkdir -p ${'$'}(dirname ${LinuxCatalog.TURNIP_ICD})
-            printf '{"file_format_version": "1.0.0", "ICD": {"library_path": "%s", "api_version": "1.4.0"}}\n' "${'$'}driver" >${LinuxCatalog.TURNIP_ICD}
-            exit 0
-        done
-        echo "The runtime has no Turnip driver; using VirGL"
-    """.trimIndent() + "\n"
 }

@@ -30,28 +30,33 @@
 <div id="term"><div id="selection"></div></div>
 <div id="compose"></div>
 <div id="keys">
-  <button data-send="\x1b">Esc</button>
-  <button data-send="\t">Tab</button>
-  <button id="ctrl">Ctrl</button>
-  <button id="alt">Alt</button>
+  <button data-send="\x1b" data-i18n="uiKeyEscape"></button>
+  <button data-send="\t" data-i18n="uiKeyTab"></button>
+  <button id="ctrl" data-i18n="uiKeyControl"></button>
+  <button id="alt" data-i18n="uiKeyAlt"></button>
   <button data-send="\x1b[A">↑</button>
   <button data-send="\x1b[B">↓</button>
   <button data-send="\x1b[D">←</button>
   <button data-send="\x1b[C">→</button>
-  <button data-send="\x1b[H">Home</button>
-  <button data-send="\x1b[F">End</button>
+  <button data-send="\x1b[H" data-i18n="uiKeyHome"></button>
+  <button data-send="\x1b[F" data-i18n="uiKeyEnd"></button>
   <button data-send="|">|</button>
   <button data-send="~">~</button>
   <button data-send="/">/</button>
   <button data-send="-">-</button>
-  <button id="select" aria-pressed="false">Select</button>
-  <button id="all">All</button>
-  <button id="copy">Copy</button>
-  <button id="paste">Paste</button>
+  <button id="select" data-i18n="uiSelect" aria-pressed="false"></button>
+  <button id="all" data-i18n="uiAll"></button>
+  <button id="copy" data-i18n="uiCopy"></button>
+  <button id="paste" data-i18n="uiPaste"></button>
 </div>
 <script src="xterm.js"></script>
 <script src="addon-fit.js"></script>
 <script>
+  for (const element of document.querySelectorAll('[data-i18n]')) {
+    element.textContent = Dextop.translate(element.dataset.i18n);
+  }
+  Terminal.strings.promptLabel = Dextop.translate('uiTerminalInput');
+  Terminal.strings.tooMuchOutput = Dextop.translate('uiTooMuchOutputToAnnounceNavigateToRowsManuallyToRead');
   const term = new Terminal({
     fontFamily: '"Noto Sans Mono CJK JP", "Noto Sans Mono", "Droid Sans Mono", monospace',
     fontSize: Dextop.fontSize(),

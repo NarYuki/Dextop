@@ -48,7 +48,9 @@ internal object DextopShortcuts {
         reportPinResult(null)
     }
 
-    fun isStartDisplayAction(action: String?): Boolean = action == ACTION_START_DISPLAY
+    /** The display action, sent by Dextop itself rather than by another app. */
+    fun isStartDisplayAction(context: Context, intent: Intent?): Boolean =
+        intent?.action == ACTION_START_DISPLAY && DextopIntentToken.isGenuine(context, intent)
 
     /** True when the intent asks the activity to close itself after starting. */
     fun closesAfterStart(intent: Intent?): Boolean =
@@ -59,6 +61,7 @@ internal object DextopShortcuts {
             action = ACTION_START_DISPLAY
             putExtra(EXTRA_CLOSE_AFTER_START, closeAfterStart)
             addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            DextopIntentToken.attach(context, this)
         }
 
     /** Publishes the long-press launcher shortcut once per label change. */
@@ -71,7 +74,8 @@ internal object DextopShortcuts {
                 existing == null ->
                     ShortcutManagerCompat.setDynamicShortcuts(context, listOf(shortcut))
                 existing.shortLabel != shortcut.shortLabel ||
-                    existing.longLabel != shortcut.longLabel ->
+                    existing.longLabel != shortcut.longLabel ||
+                    DextopIntentToken.carriedBy(existing.intent) != DextopIntentToken.value(context) ->
                     ShortcutManagerCompat.updateShortcuts(context, listOf(shortcut))
             }
         }.onFailure { Log.w(TAG, "publishing the launcher shortcut failed", it) }
@@ -97,7 +101,7 @@ internal object DextopShortcuts {
         if (pinReceiver != null) {
             result.error(
                 "shortcut_pending",
-                "A launcher shortcut request is still waiting for confirmation",
+                moe.n4tsu.dextop.localText("uiALauncherShortcutRequestIsStillWaitingForConfirmation"),
                 null,
             )
             return
@@ -105,7 +109,7 @@ internal object DextopShortcuts {
         if (!ShortcutManagerCompat.isRequestPinShortcutSupported(context)) {
             result.error(
                 "shortcut_unsupported",
-                "This launcher does not support pinned shortcuts",
+                moe.n4tsu.dextop.localText("uiThisLauncherDoesNotSupportPinnedShortcuts"),
                 null,
             )
             return
@@ -123,7 +127,7 @@ internal object DextopShortcuts {
             release()
             result.error(
                 "shortcut_unsupported",
-                "This launcher rejected the pinned shortcut request",
+                moe.n4tsu.dextop.localText("uiThisLauncherRejectedThePinnedShortcutRequest"),
                 null,
             )
             return

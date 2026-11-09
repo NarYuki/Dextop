@@ -107,7 +107,7 @@ internal object LinuxCameraBridge {
                         val frame = synchronized(current.lock) {
                             val deadline = System.currentTimeMillis() + 3000
                             while (!current.closed && current.sequence == sent && System.currentTimeMillis() < deadline) current.lock.wait(200)
-                            check(!current.closed) { "Camera stream is closed" }
+                            check(!current.closed) { moe.n4tsu.dextop.localText("uiCameraStreamIsClosed") }
                             sent = current.sequence
                             current.frame
                         } ?: ByteArray(current.width * current.height * 2) { if (it % 2 == 1) 128.toByte() else 0 }
@@ -137,7 +137,7 @@ internal object LinuxCameraBridge {
 
     @SuppressLint("MissingPermission") // Cameras are listed to Linux only with the permission.
     private fun open(context: Context, manager: CameraManager, id: String, width: Int, height: Int): Stream {
-        require(width to height in SIZES) { "Unsupported camera dimensions" }
+        require(width to height in SIZES) { moe.n4tsu.dextop.localText("uiUnsupportedCameraDimensions") }
         val stream = Stream(width, height)
         try {
             val handler = Handler(stream.thread.looper)
@@ -151,7 +151,7 @@ internal object LinuxCameraBridge {
                     stream.lock.notifyAll()
                 }
             }, handler)
-            check(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) { "No camera permission" }
+            check(context.checkSelfPermission(Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) { moe.n4tsu.dextop.localText("uiNoCameraPermission") }
             manager.openCamera(id, object : CameraDevice.StateCallback() {
                 override fun onOpened(camera: CameraDevice) {
                     // Even a callback arriving after timeout must release the newly delivered camera.
@@ -178,7 +178,7 @@ internal object LinuxCameraBridge {
                                 }
                                 override fun onConfigureFailed(session: CameraCaptureSession) {
                                     runCatching { session.close() }
-                                    stream.fail(java.io.IOException("Camera session configuration failed"))
+                                    stream.fail(java.io.IOException(moe.n4tsu.dextop.localText("uiCameraSessionConfigurationFailed")))
                                 }
                             }, callbacks)
                         }
@@ -186,17 +186,17 @@ internal object LinuxCameraBridge {
                 }
                 override fun onDisconnected(camera: CameraDevice) {
                     runCatching { camera.close() }
-                    stream.fail(java.io.IOException("Camera disconnected"))
+                    stream.fail(java.io.IOException(moe.n4tsu.dextop.localText("uiCameraDisconnected")))
                 }
                 override fun onError(camera: CameraDevice, error: Int) {
                     runCatching { camera.close() }
-                    stream.fail(java.io.IOException("Camera error: $error"))
+                    stream.fail(java.io.IOException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCameraError0"), error)))
                 }
             }, callbacks)
-            check(stream.opened.await(5, TimeUnit.SECONDS)) { "Camera start timed out" }
+            check(stream.opened.await(5, TimeUnit.SECONDS)) { moe.n4tsu.dextop.localText("uiCameraStartTimedOut") }
             synchronized(stream.lock) {
-                stream.failure?.let { throw java.io.IOException("Camera start failed", it) }
-                check(stream.ready && !stream.closed) { "Camera stopped before starting" }
+                stream.failure?.let { throw java.io.IOException(moe.n4tsu.dextop.localText("uiCameraStartFailed"), it) }
+                check(stream.ready && !stream.closed) { moe.n4tsu.dextop.localText("uiCameraStoppedBeforeStarting") }
             }
             return stream
         } catch (error: Exception) {

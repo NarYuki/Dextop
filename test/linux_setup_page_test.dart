@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:material_ui/material_ui.dart' as mui;
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
@@ -49,6 +50,44 @@ void main() {
         .setMockMethodCallHandler(channel, null);
   });
   testWidgets(
+    'new containers offer only Debian and restore below the distro list',
+    (tester) async {
+      tester.view.physicalSize = const Size(1000, 1400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final progress = ValueNotifier<Map<String, LinuxSetupProgress>>({});
+      addTearDown(progress.dispose);
+      await tester.pumpWidget(
+        mui.MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: LinuxSetupPage(
+            catalog: catalog,
+            progress: progress,
+            refresh: () async {},
+            install: (_, _, _, _) async => 'new',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Debian 13'), findsOneWidget);
+      expect(find.text('Ubuntu 24.04'), findsNothing);
+      expect(find.text('Arch Linux ARM'), findsNothing);
+      final restore = find.text('Restore from a snapshot or backup');
+      await tester.ensureVisible(restore);
+      expect(
+        tester.getTopLeft(restore).dy,
+        greaterThan(tester.getTopLeft(find.text('Debian 13')).dy),
+      );
+      await tester.tap(restore);
+      await tester.pumpAndSettle();
+      expect(find.text('Restore from a backup file'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+  testWidgets(
     'walks through choices and sends the selected options to installation',
     (tester) async {
       final progress = ValueNotifier<Map<String, LinuxSetupProgress>>({});
@@ -80,8 +119,6 @@ void main() {
       );
       await tester.pumpAndSettle();
       await next(tester);
-      await tester.tap(find.text('Minimal IceWM'));
-      await next(tester);
       await next(tester);
       await tester.tap(find.text('Japanese — Mozc (experimental)'));
       await next(tester);
@@ -91,11 +128,12 @@ void main() {
       await tester.tap(find.text('Start setup'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
-      expect(selected?['profile'], 'minimal');
-      expect(selected?['graphics'], false);
-      expect(selected?['themes'], false);
+      expect(selected?['displayBackend'], 'wayland');
+      expect(selected?.containsKey('profile'), false);
+      expect(selected?.containsKey('graphics'), false);
+      expect(selected?.containsKey('themes'), false);
       expect(selected?['ime'], 'mozc');
-      expect(selected?['apps'], isEmpty);
+      expect(selected?['apps'], containsAll(['files', 'editor']));
       expect(selected?['username'], 'dextop');
       expect(selected?['accountPassword'], 'test-account-password');
       expect(keyringCalls, isEmpty);
@@ -107,47 +145,46 @@ void main() {
     },
   );
 
-  testWidgets('Ubuntu disables Snap browser choices and allows Chrome', (
-    tester,
-  ) async {
-    final progress = ValueNotifier<Map<String, LinuxSetupProgress>>({});
-    addTearDown(progress.dispose);
-    await tester.pumpWidget(
-      MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
-        home: LinuxSetupPage(
-          catalog: catalog,
-          progress: progress,
-          refresh: () async {},
-          install: (_, _, _, _) async => 'new',
+  testWidgets(
+    'existing Ubuntu containers keep their supported browser choices',
+    (tester) async {
+      final progress = ValueNotifier<Map<String, LinuxSetupProgress>>({});
+      addTearDown(progress.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: LinuxSetupPage(
+            catalog: catalog,
+            containerId: 'existing-ubuntu',
+            distroId: 'ubuntu',
+            progress: progress,
+            refresh: () async {},
+            install: (_, _, _, _) async => 'new',
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Ubuntu 24.04'));
-    await tester.drag(find.byType(ListView).first, const Offset(0, -220));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Ubuntu 24.04'));
-    for (var i = 0; i < 4; i++) {
-      await next(tester);
-    }
-    M3ECheckbox browser(String name) => tester.widget<M3ECheckbox>(
-      find.descendant(
-        of: find.widgetWithText(M3EListItem, name),
-        matching: find.byType(M3ECheckbox),
-      ),
-    );
-    final firefox = browser('Firefox');
-    final chromium = browser('Chromium');
-    final chrome = browser('Google Chrome');
-    expect(firefox.onChanged, isNull);
-    expect(firefox.value, false);
-    expect(chromium.onChanged, isNull);
-    expect(chrome.onChanged, isNotNull);
-    await tester.pumpWidget(const SizedBox());
-  });
+      );
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 3; i++) {
+        await next(tester);
+      }
+      M3ECheckbox browser(String name) => tester.widget<M3ECheckbox>(
+        find.descendant(
+          of: find.widgetWithText(M3EListItem, name),
+          matching: find.byType(M3ECheckbox),
+        ),
+      );
+      final firefox = browser('Firefox');
+      final chromium = browser('Chromium');
+      final chrome = browser('Google Chrome');
+      expect(firefox.onChanged, isNull);
+      expect(firefox.value, false);
+      expect(chromium.onChanged, isNull);
+      expect(chrome.onChanged, isNotNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
 
   testWidgets(
     'retry updates the same container instead of creating another one',
@@ -178,7 +215,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      for (var i = 0; i < 5; i++) {
+      for (var i = 0; i < 4; i++) {
         await next(tester);
       }
       await enterAccount(tester);

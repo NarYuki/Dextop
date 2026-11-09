@@ -110,7 +110,7 @@ open class MainActivity : FlutterActivity() {
         MirrorService.stopActive()
         pendingResult.error(
             "start_timeout",
-            "Dextop did not finish creating and attaching the display in time",
+            moe.n4tsu.dextop.localText("uiDextopDidNotFinishCreatingAndAttachingTheDisplayInTime"),
             null
         )
     }
@@ -277,7 +277,7 @@ open class MainActivity : FlutterActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
-        if (DextopShortcuts.isStartDisplayAction(intent.action)) {
+        if (DextopShortcuts.isStartDisplayAction(this, intent)) {
             // A shortcut tapped while the app is already in the foreground gets
             // no lifecycle callback, so forward the action to Flutter directly.
             runOnUiThread { flutterChannel?.invokeMethod("shortcutAction", null) }
@@ -357,7 +357,7 @@ open class MainActivity : FlutterActivity() {
                 "laptopKeyboardTheme" -> {
                     val themeId = call.argument<String>("themeId")
                     if (themeId.isNullOrBlank()) {
-                        result.error("invalid_theme", "A keyboard theme id is required", null)
+                        result.error("invalid_theme", moe.n4tsu.dextop.localText("uiAKeyboardThemeIdIsRequired"), null)
                     } else {
                         MirrorService.updateLaptopTheme(themeId)
                         result.success(null)
@@ -403,7 +403,7 @@ open class MainActivity : FlutterActivity() {
                 "setExternalDisplay" -> {
                     val mode = call.argument<String>("mode") ?: "off"
                     if (mode !in setOf("off", "external", "mirror", "extend")) {
-                        result.error("INVALID_DISPLAY_MODE", "Unknown display mode", null)
+                        result.error("INVALID_DISPLAY_MODE", moe.n4tsu.dextop.localText("uiUnknownDisplayMode"), null)
                     } else {
                         getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE).edit()
                             .putString("flutter.external_display_mode", mode).apply()
@@ -418,16 +418,16 @@ open class MainActivity : FlutterActivity() {
                 }
                 "bookSettings" -> result.success(moe.n4tsu.dextop.plasma.BookStore.appearance(this))
                 "setBookSetting" -> runCatching {
-                    val key = call.argument<String>("key") ?: error("A setting key is required")
+                    val key = call.argument<String>("key") ?: error(moe.n4tsu.dextop.localText("uiASettingKeyIsRequired"))
                     val store = moe.n4tsu.dextop.plasma.BookStore
                     if (key == "display_scale") {
-                        val value = call.argument<Int>("value") ?: error("A scale is required")
+                        val value = call.argument<Int>("value") ?: error(moe.n4tsu.dextop.localText("uiAScaleIsRequired"))
                         require(value in setOf(0, 100, 125, 150, 175, 200))
                         store.setDisplayScale(this, value)
                         MirrorService.displayScaleChanged()
                     } else {
                         require(key in store.appearanceFlags)
-                        store.setFlag(this, key, call.argument<Boolean>("value") ?: error("A boolean is required"))
+                        store.setFlag(this, key, call.argument<Boolean>("value") ?: error(moe.n4tsu.dextop.localText("uiABooleanIsRequired")))
                     }
                     store.appearance(this)
                 }.onSuccess(result::success).onFailure { result.error("BOOK_SETTING", it.message, null) }
@@ -500,9 +500,9 @@ open class MainActivity : FlutterActivity() {
                 }.start()
                 "setDisplayEnvironmentSetting" -> Thread {
                     runCatching {
-                        val id = call.argument<String>("id") ?: error("A setting id is required")
+                        val id = call.argument<String>("id") ?: error(moe.n4tsu.dextop.localText("uiASettingIdIsRequired"))
                         val enabled = call.argument<Boolean>("enabled")
-                            ?: error("A boolean value is required")
+                            ?: error(moe.n4tsu.dextop.localText("uiABooleanValueIsRequired"))
                         DisplayEnvironmentSettings(this).write(id, enabled)
                     }.onSuccess { state ->
                         runOnUiThread { result.success(state) }
@@ -514,11 +514,11 @@ open class MainActivity : FlutterActivity() {
                 }.start()
                 "setVirtualPointerProfile" -> runCatching {
                     val profile = call.argument<String>("profile")
-                        ?: error("A virtual pointer profile is required")
+                        ?: error(moe.n4tsu.dextop.localText("uiAVirtualPointerProfileIsRequired"))
                     val normalized = profile.lowercase().let {
                         when (it) {
                             "touchpad", "mouse", "software" -> it
-                            else -> error("Unknown virtual pointer profile: $profile")
+                            else -> error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownVirtualPointerProfile0"), profile))
                         }
                     }
                     MirrorService.setVirtualPointerProfile(normalized)
@@ -531,12 +531,12 @@ open class MainActivity : FlutterActivity() {
                     MirrorService.arrangeExtendedDisplays(positions) { applied ->
                         val state = MirrorService.extendedDisplayArrangement()
                         if (applied && state != null) result.success(state)
-                        else result.error("DISPLAY_TOPOLOGY_WRITE", "The extended desktop could not be arranged", null)
+                        else result.error("DISPLAY_TOPOLOGY_WRITE", moe.n4tsu.dextop.localText("uiTheExtendedDesktopCouldNotBeArranged"), null)
                     }
                 } else Thread {
                     runCatching {
                         val positions = call.argument<Map<*, *>>("positions")
-                            ?: error("Display positions are required")
+                            ?: error(moe.n4tsu.dextop.localText("uiDisplayPositionsAreRequired"))
                         DisplayTopologyController(this).rearrange(positions)
                     }.onSuccess { state ->
                         runOnUiThread { result.success(state) }
@@ -551,11 +551,11 @@ open class MainActivity : FlutterActivity() {
                     call.argument<Int>("displayId") ?: -1, call.argument<Int>("percent") ?: 100,
                 ) { applied ->
                     if (applied) result.success(null)
-                    else result.error("display_setting", "The extended desktop is not running", null)
+                    else result.error("display_setting", moe.n4tsu.dextop.localText("uiTheExtendedDesktopIsNotRunning"), null)
                 }
                 "setDisplayDensity", "setDisplayRotation", "displayPhysicalDensity" -> Thread {
                     runCatching {
-                        val displayId = call.argument<Int>("displayId") ?: error("A display id is required")
+                        val displayId = call.argument<Int>("displayId") ?: error(moe.n4tsu.dextop.localText("uiADisplayIdIsRequired"))
                         val controller = DisplayTopologyController(this)
                         when (call.method) {
                             "setDisplayDensity" -> controller.setDensity(displayId, call.argument<Int>("dpi") ?: 0)
@@ -568,13 +568,13 @@ open class MainActivity : FlutterActivity() {
                 "setDisplayPreferredMode" -> Thread {
                     runCatching {
                         val displayId = call.argument<Int>("displayId")
-                            ?: error("A display id is required")
+                            ?: error(moe.n4tsu.dextop.localText("uiADisplayIdIsRequired"))
                         val width = call.argument<Int>("width")
-                            ?: error("A display width is required")
+                            ?: error(moe.n4tsu.dextop.localText("uiADisplayWidthIsRequired"))
                         val height = call.argument<Int>("height")
-                            ?: error("A display height is required")
+                            ?: error(moe.n4tsu.dextop.localText("uiADisplayHeightIsRequired"))
                         val refreshRate = (call.argument<Number>("refreshRate")
-                            ?: error("A refresh rate is required")).toFloat()
+                            ?: error(moe.n4tsu.dextop.localText("uiARefreshRateIsRequired"))).toFloat()
                         DisplayTopologyController(this).setPreferredMode(
                             displayId = displayId,
                             width = width,
@@ -595,7 +595,7 @@ open class MainActivity : FlutterActivity() {
                     }
                 }.start()
                 "setSamsungDesktopSetting" -> runCatching {
-                    val id = call.argument<String>("id") ?: error("A setting id is required")
+                    val id = call.argument<String>("id") ?: error(moe.n4tsu.dextop.localText("uiASettingIdIsRequired"))
                     SamsungDesktopSettings(this).write(id, call.argument<Any>("value"))
                     SamsungDesktopSettings(this).read()
                 }.onSuccess(result::success).onFailure {
@@ -660,12 +660,13 @@ open class MainActivity : FlutterActivity() {
                 "repairAndroid" -> repairAndroid(result)
                 "restartApp" -> restartApp(result)
                 "consumeTileAction" -> {
-                    val requested = intent?.action == DextopTileService.ACTION_OPEN_LAST_WORKSPACE
-                    if (requested) intent?.action = null
+                    val tile = intent?.action == DextopTileService.ACTION_OPEN_LAST_WORKSPACE
+                    val requested = tile && DextopIntentToken.isGenuine(this, intent)
+                    if (tile) intent?.action = null
                     result.success(requested)
                 }
                 "consumeShortcutAction" -> {
-                    if (DextopShortcuts.isStartDisplayAction(intent?.action)) {
+                    if (DextopShortcuts.isStartDisplayAction(this, intent)) {
                         // The extra survives the action reset; a later resume
                         // must not start the session a second time.
                         val closesAfterStart = DextopShortcuts.closesAfterStart(intent)
@@ -686,7 +687,7 @@ open class MainActivity : FlutterActivity() {
                     if (channel == null) {
                         result.error(
                             "channel_unavailable",
-                            "The Flutter channel is not ready",
+                            moe.n4tsu.dextop.localText("uiTheFlutterChannelIsNotReady"),
                             null,
                         )
                     } else {
@@ -708,9 +709,9 @@ open class MainActivity : FlutterActivity() {
                     runOnUiThread {
                         startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
                             type = "text/plain"
-                            putExtra(Intent.EXTRA_SUBJECT, "Dextop diagnostic report")
+                            putExtra(Intent.EXTRA_SUBJECT, moe.n4tsu.dextop.localText("uiDextopDiagnosticReport"))
                             putExtra(Intent.EXTRA_TEXT, report)
-                        }, "Share diagnostic report"))
+                        }, moe.n4tsu.dextop.localText("uiShareDiagnosticReport")))
                         result.success(null)
                     }
                 }.start()
@@ -755,7 +756,7 @@ open class MainActivity : FlutterActivity() {
 
     private fun pairEmbeddedPrivilege(code: String, result: MethodChannel.Result) {
         if (!DistributionPrivilegeBootstrap.included) {
-            result.error("embedded_unavailable", "The built-in access service is unavailable", null)
+            result.error("embedded_unavailable", moe.n4tsu.dextop.localText("uiTheBuiltInAccessServiceIsUnavailable"), null)
             return
         }
         distributionScope.launch {
@@ -777,7 +778,7 @@ open class MainActivity : FlutterActivity() {
 
     private fun startEmbeddedPrivilege(result: MethodChannel.Result) {
         if (!DistributionPrivilegeBootstrap.included) {
-            result.error("embedded_unavailable", "The built-in access service is unavailable", null)
+            result.error("embedded_unavailable", moe.n4tsu.dextop.localText("uiTheBuiltInAccessServiceIsUnavailable"), null)
             return
         }
         distributionScope.launch {
@@ -1082,7 +1083,7 @@ open class MainActivity : FlutterActivity() {
         val providers = installedPrivilegeProviders()
         val selected = providers.firstOrNull { it.packageName == provider }
         if (selected == null) {
-            result.error("provider_unavailable", "The selected privilege provider is not installed", null)
+            result.error("provider_unavailable", moe.n4tsu.dextop.localText("uiTheSelectedPrivilegeProviderIsNotInstalled"), null)
             return
         }
         getSharedPreferences("dextop_privilege_provider", MODE_PRIVATE)
@@ -1100,7 +1101,7 @@ open class MainActivity : FlutterActivity() {
         if (AndroidAutoMirrorActivity.ownsAutoSession()) {
             result.error(
                 "auto_session_active",
-                "Stop the Android Auto Dextop session before starting Dextop on this phone",
+                moe.n4tsu.dextop.localText("uiStopTheAndroidAutoDextopSessionBeforeStartingDextopOnThisPhone"),
                 null
             )
             return
@@ -1133,7 +1134,7 @@ open class MainActivity : FlutterActivity() {
             return
         }
         if (pendingStartResult != null) {
-            result.error("start_busy", "A Dextop start is already in progress", null)
+            result.error("start_busy", moe.n4tsu.dextop.localText("uiADextopStartIsAlreadyInProgress"), null)
             return
         }
         Log.i(logTag, "startDisplay ${width}x$height/$density decorations=$decorations secure=$secure")
@@ -1159,7 +1160,7 @@ open class MainActivity : FlutterActivity() {
     private fun stopDisplay(result: MethodChannel.Result) {
         Log.i(logTag, "stopDisplay")
         permissionHandler.removeCallbacks(startTimeout)
-        pendingStartResult?.error("start_cancelled", "Dextop startup was cancelled", null)
+        pendingStartResult?.error("start_cancelled", moe.n4tsu.dextop.localText("uiDextopStartupWasCancelled"), null)
         pendingStartResult = null
         MirrorService.stopActive()
         restoreOrientation()
@@ -1344,7 +1345,7 @@ open class MainActivity : FlutterActivity() {
             val command = PrivilegedAccess(logTag).execute(
                 "settings", "put", "global", "overlay_display_devices", value
             )
-            check(command.succeeded) { command.error.ifBlank { "settings command failed" } }
+            check(command.succeeded) { command.error.ifBlank { moe.n4tsu.dextop.localText("uiSettingsCommandFailed") } }
         }.onSuccess {
             onSuccess()
             result.success(null)
@@ -1371,7 +1372,7 @@ open class MainActivity : FlutterActivity() {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             if (pendingWirelessDebuggingResult != null) {
-                result.error("notification_permission_busy", "Notification permission is already being requested", null)
+                result.error("notification_permission_busy", moe.n4tsu.dextop.localText("uiNotificationPermissionIsAlreadyBeingRequested"), null)
                 return
             }
             pendingWirelessDebuggingResult = result
@@ -1397,7 +1398,7 @@ open class MainActivity : FlutterActivity() {
             return
         }
         if (pendingNotificationPermissionResult != null || pendingWirelessDebuggingResult != null) {
-            result.error("notification_permission_busy", "Notification permission is already being requested", null)
+            result.error("notification_permission_busy", moe.n4tsu.dextop.localText("uiNotificationPermissionIsAlreadyBeingRequested"), null)
             return
         }
         pendingNotificationPermissionResult = result
@@ -1421,7 +1422,7 @@ open class MainActivity : FlutterActivity() {
         val granted = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         if (!granted) {
-            result.error("notification_permission_required", "Notification permission is required for pairing", null)
+            result.error("notification_permission_required", moe.n4tsu.dextop.localText("uiNotificationPermissionIsRequiredForPairing"), null)
             return
         }
         DistributionPrivilegeBootstrap.showPairingNotification(applicationContext)
@@ -1522,7 +1523,7 @@ open class MainActivity : FlutterActivity() {
         } else {
             result.error(
                 "settings_unavailable",
-                "Wireless debugging settings are unavailable on this device",
+                moe.n4tsu.dextop.localText("uiWirelessDebuggingSettingsAreUnavailableOnThisDevice"),
                 null,
             )
         }
@@ -1609,7 +1610,7 @@ open class MainActivity : FlutterActivity() {
         } else {
             result.error(
                 "notification_permission_denied",
-                "Notification permission is required to enter the pairing code while Wireless debugging is open",
+                moe.n4tsu.dextop.localText("uiNotificationPermissionIsRequiredToEnterThePairingCodeWhileWirelessDebuggingIsOpen"),
                 null,
             )
         }
@@ -1626,7 +1627,7 @@ open class MainActivity : FlutterActivity() {
                 "pm", "grant", packageName, Manifest.permission.WRITE_SECURE_SETTINGS
             )
             check(command.succeeded) {
-                command.error.ifBlank { "WRITE_SECURE_SETTINGS grant failed" }
+                command.error.ifBlank { moe.n4tsu.dextop.localText("uiWRITESECURESETTINGSGrantFailed") }
             }
             Log.i(logTag, "grantSecureSettings complete")
         }
@@ -1646,13 +1647,13 @@ open class MainActivity : FlutterActivity() {
                 contentResolver,
                 Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
                 services.joinToString(":")
-            )) { "Unable to enable Dextop accessibility service" }
+            )) { moe.n4tsu.dextop.localText("uiUnableToEnableDextopAccessibilityService") }
         }
         check(Settings.Secure.putInt(
             contentResolver,
             Settings.Secure.ACCESSIBILITY_ENABLED,
             1
-        )) { "Unable to enable Android accessibility services" }
+        )) { moe.n4tsu.dextop.localText("uiUnableToEnableAndroidAccessibilityServices") }
         Log.i(logTag, "Dextop accessibility service enabled for GitHub distribution")
     }
 

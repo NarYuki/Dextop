@@ -195,7 +195,7 @@ internal object LinuxAndroidPads {
             val bytes = ByteArray(4)
             socket.soTimeout = 2000
             var read = 0
-            while (read < 4) { val n = socket.inputStream.read(bytes, read, 4 - read); if (n < 0) error("closed"); read += n }
+            while (read < 4) { val n = socket.inputStream.read(bytes, read, 4 - read); if (n < 0) error(moe.n4tsu.dextop.localText("uiClosed")); read += n }
             ByteBuffer.wrap(bytes).order(ByteOrder.LITTLE_ENDIAN).int
         }.getOrElse { socket.close(); return }
         val pad = pads.values.firstOrNull { it.index == header and 0x7fffffff } ?: run { socket.close(); return }

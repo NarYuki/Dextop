@@ -1,3 +1,5 @@
+import '../l10n/inline_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -103,14 +105,12 @@ class _LinuxStoreSourcesPanelState extends State<LinuxStoreSourcesPanel> {
         'id': id,
         'source': source,
       });
-      if (ok != true) throw StateError('Preparation is already running');
+      if (ok != true) {
+        throw StateError(currentUiText('uiPreparationIsAlreadyRunning'));
+      }
       if (!mounted) return;
       setState(
-        () => running['$id/$source'] = linuxText(
-          context,
-          '準備しています…',
-          'Preparing…',
-        ),
+        () => running['$id/$source'] = linuxText(context, 'uiPreparing'),
       );
       timer ??= Timer.periodic(const Duration(seconds: 2), (_) => _poll());
     } catch (e) {
@@ -145,7 +145,8 @@ class _LinuxStoreSourcesPanelState extends State<LinuxStoreSourcesPanel> {
               running.remove(key);
               error = state == 'done'
                   ? null
-                  : job['output'] as String? ?? 'Preparation failed';
+                  : job['output'] as String? ??
+                        currentUiText('uiPreparationFailed');
               if (state == 'done') unawaited(_checkReady());
             }
           });
@@ -189,7 +190,7 @@ class _LinuxStoreSourcesPanelState extends State<LinuxStoreSourcesPanel> {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final containers = _aptContainers;
 
     /// One row per Debian/Ubuntu environment: whether [source] is set up there.
@@ -206,8 +207,8 @@ class _LinuxStoreSourcesPanelState extends State<LinuxStoreSourcesPanel> {
             supportingText: busy
                 ? running[key]
                 : done
-                ? t('準備済み・タップで更新', 'Ready · tap to update')
-                : t('未準備・タップで準備', 'Not set up · tap to set up'),
+                ? t('uiReadyTapToUpdate')
+                : t('uiNotSetUpTapToSetUp'),
             leading: Icon(
               done ? M3EIcons.check_circle_rounded : M3EIcons.download_rounded,
             ),
@@ -254,58 +255,49 @@ class _LinuxStoreSourcesPanelState extends State<LinuxStoreSourcesPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        LinuxSection(t('配布元', 'Sources')),
+        LinuxSection(t('uiSources')),
         LinuxGroup(
           children: [
             toggle(
               'apt',
               M3EIcons.inventory_2_rounded,
               'Debian / Ubuntu APT',
-              t(
-                'ディストリビューションの公式パッケージ。準備は不要です',
-                'Official distribution packages; no setup needed',
-              ),
+              t('uiOfficialDistributionPackagesNoSetupNeeded'),
             ),
             toggle(
               'deb-get',
               M3EIcons.download_rounded,
               'deb-get',
-              t('開発元が配布する DEB パッケージ', 'DEB packages from app developers'),
+              t('uiDEBPackagesFromAppDevelopers'),
             ),
             toggle(
               'flathub',
               M3EIcons.apps_rounded,
               'Flathub',
-              t('Flatpak アプリ', 'Flatpak applications'),
+              t('uiFlatpakApplications'),
             ),
           ],
         ),
-        note(
-          t(
-            'deb-get と Flathub は、Linux 環境ごとにツールの準備が必要です。',
-            'deb-get and Flathub need their tools set up in each Linux environment.',
-          ),
-        ),
+        note(t('uiDebGetAndFlathubNeedTheirToolsSetUpInEachLinuxEnvironment')),
         if (debGet && containers.isNotEmpty) ...[
-          LinuxSection(t('deb-get の準備', 'deb-get setup')),
+          LinuxSection(t('uiDebGetSetup')),
           LinuxGroup(children: setupRows('deb-get')),
         ],
         if (flathub && containers.isNotEmpty) ...[
-          LinuxSection(t('Flathub の準備', 'Flathub setup')),
+          LinuxSection(t('uiFlathubSetup')),
           LinuxGroup(children: setupRows('flathub')),
         ],
         if (flathub) ...[
-          LinuxSection(t('Flatpak の実行', 'Running Flatpak apps')),
+          LinuxSection(t('uiRunningFlatpakApps')),
           LinuxGroup(
             children: [
               LinuxToggle(
                 value: widget.flatpakCompatibility,
                 onChanged: widget.onFlatpakCompatibility,
                 icon: M3EIcons.science_rounded,
-                title: t('互換実行（試験的）', 'Compatibility execution (experimental)'),
+                title: t('uiCompatibilityExecutionExperimental'),
                 subtitle: t(
-                  '名前空間が使えない端末で proot 経由で起動します。サンドボックスは適用されず、ソフトウェア描画になります。',
-                  'Runs apps through proot without namespaces. No sandbox; software rendering.',
+                  'uiRunsAppsThroughProotWithoutNamespacesNoSandboxSoftwareRendering',
                 ),
               ),
             ],
@@ -317,27 +309,26 @@ class _LinuxStoreSourcesPanelState extends State<LinuxStoreSourcesPanel> {
             children: [
               M3EListItem(
                 supportingMaxLines: null,
-                headline: t('準備に失敗しました', 'Setup failed'),
-                supportingText: t('タップして詳細を表示', 'Tap to view details'),
+                headline: t('uiSetupFailed'),
+                supportingText: t('uiTapToViewDetails'),
                 leading: const Icon(M3EIcons.error_outline_rounded),
                 trailing: const Icon(M3EIcons.chevron_right_rounded),
-                onTap: () => _details(t('Store', 'Store'), error!),
+                onTap: () => _details(t('uiStore'), error!),
               ),
             ],
           ),
         ],
-        LinuxSection(t('その他', 'More')),
+        LinuxSection(t('uiMore')),
         LinuxGroup(
           children: [
             M3EListItem(
-              headline: t('配布元について', 'About sources'),
+              headline: t('uiAboutSources'),
               leading: const Icon(M3EIcons.info_outline_rounded),
               trailing: const Icon(M3EIcons.chevron_right_rounded),
               onTap: () => _details(
-                t('配布元について', 'About sources'),
+                t('uiAboutSources'),
                 t(
-                  '有効にした配布元のアプリを Store に表示します。Debian・Ubuntu に対応しています。\n\nAPT はディストリビューションの公式パッケージを掲載します。\n\ndeb-get と Flathub は Linux 環境ごとにツールの準備が必要です。未準備のまま Store を開くと、最初にセットアップ画面が出ます。\n\n配布元への信頼は安全性の保証ではありません。無効にしてもインストール済みのアプリは削除されません。',
-                  'Enabled sources appear in the Store for Debian and Ubuntu.\n\nAPT lists official distribution packages.\n\ndeb-get and Flathub need their tools in each Linux environment. Opening the Store before that shows a setup screen first.\n\nTrust does not guarantee safety. Disabling a source does not remove installed apps.',
+                  'uiEnabledSourcesAppearInTheStoreForDebianAndUbuntuAPTListsOfficialDistributionPackagesDebGetAndFlathub',
                 ),
               ),
             ),

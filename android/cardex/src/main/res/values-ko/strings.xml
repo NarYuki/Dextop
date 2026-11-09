@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the shared UI catalogs. -->
+<resources>
+    <string name="app_name" formatted="false">"Dextop Car Companion"</string>
+    <string name="opening_dextop" formatted="false">"Dextop 여는 중…"</string>
+    <string name="relay_description" formatted="false">"Dextop Car Companion은 Android Auto와 Dextop을 연결합니다."</string>
+    <string name="dextop_required" formatted="false">"Dextop이 설치되지 않았거나 Car Companion과 서명이 일치하지 않습니다."</string>
+    <string name="open_again" formatted="false">"Dextop 열기"</string>
+    <string name="ready" formatted="false">"Dextop Car Companion 준비됨"</string>
+    <string name="not_ready" formatted="false">"Dextop에 연결할 수 없습니다"</string>
+    <string name="start" formatted="false">"시작"</string>
+    <string name="open_phone" formatted="false">"Dextop 시작"</string>
+    <string name="guide_title" formatted="false">"Android Auto에서 Dextop 시작"</string>
+    <string name="guide_description" formatted="false">"이 영상은 Android Auto 화면입니다. 차량 화면에서 따라 하여 Dextop을 시작하세요."</string>
+    <string name="connection" formatted="false">"연결"</string>
+    <string name="dextop_installed" formatted="false">"Dextop 설치됨"</string>
+    <string name="dextop_missing" formatted="false">"Dextop이 필요합니다"</string>
+    <string name="signature_verified" formatted="false">"보안 중계 사용 가능"</string>
+    <string name="signature_mismatch" formatted="false">"이 Companion을 지원하는 버전으로 Dextop을 업데이트하세요"</string>
+    <string name="auto_mode" formatted="false">"Android Auto 디스플레이"</string>
+    <string name="phone_mode" formatted="false">"휴대전화 Companion"</string>
+    <string name="android_auto_connected" formatted="false">"Android Auto 연결됨"</string>
+    <string name="android_auto_disconnected" formatted="false">"Android Auto 연결 안 됨"</string>
+    <string name="automotive_connected" formatted="false">"Android Automotive OS 연결됨"</string>
+    <string name="parked_note" formatted="false">"주차 중에 데스크톱을 사용할 수 있습니다."</string>
+    <string name="starting" formatted="false">"Dextop 시작 중…"</string>
+    <string name="stop" formatted="false">"중지"</string>
+    <string name="controls" formatted="false">"조작"</string>
+    <string name="auto_controls" formatted="false">"Auto 조작"</string>
+    <string name="swipe_hint" formatted="false">"왼쪽 가장자리에서 오른쪽으로 스와이프하여 이 패널을 여세요."</string>
+    <string name="back" formatted="false">"뒤로"</string>
+    <string name="home" formatted="false">"홈"</string>
+    <string name="recents" formatted="false">"최근 앱"</string>
+    <string name="reconnect" formatted="false">"영상 다시 연결"</string>
+    <string name="restart_desktop" formatted="false">"데스크톱 다시 시작"</string>
+    <string name="close" formatted="false">"닫기"</string>
+    <string name="workspace" formatted="false">"작업 공간"</string>
+    <string name="save_workspace" formatted="false">"현재 앱 배치 추가"</string>
+    <string name="no_workspaces" formatted="false">"저장된 작업공간 없음"</string>
+    <string name="display_scale" formatted="false">"표시 배율"</string>
+    <string name="display_scale_description" formatted="false">"소형 차량 화면에 맞도록 항목 크기를 줄입니다."</string>
+    <string name="companion_parking_name" formatted="false">"Dextop・Parking"</string>
+    <string name="companion_driving_name" formatted="false">"Dextop・Driving"</string>
+</resources>

@@ -29,7 +29,7 @@ internal class LinuxX11Tray(private val x: X11Client, private val events: (JSONO
         x.changeProperty(owner, x.internAtom("_NET_SYSTEM_TRAY_ORIENTATION"), 6, 32, ByteArray(4))
         x.setSelectionOwner(owner, selection)
         x.sync()
-        check(x.selectionOwner(selection) == owner) { "Cannot own X11 system tray" }
+        check(x.selectionOwner(selection) == owner) { moe.n4tsu.dextop.localText("uiCannotOwnX11SystemTray") }
         if (x.argbVisual != 0) x.changeProperty(owner, x.internAtom("_NET_SYSTEM_TRAY_VISUAL"), 32, 32,
             ByteBuffer.allocate(4).order(ByteOrder.LITTLE_ENDIAN).putInt(x.argbVisual).array())
         val event = ByteBuffer.allocate(32).order(ByteOrder.LITTLE_ENDIAN)

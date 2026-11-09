@@ -75,9 +75,8 @@ class _DisplayEnvironmentSettingsCardState
         autoHideTaskbar = previousTaskbar;
         forceInternal120Hz = previous120Hz;
       });
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(exception.toString())));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(exception.toString())));
     }
   }
 
@@ -165,7 +164,8 @@ class ExternalDisplayModeCard extends StatefulWidget {
   final NativeBridge bridge;
 
   @override
-  State<ExternalDisplayModeCard> createState() => _ExternalDisplayModeCardState();
+  State<ExternalDisplayModeCard> createState() =>
+      _ExternalDisplayModeCardState();
 }
 
 class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
@@ -174,7 +174,7 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
   String phoneRole = 'phone';
   bool busy = false;
   Timer? monitor;
-  String t(String ja, String en) => localText(context, ja, en);
+  String t(String key) => localText(context, key);
 
   @override
   void initState() {
@@ -214,9 +214,9 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(switch (outcome) {
-          'no_session' => t('デスクトップを開始してから選んでください', 'Start the desktop first'),
-          'no_display' => t('外部ディスプレイが見つかりません', 'The external display is gone'),
-          _ => t('外部ディスプレイに表示できませんでした', 'Could not show the desktop on the external display'),
+          'no_session' => t('uiStartTheDesktopFirst'),
+          'no_display' => t('uiTheExternalDisplayIsGone'),
+          _ => t('uiCouldNotShowTheDesktopOnTheExternalDisplay'),
         }),
       ),
     );
@@ -237,19 +237,24 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     if (mode == 'extend' || mode == 'external') await choose(mode as String);
   }
 
-  Widget dropdown(String value, Map<String, String> items, ValueChanged<String>? onChanged) =>
-      DropdownButton<String>(
-        value: value,
-        underline: const SizedBox.shrink(),
-        borderRadius: BorderRadius.circular(16),
-        onChanged: onChanged == null ? null : (next) {
-          if (next != null && next != value) onChanged(next);
-        },
-        items: [
-          for (final entry in items.entries)
-            DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-        ],
-      );
+  Widget dropdown(
+    String value,
+    Map<String, String> items,
+    ValueChanged<String>? onChanged,
+  ) => DropdownButton<String>(
+    value: value,
+    underline: const SizedBox.shrink(),
+    borderRadius: BorderRadius.circular(16),
+    onChanged: onChanged == null
+        ? null
+        : (next) {
+            if (next != null && next != value) onChanged(next);
+          },
+    items: [
+      for (final entry in items.entries)
+        DropdownMenuItem(value: entry.key, child: Text(entry.value)),
+    ],
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -257,7 +262,7 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     final mode = state['mode'] as String? ?? 'off';
     final running = state['running'] == true;
     final enabled = !busy;
-    final name = state['name'] as String? ?? t('外部ディスプレイ', 'External display');
+    final name = state['name'] as String? ?? t('uiExternalDisplay');
     return Padding(
       padding: const EdgeInsets.only(top: 12),
       child: Card(
@@ -267,41 +272,57 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
           children: [
             ListTile(
               leading: const Icon(Icons.connected_tv_outlined),
-              title: Text(t('複数のディスプレイ', 'Multiple displays')),
+              title: Text(t('uiMultipleDisplays')),
               subtitle: Text(
                 running
-                    ? inlineFormat(t('1: スマホ / 2: {0}', '1: Phone / 2: {0}'), [name])
-                    : t('次回のデスクトップ起動時に適用します', 'Applies when the desktop starts'),
+                    ? inlineFormat(t('ui1Phone20'), [name])
+                    : t('uiAppliesWhenTheDesktopStarts'),
               ),
               trailing: dropdown(mode, {
-                'mirror': t('表示画面を複製する', 'Duplicate these displays'),
-                'extend': t('表示画面を拡張する', 'Extend these displays'),
-                'off': t('1 のみに表示する', 'Show only on 1'),
-                'external': t('2 のみに表示する', 'Show only on 2'),
+                'mirror': t('uiDuplicateTheseDisplays'),
+                'extend': t('uiExtendTheseDisplays'),
+                'off': t('uiShowOnlyOn1'),
+                'external': t('uiShowOnlyOn2'),
               }, enabled ? choose : null),
             ),
             if (mode == 'external') ...[
               const Divider(height: 1),
               ListTile(
-                title: Text(t('スマホの使い方', 'Use the phone as')),
-                subtitle: Text(phoneRole == 'phone'
-                    ? t('スマホはふだんどおり使えます', 'The phone works as usual')
-                    : t('スマホの画面でデスクトップを操作します', 'Control the desktop from the phone screen')),
-                trailing: dropdown(phoneRole, {
-                  'phone': t('スマホ', 'Phone'),
-                  'touchpad': t('トラックパッドとキーボード', 'Trackpad and keyboard'),
-                }, enabled ? (value) => setArrangement('external_display_phone', value) : null),
+                title: Text(t('uiUseThePhoneAs')),
+                subtitle: Text(
+                  phoneRole == 'phone'
+                      ? t('uiThePhoneWorksAsUsual')
+                      : t('uiControlTheDesktopFromThePhoneScreen'),
+                ),
+                trailing: dropdown(
+                  phoneRole,
+                  {
+                    'phone': t('uiPhone'),
+                    'touchpad': t('uiTrackpadAndKeyboard'),
+                  },
+                  enabled
+                      ? (value) =>
+                            setArrangement('external_display_phone', value)
+                      : null,
+                ),
               ),
             ],
             if (mode == 'extend') ...[
               const Divider(height: 1),
               ListTile(
-                title: Text(t('メインディスプレイ', 'Main display')),
-                subtitle: Text(t('タスクバーを表示する画面です', 'The screen that shows the taskbar')),
-                trailing: dropdown(main, {
-                  '1': t('1（スマホ）', '1 (phone)'),
-                  '2': inlineFormat(t('2（{0}）', '2 ({0})'), [name]),
-                }, enabled ? (value) => setArrangement('external_display_main', value) : null),
+                title: Text(t('uiMainDisplay')),
+                subtitle: Text(t('uiTheScreenThatShowsTheTaskbar')),
+                trailing: dropdown(
+                  main,
+                  {
+                    '1': t('ui1Phone'),
+                    '2': inlineFormat(t('ui20'), [name]),
+                  },
+                  enabled
+                      ? (value) =>
+                            setArrangement('external_display_main', value)
+                      : null,
+                ),
               ),
             ],
           ],
@@ -516,9 +537,8 @@ class _DisplayResolutionDetailPageState
       }
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(exception.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(exception.toString())));
       }
     } finally {
       if (mounted) setState(() => applying = false);
@@ -799,9 +819,8 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       );
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(exception.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(exception.toString())));
       }
     } finally {
       if (mounted) setState(() => applying = false);
@@ -855,16 +874,15 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       }
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(exception.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(exception.toString())));
       }
     } finally {
       if (mounted) setState(() => applying = false);
     }
   }
 
-  String t(String ja, String en) => localText(context, ja, en);
+  String t(String key) => localText(context, key);
 
   Future<void> applyDisplaySetting(Future<void> Function() change) async {
     if (applying) return;
@@ -874,9 +892,8 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       await load();
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(exception.toString())));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(exception.toString())));
       }
     } finally {
       if (mounted) setState(() => applying = false);
@@ -887,7 +904,9 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
     final known = physicalDensities[display.id];
     if (known != null) return known;
     final value = await widget.bridge.displayPhysicalDensity(display.id);
-    if (value != null && mounted) setState(() => physicalDensities[display.id] = value);
+    if (value != null && mounted) {
+      setState(() => physicalDensities[display.id] = value);
+    }
     return value;
   }
 
@@ -906,21 +925,24 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
     ),
   );
 
-  Widget _dropdown<T>(T value, List<(T, String)> items, ValueChanged<T>? onChanged) =>
-      DropdownButton<T>(
-        value: value,
-        underline: const SizedBox.shrink(),
-        borderRadius: BorderRadius.circular(16),
-        onChanged: onChanged == null
-            ? null
-            : (next) {
-                if (next != null && next != value) onChanged(next);
-              },
-        items: [
-          for (final (item, label) in items)
-            DropdownMenuItem(value: item, child: Text(label)),
-        ],
-      );
+  Widget _dropdown<T>(
+    T value,
+    List<(T, String)> items,
+    ValueChanged<T>? onChanged,
+  ) => DropdownButton<T>(
+    value: value,
+    underline: const SizedBox.shrink(),
+    borderRadius: BorderRadius.circular(16),
+    onChanged: onChanged == null
+        ? null
+        : (next) {
+            if (next != null && next != value) onChanged(next);
+          },
+    items: [
+      for (final (item, label) in items)
+        DropdownMenuItem(value: item, child: Text(label)),
+    ],
+  );
 
   Widget _selectedDisplaySettings(BuildContext context) {
     final display = selectedDisplay;
@@ -936,20 +958,24 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       );
     }
     final extendedScreen = display.extendedScreen != null;
-    if (!extendedScreen && !physicalDensities.containsKey(display.id)) unawaited(physicalDensity(display));
+    if (!extendedScreen && !physicalDensities.containsKey(display.id)) {
+      unawaited(physicalDensity(display));
+    }
     final enabled = !applying;
 
     // Scale: Android's 160 dpi is 100 %.
     final recommendedDpi = physicalDensities[display.id];
     final currentPercent = (display.densityDpi * 100 / 160).round();
-    final recommendedPercent = recommendedDpi == null ? null : (recommendedDpi * 100 / 160).round();
+    final recommendedPercent = recommendedDpi == null
+        ? null
+        : (recommendedDpi * 100 / 160).round();
     final percents = {
       ...[100, 125, 150, 175, 200, 225, 250, 300, 350, 400],
       currentPercent,
       ?recommendedPercent,
     }.toList()..sort();
     String percentLabel(int value) => value == recommendedPercent
-        ? inlineFormat(t('{0}%（推奨）', '{0}% (Recommended)'), [value])
+        ? inlineFormat(t('ui0Recommended'), [value])
         : '$value%';
 
     // Resolution: each size once, at its highest refresh rate; the largest is recommended.
@@ -957,19 +983,26 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
     for (final mode in display.supportedModes) {
       final key = '${mode.width}x${mode.height}';
       final known = bySize[key];
-      if (known == null || mode.refreshRate > known.refreshRate) bySize[key] = mode;
+      if (known == null || mode.refreshRate > known.refreshRate) {
+        bySize[key] = mode;
+      }
     }
     final sizes = bySize.values.toList()
       ..sort((a, b) => (b.width * b.height).compareTo(a.width * a.height));
-    final active = display.supportedModes.where((mode) => mode.id == display.activeModeId).firstOrNull;
-    final activeSize = active == null ? null : '${active.width}x${active.height}';
+    final active = display.supportedModes
+        .where((mode) => mode.id == display.activeModeId)
+        .firstOrNull;
+    final activeSize = active == null
+        ? null
+        : '${active.width}x${active.height}';
     String sizeLabel(_DisplayMode mode) => mode == sizes.first
-        ? inlineFormat(t('{0} × {1}（推奨）', '{0} × {1} (Recommended)'), [mode.width, mode.height])
+        ? inlineFormat(t('ui01Recommended'), [mode.width, mode.height])
         : '${mode.width} × ${mode.height}';
-    final rates = display.supportedModes
-        .where((mode) => '${mode.width}x${mode.height}' == activeSize)
-        .toList()
-      ..sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
+    final rates =
+        display.supportedModes
+            .where((mode) => '${mode.width}x${mode.height}' == activeSize)
+            .toList()
+          ..sort((a, b) => b.refreshRate.compareTo(a.refreshRate));
     String rateLabel(double value) =>
         '${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 2)} Hz';
 
@@ -978,52 +1011,72 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       children: [
         Padding(
           padding: const EdgeInsets.only(top: 4, bottom: 4),
-          child: Text(display.name, style: Theme.of(context).textTheme.titleMedium),
+          child: Text(
+            display.name,
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
         ),
         if (extendedScreen)
           // The extended desktop sizes each screen's part itself; 100 % is the recommended size.
           _settingRow(
             icon: Icons.aspect_ratio_rounded,
-            title: t('拡大縮小', 'Scale'),
-            subtitle: t('テキスト、アプリ、その他の項目のサイズを変更する', 'Change the size of text, apps, and other items'),
+            title: t('uiScale'),
+            subtitle: t('uiChangeTheSizeOfTextAppsAndOtherItems'),
             trailing: _dropdown<int>(
               display.scalePercent,
               [
-                for (final value in {...display.scalePercents, display.scalePercent}.toList()..sort())
-                  (value, value == 100 ? inlineFormat(t('{0}%（推奨）', '{0}% (Recommended)'), [value]) : '$value%'),
+                for (final value in {
+                  ...display.scalePercents,
+                  display.scalePercent,
+                }.toList()..sort())
+                  (
+                    value,
+                    value == 100
+                        ? inlineFormat(t('ui0Recommended'), [value])
+                        : '$value%',
+                  ),
               ],
               !enabled
                   ? null
                   : (value) => applyDisplaySetting(
-                      () => widget.bridge.setExtendedDisplayScale(display.id, value),
+                      () => widget.bridge.setExtendedDisplayScale(
+                        display.id,
+                        value,
+                      ),
                     ),
             ),
           )
         else
           _settingRow(
             icon: Icons.aspect_ratio_rounded,
-            title: t('拡大縮小', 'Scale'),
-            subtitle: t('テキスト、アプリ、その他の項目のサイズを変更する', 'Change the size of text, apps, and other items'),
+            title: t('uiScale'),
+            subtitle: t('uiChangeTheSizeOfTextAppsAndOtherItems'),
             trailing: _dropdown<int>(
               currentPercent,
               [for (final value in percents) (value, percentLabel(value))],
               !enabled
                   ? null
-                  : (value) => applyDisplaySetting(() => widget.bridge.setDisplayDensity(
-                      display.id,
-                      value == recommendedPercent ? 0 : (value * 160 / 100).round(),
-                    )),
+                  : (value) => applyDisplaySetting(
+                      () => widget.bridge.setDisplayDensity(
+                        display.id,
+                        value == recommendedPercent
+                            ? 0
+                            : (value * 160 / 100).round(),
+                      ),
+                    ),
             ),
           ),
         if (sizes.isNotEmpty && activeSize != null)
           _settingRow(
             icon: Icons.fit_screen_rounded,
-            title: t('ディスプレイの解像度', 'Display resolution'),
-            subtitle: t('接続されたディスプレイに合うように解像度を調整する',
-                'Adjust the resolution to fit your connected display'),
+            title: t('uiDisplayResolution'),
+            subtitle: t('uiAdjustTheResolutionToFitYourConnectedDisplay'),
             trailing: _dropdown<String>(
               activeSize,
-              [for (final mode in sizes) ('${mode.width}x${mode.height}', sizeLabel(mode))],
+              [
+                for (final mode in sizes)
+                  ('${mode.width}x${mode.height}', sizeLabel(mode)),
+              ],
               !enabled
                   ? null
                   : (value) => applyDisplaySetting(() async {
@@ -1040,10 +1093,13 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         if (active != null && rates.length > 1)
           _settingRow(
             icon: Icons.speed_rounded,
-            title: t('リフレッシュレート', 'Refresh rate'),
+            title: t('uiRefreshRate'),
             trailing: _dropdown<int>(
               active.id,
-              [for (final mode in rates) (mode.id, rateLabel(mode.refreshRate))],
+              [
+                for (final mode in rates)
+                  (mode.id, rateLabel(mode.refreshRate)),
+              ],
               !enabled
                   ? null
                   : (id) => applyDisplaySetting(() async {
@@ -1057,24 +1113,25 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                     }),
             ),
           ),
-        if (!extendedScreen) _settingRow(
-          icon: Icons.screen_rotation_alt_rounded,
-          title: t('画面の向き', 'Display orientation'),
-          trailing: _dropdown<int>(
-            display.rotation,
-            [
-              (0, t('横', 'Landscape')),
-              (1, t('縦', 'Portrait')),
-              (2, t('横（反対向き）', 'Landscape (flipped)')),
-              (3, t('縦（反対向き）', 'Portrait (flipped)')),
-            ],
-            !enabled
-                ? null
-                : (value) => applyDisplaySetting(
-                    () => widget.bridge.setDisplayRotation(display.id, value),
-                  ),
+        if (!extendedScreen)
+          _settingRow(
+            icon: Icons.screen_rotation_alt_rounded,
+            title: t('uiDisplayOrientation'),
+            trailing: _dropdown<int>(
+              display.rotation,
+              [
+                (0, t('uiLandscape')),
+                (1, t('uiPortrait')),
+                (2, t('uiLandscapeFlipped')),
+                (3, t('uiPortraitFlipped')),
+              ],
+              !enabled
+                  ? null
+                  : (value) => applyDisplaySetting(
+                      () => widget.bridge.setDisplayRotation(display.id, value),
+                    ),
+            ),
           ),
-        ),
       ],
     );
   }
@@ -1498,7 +1555,7 @@ class _TopologyDisplay {
         id: (map['id'] as num).toInt(),
         name: map['dextopOverlay'] == true
             ? currentLocalizations().topologyBuiltInScreen
-            : map['name']?.toString() ?? 'Display',
+            : map['name']?.toString() ?? currentUiText('uiDisplay'),
         position: Offset(
           (map['x'] as num?)?.toDouble() ?? 0,
           (map['y'] as num?)?.toDouble() ?? 0,
@@ -1522,7 +1579,8 @@ class _TopologyDisplay {
         extendedScreen: (map['extendedScreen'] as num?)?.toInt(),
         scalePercent: (map['scalePercent'] as num?)?.toInt() ?? 100,
         scalePercents: [
-          for (final value in map['scalePercents'] as List? ?? const []) (value as num).toInt(),
+          for (final value in map['scalePercents'] as List? ?? const [])
+            (value as num).toInt(),
         ],
       );
 

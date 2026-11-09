@@ -23,7 +23,7 @@ extension _HomeContent on _HomeScreenState {
               ),
               const SizedBox(height: 30),
               Text(
-                localText(context, 'Dextopを設定する', 'Set up Dextop'),
+                localText(context, 'uiSetUpDextop'),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.headlineMedium,
               ),
@@ -31,8 +31,7 @@ extension _HomeContent on _HomeScreenState {
               Text(
                 localText(
                   context,
-                  'セットアップを完了させると、スタンドアローンでのAndroid Desktopが実行できるようになります',
-                  'Finish the setup to run a standalone Android desktop',
+                  'uiFinishTheSetupToRunAStandaloneAndroidDesktop',
                 ),
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleMedium?.copyWith(
@@ -602,10 +601,9 @@ extension _HomeContent on _HomeScreenState {
     );
   }
 
-  Widget shizukuPanel() {
-    final colors = Theme.of(context).colorScheme;
+  String get privilegeConnectionLabel {
     final embedded = privilegeProvider == 'embedded';
-    final title = embedded
+    return embedded
         ? AppLocalizations.of(context).setupEmbeddedPairAndStart
         : !shizukuInstalled
         ? currentLocalizations().uiInstallShizuku.replaceAll(
@@ -621,13 +619,18 @@ extension _HomeContent on _HomeScreenState {
             'Shizuku',
             privilegeProviderName,
           );
+  }
+
+  Widget shizukuPanel() {
+    final colors = Theme.of(context).colorScheme;
+    final embedded = privilegeProvider == 'embedded';
     return ListTile(
       contentPadding: EdgeInsets.symmetric(horizontal: 4),
       leading: Icon(
         embedded ? Icons.wifi_tethering_rounded : Icons.warning_amber_rounded,
         color: colors.error,
       ),
-      title: Text(title),
+      title: Text(privilegeConnectionLabel),
       trailing: Icon(Icons.chevron_right_rounded),
       onTap: connect,
     );
