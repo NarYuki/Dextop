@@ -42,7 +42,7 @@ internal object LinuxDeckAudio {
         for (name in context.assets.list("deck-audio/modules").orEmpty()) {
             val staged = File(modules, "$name.staged")
             context.assets.open("deck-audio/modules/$name").use { input -> staged.outputStream().use { input.copyTo(it) } }
-            check(staged.renameTo(File(modules, name))) { "Cannot stage Deck audio module $name" }
+            check(staged.renameTo(File(modules, name))) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotStageDeckAudioModule0"), name) }
         }
         val selected = port.takeIf { it > 0 } ?: ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { it.localPort }
         val cookie = File(dir, "cookie")
@@ -81,7 +81,7 @@ internal object LinuxDeckAudio {
         if (!ready.await(3, TimeUnit.SECONDS) || !started.get() || !child.isAlive) {
             child.destroy()
             if (!child.waitFor(500, TimeUnit.MILLISECONDS)) child.destroyForcibly()
-            error("Deck DirectAudio did not become ready")
+            error(moe.n4tsu.dextop.localText("uiDeckDirectAudioDidNotBecomeReady"))
         }
         process = child
         auth = secret

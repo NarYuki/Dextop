@@ -11,35 +11,29 @@ class LinuxStorageUi {
   static const _channel = MethodChannel('app.freedextop/linux');
 
   static String _partName(BuildContext context, String id) {
-    String t(String ja, String en) => LinuxBackupsUi.text(context, ja, en);
+    String t(String key) => LinuxBackupsUi.text(context, key);
     return switch (id) {
-      'apt' => t('apt のダウンロード済みパッケージ', 'apt package downloads'),
-      'pacman' => t('pacman のダウンロード済みパッケージ', 'pacman package downloads'),
-      'dnf' => t('dnf のキャッシュ', 'dnf cache'),
-      'steamCache' => t('Steam の Web キャッシュ', 'Steam web cache'),
-      'steamDownloads' => t(
-        'Steam のダウンロード途中のファイル',
-        'Steam downloads in progress',
-      ),
-      'steamShaders' => t('Steam のシェーダーキャッシュ', 'Steam shader cache'),
-      'userCache' => t('ユーザーのキャッシュ（~/.cache）', 'User cache (~/.cache)'),
-      'tmp' => t('一時ファイル（/tmp）', 'Temporary files (/tmp)'),
-      'varTmp' => t('一時ファイル（/var/tmp）', 'Temporary files (/var/tmp)'),
-      'steamGames' => t('Steam のゲーム', 'Steam games'),
-      'steam' => t('Steam 本体とランタイム', 'Steam client and runtimes'),
-      'flatpak' => t('Flatpak（ユーザー）', 'Flatpak (user)'),
-      'flatpakSystem' => t('Flatpak（システム）', 'Flatpak (system)'),
-      'appImages' => t('AppImage', 'AppImages'),
-      'home' => t('ホームのファイル', 'Home files'),
-      'gaming' => t(
-        'ゲーム互換レイヤー（FEX・Proton など）',
-        'Gaming compatibility (FEX, Proton…)',
-      ),
-      'opt' => t('/opt（GPU ドライバーなど）', '/opt (GPU drivers and more)'),
-      'fonts' => t('フォント', 'Fonts'),
-      'usr' => t('インストールしたソフトウェア（/usr）', 'Installed software (/usr)'),
-      'var' => t('パッケージ情報など（/var）', 'Package data and more (/var)'),
-      _ => t('その他', 'Other'),
+      'apt' => t('uiAptPackageDownloads'),
+      'pacman' => t('uiPacmanPackageDownloads'),
+      'dnf' => t('uiDnfCache'),
+      'steamCache' => t('uiSteamWebCache'),
+      'steamDownloads' => t('uiSteamDownloadsInProgress'),
+      'steamShaders' => t('uiSteamShaderCache'),
+      'userCache' => t('uiUserCacheCache'),
+      'tmp' => t('uiTemporaryFilesTmp'),
+      'varTmp' => t('uiTemporaryFilesVarTmp'),
+      'steamGames' => t('uiSteamGames'),
+      'steam' => t('uiSteamClientAndRuntimes'),
+      'flatpak' => t('uiFlatpakUser'),
+      'flatpakSystem' => t('uiFlatpakSystem'),
+      'appImages' => t('uiAppImages'),
+      'home' => t('uiHomeFiles'),
+      'gaming' => t('uiGamingCompatibilityFEXProton'),
+      'opt' => t('uiOptGPUDriversAndMore'),
+      'fonts' => t('uiFonts'),
+      'usr' => t('uiInstalledSoftwareUsr'),
+      'var' => t('uiPackageDataAndMoreVar'),
+      _ => t('uiOther'),
     };
   }
 
@@ -49,14 +43,11 @@ class LinuxStorageUi {
     String containerId, {
     required bool stopped,
   }) async {
-    String t(String ja, String en) => LinuxBackupsUi.text(context, ja, en);
+    String t(String key) => LinuxBackupsUi.text(context, key);
     try {
       await _channel.invokeMethod('containerUsage', {'id': containerId});
       if (!context.mounted) return;
-      final job = await LinuxBackupsUi.follow(
-        context,
-        t('使用量を調べています', 'Measuring storage'),
-      );
+      final job = await LinuxBackupsUi.follow(context, t('uiMeasuringStorage'));
       if (!context.mounted) return;
       if (job?['state'] == 'failed') {
         LinuxBackupsUi.report(context, job, '');
@@ -69,10 +60,7 @@ class LinuxStorageUi {
       if (!stopped) {
         M3ESnackbar.show(
           context,
-          message: t(
-            'キャッシュの削除の前にコンテナを停止してください（強制停止）',
-            'Stop the container first (Force stop)',
-          ),
+          message: t('uiStopTheContainerFirstForceStopa1cc9d2c'),
         );
         return;
       }
@@ -80,14 +68,14 @@ class LinuxStorageUi {
       if (!context.mounted) return;
       final cleaned = await LinuxBackupsUi.follow(
         context,
-        t('キャッシュを削除しています', 'Removing caches'),
+        t('uiRemovingCaches'),
       );
       if (!context.mounted) return;
       final freed = ((cleaned?['result'] as Map?)?['freed'] as num?) ?? 0;
       LinuxBackupsUi.report(
         context,
         cleaned,
-        inlineFormat(t('{0} 空きました', '{0} freed'), [LinuxBackupsUi.size(freed)]),
+        inlineFormat(t('ui0Freed'), [LinuxBackupsUi.size(freed)]),
       );
     } catch (e) {
       if (context.mounted) {
@@ -110,7 +98,7 @@ class LinuxStorageUi {
     return M3EBottomSheet.show<bool>(
       context,
       builder: (sheet) {
-        String t(String ja, String en) => LinuxBackupsUi.text(sheet, ja, en);
+        String t(String key) => LinuxBackupsUi.text(sheet, key);
         final theme = Theme.of(sheet);
         return Padding(
           padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
@@ -118,21 +106,15 @@ class LinuxStorageUi {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                t('ストレージの使用量', 'Storage use'),
-                style: theme.textTheme.titleLarge,
-              ),
+              Text(t('uiStorageUse'), style: theme.textTheme.titleLarge),
               const SizedBox(height: 4),
               Text(
                 [
-                  inlineFormat(t('合計 {0}', 'Total {0}'), [
-                    LinuxBackupsUi.size(total),
-                  ]),
+                  inlineFormat(t('uiTotal0'), [LinuxBackupsUi.size(total)]),
                   if (snapshots > 0)
-                    inlineFormat(
-                      t('スナップショット {0}（別に保存）', 'Snapshots {0} (kept apart)'),
-                      [LinuxBackupsUi.size(snapshots)],
-                    ),
+                    inlineFormat(t('uiSnapshots0KeptApart'), [
+                      LinuxBackupsUi.size(snapshots),
+                    ]),
                 ].join(' · '),
                 style: theme.textTheme.bodyMedium,
               ),
@@ -149,7 +131,7 @@ class LinuxStorageUi {
                         sheet,
                         part,
                         total,
-                        t('削除可', 'Removable'),
+                        t('uiRemovable'),
                         () => Navigator.of(sheet).push<void>(
                           MaterialPageRoute(
                             builder: (_) => _LinuxStorageDetails(
@@ -170,7 +152,7 @@ class LinuxStorageUi {
                 children: [
                   M3EButton.text(
                     onPressed: () => Navigator.pop(sheet, false),
-                    child: Text(t('閉じる', 'Close')),
+                    child: Text(t('uiClose')),
                   ),
                   const SizedBox(width: 8),
                   M3EButton.filled(
@@ -178,7 +160,7 @@ class LinuxStorageUi {
                         ? () => Navigator.pop(sheet, true)
                         : null,
                     child: Text(
-                      inlineFormat(t('キャッシュを削除（{0}）', 'Remove caches ({0})'), [
+                      inlineFormat(t('uiRemoveCaches0'), [
                         LinuxBackupsUi.size(cache),
                       ]),
                     ),
@@ -310,7 +292,7 @@ class _LinuxStorageDetailsState extends State<_LinuxStorageDetails> {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => LinuxBackupsUi.text(context, ja, en);
+    String t(String key) => LinuxBackupsUi.text(context, key);
     return Scaffold(
       appBar: M3EAppBar.top(
         titleText: widget.title,
@@ -327,7 +309,7 @@ class _LinuxStorageDetailsState extends State<_LinuxStorageDetails> {
                 SelectableText(widget.path),
                 if (!loading || entries.isNotEmpty)
                   Text(
-                    inlineFormat(t('合計 {0} · {1}項目', 'Total {0} · {1} items'), [
+                    inlineFormat(t('uiTotal01Items'), [
                       LinuxBackupsUi.size(total),
                       count,
                     ]),
@@ -342,19 +324,17 @@ class _LinuxStorageDetailsState extends State<_LinuxStorageDetails> {
               child: Column(
                 children: [
                   Text(error!),
-                  TextButton(onPressed: _load, child: Text(t('再試行', 'Retry'))),
+                  TextButton(
+                    onPressed: _load,
+                    child: Text(t('uiRetry9da540e4')),
+                  ),
                 ],
               ),
             ),
           if (!loading && error == null && entries.isEmpty)
             Padding(
               padding: const EdgeInsets.all(16),
-              child: Text(
-                t(
-                  'このカテゴリに含まれるファイルはありません',
-                  'No files belong to this category here',
-                ),
-              ),
+              child: Text(t('uiNoFilesBelongToThisCategoryHere')),
             ),
           Expanded(
             child: ListView.builder(
@@ -363,7 +343,7 @@ class _LinuxStorageDetailsState extends State<_LinuxStorageDetails> {
                 if (index == entries.length) {
                   return TextButton(
                     onPressed: loading ? null : _load,
-                    child: Text(t('さらに表示', 'Load more')),
+                    child: Text(t('uiLoadMore')),
                   );
                 }
                 final entry = entries[index];
@@ -402,7 +382,7 @@ class _LinuxStorageDetailsState extends State<_LinuxStorageDetails> {
                             actions: [
                               TextButton(
                                 onPressed: () => Navigator.pop(dialog),
-                                child: Text(t('閉じる', 'Close')),
+                                child: Text(t('uiClose')),
                               ),
                             ],
                           ),

@@ -59,7 +59,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
     fun ownedSpecs(): Set<String> = coverSpec?.let(::setOf) ?: emptySet()
 
     fun setAndroidVisible(visible: Boolean, completion: (Result<State>) -> Unit) {
-        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (busy) return completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiCoverDisplayIsBusy"))))
         busy = true
         Thread {
             runCatching {
@@ -93,7 +93,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
         lifecycleTokenProvider: () -> String,
         completion: (Result<State>) -> Unit,
     ) {
-        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (busy) return completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiCoverDisplayIsBusy"))))
         if (coverDisplayId != Display.INVALID_DISPLAY) return completion(Result.success(state()))
         busy = true
         Thread {
@@ -126,7 +126,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
                     context.contentResolver,
                     DisplayMirrorBackend.DISPLAY_SPECIFICATION,
                     (current + spec).joinToString(";"),
-                )) { "Unable to request the cover display" }
+                )) { moe.n4tsu.dextop.localText("uiUnableToRequestTheCoverDisplay") }
                 coverSpec = spec
                 before
             }.onSuccess { before ->
@@ -143,7 +143,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
         lifecycleTokenProvider: () -> String,
         completion: (Result<State>) -> Unit,
     ) {
-        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (busy) return completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiCoverDisplayIsBusy"))))
         busy = true
         Thread {
             val result = runCatching {
@@ -180,7 +180,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
         lifecycleTokenProvider: () -> String,
         completion: (Result<State>) -> Unit,
     ) {
-        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (busy) return completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiCoverDisplayIsBusy"))))
         busy = true
         Thread {
             val result = runCatching {
@@ -207,7 +207,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
     }
 
     fun stopTrackpadMode(completion: (Result<State>) -> Unit) {
-        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (busy) return completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiCoverDisplayIsBusy"))))
         if (!trackpadActive && trackpadDisplayId == Display.INVALID_DISPLAY) {
             return completion(Result.success(state()))
         }
@@ -226,7 +226,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
     }
 
     fun stopBackButtonMode(completion: (Result<State>) -> Unit) {
-        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (busy) return completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiCoverDisplayIsBusy"))))
         if (!backButtonsActive && backButtonDisplayId == Display.INVALID_DISPLAY) {
             return completion(Result.success(state()))
         }
@@ -249,7 +249,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
     }
 
     fun stopDesktop(completion: (Result<State>) -> Unit) {
-        if (busy) return completion(Result.failure(IllegalStateException("Cover display is busy")))
+        if (busy) return completion(Result.failure(IllegalStateException(moe.n4tsu.dextop.localText("uiCoverDisplayIsBusy"))))
         if (backButtonsActive || backButtonDisplayId != Display.INVALID_DISPLAY ||
             trackpadActive || trackpadDisplayId != Display.INVALID_DISPLAY) {
             if (trackpadActive || trackpadDisplayId != Display.INVALID_DISPLAY) {
@@ -369,7 +369,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
             return
         }
         val result = runCatching {
-            val target = display ?: error("Cover display creation timed out")
+            val target = display ?: error(moe.n4tsu.dextop.localText("uiCoverDisplayCreationTimedOut"))
             coverDisplayId = target.displayId
             lifecycleToken = lifecycleTokenProvider()
             launchHome(target.displayId)
@@ -448,7 +448,7 @@ internal class CoverDisplaySessionController(private val context: Context) {
         }
         return internal.minByOrNull(::area)
             ?: displayManager.getDisplay(Display.DEFAULT_DISPLAY)
-            ?: error("The foldable cover display is unavailable")
+            ?: error(moe.n4tsu.dextop.localText("uiTheFoldableCoverDisplayIsUnavailable"))
     }
 
     private fun launchBackButtonActivity(displayId: Int) {
@@ -489,17 +489,17 @@ internal class CoverDisplaySessionController(private val context: Context) {
             context.contentResolver,
             DisplayMirrorBackend.DISPLAY_SPECIFICATION,
             remaining.joinToString(";"),
-        )) { "Unable to remove the cover display" }
+        )) { moe.n4tsu.dextop.localText("uiUnableToRemoveTheCoverDisplay") }
     }
 
     private fun requireCoverDeviceState() {
         val result = privilegedAccess.execute("cmd", "device_state", "state", "5")
-        check(result.succeeded) { result.error.ifBlank { "Unable to activate the cover display" } }
+        check(result.succeeded) { result.error.ifBlank { moe.n4tsu.dextop.localText("uiUnableToActivateTheCoverDisplay") } }
     }
 
     private fun resetDeviceState() {
         val result = privilegedAccess.execute("cmd", "device_state", "state", "reset")
-        check(result.succeeded) { result.error.ifBlank { "Unable to restore the device state" } }
+        check(result.succeeded) { result.error.ifBlank { moe.n4tsu.dextop.localText("uiUnableToRestoreTheDeviceState") } }
     }
 
     private fun launchHome(displayId: Int) {

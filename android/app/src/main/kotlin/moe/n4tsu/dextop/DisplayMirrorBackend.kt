@@ -110,8 +110,8 @@ internal class DisplayMirrorBackend(
             true
         }
         val requested = (preserved + spec).joinToString(";")
-        check(Settings.Global.putString(resolver, DISPLAY_SPECIFICATION, requested)) { "Unable to request overlay display" }
-        check(Settings.Global.getString(resolver, DISPLAY_SPECIFICATION) == requested) { "Overlay display request rejected" }
+        check(Settings.Global.putString(resolver, DISPLAY_SPECIFICATION, requested)) { moe.n4tsu.dextop.localText("uiUnableToRequestOverlayDisplay") }
+        check(Settings.Global.getString(resolver, DISPLAY_SPECIFICATION) == requested) { moe.n4tsu.dextop.localText("uiOverlayDisplayRequestRejected") }
         OperationLog.i(context, "DisplayBackend", "created request strategy=overlay_settings spec=$requested")
     }
 
@@ -129,7 +129,7 @@ internal class DisplayMirrorBackend(
             true
         }
         check(Settings.Global.putString(resolver, DISPLAY_SPECIFICATION, preserved.joinToString(";"))) {
-            "Unable to clear overlay display"
+            moe.n4tsu.dextop.localText("uiUnableToClearOverlayDisplay")
         }
     }
 
@@ -201,7 +201,7 @@ internal class DisplayMirrorBackend(
             attempts += StrategyAttempt(id, false, error.message.orEmpty())
             OperationLog.w(context, "DisplayBackend", "mirror strategy=$id failed", error)
         }
-        error("No compatible mirror backend: ${attempts.joinToString { "${it.strategy}=${it.detail}" }}")
+        error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiNoCompatibleMirrorBackend0"), attempts.joinToString { "${it.strategy}=${it.detail}" }))
     }
 
     fun attachSurface(
@@ -219,7 +219,7 @@ internal class DisplayMirrorBackend(
         )
         releaseLayer()
         val backend = attachBackends.getValue("virtual_display")
-        check(backend.isSupported()) { "Virtual display mirroring is unavailable" }
+        check(backend.isSupported()) { moe.n4tsu.dextop.localText("uiVirtualDisplayMirroringIsUnavailable") }
         attachment = backend.attach(request)
         activeStrategy = backend.id
         OperationLog.i(context, "DisplayBackend", "remote Surface mirror attached")
@@ -248,7 +248,7 @@ private class WindowManagerMirrorBackend(private val privilegedAccess: Privilege
         val mirrored = Class.forName("android.view.IWindowManager")
             .getMethod("mirrorDisplay", Int::class.javaPrimitiveType, SurfaceControl::class.java)
             .invoke(service, request.displayId, layer) as Boolean
-        check(mirrored) { "IWindowManager rejected mirror" }
+        check(mirrored) { moe.n4tsu.dextop.localText("uiIWindowManagerRejectedMirror") }
         return attachLayer(layer, request)
     }
 }
@@ -267,7 +267,7 @@ private class SurfaceControlMirrorBackend : MirrorAttachBackend {
 }
 
 private fun attachLayer(layer: SurfaceControl, request: MirrorAttachRequest): MirrorAttachment {
-    val host = checkNotNull(request.host) { "A SurfaceView host is required for layer mirroring" }
+    val host = checkNotNull(request.host) { moe.n4tsu.dextop.localText("uiASurfaceViewHostIsRequiredForLayerMirroring") }
     val parent = SurfaceView::class.java.getMethod("getSurfaceControl").invoke(host) as SurfaceControl
     val transaction = SurfaceControl.Transaction().reparent(layer, parent).setLayer(layer, 1)
     // Preserve the Auto desktop aspect ratio and keep every edge visible.
@@ -330,7 +330,7 @@ private class VirtualDisplayMirrorBackend(
     override fun attach(request: MirrorAttachRequest): MirrorAttachment {
         if (request.crop != null) return attachCropped(request)
         val surface = request.destinationSurface
-        check(surface.isValid) { "The destination surface is unavailable" }
+        check(surface.isValid) { moe.n4tsu.dextop.localText("uiTheDestinationSurfaceIsUnavailable") }
         val service = privilegedAccess.service("display", VirtualDisplayPlatform.MANAGER_INTERFACE)
         val requestMaximumRefreshRate = DisplayEnvironmentSettings(context).maximumMirrorRefreshRateEnabled()
         if (preferUntrusted) {
@@ -355,7 +355,7 @@ private class VirtualDisplayMirrorBackend(
      * host like the layer mirrors.
      */
     private fun attachCropped(request: MirrorAttachRequest): MirrorAttachment {
-        val host = checkNotNull(request.host) { "A SurfaceView host is required for a cropped mirror" }
+        val host = checkNotNull(request.host) { moe.n4tsu.dextop.localText("uiASurfaceViewHostIsRequiredForACroppedMirror") }
         val parent = SurfaceView::class.java.getMethod("getSurfaceControl").invoke(host) as SurfaceControl
         val layer = SurfaceControl.Builder()
             .setName("DextopExtendedMirror-${request.displayId}")
@@ -438,7 +438,7 @@ internal class VirtualDisplayPlatform private constructor(
                 ?: defaultArgument(parameter)
         }.toTypedArray()
         val displayId = (createOperation.invoke(service, *arguments) as? Number)?.toInt() ?: -1
-        check(displayId >= 0) { "The virtual display request was declined" }
+        check(displayId >= 0) { moe.n4tsu.dextop.localText("uiTheVirtualDisplayRequestWasDeclined") }
         return ManagedVirtualDisplay(
             service,
             releaseOperation,
@@ -471,7 +471,7 @@ internal class VirtualDisplayPlatform private constructor(
         publicDisplay: Boolean = false,
         name: String = "Dextop Auto",
     ): OwnedVirtualDisplay {
-        check(surface.isValid) { "The Dextop Car Companion destination surface is unavailable" }
+        check(surface.isValid) { moe.n4tsu.dextop.localText("uiTheDextopCarCompanionDestinationSurfaceIsUnavailable") }
         val constructor = builderType.constructors.single { candidate ->
             candidate.parameterTypes.contentEquals(
                 arrayOf(String::class.java, Int::class.javaPrimitiveType,
@@ -539,7 +539,7 @@ internal class VirtualDisplayPlatform private constructor(
                 OperationLog.w(context, "CarCompanion", "direct display flags rejected 0x${flags.toString(16)}", error)
             }
         }
-        throw IllegalStateException("The direct Auto display request was declined", lastFailure)
+        throw IllegalStateException(moe.n4tsu.dextop.localText("uiTheDirectAutoDisplayRequestWasDeclined"), lastFailure)
     }
 
     /**
@@ -560,7 +560,7 @@ internal class VirtualDisplayPlatform private constructor(
         /** False creates a private display; see DesktopEnvironment.privateApplicationDisplays. */
         publicDisplay: Boolean = true,
     ): OwnedVirtualDisplay {
-        check(surface.isValid) { "The window surface is unavailable" }
+        check(surface.isValid) { moe.n4tsu.dextop.localText("uiTheWindowSurfaceIsUnavailable") }
         val constructor = builderType.constructors.single { candidate ->
             candidate.parameterTypes.contentEquals(
                 arrayOf(String::class.java, Int::class.javaPrimitiveType,
@@ -611,7 +611,7 @@ internal class VirtualDisplayPlatform private constructor(
                 OperationLog.w(context, "PlasmaV2", "window display flags rejected 0x${flags.toString(16)}", error)
             }
         }
-        throw IllegalStateException("The window display request was declined", lastFailure)
+        throw IllegalStateException(moe.n4tsu.dextop.localText("uiTheWindowDisplayRequestWasDeclined"), lastFailure)
     }
 
     private fun createDescriptor(
@@ -625,7 +625,7 @@ internal class VirtualDisplayPlatform private constructor(
                 arrayOf(String::class.java, Int::class.javaPrimitiveType,
                     Int::class.javaPrimitiveType, Int::class.javaPrimitiveType)
             )
-        } ?: error("No compatible display configuration constructor")
+        } ?: error(moe.n4tsu.dextop.localText("uiNoCompatibleDisplayConfigurationConstructor"))
         // VirtualDisplay's buffer is written directly into the host
         // SurfaceView.  Using the logical overlay size here leaves Android's
         // Surface pipeline free to center/crop a custom profile (for example
@@ -725,12 +725,12 @@ internal class VirtualDisplayPlatform private constructor(
                     method.name == "createVirtualDisplay" &&
                         method.parameterTypes.any { configuration.isAssignableFrom(it) } &&
                         method.parameterTypes.any { callback.isAssignableFrom(it) }
-                } ?: error("No compatible display creation operation")
+                } ?: error(moe.n4tsu.dextop.localText("uiNoCompatibleDisplayCreationOperation"))
             val release = manager.methods.singleOrNull { method ->
                 method.name == "releaseVirtualDisplay" &&
                     method.parameterTypes.size == 1 &&
                     method.parameterTypes[0].isAssignableFrom(callback)
-            } ?: error("No compatible display release operation")
+            } ?: error(moe.n4tsu.dextop.localText("uiNoCompatibleDisplayReleaseOperation"))
             val resize = manager.methods.firstOrNull { method ->
                 method.name == "resizeVirtualDisplay" &&
                     method.parameterTypes.firstOrNull()?.isAssignableFrom(callback) == true

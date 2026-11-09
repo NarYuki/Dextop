@@ -65,7 +65,7 @@ internal object LinuxShortcutInstaller {
 
     private const val PREFS_SETTINGS = "linux_shortcut_settings"
 
-    private fun message(ja: String, en: String) = moe.n4tsu.dextop.localText(ja, en)
+    private fun message(key: String) = moe.n4tsu.dextop.localText(key)
 
     /** The Google Play build declares neither REQUEST_INSTALL_PACKAGES nor REQUEST_DELETE_PACKAGES. */
     val play: Boolean get() = moe.n4tsu.dextop.BuildConfig.DISTRIBUTION_CHANNEL == "play"
@@ -134,7 +134,7 @@ internal object LinuxShortcutInstaller {
     /** Asks the home screen to pin [desktopId]; "pending" while it shows its confirmation. */
     private fun pin(context: Context, container: String, desktopId: String, label: String, iconPng: ByteArray?, iconReady: Boolean): String {
         val manager = context.getSystemService(android.content.pm.ShortcutManager::class.java)
-        check(manager.isRequestPinShortcutSupported) { "This home screen does not accept shortcuts" }
+        check(manager.isRequestPinShortcutSupported) { moe.n4tsu.dextop.localText("uiThisHomeScreenDoesNotAcceptShortcuts") }
         val png = if (iconReady && iconPng != null) iconPng else iconFor(iconPng)
         val icon = android.graphics.drawable.Icon.createWithAdaptiveBitmap(BitmapFactory.decodeByteArray(png, 0, png.size))
         val name = label.ifBlank { desktopId.removeSuffix(".desktop") }
@@ -247,8 +247,7 @@ internal object LinuxShortcutInstaller {
         // allowed (Android mode without the privileged service); an explicit silent request fails.
         // The Google Play build has no confirmed route: only the privileged one.
         val quiet = (play || silent || mode(context) == "auto") && silentAvailable(context)
-        check((!silent && !play) || quiet) { message("ランチャーの追加には、Shizuku・Stellar・内蔵バインダへの接続が必要です",
-            "Adding a launcher needs Shizuku, Stellar or the built-in binder connected") }
+        check((!silent && !play) || quiet) { message("uiAddingALauncherNeedsShizukuStellarOrTheBuiltInBinderConnected") }
         if (!quiet && !context.packageManager.canRequestPackageInstalls()) {
             context.startActivity(Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:${context.packageName}"))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
@@ -309,8 +308,7 @@ internal object LinuxShortcutInstaller {
                     moe.n4tsu.dextop.PrivilegedAccess(TAG).execute("/system/bin/pm", "uninstall", "--user", "current", target).succeeded
                 }.getOrDefault(false))
             check(removed) {
-                message("ランチャーの削除には、Shizuku・Stellar・内蔵バインダへの接続が必要です",
-                    "Removing a launcher needs Shizuku, Stellar or the built-in binder connected")
+                message("uiRemovingALauncherNeedsShizukuStellarOrTheBuiltInBinderConnected")
             }
             return
         }
@@ -332,7 +330,7 @@ internal object LinuxShortcutInstaller {
             return
         }
         // In the Android mode Dextop's privileged service installs only when the user allowed its use.
-        check(LinuxExecutionMode.privilegeAllowed(context)) { "Quiet installation needs the privileged service, which is off for Linux" }
+        check(LinuxExecutionMode.privilegeAllowed(context)) { moe.n4tsu.dextop.localText("uiQuietInstallationNeedsThePrivilegedServiceWhichIsOffForLinux") }
         val shared = File(checkNotNull(context.getExternalFilesDir("launchers")), "$target.apk")
         try {
             apk.copyTo(shared, overwrite = true)
@@ -341,7 +339,7 @@ internal object LinuxShortcutInstaller {
             val result = moe.n4tsu.dextop.PrivilegedAccess(TAG)
                 .execute("/system/bin/sh", "-c", command)
             check(result.succeeded && result.output.lineSequence().any { it.trim() == "Success" }) {
-                "Automatic launcher install failed: ${result.output} ${result.error}"
+                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiAutomaticLauncherInstallFailed01"), result.output, result.error)
             }
             apk.delete()
             Log.i(TAG, "Installed launcher $target quietly")
@@ -438,7 +436,7 @@ internal object LinuxShortcutInstaller {
     private fun replaceStrings(xml: ByteArray, replacements: Map<String, String>): ByteArray {
         val input = ByteBuffer.wrap(xml).order(ByteOrder.LITTLE_ENDIAN)
         val poolStart = input.getShort(2).toInt() and 0xFFFF
-        check(input.getShort(poolStart).toInt() == 0x0001) { "No string pool in the template manifest" }
+        check(input.getShort(poolStart).toInt() == 0x0001) { moe.n4tsu.dextop.localText("uiNoStringPoolInTheTemplateManifest") }
         val poolHeader = input.getShort(poolStart + 2).toInt() and 0xFFFF
         val poolSize = input.getInt(poolStart + 4)
         val count = input.getInt(poolStart + 8)

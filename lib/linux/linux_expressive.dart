@@ -58,26 +58,10 @@ bool linuxWide(BuildContext context) => MediaQuery.sizeOf(context).width >= 840;
 Route<T> linuxRoute<T>(Widget page) =>
     mui.MaterialPageRoute<T>(builder: (_) => page);
 
-/// `material_ui` widgets look up their own MaterialLocalizations; Dextop's app
-/// provides the framework's. This supplies `material_ui`'s defaults for every locale.
-class _MaterialUiLocalizationsDelegate
-    extends LocalizationsDelegate<mui.MaterialLocalizations> {
-  const _MaterialUiLocalizationsDelegate();
-
-  @override
-  bool isSupported(Locale locale) => true;
-
-  @override
-  Future<mui.MaterialLocalizations> load(Locale locale) =>
-      mui.DefaultMaterialLocalizations.load(locale);
-
-  @override
-  bool shouldReload(_MaterialUiLocalizationsDelegate old) => false;
-}
-
+/// The expressive widgets use a separate localization type from Flutter.
+/// Its global delegate translates built-in dialogs, controls and semantics.
 const LocalizationsDelegate<mui.MaterialLocalizations>
-linuxMaterialUiLocalizations = _MaterialUiLocalizationsDelegate();
+linuxMaterialUiLocalizations = mui.GlobalMaterialLocalizations.delegate;
 
-/// Japanese or English, like the rest of Dextop's untranslated new screens.
-String linuxText(BuildContext context, String ja, String en) =>
-    localText(context, ja, en);
+/// Resolves a Linux interface string from the shared locale catalog.
+String linuxText(BuildContext context, String key) => localText(context, key);

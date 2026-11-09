@@ -686,7 +686,7 @@
   "nativeVolume": "音量",
   "nativeHeight": "高さ",
   "multiTouchUpgradeTitle": "アプリが更新され、ジェスチャーが変更されました。",
-  "multiTouchUpgradeBody": "",
+  "multiTouchUpgradeBody": "マルチタッチに対応し、ジェスチャー操作が更新されました。",
   "multiTouchUpgradeLandscape": "横向きの場合\\n画面左から右に3本指でスワイプ",
   "multiTouchUpgradePortrait": "縦持ちの場合\\n画面上から下に3本指でスワイプ",
   "multiTouchUpgradeClose": "確認",
@@ -854,11 +854,11 @@
   "nativePlasmaTimeUntilFull": "満充電まで %1$s",
   "nativePlasmaHoursMinutes": "%1$d 時間 %2$d 分",
   "nativePlasmaMinutes": "%1$d 分",
-  "nativePlasmaApplying": "切り替え中…",
+  "nativePlasmaApplying": "切り替え中…",
   "linuxUnsupportedDevice": "Linux は arm64 端末でのみ使えます。",
   "linuxRequiresPlasma": "Linux は Dextop Plasma v2 を使っているときだけ使えます。",
   "linuxSwitchToPlasma": "Plasma v2 に切り替える",
-  "linuxRequiresPrivilege": "完全特権方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。",
+  "linuxRequiresPrivilege": "特権シェル方式には、Shizuku・Stellar・内蔵バインダなどの特権アクセスが必要です。Shizuku か Stellar を起動するか、内蔵バインダをセットアップしてください。",
   "linuxEnable": "Linux を有効にする",
   "linuxEnableDescription": "コンテナを作成・管理し、Plasma から Linux アプリを開けるようにします",
   "linuxNoContainers": "コンテナはまだありません。「新規追加」から作成してください。",
@@ -911,7 +911,7 @@
     }
   },
   "linuxSetupTitle": "Linux のセットアップ",
-  "linuxSetupIntro": "使い方に合わせて Linux を準備します。デスクトップ、言語、入力方法、アプリを順番に選びましょう。",
+  "linuxSetupIntro": "使い方に合わせて Linux を準備します。言語、入力方法、アプリを順番に選びましょう。",
   "linuxSetupExisting": "この Linux 環境に機能を追加します。既存のファイルやアプリは保持されます。設定を反映するには、完了後にデスクトップを開き直してください。",
   "linuxSetupSystem": "Linux 環境を選ぶ",
   "linuxSetupDesktop": "デスクトップを準備",
@@ -957,7 +957,6 @@
   "linuxSetupOffice": "オフィススイート",
   "linuxSetupOfficeDetail": "LibreOffice — 文書・表計算・プレゼンテーション。ダウンロード量と必要な空き容量が増えます。",
   "linuxSetupSteamDetail": "Valve の Steam（ARM64 版）。初回に Valve から取得します。Proton と FEX は Steam が入れます。",
-  "linuxSetupDroidDeckNote": "DroidDeck ランタイムは KDE Plasma デスクトップ（KWin・Xwayland）とフォント・入力メソッドを内蔵しているため、IceWM・言語・入力の手順は省きます。",
   "linuxSetupStorage": "数 GB 以上の空き容量を確保してください。ダウンロード量と使用容量は、選んだ環境やアプリによって変わります。この画面を閉じてもインストールは続きます。",
   "linuxSetupAdditive": "選択を外したアプリは削除しません。選んだパッケージを追加し、言語やセッション設定を更新します。",
   "linuxSetupNothingExtra": "追加アプリなし",
@@ -1014,7 +1013,7 @@
   "nativePlasmaClearAll": "すべて消去",
   "linuxGpuTurnip": "Turnip + Zink（推奨）",
   "linuxGpuTurnipDescription": "Linux アプリが Adreno GPU を直接使います（Vulkan と OpenGL 4.6）。最も速く、ゲームにも向いています。",
-  "linuxGpuTurnipSetup": "コンテナのセットアップで「3D グラフィックス」を有効にすると使えます（ビルドに 30 分ほどかかります）。それまでは VirGL を使います。",
+  "linuxGpuTurnipSetup": "コンテナを修復すると使えます。それまでは VirGL を使います。",
   "linuxSetupPhaseGpu": "GPU ドライバー（Turnip）をビルド中",
   "linuxSetupDisplayBackend": "表示方式",
   "linuxSetupXvfbDetail": "アプリとIceWMデスクトップをX11で表示します。",
@@ -1049,5 +1048,6 @@
     }
   },
   "nativeShortcutStartDisplayLong": "Dextop の仮想ディスプレイを起動または停止します",
-  "nativeShortcutStartDisplay": "Dextop を起動"
+  "nativeShortcutStartDisplay": "Dextop を起動",
+  "androidDisplayTileLabel": "Dextopディスプレイ"
 }

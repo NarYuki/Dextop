@@ -404,9 +404,17 @@ static int dextop_hid_ioctl(int fd, unsigned long request, void *arg, int *resul
     }
 }
 
+/* USB storage as /dev/sdX (linux_android_disk.c, linked with this file). */
+int dextop_disk_open(const char *path, int flags);
+int dextop_disk_stat(const char *path, struct stat *st);
+int dextop_disk_fstat(int fd, struct stat *st);
+int dextop_disk_ioctl(int fd, unsigned long request, void *arg, int *result);
+void dextop_disk_close(int fd);
+
 /* USB serial: the terminal relayed to Dextop for /dev/ttyUSB0 and the like; -2 when [path] is none. */
 int dextop_serial_open(const char *path, int flags) {
     if (is_hidraw(path)) return dextop_hid_open(path, flags);
+    if (path != NULL && strncmp(path, "/dev/sd", 7) == 0) return dextop_disk_open(path, flags);
     if (path == NULL || (strncmp(path, "/dev/ttyUSB", 11) != 0 && strncmp(path, "/dev/ttyACM", 11) != 0)) return -2;
     char socket_name[108] = "", device[256] = "";
     if (config(path + 5, socket_name, sizeof(socket_name), device, sizeof(device)) != 0) return -2;
@@ -441,6 +449,7 @@ int dextop_serial_open(const char *path, int flags) {
 /* DTR/RTS and breaks on a relayed terminal, which a pseudo-terminal cannot carry; 1 when handled. */
 int dextop_serial_ioctl(int fd, unsigned long request, void *arg, int *result) {
     if (dextop_hid_ioctl(fd, request, arg, result)) return 1;
+    if (dextop_disk_ioctl(fd, request, arg, result)) return 1;
     struct serial *serial = fd >= 0 && fd < MAX_FDS ? serials[fd] : NULL;
     if (serial == NULL) return 0;
     int bits = arg ? *(int *)arg : 0;
@@ -464,11 +473,13 @@ int dextop_serial_ioctl(int fd, unsigned long request, void *arg, int *result) {
 }
 
 void dextop_serial_close(int fd) {
+    dextop_disk_close(fd);
     if (fd >= 0 && fd < MAX_FDS) serials[fd] = NULL; /* the relay ends when the terminal closes */
     if (fd >= 0 && fd < MAX_FDS && hids[fd]) { free(hids[fd]); hids[fd] = NULL; } /* the relay ends when its socket closes */
 }
 
 int dextop_serial_fstat(int fd, struct stat *st) {
+    if (dextop_disk_fstat(fd, st) == 0) return 0;
     struct hid *hid = fd >= 0 && fd < MAX_FDS ? hids[fd] : NULL;
     if (hid == NULL) return -1;
     memset(st, 0, sizeof(*st));
@@ -482,6 +493,7 @@ int dextop_serial_fstat(int fd, struct stat *st) {
 
 /* A listed serial port reports itself as a character device (ttyUSB major 188, ttyACM 166). */
 int dextop_serial_stat(const char *path, struct stat *st) {
+    if (path != NULL && strncmp(path, "/dev/sd", 7) == 0) return dextop_disk_stat(path, st);
     if (is_hidraw(path)) {
         /* A listed key is a character device of hidraw's (Dextop's) major, as its sysfs entry says. */
         char socket_name[108] = "", device[256] = "";

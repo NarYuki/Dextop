@@ -41,17 +41,54 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     "executionMode" to LinuxExecutionMode.read(context),
                     "plasmaV2" to (WindowManagerSelection.current(context) in setOf(WindowManagerSelection.DEXTOP_PLASMA_V2, WindowManagerSelection.DEXTOP_BOOK)),
                 ))
+                "offlineOverview" -> Thread {
+                    val snapshot = runCatching {
+                        val mode = LinuxExecutionMode.read(context)
+                        LinuxModeContainers.offlineOverview(context, mode)
+                            .mapValues { (_, values) -> values.map(::toMap) } +
+                            mapOf("defaultContainer" to LinuxModeContainers.preferred(context, mode))
+                    }
+                    main.post {
+                        snapshot.onSuccess { result.success(it) }
+                            .onFailure { result.error("linux", it.message, null) }
+                    }
+                }.start()
                 "executionMode" -> result.success(LinuxExecutionMode.read(context))
-                "compatStatus" -> result.success(LinuxCompat.status(context) + mapOf(
-                    "usbPolicy" to LinuxUsb.policy(context),
-                    "usbDevices" to LinuxUsb.list(context).also { LinuxUsb.watch(context) },
-                    "foldersActive" to LinuxFolders.active(context),
-                    "folders" to LinuxFolders.list(context),
-                ))
-                "addFolder" -> { LinuxFolders.pick(context); result.success(null) }
+                "compatStatus" -> remote({ service -> service.containerSharing(call.argument<String>("id")!!) }) {
+                    val id = call.argument<String>("id")!!
+                    val policy = JSONObject(it as String)
+                    val os = LinuxCompat.status(context)
+                    os + mapOf(
+                        "camera" to (policy.optBoolean("camera") && os["camera"] == true),
+                        "microphone" to (policy.optBoolean("microphone") && os["microphone"] == true),
+                        "wholeStorage" to (policy.optBoolean("wholeStorage") &&
+                            (!LinuxExecutionMode.android(context) || os["wholeStorage"] == true)),
+                        "usbPolicy" to LinuxUsb.policy(context),
+                        "usbDevices" to LinuxUsb.list(context).also { LinuxUsb.watch(context) },
+                        "foldersActive" to LinuxFolders.active(context),
+                        "folders" to LinuxFolders.list(LinuxFolders.scope(context, id)),
+                    )
+                }
+                "setContainerGrant" -> remote({ service ->
+                    val id = call.argument<String>("id")!!
+                    val kind = call.argument<String>("kind")!!
+                    require(kind in LinuxSharing.kinds)
+                    val enabled = call.argument<Boolean>("enabled") == true
+                    val policy = JSONObject(service.containerSharing(id)).put(kind, enabled)
+                    service.setContainerSharing(id, policy.toString())
+                    if (!enabled && kind == "camera") LinuxDeviceBridge.revokeCamera(id)
+                    if (!enabled && kind == "microphone") LinuxMicrophone.revoke(id)
+                    true
+                })
+                "addFolder" -> { LinuxFolders.pick(LinuxFolders.scope(context, call.argument<String>("id")!!)); result.success(null) }
                 "removeFolder" -> Thread {
-                    runCatching { LinuxFolders.remove(context, call.argument<String>("name")!!) }
-                    main.post { result.success(null) }
+                    val outcome = runCatching {
+                        val id = call.argument<String>("id")!!
+                        LinuxContainerClient.service()?.resetSession(id, true)
+                            ?: error(moe.n4tsu.dextop.localText("uiLinuxServiceIsUnavailable"))
+                        LinuxFolders.remove(LinuxFolders.scope(context, id), call.argument<String>("name")!!)
+                    }
+                    main.post { outcome.onSuccess { result.success(null) }.onFailure { result.error("linux", it.message, null) } }
                 }.start()
                 // Granting through the privileged service blocks; these run off the main thread.
                 "setUsbPolicy", "setUsbForLinux" -> Thread {
@@ -139,11 +176,11 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     if (calendar && request.optString("op") in setOf("start", "save")) {
                         val ids = request.optJSONArray("calendarIds") ?: org.json.JSONArray()
                         val selected = (0 until ids.length()).map { ids.getString(it) }.toSet()
-                        if (request.optString("op") == "start") require(selected.isNotEmpty()) { "Choose calendars to share" }
-                        if (selected.isNotEmpty()) check(LinuxCalendarBridge.granted(context)) { "Allow calendar access first" }
+                        if (request.optString("op") == "start") require(selected.isNotEmpty()) { moe.n4tsu.dextop.localText("uiChooseCalendarsToShare") }
+                        if (selected.isNotEmpty()) check(LinuxCalendarBridge.granted(context)) { moe.n4tsu.dextop.localText("uiAllowCalendarAccessFirst") }
                         val visible = (LinuxCalendarBridge.list(context)["calendars"] as List<*>).map { (it as Map<*, *>)["id"] }.toSet()
-                        if (request.optString("op") == "save" && JSONObject(service.integrationStatus(id)).getJSONObject("calendar").optBoolean("running")) require(selected.isNotEmpty()) { "Choose calendars to share" }
-                        require(selected.all { it in visible }) { "A selected calendar is no longer available" }
+                        if (request.optString("op") == "save" && JSONObject(service.integrationStatus(id)).getJSONObject("calendar").optBoolean("running")) require(selected.isNotEmpty()) { moe.n4tsu.dextop.localText("uiChooseCalendarsToShare") }
+                        require(selected.all { it in visible }) { moe.n4tsu.dextop.localText("uiASelectedCalendarIsNoLongerAvailable") }
                         service.integrationAction(id, request.toString()).also {
                             LinuxCalendarBridge.select(context, id, selected)
                             if (JSONObject(it).getJSONObject("calendar").optBoolean("running")) LinuxCalendarBridge.sync(context, service, id, force = true)
@@ -164,18 +201,28 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     true
                 })
                 "printJob" -> runCatching {
-                    LinuxPrintBridge.open(context, call.argument<String>("id")!!, call.argument<String>("job")!!, call.argument<String>("title") ?: "Linux document")
+                    LinuxPrintBridge.open(context, call.argument<String>("id")!!, call.argument<String>("job")!!, call.argument<String>("title") ?: moe.n4tsu.dextop.localText("uiLinuxDocument"))
                 }.onSuccess { result.success(null) }.onFailure { result.error("print", it.message, null) }
-                "settings" -> remote({ it.linuxSettings() }) { jsonMap(it) }
+                "settings" -> {
+                    val mode = LinuxExecutionMode.read(context)
+                    remote({ it.linuxSettings() }) { json ->
+                        LinuxModeContainers.rememberSettings(context, mode, json)
+                        jsonMap(json)
+                    }
+                }
                 "keyboardButtonVisible" -> result.success(LinuxKeyboardButton.visible(context))
                 "setKeyboardButtonVisible" -> {
                     val visible = call.argument<Boolean>("visible") ?: true
                     LinuxKeyboardButton.setVisible(context, visible)
                     result.success(visible)
                 }
-                "setSettings" -> remote({
-                    it.setLinuxSettings(JSONObject(call.argument<Map<String, Any?>>("settings") ?: emptyMap<String, Any?>()).toString())
-                }) { jsonMap(it) }
+                "setSettings" -> {
+                    val mode = LinuxExecutionMode.read(context)
+                    remote({ it.setLinuxSettings(JSONObject(call.argument<Map<String, Any?>>("settings") ?: emptyMap<String, Any?>()).toString()) }) { json ->
+                        LinuxModeContainers.rememberSettings(context, mode, json)
+                        jsonMap(json)
+                    }
+                }
                 "list" -> LinuxExecutionMode.read(context).let { mode -> remote({ it.listContainers() }) { json ->
                     if (LinuxExecutionMode.read(context) == mode) runCatching { LinuxModeContainers.remember(context, mode, json) }
                     jsonList(json).also { list ->
@@ -193,7 +240,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     val name = call.argument<String>("name")?.takeIf { it.isNotBlank() }
                         ?: uri.lastPathSegment?.substringAfterLast('/') ?: "app.AppImage"
                     val file = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }.getOrNull()
-                    if (file == null) result.error("linux", "Cannot read the picked file", null)
+                    if (file == null) result.error("linux", moe.n4tsu.dextop.localText("uiCannotReadThePickedFile"), null)
                     else remote({ service -> try { service.installAppImage(call.argument<String>("id")!!, file, name) } finally { file.close() } }) { jsonMap(it) }
                 }
                 "removeAppImage" -> remote({ it.removeAppImage(call.argument<String>("id")!!, call.argument<String>("desktopId")!!) })
@@ -205,7 +252,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 "uninstallApp" -> Thread({
                     try {
                         val id = call.argument<String>("id")!!
-                        val service = checkNotNull(LinuxContainerClient.service()) { "Linux is not connected" }
+                        val service = checkNotNull(LinuxContainerClient.service()) { moe.n4tsu.dextop.localText("uiLinuxIsNotConnected") }
                         val target = JSONObject(service.appUninstallTarget(id, call.argument<String>("desktop")!!))
                         LinuxStoreJobs.uninstall(context, id, target.getString("source"), target.getString("package"))
                         main.post { result.success(true) }
@@ -218,13 +265,13 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 "exportSnapshot" -> {
                     val uri = android.net.Uri.parse(call.argument<String>("uri")!!)
                     val output = runCatching { context.contentResolver.openFileDescriptor(uri, "wt") }.getOrNull()
-                    if (output == null) result.error("linux", "Cannot write the picked document", null)
+                    if (output == null) result.error("linux", moe.n4tsu.dextop.localText("uiCannotWriteThePickedDocument"), null)
                     else remote({ service -> try { service.exportSnapshot(call.argument<String>("file")!!, output) } finally { output.close() }; true })
                 }
                 "importBackup" -> {
                     val uri = android.net.Uri.parse(call.argument<String>("uri")!!)
                     val input = runCatching { context.contentResolver.openFileDescriptor(uri, "r") }.getOrNull()
-                    if (input == null) result.error("linux", "Cannot read the picked file", null)
+                    if (input == null) result.error("linux", moe.n4tsu.dextop.localText("uiCannotReadThePickedFile"), null)
                     else remote({ service -> try { service.importBackup(input) } finally { input.close() }; true })
                 }
                 // The container page: the selected mode's containers, then the other mode's (display only).
@@ -262,7 +309,15 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 "cancel" -> remote({ it.cancelInstall(call.argument<String>("id")!!) })
                 "remove" -> remote({
                     val id = call.argument<String>("id")!!
-                    it.remove(id).also { LinuxKeyring.forget(context, id); LinuxCalendarBridge.forget(context, id) }
+                    it.remove(id).also { removed ->
+                        if (removed) {
+                            LinuxKeyring.forget(context, id)
+                            LinuxCalendarBridge.forget(context, id)
+                            LinuxFolders.clear(LinuxFolders.scope(context, id))
+                            LinuxDeviceBridge.revokeCamera(id)
+                            LinuxMicrophone.revoke(id)
+                        }
+                    }
                 })
                 // The keyring choice of setup: a stored random password, or the user's own once.
                 "setKeyring" -> remote({
@@ -278,6 +333,8 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     for (name in listOf("linux-store-sources", "linux-android-app-grants", "dextop_linux_controllers"))
                         context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE).edit().clear().commit()
                     LinuxFolders.clear(context)
+                    val privilegedExpected = LinuxExecutionMode.privilegedSupported &&
+                        LinuxModeContainers.hadContainers(context, LinuxExecutionMode.PRIVILEGED)
                     LinuxModeContainers.clear(context)
                     // All data, not only the selected mode's: the other mode's storage goes too.
                     val android = java.io.File(context.noBackupFilesDir, "linux-android").absolutePath
@@ -286,18 +343,25 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                             .redirectErrorStream(true).start().waitFor()
                     }
                     val privileged = moe.n4tsu.dextop.PrivilegedAccess("DextopLinuxReset")
-                    val privilegedCleared = privileged.isAvailable() &&
+                    val privilegedCleared = LinuxExecutionMode.privilegedSupported && privileged.isAvailable() &&
                         privileged.execute("/system/bin/rm", "-rf", "/data/local/tmp/dextop/linux").succeeded
-                    mapOf("privilegedLeft" to !privilegedCleared)
+                    mapOf("privilegedLeft" to (privilegedExpected && !privilegedCleared))
                 })
                 "repair" -> remote({ it.repair(call.argument<String>("id")!!) })
                 "run" -> remote({
                     it.runCommand(call.argument<String>("id")!!, call.argument<String>("command")!!,
                         call.argument<Int>("timeout") ?: 120)
                 }) { jsonMap(it) }
-                "apps" -> remote({
-                    it.listApps(call.argument<String>("id")!!, java.util.Locale.getDefault().toLanguageTag())
-                }) { jsonList(it) }
+                "apps" -> {
+                    val mode = LinuxExecutionMode.read(context)
+                    val id = call.argument<String>("id")!!
+                    remote({ service ->
+                        service.listApps(id, java.util.Locale.getDefault().toLanguageTag()).also { json ->
+                            if (LinuxExecutionMode.read(context) == mode)
+                                runCatching { LinuxModeContainers.rememberApps(context, mode, id, json) }
+                        }
+                    }) { jsonList(it) }
+                }
                 "launchApp" -> {
                     val icon = call.argument<String>("icon")?.takeIf { it.isNotEmpty() }?.let { encoded ->
                         runCatching {
@@ -385,7 +449,25 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 // Installed packages and set-up sources come from the container's files, which is
                 // immediate; the Store shows them before the slower update checks below finish.
                 // Linux settings → Resources: the service's view of Linux, plus the device and its grants.
-                "resources" -> remote({ it.resources() }) { json ->
+                "resources" -> remote({ service ->
+                    val resources = JSONObject(service.resources())
+                    val list = JSONArray(service.listContainers())
+                    val os = LinuxCompat.status(context)
+                    val sharing = JSONArray()
+                    for (i in 0 until list.length()) {
+                        val item = list.getJSONObject(i)
+                        if (item.optString("state") != "installed") continue
+                        val id = item.getString("id")
+                        val policy = JSONObject(service.containerSharing(id))
+                        sharing.put(JSONObject()
+                            .put("id", id).put("name", item.optString("name", id))
+                            .put("camera", policy.optBoolean("camera") && os["camera"] == true)
+                            .put("microphone", policy.optBoolean("microphone") && os["microphone"] == true)
+                            .put("wholeStorage", LinuxSharing.wholeStorageEnabled(context, policy))
+                            .put("folders", LinuxFolders.list(LinuxFolders.scope(context, id)).count { it["granted"] == true }))
+                    }
+                    resources.put("sharing", sharing).toString()
+                }) { json ->
                     val memory = android.app.ActivityManager.MemoryInfo().also {
                         context.getSystemService(android.app.ActivityManager::class.java).getMemoryInfo(it)
                     }
@@ -404,7 +486,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                         "executionMode" to LinuxExecutionMode.read(context),
                         "compat" to LinuxCompat.status(context),
                         "usbDevices" to LinuxUsb.list(context),
-                        "folders" to LinuxFolders.list(context),
+                        "folders" to emptyList<Any>(),
                         "controllers" to controllers,
                     )
                 }

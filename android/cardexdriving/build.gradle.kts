@@ -40,6 +40,7 @@ android {
     }
     sourceSets["main"].java.srcDir("../cardex/src/main/kotlin")
     sourceSets["main"].res.srcDir("../cardex/src/main/res")
+    sourceSets["main"].resources.srcDir("../cardex/src/main/resources")
     buildFeatures { compose = true }
     signingConfigs {
         if (releaseSigningReady) create("release") {

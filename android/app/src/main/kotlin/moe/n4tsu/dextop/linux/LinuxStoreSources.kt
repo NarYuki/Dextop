@@ -12,13 +12,13 @@ internal object LinuxStoreSources {
     fun enabled(context: Context, source: String) = source in ids && prefs(context).getBoolean(source, source == "apt")
     fun read(context: Context) = ids.associateWith { enabled(context, it) }
     fun write(context: Context, source: String, enabled: Boolean): Map<String, Boolean> {
-        require(source in ids) { "Unknown Store source" }
-        check(prefs(context).edit().putBoolean(source, enabled).commit()) { "Cannot save Store sources" }
+        require(source in ids) { moe.n4tsu.dextop.localText("uiUnknownStoreSource") }
+        check(prefs(context).edit().putBoolean(source, enabled).commit()) { moe.n4tsu.dextop.localText("uiCannotSaveStoreSources") }
         return read(context)
     }
 
     fun requireEnabled(context: Context, source: String) {
-        check(enabled(context, source)) { "Enable $source in Linux settings → Trusted Store sources first" }
+        check(enabled(context, source)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiEnable0InLinuxSettingsTrustedStoreSourcesFirst"), source) }
     }
 
     /** Only Debian/Ubuntu are in scope; never send apt commands into Arch. */
@@ -26,7 +26,7 @@ internal object LinuxStoreSources {
         val list = org.json.JSONArray(service.listContainers())
         val distro = (0 until list.length()).map { list.getJSONObject(it) }
             .firstOrNull { it.optString("id") == container }?.optString("distro")
-        require(distro in setOf("debian", "ubuntu")) { "Store supports Debian and Ubuntu only" }
+        require(distro in setOf("debian", "ubuntu")) { moe.n4tsu.dextop.localText("uiStoreSupportsDebianAndUbuntuOnly") }
     }
 
     fun helper(): String {

@@ -548,7 +548,7 @@ internal class BookUi(
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Surface(Modifier.blockPointer(), shape = RoundedCornerShape(24.dp), color = colors.surfaceContainer) {
                 Row(Modifier.padding(12.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    SnapCard(if (maximized || tiled) tr("元に戻す", "Restore") else tr("最大化", "Maximize")) { hover ->
+                    SnapCard(if (maximized || tiled) tr("uiRestore") else tr("uiMaximize")) { hover ->
                         Box(Modifier.size(width = 108.dp, height = 64.dp).clip(RoundedCornerShape(10.dp))
                             .background(colors.surfaceContainerHighest), contentAlignment = Alignment.Center) {
                             Box(Modifier.size(width = if (maximized || tiled) 72.dp else 100.dp, height = if (maximized || tiled) 40.dp else 56.dp)
@@ -556,7 +556,7 @@ internal class BookUi(
                                 .clickable { if (maximized || tiled) onRestore() else onMaximize() })
                         }
                     }
-                    SnapCard(tr("分割", "Resize")) { _ ->
+                    SnapCard(tr("uiResize")) { _ ->
                         Row(Modifier.size(width = 108.dp, height = 64.dp).clip(RoundedCornerShape(10.dp)).background(colors.surfaceContainerHighest)
                             .padding(4.dp), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             listOf(onLeft, onRight).forEach { action ->
@@ -883,7 +883,7 @@ internal class BookUi(
                             modifier = Modifier.weight(1f),
                             singleLine = true,
                             shape = CircleShape,
-                            placeholder = { Text(tr("スマートフォンのアプリを検索", "Search apps from your phone")) },
+                            placeholder = { Text(tr("uiSearchAppsFromYourPhone")) },
                             leadingIcon = { Sym("search", colors.onSurfaceVariant, 22.dp) },
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Go),
                             keyboardActions = KeyboardActions(onGo = { apps.firstOrNull()?.let(::open) }),
@@ -901,7 +901,7 @@ internal class BookUi(
                             container = colors.primaryContainer, tint = colors.onPrimaryContainer)
                     }
                     if (apps.isEmpty()) {
-                        Text(tr("一致するアプリはありません", "No matching apps"), color = colors.onSurfaceVariant,
+                        Text(tr("uiNoMatchingApps"), color = colors.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(24.dp))
                     }
                     // Recreate gesture handlers when the layout changes, retaining the scroll
@@ -922,15 +922,15 @@ internal class BookUi(
         val onDesktop = shortcuts.any { it.packageName == app.packageName }
         launcher.showMenu(listOf(
             MenuItem(app.label, header = true),
-            MenuItem(tr("開く", "Open"), Glyph.OPEN_EXTERNAL) { launcher.launch(app.packageName) },
-            MenuItem(if (pinned) tr("タスクバーから固定を外す", "Unpin from taskbar") else tr("タスクバーに固定", "Pin to taskbar"), Glyph.PIN) {
+            MenuItem(tr("uiOpen"), Glyph.OPEN_EXTERNAL) { launcher.launch(app.packageName) },
+            MenuItem(if (pinned) tr("uiUnpinFromTaskbar") else tr("uiPinToTaskbar"), Glyph.PIN) {
                 launcher.setPinned(app.packageName, !pinned)
                 refresh()
             },
-            MenuItem(if (onDesktop) tr("デスクトップから削除", "Remove from desktop") else tr("デスクトップに追加", "Add to desktop"), Glyph.DESKTOP) {
+            MenuItem(if (onDesktop) tr("uiRemoveFromDesktop") else tr("uiAddToDesktop"), Glyph.DESKTOP) {
                 if (onDesktop) BookStore.removeShortcut(context, app.packageName) else addShortcut(app.packageName, null)
             },
-            MenuItem(tr("アプリ情報", "App info"), Glyph.INFO, separatorBefore = true) { launcher.openAppInfo(app.packageName) },
+            MenuItem(tr("uiAppInfo"), Glyph.INFO, separatorBefore = true) { launcher.openAppInfo(app.packageName) },
         ), x, y)
     }
 
@@ -1076,9 +1076,9 @@ internal class BookUi(
             val name = app.packageName.removePrefix(LINUX_DESKTOP_PREFIX)
             launcher.showMenu(listOf(
                 MenuItem(name, header = true),
-                MenuItem(tr("開く", "Open"), Glyph.OPEN_EXTERNAL) { chrome.openLinuxDesktopItem(name) },
-                MenuItem(tr("名前を変更", "Rename"), Glyph.SETTINGS) { rename(name, RectF(x, y, x + 1, y + 1)) },
-                MenuItem(tr("ゴミ箱に移動", "Move to Trash"), Glyph.CLOSE, separatorBefore = true) {
+                MenuItem(tr("uiOpen"), Glyph.OPEN_EXTERNAL) { chrome.openLinuxDesktopItem(name) },
+                MenuItem(tr("uiRename"), Glyph.SETTINGS) { rename(name, RectF(x, y, x + 1, y + 1)) },
+                MenuItem(tr("uiMoveToTrash"), Glyph.CLOSE, separatorBefore = true) {
                     chrome.linuxDesktop(desktopScript("""P="${'$'}D/${'$'}(n ${b64(name)})"
                         if command -v gio >/dev/null 2>&1; then gio trash -- "${'$'}P"
                         else
@@ -1095,13 +1095,13 @@ internal class BookUi(
         val pinned = launcher.isPinned(app.packageName)
         launcher.showMenu(listOf(
             MenuItem(app.label, header = true),
-            MenuItem(tr("開く", "Open"), Glyph.OPEN_EXTERNAL) { launcher.launch(app.packageName) },
-            MenuItem(if (pinned) tr("タスクバーから固定を外す", "Unpin from taskbar") else tr("タスクバーに固定", "Pin to taskbar"), Glyph.PIN) {
+            MenuItem(tr("uiOpen"), Glyph.OPEN_EXTERNAL) { launcher.launch(app.packageName) },
+            MenuItem(if (pinned) tr("uiUnpinFromTaskbar") else tr("uiPinToTaskbar"), Glyph.PIN) {
                 launcher.setPinned(app.packageName, !pinned)
                 refresh()
             },
-            MenuItem(tr("デスクトップから削除", "Remove from desktop"), Glyph.CLOSE) { BookStore.removeShortcut(context, app.packageName) },
-            MenuItem(tr("アプリ情報", "App info"), Glyph.INFO, separatorBefore = true) { launcher.openAppInfo(app.packageName) },
+            MenuItem(tr("uiRemoveFromDesktop"), Glyph.CLOSE) { BookStore.removeShortcut(context, app.packageName) },
+            MenuItem(tr("uiAppInfo"), Glyph.INFO, separatorBefore = true) { launcher.openAppInfo(app.packageName) },
         ), x, y)
     }
 
@@ -1130,7 +1130,7 @@ internal class BookUi(
                     modifier = Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)))
             } else {
                 Box(Modifier.fillMaxSize().clip(RoundedCornerShape(24.dp)).background(colors.surfaceContainer), contentAlignment = Alignment.Center) {
-                    Text(tr("ウィジェットを読み込めません", "Can't load widget"), color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
+                    Text(tr("uiCanTLoadWidget"), color = colors.onSurfaceVariant, textAlign = TextAlign.Center)
                 }
             }
         }
@@ -1197,13 +1197,13 @@ internal class BookUi(
     private fun widgetMenu(widget: DesktopWidget, x: Float, y: Float) {
         val info = appWidgets.info(widget.appWidgetId)
         launcher.showMenu(buildList {
-            add(MenuItem(info?.let(appWidgets::label) ?: tr("ウィジェット", "Widget"), header = true))
-            add(MenuItem(tr("サイズを変更", "Resize"), Glyph.FULLSCREEN_EXIT) { resizeSpot = null; resizing = widget.appWidgetId })
-            if (info != null && appWidgets.canReconfigure(info)) add(MenuItem(tr("ウィジェットの設定", "Widget settings"), Glyph.SETTINGS) {
+            add(MenuItem(info?.let(appWidgets::label) ?: tr("uiWidget"), header = true))
+            add(MenuItem(tr("uiResize1184fd8a"), Glyph.FULLSCREEN_EXIT) { resizeSpot = null; resizing = widget.appWidgetId })
+            if (info != null && appWidgets.canReconfigure(info)) add(MenuItem(tr("uiWidgetSettings"), Glyph.SETTINGS) {
                 appWidgets.configure(widget.appWidgetId)
             })
-            add(MenuItem(tr("ウィジェットを追加", "Add widgets"), Glyph.PLUS) { host.openWidgetGallery() })
-            add(MenuItem(tr("削除", "Remove"), Glyph.CLOSE, separatorBefore = true) { removeWidget(widget.appWidgetId) })
+            add(MenuItem(tr("uiAddWidgets"), Glyph.PLUS) { host.openWidgetGallery() })
+            add(MenuItem(tr("uiRemove"), Glyph.CLOSE, separatorBefore = true) { removeWidget(widget.appWidgetId) })
         }, x, y)
     }
     // endregion
@@ -1261,7 +1261,7 @@ internal class BookUi(
     /** Makes a folder in ~/Desktop ("New folder", "New folder 2"…) and asks for its name. */
     fun newLinuxFolder(at: RectF) {
         if (chrome.desktopContainer() == null) return
-        val base = tr("新しいフォルダ", "New folder")
+        val base = tr("uiNewFolder")
         val taken = linuxFiles.map { it.first }.toSet()
         val name = generateSequence(1) { it + 1 }.map { if (it == 1) base else "$base $it" }.first { it !in taken }
         chrome.linuxDesktop(desktopScript("""mkdir -- "${'$'}D/${'$'}(n ${b64(name)})" && echo ok""")) { output ->
@@ -1298,7 +1298,7 @@ internal class BookUi(
         }
         BookPanelSurface(360.dp) {
             Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Text(tr("名前を変更", "Rename"), style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
+                Text(tr("uiRename"), style = MaterialTheme.typography.titleMedium, color = colors.onSurface)
                 TextField(
                     value = text,
                     onValueChange = { text = it },
@@ -1310,10 +1310,10 @@ internal class BookUi(
                     colors = TextFieldDefaults.colors(focusedIndicatorColor = Color.Transparent, unfocusedIndicatorColor = Color.Transparent),
                 )
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
-                    Text(tr("キャンセル", "Cancel"), style = MaterialTheme.typography.labelLarge, color = colors.primary,
+                    Text(tr("uiCancel"), style = MaterialTheme.typography.labelLarge, color = colors.primary,
                         modifier = Modifier.clip(CircleShape).clickable { host.closePanel(); renaming = null }
                             .padding(horizontal = 16.dp, vertical = 10.dp))
-                    Text(tr("変更", "Rename"), style = MaterialTheme.typography.labelLarge, color = colors.onPrimary,
+                    Text(tr("uiRename9e5fa420"), style = MaterialTheme.typography.labelLarge, color = colors.onPrimary,
                         modifier = Modifier.clip(CircleShape).background(colors.primary).clickable { done() }
                             .padding(horizontal = 20.dp, vertical = 10.dp))
                 }
@@ -1403,7 +1403,7 @@ internal class BookUi(
                         Box(Modifier.size(60.dp), contentAlignment = Alignment.Center) {
                             DrawableIcon(app.icon, 56.dp)
                         }
-                        if (dockRect.contains(d.x, d.y)) Text(tr("タスクバーに固定", "Pin to taskbar"), style = MaterialTheme.typography.labelMedium,
+                        if (dockRect.contains(d.x, d.y)) Text(tr("uiPinToTaskbar"), style = MaterialTheme.typography.labelMedium,
                             color = colors.onPrimary, modifier = Modifier.padding(top = 6.dp).clip(CircleShape).background(colors.primary)
                                 .padding(horizontal = 10.dp, vertical = 4.dp))
                     }
@@ -1555,7 +1555,7 @@ internal class BookUi(
     val hasWindows: Boolean get() = bookWindows.any { !it.minimized }
 
     private fun windowTitle(kind: String) =
-        if (kind == "settings") tr("Dextop Book の設定", "Dextop Book settings") else tr("ウィジェット", "Widgets")
+        if (kind == "settings") tr("uiDextopBookSettings") else tr("uiWidgets")
 
     private fun windowSymbol(kind: String) = if (kind == "settings") "settings" else "widgets"
 

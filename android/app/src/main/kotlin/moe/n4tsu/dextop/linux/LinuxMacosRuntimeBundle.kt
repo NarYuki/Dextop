@@ -23,7 +23,7 @@ internal object LinuxMacosRuntimeBundle {
     }
 
     internal fun validatedApproval(architecture: String, digest: String, source: String): Approval {
-        check(architecture == "aarch64") { "Unsupported bundled macOS architecture" }
+        check(architecture == "aarch64") { moe.n4tsu.dextop.localText("uiUnsupportedBundledMacOSArchitecture") }
         return Approval(digest, source)
     }
 
@@ -43,11 +43,11 @@ internal object LinuxMacosRuntimeBundle {
                 output.write(buffer, 0, count)
             }
         }
-        check(hash.digest().joinToString("") { "%02x".format(it) } == digest) { "Bundled macOS runtime digest mismatch" }
+        check(hash.digest().joinToString("") { "%02x".format(it) } == digest) { moe.n4tsu.dextop.localText("uiBundledMacOSRuntimeDigestMismatch") }
     }
 
     fun copyArchive(target: File, approval: Approval) {
-        val input = checkNotNull(javaClass.getResourceAsStream(BASE + "runtime.tar.gz")) { "Approved macOS archive is not packaged" }
+        val input = checkNotNull(javaClass.getResourceAsStream(BASE + "runtime.tar.gz")) { moe.n4tsu.dextop.localText("uiApprovedMacOSArchiveIsNotPackaged") }
         input.use { copyAndVerify(it, target, approval.sha256) }
     }
 

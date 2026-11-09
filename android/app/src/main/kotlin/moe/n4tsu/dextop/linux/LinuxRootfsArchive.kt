@@ -25,12 +25,12 @@ internal object LinuxRootfsArchive {
                               checkCancelled: () -> Unit, onBytes: (Long) -> Unit, sourceRoot: String? = null) {
         val root = directory.toPath().toAbsolutePath().normalize()
         Files.createDirectories(root)
-        require(Files.list(root).use { !it.findAny().isPresent }) { "Extraction directory must be empty" }
+        require(Files.list(root).use { !it.findAny().isPresent }) { moe.n4tsu.dextop.localText("uiExtractionDirectoryMustBeEmpty") }
         fun path(name: String): Path {
             // Backslashes are ordinary on Linux (systemd escapes units like system-systemd\x2dveritysetup.slice).
-            require(!name.startsWith('/')) { "Unsafe archive path: $name" }
+            require(!name.startsWith('/')) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnsafeArchivePath0"), name) }
             return root.resolve(name).normalize().also {
-                require(it.startsWith(root)) { "Archive path escapes rootfs: $name" }
+                require(it.startsWith(root)) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiArchivePathEscapesRootfs0"), name) }
             }
         }
         val symlinks = linkedMapOf<Path, Path>()
@@ -42,7 +42,7 @@ internal object LinuxRootfsArchive {
             while (true) {
                 checkCancelled()
                 val entry = tar.nextEntry ?: break
-                require(entry.isCheckSumOK) { "Invalid tar header checksum: ${entry.name}" }
+                require(entry.isCheckSumOK) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiInvalidTarHeaderChecksum0"), entry.name) }
                 val target = path(entry.name)
                 if (target == root) continue
                 // /dev is always bound to Android's /dev when the guest starts.
@@ -87,7 +87,7 @@ internal object LinuxRootfsArchive {
                 } catch (error: InterruptedException) {
                     throw error
                 } catch (error: Exception) {
-                    throw java.io.IOException("Cannot extract ${entry.name}: ${error.message}", error)
+                    throw java.io.IOException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiCannotExtract01"), entry.name, error.message), error)
                 }
             }
         }

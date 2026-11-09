@@ -27,6 +27,30 @@ internal object LinuxRuntime {
 
     internal data class Entry(val pid: Int, val parent: Int, val command: List<String>, val start: String = "", val tracer: Int = 0)
 
+    /** Resolve only this peer's ancestry; folder opens must not scan every process on the device. */
+    internal fun containerOf(pid: Int): String? {
+        val pending = java.util.ArrayDeque<Int>().apply { add(pid) }
+        val seen = HashSet<Int>()
+        while (pending.isNotEmpty() && seen.size < 256) {
+            val current = pending.removeFirst()
+            if (current <= 1 || !seen.add(current)) continue
+            val entry = runCatching {
+                val directory = File("/proc/$current")
+                val status = File(directory, "status").readText()
+                if (Regex("(?m)^Uid:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toInt() != Os.getuid())
+                    return@runCatching null
+                Entry(current,
+                    Regex("(?m)^PPid:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toInt() ?: 0,
+                    File(directory, "cmdline").readText().split('\u0000').filter { it.isNotEmpty() },
+                    tracer = Regex("(?m)^TracerPid:\\s+(\\d+)").find(status)?.groupValues?.get(1)?.toInt() ?: 0)
+            }.getOrNull() ?: continue
+            rootOf(entry)?.let { return it.removeSuffix("/rootfs").substringAfterLast('/') }
+            if (entry.tracer > 1) pending.addFirst(entry.tracer)
+            pending.addLast(entry.parent)
+        }
+        return null
+    }
+
     private fun snapshot(): List<Entry> = File("/proc").listFiles().orEmpty().mapNotNull { dir ->
         val pid = dir.name.toIntOrNull() ?: return@mapNotNull null
         runCatching {
@@ -108,6 +132,6 @@ internal object LinuxRuntime {
     fun freeDisplay(used: Set<Int>, sockets: String = runCatching { File("/proc/net/unix").readText() }.getOrDefault("")): Int {
         return (10..63).firstOrNull { display -> display !in used &&
             !Regex("(?m)(?:@)?/tmp/\\.X11-unix/X$display$").containsMatchIn(sockets) }
-            ?: error("No free X display (10–63); stop stale Linux sessions")
+            ?: error(moe.n4tsu.dextop.localText("uiNoFreeXDisplay1063StopStaleLinuxSessions"))
     }
 }

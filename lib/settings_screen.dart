@@ -544,13 +544,9 @@ extension _SettingsContent on _HomeScreenState {
                 Divider(height: 1),
                 ListTile(
                   leading: const Icon(Icons.palette_outlined),
-                  title: const Text('Dextop Book'),
+                  title: Text(localText(context, 'uiDextopBook')),
                   subtitle: Text(
-                    localText(
-                      context,
-                      '外観・タスクバー・スタートメニュー',
-                      'Appearance, taskbar and Start menu',
-                    ),
+                    localText(context, 'uiAppearanceTaskbarAndStartMenu'),
                   ),
                   trailing: const Icon(Icons.chevron_right_rounded),
                   onTap: () => Navigator.of(context).push(
@@ -646,12 +642,11 @@ extension _SettingsContent on _HomeScreenState {
                 ),
                 RadioListTile<String>(
                   value: 'dextop_book',
-                  title: const Text('Dextop Book'),
+                  title: Text(localText(context, 'uiDextopBook')),
                   subtitle: Text(
                     localText(
                       context,
-                      'Material 3 Expressive のデスクトップ。上に日付と状態、下中央にドック',
-                      'A Material 3 Expressive desktop: date and status on top, a dock at the bottom centre',
+                      'uiAMaterial3ExpressiveDesktopDateAndStatusOnTopADockAtTheBottomCentre',
                     ),
                   ),
                 ),
@@ -1301,7 +1296,7 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
     final body = ListView(
       padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
       children: [
-        _settingsSection(localText(context, 'Autoのホーム画面', 'Auto home screen'), [
+        _settingsSection(localText(context, 'uiAutoHomeScreen'), [
           RadioGroup<bool>(
             groupValue: autoShell,
             onChanged: (value) async {
@@ -1318,25 +1313,18 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
                 RadioListTile<bool>(
                   value: false,
                   enabled: !loading,
-                  title: const Text('Android Desktop'),
-                  subtitle: Text(
-                    localText(
-                      context,
-                      'Androidのデスクトップを表示します。',
-                      'Show the Android desktop.',
-                    ),
-                  ),
+                  title: Text(localText(context, 'uiAndroidDesktop')),
+                  subtitle: Text(localText(context, 'uiShowTheAndroidDesktop')),
                 ),
                 const Divider(height: 1),
                 RadioListTile<bool>(
                   value: true,
                   enabled: !loading,
-                  title: const Text('Dextop Auto'),
+                  title: Text(localText(context, 'uiDextopAuto')),
                   subtitle: Text(
                     localText(
                       context,
-                      '車向けホームと大きな操作ボタンを使う試作版。Autoを再接続すると反映されます。',
-                      'Prototype car home with large controls. Reconnect Auto to apply.',
+                      'uiPrototypeCarHomeWithLargeControlsReconnectAutoToApply',
                     ),
                   ),
                 ),
@@ -1347,18 +1335,11 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
         _settingsSection(l.autoSettingsOptions, [
           SwitchListTile(
             secondary: const Icon(Icons.speed),
-            title: Text(
-              localText(
-                context,
-                'Deck Modeを30fpsに制限',
-                'Limit Deck Mode to 30 fps',
-              ),
-            ),
+            title: Text(localText(context, 'uiLimitDeckModeTo30Fps')),
             subtitle: Text(
               localText(
                 context,
-                '30fpsの描画制限と低遅延提出を適用します。入力頻度は制限しません。Deck Modeを開き直すと反映されます。',
-                'Apply 30 fps pacing and low-latency submission. Input remains unrestricted. Reopen Deck Mode to apply.',
+                'uiApply30FpsPacingAndLowLatencySubmissionInputRemainsUnrestrictedReopenDeckModeToApply',
               ),
             ),
             value: deck30Fps,
@@ -1373,12 +1354,11 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
           const Divider(height: 1),
           SwitchListTile(
             secondary: const Icon(Icons.sync),
-            title: const Text('Deck Mode VSync'),
+            title: Text(localText(context, 'uiDeckModeVSync')),
             subtitle: Text(
               localText(
                 context,
-                'オフにするとDeckの描画でVSync待ちを省きます。Autoの映像転送周期は変更しません。Deck Modeを開き直すと反映されます。',
-                'Disable VSync waits for Deck rendering. Auto video cadence is unchanged. Reopen Deck Mode to apply.',
+                'uiDisableVSyncWaitsForDeckRenderingAutoVideoCadenceIsUnchangedReopenDeckModeToApply',
               ),
             ),
             value: deckVsync,
@@ -1394,17 +1374,12 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
           SwitchListTile(
             secondary: const Icon(Icons.vertical_split_outlined),
             title: Text(
-              localText(
-                context,
-                '分割操作のスマホ転送を補正',
-                'Correct split-screen transfer to phone',
-              ),
+              localText(context, 'uiCorrectSplitScreenTransferToPhone'),
             ),
             subtitle: Text(
               localText(
                 context,
-                '2.1の分割操作でスマホへ移動したアプリをAuto画面へ戻し、左右に配置します。',
-                'Returns Auto apps sent to phone split-screen to a side-by-side layout in 2.1.',
+                'uiReturnsAutoAppsSentToPhoneSplitScreenToASideBySideLayoutIn21',
               ),
             ),
             value: correctAutoSplit,
@@ -1423,17 +1398,12 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
           SwitchListTile(
             secondary: const Icon(Icons.fit_screen_outlined),
             title: Text(
-              localText(
-                context,
-                '全画面アプリのタスクバー重なり補正',
-                'Correct fullscreen taskbar overlap',
-              ),
+              localText(context, 'uiCorrectFullscreenTaskbarOverlap'),
             ),
             subtitle: Text(
               localText(
                 context,
-                '全画面・最大化したアプリをタスクバーに重ならない領域へ調整します。必要に応じてウィンドウ表示に切り替えます。',
-                'Fits fullscreen and maximized apps above the taskbar, switching to windowed mode when needed.',
+                'uiFitsFullscreenAndMaximizedAppsAboveTheTaskbarSwitchingToWindowedModeWhenNeeded',
               ),
             ),
             value: correctFullscreenOverlap,
@@ -1463,60 +1433,43 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
             subtitle: Text(l.autoDisplayModeDescription),
           ),
         ]),
-        _settingsSection(
-          localText(context, 'Car Companion方式', 'Car Companion mode'),
-          [
-            RadioGroup<int>(
-              groupValue: scrcpyStreaming ? 2 : (hiddenAutoDisplay ? 1 : 0),
-              onChanged: (value) {
-                if (!loading && value != null) _setCarCompanionMode(value);
-              },
-              child: Column(
-                children: [
-                  RadioListTile<int>(
-                    secondary: const Icon(Icons.layers_outlined),
-                    title: Text(
-                      localText(
-                        context,
-                        'Car Companion 1.1.3（レガシー）',
-                        'Car Companion 1.1.3 (legacy)',
-                      ),
+        _settingsSection(localText(context, 'uiCarCompanionMode'), [
+          RadioGroup<int>(
+            groupValue: scrcpyStreaming ? 2 : (hiddenAutoDisplay ? 1 : 0),
+            onChanged: (value) {
+              if (!loading && value != null) _setCarCompanionMode(value);
+            },
+            child: Column(
+              children: [
+                RadioListTile<int>(
+                  secondary: const Icon(Icons.layers_outlined),
+                  title: Text(localText(context, 'uiCarCompanion113Legacy')),
+                  subtitle: Text(
+                    localText(
+                      context,
+                      'uiUsesTheOriginalOverlayDisplayAndMirrorsItToAndroidAuto',
                     ),
-                    subtitle: Text(
-                      localText(
-                        context,
-                        '従来のOverlayDisplayを作成し、Android Autoへミラーリングします。',
-                        'Uses the original OverlayDisplay and mirrors it to Android Auto.',
-                      ),
-                    ),
-                    value: 0,
-                    enabled: !loading,
                   ),
-                  const Divider(height: 1),
-                  RadioListTile<int>(
-                    secondary: const Icon(Icons.stream_rounded),
-                    title: Text(
-                      localText(
-                        context,
-                        'Car Companion 2.1（安定版）',
-                        'Car Companion 2.1 (stable)',
-                      ),
+                  value: 0,
+                  enabled: !loading,
+                ),
+                const Divider(height: 1),
+                RadioListTile<int>(
+                  secondary: const Icon(Icons.stream_rounded),
+                  title: Text(localText(context, 'uiCarCompanion21Stable')),
+                  subtitle: Text(
+                    localText(
+                      context,
+                      'uiConnectsADecoratedVirtualDisplayDirectlyToTheAndroidAutoSurface',
                     ),
-                    subtitle: Text(
-                      localText(
-                        context,
-                        '装飾付きVirtualDisplayをAndroid AutoのSurfaceへ直接接続します。',
-                        'Connects a decorated VirtualDisplay directly to the Android Auto surface.',
-                      ),
-                    ),
-                    value: 2,
-                    enabled: !loading,
                   ),
-                ],
-              ),
+                  value: 2,
+                  enabled: !loading,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+        ]),
       ],
     );
     if (widget.embedded) return body;

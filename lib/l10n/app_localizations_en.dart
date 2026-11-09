@@ -2725,7 +2725,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linuxRequiresPrivilege =>
-      'Full privilege needs privileged access such as Shizuku, Stellar or the built-in binder. Start Shizuku or Stellar, or set up the built-in binder.';
+      'Privileged Shell needs privileged access such as Shizuku, Stellar or the built-in binder. Start Shizuku or Stellar, or set up the built-in binder.';
 
   @override
   String get linuxEnable => 'Enable Linux';
@@ -2842,7 +2842,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linuxSetupIntro =>
-      'Create a Linux workspace that suits you. Choose a desktop, language, input method and applications.';
+      'Create a Linux workspace that suits you. Choose a language, input method and applications.';
 
   @override
   String get linuxSetupExisting =>
@@ -2998,10 +2998,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get linuxSetupSteamDetail =>
       'Valve\'s Steam (ARM64). Fetched from Valve at first use; Steam installs Proton and FEX itself.';
-
-  @override
-  String get linuxSetupDroidDeckNote =>
-      'DroidDeck\'s runtime ships its own KDE Plasma desktop (KWin, Xwayland), fonts and input methods, so the IceWM, language and input steps are skipped.';
 
   @override
   String get linuxSetupStorage =>
@@ -3168,7 +3164,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get linuxGpuTurnipSetup =>
-      'Turn on 3D graphics in the container setup to use it (the build takes about 30 minutes). Until then VirGL is used.';
+      'Repair the container to use it. Until then VirGL is used.';
 
   @override
   String get linuxSetupPhaseGpu => 'Building the GPU driver (Turnip)';
@@ -3264,4 +3260,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get nativeShortcutStartDisplay => 'Start Dextop';
+
+  @override
+  String get androidDisplayTileLabel => 'Dextop Display';
 }

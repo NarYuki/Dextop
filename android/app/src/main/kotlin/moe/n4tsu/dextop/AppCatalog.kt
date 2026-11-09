@@ -57,7 +57,7 @@ internal class AppCatalog(private val context: Context) {
     }
 
     fun launch(packageName: String, displayId: Int, bounds: Rect? = null) {
-        require(displayId >= 0) { "Dextop is not running" }
+        require(displayId >= 0) { moe.n4tsu.dextop.localText("uiDextopIsNotRunning") }
         val intent = context.packageManager.getLaunchIntentForPackage(packageName)
             ?: error(NativeStrings.text("nativeSelectedAppCannotLaunch"))
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED)

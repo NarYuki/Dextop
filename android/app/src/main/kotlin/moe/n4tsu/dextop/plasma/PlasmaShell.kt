@@ -76,7 +76,7 @@ internal class PlasmaShell(
     private val handler = Handler(Looper.getMainLooper())
     private val displayContext: Context = service.createDisplayContext(
         service.getSystemService(DisplayManager::class.java).getDisplay(displayId)
-            ?: error("Dextop display $displayId is unavailable"),
+            ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiDextopDisplay0IsUnavailable"), displayId)),
     )
     private val layer = OverlayLayer(displayContext, TAG)
     private val bridge = TaskBridge(host::privilegedService, TAG)

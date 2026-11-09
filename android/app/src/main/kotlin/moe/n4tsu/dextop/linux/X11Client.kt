@@ -121,7 +121,7 @@ internal class X11Client private constructor(
         val extra = ByteBuffer.wrap(head).order(ByteOrder.LITTLE_ENDIAN).getShort(6).toInt() and 0xffff
         val body = le(extra * 4).also { input.readFully(it.array()) }
         if (status != 1) {
-            throw IOException("X11 connection refused: " + String(body.array(), Charsets.ISO_8859_1).trim())
+            throw IOException(moe.n4tsu.dextop.localText("uiX11ConnectionRefused") + String(body.array(), Charsets.ISO_8859_1).trim())
         }
         idBase = body.getInt(4)
         idMask = body.getInt(8)
@@ -238,7 +238,7 @@ internal class X11Client private constructor(
             val result = if (checked) {
                 sync() // errors for this no-reply request precede the barrier reply
                 queue.poll() ?: le(0)
-            } else queue.poll(5, TimeUnit.SECONDS) ?: throw IOException("X11 reply timeout (seq $seq)")
+            } else queue.poll(5, TimeUnit.SECONDS) ?: throw IOException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiX11ReplyTimeoutSeq0"), seq))
             return result.takeIf { it !== ERROR_REPLY }
         } finally { if (queue != null && seq >= 0) replies.remove(seq) }
     }
@@ -527,7 +527,7 @@ internal class X11Client private constructor(
     // region MIT-SHM
     /** Attaches shared memory [fd] as segment [segment] (MIT-SHM AttachFd, read-write). */
     fun shmAttachFd(segment: Int, fd: java.io.FileDescriptor) {
-        checkNotNull(request(le(12).put(shmOpcode.toByte()).put(6).putShort(3).putInt(segment).put(0).put(0).putShort(0), fd = fd, checked = true)) { "X server rejected shared memory" }
+        checkNotNull(request(le(12).put(shmOpcode.toByte()).put(6).putShort(3).putInt(segment).put(0).put(0).putShort(0), fd = fd, checked = true)) { moe.n4tsu.dextop.localText("uiXServerRejectedSharedMemory") }
     }
 
     /**

@@ -2,7 +2,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:material_ui/material_ui.dart';
 
-import '../lib/linux/linux_storage_ui.dart';
+import 'package:free_dextop/linux/linux_storage_ui.dart';
 
 void main() {
   testWidgets(

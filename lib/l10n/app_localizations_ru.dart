@@ -2868,7 +2868,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get linuxSetupIntro =>
-      'Создайте рабочее пространство Linux под себя: выберите рабочий стол, язык, способ ввода и приложения.';
+      'Создайте рабочее пространство Linux под себя: выберите язык, способ ввода и приложения.';
 
   @override
   String get linuxSetupExisting =>
@@ -3023,10 +3023,6 @@ class AppLocalizationsRu extends AppLocalizations {
   @override
   String get linuxSetupSteamDetail =>
       'Steam от Valve (ARM64). Загружается у Valve при первом запуске; Proton и FEX Steam устанавливает сам.';
-
-  @override
-  String get linuxSetupDroidDeckNote =>
-      'Среда DroidDeck содержит собственный рабочий стол KDE Plasma (KWin, Xwayland), шрифты и методы ввода, поэтому шаги IceWM, языка и ввода пропускаются.';
 
   @override
   String get linuxSetupStorage =>
@@ -3194,7 +3190,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get linuxGpuTurnipSetup =>
-      'Включите 3D-графику в настройке контейнера (сборка займёт около 30 минут). До этого используется VirGL.';
+      'Восстановите контейнер, чтобы использовать его. До этого используется VirGL.';
 
   @override
   String get linuxSetupPhaseGpu => 'Сборка драйвера GPU (Turnip)';
@@ -3289,4 +3285,7 @@ class AppLocalizationsRu extends AppLocalizations {
 
   @override
   String get nativeShortcutStartDisplay => 'Запустить Dextop';
+
+  @override
+  String get androidDisplayTileLabel => 'Экран Dextop';
 }

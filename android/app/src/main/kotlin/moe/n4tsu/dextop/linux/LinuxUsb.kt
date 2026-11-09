@@ -62,11 +62,13 @@ internal object LinuxUsb {
     }
 
     /**
-     * "fido" for security keys (Linux sees their FIDO interface as /dev/hidrawN), "serial" for
-     * USB-serial adapters (CDC-ACM and the common converter chips), otherwise "usb".
+     * "fido" for security keys (Linux sees their FIDO interface as /dev/hidrawN), "storage" for
+     * USB storage (Linux sees it as /dev/sdX, see LinuxUsbDisk), "serial" for USB-serial adapters
+     * (CDC-ACM and the common converter chips), otherwise "usb".
      */
     fun kind(device: UsbDevice): String {
         if (fidoInterface(device) != null) return "fido"
+        if (LinuxUsbDisk.storageInterface(device) != null) return "storage"
         val serialVendors = setOf(0x0403 /* FTDI */, 0x10c4 /* Silicon Labs */, 0x1a86 /* WCH */, 0x067b /* Prolific */)
         val acm = (0 until device.interfaceCount).any { device.getInterface(it).interfaceClass == UsbConstants.USB_CLASS_COMM }
         return if (acm || device.vendorId in serialVendors) "serial" else "usb"
@@ -98,8 +100,10 @@ internal object LinuxUsb {
 
     /** Linux may use the device ([enabled]); access is asked for or granted as the mode allows. */
     fun setForLinux(context: Context, id: String, value: Boolean) {
-        val device = devices(context)[id] ?: throw IllegalStateException("The USB device is no longer connected")
+        val device = devices(context)[id] ?: throw IllegalStateException(moe.n4tsu.dextop.localText("uiTheUSBDeviceIsNoLongerConnected"))
         setEnabled(context, device, value)
+        // Turned off: Android gets the storage back (when the stick is plugged in again).
+        if (!value) LinuxUsbDisk.forget(device, detached = false)
         // Turning it on in settings is the user's consent: no further dialog where privilege allows.
         if (value && manager(context)?.hasPermission(device) != true) grant(context, device, silent = true)
     }
@@ -141,11 +145,16 @@ internal object LinuxUsb {
                         setEnabled(app, device, true)
                         // Granting through the privileged service blocks.
                         Thread { runCatching { grant(app, device) }; listeners.forEach { it() } }.start()
+                    } else if (enabled(app, device) && LinuxUsbDisk.isLent(device)) {
+                        // A stick Linux mounted through Android, enumerated anew when it was lent:
+                        // the user already allowed it, so privilege grants it again without asking.
+                        Thread { runCatching { grant(app, device, silent = true) }; listeners.forEach { it() } }.start()
                     } else if (enabled(app, device)) {
                         // "Each": Android asks whenever the device comes back.
                         grant(app, device, silent = false)
                     }
                 }
+                if (intent.action == UsbManager.ACTION_USB_DEVICE_DETACHED) LinuxUsbDisk.forget(device, detached = true)
                 listeners.forEach { it() }
             }
         }, IntentFilter().apply {

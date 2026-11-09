@@ -1,4 +1,5 @@
 import '../l10n/inline_text.dart';
+
 import 'dart:async';
 
 import 'package:flutter/services.dart';
@@ -39,7 +40,7 @@ Future<bool> runWindowsJob(
   String action,
   WindowsPackage package,
 ) async {
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
   String? spec;
   if (action == 'install') {
     try {
@@ -58,7 +59,9 @@ Future<bool> runWindowsJob(
       if (context.mounted) {
         M3ESnackbar.show(
           context,
-          message: inlineFormat(t('{0} には Wine で使えるインストーラーがありません', '{0} has no installer that works with Wine'), [package.name]),
+          message: inlineFormat(t('ui0HasNoInstallerThatWorksWithWine'), [
+            package.name,
+          ]),
         );
       }
       return false;
@@ -141,7 +144,7 @@ class _WindowsStoreViewState extends State<WindowsStoreView> {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final theme = Theme.of(context);
     final list = packages;
     if (list == null && error == null) {
@@ -154,7 +157,7 @@ class _WindowsStoreViewState extends State<WindowsStoreView> {
               size: 72,
             ),
             const SizedBox(height: 16),
-            Text(t('winget のカタログを読み込んでいます', 'Loading the winget catalogue')),
+            Text(t('uiLoadingTheWingetCatalogue')),
           ],
         ),
       );
@@ -169,8 +172,8 @@ class _WindowsStoreViewState extends State<WindowsStoreView> {
               padding: EdgeInsets.fromLTRB(wide ? 24 : 16, 16, 16, 4),
               child: Text(
                 widget.query.isEmpty
-                    ? t('おすすめの Windows アプリ', 'Featured Windows apps')
-                    : t('Windows アプリ', 'Windows apps'),
+                    ? t('uiFeaturedWindowsApps')
+                    : t('uiWindowsApps'),
                 style: theme.textTheme.titleMedium,
               ),
             ),
@@ -181,8 +184,7 @@ class _WindowsStoreViewState extends State<WindowsStoreView> {
               child: Text(
                 error ??
                     t(
-                      'winget のカタログから入手し、Proton(ARM64)で動かします。動作はアプリによって異なります。',
-                      'From the winget catalogue, run with Proton (ARM64). How well each app works varies.',
+                      'uiFromTheWingetCatalogueRunWithProtonARM64HowWellEachAppWorksVaries',
                     ),
                 style: theme.textTheme.bodySmall,
               ),
@@ -215,7 +217,7 @@ class WindowsAppTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final job = store.jobs[package.job];
     final installed = store.windowsInstalled.contains(package.id);
     final Widget trailing;
@@ -224,12 +226,12 @@ class WindowsAppTile extends StatelessWidget {
     } else if (installed) {
       trailing = M3EButton.tonal(
         onPressed: () => openWindowsApp(store, package),
-        child: Text(t('開く', 'Open')),
+        child: Text(t('uiOpen')),
       );
     } else {
       trailing = M3EButton.filled(
         onPressed: () => runWindowsJob(context, store, 'install', package),
-        child: Text(t('入手', 'Get')),
+        child: Text(t('uiGet')),
       );
     }
     return M3EListItem(
@@ -313,7 +315,7 @@ class _WindowsAppPageState extends State<WindowsAppPage> {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final theme = Theme.of(context);
     final store = widget.store;
     final package = widget.package;
@@ -378,7 +380,7 @@ class _WindowsAppPageState extends State<WindowsAppPage> {
                     const SizedBox(width: 12),
                     Expanded(
                       child: Text(
-                        job.line.isEmpty ? t('準備しています', 'Preparing') : job.line,
+                        job.line.isEmpty ? t('uiPreparingb266c1c6') : job.line,
                       ),
                     ),
                   ],
@@ -389,7 +391,7 @@ class _WindowsAppPageState extends State<WindowsAppPage> {
                     Expanded(
                       child: M3EButton.filled(
                         onPressed: () => openWindowsApp(store, package),
-                        child: Text(t('開く', 'Open')),
+                        child: Text(t('uiOpen')),
                       ),
                     ),
                     const SizedBox(width: 12),
@@ -397,7 +399,7 @@ class _WindowsAppPageState extends State<WindowsAppPage> {
                       child: M3EButton.tonal(
                         onPressed: () =>
                             runWindowsJob(context, store, 'remove', package),
-                        child: Text(t('アンインストール', 'Uninstall')),
+                        child: Text(t('uiUninstall')),
                       ),
                     ),
                   ],
@@ -409,11 +411,8 @@ class _WindowsAppPageState extends State<WindowsAppPage> {
                       : () => runWindowsJob(context, store, 'install', package),
                   child: Text(
                     info != null && !installable
-                        ? t(
-                            'Wine で使えるインストーラーがありません',
-                            'No installer works with Wine',
-                          )
-                        : t('インストール', 'Install'),
+                        ? t('uiNoInstallerWorksWithWine')
+                        : t('uiInstall'),
                   ),
                 ),
               const SizedBox(height: 24),
@@ -430,7 +429,7 @@ class _WindowsAppPageState extends State<WindowsAppPage> {
               const SizedBox(height: 16),
               if (text('license').isNotEmpty)
                 Text(
-                  '${t('ライセンス', 'License')}: ${text('license')}',
+                  '${t('uiLicense')}: ${text('license')}',
                   style: theme.textTheme.bodySmall,
                 ),
               if (text('homepage').isNotEmpty)
@@ -594,7 +593,7 @@ class _AptPackagesSliverState extends State<AptPackagesSliver> {
 
   @override
   Widget build(BuildContext context) {
-    String t(String ja, String en) => linuxText(context, ja, en);
+    String t(String key) => linuxText(context, key);
     final store = widget.store;
     final shown = packages
         .where((p) => !widget.exclude.contains(p.$1))
@@ -616,11 +615,11 @@ class _AptPackagesSliverState extends State<AptPackagesSliver> {
                 : installed
                 ? M3EButton.tonal(
                     onPressed: () => store.run('remove', [name]),
-                    child: Text(t('削除', 'Remove')),
+                    child: Text(t('uiRemove')),
                   )
                 : M3EButton.filled(
                     onPressed: () => store.run('install', [name]),
-                    child: Text(t('入手', 'Get')),
+                    child: Text(t('uiGet')),
                   ),
           );
         },

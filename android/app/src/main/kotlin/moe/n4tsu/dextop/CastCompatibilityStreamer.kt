@@ -72,11 +72,11 @@ internal class CastCompatibilityStreamer(
         android.util.Base64.URL_SAFE or android.util.Base64.NO_PADDING or android.util.Base64.NO_WRAP)
 
     fun start(): String {
-        check(running.compareAndSet(false, true)) { "Compatibility stream is already running" }
+        check(running.compareAndSet(false, true)) { moe.n4tsu.dextop.localText("uiCompatibilityStreamIsAlreadyRunning") }
         val socket = ServerSocket(0).also { server = it }
         executor.execute { acceptClients(socket) }
         startEncoder()
-        val address = localIpv4Address() ?: error("No local IPv4 address is available for Google Cast")
+        val address = localIpv4Address() ?: error(moe.n4tsu.dextop.localText("uiNoLocalIPv4AddressIsAvailableForGoogleCast"))
         // The stream is the screen: only a receiver given this URL may play it, never someone on
         // the same network who finds the port.
         val url = "http://$address:${socket.localPort}/$streamToken/live.mp4"

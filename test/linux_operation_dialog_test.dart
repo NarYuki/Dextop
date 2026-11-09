@@ -3,7 +3,7 @@ import 'dart:async';
 import 'package:material_ui/material_ui.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/linux/linux_backups.dart';
+import 'package:free_dextop/linux/linux_backups.dart';
 
 void main() {
   testWidgets(

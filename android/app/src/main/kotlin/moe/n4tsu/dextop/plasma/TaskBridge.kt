@@ -65,12 +65,12 @@ internal class TaskBridge(
             getTasks.invoke(service, 64, false, false, displayId) as? List<*>
         } else {
             val alternate = method("getTasks") { it.parameterTypes.size >= 3 }
-                ?: error("getTasks unavailable: ${atmInterface.methods.filter { it.name == "getTasks" }.toList()}")
+                ?: error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiGetTasksUnavailable0"), atmInterface.methods.filter { it.name == "getTasks" }.toList()))
             val arguments = alternate.parameterTypes.mapIndexed { index, type ->
                 when (type) {
                     Int::class.javaPrimitiveType -> if (index == 0) 64 else if (index == 3) displayId else 0
                     Boolean::class.javaPrimitiveType -> false
-                    else -> error("Unsupported getTasks signature: $alternate")
+                    else -> error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnsupportedGetTasksSignature0"), alternate))
                 }
             }.toTypedArray()
             alternate.invoke(service, *arguments) as? List<*>
@@ -228,12 +228,12 @@ internal class TaskBridge(
                     Boolean::class.javaPrimitiveType,
                 ).invoke(wct, token, toTop)
             }(task),
-        ) { "WindowContainerTransaction unavailable" }
+        ) { moe.n4tsu.dextop.localText("uiWindowContainerTransactionUnavailable") }
     }
 
     private fun applyTransaction(build: (Any, Any) -> Unit): (TaskSnapshot) -> Boolean = { task ->
-        val token = task.token ?: error("task token unavailable")
-        val controller = organizerController() ?: error("window organizer unavailable")
+        val token = task.token ?: error(moe.n4tsu.dextop.localText("uiTaskTokenUnavailable"))
+        val controller = organizerController() ?: error(moe.n4tsu.dextop.localText("uiWindowOrganizerUnavailable"))
         val wct = Class.forName("android.window.WindowContainerTransaction").getConstructor().newInstance()
         build(wct, token)
         val apply = controller.javaClass.methods.first {

@@ -4,4 +4,11 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <application>
+        <!-- Developer test hooks for adb only: DUMP is held by the shell user, never by apps. -->
+        <receiver
+            android:name="moe.n4tsu.dextop.linux.LinuxTestReceiver"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+    </application>
 </manifest>

@@ -120,7 +120,7 @@ internal class LinuxTerminalActivity : Activity() {
         }.onFailure { if (!closed) Log.i(TAG, "terminal ended: ${it.message}") }
         // The shell exited (EIO on the master side).
         if (!closed) runOnUiThread {
-            notice(moe.n4tsu.dextop.localText("シェルが終了しました", "The shell exited"))
+            notice(moe.n4tsu.dextop.localText("uiTheShellExited"))
         }
     }
 
@@ -243,6 +243,9 @@ internal class LinuxTerminalActivity : Activity() {
 
     private inner class Bridge {
         @JavascriptInterface
+        fun translate(key: String): String = moe.n4tsu.dextop.localText(key, resources.configuration.locales[0])
+
+        @JavascriptInterface
         fun ready(rows: Int, cols: Int) = runOnUiThread { if (pty == null) start(rows, cols) }
 
         @JavascriptInterface
@@ -267,7 +270,7 @@ internal class LinuxTerminalActivity : Activity() {
         fun copy(text: String) {
             if (text.isEmpty()) return
             runOnUiThread {
-                getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText("Linux terminal", text))
+                getSystemService(ClipboardManager::class.java)?.setPrimaryClip(ClipData.newPlainText(moe.n4tsu.dextop.localText("uiLinuxTerminal"), text))
             }
         }
 

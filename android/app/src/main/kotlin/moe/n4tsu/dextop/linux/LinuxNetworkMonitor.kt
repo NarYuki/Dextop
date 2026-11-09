@@ -148,7 +148,7 @@ internal object LinuxNetworkMonitor {
                     .put("validated", status.internet).put("metered", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) == false)
                     .put("captivePortal", caps?.hasCapability(NetworkCapabilities.NET_CAPABILITY_CAPTIVE_PORTAL) == true)
                     .put("wifiEnabled", wireless || status.wifiEnabled).put("scanAllowed", status.wifiEnabled && scanPoints != null)
-                    .put("ssid", if (cellular) carrier ?: "Mobile network" else wifi?.ssid ?: "Wi-Fi")
+                    .put("ssid", if (cellular) carrier ?: moe.n4tsu.dextop.localText("uiMobileNetwork") else wifi?.ssid ?: "Wi-Fi")
                     .put("strength", ((level ?: 0f) * 100).toInt().coerceIn(0, 100))
                     .put("signalKnown", level != null).put("frequency", wifi?.frequencyMhz ?: 0)
                     .put("bitrate", (wifi?.linkSpeedMbps ?: 0) * 1000)

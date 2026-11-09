@@ -43,7 +43,7 @@ class CardexRelayService : Service() {
     private val privilegeStartupTimeout = Runnable {
         if (privilegeStart != null) {
             privilegeStart = null
-            sendError(IllegalStateException("Dextop's access did not reconnect in time. Select Recover to retry."))
+            sendError(IllegalStateException(moe.n4tsu.dextop.localText("uiDextopSAccessDidNotReconnectInTimeSelectRecoverToRetry")))
         }
     }
     private var activeMode = "idle"
@@ -205,11 +205,11 @@ class CardexRelayService : Service() {
         requestedScale: Float,
     ) {
         if (!nextSurface.isValid) {
-            sendError(IllegalStateException("The Android Auto destination surface is unavailable."))
+            sendError(IllegalStateException(moe.n4tsu.dextop.localText("uiTheAndroidAutoDestinationSurfaceIsUnavailable")))
             return
         }
         if (nextWidth <= 0 || nextHeight <= 0) {
-            sendError(IllegalStateException("Android Auto reported an invalid surface size: ${nextWidth}x$nextHeight."))
+            sendError(IllegalStateException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiAndroidAutoReportedAnInvalidSurfaceSize0X1"), nextWidth, nextHeight)))
             return
         }
         clientDensity = density
@@ -219,7 +219,7 @@ class CardexRelayService : Service() {
             val waiting = privilegeStart != null
             privilegeStart = PendingStart(nextSurface, nextWidth, nextHeight, density, requestedScale)
             if (waiting) return
-            sendStatus(STATUS_STARTING, "Reconnecting Dextop's access over Wireless debugging…")
+            sendStatus(STATUS_STARTING, moe.n4tsu.dextop.localText("uiReconnectingDextopSAccessOverWirelessDebugging"))
             OperationLog.i(this, "CarCompanion", "access unavailable at start; reconnecting before the session")
             handler.postDelayed(privilegeStartupTimeout, ACCESS_RECONNECT_WINDOW_MS)
             reconnectAccess(SystemClock.elapsedRealtime() + ACCESS_RECONNECT_WINDOW_MS)
@@ -237,7 +237,7 @@ class CardexRelayService : Service() {
             if (previous !== nextSurface) previous?.release()
             sendStatus(
                 STATUS_STARTING,
-                "Android Auto replaced its Surface while the display was starting; switching to the newest Surface…",
+                moe.n4tsu.dextop.localText("uiAndroidAutoReplacedItsSurfaceWhileTheDisplayWasStartingSwitchingToTheNewestSurface"),
             )
             OperationLog.i(this, "CarCompanion", "queued replacement Surface ${nextWidth}x$nextHeight while launch is in flight")
             return
@@ -331,7 +331,7 @@ class CardexRelayService : Service() {
                     handler.removeCallbacks(privilegeStartupTimeout)
                     privilegeStart = null
                     sendError(IllegalStateException(
-                        "Dextop's access was revoked in Wireless debugging. Open Dextop on the phone and set it up again."))
+                        moe.n4tsu.dextop.localText("uiDextopSAccessWasRevokedInWirelessDebuggingOpenDextopOnThePhoneAndSetItUpAgain")))
                 }
                 SystemClock.elapsedRealtime() < deadline -> handler.postDelayed({
                     if (privilegeStart === start) reconnectAccess(deadline)
@@ -339,7 +339,7 @@ class CardexRelayService : Service() {
                 else -> {
                     privilegeStart = null
                     sendError(IllegalStateException(
-                        "Dextop could not reconnect its access. Check that Wi-Fi is on, then select Recover and retry."))
+                        moe.n4tsu.dextop.localText("uiDextopCouldNotReconnectItsAccessCheckThatWiFiIsOnThenSelectRecoverAndRetry")))
                 }
             }
         }
@@ -396,7 +396,7 @@ class CardexRelayService : Service() {
                 .putBoolean("flutter.android_auto_scrcpy_streaming", true)
                 .putBoolean(PREF_CAR_COMPANION_21_MIGRATED, true)
                 .commit()
-        ) { "Unable to migrate Car Companion to 2.1" }
+        ) { moe.n4tsu.dextop.localText("uiUnableToMigrateCarCompanionTo21") }
         OperationLog.i(this, "CarCompanion", "migrated saved display method to stable 2.1")
     }
 
@@ -605,7 +605,7 @@ class CardexRelayService : Service() {
                 waitForDirectFallbackStop(activeSurface, generation, attempt + 1, restart)
             }, DIRECT_FALLBACK_STOP_RETRY_MS)
         } else {
-            sendError(IllegalStateException("The failed direct display could not be stopped. ${diagnosticSnapshot()}"))
+            sendError(IllegalStateException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiTheFailedDirectDisplayCouldNotBeStopped0"), diagnosticSnapshot())))
         }
     }
 
@@ -756,7 +756,7 @@ class CardexRelayService : Service() {
         // A start waiting for Dextop's access is resumed once it reconnects; recovering it now
         // would find no display yet and only report an error.
         privilegeStart?.let { pending ->
-            sendStatus(STATUS_STARTING, "Reconnecting Dextop's access over Wireless debugging…")
+            sendStatus(STATUS_STARTING, moe.n4tsu.dextop.localText("uiReconnectingDextopSAccessOverWirelessDebugging"))
             if (!moe.n4tsu.dextop.privilege.EmbeddedPrivilegeKeeper.reconnecting) {
                 privilegeStart = null
                 startRelay(pending.surface, pending.width, pending.height, pending.density, pending.renderScale)
@@ -765,14 +765,14 @@ class CardexRelayService : Service() {
         }
         val activeSurface = surface
         if (activeSurface == null || !activeSurface.isValid || width <= 0 || height <= 0) {
-            sendError(IllegalStateException("The Android Auto display surface is no longer available. Close and reopen Car Companion."))
+            sendError(IllegalStateException(moe.n4tsu.dextop.localText("uiTheAndroidAutoDisplaySurfaceIsNoLongerAvailableCloseAndReopenCarCompanion")))
             return
         }
         val restartWidth = width
         val restartHeight = height
         val restartDensity = clientDensity
         val restartScale = renderScale
-        sendStatus(STATUS_STARTING, "Stopping the remaining Dextop session…")
+        sendStatus(STATUS_STARTING, moe.n4tsu.dextop.localText("uiStoppingTheRemainingDextopSession"))
         MirrorService.stopActive()
         waitForRecoveryStop(activeSurface, restartWidth, restartHeight, restartDensity, restartScale, 0)
     }
@@ -798,7 +798,7 @@ class CardexRelayService : Service() {
                 waitForRecoveryStop(restartSurface, restartWidth, restartHeight, restartDensity, restartScale, attempt + 1)
             }, 100L)
         } else {
-            sendError(IllegalStateException("The previous Dextop session could not be stopped. Open Dextop and tap Stop, then try again."))
+            sendError(IllegalStateException(moe.n4tsu.dextop.localText("uiThePreviousDextopSessionCouldNotBeStoppedOpenDextopAndTapStopThenTryAgain")))
         }
     }
 
@@ -827,14 +827,14 @@ class CardexRelayService : Service() {
         relaySessionActive = false
         OperationLog.e(this, "CarCompanion", "relay failed", error)
         Log.e("DextopCarCompanion", "relay failed: ${error.message}", error)
-        val reason = error.message?.takeIf { it.isNotBlank() } ?: "Unknown startup error"
+        val reason = error.message?.takeIf { it.isNotBlank() } ?: moe.n4tsu.dextop.localText("uiUnknownStartupError")
         val diagnostics = diagnosticSnapshot()
         val action = when {
-            MirrorService.isStopping() -> "Wait a few seconds, then select Recover and retry."
-            MirrorService.isActive() -> "A Dextop session is still running. Select Recover and retry to stop it and start again."
-            else -> "Select Recover and retry. If it fails again, open Dextop and check its operation log."
+            MirrorService.isStopping() -> moe.n4tsu.dextop.localText("uiWaitAFewSecondsThenSelectRecoverAndRetry")
+            MirrorService.isActive() -> moe.n4tsu.dextop.localText("uiADextopSessionIsStillRunningSelectRecoverAndRetryToStopItAndStartAgain")
+            else -> moe.n4tsu.dextop.localText("uiSelectRecoverAndRetryIfItFailsAgainOpenDextopAndCheckItsOperationLog")
         }
-        sendStatus(STATUS_ERROR, "Reason: $reason\nDiagnostics: $diagnostics\nAction: $action")
+        sendStatus(STATUS_ERROR, moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiReason0Diagnostics1Action2"), reason, diagnostics, action))
     }
 
     private fun diagnosticSnapshot(): String =

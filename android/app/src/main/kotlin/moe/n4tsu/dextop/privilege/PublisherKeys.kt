@@ -23,7 +23,7 @@ internal object PublisherKeys {
     fun issue(context: Context, kind: String): String {
         val key = Base64.encodeToString(ByteArray(24).also(SecureRandom()::nextBytes),
             Base64.URL_SAFE or Base64.NO_PADDING or Base64.NO_WRAP)
-        check(prefs(context).edit().putString(kind, key).remove("$kind-pid").commit()) { "Cannot store the privileged process key" }
+        check(prefs(context).edit().putString(kind, key).remove("$kind-pid").commit()) { moe.n4tsu.dextop.localText("uiCannotStoreThePrivilegedProcessKey") }
         return key
     }
 

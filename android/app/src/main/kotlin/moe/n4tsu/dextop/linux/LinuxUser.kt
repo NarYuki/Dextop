@@ -8,7 +8,7 @@ internal object LinuxUser {
     private val namePattern = Regex("[a-z][a-z0-9_-]{0,30}")
     fun validate(name: String) {
         require(namePattern.matches(name) && name !in setOf("root", "nobody", "daemon", "bin", "sys", "sync", "games", "mail", "news", "www-data", "backup", "messagebus", "sshd", "systemd-network", "systemd-timesync")) {
-            "Use a non-system username: lowercase letters, digits, _ or -, starting with a letter (up to 31 characters)"
+            moe.n4tsu.dextop.localText("uiUseANonSystemUsernameLowercaseLettersDigitsOrStartingWithALetterUpTo31Characters")
         }
     }
 
@@ -31,7 +31,7 @@ internal object LinuxUser {
         val name = json.getString("username").also(::validate)
         val password = json.getString("accountPassword")
         require(password.length >= 8 && password.length <= 1024 && password.none { it == '\n' || it == '\r' || it == '\u0000' }) {
-            "Use a password of 8 to 1024 characters without line breaks"
+            moe.n4tsu.dextop.localText("uiUseAPasswordOf8To1024CharactersWithoutLineBreaks")
         }
         return name to password
     }

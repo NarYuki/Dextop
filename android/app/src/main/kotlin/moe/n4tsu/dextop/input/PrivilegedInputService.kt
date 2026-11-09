@@ -56,10 +56,10 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
 
     override fun configure(config: IntArray) {
         require(config.size == PrivilegedInputProtocol.CONFIG_SIZE) {
-            "Unexpected input config size=${config.size}"
+            moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnexpectedInputConfigSize0"), config.size)
         }
         require(config[PrivilegedInputProtocol.CONFIG_VERSION] == PrivilegedInputProtocol.VERSION) {
-            "Input config protocol=${config[PrivilegedInputProtocol.CONFIG_VERSION]} " +
+            moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiInputConfigProtocol0"), config[PrivilegedInputProtocol.CONFIG_VERSION]) +
                     "service=${PrivilegedInputProtocol.VERSION}"
         }
         nativeConfigure(config)
@@ -82,7 +82,7 @@ class PrivilegedInputService : IPrivilegedInputService.Stub() {
     }
 
     override fun inject(events: IntArray) {
-        require(events.size % 3 == 0) { "Input event array must contain type/code/value triples" }
+        require(events.size % 3 == 0) { moe.n4tsu.dextop.localText("uiInputEventArrayMustContainTypeCodeValueTriples") }
         nativeInject(events)
     }
 

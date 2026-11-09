@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import '../l10n/inline_text.dart';
+
 import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
@@ -45,7 +47,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
   final filter = TextEditingController();
   Timer? timer;
   String? initialized;
-  String t(String ja, String en) => linuxText(context, ja, en);
+  String t(String key) => linuxText(context, key);
   Map<Object?, Object?> state(String name) =>
       (status?[name] as Map?)?.cast<Object?, Object?>() ?? {};
   bool running(String name) => state(name)['running'] == true;
@@ -168,9 +170,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
   int _port(TextEditingController controller) {
     final value = int.tryParse(controller.text);
     if (value == null || value < 1024 || value > 65535) {
-      throw FormatException(
-        t('ポートは1024〜65535で指定してください', 'Use a port from 1024 to 65535'),
-      );
+      throw FormatException(t('uiUseAPortFrom1024To65535'));
     }
     return value;
   }
@@ -181,27 +181,20 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         context: context,
         builder: (dialog) => AlertDialog(
           icon: const Icon(Icons.warning_amber_rounded),
-          title: Text(t('VNC をネットワークに公開しますか？', 'Open VNC to the network?')),
+          title: Text(t('uiOpenVNCToTheNetwork')),
           content: Text(
             t(
-              'VNC の通信は暗号化されず、パスワードも最大 8 文字です。同じネットワーク（公共の Wi-Fi など）にいる人に、'
-                  '画面や入力を盗み見られたり、パスワードを推測されたりするおそれがあります。\n\n'
-                  '信頼できるネットワークでだけ使ってください。外から使うときは、SSH を有効にして SSH のトンネル経由で '
-                  '127.0.0.1 の VNC に接続する方法をおすすめします。',
-              'VNC traffic is not encrypted and its password is at most 8 characters. People on the same '
-                  'network (public Wi-Fi, for example) could watch your screen and input, or guess the password.\n\n'
-                  'Use it only on networks you trust. From elsewhere, enable SSH and reach VNC on 127.0.0.1 '
-                  'through an SSH tunnel instead.',
+              'uiVNCTrafficIsNotEncryptedAndItsPasswordIsAtMost8CharactersPeopleOnTheSameNetworkPublicWiFiForExampleC',
             ),
           ),
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(dialog, false),
-              child: Text(t('キャンセル', 'Cancel')),
+              child: Text(t('uiCancel')),
             ),
             FilledButton(
               onPressed: () => Navigator.pop(dialog, true),
-              child: Text(t('公開する', 'Open it')),
+              child: Text(t('uiOpenIt')),
             ),
           ],
         ),
@@ -230,9 +223,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
           });
         case 'calendar':
           if (!saveOnly && (!calendarGranted || selectedCalendars.isEmpty)) {
-            throw FormatException(
-              t('共有するカレンダーを選択してください', 'Choose calendars to share'),
-            );
+            throw FormatException(t('uiChooseCalendarsToShare'));
           }
           request.addAll({
             'port': _port(calendarPort),
@@ -272,7 +263,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(t('閉じる', 'Close')),
+            child: Text(t('uiClose')),
           ),
         ],
       ),
@@ -287,18 +278,18 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     final result = await showDialog<Map<String, Object?>>(
       context: context,
       builder: (context) => AlertDialog(
-        title: Text(t('サービスを追加', 'Add a service')),
+        title: Text(t('uiAddAService')),
         content: SizedBox(
           width: 650,
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                M3ETextField(controller: name, label: t('ユニット名', 'Unit name')),
+                M3ETextField(controller: name, label: t('uiUnitName')),
                 const SizedBox(height: 16),
                 M3ETextField(
                   controller: content,
-                  label: t('ユニットファイル', 'Unit file'),
+                  label: t('uiUnitFile'),
                   minLines: 10,
                   maxLines: 20,
                 ),
@@ -309,7 +300,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: Text(t('キャンセル', 'Cancel')),
+            child: Text(t('uiCancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(context, {
@@ -317,7 +308,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
               'unit': name.text.trim(),
               'content': content.text,
             }),
-            child: Text(t('保存', 'Save')),
+            child: Text(t('uiSave')),
           ),
         ],
       ),
@@ -357,7 +348,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     supportingMaxLines: null,
     trailing: M3EIconButton(
       variant: M3EIconButtonVariant.standard,
-      tooltip: t('コピー', 'Copy'),
+      tooltip: t('uiCopy'),
       icon: const Icon(M3EIcons.content_copy_rounded),
       onPressed: () => Clipboard.setData(ClipboardData(text: value)),
     ),
@@ -372,8 +363,8 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         children: [
           LinuxToggle(
             value: running(name) || value['enabled'] == true,
-            title: t('有効にする', 'Enabled'),
-            subtitle: running(name) ? t('実行中', 'Running') : t('停止中', 'Stopped'),
+            title: t('uiEnabled'),
+            subtitle: running(name) ? t('uiRunning') : t('uiStopped'),
             onChanged: busy
                 ? null
                 : (enabled) {
@@ -390,7 +381,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         padding: const EdgeInsets.all(12),
         child: M3EButton.filled(
           onPressed: busy ? null : () => _start(name, saveOnly: true),
-          label: Text(t('設定を保存', 'Save settings')),
+          label: Text(t('uiSaveSettings')),
         ),
       ),
     ];
@@ -405,22 +396,18 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     return [
       _note(
         ssh
-            ? t(
-                'Linuxユーザーのパスワード、または公開鍵で接続できます。',
-                'Connect using your Linux user password or an authorized public key.',
-              )
+            ? t('uiConnectUsingYourLinuxUserPasswordOrAnAuthorizedPublicKey')
             : t(
-                'Linuxデスクトップを共有します。パスワードが空の場合は起動ごとに生成します。',
-                'Share the Linux desktop. An empty password generates a new one at each start.',
+                'uiShareTheLinuxDesktopAnEmptyPasswordGeneratesANewOneAtEachStart',
               ),
       ),
-      _field(ssh ? sshPort : vncPort, t('ポート', 'Port')),
+      _field(ssh ? sshPort : vncPort, t('uiPort')),
       LinuxGroup(
         children: [
           LinuxToggle(
             value: ssh ? sshLan : vncLan,
-            title: t('同じネットワークから接続', 'Allow network connections'),
-            subtitle: t('オフの場合はこの端末内のみ', 'Off: this device only'),
+            title: t('uiAllowNetworkConnections'),
+            subtitle: t('uiOffThisDeviceOnly'),
             onChanged: busy
                 ? null
                 : (value) async {
@@ -440,7 +427,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
           if (ssh)
             LinuxToggle(
               value: passwordAuth,
-              title: t('パスワード認証', 'Password authentication'),
+              title: t('uiPasswordAuthentication'),
               onChanged: busy
                   ? null
                   : (value) => setState(() => passwordAuth = value),
@@ -450,19 +437,16 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
       if (ssh) ...[
         _field(
           sshKeys,
-          t('許可するSSH公開鍵', 'Authorized SSH public keys'),
-          help: t('1行につき1つ', 'One key per line'),
+          t('uiAuthorizedSSHPublicKeys'),
+          help: t('uiOneKeyPerLine'),
           maxLines: 5,
         ),
       ] else
         _field(
           vncPassword,
-          t('VNCパスワード', 'VNC password'),
+          t('uiVNCPassword'),
           password: true,
-          help: t(
-            '半角英数記号8文字、空欄で自動生成',
-            '8 ASCII characters, or leave empty to generate',
-          ),
+          help: t('ui8ASCIICharactersOrLeaveEmptyToGenerate'),
         ),
       ..._controls(name),
       LinuxGroup(
@@ -475,10 +459,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                   : '$address::$port',
             ),
           if (!ssh && (state('vnc')['secret'] as String? ?? '').isNotEmpty)
-            _copy(
-              t('VNCパスワード', 'VNC password'),
-              state('vnc')['secret'] as String? ?? '',
-            ),
+            _copy(t('uiVNCPassword'), state('vnc')['secret'] as String? ?? ''),
         ],
       ),
     ];
@@ -487,8 +468,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
   List<Widget> _calendar() => [
     _note(
       t(
-        '選択したAndroidカレンダーをLinuxに読み取り専用で共有します。Linuxアプリ一覧にもカレンダーが追加されます。',
-        'Share selected Android calendars with Linux as read-only calendars. A calendar viewer also appears in the Linux app list.',
+        'uiShareSelectedAndroidCalendarsWithLinuxAsReadOnlyCalendarsACalendarViewerAlsoAppearsInTheLinuxAppList',
       ),
     ),
     Padding(
@@ -497,8 +477,8 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         onPressed: busy ? null : () => _calendars(request: true),
         label: Text(
           calendarGranted
-              ? t('カレンダー一覧を更新', 'Refresh calendars')
-              : t('カレンダーへのアクセスを許可', 'Allow calendar access'),
+              ? t('uiRefreshCalendars')
+              : t('uiAllowCalendarAccess'),
         ),
       ),
     ),
@@ -523,22 +503,22 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         ],
       ),
     if (calendarGranted && calendars.isEmpty)
-      _note(t('Androidにカレンダーがありません', 'No Android calendars found')),
-    _field(calendarPort, t('ローカル公開ポート', 'Local calendar port')),
+      _note(t('uiNoAndroidCalendarsFound')),
+    _field(calendarPort, t('uiLocalCalendarPort')),
     ..._controls('calendar'),
     if ((state('calendar')['token'] as String? ?? '').isNotEmpty)
       LinuxGroup(
         children: [
           _copy(
-            t('購読URL（iCalendar）', 'Subscription URL (iCalendar)'),
+            t('uiSubscriptionURLICalendar'),
             'http://127.0.0.1:${state('calendar')['port']}/${state('calendar')['token']}/calendar.ics',
           ),
           _copy(
-            t('カレンダー表示', 'Calendar viewer'),
+            t('uiCalendarViewer'),
             'http://127.0.0.1:${state('calendar')['port']}/${state('calendar')['token']}/',
           ),
           M3EListItem(
-            headline: t('今すぐ同期', 'Sync now'),
+            headline: t('uiSyncNow'),
             leading: const Icon(M3EIcons.sync_rounded),
             onTap: busy || !running('calendar')
                 ? null
@@ -561,19 +541,18 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     return [
       _note(
         t(
-          'Linuxの印刷先で「Android (Dextop)」を選ぶと、Android通知からプリンターを選んで印刷できます。',
-          'Choose “Android (Dextop)” in a Linux print dialog, then open the Android notification to choose a printer.',
+          'uiChooseAndroidDextopInALinuxPrintDialogThenOpenTheAndroidNotificationToChooseAPrinter',
         ),
       ),
-      _field(printPort, t('ローカル印刷ポート', 'Local print port')),
+      _field(printPort, t('uiLocalPrintPort')),
       ..._controls('printing'),
-      if (jobs.isNotEmpty) LinuxSection(t('印刷待ち', 'Waiting to print')),
+      if (jobs.isNotEmpty) LinuxSection(t('uiWaitingToPrint')),
       LinuxGroup(
         children: [
           for (final job in jobs)
             M3EListItem(
-              headline: job['title'] as String? ?? 'Linux document',
-              supportingText: '${job['bytes']} bytes',
+              headline: job['title'] as String? ?? t('uiLinuxDocument'),
+              supportingText: inlineFormat(t('uiByteCount'), [job['bytes']]),
               leading: const Icon(M3EIcons.print_rounded),
               onTap: () => channel.invokeMethod<void>('printJob', {
                 'id': id,
@@ -583,7 +562,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
               trailing: M3EIconButton(
                 variant: M3EIconButtonVariant.standard,
                 icon: const Icon(M3EIcons.delete_outline_rounded),
-                tooltip: t('破棄', 'Discard'),
+                tooltip: t('uiDiscard'),
                 onPressed: busy
                     ? null
                     : () => _action({'op': 'print-delete', 'job': job['id']}),
@@ -607,14 +586,13 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     return [
       _note(
         t(
-          'Dextopの互換サービス管理。systemctl・journalctlと、simple / exec / oneshotサービス、単調タイマーに対応します。',
-          'Dextop service compatibility: systemctl, journalctl, simple / exec / oneshot services and monotonic timers.',
+          'uiDextopServiceCompatibilitySystemctlJournalctlSimpleExecOneshotServicesAndMonotonicTimers',
         ),
       ),
       if (!running('services')) ...[
         _note(
           state('services')['error'] as String? ??
-              t('サービス管理を準備しています', 'Preparing service management'),
+              t('uiPreparingServiceManagement'),
         ),
       ],
       ...[
@@ -622,14 +600,14 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
           padding: const EdgeInsets.all(12),
           child: M3EButton.outlined(
             onPressed: busy ? null : _addUnit,
-            label: Text(t('サービスを追加', 'Add a service')),
+            label: Text(t('uiAddAService')),
           ),
         ),
         Padding(
           padding: const EdgeInsets.all(12),
           child: M3ETextField(
             controller: filter,
-            label: t('サービス名で検索', 'Filter services'),
+            label: t('uiFilterServices'),
             onChanged: (_) => setState(() {}),
           ),
         ),
@@ -640,7 +618,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                 headline: '${unit['name']}',
                 supportingMaxLines: null,
                 supportingText:
-                    '${unit['user'] == true ? 'user · ' : ''}${unit['state']} · ${unit['enabled'] == true ? t('自動起動', 'Enabled') : t('手動', 'Manual')}${(unit['error'] as String? ?? '').isEmpty ? '' : '\n${unit['error']}'}',
+                    '${unit['user'] == true ? 'user · ' : ''}${unit['state']} · ${unit['enabled'] == true ? t('uiEnabled981d6e6c') : t('uiManual')}${(unit['error'] as String? ?? '').isEmpty ? '' : '\n${unit['error']}'}',
                 leading: Icon(
                   M3EIcons.circle_rounded,
                   size: 12,
@@ -653,12 +631,12 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                   onSelected: (value) => _unit(unit, value),
                   itemBuilder: (_) => [
                     for (final (value, label) in [
-                      ('start', t('起動', 'Start')),
-                      ('stop', t('停止', 'Stop')),
-                      ('restart', t('再起動', 'Restart')),
-                      ('enable', t('自動起動を有効にする', 'Enable at startup')),
-                      ('disable', t('自動起動を無効にする', 'Disable at startup')),
-                      ('journal', t('ログ', 'Logs')),
+                      ('start', t('uiStart')),
+                      ('stop', t('uiStop')),
+                      ('restart', t('uiRestart')),
+                      ('enable', t('uiEnableAtStartup')),
+                      ('disable', t('uiDisableAtStartup')),
+                      ('journal', t('uiLogs')),
                     ])
                       PopupMenuItem(value: value, child: Text(label)),
                   ],
@@ -666,8 +644,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
               ),
           ],
         ),
-        if (units.length > 50)
-          _note(t('検索で絞り込んでください', 'Filter to find more services')),
+        if (units.length > 50) _note(t('uiFilterToFindMoreServices')),
       ],
     ];
   }
@@ -675,16 +652,14 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
   @override
   Widget build(BuildContext context) {
     if (widget.containers.isEmpty) {
-      return _note(
-        t('先にLinux環境をセットアップしてください', 'Set up a Linux environment first'),
-      );
+      return _note(t('uiSetUpALinuxEnvironmentFirst'));
     }
     final labels = {
-      'ssh': t('SSH（実験的）', 'SSH (experimental)'),
-      'vnc': t('VNC（実験的）', 'VNC (experimental)'),
-      'calendar': t('カレンダー連携（実験的）', 'Calendar sharing (experimental)'),
-      'services': t('サービス管理', 'Services'),
-      'printing': t('Androidで印刷', 'Android printing'),
+      'ssh': t('uiSSHExperimental'),
+      'vnc': t('uiVNCExperimental'),
+      'calendar': t('uiCalendarSharingExperimental'),
+      'services': t('uiServices'),
+      'printing': t('uiAndroidPrinting'),
     };
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -707,7 +682,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                     ),
                 ],
                 fieldStyle: M3EDropdownFieldStyle(
-                  hintText: t('Linux環境', 'Linux environment'),
+                  hintText: t('uiLinuxEnvironment'),
                   prefixIcon: const Icon(M3EIcons.computer_rounded),
                 ),
                 onSelectionChanged: (items) async {
@@ -751,8 +726,8 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                 M3EListItem(
                   headline: labels[name]!,
                   supportingText: running(name)
-                      ? t('実行中', 'Running')
-                      : t('停止中', 'Stopped'),
+                      ? t('uiRunning')
+                      : t('uiStopped'),
                   leading: Icon(switch (name) {
                     'ssh' => M3EIcons.terminal_rounded,
                     'vnc' => M3EIcons.desktop_windows_rounded,

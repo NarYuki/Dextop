@@ -104,7 +104,7 @@ internal class DBusReader(private val buffer: ByteBuffer) {
                 }
                 return values
             }
-            else -> error("Unsupported D-Bus type $signature")
+            else -> error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnsupportedDBusType0"), signature))
         }
     }
 
@@ -181,7 +181,7 @@ internal class DBusConnection private constructor(
                     output.write("AUTH EXTERNAL $hex\r\n".toByteArray())
                     output.flush()
                     val answer = readLine(input)
-                    if (!answer.startsWith("OK")) throw IOException("D-Bus authentication refused: $answer")
+                    if (!answer.startsWith("OK")) throw IOException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiDBusAuthenticationRefused0"), answer))
                     output.write("BEGIN\r\n".toByteArray())
                     output.flush()
                     return DBusConnection(socket, input, output)
@@ -190,14 +190,14 @@ internal class DBusConnection private constructor(
                     runCatching { socket.close() }
                 }
             }
-            throw lastError ?: IOException("no D-Bus credentials to try")
+            throw lastError ?: IOException(moe.n4tsu.dextop.localText("uiNoDBusCredentialsToTry"))
         }
 
         private fun readLine(input: DataInputStream): String {
             val line = StringBuilder()
             while (true) {
                 val c = input.read()
-                if (c < 0) throw IOException("D-Bus closed during authentication")
+                if (c < 0) throw IOException(moe.n4tsu.dextop.localText("uiDBusClosedDuringAuthentication"))
                 if (c == '\n'.code) return line.toString().trimEnd('\r')
                 line.append(c.toChar())
             }
@@ -242,7 +242,7 @@ internal class DBusConnection private constructor(
     fun receive(): DBusMessage {
         val fixed = ByteArray(16).also(input::readFully)
         val head = ByteBuffer.wrap(fixed).order(ByteOrder.LITTLE_ENDIAN)
-        if (fixed[0] != 'l'.code.toByte()) throw IOException("big-endian D-Bus messages are not supported")
+        if (fixed[0] != 'l'.code.toByte()) throw IOException(moe.n4tsu.dextop.localText("uiBigEndianDBusMessagesAreNotSupported"))
         val type = fixed[1].toInt()
         val bodyLength = head.getInt(4)
         val serial = head.getInt(8)
@@ -275,7 +275,7 @@ internal class DBusConnection private constructor(
                     while (buffer.position() % 4 != 0) buffer.get()
                     values[code] = buffer.int
                 }
-                else -> throw IOException("unexpected D-Bus header field type $sig")
+                else -> throw IOException(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnexpectedDBusHeaderFieldType0"), sig))
             }
         }
         return DBusMessage(

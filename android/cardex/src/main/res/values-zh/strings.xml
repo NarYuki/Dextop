@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Generated from the shared UI catalogs. -->
+<resources>
+    <string name="app_name" formatted="false">"Dextop Car Companion"</string>
+    <string name="opening_dextop" formatted="false">"正在打开 Dextop…"</string>
+    <string name="relay_description" formatted="false">"Dextop Car Companion 将 Android Auto 连接到 Dextop。"</string>
+    <string name="dextop_required" formatted="false">"未安装 Dextop，或其签名与 Dextop Car Companion 不匹配。"</string>
+    <string name="open_again" formatted="false">"打开 Dextop"</string>
+    <string name="ready" formatted="false">"Dextop Car Companion 已就绪"</string>
+    <string name="not_ready" formatted="false">"Dextop 连接不可用"</string>
+    <string name="start" formatted="false">"开始"</string>
+    <string name="open_phone" formatted="false">"启动 Dextop"</string>
+    <string name="guide_title" formatted="false">"在 Android Auto 中启动 Dextop"</string>
+    <string name="guide_description" formatted="false">"此录像展示 Android Auto 画面。请在车载屏幕上按照演示启动 Dextop。"</string>
+    <string name="connection" formatted="false">"连接"</string>
+    <string name="dextop_installed" formatted="false">"已安装 Dextop"</string>
+    <string name="dextop_missing" formatted="false">"需要 Dextop"</string>
+    <string name="signature_verified" formatted="false">"安全中继可用"</string>
+    <string name="signature_mismatch" formatted="false">"请将 Dextop 更新至支持此 Companion 的版本"</string>
+    <string name="auto_mode" formatted="false">"Android Auto 显示器"</string>
+    <string name="phone_mode" formatted="false">"手机 Companion"</string>
+    <string name="android_auto_connected" formatted="false">"Android Auto 已连接"</string>
+    <string name="android_auto_disconnected" formatted="false">"Android Auto 未连接"</string>
+    <string name="automotive_connected" formatted="false">"Android Automotive OS 已连接"</string>
+    <string name="parked_note" formatted="false">"停车时可使用桌面。"</string>
+    <string name="starting" formatted="false">"正在启动 Dextop…"</string>
+    <string name="stop" formatted="false">"停止"</string>
+    <string name="controls" formatted="false">"控制"</string>
+    <string name="auto_controls" formatted="false">"Auto 控制"</string>
+    <string name="swipe_hint" formatted="false">"从左边缘向右滑动打开此面板。"</string>
+    <string name="back" formatted="false">"返回"</string>
+    <string name="home" formatted="false">"主屏幕"</string>
+    <string name="recents" formatted="false">"最近使用的应用"</string>
+    <string name="reconnect" formatted="false">"重新连接视频"</string>
+    <string name="restart_desktop" formatted="false">"重启桌面"</string>
+    <string name="close" formatted="false">"关闭"</string>
+    <string name="workspace" formatted="false">"工作区"</string>
+    <string name="save_workspace" formatted="false">"添加当前应用布局"</string>
+    <string name="no_workspaces" formatted="false">"没有保存的工作区"</string>
+    <string name="display_scale" formatted="false">"显示缩放"</string>
+    <string name="display_scale_description" formatted="false">"缩小项目以适应紧凑的车载屏幕。"</string>
+    <string name="companion_parking_name" formatted="false">"Dextop・Parking"</string>
+    <string name="companion_driving_name" formatted="false">"Dextop・Driving"</string>
+</resources>
