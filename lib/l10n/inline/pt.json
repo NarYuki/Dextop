@@ -154,7 +154,7 @@
   "uiHowLinuxRuns": "Como o Linux é executado",
   "uiStoreSources": "Fontes da Store",
   "uiLinuxUser": "Utilizador Linux",
-  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "Esta primeira configuração prepara o Linux no Dextop: como é executado, as fontes da Store e o conteúdo do ambiente Linux. Tudo pode ser alterado depois nas definições do Linux.",
+  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "Esta primeira configuração prepara o Linux no Dextop: como é executado, o ambiente Linux, as fontes da Store e o conteúdo do ambiente. Tudo pode ser alterado depois nas definições do Linux.",
   "uiRunsThroughPrivilegedAccessSuchAsShizukuStellarOrTheBuiltInBinderReachesAndroidFilesControllersAndAu": "Executa os contentores com permissões elevadas.",
   "uiRunsWithOrdinaryAppPermissionsDevelopmentBrowsersAndGamesWorkAndroidSystemStorageStaysOutOfReach": "Método predefinido. Executa com permissões da aplicação.",
   "uiWhereStoreAppsComeFromAPTIsAlwaysAvailableDebGetAndFlathubAreSetUpAutomaticallyAfterTheLinuxEnvironm": "De onde vêm as aplicações da Store. O APT está sempre disponível; o deb-get e o Flathub são preparados automaticamente após instalar o ambiente Linux.",
@@ -1563,5 +1563,12 @@
   "uiContainerSharingEnabled": "Partilhado com este contentor. Toque para desativar.",
   "uiContainerStorageEnabled": "Todo o armazenamento é partilhado com este contentor em /media/storage. Toque para desativar.",
   "uiContainerStorageDisabled": "Toque para partilhar todo o armazenamento com este contentor. A permissão de acesso do Android será solicitada se necessário.",
-  "uiUSBStorageDevSdX": "Armazenamento USB (/dev/sdX no Linux)"
+  "uiUSBStorageDevSdX": "Armazenamento USB (/dev/sdX no Linux)",
+  "uiLinuxImageInformationIsInvalid": "As informações da imagem Linux são inválidas.",
+  "uiThisLinuxImageNeedsANewerVersionOfDextop": "Esta imagem Linux requer uma versão mais recente do Dextop.",
+  "uiTheLinuxImageDownloadWasInterruptedCheckYourConnectionAndTryAgain": "A transferência da imagem Linux foi interrompida. Verifique a ligação e tente novamente.",
+  "uiTheDownloadedLinuxImageCouldNotBeSaved": "Não foi possível guardar a imagem Linux transferida.",
+  "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "O armazenamento USB não está pronto. Verifique se há um disco inserido.",
+  "uiCouldNotReadTheUSBStorageCapacity": "Não foi possível ler a capacidade do armazenamento USB.",
+  "uiUSBStorageErrorErrno0": "Erro do armazenamento USB (errno {0})"
 }

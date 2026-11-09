@@ -904,7 +904,7 @@
   "linuxSetupReview": "Pronto para configurar",
   "linuxSetupProgress": "A preparar o espaço de trabalho",
   "linuxSetupDone": "O seu espaço de trabalho Linux está pronto",
-  "linuxSetupDoneDetail": "Abra o ambiente de trabalho no separador Linux ou inicie aplicações Linux individuais a partir do Plasma. No Fcitx 5, use Ctrl+Espaço para mudar de método de introdução.",
+  "linuxSetupDoneDetail": "Abra as suas aplicações no separador Linux.",
   "linuxSetupNext": "Continuar",
   "linuxSetupBack": "Voltar",
   "linuxSetupApply": "Iniciar a configuração",

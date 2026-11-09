@@ -904,7 +904,7 @@
   "linuxSetupReview": "Готово к настройке",
   "linuxSetupProgress": "Подготовка рабочего пространства",
   "linuxSetupDone": "Рабочее пространство Linux готово",
-  "linuxSetupDoneDetail": "Откройте рабочий стол на вкладке Linux или запускайте отдельные приложения Linux из Plasma. В Fcitx 5 способы ввода переключаются сочетанием Ctrl+Space.",
+  "linuxSetupDoneDetail": "Откройте приложения на вкладке Linux.",
   "linuxSetupNext": "Далее",
   "linuxSetupBack": "Назад",
   "linuxSetupApply": "Начать настройку",

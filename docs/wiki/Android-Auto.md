@@ -1,6 +1,6 @@
 # Android Auto: Parking and Driving
 
-Current companion release: **2.0.0**. It is designed for **Dextop 1.7.0**.
+Current companion release: **2.1.0**. It is designed for **Dextop 2.0.0**.
 
 Dextop connects a dedicated virtual display to Android Auto through two separately installed companion apps:
 

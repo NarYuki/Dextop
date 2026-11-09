@@ -154,7 +154,7 @@
   "uiHowLinuxRuns": "Linux 실행 방식",
   "uiStoreSources": "Store 배포처",
   "uiLinuxUser": "Linux 사용자",
-  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "Dextop에서 Linux를 쓰기 위한 초기 설정입니다. Linux 실행 방식, Store 배포처, Linux 환경 구성을 차례로 고릅니다. 모두 나중에 Linux 설정에서 바꿀 수 있습니다.",
+  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "Dextop에서 Linux를 쓰기 위한 초기 설정입니다. Linux 실행 방식, Linux 환경, Store 배포처, 환경 구성을 차례로 고릅니다. 모두 나중에 Linux 설정에서 바꿀 수 있습니다.",
   "uiRunsThroughPrivilegedAccessSuchAsShizukuStellarOrTheBuiltInBinderReachesAndroidFilesControllersAndAu": "컨테이너를 높은 권한으로 실행합니다.",
   "uiRunsWithOrdinaryAppPermissionsDevelopmentBrowsersAndGamesWorkAndroidSystemStorageStaysOutOfReach": "기본 방식으로, 앱 권한으로 실행합니다.",
   "uiWhereStoreAppsComeFromAPTIsAlwaysAvailableDebGetAndFlathubAreSetUpAutomaticallyAfterTheLinuxEnvironm": "Store에 표시할 앱을 받아오는 곳입니다. APT는 항상 사용할 수 있으며, deb-get과 Flathub는 Linux 환경 설치 후 자동으로 준비됩니다.",
@@ -1563,5 +1563,12 @@
   "uiContainerSharingEnabled": "이 컨테이너와 공유 중. 탭하여 해제",
   "uiContainerStorageEnabled": "이 컨테이너에 전체 저장소를 /media/storage로 공유 중. 탭하여 해제",
   "uiContainerStorageDisabled": "탭하여 이 컨테이너에 전체 저장소를 공유합니다. 필요한 경우 Android 접근 권한을 요청합니다.",
-  "uiUSBStorageDevSdX": "USB 저장장치 (Linux에서 /dev/sdX)"
+  "uiUSBStorageDevSdX": "USB 저장장치 (Linux에서 /dev/sdX)",
+  "uiLinuxImageInformationIsInvalid": "Linux 이미지 정보가 올바르지 않습니다.",
+  "uiThisLinuxImageNeedsANewerVersionOfDextop": "이 Linux 이미지에는 최신 버전의 Dextop이 필요합니다.",
+  "uiTheLinuxImageDownloadWasInterruptedCheckYourConnectionAndTryAgain": "Linux 이미지 다운로드가 중단되었습니다. 연결을 확인하고 다시 시도하세요.",
+  "uiTheDownloadedLinuxImageCouldNotBeSaved": "다운로드한 Linux 이미지를 저장할 수 없습니다.",
+  "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "USB 저장소가 준비되지 않았습니다. 디스크가 삽입되어 있는지 확인하세요.",
+  "uiCouldNotReadTheUSBStorageCapacity": "USB 저장소 용량을 읽을 수 없습니다.",
+  "uiUSBStorageErrorErrno0": "USB 저장소 오류(errno {0})"
 }

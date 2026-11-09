@@ -5,29 +5,36 @@ The adjacent upstream scripts are pinned in droiddeck/source.env. No Android
 display code is involved. Valve's downloaded game and Proton files stay intact.
 """
 import glob
+import gzip
 import hashlib
 import importlib.machinery
 import json
 import os
 from pathlib import Path
+import re
 import shutil
 import signal
 import sys
 import subprocess
 import tempfile
 import tarfile
+import urllib.error
 import urllib.request
 
 BASE = '/usr/local/lib/dextop-gaming'
 STEAM = os.path.expanduser('~/.local/share/Steam')
 TOOL = 'dextop-proton-fex'
-FEX_PREFIX = '/opt/dextop-fex-2610/usr'
-FEX_URL = 'https://ppa.launchpadcontent.net/fex-emu/fex/ubuntu/pool/main/f/fex-emu-armv8.0/fex-emu-armv8.0_2610-1~n_arm64.deb'
-FEX_SHA256 = '7a7caddc1ef36809cdc7f767d3172214ae9800b6678e0e880cd50478b130f08d'
+FEX_PREFIX = '/opt/dextop-fex/usr'
+FEX_REPOSITORY = 'https://ppa.launchpadcontent.net/fex-emu/fex/ubuntu'
+FEX_INDEX = FEX_REPOSITORY + '/dists/noble/main/binary-arm64/Packages.gz'
+FEX_URL = FEX_REPOSITORY + '/pool/main/f/fex-emu-armv8.0/fex-emu-armv8.0_2611-1~n_arm64.deb'
+FEX_SHA256 = '9aff51171b4dbd3adefd62fe0c18b902fdcba53632bd9ad4fba98df1f4549f42'
 
 RUNTIME_VERSION = '4.0.20260928.262390'
 RUNTIME_HOME = Path('/opt/dextop-runtime') / ('steamrt4-' + RUNTIME_VERSION)
-RUNTIME_URL = 'https://repo.steampowered.com/steamrt4/images/' + RUNTIME_VERSION + '/SteamLinuxRuntime_4.tar.xz'
+RUNTIME_IMAGES = 'https://repo.steampowered.com/steamrt4/images/'
+RUNTIME_URL = RUNTIME_IMAGES + RUNTIME_VERSION + '/SteamLinuxRuntime_4.tar.xz'
+RUNTIME_LATEST = RUNTIME_IMAGES + 'latest-public-stable/'
 RUNTIME_SHA256 = '4f48ea7fb5e4bc170d9f9e1f16cf22e15af4c5b9ebef7f3ad5b87563e11a4f5a'
 RUNTIME_MARKER = Path('/etc/dextop/linux-x86')
 
@@ -45,11 +52,12 @@ def install_runtime():
         with tempfile.TemporaryDirectory(prefix='install-', dir=RUNTIME_HOME.parent) as tmp:
             archive = Path(tmp) / 'runtime.tar.xz'
             digest = hashlib.sha256()
-            with urllib.request.urlopen(RUNTIME_URL, timeout=90) as source, archive.open('wb') as out:
+            response, expected = open_runtime()
+            with response as source, archive.open('wb') as out:
                 while chunk := source.read(1024 * 1024):
                     digest.update(chunk)
                     out.write(chunk)
-            if digest.hexdigest() != RUNTIME_SHA256:
+            if digest.hexdigest() != expected:
                 raise RuntimeError('Steam x86 runtime SHA-256 mismatch')
             unpacked = Path(tmp) / 'unpacked'
             unpacked.mkdir()
@@ -230,15 +238,65 @@ def sdk_launch(command, env, architecture):
 
 
 
+def open_runtime():
+    """The pinned Steam runtime, or the stable one and its published digest once Valve prunes it."""
+    try:
+        return urllib.request.urlopen(RUNTIME_URL, timeout=90), RUNTIME_SHA256
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+    with urllib.request.urlopen(RUNTIME_LATEST + 'SHA256SUMS', timeout=60) as source:
+        lines = source.read().decode()
+    for line in lines.splitlines():
+        fields = line.split()
+        if len(fields) == 2 and fields[1].lstrip('*') == 'SteamLinuxRuntime_4.tar.xz' \
+                and re.fullmatch('[0-9a-f]{64}', fields[0]):
+            print('Dextop: the pinned Steam runtime is gone; using the current stable one', file=sys.stderr, flush=True)
+            return urllib.request.urlopen(RUNTIME_LATEST + 'SteamLinuxRuntime_4.tar.xz', timeout=90), fields[0]
+    raise RuntimeError('The Steam runtime is not listed by its download server')
+
+
+def listed_fex():
+    """The newest FEX build its repository lists: the PPA deletes a build when it publishes the next."""
+    with urllib.request.urlopen(FEX_INDEX, timeout=60) as source:
+        index = gzip.decompress(source.read()).decode()
+    best = None
+    for stanza in index.split('\n\n'):
+        fields = dict(line.split(': ', 1) for line in stanza.splitlines() if ': ' in line and not line[0].isspace())
+        if fields.get('Package') != 'fex-emu-armv8.0':
+            continue
+        filename, digest = fields.get('Filename', ''), fields.get('SHA256', '')
+        version = re.match(r'\d+', fields.get('Version', ''))
+        if version and re.fullmatch(r'pool/main/f/fex-emu-armv8\.0/fex-emu-armv8\.0_[0-9A-Za-z.+~-]+_arm64\.deb', filename) \
+                and re.fullmatch('[0-9a-f]{64}', digest) and (best is None or int(version.group()) > best[0]):
+            best = (int(version.group()), FEX_REPOSITORY + '/' + filename, digest)
+    if best is None:
+        raise RuntimeError('FEX is not listed by its package repository')
+    return best[1], best[2]
+
+
+def download_fex(package):
+    url, expected = FEX_URL, FEX_SHA256
+    try:
+        response = urllib.request.urlopen(url, timeout=60)
+    except urllib.error.HTTPError as error:
+        if error.code != 404:
+            raise
+        url, expected = listed_fex()
+        print('Dextop: the pinned FEX build is gone; using ' + url.rsplit('/', 1)[1], file=sys.stderr, flush=True)
+        response = urllib.request.urlopen(url, timeout=60)
+    with response as source, open(package, 'wb') as target:
+        shutil.copyfileobj(source, target)
+    if hashlib.sha256(Path(package).read_bytes()).hexdigest() != expected:
+        raise RuntimeError('FEX package SHA-256 mismatch')
+
+
 def current_fex():
     if not os.path.isfile(FEX_PREFIX + '/bin/FEX'):
-        print('Dextop: installing FEX 2610 for Proton 11', file=sys.stderr)
+        print('Dextop: installing FEX for Proton 11', file=sys.stderr)
         with tempfile.TemporaryDirectory(prefix='dextop-fex-') as tmp:
             package = tmp + '/fex.deb'
-            with urllib.request.urlopen(FEX_URL, timeout=60) as source, open(package, 'wb') as target:
-                shutil.copyfileobj(source, target)
-            if hashlib.sha256(Path(package).read_bytes()).hexdigest() != FEX_SHA256:
-                raise RuntimeError('FEX package SHA-256 mismatch')
+            download_fex(package)
             extract_deb(package, tmp + '/unpacked')
             os.makedirs(os.path.dirname(FEX_PREFIX), exist_ok=True)
             os.replace(tmp + '/unpacked/usr', FEX_PREFIX)
@@ -298,8 +356,8 @@ def prepare():
     dd.original_runtime = dd.runtime_platform
     dd.runtime_platform = lambda: runtime(dd)
     dd.fex_install = current_fex
-    dd.CONFIG_DIR = os.path.expanduser('~/.config/dextop-fex-2610')
-    dd.data_dir = lambda env: '/tmp/runtime-root/dextop-fex-2610'
+    dd.CONFIG_DIR = os.path.expanduser('~/.config/dextop-fex')
+    dd.data_dir = lambda env: '/tmp/runtime-root/dextop-fex'
     dd.PRELOADS = BASE + '/preload'
     dd.PRELOAD_NAMES = ('libblsession.so', 'libdextop_unixsock.so', 'libdextop_padgrab.so')
     # Controllers games open are taken from Android, whatever the host preloads.

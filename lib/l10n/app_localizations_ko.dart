@@ -2788,7 +2788,7 @@ class AppLocalizationsKo extends AppLocalizations {
 
   @override
   String get linuxSetupDoneDetail =>
-      'Linux 탭에서 데스크톱을 열거나 Plasma에서 Linux 앱을 개별 실행할 수 있습니다. Fcitx 5의 입력 전환은 Ctrl+Space입니다.';
+      'Linux 탭에서 앱을 열 수 있습니다.';
 
   @override
   String get linuxSetupNext => '다음';

@@ -28,19 +28,21 @@ internal object LinuxImageManifest {
             update(payload)
             verify(Base64.getDecoder().decode(envelope.getString("signature")))
         }
-        check(verified) { "Invalid manifest signature" }
+        check(verified) { invalid() }
         val manifest = JSONObject(String(payload, Charsets.UTF_8))
-        check(manifest.getInt("format") == 1) { "Unsupported manifest format" }
-        check(manifest.getString("distro") == "debian" && manifest.getString("arch") == LinuxCatalog.ARCHITECTURE) { "Manifest is for another system" }
-        check(manifest.getInt("minProtocol") <= protocol) { "Image needs a newer Dextop" }
+        check(manifest.getInt("format") == 1) { invalid() }
+        check(manifest.getString("distro") == "debian" && manifest.getString("arch") == LinuxCatalog.ARCHITECTURE) { invalid() }
+        check(manifest.getInt("minProtocol") <= protocol) { moe.n4tsu.dextop.localText("uiThisLinuxImageNeedsANewerVersionOfDextop") }
         val url = manifest.getString("url")
-        check(url.startsWith(RELEASE_PREFIX) && url.endsWith(".tar.zst")) { "Unexpected image location" }
+        check(url.startsWith(RELEASE_PREFIX) && url.endsWith(".tar.zst")) { invalid() }
         val sha256 = manifest.getString("sha256")
-        check(sha256.matches(Regex("[0-9a-f]{64}"))) { "Invalid image digest" }
+        check(sha256.matches(Regex("[0-9a-f]{64}"))) { invalid() }
         val size = manifest.getLong("size")
-        check(size > 0) { "Invalid image size" }
+        check(size > 0) { invalid() }
         return LinuxPrebuiltImage(manifest.getString("version"), url, size, sha256)
     }
+
+    private fun invalid() = moe.n4tsu.dextop.localText("uiLinuxImageInformationIsInvalid")
 
     /** `adb shell setprop debug.dextop.linux_image linuxcontainers` keeps the original setup for debugging. */
     fun linuxContainersForced(): Boolean = runCatching {

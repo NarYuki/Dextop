@@ -1700,7 +1700,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
             extract(id, tarball)
             readConfig(id)?.let { writeConfig(id, it.put("imageReady", true)) }
             tarball.delete()
-            if (prebuilt != null) check(File(LinuxPaths.rootfs(id), LinuxImageManifest.MARKER).isFile) { "Prebuilt image has no marker" }
+            if (prebuilt != null) check(File(LinuxPaths.rootfs(id), LinuxImageManifest.MARKER).isFile) { moe.n4tsu.dextop.localText("uiLinuxImageInformationIsInvalid") }
             configure(id, distro)
         }.onSuccess { finish(id) }.onFailure { fail(id, it) }
     }
@@ -1745,7 +1745,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         log(id, "SHA-256 verified $actual")
         val tarball = File(LinuxPaths.container(id), "rootfs.tar.zst")
-        check(part.renameTo(tarball)) { "Cannot move the downloaded image" }
+        check(part.renameTo(tarball)) { moe.n4tsu.dextop.localText("uiTheDownloadedLinuxImageCouldNotBeSaved") }
         return tarball
     }
 

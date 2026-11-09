@@ -99,6 +99,7 @@ void main() {
         supportedLocales: AppLocalizations.supportedLocales,
         home: LinuxSetupPage(
           firstRun: true,
+          offerExecutionMode: false,
           catalog: const [
             {'id': 'debian', 'name': 'Debian'},
           ],
@@ -108,9 +109,16 @@ void main() {
         ),
       ),
     );
+    // The very first frame, before any platform call answers.
+    expect(find.text('一般権限'), findsNothing);
+    final l = await AppLocalizations.delegate.load(const Locale('ja'));
+    expect(find.text(l.linuxSetupSystem), findsWidgets);
     await tester.pumpAndSettle();
     expect(find.text('特権シェル（高度）'), findsNothing);
-    expect(find.text('一般権限'), findsNothing);
+    // The Store sources follow the choice of the environment.
+    expect(find.byType(LinuxToggle), findsNothing);
+    await tester.tap(find.text(l.linuxSetupNext));
+    await tester.pumpAndSettle();
     expect(find.byType(LinuxToggle), findsWidgets);
   });
   testWidgets('settings preserves an explicitly selected privileged shell', (

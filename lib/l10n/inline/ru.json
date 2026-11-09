@@ -154,7 +154,7 @@
   "uiHowLinuxRuns": "Как запускается Linux",
   "uiStoreSources": "Источники Store",
   "uiLinuxUser": "Пользователь Linux",
-  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "Первая настройка Linux в Dextop: способ запуска, источники Store и состав окружения Linux. Всё это можно изменить позже в настройках Linux.",
+  "uiThisFirstSetupPreparesLinuxInDextopHowItRunsTheStoreSourcesThenWhatTheLinuxEnvironmentContainsEveryt": "Первая настройка Linux в Dextop: способ запуска, окружение Linux, источники Store и состав окружения. Всё это можно изменить позже в настройках Linux.",
   "uiRunsThroughPrivilegedAccessSuchAsShizukuStellarOrTheBuiltInBinderReachesAndroidFilesControllersAndAu": "Запускает контейнеры с повышенными правами.",
   "uiRunsWithOrdinaryAppPermissionsDevelopmentBrowsersAndGamesWorkAndroidSystemStorageStaysOutOfReach": "Способ по умолчанию. Работает с правами приложения.",
   "uiWhereStoreAppsComeFromAPTIsAlwaysAvailableDebGetAndFlathubAreSetUpAutomaticallyAfterTheLinuxEnvironm": "Откуда берутся приложения Store. APT доступен всегда; deb-get и Flathub настраиваются автоматически после установки окружения Linux.",
@@ -1563,5 +1563,12 @@
   "uiContainerSharingEnabled": "Доступ разрешён этому контейнеру. Нажмите, чтобы отключить.",
   "uiContainerStorageEnabled": "Всё хранилище доступно этому контейнеру в /media/storage. Нажмите, чтобы отключить.",
   "uiContainerStorageDisabled": "Нажмите, чтобы предоставить этому контейнеру доступ ко всему хранилищу. При необходимости будет запрошено разрешение Android.",
-  "uiUSBStorageDevSdX": "USB-накопитель (/dev/sdX в Linux)"
+  "uiUSBStorageDevSdX": "USB-накопитель (/dev/sdX в Linux)",
+  "uiLinuxImageInformationIsInvalid": "Сведения об образе Linux недействительны.",
+  "uiThisLinuxImageNeedsANewerVersionOfDextop": "Для этого образа Linux нужна более новая версия Dextop.",
+  "uiTheLinuxImageDownloadWasInterruptedCheckYourConnectionAndTryAgain": "Загрузка образа Linux прервана. Проверьте подключение и повторите попытку.",
+  "uiTheDownloadedLinuxImageCouldNotBeSaved": "Не удалось сохранить загруженный образ Linux.",
+  "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "USB-накопитель не готов. Проверьте, вставлен ли диск.",
+  "uiCouldNotReadTheUSBStorageCapacity": "Не удалось определить ёмкость USB-накопителя.",
+  "uiUSBStorageErrorErrno0": "Ошибка USB-накопителя (errno {0})"
 }

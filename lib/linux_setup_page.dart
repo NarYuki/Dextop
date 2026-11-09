@@ -68,6 +68,7 @@ class LinuxSetupPage extends StatefulWidget {
     this.initialOptions = const {},
     this.resume = false,
     this.firstRun = false,
+    this.offerExecutionMode = true,
   });
 
   final List<Map<Object?, Object?>> catalog;
@@ -88,6 +89,9 @@ class LinuxSetupPage extends StatefulWidget {
 
   /// The very first setup: how Linux runs and the Store sources come first, in the same flow.
   final bool firstRun;
+
+  /// Known before the page opens, so that a build with one mode never shows its page.
+  final bool offerExecutionMode;
 
   @override
   State<LinuxSetupPage> createState() => _LinuxSetupPageState();
@@ -120,7 +124,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   int step = 0;
   bool movingForward = true;
 
-  // First setup only (steps 7 and 8).
+  // First setup only (step 7 before the environment, step 8 after it).
   static const _channel = MethodChannel('app.freedextop/linux');
   String executionMode = 'android';
 
@@ -129,9 +133,6 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
 
   /// False in the Google Play build, which has no full privilege to choose.
   bool privilegeOffered = false;
-
-  /// Until known, step 7 stays in the flow so that the first page has a position.
-  bool executionModeChecked = false;
   bool debGet = false;
   bool flathub = false;
   String t(String key) => linuxText(context, key);
@@ -150,11 +151,9 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
   bool get updating => widget.containerId != null;
 
   List<int> get flow => [
-    if (widget.firstRun) ...[
-      if (privilegeOffered || !executionModeChecked) 7,
-      8,
-    ],
+    if (widget.firstRun && privilegeOffered) 7,
     0,
+    if (widget.firstRun) 8,
     2,
     3,
     4,
@@ -209,8 +208,7 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     setState(() {
       privilegeReady = ready;
       privilegeOffered = offered;
-      executionModeChecked = true;
-      if (!offered && step == 7) step = 8;
+      if (!offered && step == 7) step = 0;
       if (value != null) executionMode = value;
       if (!ready) executionMode = 'android';
     });
@@ -222,7 +220,8 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
     distro = widget.distroId ?? widget.catalog.first['id'] as String;
     name.text = widget.containerName ?? '';
     if (widget.firstRun) {
-      step = 7;
+      privilegeOffered = widget.offerExecutionMode;
+      step = privilegeOffered ? 7 : 0;
       _loadExecutionMode();
     }
     if (widget.resume) {
@@ -847,17 +846,18 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
                 ? t('uiAndroidExperimental')
                 : t('uiFullPrivilege'),
           ),
-          summary(
-            M3EIcons.storefront_rounded,
-            t('uiStoreSources'),
-            ['APT', if (debGet) 'deb-get', if (flathub) 'Flathub'].join(' · '),
-          ),
         ],
         summary(
           M3EIcons.computer_rounded,
           name.text.trim().isEmpty ? distroName : name.text.trim(),
           distroName,
         ),
+        if (widget.firstRun)
+          summary(
+            M3EIcons.storefront_rounded,
+            t('uiStoreSources'),
+            ['APT', if (debGet) 'deb-get', if (flathub) 'Flathub'].join(' · '),
+          ),
         ...[
           summary(
             M3EIcons.language_rounded,
