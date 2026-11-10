@@ -155,8 +155,7 @@ open class MainActivity : FlutterActivity() {
     private fun applyDefaultWindowManager() {
         val preferences = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
         if (preferences.contains("flutter.window_manager")) return
-        val value = DesktopEnvironmentRegistry.current().defaultWindowManager
-        if (value != "system") preferences.edit().putString("flutter.window_manager", value).apply()
+        preferences.edit().putString("flutter.window_manager", DesktopEnvironmentRegistry.current().defaultWindowManager).apply()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {

@@ -97,7 +97,7 @@ def main():
     # while its optional keyring module starts an unusable daemon.
     for name in ('DBUS_SESSION_BUS_ADDRESS', 'DBUS_SYSTEM_BUS_ADDRESS',
                  'XDG_RUNTIME_DIR', 'DISPLAY', 'HOME', 'PATH', 'LANG',
-                 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DEXTOP_SOCKET_NS'):
+                 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'DEXTOP_SOCKET_NS', 'DEXTOP_SOCKET_TRANSPORT'):
         value = os.environ.get(name)
         if value:
             pam.pam_putenv(handle, ('%s=%s' % (name, value)).encode())

@@ -36,7 +36,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     companion object {
         private const val TAG = "DextopLinuxService"
         // Includes APK-approved macOS runtime installation (AIDL transaction 65).
-        const val PROTOCOL_VERSION = 44
+        const val PROTOCOL_VERSION = 46
+        private const val INSTALL_LOG_LINES = 2000
         /** An application ending this soon after its start with SIGSEGV/SIGABRT is retried in software. */
         private const val GPU_CRASH_WINDOW_MS = 20_000L
         /** [GPU_CRASH_LIMIT] GPU crashes within this long turn the GPU off for the session. */
@@ -122,7 +123,11 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     }
     override fun integrationAction(containerId: String, json: String): String {
         integrationCaller(containerId)
-        val result = integrations.action(containerId, json)
+        // Binder carries only RuntimeExceptions; anything else reaches the app as a bare NullPointerException.
+        val result = try { integrations.action(containerId, json) } catch (error: Exception) {
+            if (error is RuntimeException) throw error
+            throw IllegalStateException(error.message ?: error.toString(), error)
+        }
         val request = JSONObject(json)
         if (request.optString("feature") == "ssh" && request.optString("op") == "start") {
             val family = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family
@@ -500,15 +505,27 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         } finally { archive.delete(); temporary.delete() }
     }
 
-    override fun openTerminal(containerId: String, rows: Int, cols: Int): android.os.ParcelFileDescriptor {
+    override fun openTerminal(containerId: String, rows: Int, cols: Int): android.os.ParcelFileDescriptor =
+        openTerminalIn(containerId, rows, cols, "")
+
+    override fun openTerminalIn(containerId: String, rows: Int, cols: Int, directory: String): android.os.ParcelFileDescriptor {
         val runner = requireProot()
         check(LinuxPaths.rootfs(containerId).isDirectory) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
         integrations.restore(containerId)
         val family = readConfig(containerId)?.optString("distro")?.let(LinuxCatalog::find)?.family
         audio?.ensure(containerId, family)
         val builder = runner.guest(containerId,
-            "cd \"${'$'}HOME\" 2>/dev/null; if command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh -l; fi",
-            fakeRoot = LinuxUser.name(LinuxPaths.rootfs(containerId)) == null)
+            "cd \"${'$'}{DEXTOP_TERMINAL_DIR:-${'$'}HOME}\" 2>/dev/null || cd \"${'$'}HOME\" 2>/dev/null; unset DEXTOP_TERMINAL_DIR; " +
+                "if command -v bash >/dev/null 2>&1; then exec bash -l; else exec sh -l; fi",
+            fakeRoot = LinuxUser.name(LinuxPaths.rootfs(containerId)) == null,
+            // OSC 7 tells the terminal the shell's directory, so a restored tab can return to it.
+            extraEnvironment = listOfNotNull(
+                "COLORTERM=truecolor",
+                // The EXIT trap tells a shell the user ended from one that was killed.
+                "PROMPT_COMMAND=[ -n \"${'$'}DEXTOP_EXIT_TRAP\" ] || { DEXTOP_EXIT_TRAP=1; trap 'printf \"\\033]777;dextop-exit\\033\\\\\\\\\"' EXIT; }; " +
+                    "printf '\\033]7;file://localhost%s\\033\\\\' \"${'$'}PWD\"",
+                LinuxTerminalState.directory(directory)?.let { "DEXTOP_TERMINAL_DIR=$it" },
+            ))
         val pid = IntArray(1)
         val master = LinuxPty.nativeSpawn(builder.command().toTypedArray(),
             builder.environment().map { (name, value) -> "$name=$value" }.toTypedArray(),
@@ -1898,7 +1915,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         val configured = runner.run(runner.guest(id, configureScript, fakeRoot = true), 600, onProcess = { activeProcesses[id] = it }) { log(id, it) }
         check(configured.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiConfigurationFailedExit0"), configured.exitCode) }
         checkCancelled(id)
-        provisionPackages(id, distro, runner, baked = prebuilt)
+        provisionPackages(id, distro, runner)
         if (options.username.isNotEmpty() && LinuxUser.name(LinuxPaths.rootfs(id)) == null) {
             progress(id, "account", -1, "")
             LinuxSessionCompatibility.stage(LinuxPaths.rootfs(id), runner.nativeLibraryDir, LinuxProot.socketNamespace(id))
@@ -1913,7 +1930,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         setupSteps(id, distro, options, runner, prebuilt)
     }
 
-    private fun provisionPackages(id: String, distro: LinuxDistro, runner: LinuxProot, baked: Boolean = false) {
+    private fun provisionPackages(id: String, distro: LinuxDistro, runner: LinuxProot) {
         progress(id, "refresh", -1, "")
         val refreshed = runner.run(runner.guest(id, LinuxCatalog.refreshScript(distro.family), fakeRoot = true), 1_800, onProcess = { activeProcesses[id] = it }) { line ->
             log(id, line)
@@ -1922,7 +1939,9 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
         check(refreshed.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiPackageIndexRefreshFailedExit0"), refreshed.exitCode) }
         checkCancelled(id)
-        if (baked) return
+        // Reconcile essential packages even for a prebuilt image: it may predate this APK,
+        // or an interrupted setup may have left dpkg unconfigured. Already installed packages
+        // are checked by apt/pacman, which also resolves their dependencies.
         progress(id, "provision", -1, "")
         var total = 0
         var done = 0
@@ -2019,8 +2038,19 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         check(temp.renameTo(file)) { moe.n4tsu.dextop.localText("uiCannotSaveLinuxContainerConfiguration") }
     }
 
+    private val installLogs = ConcurrentHashMap<String, ArrayDeque<String>>()
+
+    override fun installLog(containerId: String): List<String> =
+        installLogs[containerId]?.let { lines -> synchronized(lines) { lines.toList() } }.orEmpty()
+
     private fun log(id: String, line: String) {
         runCatching { LinuxPaths.log(id).appendText(line + "\n") }
+        installLogs.getOrPut(id) { ArrayDeque() }.let { lines ->
+            synchronized(lines) {
+                lines.addLast(line)
+                if (lines.size > INSTALL_LOG_LINES) lines.removeFirst()
+            }
+        }
         // Also in logcat: the Android mode keeps install.log in app-private storage, out of adb's reach.
         Log.i("DextopLinuxLog", "[$id] ${line.take(3000)}")
         callback(id) { it.onLog(id, line) }
@@ -2030,6 +2060,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     private val currentProgress = ConcurrentHashMap<String, Triple<String, Int, String>>()
 
     private fun progress(id: String, phase: String, percent: Int, message: String) {
+        // The first progress of a run: its log starts here.
+        if (phase != "done" && phase != "error" && !currentProgress.containsKey(id)) installLogs.remove(id)
         if (phase == "done" || phase == "error") currentProgress.remove(id) else currentProgress[id] = Triple(phase, percent, message)
         callback(id) { it.onProgress(id, phase, percent, message) }
     }

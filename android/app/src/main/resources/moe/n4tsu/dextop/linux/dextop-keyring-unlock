@@ -1,0 +1,137 @@
+#!/usr/bin/python3
+"""Unlock the login collection without replacing any existing encrypted data.
+
+PAM success does not imply success of its optional gnome-keyring module.
+The Secret Service itself must confirm that the collection is unlocked.
+"""
+import os
+from pathlib import Path
+import subprocess
+import socket
+import struct
+import sys
+import time
+
+LOGIN = '/usr/local/libexec/dextop-pam-login'
+COLLECTION = '/org/freedesktop/secrets/collection/login'
+
+
+def command(argv, data=None, timeout=1):
+    try:
+        return subprocess.run(argv, input=data, stdout=subprocess.PIPE,
+                              stderr=subprocess.PIPE, timeout=timeout)
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+
+def kernel_uid():
+    # PRoot/fakeroot may virtualize geteuid(); authenticate with the kernel's uid.
+    first, second = socket.socketpair()
+    try:
+        return struct.unpack('3i', first.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))[1]
+    finally:
+        first.close()
+        second.close()
+
+
+def control_unlock(secret, timeout=1):
+    """Use GNOME's existing daemon control channel (same protocol as its PAM module).
+
+    --unlock starts a new daemon; it does not unlock an existing one. Authenticate
+    the peer before handing over the password, and accept only the fixed-size reply.
+    """
+    directory = os.environ.get('GNOME_KEYRING_CONTROL')
+    if not directory:
+        runtime = os.environ.get('XDG_RUNTIME_DIR')
+        if not runtime:
+            return None
+        directory = str(Path(runtime) / 'keyring')
+    path = str(Path(directory) / 'control')
+    connected = False
+    try:
+        if Path(path).is_symlink():
+            return False
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as peer:
+            peer.settimeout(timeout)
+            peer.connect(path)
+            connected = True
+            _, uid, _ = struct.unpack('3i', peer.getsockopt(socket.SOL_SOCKET, socket.SO_PEERCRED, 12))
+            if uid != kernel_uid():
+                return False
+            packet = struct.pack('>III', 12 + len(secret), 1, len(secret)) + secret
+            peer.sendall(b'\0' + packet)
+            response = bytearray()
+            deadline = time.monotonic() + timeout
+            while len(response) < 8:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    return False
+                peer.settimeout(remaining)
+                part = peer.recv(8 - len(response))
+                if not part:
+                    return False
+                response.extend(part)
+            size, result = struct.unpack('>II', response)
+            return size == 8 and result == 0
+    except (OSError, ValueError):
+        return False if connected else None
+
+
+def unlock(secret, pam_available=None, run=command, control=control_unlock):
+    if not secret:
+        return False
+    deadline = time.monotonic() + 10
+
+    def call(argv, data=None, timeout=1):
+        remaining = deadline - time.monotonic()
+        return run(argv, data, min(timeout, remaining)) if remaining > 0 else None
+
+    def bus(path, method, *args):
+        return call(['dbus-send', '--session', '--reply-timeout=500',
+                     '--print-reply=literal', '--dest=org.freedesktop.secrets',
+                     path, method, *args], timeout=.8)
+
+    def unlocked():
+        reply = bus(COLLECTION, 'org.freedesktop.DBus.Properties.Get',
+                    'string:org.freedesktop.Secret.Collection', 'string:Locked')
+        return reply is not None and reply.returncode == 0 and b'false' in reply.stdout.split()
+
+    if pam_available is None:
+        pam_available = Path('/etc/pam.d/dextop-session').is_file() and Path(LOGIN).is_file()
+    if pam_available:
+        pam = call([sys.executable, LOGIN], secret + b'\n', timeout=4.5)
+        if pam is not None and pam.returncode == 0:
+            call(['gnome-keyring-daemon', '--start', '--components=secrets'], timeout=1)
+    # Do not D-Bus-activate an empty daemon before the first direct unlock.
+    if not pam_available or not unlocked():
+        # Do not --replace a live daemon or move aside a collection on password failure.
+        remaining = deadline - time.monotonic()
+        existing = control(secret, min(1, remaining)) if remaining > 0 else False
+        if existing is None:
+            call(['gnome-keyring-daemon', '--unlock', '--daemonize', '--components=secrets'],
+                 secret, timeout=3)
+    for attempt in range(4):
+        if unlocked():
+            alias = bus('/org/freedesktop/secrets', 'org.freedesktop.Secret.Service.ReadAlias',
+                        'string:default')
+            if alias is not None and alias.returncode == 0 and alias.stdout.strip() == b'/':
+                selected = bus('/org/freedesktop/secrets', 'org.freedesktop.Secret.Service.SetAlias',
+                               'string:default', 'objpath:' + COLLECTION)
+                if selected is None or selected.returncode != 0:
+                    return False
+            return True
+        if attempt < 3 and time.monotonic() < deadline:
+            time.sleep(.15)
+    return False
+
+
+def main():
+    secret = sys.stdin.buffer.read()
+    if unlock(secret):
+        return 0
+    print('Dextop: login keyring could not be unlocked; existing keyrings were preserved', file=sys.stderr)
+    return 1
+
+
+if __name__ == '__main__':
+    sys.exit(main())

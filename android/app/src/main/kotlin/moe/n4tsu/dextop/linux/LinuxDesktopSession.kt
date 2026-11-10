@@ -20,6 +20,8 @@ internal class LinuxDesktopSession(
     private val xwaylandHost: LinuxXwaylandHost? = null,
     initialWidth: Int = framebuffer?.width ?: 640,
     initialHeight: Int = framebuffer?.height ?: 480,
+    /** The session claims WM_S0 (IceWM and the other window managers; not sway or a custom command). */
+    private val ownsX: Boolean = true,
 ) {
     companion object {
         private const val TAG = "DextopLinuxDesktop"
@@ -29,6 +31,8 @@ internal class LinuxDesktopSession(
         private const val CURSOR_FRAMES = 2
         /** Give up waiting for the window manager after this long and show the screen anyway. */
         private const val WM_TIMEOUT_MS = 30_000L
+        /** How long a session without an X window manager gets before its screen is shown. */
+        private const val UNMANAGED_START_MS = 4_000L
 
         /** Launches the selected X server and IceWM, then connects once the X socket is up. */
         fun start(proot: LinuxProot, containerId: String, display: Int, width: Int, height: Int, dpi: Int, xwayland: Boolean = false, keyring: ByteArray? = null): LinuxDesktopSession {
@@ -39,7 +43,9 @@ internal class LinuxDesktopSession(
             try {
                 val fbFile = File(LinuxPaths.rootfs(containerId), "tmp/dextop-fb-$display/Xvfb_screen0")
                 fbFile.delete()
-                val process = proot.guest(containerId, LinuxCatalog.desktopScript(display, width, height, dpi, "icewm", xwayland, LinuxSettings.read().optInt("uiScale", 100)),
+                val choice = LinuxSettings.desktopSession(containerId)
+                val process = proot.guest(containerId, LinuxCatalog.desktopScript(display, width, height, dpi, "icewm", xwayland,
+                    LinuxSettings.read().optInt("uiScale", 100), choice),
                     extraEnvironment = if (keyring != null) listOf("DEXTOP_KEYRING_STDIN=1") else emptyList())
                     .redirectErrorStream(true).start()
                 startedProcess = process
@@ -72,7 +78,8 @@ internal class LinuxDesktopSession(
                     LinuxRuntime.terminate(process)
                     error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiXDisplay0DidNotStart0ac67227"), display))
                 }
-                return LinuxDesktopSession(containerId, display, process, client, framebuffer, host, if (xwayland) width else framebuffer!!.width, if (xwayland) height else framebuffer!!.height).also {
+                return LinuxDesktopSession(containerId, display, process, client, framebuffer, host, if (xwayland) width else framebuffer!!.width,
+                    if (xwayland) height else framebuffer!!.height, choice.effective.ownsX).also {
                     it.viewportWidth = width; it.viewportHeight = height; it.begin()
                 }
             } catch (error: Throwable) {
@@ -142,7 +149,8 @@ internal class LinuxDesktopSession(
     }
 
     private fun awaitWindowManager() {
-        val deadline = SystemClock.uptimeMillis() + WM_TIMEOUT_MS
+        // A session without an X window manager (sway draws into one window) is shown once it had time to start.
+        val deadline = SystemClock.uptimeMillis() + if (ownsX) WM_TIMEOUT_MS else UNMANAGED_START_MS
         runCatching {
             val selection = x.internAtom("WM_S0")
             while (running && SystemClock.uptimeMillis() < deadline && x.selectionOwner(selection) == 0) {
@@ -151,7 +159,8 @@ internal class LinuxDesktopSession(
         }.onFailure { Log.w(TAG, "window manager check failed", it) }
         if (!running) return
         val ready = runCatching { x.selectionOwner(x.internAtom("WM_S0")) != 0 }.getOrDefault(false)
-        if (!ready) {
+        if (!ready && !ownsX) Log.i(TAG, "[$display] session without an X window manager started")
+        else if (!ready) {
             Log.e(TAG, "[$display] IceWM did not become ready within 30 seconds")
             runCatching { File(LinuxPaths.rootfs(containerId), "tmp/session-$display.log").appendText("\nIceWM startup timed out after 30 seconds\n") }
             stop()

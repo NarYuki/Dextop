@@ -35,6 +35,7 @@ internal object LinuxUsbDisk {
 
     /** Sectors per SCSI command: Linux's usb-storage default (max_sectors 240), which every stick takes. */
     private const val MAX_SECTORS = 240
+    private const val BULK_CHUNK = 16 * 1024
 
     /** The interface a device stores data on: mass storage, SCSI transparent, Bulk-Only Transport. */
     fun storageInterface(device: UsbDevice): UsbInterface? =
@@ -259,7 +260,10 @@ internal object LinuxUsbDisk {
                 val endpoint = if (dataIn) bulkIn else bulkOut
                 var done = 0
                 while (done < length) {
-                    val chunk = minOf(length - done, 128 * 1024)
+                    // usbfs on some kernels (Galaxy) refuses single bulk transfers over 16 KiB with
+                    // ENOMEM; the failed stage then desynchronises the BOT exchange and the reset
+                    // that follows makes the stick re-enumerate (and ask for Android's permission again).
+                    val chunk = minOf(length - done, BULK_CHUNK)
                     val n = connection.bulkTransfer(endpoint, buffer, at + done, chunk, timeout)
                     if (n < 0) { clearHalt(endpoint); break }
                     done += n
@@ -370,7 +374,7 @@ internal object LinuxUsbDisk {
             text(54, 4) == "FAT1" -> serial(39)
             text(3, 8) == "NTFS    " -> "%016X".format(b.getLong(0x48))
             (b.getShort(1080).toInt() and 0xffff) == 0xef53 -> "ext"
-            else -> null
+            else -> null.also { Log.i(TAG, "${disk.name}: partition ${partition.number}: no known file system (${text(3, 8).trim()}/${text(82, 8).trim()})") }
         }
     }
 
@@ -383,13 +387,24 @@ internal object LinuxUsbDisk {
      */
     fun mount(context: Context, device: UsbDevice, partition: Int): String {
         val name = LinuxUsb.key(device)
+        fun usable(uuid: String) {
+            if (uuid == "ext") throw MountException(19, "Android cannot mount ext2/3/4. Format the partition as FAT32, exFAT or NTFS to mount it; as /dev/sdX it stays usable as it is")
+            if (uuid.isEmpty()) throw MountException(19, "This partition has no file system Android can mount (FAT32, exFAT or NTFS)")
+        }
         val ids = lent[name] ?: synchronized(this) {
             lent[name] ?: run {
                 if ((openCounts[device.deviceName]?.get() ?: 0) > 0)
                     throw MountException(16, "The disk is open in Linux; close the programs using it first")
                 val disk = disk(context, device) ?: throw MountException(6, "The USB storage cannot be read")
                 val parts = disk.partitions().ifEmpty { listOf(Partition(0, 0, disk.size)) }
-                val found = parts.associate { it.number to (runCatching { fileSystemId(disk, it) }.getOrNull() ?: "") }
+                val found = parts.associate { part ->
+                    part.number to (runCatching { fileSystemId(disk, part) }
+                        .onFailure { Log.w(TAG, "${device.deviceName}: partition ${part.number}: cannot read its file system", it) }
+                        .getOrNull() ?: "")
+                }
+                // Checked before lending: a stick given to Android for nothing is lost to Linux.
+                usable(found[partition].orEmpty())
+                if (volumesHidden) throw MountException(19, HIDDEN_VOLUMES)
                 // Closing the connection lets Android's usb-storage driver take the stick again.
                 lent[name] = found
                 lentAt[name] = android.os.SystemClock.elapsedRealtime()
@@ -398,19 +413,37 @@ internal object LinuxUsbDisk {
             }
         }
         val uuid = ids[partition].orEmpty()
-        if (uuid == "ext") throw MountException(19, "Android cannot mount ext2/3/4. Format the partition as FAT32, exFAT or NTFS to mount it; as /dev/sdX it stays usable as it is")
-        if (uuid.isEmpty()) throw MountException(19, "This partition has no file system Android can mount (FAT32, exFAT or NTFS)")
+        usable(uuid)
         val storage = context.getSystemService(android.os.storage.StorageManager::class.java)
         val deadline = android.os.SystemClock.elapsedRealtime() + 60_000
+        var mountedAt = 0L
         while (android.os.SystemClock.elapsedRealtime() < deadline) {
-            storage.storageVolumes.firstOrNull { it.uuid.equals(uuid, ignoreCase = true) && it.state == android.os.Environment.MEDIA_MOUNTED }
-                ?.let { return "/storage/${it.uuid}" }
+            val mounted = storage.storageVolumes.any { it.uuid.equals(uuid, ignoreCase = true) && it.state == android.os.Environment.MEDIA_MOUNTED }
+            if (mounted) {
+                // StorageManager also lists volumes apps cannot open: only a reachable directory counts.
+                java.io.File("/storage", uuid).takeIf { it.isDirectory }?.let { return it.path }
+                if (mountedAt == 0L) mountedAt = android.os.SystemClock.elapsedRealtime()
+                else if (android.os.SystemClock.elapsedRealtime() - mountedAt > 5_000) {
+                    // Some phones (Galaxy) mount USB storage for the system only. Linux takes the
+                    // stick back when it next opens /dev/sdX; later mounts fail without lending it.
+                    Log.w(TAG, "${device.deviceName}: Android mounted $uuid where apps cannot reach it")
+                    volumesHidden = true
+                    lent.remove(name)
+                    lentAt.remove(name)
+                    throw MountException(19, HIDDEN_VOLUMES)
+                }
+            }
             Thread.sleep(500)
         }
         val locked = context.getSystemService(android.app.KeyguardManager::class.java)?.isKeyguardLocked == true
         throw MountException(110, if (locked) "Android mounts USB storage only while the screen is unlocked. Unlock it and try again"
             else "Android did not mount the volume $uuid")
     }
+
+    /** Android mounted a stick where no app can reach it (until Dextop restarts). */
+    @Volatile private var volumesHidden = false
+    private const val HIDDEN_VOLUMES = "This phone mounts USB storage for Android only; apps, Linux included, cannot open it. " +
+        "Use the disk as /dev/sdX instead, with tools that work on the device file (mtools for FAT, 7z, debugfs for ext4)"
 
     /**
      * Unmounts the stick holding volume [uuid] and takes it back as /dev/sdX: Android unmounts

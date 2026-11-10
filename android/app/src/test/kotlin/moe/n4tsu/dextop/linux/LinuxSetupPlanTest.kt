@@ -15,6 +15,14 @@ class LinuxSetupPlanTest {
         kotlin.test.assertEquals("debian", catalog.getJSONObject(0).getString("id"))
         kotlin.test.assertNull(LinuxCatalog.find("droiddeck"))
     }
+    @Test fun signingAndEncryptedKeyDialogsAreAvailableWithoutStoreSetup() {
+        val apt = LinuxCatalog.provisionScript(LinuxPackageFamily.APT)
+        assertContains(apt, "gnupg pinentry-gnome3")
+        assertContains(apt, "dpkg --configure -a")
+        val pacman = LinuxCatalog.provisionScript(LinuxPackageFamily.PACMAN)
+        assertContains(pacman, "gnupg pinentry")
+    }
+
     @Test fun toolkitIntegrationIsPresentInMinimalProvisionAndOfficeSetup() {
         val provision = LinuxCatalog.provisionScript(LinuxPackageFamily.APT)
         assertContains(provision, "qt5ct qt6ct")
