@@ -1,0 +1,98 @@
+#!/bin/sh
+# The session of Dextop's full Linux desktop (LinuxDesktopSessions):
+#   dextop-desktop-session icewm|custom
+# "custom" runs DEXTOP_DESKTOP_COMMAND. One that ends within a few seconds (a typo, a missing
+# program) falls back to IceWM so the desktop still opens; the reason goes to the session log. Files Dextop manages in ~/.icewm start with $MARK; delete that line to keep
+# your own version.
+id=$1
+MARK='# Managed by Dextop. Delete this line to keep your own changes.'
+icewm_dir="${ICEWM_PRIVCFG:-$HOME/.icewm}"
+
+say() { printf 'dextop: %s\n' "$*" >&2; }
+
+# A file Dextop may (re)write: missing, or still carrying the mark.
+managed() { [ ! -e "$1" ] || head -n 1 "$1" 2>/dev/null | grep -qxF "$MARK"; }
+
+label() {
+    case "${LANG:-}" in
+        ja*) [ "$1" = search ] && echo 'アプリを検索' || echo 'ターミナル' ;;
+        *) [ "$1" = search ] && echo 'Search applications' || echo 'Terminal' ;;
+    esac
+}
+
+terminal() {
+    for t in x-terminal-emulator xfce4-terminal lxterminal mate-terminal qterminal uxterm xterm; do
+        command -v "$t" >/dev/null 2>&1 && { echo "$t"; return; }
+    done
+    echo xterm
+}
+
+icewm_setup() {
+    mkdir -p "$icewm_dir" || return
+    if managed "$icewm_dir/preferences"; then
+        cat >"$icewm_dir/preferences" <<EOF
+$MARK
+# Menus open and highlight under the pointer without a click.
+MenuMouseTracking=1
+ToolTipDelay=400
+TaskBarShowStartMenu=1
+TaskBarShowWindowListMenu=1
+TaskBarShowWorkspaces=1
+TaskBarShowShowDesktopButton=1
+TaskBarShowTray=1
+TaskBarShowCPUStatus=0
+TaskBarShowNetStatus=0
+TaskBarShowMEMStatus=0
+TaskBarShowMailboxStatus=0
+TaskBarShowAPMStatus=0
+TaskBarClockLeds=0
+TimeFormat="%H:%M"
+# The Windows key opens the start menu; Alt+Tab switches windows.
+Win95Keys=1
+QuickSwitch=1
+QuickSwitchToAllWorkspaces=1
+OpaqueMove=1
+OpaqueResize=1
+SmartPlacement=1
+ShowHelp=0
+EOF
+    fi
+    # The start menu: search, a terminal, then the application categories at the top level.
+    # Earlier setups wrote a two-line menu with the categories one level down; that is replaced.
+    menu="$icewm_dir/menu"
+    if managed "$menu" || { [ "$(wc -l <"$menu")" -le 3 ] && grep -q icewm-menu-fdo "$menu" && ! grep -qv -e icewm-menu-fdo -e '^prog "Terminal"' "$menu"; }; then
+        {
+            echo "$MARK"
+            command -v rofi >/dev/null 2>&1 && printf 'prog "%s" system-search rofi -show drun -show-icons\n' "$(label search)"
+            printf 'prog "%s" utilities-terminal %s\n' "$(label terminal)" "$(terminal)"
+            echo separator
+            if command -v icewm-menu-fdo >/dev/null 2>&1; then
+                icewm-menu-fdo 2>/dev/null
+            fi
+        } >"$menu.dextop" && mv "$menu.dextop" "$menu"
+    fi
+    if managed "$icewm_dir/keys"; then
+        {
+            echo "$MARK"
+            command -v rofi >/dev/null 2>&1 && echo 'key "Super+space" rofi -show drun -show-icons'
+            echo "key \"Super+Return\" $(terminal)"
+            command -v pcmanfm >/dev/null 2>&1 && echo 'key "Super+e" pcmanfm'
+        } >"$icewm_dir/keys"
+    fi
+}
+
+icewm_session() {
+    export XDG_CURRENT_DESKTOP=ICEWM XDG_SESSION_DESKTOP=icewm
+    icewm_setup
+    icewm-session || icewm
+}
+
+[ "$id" = custom ] && [ -n "${DEXTOP_DESKTOP_COMMAND:-}" ] || { icewm_session; exit; }
+
+started=$(date +%s)
+sh -c "$DEXTOP_DESKTOP_COMMAND"
+status=$?
+if [ $(( $(date +%s) - started )) -lt 5 ]; then
+    say "the command ended after less than 5 seconds (exit $status); starting IceWM"
+    icewm_session
+fi

@@ -1,0 +1,78 @@
+#!/usr/bin/python3
+"""Stop only this container's Steam mode and its process descendants."""
+import os
+from pathlib import Path
+import re
+import signal
+import sys
+
+
+def namespace(config=Path('/etc/dextop/socket-namespace')):
+    try:
+        value = config.read_text().strip()
+    except FileNotFoundError:
+        value = os.environ.get('DEXTOP_SOCKET_NS', '')
+    if not re.fullmatch(r'dextop-c[A-Za-z0-9]+', value):
+        raise ValueError('Cannot identify the Steam container; refusing an unscoped stop')
+    return value
+
+
+def entry(directory):
+    # /proc/stat's command may contain spaces and parentheses.
+    fields = (directory / 'stat').read_text().rsplit(') ', 1)[1].split()
+    return {'pid': int(directory.name), 'parent': int(fields[1]), 'start': fields[19],
+            'args': (directory / 'cmdline').read_bytes().decode(errors='replace').split('\0')[:-1],
+            'namespace': (directory / 'environ').read_bytes().split(b'\0')}
+
+
+def steam_process(args):
+    commands = args[:2]
+    if any(arg.endswith('/dextop-steam-gamemode') for arg in commands):
+        return True
+    if any('/steamrtarm64/steam' in arg and arg.rsplit('/', 1)[-1] in
+           ('steam', 'steamwebhelper', 'steamwebhelper.sh') for arg in commands):
+        return True
+    return '--backend' in args and any(Path(arg).name == 'gamescope' for arg in args)
+
+
+def targets(entries, own_namespace):
+    marker = os.fsencode('DEXTOP_SOCKET_NS=' + own_namespace)
+    selected = {e['pid'] for e in entries if marker in e['namespace'] and steam_process(e['args'])}
+    ordered = [e for e in entries if e['pid'] in selected]
+    while True:
+        children = [e for e in entries if e['parent'] in selected and e['pid'] not in selected
+                    and (marker in e['namespace'] or not any(
+                        value.startswith(b'DEXTOP_SOCKET_NS=') for value in e['namespace']))]
+        if not children:
+            return list(reversed(ordered))
+        ordered.extend(children)
+        selected.update(e['pid'] for e in children)
+
+
+def stop(proc=Path('/proc'), own_namespace=None, send=os.kill):
+    own_namespace = namespace() if own_namespace is None else own_namespace
+    entries = []
+    for directory in proc.iterdir():
+        if directory.name.isdigit() and int(directory.name) not in (os.getpid(), os.getppid()):
+            try:
+                entries.append(entry(directory))
+            except (OSError, ValueError, IndexError):
+                continue
+    stopped = 0
+    for previous in targets(entries, own_namespace):
+        try:
+            current = entry(proc / str(previous['pid']))
+            if current['start'] == previous['start']:
+                send(current['pid'], signal.SIGTERM)
+                stopped += 1
+        except (OSError, ValueError, IndexError):
+            continue
+    return stopped
+
+
+if __name__ == '__main__':
+    try:
+        print('Stopped %d Steam processes in this container.' % stop())
+    except (OSError, ValueError) as error:
+        print('Steam stop refused: ' + str(error), file=sys.stderr)
+        sys.exit(1)

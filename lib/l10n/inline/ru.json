@@ -1570,5 +1570,16 @@
   "uiTheDownloadedLinuxImageCouldNotBeSaved": "Не удалось сохранить загруженный образ Linux.",
   "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "USB-накопитель не готов. Проверьте, вставлен ли диск.",
   "uiCouldNotReadTheUSBStorageCapacity": "Не удалось определить ёмкость USB-накопителя.",
-  "uiUSBStorageErrorErrno0": "Ошибка USB-накопителя (errno {0})"
+  "uiUSBStorageErrorErrno0": "Ошибка USB-накопителя (errno {0})",
+  "uiNewTerminalTab": "Новая вкладка",
+  "uiPreviousTerminalSessionRestored": "Предыдущий сеанс восстановлен",
+  "uiTheShellEndedPressAKeyToStartANewOne": "Оболочка завершена. Нажмите клавишу, чтобы запустить новую.",
+  "uiPort0IsAlreadyInUse": "Порт {0} всё ещё занят. Повторите попытку чуть позже или выберите другой порт.",
+  "uiDesktopSession": "Рабочий стол",
+  "uiDesktopSessionIcewmDescription": "Оконный менеджер по умолчанию",
+  "uiDesktopSessionCustom": "Своя команда",
+  "uiDesktopSessionCommand": "Команда",
+  "uiDesktopSessionCommandHelp": "например openbox-session, exec ~/.xsession",
+  "uiUseOneLineOfUpTo0Characters": "Введите одну строку длиной не более {0} символов",
+  "uiDesktopSessionIcewm": "IceWM"
 }

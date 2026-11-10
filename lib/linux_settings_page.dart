@@ -21,6 +21,7 @@ import 'linux/linux_first_run.dart';
 import 'linux/linux_macos.dart';
 import 'linux/macos_feature.dart';
 import 'linux/linux_integrations.dart';
+import 'linux/linux_desktop_session.dart';
 
 /// Linux settings, stored by the shell-side Linux service: the defaults
 /// (default container and graphics) or, with [containerId], one container's
@@ -733,6 +734,13 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           );
         },
       ),
+      if (_forContainer)
+        LinuxDesktopSessionSettings(
+          key: ValueKey(widget.containerId),
+          settings: _containerSettings,
+          enabled: !saving,
+          onSave: _save,
+        ),
       LinuxSection(
         _forContainer ? l.linuxGpuSection : l.linuxGpuDefaultSection,
       ),
