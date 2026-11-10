@@ -99,6 +99,9 @@ interface ILinuxContainerService {
     boolean attachDeckWindow(String containerId, int xid, in Surface surface) = 49;
     /** An interactive shell of the container on a new pseudo-terminal; returns its master side. */
     ParcelFileDescriptor openTerminal(String containerId, int rows, int cols) = 50;
+
+    /** The same, starting in [directory] when it exists; an empty one is the home directory. */
+    ParcelFileDescriptor openTerminalIn(String containerId, int rows, int cols, String directory) = 89;
     /** Streams an app-owned launcher APK to the privileged package installer. */
     String installLauncher(in ParcelFileDescriptor apk, long size, String installerPackage) = 51;
     /** A fresh PCM recording over an anonymous descriptor, never a public TCP listener. */
@@ -177,4 +180,6 @@ interface ILinuxContainerService {
     String containerSharing(String containerId) = 86;
     void setContainerSharing(String containerId, String policy) = 87;
     String processContainer(int pid) = 88;
+    /** Lines logged since the container's current setup began, oldest first. */
+    List<String> installLog(String containerId) = 90;
 }

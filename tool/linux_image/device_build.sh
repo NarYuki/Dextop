@@ -1,6 +1,6 @@
 #!/system/bin/sh
 # Runs on the Galaxy as the adb shell user. Usage: device_build.sh <native-lib-dir> <version> <tag>
-W=/data/local/tmp/dextop-image-build
+W=${DEXTOP_IMAGE_BUILD_DIR:-/data/local/tmp/dextop-image-build}
 LIB="$1"; VERSION="$2"; TAG="$3"
 cd "$W" || exit 1
 mkdir -p tmp shm empty sources rootfs
@@ -15,7 +15,7 @@ guest() {
         /usr/bin/env -i HOME=/root USER=root LOGNAME=root TERM=xterm-256color LANG=C.UTF-8 TMPDIR=/tmp \
         PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin DEXTOP_HARDLINK_COPY=1 NO_AT_BRIDGE=1 \
         LD_PRELOAD="/opt/dextop/lib/libdextop_androidproc.so:/opt/dextop/lib/libdextop_unixsock.so" \
-        DEXTOP_SOCKET_NS=dextop-imagebuild \
+        DEXTOP_SOCKET_NS=dextop-imagebuild DEXTOP_SOCKET_TRANSPORT=abstract \
         /bin/sh "$@"
 }
 

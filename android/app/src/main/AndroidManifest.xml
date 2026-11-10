@@ -285,7 +285,7 @@
         <activity
             android:name=".linux.LinuxTerminalActivity"
             android:exported="false"
-            android:documentLaunchMode="always"
+            android:documentLaunchMode="intoExisting"
             android:autoRemoveFromRecents="true"
             android:resizeableActivity="true"
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar"

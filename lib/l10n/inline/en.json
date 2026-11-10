@@ -1570,5 +1570,16 @@
   "uiTheDownloadedLinuxImageCouldNotBeSaved": "The downloaded Linux image could not be saved.",
   "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "The USB storage is not ready. Check that a disk is inserted.",
   "uiCouldNotReadTheUSBStorageCapacity": "Could not read the USB storage capacity.",
-  "uiUSBStorageErrorErrno0": "USB storage error (errno {0})"
+  "uiUSBStorageErrorErrno0": "USB storage error (errno {0})",
+  "uiNewTerminalTab": "New tab",
+  "uiPreviousTerminalSessionRestored": "Previous session restored",
+  "uiTheShellEndedPressAKeyToStartANewOne": "The shell ended. Press a key to start a new one.",
+  "uiPort0IsAlreadyInUse": "Port {0} is still in use. Try again in a moment, or choose another port.",
+  "uiDesktopSession": "Desktop session",
+  "uiDesktopSessionIcewmDescription": "Default window manager",
+  "uiDesktopSessionCustom": "Custom command",
+  "uiDesktopSessionCommand": "Command",
+  "uiDesktopSessionCommandHelp": "e.g. openbox-session, exec ~/.xsession",
+  "uiUseOneLineOfUpTo0Characters": "Use one line of up to {0} characters",
+  "uiDesktopSessionIcewm": "IceWM"
 }

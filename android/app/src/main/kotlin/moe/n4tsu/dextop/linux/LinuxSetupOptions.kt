@@ -95,8 +95,9 @@ internal object LinuxSetupPlan {
             if (input.isNotEmpty()) add(Step("input", "set -e\n" + install(input)))
 
             add(Step("desktop", "set -e\n" + install(if (apt)
-                listOf("icewm-common", "adwaita-icon-theme", "gnome-themes-extra", "gtk2-engines-pixbuf", "bzip2")
-                else listOf("adwaita-icon-theme", "gnome-themes-extra", "bzip2")) + """
+                // rofi: the start menu's application search (dextop-desktop-session).
+                listOf("icewm-common", "adwaita-icon-theme", "gnome-themes-extra", "gtk2-engines-pixbuf", "bzip2", "rofi")
+                else listOf("adwaita-icon-theme", "gnome-themes-extra", "bzip2", "rofi")) + """
                 mkdir -p /root/.icewm /root/.config/gtk-3.0 /usr/share/icewm/themes
                 # Keep the user's theme once chosen; the setup only supplies an initial theme.
                 if [ ! -f /root/.config/gtk-3.0/settings.ini ]; then
