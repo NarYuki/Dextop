@@ -115,6 +115,7 @@ class _LinuxPageState extends State<LinuxPage> {
   final Set<String> _deleting = {};
   final Map<String, List<String>> logs = {};
   String? error;
+  static const _setupLogLines = 2000;
   final setupProgress = ValueNotifier<Map<String, LinuxSetupProgress>>({});
 
   /// 0: applications, 1: containers.
@@ -189,13 +190,27 @@ class _LinuxPageState extends State<LinuxPage> {
         final map = args as Map<Object?, Object?>;
         final lines = logs.putIfAbsent(map['id'] as String, () => []);
         lines.add(map['line'] as String);
-        if (lines.length > 500) lines.removeRange(0, lines.length - 500);
+        if (lines.length > _setupLogLines) {
+          lines.removeRange(0, lines.length - _setupLogLines);
+        }
       case 'changed':
         unawaited(_refreshContainers());
       case 'connection':
         unawaited(_load());
     }
     _publishSetupProgress();
+  }
+
+  /// The container service kept logging while nothing was showing it.
+  Future<void> _restoreSetupLog(String id) async {
+    try {
+      final lines = await _channel.invokeListMethod<String>('installLog', {'id': id});
+      if (!mounted || lines == null || lines.isEmpty) return;
+      logs[id] = lines;
+      _publishSetupProgress();
+    } on PlatformException {
+      // The live log still fills in from here on.
+    }
   }
 
   void _publishSetupProgress() {
@@ -495,6 +510,10 @@ class _LinuxPageState extends State<LinuxPage> {
   }) async {
     if (catalog.isEmpty) await _refreshContainers();
     if (!mounted || catalog.isEmpty) return;
+    if (container != null &&
+        (container.state == 'installing' || container.state == 'updating')) {
+      unawaited(_restoreSetupLog(container.id));
+    }
     await Navigator.of(context).push<void>(
       linuxRoute(
         LinuxSetupPage(

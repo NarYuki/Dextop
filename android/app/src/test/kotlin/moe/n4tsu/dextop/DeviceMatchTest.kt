@@ -29,6 +29,11 @@ class DeviceMatchTest {
         }
     }
 
+    @Test fun galaxyStartsOnDeX() {
+        val galaxy = DeviceIdentity("samsung", "samsung", "SM-S942Z", "m1q", "m1q", "samsung/m1q/build", 37)
+        assertEquals("system", DesktopEnvironmentRegistry.resolve(galaxy).defaultWindowManager)
+    }
+
     @Test fun bookIsTheDefaultOnXperiaAndOtherDevices() {
         val xperia = DeviceIdentity("Sony", "Sony", "A401SO", "A401SO", "A401SO", "Sony/A401SO/build", 36)
         assertEquals("dextop_book", DesktopEnvironmentRegistry.resolve(xperia).defaultWindowManager)

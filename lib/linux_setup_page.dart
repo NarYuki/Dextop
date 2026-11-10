@@ -15,6 +15,7 @@ import 'package:free_dextop/linux/linux_first_run.dart';
 import 'package:free_dextop/linux/linux_widgets.dart';
 import 'package:free_dextop/penguin_icon.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'linux_password_keys.dart';
 
 /// One setup operation, supplied by the Linux tab so it keeps running off-route.
 class LinuxSetupProgress {
@@ -678,24 +679,42 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
         onChanged: (_) => setState(() {}),
       ),
       const SizedBox(height: 16),
-      M3ETextField(
-        variant: M3ETextFieldVariant.outlined,
-        controller: keyringPassword,
-        obscureText: true,
-        showPasswordToggle: true,
-        label: t('uiPassword'),
-        supportingText: t('uiAtLeast8CharactersUsedForSudoSSHAndTheKeyring'),
-        onChanged: (_) => setState(() {}),
+      Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: (_, event) => typePrintableKey(
+          keyringPassword,
+          event,
+          changed: () => setState(() {}),
+        ),
+        child: M3ETextField(
+          variant: M3ETextFieldVariant.outlined,
+          controller: keyringPassword,
+          obscureText: true,
+          showPasswordToggle: true,
+          label: t('uiPassword'),
+          supportingText: t('uiAtLeast8CharactersUsedForSudoSSHAndTheKeyring'),
+          onChanged: (_) => setState(() {}),
+        ),
       ),
       const SizedBox(height: 12),
-      M3ETextField(
-        variant: M3ETextFieldVariant.outlined,
-        controller: keyringConfirm,
-        obscureText: true,
-        showPasswordToggle: true,
-        label: t('uiConfirmPassword'),
-        errorText: keyringConfirm.text.isEmpty ? null : keyringProblem,
-        onChanged: (_) => setState(() {}),
+      Focus(
+        canRequestFocus: false,
+        skipTraversal: true,
+        onKeyEvent: (_, event) => typePrintableKey(
+          keyringConfirm,
+          event,
+          changed: () => setState(() {}),
+        ),
+        child: M3ETextField(
+          variant: M3ETextFieldVariant.outlined,
+          controller: keyringConfirm,
+          obscureText: true,
+          showPasswordToggle: true,
+          label: t('uiConfirmPassword'),
+          errorText: keyringConfirm.text.isEmpty ? null : keyringProblem,
+          onChanged: (_) => setState(() {}),
+        ),
       ),
     ],
     0 => [
