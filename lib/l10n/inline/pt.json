@@ -1570,5 +1570,16 @@
   "uiTheDownloadedLinuxImageCouldNotBeSaved": "Não foi possível guardar a imagem Linux transferida.",
   "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "O armazenamento USB não está pronto. Verifique se há um disco inserido.",
   "uiCouldNotReadTheUSBStorageCapacity": "Não foi possível ler a capacidade do armazenamento USB.",
-  "uiUSBStorageErrorErrno0": "Erro do armazenamento USB (errno {0})"
+  "uiUSBStorageErrorErrno0": "Erro do armazenamento USB (errno {0})",
+  "uiNewTerminalTab": "Novo separador",
+  "uiPreviousTerminalSessionRestored": "Sessão anterior restaurada",
+  "uiTheShellEndedPressAKeyToStartANewOne": "A shell terminou. Prima uma tecla para iniciar uma nova.",
+  "uiPort0IsAlreadyInUse": "A porta {0} ainda está em uso. Tente novamente daqui a pouco ou escolha outra porta.",
+  "uiDesktopSession": "Sessão de ambiente de trabalho",
+  "uiDesktopSessionIcewmDescription": "Gestor de janelas predefinido",
+  "uiDesktopSessionCustom": "Comando próprio",
+  "uiDesktopSessionCommand": "Comando",
+  "uiDesktopSessionCommandHelp": "p. ex. openbox-session, exec ~/.xsession",
+  "uiUseOneLineOfUpTo0Characters": "Use uma linha com até {0} caracteres",
+  "uiDesktopSessionIcewm": "IceWM"
 }

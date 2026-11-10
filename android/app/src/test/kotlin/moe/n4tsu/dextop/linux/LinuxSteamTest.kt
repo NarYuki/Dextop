@@ -85,6 +85,29 @@ class LinuxSteamTest {
         }
     }
 
+    @Test fun updatesAccountHomeClientAndDeckModeWithoutTouchingRootHome() {
+        val root = Files.createTempDirectory("steam-account-migration").toFile()
+        try {
+            File(root, "etc/dextop/username").apply { parentFile.mkdirs(); writeText("alice\n") }
+            val client = File(root, "home/alice/.local/share/Steam/steamrtarm64/steam")
+            client.parentFile.mkdirs()
+            client.writeText("existing account client")
+            File(root, "usr/bin/gamescope").apply { parentFile.mkdirs(); writeText("gamescope") }
+            val updater = File(root, "usr/local/bin/dextop-steam-install")
+            updater.parentFile.mkdirs()
+            updater.writeText("old updater")
+            LinuxSteam.stage(root)
+            LinuxSteam.stage(root)
+            assertEquals("existing account client", client.readText())
+            assertTrue("--sync" in updater.readText())
+            assertEquals(LinuxSteam.launcherScript, File(root, LinuxSteam.LAUNCHER.removePrefix("/")).readText())
+            assertTrue(File(root, "usr/local/bin/steam").toPath().let(java.nio.file.Files::isSymbolicLink))
+            assertTrue(File(root, "home/alice/.local/share/applications/dextop-steam.desktop").isFile)
+            assertTrue(File(root, "home/alice/.local/share/applications/${LinuxSteam.STEAM_MODE_ENTRY}").isFile)
+            assertFalse(File(root, "root/.local/share/applications").exists())
+        } finally { root.deleteRecursively() }
+    }
+
     @Test fun registersExistingClientWithoutReinstallingOrChangingItsData() {
         val root = Files.createTempDirectory("steam-migration").toFile()
         try {

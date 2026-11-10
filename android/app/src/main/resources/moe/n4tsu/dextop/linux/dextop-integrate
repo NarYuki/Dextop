@@ -91,9 +91,14 @@ def configure_ssh(config):
              'X11Forwarding no', 'PrintMotd no', 'Subsystem sftp internal-sftp',
              'SetEnv PULSE_SERVER=unix:/tmp/dextop-pulse/native SYSTEMD_DEVICE_VERIFY_SYSFS=0 '
              'PULSE_COOKIE='+str(Path.home()/'.config/pulse/dextop-cookie')]
-    write(base/'sshd_config', '\n'.join(lines)+'\n')
     Path('/run/sshd').mkdir(parents=True, exist_ok=True)
     Path('/run/sshd').chmod(0o755)
+    # Every app on the device, adb forwards included, connects from 127.0.0.1: OpenSSH 9.8+
+    # source penalties would lock all of them out after one dropped probe. LAN sources keep them.
+    write(base/'sshd_config', '\n'.join(lines+['PerSourcePenaltyExemptList 127.0.0.1'])+'\n')
+    if subprocess.run(['/usr/sbin/sshd', '-t', '-f', str(base/'sshd_config')],
+                      stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL).returncode != 0:
+        write(base/'sshd_config', '\n'.join(lines)+'\n')
     subprocess.run(['/usr/sbin/sshd', '-t', '-f', str(base/'sshd_config')], check=True)
 
 

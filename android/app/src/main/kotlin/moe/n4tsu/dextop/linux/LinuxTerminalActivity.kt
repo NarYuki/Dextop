@@ -8,15 +8,15 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
 import android.util.Base64
-import android.util.Log
 import android.view.ViewGroup
 import android.text.InputType
 import android.view.KeyCharacterMap
 import android.view.KeyEvent
 import android.view.MotionEvent
+import android.view.ViewConfiguration
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InputConnection
@@ -24,45 +24,88 @@ import android.view.inputmethod.InputMethodManager
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
 import android.widget.FrameLayout
-import java.io.FileInputStream
-import java.io.FileOutputStream
-import java.util.concurrent.Executors
 
 /**
- * An interactive shell of a Linux container, in its own Android window: the shell runs on a
- * pseudo-terminal in the shell-side service, and xterm.js (assets/terminal) draws it.
+ * The shells of a Linux container in one Android window, as tabs: each runs on a pseudo-terminal
+ * in the shell-side service and xterm.js (assets/terminal) draws it. The shells belong to
+ * [LinuxTerminalSessions], so they outlive this window.
  */
 internal class LinuxTerminalActivity : Activity() {
     companion object {
-        private const val TAG = "DextopLinuxTerminal"
         private const val EXTRA_CONTAINER = "container"
         private const val EXTRA_NAME = "name"
-        private val openTerminals = LinkedHashSet<LinuxTerminalActivity>()
+        /** Base64 output is sent to the page in pieces of this many bytes. */
+        private const val CHUNK = 48 * 1024
+        private const val PREFERENCES = "linux_terminal"
+        private const val FONT_SIZE = "font_size"
+        private const val DEFAULT_FONT_SIZE = 12
+
+        /** Opens the container's terminal window, or brings it forward if it is already open. */
         fun open(context: Context, container: String, name: String?) {
             context.startActivity(Intent(context, LinuxTerminalActivity::class.java)
+                .setData(Uri.fromParts("dextop-terminal", container, null))
                 .putExtra(EXTRA_CONTAINER, container)
                 .putExtra(EXTRA_NAME, name)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or Intent.FLAG_ACTIVITY_MULTIPLE_TASK or
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT or
                     (if (context is Activity) 0 else Intent.FLAG_ACTIVITY_NEW_TASK)))
         }
     }
 
     private lateinit var web: WebView
-    private var container = ""
+    private lateinit var group: LinuxTerminalSessions.Group
     private var name = ""
-    private var pty: ParcelFileDescriptor? = null
-    private var output: FileOutputStream? = null
-    private val writer = Executors.newSingleThreadExecutor()
-    @Volatile private var closed = false
     @Volatile private var selecting = false
+    private var pageReady = false
+
+    private val ime = LinuxTerminalIme({ type(it) }, { compose(it) })
+
+    private val sink = object : LinuxTerminalSessions.Sink {
+        override fun output(id: String, bytes: ByteArray, count: Int) {
+            var offset = 0
+            while (offset < count) {
+                val length = minOf(CHUNK, count - offset)
+                val chunk = Base64.encodeToString(bytes, offset, length, Base64.NO_WRAP)
+                offset += length
+                runOnUiThread { script("dextopWrite(${quote(id)},'$chunk')") }
+            }
+        }
+
+        override fun notice(id: String, message: String) {
+            runOnUiThread { script("dextopNotice(${quote(id)},${quote(message)})") }
+        }
+
+        override fun replayStart(id: String, rows: Int, cols: Int) {
+            runOnUiThread { script("dextopReplayStart(${quote(id)},$rows,$cols)") }
+        }
+
+        override fun replayEnd(id: String, restored: String?) {
+            runOnUiThread { script("dextopReplayEnd(${quote(id)},${restored?.let(::quote) ?: "null"})") }
+        }
+
+        override fun ended(id: String, remove: Boolean) = runOnUiThread {
+            if (!remove) {
+                script("dextopNotice(${quote(id)},${quote(moe.n4tsu.dextop.localText("uiTheShellEndedPressAKeyToStartANewOne"))})")
+            } else if (group.tabs().isEmpty()) {
+                finishAndRemoveTask()
+            } else {
+                script("dextopRemoveTab(${quote(id)})")
+            }
+        }
+    }
+
+    private fun quote(text: String) = org.json.JSONObject.quote(text)
+
+    private fun script(code: String) {
+        if (!isDestroyed) web.evaluateJavascript(code, null)
+    }
 
     @SuppressLint("SetJavaScriptEnabled", "AddJavascriptInterface")
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        container = intent.getStringExtra(EXTRA_CONTAINER).orEmpty()
-        openTerminals += this
+        val container = intent.getStringExtra(EXTRA_CONTAINER).orEmpty()
         name = intent.getStringExtra(EXTRA_NAME) ?: container
         if (container.isEmpty()) return finish()
+        group = LinuxTerminalSessions.group(applicationContext, container)
         describe(name)
         web = TerminalView(this).apply {
             setBackgroundColor(Color.rgb(0x10, 0x14, 0x18))
@@ -89,39 +132,18 @@ internal class LinuxTerminalActivity : Activity() {
         this.title = title
     }
 
-    /** Opens the shell once the page knows its size. */
-    private fun start(rows: Int, cols: Int) {
-        LinuxContainerClient.connect(this)
-        // The foreground service keeps a running shell alive and online once Dextop is in the
-        // background (an Android-mode runtime is an ordinary app process then).
-        LinuxSessionService.start(this)
-        LinuxContainerClient.call(this, { it.openTerminal(container, rows, cols) }, { descriptor ->
-            if (closed) { descriptor.close(); return@call }
-            pty = descriptor
-            output = FileOutputStream(descriptor.fileDescriptor)
-            Thread(::read, "DextopTerminalRead").apply { isDaemon = true; start() }
-        }) { error ->
-            notice(error.message ?: error.toString())
-        }
+    private fun addTab(session: LinuxTerminalSessions.Session, activate: Boolean) {
+        script("dextopAddTab(${quote(session.id)},${quote(session.title.ifBlank { name })},$activate)")
     }
 
-    private fun read() {
-        val descriptor = pty ?: return
-        val buffer = ByteArray(16 * 1024)
-        runCatching {
-            FileInputStream(descriptor.fileDescriptor).use { input ->
-                while (!closed) {
-                    val count = input.read(buffer)
-                    if (count <= 0) break
-                    val chunk = Base64.encodeToString(buffer, 0, count, Base64.NO_WRAP)
-                    runOnUiThread { web.evaluateJavascript("dextopWrite('$chunk')", null) }
-                }
-            }
-        }.onFailure { if (!closed) Log.i(TAG, "terminal ended: ${it.message}") }
-        // The shell exited (EIO on the master side).
-        if (!closed) runOnUiThread {
-            notice(moe.n4tsu.dextop.localText("uiTheShellExited"))
-        }
+    /** Shows every tab once the page can draw them; a container without tabs gets its first. */
+    private fun showTabs() {
+        if (pageReady) return
+        pageReady = true
+        group.attach(sink)
+        if (group.tabs().isEmpty()) group.add(name)
+        val active = group.active
+        group.tabs().forEach { addTab(it, it.id == active) }
     }
 
     /** Types [keys] into the terminal (xterm.js picks the cursor-mode variant and sends it on). */
@@ -140,14 +162,24 @@ internal class LinuxTerminalActivity : Activity() {
             KeyEvent.KEYCODE_VOLUME_MUTE, KeyEvent.KEYCODE_HOME, KeyEvent.KEYCODE_APP_SWITCH -> return false
         }
         if (event.action == KeyEvent.ACTION_MULTIPLE) {
+            ime.reset()
             event.characters?.let { type(it.replace("\n", "\r")) }
             return true
         }
+        if (event.action == KeyEvent.ACTION_DOWN && !KeyEvent.isModifierKey(event.keyCode)) {
+            ime.key(if (event.isCtrlPressed || event.isAltPressed) 0 else event.unicodeChar, event.keyCode == KeyEvent.KEYCODE_DEL)
+        }
+        if (event.action == KeyEvent.ACTION_DOWN && event.isCtrlPressed && event.keyCode == KeyEvent.KEYCODE_TAB) {
+            web.evaluateJavascript("dextopCycleTab(${if (event.isShiftPressed) -1 else 1})", null)
+            return true
+        }
         if (event.action == KeyEvent.ACTION_DOWN && event.isCtrlPressed && event.isShiftPressed) {
-            // Ctrl+Shift+C / V copy and paste, as in desktop terminals.
+            // Ctrl+Shift shortcuts, as in desktop terminals.
             when (event.keyCode) {
                 KeyEvent.KEYCODE_C -> { web.evaluateJavascript("dextopCopy()", null); return true }
                 KeyEvent.KEYCODE_V -> { web.evaluateJavascript("dextopPaste()", null); return true }
+                KeyEvent.KEYCODE_T -> { web.evaluateJavascript("dextopNewTab()", null); return true }
+                KeyEvent.KEYCODE_W -> { web.evaluateJavascript("dextopCloseTab()", null); return true }
             }
         }
         if (event.keyCode == KeyEvent.KEYCODE_INSERT && (event.isCtrlPressed || event.isShiftPressed)) {
@@ -167,6 +199,11 @@ internal class LinuxTerminalActivity : Activity() {
      */
     @SuppressLint("ViewConstructor")
     private inner class TerminalView(context: Context) : WebView(context) {
+        private var downX = 0f
+        private var downY = 0f
+        private var downTime = 0L
+        private var multiTouch = false
+
         override fun onCheckIsTextEditor() = true
 
         override fun onCreateInputConnection(outAttrs: EditorInfo): InputConnection {
@@ -175,20 +212,27 @@ internal class LinuxTerminalActivity : Activity() {
                 EditorInfo.IME_ACTION_NONE
             return object : BaseInputConnection(this, false) {
                 override fun commitText(text: CharSequence, newCursorPosition: Int): Boolean {
-                    compose("")
-                    if (text.isNotEmpty()) type(text.toString().replace("\n", "\r"))
+                    ime.commit(text)
                     return true
                 }
 
                 override fun setComposingText(text: CharSequence, newCursorPosition: Int): Boolean {
-                    compose(text.toString())
+                    ime.compose(text)
                     return true
                 }
 
-                override fun finishComposingText(): Boolean = true
+                override fun setComposingRegion(start: Int, end: Int): Boolean {
+                    ime.region(start, end)
+                    return true
+                }
+
+                override fun finishComposingText(): Boolean {
+                    ime.finish()
+                    return true
+                }
 
                 override fun deleteSurroundingText(beforeLength: Int, afterLength: Int): Boolean {
-                    if (beforeLength > 0) type("\u007f".repeat(beforeLength.coerceAtMost(256)))
+                    ime.delete(beforeLength)
                     return true
                 }
 
@@ -202,6 +246,7 @@ internal class LinuxTerminalActivity : Activity() {
                 }
 
                 override fun performEditorAction(actionCode: Int): Boolean {
+                    ime.reset()
                     type("\r")
                     return true
                 }
@@ -219,10 +264,20 @@ internal class LinuxTerminalActivity : Activity() {
         @SuppressLint("ClickableViewAccessibility")
         override fun onTouchEvent(event: MotionEvent): Boolean {
             val handled = super.onTouchEvent(event)
-            // A tap with a finger brings up the soft keyboard.
-            if (!selecting && event.actionMasked == MotionEvent.ACTION_UP && !event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
-                requestFocus()
-                context.getSystemService(InputMethodManager::class.java)?.showSoftInput(this, 0)
+            when (event.actionMasked) {
+                MotionEvent.ACTION_DOWN -> { downX = event.x; downY = event.y; downTime = event.eventTime; multiTouch = false }
+                MotionEvent.ACTION_POINTER_DOWN -> multiTouch = true
+                MotionEvent.ACTION_UP -> {
+                    // Only a tap brings up the keyboard: after a scroll it would resize the terminal.
+                    val slop = ViewConfiguration.get(context).scaledTouchSlop
+                    val tap = Math.hypot((event.x - downX).toDouble(), (event.y - downY).toDouble()) <= slop &&
+                        event.eventTime - downTime < ViewConfiguration.getLongPressTimeout()
+                    if (tap && !multiTouch && !selecting && !event.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {
+                        ime.reset()
+                        requestFocus()
+                        context.getSystemService(InputMethodManager::class.java)?.showSoftInput(this, 0)
+                    }
+                }
             }
             return handled
         }
@@ -232,39 +287,62 @@ internal class LinuxTerminalActivity : Activity() {
         web.evaluateJavascript("dextopCompose(${org.json.JSONObject.quote(text)})", null)
     }
 
-    private fun notice(message: String) {
-        val quoted = org.json.JSONObject.quote(message)
-        web.evaluateJavascript("dextopNotice($quoted)", null)
-    }
-
-    private fun send(bytes: ByteArray) {
-        writer.execute { runCatching { output?.write(bytes) } }
-    }
-
     private inner class Bridge {
         @JavascriptInterface
         fun translate(key: String): String = moe.n4tsu.dextop.localText(key, resources.configuration.locales[0])
 
         @JavascriptInterface
-        fun ready(rows: Int, cols: Int) = runOnUiThread { if (pty == null) start(rows, cols) }
+        fun ready() = runOnUiThread { showTabs() }
 
+        /** The page has drawn a tab at this size: its output and shell can follow. */
         @JavascriptInterface
-        fun input(data: String) = send(data.toByteArray(Charsets.UTF_8))
-
-        @JavascriptInterface
-        fun binary(data: String) = send(ByteArray(data.length) { data[it].code.toByte() })
-
-        @JavascriptInterface
-        fun resize(rows: Int, cols: Int) {
-            val fd = pty?.fd ?: return
-            if (rows > 0 && cols > 0) LinuxPty.nativeResize(fd, rows, cols)
+        fun opened(id: String, rows: Int, cols: Int) = runOnUiThread {
+            group.session(id)?.let { group.open(this@LinuxTerminalActivity, it, rows, cols) }
         }
 
         @JavascriptInterface
-        fun title(value: String) = runOnUiThread { describe(value.ifBlank { name }) }
+        fun newTab() = runOnUiThread { addTab(group.add(name), true) }
 
         @JavascriptInterface
-        fun fontSize(): Int = 14
+        fun closeTab(id: String) = runOnUiThread {
+            if (group.close(id)) finishAndRemoveTask() else script("dextopRemoveTab(${quote(id)})")
+        }
+
+        @JavascriptInterface
+        fun activate(id: String) = runOnUiThread {
+            group.activate(id)
+            group.session(id)?.let { describe(it.title.ifBlank { name }) }
+        }
+
+        @JavascriptInterface
+        fun input(id: String, data: String) {
+            val session = group.session(id) ?: return
+            if (session.pty == null) runOnUiThread { group.restart(this@LinuxTerminalActivity, session) }
+            else session.write(data.toByteArray(Charsets.UTF_8))
+        }
+
+        @JavascriptInterface
+        fun binary(id: String, data: String) { group.session(id)?.write(ByteArray(data.length) { data[it].code.toByte() }) }
+
+        @JavascriptInterface
+        fun resize(id: String, rows: Int, cols: Int) { group.session(id)?.resize(rows, cols) }
+
+        @JavascriptInterface
+        fun title(id: String, value: String) = runOnUiThread {
+            group.rename(id, value)
+            if (group.active == id) describe(value.ifBlank { name })
+        }
+
+        @JavascriptInterface
+        fun directory(id: String, path: String) = group.directory(id, path)
+
+        @JavascriptInterface
+        fun fontSize(): Int = getSharedPreferences(PREFERENCES, MODE_PRIVATE).getInt(FONT_SIZE, DEFAULT_FONT_SIZE)
+
+        @JavascriptInterface
+        fun setFontSize(size: Int) {
+            getSharedPreferences(PREFERENCES, MODE_PRIVATE).edit().putInt(FONT_SIZE, size.coerceIn(6, 32)).apply()
+        }
 
         @JavascriptInterface
         fun copy(text: String) {
@@ -278,12 +356,22 @@ internal class LinuxTerminalActivity : Activity() {
         fun selecting(enabled: Boolean) { selecting = enabled }
 
         @JavascriptInterface
+        fun lineChanged() = runOnUiThread { ime.reset() }
+
+        @JavascriptInterface
+        fun openLink(url: String) {
+            val uri = android.net.Uri.parse(url)
+            if (uri.scheme?.lowercase() !in setOf("http", "https")) return
+            runOnUiThread { runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) } }
+        }
+
+        @JavascriptInterface
         fun paste() = runOnUiThread {
             val text = runCatching {
                 getSystemService(ClipboardManager::class.java)?.primaryClip
                     ?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.coerceToText(this@LinuxTerminalActivity)?.toString()
             }.getOrNull().orEmpty()
-            if (!closed) web.evaluateJavascript("dextopPasteText(${org.json.JSONObject.quote(text)})", null)
+            script("dextopPasteText(${quote(text)})")
         }
     }
 
@@ -292,13 +380,15 @@ internal class LinuxTerminalActivity : Activity() {
         moveTaskToBack(true)
     }
 
+    override fun onStop() {
+        super.onStop()
+        if (::group.isInitialized) group.saveNow()
+    }
+
     override fun onDestroy() {
-        openTerminals -= this
-        closed = true
-        // Closing the master side hangs up the shell.
-        runCatching { pty?.close() }
-        writer.shutdown()
-        web.destroy()
+        // The shells stay with LinuxTerminalSessions; only this window's view of them ends.
+        if (::group.isInitialized) group.detach(sink)
+        if (::web.isInitialized) web.destroy()
         super.onDestroy()
     }
 }

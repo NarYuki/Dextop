@@ -131,6 +131,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     result.success(true)
                 }
                 "runtimeLogs" -> remote({ it.runtimeLogs(call.argument<String>("id")!!) })
+                "installLog" -> remote({ it.installLog(call.argument<String>("id")!!) })
                 "resetSession" -> remote({ it.resetSession(call.argument<String>("id")!!, call.argument<Boolean>("force") == true) })
                 "catalog" -> remote({ it.catalog() }) { jsonList(it) }
                 "storeSources" -> result.success(LinuxStoreSources.read(context))
@@ -312,6 +313,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     it.remove(id).also { removed ->
                         if (removed) {
                             LinuxKeyring.forget(context, id)
+                            LinuxTerminalSessions.forget(context, id)
                             LinuxCalendarBridge.forget(context, id)
                             LinuxFolders.clear(LinuxFolders.scope(context, id))
                             LinuxDeviceBridge.revokeCamera(id)
@@ -333,6 +335,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     for (name in listOf("linux-store-sources", "linux-android-app-grants", "dextop_linux_controllers"))
                         context.getSharedPreferences(name, android.content.Context.MODE_PRIVATE).edit().clear().commit()
                     LinuxFolders.clear(context)
+                    LinuxTerminalSessions.forgetAll(context)
                     val privilegedExpected = LinuxExecutionMode.privilegedSupported &&
                         LinuxModeContainers.hadContainers(context, LinuxExecutionMode.PRIVILEGED)
                     LinuxModeContainers.clear(context)
