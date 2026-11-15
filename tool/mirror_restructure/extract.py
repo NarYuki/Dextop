@@ -173,24 +173,51 @@ def move(cls,field,pat,excl,bases,types,extra_names,only):
     json.dump(st,open(STATE,'w'),indent=1)
 
 def adopt(cls,names):
-    """Move state the host kept for a component into the component that owns it."""
+    """Move members only one component uses into that component, wiring what they need from the host."""
     L,M,start,end=members.load()
-    st=json.load(open(STATE)); by={m[0]:m for m in M}
+    st=json.load(open(STATE)); by={m[0]:m for m in M}; allnames={m[0] for m in M}
+    c=st['components'][cls]; field=c['field']
     f=f'{KDIR}/{cls}.kt'; t=open(f,encoding='utf-8').read()
     code=[]
     for n in names:
-        m=by[n]; c=L[m[2]:m[3]+1]; k=m[4]-m[2]
-        c[k]=re.sub(r'^(    (?:@[\w.]+(?:\([^)]*\))? *)*)private ',r'\1internal ',c[k]); code+=c
-    for m in sorted((by[n] for n in names),key=lambda m:-m[2]): del L[m[2]:m[3]+1]
-    open(SRC,'w',encoding='utf-8').write('\n'.join(L))
+        m=by[n]; cl=L[m[2]:m[3]+1]; k=m[4]-m[2]
+        cl[k]=re.sub(r'^(    (?:@[\w.]+(?:\([^)]*\))? *)*)private ',r'\1internal ',cl[k]); code+=cl+['']
+    gcode='\n'.join(code)
+    gcode=re.sub(r'(?<![\w.])'+field+r'\??\.','',gcode)
+    wiring={b_['field'] for b_ in st.get('bases',{}).values()}
+    need={n for n in members.refs(gcode,allnames-set(names)) if by[n][1] in('fun','val','var') and n not in wiring and n!=field}
+    basenames=set()
+    for b_ in st['bases'].values(): basenames|=set(b_['names'])
+    assigned={n for n in need if re.search(r'(?<![\w.])'+n+r'\s*(=(?!=)|\+=|-=|\*=|\+\+|--)',members.strip(gcode))}
+    have=set(re.findall(r'(?m)^    (?:override )?(?:val|var|fun(?: <[^>]+>)?) (\w+)',t[t.index(f'internal interface {cls}Host'):t.index('\n}\n',t.index(f'internal interface {cls}Host'))]))
+    decls=[];impls=[]
+    for n in sorted(need-basenames-have):
+        d,i=signature(L,by[n],assigned,{})
+        assert d,f'cannot type {n}: {L[by[n][4]].strip()[:100]}'
+        decls.append(d);impls.append(i)
+    for n in sorted((need&basenames&assigned)-have):
+        d,i=signature(L,by[n],assigned,{}); decls.append('    /** Written here, not only read. */\n    override'+d[3:]); impls.append(i)
+    for m in sorted((by[n] for n in names),key=lambda m:-m[2]):
+        hi=m[3]+1
+        while hi<len(L) and L[hi].strip()=='' and L[m[2]-1].strip()=='': hi+=1
+        del L[m[2]:hi]
+    i=next(k for k,l in enumerate(L) if re.match(r'    private val '+field+r': '+cls+r' = '+cls+r'\(this, object : ',l))
+    j=next(k for k in range(i,len(L)) if L[k]=='    })')
+    L[j:j]=impls
     for n in names: t=re.sub(r'\bdesk\.'+n+r'\b',n,t)
+    a=t.index(f'internal interface {cls}Host'); b=t.index('\n}\n',a)
+    if decls: t=t[:b]+'\n'+'\n'.join(decls)+t[b:]
     a=t.index(f'internal class {cls}('); b=t.index(') {\n',a)+4
-    t=t[:b]+'\n'.join(code).replace('this@MirrorService','context')+'\n\n'+t[b:]
+    t=t[:b]+gcode.replace('this@MirrorService','context').rstrip()+'\n\n'+t[b:]
+    own=[l for l in t.split('\n') if l.startswith('import ')]
+    extra=[l for l in imports(L) if l not in own]
+    k=t.index('\nimport ')+1 if own else t.index('\n\n')+2
+    t=t[:k]+'\n'.join(extra)+('\n' if extra else '')+t[k:]
     open(f,'w',encoding='utf-8').write(t)
-    c=st['components'][cls]; c['names']=sorted(set(c['names'])|set(names)); c['host']=sorted(set(c['host'])-set(names))
+    open(SRC,'w',encoding='utf-8').write('\n'.join(L))
+    c['names']=sorted(set(c['names'])|set(names)); c['host']=sorted((set(c['host'])|need)-set(names))
     json.dump(st,open(STATE,'w'),indent=1)
-    prune_host(cls)
-    print(cls,'adopted',len(names))
+    print(cls,'adopted',len(names),'new host members',len(decls))
 
 def dedupe():
     """Drop host members that a base interface now provides."""
@@ -199,13 +226,15 @@ def dedupe():
     for cls,c in st['components'].items():
         f=f'{KDIR}/{cls}.kt'; t=open(f,encoding='utf-8').read()
         a=t.index(f'internal interface {cls}Host'); b=t.index('\n}\n',a)
+        if '{' not in t[a:t.index('\n',a)]: continue
         head=t[a:b].split('\n'); dead=[]; keep=[head[0]]
         for l in head[1:]:
             m=re.match(r'    (?:val|var|fun(?: <[^>]+>)?) (\w+)',l)
-            if m and m.group(1) in base: dead.append(m.group(1))
+            if m and m.group(1) in base and l.startswith('    var '): keep.append('    /** Written here, not only read. */'); keep.append('    override'+l[3:])
+            elif m and m.group(1) in base: dead.append(m.group(1))
             else: keep.append(l)
+        if keep!=head: open(f,'w',encoding='utf-8').write(t[:a]+'\n'.join(keep)+t[b:])
         if not dead: continue
-        open(f,'w',encoding='utf-8').write(t[:a]+'\n'.join(keep)+t[b:])
         L=open(SRC,encoding='utf-8').read().split('\n')
         i=next(k for k,l in enumerate(L) if re.match(r'    private val \w+(?:: \w+)? = '+cls+r'\(this, object : ',l))
         j=next(k for k in range(i,len(L)) if L[k]=='    })')
@@ -219,6 +248,33 @@ def dedupe():
         open(SRC,'w',encoding='utf-8').write('\n'.join(L))
         c['host']=sorted(set(c['host'])-set(dead)); print(cls,'now from base:',dead)
     json.dump(st,open(STATE,'w'),indent=1)
+
+def promote(cls):
+    """Offer a shared component through DesktopSession: others reach it as desk.<field>.x instead of one forwarder per member."""
+    st=json.load(open(STATE)); c=st['components'][cls]; field=c['field']; names=set(c['names'])
+    src=open(SRC,encoding='utf-8').read(); total=0
+    for o,oc in st['components'].items():
+        if o==cls: continue
+        f=f'{KDIR}/{o}.kt'; t=open(f,encoding='utf-8').read()
+        m=re.search(r'    private val '+oc['field']+r': '+o+r' = '+o+r'\(this, object : .*?\n    \}\)',src,re.S)
+        fw={n for n in names if re.search(r'override (?:val|var|fun(?: <[^>]+>)?) '+n+r'\b[^\n]*\n?[^\n]*this@MirrorService\.'+field+r'\.'+n+r'\b',m.group(0))}
+        k=0
+        for n in fw:
+            t,x=re.subn(r'\bdesk\.'+n+r'\b','desk.'+field+'.'+n,t); k+=x
+            t,x=re.subn(r'\bdesk::'+n+r'\b','desk.'+field+'::'+n,t); k+=x
+        if k: open(f,'w',encoding='utf-8').write(t); total+=k
+    f=f'{KDIR}/{cls}.kt'; t=open(f,encoding='utf-8').read()
+    t=re.sub(r'(?m)^(    (?:@[\w.]+(?:\([^)]*\))? *)*)private ((?:lateinit )?(?:fun |val |var ))',r'\1internal \2',t); open(f,'w',encoding='utf-8').write(t)
+    p=f'{KDIR}/DesktopSession.kt'; t=open(p,encoding='utf-8').read()
+    t=t.replace('    fun dp(value: Int): Int\n',f'    val {field}: {cls}\n    fun dp(value: Int): Int\n'); open(p,'w',encoding='utf-8').write(t)
+    src=src.replace('        override fun dp(value: Int): Int = this@MirrorService.dp(value)\n',f'        override val {field}: {cls} get() = this@MirrorService.{field}\n        override fun dp(value: Int): Int = this@MirrorService.dp(value)\n',1)
+    open(SRC,'w',encoding='utf-8').write(src)
+    st['bases']['DesktopSession']['names'].append(field); json.dump(st,open(STATE,'w'),indent=1)
+    dedupe()
+    st=json.load(open(STATE))
+    for o in st['components']:
+        if o!=cls: prune_host(o)
+    print('promoted',cls,'rewrote',total,'uses')
 
 def compile_errors():
     env=dict(os.environ)  # needs a JDK Gradle supports (17-21) as JAVA_HOME
@@ -333,6 +389,7 @@ def prune_host(cls):
     f=f'{KDIR}/{cls}.kt'
     t=open(f,encoding='utf-8').read()
     a=t.index(f'internal interface {cls}Host'); b=t.index('\n}\n',a)
+    if '{' not in t[a:t.index('\n',a)]: return
     head=t[a:b].split('\n'); body=t[b:]
     dead=[]; keep=[head[0]]
     for l in head[1:]:
@@ -387,3 +444,4 @@ if __name__=='__main__':
     elif a[0]=='prune': prune(a[1])
     elif a[0]=='adopt': adopt(a[1],a[2:])
     elif a[0]=='dedupe': dedupe()
+    elif a[0]=='promote': promote(a[1])
