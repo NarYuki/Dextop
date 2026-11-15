@@ -22,7 +22,6 @@ import android.widget.LinearLayout
 import android.widget.TextView
 import java.util.concurrent.Executors
 import java.util.Locale
-import moe.n4tsu.dextop.input.PrivilegedInputClient
 import moe.n4tsu.dextop.input.LaptopSwipeDecoder
 import moe.n4tsu.dextop.input.SwipeObservingKeyboardLayout
 import moe.n4tsu.dextop.input.LaptopSwipeImeCoordinator
@@ -37,15 +36,11 @@ internal interface SwipeTypingHost : DesktopSession, OverlayMenu {
     fun injectLaptopKeyboardEvent(keyCode: Int, action: Int, metaState: Int, repeatCount: Int): Boolean
     val laptopKeyboardReady: Boolean
     val laptopKeyboardView: SwipeObservingKeyboardLayout?
-    var laptopLastEditorBounds: Rect?
-    var laptopLastEditorBoundsAt: Long
     val laptopLegendButtons: MutableList<Pair<LaptopKeyTextView, String>>
     fun laptopPalette(): LaptopPalette
     val laptopTypeface: Typeface
     fun opacityColor(color: Int, opacity: Float): Int
     fun opaqueColor(color: Int): Int
-    val privilegedInputClient: PrivilegedInputClient
-    val root: TouchRoutingFrame?
 }
 
 internal data class LaptopSwipeAutoCommit(
@@ -59,6 +54,9 @@ internal class SwipeTyping(
     private val context: Context,
     private val desk: SwipeTypingHost,
 ) {
+    internal var laptopLastEditorBounds: Rect? = null
+    internal var laptopLastEditorBoundsAt = 0L
+
     internal var laptopCandidateBar: LinearLayout? = null
 
     private var laptopFloatingCandidates: View? = null
@@ -315,13 +313,13 @@ internal class SwipeTyping(
         val focused = focusedLaptopEditor()
         val bounds = if (focused != null) {
             Rect().also(focused::getBoundsInScreen).also {
-                desk.laptopLastEditorBounds = Rect(it)
-                desk.laptopLastEditorBoundsAt = SystemClock.uptimeMillis()
+                laptopLastEditorBounds = Rect(it)
+                laptopLastEditorBoundsAt = SystemClock.uptimeMillis()
                 focused.recycle()
             }
         } else {
-            desk.laptopLastEditorBounds?.takeIf {
-                SystemClock.uptimeMillis() - desk.laptopLastEditorBoundsAt < 15_000L
+            laptopLastEditorBounds?.takeIf {
+                SystemClock.uptimeMillis() - laptopLastEditorBoundsAt < 15_000L
             }?.let(::Rect) ?: return false
         }
         if (bounds.isEmpty) return false

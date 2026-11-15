@@ -1,6 +1,9 @@
 package moe.n4tsu.dextop
 
 import android.accessibilityservice.AccessibilityService
+import android.view.SurfaceView
+import android.view.WindowManager
+import moe.n4tsu.dextop.input.PrivilegedInputClient
 
 /**
  * What every part of a desktop session may read about it: where the desktop is
@@ -19,5 +22,17 @@ internal interface DesktopSession {
     val laptopModeActive: Boolean
     val privilegedAccess: PrivilegedAccess
     val plasmaShell: moe.n4tsu.dextop.plasma.DesktopShell?
+    /** The overlay window on the phone, null while no session is shown. */
+    val root: TouchRoutingFrame?
+    val surfaceView: SurfaceView?
+    val windowManager: WindowManager?
+    val secureDisplay: Boolean
+    val showSystemDecorations: Boolean
+    /** Touches go straight to the desktop instead of moving the cursor. */
+    val directTouch: Boolean
+    val suspendedForLockScreen: Boolean
+    val desktopEnvironment: DesktopEnvironment
+    val privilegedInputClient: PrivilegedInputClient
+    val sessionJournal: SessionJournal
     fun dp(value: Int): Int
 }

@@ -27,7 +27,6 @@ internal interface VirtualGamepadHost : DesktopSession, OverlayMenu {
     val keyboardDeckStyle: MirrorService.KeyboardDeckStyle
     val laptopTypeface: Typeface
     fun opacityColor(color: Int, opacity: Float): Int
-    val privilegedInputClient: PrivilegedInputClient
     fun setLaptopMode(enabled: Boolean, requestedStyle: MirrorService.KeyboardDeckStyle = MirrorService.KeyboardDeckStyle.LAPTOP)
     fun showKeyboardStyleMenu(panel: LinearLayout)
 }

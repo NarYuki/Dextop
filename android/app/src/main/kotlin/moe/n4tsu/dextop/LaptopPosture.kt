@@ -15,21 +15,11 @@ import kotlin.math.abs
 /** What [LaptopPosture] needs from the session beyond the shared interfaces. */
 internal interface LaptopPostureHost : DesktopSession, OverlayMenu {
     val externalInputDeck: Boolean
-    var hingeAngle: Float?
     fun isFoldableMainDisplay(): Boolean
     fun isLaptopAutoDetectionEnabled(): Boolean
     fun isLaptopAutoOrientationEligible(): Boolean
-    var laptopAutoActivated: Boolean
-    var laptopAutoSuppressedByUser: Boolean
     fun laptopHostIsFullHeight(): Boolean
-    val laptopManualOverride: Boolean
-    val laptopModeDebounceMs: Long
-    var laptopModeEvaluationGeneration: Long
-    var pendingLaptopMode: Boolean?
-    var pendingLaptopModeSince: Long
-    val root: TouchRoutingFrame?
     fun setLaptopMode(enabled: Boolean, requestedStyle: MirrorService.KeyboardDeckStyle = MirrorService.KeyboardDeckStyle.LAPTOP)
-    val suspendedForLockScreen: Boolean
 }
 
 internal enum class LaptopFoldProfile {
@@ -42,6 +32,21 @@ internal class LaptopPosture(
     private val context: Context,
     private val desk: LaptopPostureHost,
 ) {
+    internal var hingeAngle: Float? = null
+    internal var laptopAutoActivated = false
+
+    /**
+     * Blocks automatic reactivation after the user dismisses an automatically
+     * shown deck. It is cleared only after a flat posture is observed or the
+     * user explicitly enables laptop mode again.
+     */
+    internal var laptopAutoSuppressedByUser = false
+    internal var laptopManualOverride = false
+    internal val laptopModeDebounceMs = 420L
+    internal var laptopModeEvaluationGeneration = 0L
+    internal var pendingLaptopMode: Boolean? = null
+    internal var pendingLaptopModeSince = 0L
+
     internal var filteredHingeAngle: Float? = null
 
     internal var laptopPostureReevaluationGeneration = 0L
@@ -52,7 +57,7 @@ internal class LaptopPosture(
 
     internal var foldingApiLaptopPosture: Boolean? = null
 
-    private var foldingApiHorizontalHinge: Boolean? = null
+    internal var foldingApiHorizontalHinge: Boolean? = null
 
     private var foldingApiLastProbeAt = 0L
 
@@ -76,7 +81,7 @@ internal class LaptopPosture(
      */
 
     internal fun currentLaptopPosture(): Boolean? {
-        val angle = filteredHingeAngle ?: desk.hingeAngle
+        val angle = filteredHingeAngle ?: hingeAngle
         return when (laptopFoldProfile()) {
             LaptopFoldProfile.FOLD8 -> currentFold8LaptopPosture(angle)
             LaptopFoldProfile.STANDARD_FOLDABLE -> currentStandardFoldPosture(angle)
@@ -151,7 +156,7 @@ internal class LaptopPosture(
             else previous + (angle - previous) * 0.25f
         } ?: angle
         filteredHingeAngle = filtered
-        desk.hingeAngle = angle
+        hingeAngle = angle
         refreshFoldingApiState("hinge_candidate")
         evaluateLaptopModeForPosture(
             currentLaptopPosture() ?: false,
@@ -173,67 +178,67 @@ internal class LaptopPosture(
         // hinge is flat again, the next flex transition may be auto-detected
         // normally. Clear this before computing shouldShow so the same sample
         // cannot re-enable a deck the user just dismissed.
-        if (!laptopPosture && desk.laptopAutoSuppressedByUser) {
-            desk.laptopAutoSuppressedByUser = false
+        if (!laptopPosture && laptopAutoSuppressedByUser) {
+            laptopAutoSuppressedByUser = false
             OperationLog.i(context, "LaptopMode", "$source flat posture clears manual auto-suppression")
         }
         // A half-open hinge is itself authoritative: inactive inner panels are
         // omitted from DisplayManager on several foldables and the emulator.
         val mainDisplay = laptopPosture || desk.isFoldableMainDisplay()
-        if (!mainDisplay) desk.laptopAutoActivated = false
+        if (!mainDisplay) laptopAutoActivated = false
         // Automatic laptop mode is limited to portrait holding orientation on
         // Fold8-style devices. Landscape sessions can still be enabled from
         // the overlay; that explicit manual flag is preserved here.
-        val autoShouldShow = !desk.laptopAutoSuppressedByUser &&
+        val autoShouldShow = !laptopAutoSuppressedByUser &&
                 desk.isLaptopAutoOrientationEligible() && laptopPosture
         // Posture owns only automatically activated laptop mode. An explicit
         // user enable remains authoritative until the user disables it or the
         // host really moves to the cover display (handled by the independent
         // stable host-mismatch guard). Foldables can transiently omit their
         // inactive inner panel while unfolding, which must not revoke intent.
-        val shouldShow = desk.laptopManualOverride || (mainDisplay && autoShouldShow)
+        val shouldShow = laptopManualOverride || (mainDisplay && autoShouldShow)
         if (shouldShow == desk.laptopModeActive) {
-            desk.pendingLaptopMode = null
-            desk.pendingLaptopModeSince = 0L
+            pendingLaptopMode = null
+            pendingLaptopModeSince = 0L
             return
         }
         val now = SystemClock.uptimeMillis()
-        if (desk.pendingLaptopMode != shouldShow) {
-            desk.pendingLaptopMode = shouldShow
-            desk.pendingLaptopModeSince = now
-            val generation = ++desk.laptopModeEvaluationGeneration
+        if (pendingLaptopMode != shouldShow) {
+            pendingLaptopMode = shouldShow
+            pendingLaptopModeSince = now
+            val generation = ++laptopModeEvaluationGeneration
             android.os.Handler(context.mainLooper).postDelayed({
-                if (generation != desk.laptopModeEvaluationGeneration || !MirrorService.active ||
-                    desk.suspendedForLockScreen || desk.pendingLaptopMode != shouldShow
+                if (generation != laptopModeEvaluationGeneration || !MirrorService.active ||
+                    desk.suspendedForLockScreen || pendingLaptopMode != shouldShow
                 ) return@postDelayed
-                val stableAngle = filteredHingeAngle ?: desk.hingeAngle
+                val stableAngle = filteredHingeAngle ?: hingeAngle
                 val stablePosture = currentLaptopPosture() ?: return@postDelayed
-                if (stablePosture != shouldShow && !desk.laptopManualOverride) {
-                    desk.pendingLaptopMode = null
-                    desk.pendingLaptopModeSince = 0L
+                if (stablePosture != shouldShow && !laptopManualOverride) {
+                    pendingLaptopMode = null
+                    pendingLaptopModeSince = 0L
                     return@postDelayed
                 }
-                desk.pendingLaptopMode = null
-                desk.pendingLaptopModeSince = 0L
-                desk.laptopAutoActivated = shouldShow && !desk.laptopManualOverride
+                pendingLaptopMode = null
+                pendingLaptopModeSince = 0L
+                laptopAutoActivated = shouldShow && !laptopManualOverride
                 OperationLog.i(
                     context,
                     "LaptopMode",
-                    "$source timer angle=$stableAngle manual=$desk.laptopManualOverride " +
+                    "$source timer angle=$stableAngle manual=$laptopManualOverride " +
                             "main=$mainDisplay show=$shouldShow"
                 )
                 desk.setLaptopMode(shouldShow)
-            }, desk.laptopModeDebounceMs)
+            }, laptopModeDebounceMs)
             return
         }
-        if (now - desk.pendingLaptopModeSince >= desk.laptopModeDebounceMs) {
-            desk.pendingLaptopMode = null
-            desk.pendingLaptopModeSince = 0L
-            desk.laptopAutoActivated = shouldShow && !desk.laptopManualOverride
+        if (now - pendingLaptopModeSince >= laptopModeDebounceMs) {
+            pendingLaptopMode = null
+            pendingLaptopModeSince = 0L
+            laptopAutoActivated = shouldShow && !laptopManualOverride
             OperationLog.i(
                 context,
                 "LaptopMode",
-                "$source manual=$desk.laptopManualOverride main=$mainDisplay show=$shouldShow"
+                "$source manual=$laptopManualOverride main=$mainDisplay show=$shouldShow"
             )
             desk.setLaptopMode(shouldShow)
         }

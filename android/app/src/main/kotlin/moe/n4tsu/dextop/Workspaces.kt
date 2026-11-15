@@ -26,7 +26,6 @@ import org.json.JSONObject
 /** What [Workspaces] needs from the session beyond the shared interfaces. */
 internal interface WorkspacesHost : DesktopSession, OverlayMenu {
     fun currentDisplayTasks(): Map<String, Rect>
-    val desktopEnvironment: DesktopEnvironment
     val launchedAppBounds: MutableMap<String, Rect>
     fun menuUsesLandscapeLayout(): Boolean
     fun packageName(): String

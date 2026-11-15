@@ -18,18 +18,14 @@ internal interface VirtualPointerHost : DesktopSession, OverlayMenu {
     fun cancelDesktopTouchStream()
     val carCompanionPhoneTrackpadSurface: View?
     val coverTrackpadActive: Boolean
-    val desktopEnvironment: DesktopEnvironment
-    val directTouch: Boolean
     fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String
     val externalOutput: MirrorService.ExternalOutput?
     fun fallbackToSoftwarePointer(reason: String)
     val laptopKeyboardRequested: Boolean
     fun logSuppressedRelativeTouchpadEvent(kind: String)
     val physicalInputRouter: PhysicalInputRouter
-    val privilegedInputClient: PrivilegedInputClient
     var privilegedInputStarting: Boolean
     fun refreshPrivilegedInputConfig(reason: String)
-    val root: TouchRoutingFrame?
     fun startRawTouchscreenReaderIfEligible()
     fun stopRawTouchscreenReader(reason: String)
     fun updateVirtualCursorVisibility()

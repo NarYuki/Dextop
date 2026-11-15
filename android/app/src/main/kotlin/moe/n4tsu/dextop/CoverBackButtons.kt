@@ -4,25 +4,17 @@ import android.content.Context
 import android.view.MotionEvent
 import android.view.View
 import android.widget.LinearLayout
-import moe.n4tsu.dextop.input.PrivilegedInputClient
 
 /** What [CoverBackButtons] needs from the session beyond the shared interfaces. */
 internal interface CoverBackButtonsHost : DesktopSession, OverlayMenu {
     fun activateTopologyForIndependentDisplays(reason: String)
     fun cancelDesktopTouchStream()
     val cast: CastController
-    var coverBackButtonsActive: Boolean
-    val coverBackButtonsPressed: MutableSet<Int>
     val coverDisplayController: CoverDisplaySessionController
     fun coverDisplayLifecycleToken(): String
-    var coverTrackpadActive: Boolean
-    var coverTrackpadPreviousRuntimeProfile: String?
-    var coverTrackpadSurface: View?
-    val directTouch: Boolean
     val gamepad: VirtualGamepad
     fun isFoldableDevice(): Boolean
     val menuWidgets: MenuWidgets
-    val privilegedInputClient: PrivilegedInputClient
     fun refreshPrivilegedInputConfig(reason: String)
     fun showCoverDisplayFailure(error: Throwable)
     fun showCoverDisplayMenu(panel: LinearLayout)
@@ -36,32 +28,38 @@ internal class CoverBackButtons(
     private val context: Context,
     private val desk: CoverBackButtonsHost,
 ) {
+    internal var coverBackButtonsActive = false
+    internal val coverBackButtonsPressed = linkedSetOf<Int>()
+    internal var coverTrackpadPreviousRuntimeProfile: String? = null
+    internal var coverTrackpadSurface: View? = null
+    internal var coverTrackpadActive = false
+
     internal fun enableCoverBackButtons() {
         if (!desk.gamepad.isExperimentalGamepadEnabled()) {
             desk.coverDisplayController.stopBackButtonMode { }
             return
         }
-        desk.coverBackButtonsActive = true
+        coverBackButtonsActive = true
         desk.privilegedInputClient.setGamepadVisible(true)
     }
 
     internal fun disableCoverBackButtons() {
         releaseCoverBackButtonInputs()
-        desk.coverBackButtonsActive = false
+        coverBackButtonsActive = false
         if (!desk.gamepad.virtualGamepadVisible) desk.privilegedInputClient.setGamepadVisible(false)
     }
 
     internal fun injectCoverBackButtonInternal(code: Int, pressed: Boolean) {
-        if (!desk.coverBackButtonsActive) return
-        if (pressed) desk.coverBackButtonsPressed.add(code) else desk.coverBackButtonsPressed.remove(code)
+        if (!coverBackButtonsActive) return
+        if (pressed) coverBackButtonsPressed.add(code) else coverBackButtonsPressed.remove(code)
         desk.privilegedInputClient.injectGamepad(code, if (pressed) 1 else 0)
     }
 
     private fun releaseCoverBackButtonInputs() {
-        desk.coverBackButtonsPressed.toList().forEach { code ->
+        coverBackButtonsPressed.toList().forEach { code ->
             desk.privilegedInputClient.injectGamepad(code, 0)
         }
-        desk.coverBackButtonsPressed.clear()
+        coverBackButtonsPressed.clear()
     }
 
     private fun showCoverBackButtonsConfirmation(panel: LinearLayout) {
@@ -114,12 +112,12 @@ internal class CoverBackButtons(
     }
 
     internal fun attachCoverTrackpad(surface: View) {
-        if (desk.coverTrackpadSurface === surface && desk.coverTrackpadActive) return
-        if (!desk.coverTrackpadActive) {
-            desk.coverTrackpadPreviousRuntimeProfile = desk.virtualPointer.virtualPointerRuntimeProfile
+        if (coverTrackpadSurface === surface && coverTrackpadActive) return
+        if (!coverTrackpadActive) {
+            coverTrackpadPreviousRuntimeProfile = desk.virtualPointer.virtualPointerRuntimeProfile
         }
-        desk.coverTrackpadSurface = surface
-        desk.coverTrackpadActive = true
+        coverTrackpadSurface = surface
+        coverTrackpadActive = true
         desk.cancelDesktopTouchStream()
         desk.virtualPointer.stopVirtualMouse()
         desk.virtualPointer.virtualPointerRuntimeProfile = "touchpad"
@@ -129,7 +127,7 @@ internal class CoverBackButtons(
     }
 
     internal fun handleCoverTrackpadEvent(surface: View, event: MotionEvent) {
-        if (!desk.coverTrackpadActive || desk.coverTrackpadSurface !== surface) return
+        if (!coverTrackpadActive || coverTrackpadSurface !== surface) return
         desk.trackpad(
             event,
             surface,
@@ -140,15 +138,15 @@ internal class CoverBackButtons(
     }
 
     internal fun detachCoverTrackpad(surface: View) {
-        if (desk.coverTrackpadSurface !== surface) return
+        if (coverTrackpadSurface !== surface) return
         if (desk.virtualTouchpad.virtualTouchpadActiveContactCount() > 0) {
             desk.virtualTouchpad.finishVirtualTouchpadGesture("cover_trackpad_detached", allowDirectTouch = true)
         }
-        desk.coverTrackpadSurface = null
-        desk.coverTrackpadActive = false
+        coverTrackpadSurface = null
+        coverTrackpadActive = false
         desk.virtualPointer.stopVirtualMouse()
-        desk.virtualPointer.virtualPointerRuntimeProfile = desk.coverTrackpadPreviousRuntimeProfile
-        desk.coverTrackpadPreviousRuntimeProfile = null
+        desk.virtualPointer.virtualPointerRuntimeProfile = coverTrackpadPreviousRuntimeProfile
+        coverTrackpadPreviousRuntimeProfile = null
         if (MirrorService.active && (!desk.directTouch || desk.laptopModeActive)) desk.virtualPointer.startVirtualMouse()
         OperationLog.i(context, "InputRouting", "cover display detached from uinput touchpad")
     }

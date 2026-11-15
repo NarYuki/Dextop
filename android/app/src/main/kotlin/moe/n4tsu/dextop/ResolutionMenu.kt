@@ -13,8 +13,6 @@ internal interface ResolutionMenuHost : DesktopSession, OverlayMenu {
     fun resizeActiveDisplay(next: MirrorService.Config, reason: String)
     fun resolutionProfiles(): List<ResolutionProfile>
     val resolutionRepository: ResolutionRepository
-    val secureDisplay: Boolean
-    val showSystemDecorations: Boolean
 }
 
 /** Menu pages for choosing, editing and saving desktop resolutions. */

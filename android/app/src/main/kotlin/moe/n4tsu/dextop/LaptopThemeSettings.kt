@@ -28,7 +28,6 @@ internal interface LaptopThemeSettingsHost : DesktopSession, OverlayMenu {
     var laptopSettingsVisible: Boolean
     val laptopTypeface: Typeface
     fun rebuildLaptopDeck(showSettings: Boolean = false)
-    val root: TouchRoutingFrame?
     val swipeTyping: SwipeTyping
 }
 

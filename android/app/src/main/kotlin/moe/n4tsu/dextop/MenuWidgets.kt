@@ -20,8 +20,6 @@ internal interface MenuWidgetsHost : DesktopSession, OverlayMenu {
     val cast: CastController
     fun changeOrientation()
     val requestedPortrait: Boolean
-    val secureDisplay: Boolean
-    val showSystemDecorations: Boolean
     fun start(config: MirrorService.Config)
     fun stop()
     fun toggleDisplayRotation180()

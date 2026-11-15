@@ -121,12 +121,25 @@ def move(cls,field,pat,excl,bases,types,extra_names,only):
     bad=assigned&basenames
     extras=sorted(need-basenames)
     decls=[];impls=[];missing=[]
+    # defaults in a host function's signature read host state: that state has to be on the host too
+    grew=True
+    while grew:
+        grew=False
+        for n in list(extras):
+            d,_=signature(L,by[n],assigned,types)
+            for x in members.refs(d or '',allnames-gn):
+                if x!=n and x not in need and x not in basenames and by[x][1] in('fun','val','var'): need.add(x); extras.append(x); grew=True
+    extras=sorted(set(extras))
     for n in extras:
         d,i=signature(L,by[n],assigned,types)
         if not d: missing.append(f'{n}: {L[by[n][4]].strip()[:110]}')
         else: decls.append(d);impls.append(i)
+    for n in sorted(bad):
+        d,i=signature(L,by[n],assigned,types)
+        if not d: missing.append(f'{n}: {L[by[n][4]].strip()[:110]}')
+        else: decls.append('    /** Written here, not only read. */\n    override'+d[3:]); impls.append(i)
     print(f'{cls}: {len(grp)} members, {sum(m[3]-m[2]+1 for m in grp)} lines; host extras {len(extras)}; nested types referenced: {sorted(types_needed)}')
-    if bad: print('ASSIGNS TO BASE MEMBERS (must be var in base):',bad)
+    if bad: print('writes base members:',bad)
     if missing:
         print('NEED --type:'); [print('  ',x) for x in missing]
     if only=='dry': return
@@ -157,6 +170,54 @@ def move(cls,field,pat,excl,bases,types,extra_names,only):
     open(SRC,'w',encoding='utf-8').write('\n'.join(L))
     st['nested']=sorted(set(st.get('nested',[]))|{m[0] for m in M if m[1] not in('fun','val','var')})
     st.setdefault('components',{})[cls]={'field':field,'names':sorted(gn),'host':sorted(need)}
+    json.dump(st,open(STATE,'w'),indent=1)
+
+def adopt(cls,names):
+    """Move state the host kept for a component into the component that owns it."""
+    L,M,start,end=members.load()
+    st=json.load(open(STATE)); by={m[0]:m for m in M}
+    f=f'{KDIR}/{cls}.kt'; t=open(f,encoding='utf-8').read()
+    code=[]
+    for n in names:
+        m=by[n]; c=L[m[2]:m[3]+1]; k=m[4]-m[2]
+        c[k]=re.sub(r'^(    (?:@[\w.]+(?:\([^)]*\))? *)*)private ',r'\1internal ',c[k]); code+=c
+    for m in sorted((by[n] for n in names),key=lambda m:-m[2]): del L[m[2]:m[3]+1]
+    open(SRC,'w',encoding='utf-8').write('\n'.join(L))
+    for n in names: t=re.sub(r'\bdesk\.'+n+r'\b',n,t)
+    a=t.index(f'internal class {cls}('); b=t.index(') {\n',a)+4
+    t=t[:b]+'\n'.join(code).replace('this@MirrorService','context')+'\n\n'+t[b:]
+    open(f,'w',encoding='utf-8').write(t)
+    c=st['components'][cls]; c['names']=sorted(set(c['names'])|set(names)); c['host']=sorted(set(c['host'])-set(names))
+    json.dump(st,open(STATE,'w'),indent=1)
+    prune_host(cls)
+    print(cls,'adopted',len(names))
+
+def dedupe():
+    """Drop host members that a base interface now provides."""
+    st=json.load(open(STATE)); base=set()
+    for b in st['bases'].values(): base|=set(b['names'])
+    for cls,c in st['components'].items():
+        f=f'{KDIR}/{cls}.kt'; t=open(f,encoding='utf-8').read()
+        a=t.index(f'internal interface {cls}Host'); b=t.index('\n}\n',a)
+        head=t[a:b].split('\n'); dead=[]; keep=[head[0]]
+        for l in head[1:]:
+            m=re.match(r'    (?:val|var|fun(?: <[^>]+>)?) (\w+)',l)
+            if m and m.group(1) in base: dead.append(m.group(1))
+            else: keep.append(l)
+        if not dead: continue
+        open(f,'w',encoding='utf-8').write(t[:a]+'\n'.join(keep)+t[b:])
+        L=open(SRC,encoding='utf-8').read().split('\n')
+        i=next(k for k,l in enumerate(L) if re.match(r'    private val \w+(?:: \w+)? = '+cls+r'\(this, object : ',l))
+        j=next(k for k in range(i,len(L)) if L[k]=='    })')
+        blk=L[i+1:j]; res=[]; k=0
+        while k<len(blk):
+            m=re.match(r'        override (?:val|var|fun(?: <[^>]+>)?) (\w+)',blk[k]); n=1
+            while k+n<len(blk) and not blk[k+n].startswith('        override'): n+=1
+            if not (m and m.group(1) in dead): res+=blk[k:k+n]
+            k+=n
+        L[i+1:j]=res
+        open(SRC,'w',encoding='utf-8').write('\n'.join(L))
+        c['host']=sorted(set(c['host'])-set(dead)); print(cls,'now from base:',dead)
     json.dump(st,open(STATE,'w'),indent=1)
 
 def compile_errors():
@@ -215,6 +276,19 @@ def fix(cls,field,rounds=6):
                 t=open(SRC,encoding='utf-8').read()
                 t2=re.sub(r'(?m)^    private ((?:(?:inner|data|enum|sealed) )*(?:class|object|interface) '+nm+r'\b)',r'    internal \1',t)
                 if t2!=t: open(SRC,'w',encoding='utf-8').write(t2); extra_fixes=extra_fixes+1
+            elif f==newf and re.match(r"Operator '[!=]==' cannot be applied to 'MirrorService\??' and '"+cls+"'",msg):
+                ls=open(f,encoding='utf-8').read().split('\n'); s2=re.sub(r'([!=]== )this\b',r'\1desk.accessibilityService',ls[ln-1])
+                if s2!=ls[ln-1]: ls[ln-1]=s2; open(f,'w',encoding='utf-8').write('\n'.join(ls)); extra_fixes+=1
+            elif f==newf and re.search(r"actual type is '(android\.content\.)?Context\?', but '(android\.content\.)?Context' was expected",msg):
+                edits.setdefault(f,[]).append((ln,col,'outer',None))
+            elif f==newf and msg.startswith('Expression expected, but package name found'):
+                edits.setdefault(f,[]).append((ln,col,'ins','context.'))
+            elif f==newf and msg.startswith('None of the following candidates is applicable'):
+                ls=open(f,encoding='utf-8').read().split('\n'); s2=re.sub(r'\(this([,)])',r'(context\1',ls[ln-1],count=1)
+                if s2!=ls[ln-1]: ls[ln-1]=s2; open(f,'w',encoding='utf-8').write('\n'.join(ls)); extra_fixes+=1
+                else:
+                    for k in range(ln,min(ln+3,len(ls))):
+                        if ls[k].strip()=='this,': ls[k]=ls[k].replace('this,','context,'); open(f,'w',encoding='utf-8').write('\n'.join(ls)); extra_fixes+=1; break
             elif f==newf and re.match(r"Function invocation '\w+\(\)' expected",msg):
                 edits.setdefault(f,[]).append((ln,col,'ctx',None))
             elif f==newf and re.search(r"actual type is '[\w.]*"+cls+r"', but '(Context|android\.content\.Context)!?\??' was expected",msg):
@@ -228,9 +302,13 @@ def fix(cls,field,rounds=6):
                 if kind=='ins' and s[:col-1].endswith('::') and not s[:col-3].endswith(arg[:-1]):
                     dot='.' if re.search(r'[\w)\]]$',s[:col-3]) else ''
                     lines[ln-1]=s[:col-3]+dot+arg[:-1]+s[col-3:]; n+=1; continue
+                if kind=='ins' and s[col-1:col+1] in('++','--'): continue
+                if kind=='ins' and s[:col-1].endswith('$') and not s[:col-1].endswith('\\$'):
+                    e=re.match(r'\w+',s[col-1:]).end(); lines[ln-1]=s[:col-1]+'{'+arg+s[col-1:col-1+e]+'}'+s[col-1+e:]; n+=1; continue
                 if kind=='ins' and f==SRC and s[:col-1].endswith('?.'): arg=arg[:-1]+'?.'
                 if kind=='ins' and not s[:col-1].endswith(arg) and (f==SRC or not s[:col-1].endswith('.')): lines[ln-1]=s[:col-1]+arg+s[col-1:]; n+=1
                 elif kind=='ctx' and s[:col-1].endswith('desk.'): lines[ln-1]=s[:col-6]+'context.'+s[col-1:]; n+=1
+                elif kind=='outer' and s[col-1:col+6]=='context': lines[ln-1]=s[:col-1]+'this@'+cls+'.context'+s[col+6:]; n+=1
                 elif kind=='this' and s[col-1:col+3]=='this': lines[ln-1]=s[:col-1]+'context'+s[col+3:]; n+=1
             open(f,'w',encoding='utf-8').write('\n'.join(lines))
         if comp_un: n+=unprivate_companion(comp_un)
@@ -259,7 +337,7 @@ def prune_host(cls):
     dead=[]; keep=[head[0]]
     for l in head[1:]:
         m=re.match(r'    (?:val|var|fun(?: <[^>]+>)?) (\w+)',l)
-        if m and not re.search(r'\b(?:host|desk)(?:\.|::)'+m.group(1)+r'\b',body): dead.append(m.group(1))
+        if m and not re.search(r'\b(?:host|desk)(?:\.|::)'+m.group(1)+r'\b',body) and not any(re.search(r'= [^\n]*\b'+m.group(1)+r'\b',o) for o in head[1:] if o is not l): dead.append(m.group(1))
         else: keep.append(l)
     open(f,'w',encoding='utf-8').write(t[:a]+'\n'.join(keep)+body)
     if dead:
@@ -307,3 +385,5 @@ if __name__=='__main__':
             prune_host(a[1]); prune(a[1])
             rc,errs,raw=compile_errors(); print('final compile rc',rc,len(errs)); [print('  ',e[0].split('/')[-1],e[1],e[3][:160]) for e in errs[:20]]
     elif a[0]=='prune': prune(a[1])
+    elif a[0]=='adopt': adopt(a[1],a[2:])
+    elif a[0]=='dedupe': dedupe()

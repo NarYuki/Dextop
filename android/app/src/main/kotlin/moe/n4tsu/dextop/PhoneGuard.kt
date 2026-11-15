@@ -8,17 +8,9 @@ import android.view.Display
 
 /** What [PhoneGuard] needs from the session beyond the shared interfaces. */
 internal interface PhoneGuardHost : DesktopSession, OverlayMenu {
-    val desktopNavigationToken: Binder
     fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String
     val hostDisplayMonitorHandler: Handler
-    var lastForcedPhoneHalfTurn: Boolean?
-    var lastForcedPhonePortrait: Boolean?
-    var navigationRestoreGeneration: Int
-    var navigationSuppressedDisplayId: Int
-    val navigationToken: Binder
-    val phoneRotationController: PhoneRotationController
     fun rotate180PreferenceKey(portrait: Boolean): String
-    val suspendedForLockScreen: Boolean
     fun systemService(name: String, interfaceName: String): Any
 }
 
@@ -27,34 +19,44 @@ internal class PhoneGuard(
     private val context: Context,
     private val desk: PhoneGuardHost,
 ) {
+    internal var lastForcedPhoneHalfTurn: Boolean? = null
+    internal var lastForcedPhonePortrait: Boolean? = null
+    internal var navigationRestoreGeneration = 0
+    internal var navigationSuppressedDisplayId = -1
+    internal val navigationToken = Binder()
+    internal val desktopNavigationToken = Binder()
+    internal val phoneRotationController by lazy {
+        PhoneRotationController(context, desk.privilegedAccess, desk.sessionJournal)
+    }
+
     internal fun setPhoneNavigationDisabled(disabled: Boolean) {
-        val generation = ++desk.navigationRestoreGeneration
+        val generation = ++navigationRestoreGeneration
         MainActivity.setSessionSystemBarsHidden(disabled)
-        applyNavigationDisabled(Display.DEFAULT_DISPLAY, disabled, desk.navigationToken, "phone")
+        applyNavigationDisabled(Display.DEFAULT_DISPLAY, disabled, navigationToken, "phone")
         val desktopDisplayId = if (disabled) {
             desk.targetDisplayId.takeIf { it >= 0 && it != Display.DEFAULT_DISPLAY }?.also {
-                desk.navigationSuppressedDisplayId = it
+                navigationSuppressedDisplayId = it
             }
         } else {
-            desk.navigationSuppressedDisplayId.takeIf { it >= 0 }
+            navigationSuppressedDisplayId.takeIf { it >= 0 }
                 ?: desk.targetDisplayId.takeIf { it >= 0 && it != Display.DEFAULT_DISPLAY }
         }
         desktopDisplayId?.let {
-            applyNavigationDisabled(it, disabled, desk.desktopNavigationToken, "desktop")
+            applyNavigationDisabled(it, disabled, desktopNavigationToken, "desktop")
         }
-        if (!disabled) desk.navigationSuppressedDisplayId = -1
+        if (!disabled) navigationSuppressedDisplayId = -1
         if (disabled) return
 
         // SystemUI can recreate its navigation bar after our overlay is
         // removed. Re-submit the zero flags after those asynchronous passes.
         listOf(120L, 450L, 1_200L, 2_400L, 4_000L).forEach { delay ->
             desk.hostDisplayMonitorHandler.postDelayed({
-                if (generation != desk.navigationRestoreGeneration || MirrorService.active && !desk.suspendedForLockScreen) {
+                if (generation != navigationRestoreGeneration || MirrorService.active && !desk.suspendedForLockScreen) {
                     return@postDelayed
                 }
-                applyNavigationDisabled(Display.DEFAULT_DISPLAY, false, desk.navigationToken, "phone")
+                applyNavigationDisabled(Display.DEFAULT_DISPLAY, false, navigationToken, "phone")
                 desktopDisplayId?.let {
-                    applyNavigationDisabled(it, false, desk.desktopNavigationToken, "desktop")
+                    applyNavigationDisabled(it, false, desktopNavigationToken, "desktop")
                 }
             }, delay)
         }
@@ -142,11 +144,11 @@ internal class PhoneGuard(
     internal fun forcePhoneRotation(portrait: Boolean, force: Boolean = false) {
         val halfTurn = context.getSharedPreferences(MirrorService.PREFS, Context.MODE_PRIVATE)
             .getBoolean(desk.rotate180PreferenceKey(portrait), false)
-        if (!force && desk.lastForcedPhonePortrait == portrait && desk.lastForcedPhoneHalfTurn == halfTurn) return
-        desk.lastForcedPhonePortrait = portrait
-        desk.lastForcedPhoneHalfTurn = halfTurn
+        if (!force && lastForcedPhonePortrait == portrait && lastForcedPhoneHalfTurn == halfTurn) return
+        lastForcedPhonePortrait = portrait
+        lastForcedPhoneHalfTurn = halfTurn
         runCatching {
-            desk.phoneRotationController.force(portrait, halfTurn)
+            phoneRotationController.force(portrait, halfTurn)
         }.onSuccess {
             OperationLog.i(
                 context,
@@ -160,10 +162,10 @@ internal class PhoneGuard(
     }
 
     internal fun releasePhoneRotation(clearSnapshot: Boolean = false) {
-        desk.lastForcedPhonePortrait = null
-        desk.lastForcedPhoneHalfTurn = null
+        lastForcedPhonePortrait = null
+        lastForcedPhoneHalfTurn = null
         runCatching {
-            desk.phoneRotationController.restore(clearSnapshot)
+            phoneRotationController.restore(clearSnapshot)
         }.onFailure { Log.e(desk.logTag, "phone rotation unlock failed", it) }
     }
 }

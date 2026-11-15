@@ -18,9 +18,7 @@ import kotlin.math.max
 
 /** What [ControlCenter] needs from the session beyond the shared interfaces. */
 internal interface ControlCenterHost : DesktopSession, OverlayMenu {
-    val root: TouchRoutingFrame?
     val rootWindowParams: WindowManager.LayoutParams?
-    val windowManager: WindowManager?
 }
 
 /** Volume and brightness sliders of the overlay menu. */

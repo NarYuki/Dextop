@@ -19,7 +19,6 @@ internal interface ImeRegionProbeHost : DesktopSession, OverlayMenu {
     fun rawTouchscreenViewBounds(view: View?): Rect?
     fun refreshPrivilegedInputConfig(reason: String)
     fun regionFor(view: View?): RectF
-    val surfaceView: SurfaceView?
 }
 
 internal data class ImeTouchRegion(

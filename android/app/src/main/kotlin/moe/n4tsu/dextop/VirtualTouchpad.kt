@@ -76,7 +76,7 @@ internal class VirtualTouchpad(
             OperationLog.w(
                 context,
                 "InputRouting",
-                "touchpad slot allocation failed pointerId=$pointerId maxSlots=$MirrorService.VIRTUAL_TOUCHPAD_MAX_SLOTS"
+                "touchpad slot allocation failed pointerId=$pointerId maxSlots=${MirrorService.VIRTUAL_TOUCHPAD_MAX_SLOTS}"
             )
             Log.w(
                 desk.logTag,
@@ -187,7 +187,7 @@ internal class VirtualTouchpad(
         if (desk.virtualPointerRegisteredProfile != "touchpad") {
             Log.w(
                 desk.logTag,
-                "touchpad frame rejected: registeredProfile=$desk.virtualPointerRegisteredProfile " +
+                "touchpad frame rejected: registeredProfile=${desk.virtualPointerRegisteredProfile} " +
                         "eventTriples=${events.size / 3}"
             )
             return false
@@ -214,8 +214,8 @@ internal class VirtualTouchpad(
             Log.w(
                 desk.logTag,
                 "touchpad event unavailable action=${MotionEvent.actionToString(event.action)} " +
-                        "ready=$desk.virtualMouseReady processAlive=${desk.virtualMouseProcessAlive()} " +
-                        "registeredProfile=$desk.virtualPointerRegisteredProfile"
+                        "ready=${desk.virtualMouseReady} processAlive=${desk.virtualMouseProcessAlive()} " +
+                        "registeredProfile=${desk.virtualPointerRegisteredProfile}"
             )
             resetVirtualTouchpadState("pointer_unavailable", logSummary = true)
             return false
