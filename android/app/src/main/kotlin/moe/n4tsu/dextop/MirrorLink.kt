@@ -12,9 +12,6 @@ internal interface MirrorLinkHost : DesktopSession, OverlayMenu {
     var autoDestinationSurface: Surface?
     var autoOwnedDisplay: OwnedVirtualDisplay?
     fun closeExtendSink()
-    val cursorView: CursorView?
-    val cursorX: Float
-    val cursorY: Float
     fun directDisplaySurface(): Surface
     val displayBackend: DisplayMirrorBackend
     var displayCreationInProgress: Boolean
@@ -22,7 +19,6 @@ internal interface MirrorLinkHost : DesktopSession, OverlayMenu {
     val phoneOwnedDisplay: OwnedVirtualDisplay?
     val phoneRegion: Rect?
     fun stopRawMouseReader()
-    fun updateVirtualCursorVisibility()
     val virtualPointer: VirtualPointer
 }
 
@@ -38,18 +34,18 @@ internal class MirrorLink(
     internal fun restoreSoftwareCursorAfterMirrorFailure(reason: String) {
         desk.virtualPointer.stopVirtualMouse()
         if (!desk.directTouch) {
-            desk.cursorView?.apply {
+            desk.desktopCursor.cursorView?.apply {
                 visibility = View.VISIBLE
                 bringToFront()
                 update(
-                    (desk.cursorX / desk.targetWidth.coerceAtLeast(1)).coerceIn(0f, 1f),
-                    (desk.cursorY / desk.targetHeight.coerceAtLeast(1)).coerceIn(0f, 1f)
+                    (desk.desktopCursor.cursorX / desk.targetWidth.coerceAtLeast(1)).coerceIn(0f, 1f),
+                    (desk.desktopCursor.cursorY / desk.targetHeight.coerceAtLeast(1)).coerceIn(0f, 1f)
                 )
             }
         } else {
-            desk.cursorView?.visibility = View.GONE
+            desk.desktopCursor.cursorView?.visibility = View.GONE
         }
-        desk.updateVirtualCursorVisibility()
+        desk.desktopCursor.updateVirtualCursorVisibility()
         OperationLog.w(
             context,
             "InputRouting",

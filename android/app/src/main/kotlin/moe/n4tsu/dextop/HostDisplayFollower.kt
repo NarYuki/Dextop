@@ -18,15 +18,9 @@ import kotlin.math.roundToInt
 internal interface HostDisplayFollowerHost : DesktopSession, OverlayMenu {
     fun applyHostDisplayOrientation(portrait: Boolean)
     val coverDisplayController: CoverDisplaySessionController
-    var cursorX: Float
-    var cursorY: Float
-    fun defaultDisplayUniqueId(): String?
     val displayFactory: DisplayFactory
     fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String
     val externalOutputs: ExternalDisplays
-    fun isFoldableDevice(): Boolean
-    fun isFoldableMainDisplay(): Boolean
-    fun isWorkspaceMagnificationActive(): Boolean
     val keyboardDeck: KeyboardDeck
     val laptopModeSwitch: LaptopMode
     val launcher: DesktopLauncher
@@ -37,12 +31,9 @@ internal interface HostDisplayFollowerHost : DesktopSession, OverlayMenu {
     val phoneGuard: PhoneGuard
     val posture: LaptopPosture
     val rawTouchscreen: RawTouchscreenBridge
-    val requestedPortrait: Boolean
     fun scheduleCoverDisplayLifecycleCheck(reason: String)
-    val stopping: Boolean
     fun systemService(name: String, interfaceName: String): Any
     val touchSurface: TouchSurface
-    fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY)
     val virtualPointer: VirtualPointer
     val workspaces: Workspaces
     /** Written here, not only read. */
@@ -58,6 +49,12 @@ internal class HostDisplayFollower(
     private val context: Context,
     private val desk: HostDisplayFollowerHost,
 ) {
+    internal fun isWorkspaceMagnificationActive(): Boolean {
+        val value = context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
+            .all["flutter.desktop_workspace_magnification_percent"]
+        return (value as? Number)?.toInt()?.let { it > 100 } == true
+    }
+
     internal val internalRefreshRateController by lazy {
         InternalRefreshRateController(context, desk.sessionJournal)
     }
@@ -253,9 +250,9 @@ internal class HostDisplayFollower(
             if (desk.laptopModeActive &&
                 !desk.laptopModeSwitch.isDebugLaptopModeForced() &&
                 desk.laptopModeSwitch.laptopHostUniqueId != null &&
-                desk.defaultDisplayUniqueId()?.let { it != desk.laptopModeSwitch.laptopHostUniqueId } == true &&
+                desk.deviceDisplays.defaultDisplayUniqueId()?.let { it != desk.laptopModeSwitch.laptopHostUniqueId } == true &&
                 desk.laptopModeSwitch.hasStableLaptopHostMismatch() &&
-                !desk.isFoldableMainDisplay()
+                !desk.deviceDisplays.isFoldableMainDisplay()
             ) {
                 // A different internal panel became the default display. This
                 // is only a cover-display signal when the new default is
@@ -313,7 +310,7 @@ internal class HostDisplayFollower(
         val selectedDeviceResolution =
             preferences.getString("flutter.selected_resolution_id", "device") == "device"
         return desk.laptopModeActive || selectedDeviceResolution &&
-                (desk.isFoldableDevice() || preferences.getBoolean("flutter.foldable_auto", false) ||
+                (desk.deviceDisplays.isFoldableDevice() || preferences.getBoolean("flutter.foldable_auto", false) ||
                         desk.desktopEnvironment.autoResizeWithHostDisplay)
     }
 
@@ -391,8 +388,8 @@ internal class HostDisplayFollower(
         desk.touchSurface.cancelDesktopTouchStream()
         val oldWidth = desk.targetWidth.coerceAtLeast(1)
         val oldHeight = desk.targetHeight.coerceAtLeast(1)
-        val normalizedCursorX = desk.cursorX / oldWidth
-        val normalizedCursorY = desk.cursorY / oldHeight
+        val normalizedCursorX = desk.desktopCursor.cursorX / oldWidth
+        val normalizedCursorY = desk.desktopCursor.cursorY / oldHeight
         val sizeChanged = next.width != desk.targetWidth || next.height != desk.targetHeight
         val densityChanged = next.density != desk.density
         if (!sizeChanged && !densityChanged) return
@@ -507,9 +504,9 @@ internal class HostDisplayFollower(
             }
             desk.displayFactory.configureDisplay()
         }
-        desk.cursorX = (normalizedCursorX * desk.targetWidth).coerceIn(0f, desk.targetWidth - 1f)
-        desk.cursorY = (normalizedCursorY * desk.targetHeight).coerceIn(0f, desk.targetHeight - 1f)
-        desk.updateCursorPosition()
+        desk.desktopCursor.cursorX = (normalizedCursorX * desk.targetWidth).coerceIn(0f, desk.targetWidth - 1f)
+        desk.desktopCursor.cursorY = (normalizedCursorY * desk.targetHeight).coerceIn(0f, desk.targetHeight - 1f)
+        desk.desktopCursor.updateCursorPosition()
         desk.surfaceView?.let { surface ->
             if (surface.width > 0 && surface.height > 0) {
                 // Rotation-driven Surface replacement reattaches the mirror in
@@ -588,7 +585,7 @@ internal class HostDisplayFollower(
         // "apply scale to windows" is enabled the requested behavior is to
         // retain the original DPI, so density can legitimately equal the
         // automatic value even though width and height are magnified.
-        if (desk.isWorkspaceMagnificationActive() || base.density != automaticDensity) {
+        if (isWorkspaceMagnificationActive() || base.density != automaticDensity) {
             return base
         }
         // An unscaled device profile can continue to follow the complete host

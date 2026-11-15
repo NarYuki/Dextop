@@ -16,9 +16,6 @@ internal interface PhysicalInputHost : DesktopSession, OverlayMenu {
     fun activateTouchInput()
     fun clearLaptopKeyboardPublication(reason: String)
     fun currentInputMode(): String
-    val cursorView: CursorView?
-    var cursorX: Float
-    var cursorY: Float
     fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String
     fun finishAllLaptopKeyPresses()
     fun forwardMouseEvent(source: MotionEvent, view: View): Boolean
@@ -32,7 +29,6 @@ internal interface PhysicalInputHost : DesktopSession, OverlayMenu {
     val rawTouchscreen: RawTouchscreenBridge
     fun scheduleLaptopKeyboardReadyCheck(generation: Long, attempt: Int)
     fun setOverlayFocusable(focusable: Boolean)
-    fun updateVirtualCursorVisibility()
     val virtualPointer: VirtualPointer
 }
 
@@ -155,7 +151,7 @@ internal class PhysicalInput(
         physicalMouseActive = true
         // Physical mice use Android's pointer only. Dextop's cursor is reserved
         // exclusively for touch-panel trackpad mode.
-        desk.cursorView?.visibility = View.GONE
+        desk.desktopCursor.cursorView?.visibility = View.GONE
         desk.setOverlayFocusable(true)
         desk.surfaceView?.post {
             val shell = desk.plasmaShell
@@ -203,7 +199,7 @@ internal class PhysicalInput(
         if (desk.targetDisplayId < 0) return false
         return runCatching {
             val event = MotionEvent.obtain(source)
-            event.offsetLocation(desk.cursorX - event.x, desk.cursorY - event.y)
+            event.offsetLocation(desk.desktopCursor.cursorX - event.x, desk.desktopCursor.cursorY - event.y)
             check(desk.inputDispatcher.send(event, desk.targetDisplayId))
             event.recycle()
             true
@@ -216,7 +212,7 @@ internal class PhysicalInput(
             val connected = hasPhysicalMouse()
             if (!connected && physicalMouseActive) {
                 physicalMouseActive = false
-                desk.updateVirtualCursorVisibility()
+                desk.desktopCursor.updateVirtualCursorVisibility()
             }
         }
     }
@@ -250,8 +246,8 @@ internal class PhysicalInput(
 
     /** Tracks the injection position without involving Dextop's touch cursor. */
     internal fun movePhysicalPointer(dx: Float, dy: Float) {
-        desk.cursorX = (desk.cursorX + dx).coerceIn(0f, desk.targetWidth - 1f)
-        desk.cursorY = (desk.cursorY + dy).coerceIn(0f, desk.targetHeight - 1f)
+        desk.desktopCursor.cursorX = (desk.desktopCursor.cursorX + dx).coerceIn(0f, desk.targetWidth - 1f)
+        desk.desktopCursor.cursorY = (desk.desktopCursor.cursorY + dy).coerceIn(0f, desk.targetHeight - 1f)
     }
 
     internal fun startRawMouseReader() {

@@ -13,9 +13,7 @@ internal interface CoverBackButtonsHost : DesktopSession, OverlayMenu {
     val coverDisplayController: CoverDisplaySessionController
     fun coverDisplayLifecycleToken(): String
     val gamepad: VirtualGamepad
-    fun isFoldableDevice(): Boolean
     val menuWidgets: MenuWidgets
-    fun refreshPrivilegedInputConfig(reason: String)
     fun showCoverDisplayFailure(error: Throwable)
     fun showCoverDisplayMenu(panel: LinearLayout)
     fun trackpad(event: MotionEvent, sourceView: View, forceCursorMode: Boolean = false, allowVirtualPointer: Boolean = false, hapticView: View? = null): Boolean
@@ -96,7 +94,7 @@ internal class CoverBackButtons(
     }
 
     internal fun syncCoverInputForKeyboardStyle() {
-        if (desk.demoMode || !desk.isFoldableDevice()) return
+        if (desk.demoMode || !desk.deviceDisplays.isFoldableDevice()) return
         val shouldUseBackButtons = desk.gamepad.isGamepadDeckActive() && desk.gamepad.isExperimentalGamepadEnabled()
         val state = desk.coverDisplayController.state()
         if (shouldUseBackButtons && !state.backButtonsActive && !state.busy) {
@@ -122,7 +120,7 @@ internal class CoverBackButtons(
         desk.virtualPointer.stopVirtualMouse()
         desk.virtualPointer.virtualPointerRuntimeProfile = "touchpad"
         desk.virtualPointer.startVirtualMouse("touchpad")
-        surface.post { desk.refreshPrivilegedInputConfig("cover_trackpad_attached") }
+        surface.post { desk.privilegedInput.refreshPrivilegedInputConfig("cover_trackpad_attached") }
         OperationLog.i(context, "InputRouting", "cover display attached to uinput touchpad")
     }
 

@@ -19,7 +19,8 @@ internal interface AndroidPauseHost : DesktopSession, OverlayMenu {
     val mirror: MirrorLink
     var overlayLayoutEditing: Boolean
     val phoneGuard: PhoneGuard
-    var stopping: Boolean
+    /** Written here, not only read. */
+    override var stopping: Boolean
     val workspaces: Workspaces
     /** Written here, not only read. */
     override var targetDisplayId: Int

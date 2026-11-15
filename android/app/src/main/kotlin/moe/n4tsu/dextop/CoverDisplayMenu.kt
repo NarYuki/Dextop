@@ -12,9 +12,6 @@ internal interface CoverDisplayMenuHost : DesktopSession, OverlayMenu {
     val cast: CastController
     val gamepad: VirtualGamepad
     val hostFollower: HostDisplayFollower
-    fun internalDisplays(manager: DisplayManager): List<Display>
-    fun isFoldableDevice(): Boolean
-    fun isFoldableMainDisplay(): Boolean
     val menuWidgets: MenuWidgets
     val posture: LaptopPosture
 }
@@ -43,13 +40,13 @@ internal class CoverDisplayMenu(
         val manager = context.getSystemService(DisplayManager::class.java)
         val display = manager.getDisplay(Display.DEFAULT_DISPLAY)
         val mode = display?.mode
-        val internalIds = desk.internalDisplays(manager).map { it.displayId }.sorted()
+        val internalIds = desk.deviceDisplays.internalDisplays(manager).map { it.displayId }.sorted()
         return buildString {
             append(display?.name.orEmpty())
             append('|').append(mode?.physicalWidth ?: 0)
             append('x').append(mode?.physicalHeight ?: 0)
             append("|internal=").append(internalIds.joinToString(","))
-            append("|foldable=").append(desk.isFoldableDevice())
+            append("|foldable=").append(desk.deviceDisplays.isFoldableDevice())
             append("|half=").append(desk.posture.foldingApiLaptopPosture)
         }
     }
@@ -69,9 +66,9 @@ internal class CoverDisplayMenu(
     }
 
     internal fun isCurrentFoldableCoverDisplay(): Boolean {
-        if (!desk.isFoldableDevice()) return false
-        val displays = desk.internalDisplays(context.getSystemService(DisplayManager::class.java))
-        return displays.size >= 2 && !desk.isFoldableMainDisplay()
+        if (!desk.deviceDisplays.isFoldableDevice()) return false
+        val displays = desk.deviceDisplays.internalDisplays(context.getSystemService(DisplayManager::class.java))
+        return displays.size >= 2 && !desk.deviceDisplays.isFoldableMainDisplay()
     }
 
     internal fun showCoverDisplayMenu(panel: LinearLayout) {

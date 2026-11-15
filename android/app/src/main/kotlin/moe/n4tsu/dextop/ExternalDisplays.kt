@@ -23,21 +23,16 @@ import kotlin.math.roundToInt
 internal interface ExternalDisplaysHost : DesktopSession, OverlayMenu {
     fun activateTouchInput()
     fun applyHostDisplayOrientation(portrait: Boolean)
-    val cursorView: CursorView?
-    var cursorX: Float
-    var cursorY: Float
     fun externalOutputDisplay(): Display?
     val mirror: MirrorLink
     val phoneGuard: PhoneGuard
     val physicalInput: PhysicalInput
     fun reattachExistingDisplay(width: Int, height: Int)
-    val requestedPortrait: Boolean
     fun resizeActiveDisplay(next: MirrorService.Config, reason: String)
     val rootWindowParams: WindowManager.LayoutParams?
     fun setLaptopMode(enabled: Boolean, requestedStyle: MirrorService.KeyboardDeckStyle = MirrorService.KeyboardDeckStyle.LAPTOP)
     val surfaceCallback: SurfaceHolder.Callback
     fun surfaceCreated(holder: SurfaceHolder)
-    fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY)
     /** Written here, not only read. */
     override var surfaceView: SurfaceView?
 }
@@ -188,12 +183,12 @@ internal class ExternalDisplays(
             if (mode == "extend") {
                 arrangeExtended(output, metrics)
                 externalCursor = CursorView(context).also { cursor ->
-                    cursor.visibility = desk.cursorView?.visibility ?: View.GONE
+                    cursor.visibility = desk.desktopCursor.cursorView?.visibility ?: View.GONE
                     frame.addView(cursor, FrameLayout.LayoutParams(-1, -1))
                 }
             }
             manager.addView(frame, params)
-            desk.updateCursorPosition()
+            desk.desktopCursor.updateCursorPosition()
             when (mode) {
                 // The desktop takes the external screen's size and pixel density.
                 "external" -> {
@@ -302,7 +297,7 @@ internal class ExternalDisplays(
         desk.surfaceView?.takeIf { it.width > 0 }?.let { desk.reattachExistingDisplay(it.width, it.height) }
         attachExternalMirror()
         applyDesktopOutputs()
-        desk.updateCursorPosition()
+        desk.desktopCursor.updateCursorPosition()
         OperationLog.i(context, "ExternalOutput", "extended desktop rearranged phone=$phoneRegion external=$externalRegion")
     }
 
@@ -432,9 +427,9 @@ internal class ExternalDisplays(
                 .onFailure { OperationLog.e(context, "ExternalOutput", "extended desktop shrink failed", it) }
             desk.plasmaShell?.setOutputs(emptyList())
             desk.surfaceView?.takeIf { it.width > 0 }?.let { desk.reattachExistingDisplay(it.width, it.height) }
-            desk.cursorX = desk.cursorX.coerceIn(0f, desk.targetWidth - 1f)
-            desk.cursorY = desk.cursorY.coerceIn(0f, desk.targetHeight - 1f)
-            desk.updateCursorPosition()
+            desk.desktopCursor.cursorX = desk.desktopCursor.cursorX.coerceIn(0f, desk.targetWidth - 1f)
+            desk.desktopCursor.cursorY = desk.desktopCursor.cursorY.coerceIn(0f, desk.targetHeight - 1f)
+            desk.desktopCursor.updateCursorPosition()
         }
         OperationLog.i(context, "ExternalOutput", "external output ${output.mode} ended reason=$reason")
     }

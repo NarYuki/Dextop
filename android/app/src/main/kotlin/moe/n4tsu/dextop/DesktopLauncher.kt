@@ -19,7 +19,6 @@ internal interface DesktopLauncherHost : DesktopSession, OverlayMenu {
     fun postMainDelayed(delayMs: Long, action: () -> Unit)
     val serviceDestroyed: Boolean
     fun stop()
-    val stopping: Boolean
     fun systemService(name: String, interfaceName: String): Any
     fun waitForOverlayRequestCleared(existing: Set<Int>, staleOverlays: Set<Int>, width: Int, height: Int, attempt: Int, decorations: Boolean)
     /** Written here, not only read. */

@@ -11,7 +11,6 @@ internal interface ResolutionMenuHost : DesktopSession, OverlayMenu {
     fun effectiveConfig(config: MirrorService.Config): MirrorService.Config
     fun numberField(value: String, label: String): EditText
     fun resizeActiveDisplay(next: MirrorService.Config, reason: String)
-    fun resolutionProfiles(): List<ResolutionProfile>
     val resolutionRepository: ResolutionRepository
 }
 
@@ -20,6 +19,9 @@ internal class ResolutionMenu(
     private val context: Context,
     private val desk: ResolutionMenuHost,
 ) {
+    internal fun resolutionProfiles(): List<ResolutionProfile> =
+        desk.resolutionRepository.profiles(desk.density)
+
     fun showResolutionMenu(panel: LinearLayout) {
         desk.animateMenuResize(panel)
         panel.removeAllViews()
@@ -31,7 +33,7 @@ internal class ResolutionMenu(
         val portrait = desk.targetWidth < desk.targetHeight
         fun oriented(width: Int, height: Int): Pair<Int, Int> =
             if (portrait) height to width else width to height
-        desk.resolutionProfiles().forEach { item ->
+        resolutionProfiles().forEach { item ->
             val size = oriented(item.width, item.height)
             val row = LinearLayout(context).apply { orientation = LinearLayout.HORIZONTAL }
             row.addView(

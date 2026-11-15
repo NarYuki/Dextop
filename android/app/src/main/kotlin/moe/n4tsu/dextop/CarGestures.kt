@@ -13,8 +13,6 @@ import android.view.Surface
 
 /** What [CarGestures] needs from the session beyond the shared interfaces. */
 internal interface CarGesturesHost : DesktopSession, OverlayMenu {
-    var cursorX: Float
-    var cursorY: Float
     val inputDispatcher: InputDispatcher
     val recentsExecutor: java.util.concurrent.ExecutorService
 }
@@ -127,7 +125,7 @@ internal class CarGestures(
         if (!carPanHeld) {
             carPanDrag = drag
             // Drag mode keeps the tapped pickup point; a swipe starts in the active pane.
-            val start = if (drag) android.graphics.PointF(desk.cursorX, desk.cursorY) else carGestureStart()
+            val start = if (drag) android.graphics.PointF(desk.desktopCursor.cursorX, desk.desktopCursor.cursorY) else carGestureStart()
             carPanX = start.x.coerceIn(0f, desk.targetWidth - 1f)
             carPanY = start.y.coerceIn(0f, desk.targetHeight - 1f)
             carPanHeld = sendCarPanPointer(MotionEvent.ACTION_DOWN)
@@ -152,7 +150,7 @@ internal class CarGestures(
         carPanX = (carPanX + dx).coerceIn(0f, desk.targetWidth - 1f)
         carPanY = (carPanY + dy).coerceIn(0f, desk.targetHeight - 1f)
         if (!sendCarPanPointer(MotionEvent.ACTION_MOVE)) { finishCarPan(); return }
-        desk.cursorX = carPanX; desk.cursorY = carPanY
+        desk.desktopCursor.cursorX = carPanX; desk.desktopCursor.cursorY = carPanY
         carPanHandler.removeCallbacks(carPanRelease)
         // Scroll callbacks have no UP callback. A short pause must not split one swipe into
         // several (each restarting from the pane centre), so the finger is lifted only after a
@@ -196,7 +194,7 @@ internal class CarGestures(
         }
         sendCarPanPointer(MotionEvent.ACTION_UP, time)
         carPanHeld = false
-        desk.cursorX = carPanX; desk.cursorY = carPanY
+        desk.desktopCursor.cursorX = carPanX; desk.desktopCursor.cursorY = carPanY
         renewCarAnchor()
     }
 

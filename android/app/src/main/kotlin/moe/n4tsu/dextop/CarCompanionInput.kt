@@ -15,10 +15,7 @@ import kotlin.math.min
 /** What [CarCompanionInput] needs from the session beyond the shared interfaces. */
 internal interface CarCompanionInputHost : DesktopSession, OverlayMenu {
     fun cancelDesktopTouchStream()
-    var cursorX: Float
-    var cursorY: Float
     val inputGestureHandler: Handler
-    fun refreshPrivilegedInputConfig(reason: String)
     val virtualPointer: VirtualPointer
 }
 
@@ -118,7 +115,7 @@ internal class CarCompanionInput(
         val profile = if (nativeTouchpad) "touchpad" else "mouse"
         desk.virtualPointer.virtualPointerRuntimeProfile = profile
         desk.virtualPointer.startVirtualMouse(profile)
-        surface.post { desk.refreshPrivilegedInputConfig("car_companion_phone_trackpad_attached") }
+        surface.post { desk.privilegedInput.refreshPrivilegedInputConfig("car_companion_phone_trackpad_attached") }
         OperationLog.i(
             context,
             "CarCompanion",
@@ -166,8 +163,8 @@ internal class CarCompanionInput(
                 // then moves it to the touched pixel in the mirrored display.
                 desk.virtualPointer.virtualMouseMove(-40000f, -40000f, true)
                 desk.virtualPointer.virtualMouseMove(mappedX, mappedY, true)
-                desk.cursorX = mappedX
-                desk.cursorY = mappedY
+                desk.desktopCursor.cursorX = mappedX
+                desk.desktopCursor.cursorY = mappedY
 
                 carMirrorHoldRunnable = Runnable {
                     if (carCompanionPhoneTrackpadSurface === surface &&
@@ -191,8 +188,8 @@ internal class CarCompanionInput(
                 val dy = mappedY - carMirrorPointerY
                 carMirrorPointerX = mappedX
                 carMirrorPointerY = mappedY
-                desk.cursorX = (desk.cursorX + dx).coerceIn(0f, desk.targetWidth - 1f)
-                desk.cursorY = (desk.cursorY + dy).coerceIn(0f, desk.targetHeight - 1f)
+                desk.desktopCursor.cursorX = (desk.desktopCursor.cursorX + dx).coerceIn(0f, desk.targetWidth - 1f)
+                desk.desktopCursor.cursorY = (desk.desktopCursor.cursorY + dy).coerceIn(0f, desk.targetHeight - 1f)
                 desk.virtualPointer.virtualMouseMove(dx, dy, true)
             }
 

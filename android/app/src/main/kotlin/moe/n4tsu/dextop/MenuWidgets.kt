@@ -19,7 +19,6 @@ internal interface MenuWidgetsHost : DesktopSession, OverlayMenu {
     fun beginOverlayTextInput(field: EditText)
     val cast: CastController
     fun changeOrientation()
-    val requestedPortrait: Boolean
     fun start(config: MirrorService.Config)
     fun stop()
     fun toggleDisplayRotation180()

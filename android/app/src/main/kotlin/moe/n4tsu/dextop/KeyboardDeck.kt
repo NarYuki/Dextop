@@ -45,14 +45,12 @@ internal interface KeyboardDeckHost : DesktopSession, OverlayMenu {
     fun applyLaptopGeometryWhenLaidOut(enabled: Boolean, attempt: Int = 0, baseOverride: MirrorService.Config? = null, preserveMenu: Boolean = false)
     val cast: CastController
     fun configForHostGeometry(base: MirrorService.Config, hostWidth: Int, hostHeight: Int, systemDensity: Int): MirrorService.Config
-    val cursorView: CursorView?
     val gamepad: VirtualGamepad
     val haptics: Haptics
     fun hasKeyboardStyleChoice(): Boolean
     fun injectKey(keyCode: Int, metaState: Int = 0)
     val inputDispatcher: InputDispatcher
     val keyboardDeckStyle: MirrorService.KeyboardDeckStyle
-    val laptopModifiers: LaptopModifierState
     val laptopTheme: LaptopThemeSettings
     val menuWidgets: MenuWidgets
     val mirror: MirrorLink
@@ -77,6 +75,8 @@ internal class KeyboardDeck(
     private val context: Context,
     private val desk: KeyboardDeckHost,
 ) {
+    internal val laptopModifiers = LaptopModifierState()
+
     internal var laptopContent: LinearLayout? = null
 
     internal var laptopDeck: View? = null
@@ -177,7 +177,7 @@ internal class KeyboardDeck(
         laptopModifierButtons.clear()
         laptopShortcutButtons.clear()
         laptopLegendButtons.clear()
-        desk.laptopModifiers.reset()
+        laptopModifiers.reset()
         drawnLaptopModifierBits = -1
         val palette = desk.laptopTheme.laptopPalette()
         val deck = FrameLayout(context).apply {
@@ -299,12 +299,12 @@ internal class KeyboardDeck(
                 }
 
                 override fun onSwipeFinished(points: List<PointF>) {
-                    val uppercaseAll = desk.laptopModifiers.uppercaseAll
-                    val capitalizeFirst = desk.laptopModifiers.shift && !uppercaseAll
+                    val uppercaseAll = laptopModifiers.uppercaseAll
+                    val capitalizeFirst = laptopModifiers.shift && !uppercaseAll
                     desk.swipeTyping.decodeLaptopSwipe(points, capitalizeFirst, uppercaseAll)
                     // A tapped Shift is one-shot. A Shift finger physically
                     // held during the swipe remains active until its ACTION_UP.
-                    desk.laptopModifiers.releaseLatchedShift()
+                    laptopModifiers.releaseLatchedShift()
                     refreshLaptopModifierKeys()
                 }
 
@@ -887,7 +887,7 @@ internal class KeyboardDeck(
 
     private fun laptopKeyBackground(selected: Boolean, keyCode: Int? = null) = GradientDrawable().apply {
         val palette = desk.laptopTheme.laptopPalette()
-        val lockedShift = keyCode == LaptopKeyboardLayout.SHIFT && desk.laptopModifiers.shiftLocked
+        val lockedShift = keyCode == LaptopKeyboardLayout.SHIFT && laptopModifiers.shiftLocked
         val functionKey = keyCode != null &&
                 (keyCode == KeyEvent.KEYCODE_ESCAPE || keyCode in KeyEvent.KEYCODE_F1..KeyEvent.KEYCODE_F12 ||
                         keyCode == KeyEvent.KEYCODE_FORWARD_DEL)
@@ -977,23 +977,23 @@ internal class KeyboardDeck(
     }
 
     private fun handleLaptopKey(keyCode: Int) {
-        if (!desk.laptopModifiers.toggle(keyCode)) {
+        if (!laptopModifiers.toggle(keyCode)) {
             if (keyCode == LaptopKeyboardLayout.BACK) {
                 injectTargetedBack()
             } else {
-                desk.injectKey(keyCode, desk.laptopModifiers.metaState(keyCode))
-                desk.laptopModifiers.clearLatched()
+                desk.injectKey(keyCode, laptopModifiers.metaState(keyCode))
+                laptopModifiers.clearLatched()
             }
         }
         refreshLaptopModifierKeys()
     }
 
     private fun pressLaptopModifier(keyCode: Int) {
-        if (desk.laptopModifiers.press(keyCode)) refreshLaptopModifierKeys()
+        if (laptopModifiers.press(keyCode)) refreshLaptopModifierKeys()
     }
 
     private fun releaseLaptopModifier(keyCode: Int) {
-        val released = desk.laptopModifiers.release(
+        val released = laptopModifiers.release(
             keyCode,
             SystemClock.uptimeMillis(),
             ViewConfiguration.getDoubleTapTimeout().toLong(),
@@ -1026,10 +1026,10 @@ internal class KeyboardDeck(
         desk.swipeTyping.laptopSwipeImeCoordinator.ensureExternalImeSelected()
         finishLaptopKeyPress(view)
         val symbolKey = if (
-            desk.keyboardDeckStyle == MirrorService.KeyboardDeckStyle.BLACKBERRY && desk.laptopModifiers.symbolMode
+            desk.keyboardDeckStyle == MirrorService.KeyboardDeckStyle.BLACKBERRY && laptopModifiers.symbolMode
         ) LaptopKeyLegends.blackBerrySymbolKey(keyCode) else null
         val effectiveKeyCode = symbolKey?.first ?: keyCode
-        var metaState = desk.laptopModifiers.metaState(effectiveKeyCode)
+        var metaState = laptopModifiers.metaState(effectiveKeyCode)
         if (symbolKey?.second == true) metaState = metaState or KeyEvent.META_SHIFT_ON
         if (!injectLaptopKeyboardEvent(
                 effectiveKeyCode, KeyEvent.ACTION_DOWN, metaState, 0
@@ -1038,7 +1038,7 @@ internal class KeyboardDeck(
         // A held modifier is part of a real multi-touch chord and must remain
         // active for every repeat until its own finger is released. A latched
         // modifier that was tapped alone remains one-shot.
-        desk.laptopModifiers.consumeForKeyPress(usedSymbol = symbolKey != null)
+        laptopModifiers.consumeForKeyPress(usedSymbol = symbolKey != null)
         refreshLaptopModifierKeys()
 
         val state = LaptopKeyPressState(effectiveKeyCode, metaState)
@@ -1114,12 +1114,12 @@ internal class KeyboardDeck(
 
     private fun refreshLaptopModifierKeys() {
         val palette = desk.laptopTheme.laptopPalette()
-        val bits = desk.laptopModifiers.visualBits
+        val bits = laptopModifiers.visualBits
         if (bits == drawnLaptopModifierBits && palette === drawnLaptopModifierPalette) return
         drawnLaptopModifierBits = bits
         drawnLaptopModifierPalette = palette
         laptopModifierButtons.forEach { (code, buttons) ->
-            val selected = desk.laptopModifiers.isActive(code)
+            val selected = laptopModifiers.isActive(code)
             buttons.forEach { it.background = laptopKeyBackground(selected, code) }
         }
         if (desk.keyboardDeckStyle == MirrorService.KeyboardDeckStyle.BLACKBERRY) {
@@ -1128,7 +1128,7 @@ internal class KeyboardDeck(
                     text = ""
                     setCustomGlyph(
                         KeyboardGlyphDrawable(
-                            if (desk.laptopModifiers.shiftLocked) KeyboardGlyphDrawable.SHIFT_LOCKED
+                            if (laptopModifiers.shiftLocked) KeyboardGlyphDrawable.SHIFT_LOCKED
                             else KeyboardGlyphDrawable.SHIFT,
                             palette.text,
                         ),
@@ -1143,7 +1143,7 @@ internal class KeyboardDeck(
 
     private fun refreshLaptopKeyLegends() {
         laptopLegendButtons.forEach { (button, base) ->
-            val symbol = LaptopKeyLegends.displayed(base, desk.laptopModifiers)
+            val symbol = LaptopKeyLegends.displayed(base, laptopModifiers)
             if (!TextUtils.equals(button.text, symbol)) button.text = symbol
         }
     }
@@ -1156,7 +1156,7 @@ internal class KeyboardDeck(
             val primary = KeyEvent.keyCodeToString(keyCode).removePrefix("KEYCODE_")
             if (!TextUtils.equals(button.text, primary)) button.text = primary
             (button as? LaptopKeyTextView)?.setSecondaryLabel(
-                laptopShortcutLabels[keyCode].takeIf { desk.laptopModifiers.control },
+                laptopShortcutLabels[keyCode].takeIf { laptopModifiers.control },
                 secondaryColor
             )
         }
@@ -1257,7 +1257,7 @@ internal class KeyboardDeck(
         val params = deck.layoutParams as? LinearLayout.LayoutParams ?: return
         params.weight = keyboardDeckWeight()
         deck.layoutParams = params
-        desk.cursorView?.contentHeightFraction = desktopPaneFraction()
+        desk.desktopCursor.cursorView?.contentHeightFraction = desktopPaneFraction()
         laptopContent?.requestLayout()
         if (commitGeometry) {
             laptopContent?.post { desk.applyLaptopGeometryWhenLaidOut(true, preserveMenu = true) }

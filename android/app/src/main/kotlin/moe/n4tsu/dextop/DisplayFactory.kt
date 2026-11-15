@@ -15,8 +15,6 @@ internal interface DisplayFactoryHost : DesktopSession, OverlayMenu {
     fun activateTopologyForIndependentDisplays(reason: String)
     fun applyLaptopGeometryWhenLaidOut(enabled: Boolean, attempt: Int = 0, baseOverride: MirrorService.Config? = null, preserveMenu: Boolean = false)
     val coverDisplayController: CoverDisplaySessionController
-    var cursorX: Float
-    var cursorY: Float
     val desktopModeConfigurator: DesktopModeConfigurator
     val displayBackend: DisplayMirrorBackend
     fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String
@@ -28,16 +26,12 @@ internal interface DisplayFactoryHost : DesktopSession, OverlayMenu {
     val phoneGuard: PhoneGuard
     val physicalInput: PhysicalInput
     fun postMainDelayed(delayMs: Long, action: () -> Unit)
-    val requestedPortrait: Boolean
     fun scheduleHostDisplayReconfiguration(reason: String, width: Int? = null, height: Int? = null, densityDpi: Int? = null)
     fun scheduleTopologyReapplyAfterReconnect()
     fun startAutoOverlapCorrection()
     fun stop()
-    val stopping: Boolean
     fun synchronizeDesktopWallpaperDimensions(width: Int, height: Int, reason: String)
     fun systemService(name: String, interfaceName: String): Any
-    fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY)
-    fun updateVirtualCursorVisibility()
     val virtualPointer: VirtualPointer
     val workspaces: Workspaces
     /** Written here, not only read. */
@@ -99,7 +93,7 @@ internal class DisplayFactory(
             // releaseMirror() stopped the physical mouse reader.
             if (desk.externalOutputs.physicalExternalDisplayConnected && desk.physicalInput.routePhysicalMouseToDextop) desk.physicalInput.startRawMouseReader()
             desk.imeRegion.requestImeRegionProbe("surface_reattached", force = true)
-            desk.updateVirtualCursorVisibility()
+            desk.desktopCursor.updateVirtualCursorVisibility()
             desk.scheduleHostDisplayReconfiguration("host Surface recreated", width, height)
             // A Surface recreation can happen during a fold/half-open handoff
             // while the laptop deck is already visible.  The first geometry
@@ -563,9 +557,9 @@ internal class DisplayFactory(
                 desk.menuPrimary?.let(desk::showMainMenu)
             }, 350)
             if (!desk.autoOnlySession) desk.menuPrimary?.let(desk::showMainMenu)
-            desk.cursorX = desk.targetWidth / 2f
-            desk.cursorY = desk.targetHeight / 2f
-            if (!desk.autoOnlySession) desk.updateCursorPosition(desk.targetWidth / 2f, desk.targetHeight / 2f)
+            desk.desktopCursor.cursorX = desk.targetWidth / 2f
+            desk.desktopCursor.cursorY = desk.targetHeight / 2f
+            if (!desk.autoOnlySession) desk.desktopCursor.updateCursorPosition(desk.targetWidth / 2f, desk.targetHeight / 2f)
             if (!desk.launcher.launchSelectedDesktopHome("display_attached")) {
                 // One UI 8 rejects HOME launches on Samsung-owned virtual
                 // displays that do not advertise system decorations. Rebuild

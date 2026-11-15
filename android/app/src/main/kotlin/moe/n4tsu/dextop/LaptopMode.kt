@@ -18,15 +18,9 @@ internal interface LaptopModeHost : DesktopSession, OverlayMenu {
     val cast: CastController
     fun configForHostGeometry(base: MirrorService.Config, hostWidth: Int, hostHeight: Int, systemDensity: Int): MirrorService.Config
     val coverButtons: CoverBackButtons
-    val cursorView: CursorView?
-    val cursorX: Float
-    val cursorY: Float
-    fun defaultDisplayUniqueId(): String?
     val externalOutputs: ExternalDisplays
     val gamepad: VirtualGamepad
     fun isCurrentFoldableCoverDisplay(): Boolean
-    fun isFoldableDevice(): Boolean
-    fun isMenuOverlayVisible(): Boolean
     val keyboardDeck: KeyboardDeck
     var keyboardDeckStyle: MirrorService.KeyboardDeckStyle
     val laptopTheme: LaptopThemeSettings
@@ -40,14 +34,10 @@ internal interface LaptopModeHost : DesktopSession, OverlayMenu {
     val physicalInput: PhysicalInput
     val posture: LaptopPosture
     val rawTouchscreen: RawTouchscreenBridge
-    fun refreshPrivilegedInputConfig(reason: String)
-    val requestedPortrait: Boolean
     fun resizeActiveDisplay(next: MirrorService.Config, reason: String)
     fun setOverlayFocusable(focusable: Boolean)
     val swipeTyping: SwipeTyping
     val touchSurface: TouchSurface
-    fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY)
-    fun updateVirtualCursorVisibility()
     val virtualPointer: VirtualPointer
     /** Written here, not only read. */
     override var directTouch: Boolean
@@ -152,7 +142,7 @@ internal class LaptopMode(
         }
         desk.laptopModeActive = enabled
         if (!enabled) desk.posture.laptopAutoActivated = false
-        laptopHostUniqueId = if (enabled) desk.defaultDisplayUniqueId() else null
+        laptopHostUniqueId = if (enabled) desk.deviceDisplays.defaultDisplayUniqueId() else null
         if (!enabled) {
             desk.posture.laptopHostMismatchSince = 0L
             desk.posture.laptopModeEvaluationGeneration += 1
@@ -186,7 +176,7 @@ internal class LaptopMode(
                     .setDuration(360L)
                     .start()
             }
-            desk.cursorView?.contentHeightFraction = desk.keyboardDeck.desktopPaneFraction()
+            desk.desktopCursor.cursorView?.contentHeightFraction = desk.keyboardDeck.desktopPaneFraction()
             desk.menuScrim?.bringToFront()
             desk.menu?.bringToFront()
             desk.performanceHud?.bringToFront()
@@ -197,7 +187,7 @@ internal class LaptopMode(
             // overlay (including its close button and edge recognizer), which
             // makes the whole screen appear frozen. Keep hierarchy routing
             // until toggleMenu() actually closes the overlay.
-            desk.root?.routeTouchesToSurface = !desk.isMenuOverlayVisible()
+            desk.root?.routeTouchesToSurface = !desk.desktopCursor.isMenuOverlayVisible()
             desk.keyboardDeck.finishAllLaptopKeyPresses()
             // The raw reader also owns the normal full-screen pointer surface.
             // Keep it alive when leaving the deck unless the restored surface
@@ -231,12 +221,12 @@ internal class LaptopMode(
                     if (!desk.laptopModeActive) runCatching { content.removeView(deck) }
                 }
                 ?.start()
-            desk.cursorView?.contentHeightFraction = 1f
+            desk.desktopCursor.cursorView?.contentHeightFraction = 1f
             // Do not leave the native reader using its laptop-only trackpad
             // bounds while waiting for the asynchronous full-screen layout.
             // The visible overlay intentionally publishes PROFILE_DISABLED;
             // closing it will publish the normal full-screen pointer profile.
-            desk.refreshPrivilegedInputConfig("laptop_mode_disabled_immediate")
+            desk.privilegedInput.refreshPrivilegedInputConfig("laptop_mode_disabled_immediate")
         }
         surface.requestLayout()
         frame.requestLayout()
@@ -273,7 +263,7 @@ internal class LaptopMode(
             translationY = desk.dp(20).toFloat()
         }
         content.addView(deck, LinearLayout.LayoutParams(-1, 0, desk.keyboardDeck.keyboardDeckWeight()))
-        desk.cursorView?.contentHeightFraction = desk.keyboardDeck.desktopPaneFraction()
+        desk.desktopCursor.cursorView?.contentHeightFraction = desk.keyboardDeck.desktopPaneFraction()
         deck.animate()
             .alpha(1f)
             .translationY(0f)
@@ -290,7 +280,7 @@ internal class LaptopMode(
     internal fun leaveLaptopModeOnCoverDisplay(): Boolean {
         if (!desk.laptopModeActive || isDebugLaptopModeForced()) return false
         val originalHost = laptopHostUniqueId ?: return false
-        val currentHost = desk.defaultDisplayUniqueId() ?: return false
+        val currentHost = desk.deviceDisplays.defaultDisplayUniqueId() ?: return false
         if (originalHost == currentHost || !hasStableLaptopHostMismatch()) return false
         desk.posture.laptopManualOverride = false
         desk.posture.laptopAutoSuppressedByUser = false
@@ -312,7 +302,7 @@ internal class LaptopMode(
 
     internal fun hasStableLaptopHostMismatch(): Boolean {
         val original = laptopHostUniqueId ?: return false
-        val current = desk.defaultDisplayUniqueId() ?: return false
+        val current = desk.deviceDisplays.defaultDisplayUniqueId() ?: return false
         if (current == original) {
             desk.posture.laptopHostMismatchSince = 0L
             return false
@@ -391,7 +381,7 @@ internal class LaptopMode(
                 forceVirtualDisplay = true
             )
             if (enabled) desk.keyboardDeck.refreshLaptopVirtualDisplayAfterLayout()
-            desk.refreshPrivilegedInputConfig("laptop_layout_measured")
+            desk.privilegedInput.refreshPrivilegedInputConfig("laptop_layout_measured")
             OperationLog.i(
                 context,
                 "LaptopMode",
@@ -426,7 +416,7 @@ internal class LaptopMode(
     internal fun isLaptopCapableDevice(): Boolean {
         if (context.getSharedPreferences("FlutterSharedPreferences", Context.MODE_PRIVATE)
                 .getBoolean("flutter.experimental_force_laptop_mode", false)) return true
-        if (desk.isFoldableDevice()) return true
+        if (desk.deviceDisplays.isFoldableDevice()) return true
         if (context.resources.configuration.smallestScreenWidthDp >= 600) return true
         val display = context.getSystemService(DisplayManager::class.java)
             .getDisplay(Display.DEFAULT_DISPLAY) ?: return false
@@ -601,7 +591,7 @@ internal class LaptopMode(
         // Connect lazily on the first trackpad touch so a mode change never
         // races uinput registration.
         desk.virtualPointer.startVirtualMouse()
-        desk.updateVirtualCursorVisibility()
+        desk.desktopCursor.updateVirtualCursorVisibility()
         OperationLog.i(
             context,
             "InputRouting",
@@ -610,7 +600,7 @@ internal class LaptopMode(
                     "pointerReady=${desk.laptopTrackpadInputActive()}"
         )
         if (!desk.directTouch && !desk.virtualPointer.virtualMouseInputActive()) {
-            desk.updateCursorPosition()
+            desk.desktopCursor.updateCursorPosition()
         }
     }
 
@@ -634,7 +624,7 @@ internal class LaptopMode(
      */
 
     internal fun isLaptopAutoOrientationEligible(): Boolean {
-        if (!desk.isFoldableDevice()) return false
+        if (!desk.deviceDisplays.isFoldableDevice()) return false
         return when (desk.posture.laptopFoldProfile()) {
             LaptopFoldProfile.FOLD8 -> {
                 // Fold8 laptop posture is the top/bottom (horizontal hinge)

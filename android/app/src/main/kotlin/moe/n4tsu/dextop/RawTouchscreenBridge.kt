@@ -9,12 +9,9 @@ import android.view.View
 
 /** What [RawTouchscreenBridge] needs from the session beyond the shared interfaces. */
 internal interface RawTouchscreenBridgeHost : DesktopSession, OverlayMenu {
-    fun buildPrivilegedInputConfig(profile: String): IntArray
     val imeDirectTouchHeld: Boolean
     val imeRegion: ImeRegionProbe
     val laptopTrackpadView: View?
-    fun refreshPrivilegedInputConfig(reason: String)
-    fun updateVirtualCursorVisibility()
     val virtualPointer: VirtualPointer
 }
 
@@ -83,7 +80,7 @@ internal class RawTouchscreenBridge(
                     Log.d(desk.logTag, "native input topology unchanged; skipping refresh reason=$reason")
                     return@postDelayed
                 }
-                desk.refreshPrivilegedInputConfig("topology_refresh:$reason")
+                desk.privilegedInput.refreshPrivilegedInputConfig("topology_refresh:$reason")
                 startRawTouchscreenReaderIfEligible()
                 appliedRawTouchscreenTopologyFingerprint = fingerprint
             }
@@ -110,7 +107,7 @@ internal class RawTouchscreenBridge(
         val profile = desk.virtualPointer.virtualPointerRegisteredProfile
         touchscreenReaderGeneration += 1
         touchscreenReaderRunning = true
-        desk.privilegedInputClient.updateConfig(desk.buildPrivilegedInputConfig(profile))
+        desk.privilegedInputClient.updateConfig(desk.privilegedInput.buildPrivilegedInputConfig(profile))
         val message = "native EventHub reader requested generation=$touchscreenReaderGeneration " +
                 "profile=$profile rotation=${rawTouchscreenDisplayRotation()} " +
                 "fullscreen=${rawTouchscreenViewBounds(desk.surfaceView)} " +
@@ -169,6 +166,6 @@ internal class RawTouchscreenBridge(
         OperationLog.w(context, "InputRouting", message)
         Log.w(desk.logTag, message)
         stopRawTouchscreenReader("fallback:$reason")
-        desk.updateVirtualCursorVisibility()
+        desk.desktopCursor.updateVirtualCursorVisibility()
     }
 }

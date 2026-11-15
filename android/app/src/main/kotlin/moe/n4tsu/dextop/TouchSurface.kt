@@ -16,11 +16,6 @@ import kotlin.math.hypot
 internal interface TouchSurfaceHost : DesktopSession, OverlayMenu {
     val carCompanion: CarCompanionInput
     fun changeOrientation()
-    val cursorView: CursorView?
-    var cursorX: Float
-    var cursorY: Float
-    fun dedicatedTrackpadInputActive(): Boolean
-    var edgeMenuTriggered: Boolean
     val externalOutputs: ExternalDisplays
     val haptics: Haptics
     val imeRegion: ImeRegionProbe
@@ -29,12 +24,15 @@ internal interface TouchSurfaceHost : DesktopSession, OverlayMenu {
     val launcher: DesktopLauncher
     val physicalInput: PhysicalInput
     val rawTouchscreen: RawTouchscreenBridge
-    fun recordTouchRouting(event: MotionEvent, direct: Boolean)
     fun stop()
-    var threeFingerEdgeSwipe: Boolean
-    fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY)
     val virtualPointer: VirtualPointer
     val virtualTouchpad: VirtualTouchpad
+    val coverButtons: CoverBackButtons
+    fun currentInputMode(): String
+    val diagnostics: InputDiagnostics
+    fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String
+    /** Written here, not only read. */
+    override var directTouch: Boolean
 }
 
 /** Turns touches on the phone surface into cursor movement, clicks, gestures or direct desktop touches. */
@@ -42,6 +40,38 @@ internal class TouchSurface(
     private val context: Context,
     private val desk: TouchSurfaceHost,
 ) {
+    internal var threeFingerEdgeSwipe = false
+
+    internal var edgeMenuTriggered = false
+
+    internal fun dedicatedTrackpadInputActive(): Boolean =
+        (desk.laptopModeActive || desk.coverButtons.coverTrackpadActive || desk.carCompanion.carCompanionPhoneTrackpadSurface != null) &&
+                desk.virtualPointer.virtualPointerInputActive(true)
+
+    internal fun recordTouchRouting(event: MotionEvent, direct: Boolean) {
+        val now = SystemClock.uptimeMillis()
+        // See recordInputDispatch(): session logging must never become part of
+        // the touch rendering path. One geometry sample per 750 ms is enough
+        // for a useful report without synchronous file churn.
+        if (now - desk.diagnostics.lastTouchDiagnosticAt < 750L) return
+        desk.diagnostics.lastTouchDiagnosticAt = now
+        val view = desk.surfaceView
+        val mappedX = if (view != null && view.width > 0) {
+            (event.x / view.width * desk.targetWidth).coerceIn(0f, desk.targetWidth - 1f)
+        } else 0f
+        val mappedY = if (view != null && view.height > 0) {
+            (event.y / view.height * desk.targetHeight).coerceIn(0f, desk.targetHeight - 1f)
+        } else 0f
+        OperationLog.i(
+            context,
+            "TouchRouting",
+            "action=${event.actionMasked} pointers=${event.pointerCount} source=${event.source} " +
+                    "pointX:${event.x} pointY:${event.y} mappedX:${mappedX} mappedY:${mappedY} " +
+                    "directTouch=$direct inputMode=${desk.currentInputMode()} " +
+                    desk.displayGeometrySnapshot("touch_event")
+        )
+    }
+
     /** Latches native MT routing at ACTION_DOWN so readiness cannot switch mid-stream. */
     internal var nativeTouchpadGestureActive = false
 
@@ -127,11 +157,11 @@ internal class TouchSurface(
                 sourceView === desk.surfaceView && imeDirectTouchHeld
         val useDirectTouch = (desk.directTouch && !forceCursorMode) || imeDirectTouch
         val useVirtualMouse = (if (allowVirtualPointer) {
-            desk.dedicatedTrackpadInputActive()
+            dedicatedTrackpadInputActive()
         } else {
             desk.virtualPointer.virtualMouseInputActive()
         }) && !useDirectTouch
-        desk.recordTouchRouting(event, useDirectTouch)
+        recordTouchRouting(event, useDirectTouch)
         maxPointers = maxOf(maxPointers, event.pointerCount)
         val rawBridgeOwnsSource = sourceView === desk.surfaceView ||
                 sourceView === desk.keyboardDeck.laptopTrackpadView
@@ -229,7 +259,7 @@ internal class TouchSurface(
                 longPressTriggered = false
                 if (useDirectTouch) {
                     moveCursorToTouch(event.x, event.y)
-                    injectTouch(MotionEvent.ACTION_DOWN, desk.cursorX, desk.cursorY)
+                    injectTouch(MotionEvent.ACTION_DOWN, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                     directTouchHeld = true
                     return true
                 }
@@ -245,7 +275,7 @@ internal class TouchSurface(
 
             MotionEvent.ACTION_POINTER_DOWN -> {
                 if (directTouchHeld) {
-                    injectTouch(MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY)
+                    injectTouch(MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                     directTouchHeld = false
                 }
                 longPressRunnable?.let(inputGestureHandler::removeCallbacks)
@@ -267,7 +297,7 @@ internal class TouchSurface(
             MotionEvent.ACTION_MOVE -> {
                 if (directTouchHeld && event.pointerCount == 1) {
                     moveCursorToTouch(event.x, event.y)
-                    injectTouch(MotionEvent.ACTION_MOVE, desk.cursorX, desk.cursorY)
+                    injectTouch(MotionEvent.ACTION_MOVE, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                     moved = true
                 } else if (threeFinger) {
                     moved = true
@@ -288,8 +318,8 @@ internal class TouchSurface(
                         } else {
                             if (!scrolling) {
                                 scrolling = true
-                                scrollX = desk.cursorX
-                                scrollY = desk.cursorY
+                                scrollX = desk.desktopCursor.cursorX
+                                scrollY = desk.desktopCursor.cursorY
                                 injectTouch(MotionEvent.ACTION_DOWN, scrollX, scrollY)
                             }
                             scrollX = (scrollX + dx * 2f).coerceIn(0f, desk.targetWidth - 1f)
@@ -325,7 +355,7 @@ internal class TouchSurface(
                 val completedDirectTouch = directTouchHeld
                 if (completedDirectTouch) {
                     moveCursorToTouch(event.x, event.y)
-                    injectTouch(MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY)
+                    injectTouch(MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                     directTouchHeld = false
                 } else if (scrolling && !useVirtualMouse) injectTouch(MotionEvent.ACTION_UP, scrollX, scrollY)
                 if (completedDirectTouch) {
@@ -341,7 +371,7 @@ internal class TouchSurface(
                     if (useVirtualMouse) {
                         desk.virtualPointer.virtualMouseButton("BTN_LEFT", false, allowVirtualPointer)
                     } else if (!(allowVirtualPointer && desk.carCompanion.carCompanionPhoneTrackpadSurface === sourceView)) {
-                        injectTouch(MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY)
+                        injectTouch(MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                     }
                     dragHeld = false
                 } else if (twoFinger && !moved && !scrolling) {
@@ -363,14 +393,14 @@ internal class TouchSurface(
 
             MotionEvent.ACTION_CANCEL -> {
                 longPressRunnable?.let(inputGestureHandler::removeCallbacks)
-                if (directTouchHeld) injectTouch(MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY)
+                if (directTouchHeld) injectTouch(MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                 directTouchHeld = false
                 if (scrolling && !useVirtualMouse) injectTouch(MotionEvent.ACTION_UP, scrollX, scrollY)
                 if (dragHeld) {
                     if (useVirtualMouse) {
                         desk.virtualPointer.virtualMouseButton("BTN_LEFT", false, allowVirtualPointer)
                     } else if (!(allowVirtualPointer && desk.carCompanion.carCompanionPhoneTrackpadSurface === sourceView)) {
-                        injectTouch(MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY)
+                        injectTouch(MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                     }
                 }
                 dragHeld = false
@@ -411,8 +441,8 @@ internal class TouchSurface(
             MotionEvent.ACTION_DOWN -> {
                 touchStartX = event.x
                 touchStartY = event.y
-                desk.threeFingerEdgeSwipe = false
-                desk.edgeMenuTriggered = false
+                threeFingerEdgeSwipe = false
+                edgeMenuTriggered = false
                 edgeGesturePrimaryPointerId = event.getPointerId(0)
                 edgeGestureLeadX = 0f
                 edgeGestureLeadY = 0f
@@ -438,7 +468,7 @@ internal class TouchSurface(
                     )
                     if (minimumY > startLimit && touchStartY > startLimit) return false
                 } else if (minimumX > desk.dp(120) && touchStartX > desk.dp(120)) return false
-                desk.threeFingerEdgeSwipe = true
+                threeFingerEdgeSwipe = true
                 // Preserve the first contact's edge position. Resetting the
                 // origin when the third finger landed discarded the travel
                 // made while placing the other contacts, so Tap mode often
@@ -450,7 +480,7 @@ internal class TouchSurface(
                 return true
             }
 
-            MotionEvent.ACTION_MOVE -> if (desk.threeFingerEdgeSwipe) {
+            MotionEvent.ACTION_MOVE -> if (threeFingerEdgeSwipe) {
                 // Keep consuming the intercepted stream, but never complete a
                 // three-finger gesture after one of the fingers has lifted.
                 if (event.pointerCount < 3) return true
@@ -458,10 +488,10 @@ internal class TouchSurface(
                 return true
             }
 
-            MotionEvent.ACTION_POINTER_UP -> if (desk.threeFingerEdgeSwipe) return true
-            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (desk.threeFingerEdgeSwipe) {
-                desk.threeFingerEdgeSwipe = false
-                desk.edgeMenuTriggered = false
+            MotionEvent.ACTION_POINTER_UP -> if (threeFingerEdgeSwipe) return true
+            MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> if (threeFingerEdgeSwipe) {
+                threeFingerEdgeSwipe = false
+                edgeMenuTriggered = false
                 edgeGesturePrimaryPointerId = MotionEvent.INVALID_POINTER_ID
                 edgeGestureLeadX = 0f
                 edgeGestureLeadY = 0f
@@ -481,8 +511,8 @@ internal class TouchSurface(
             event.getX(primaryIndex) - edgeGestureLeadX
         }
         val triggerDistance = if (portrait) desk.dp(20) else desk.dp(28)
-        if (!desk.edgeMenuTriggered && distance >= triggerDistance) {
-            desk.edgeMenuTriggered = true
+        if (!edgeMenuTriggered && distance >= triggerDistance) {
+            edgeMenuTriggered = true
             desk.toggleMenu()
         }
     }
@@ -515,10 +545,10 @@ internal class TouchSurface(
                             null,
                         )
                     } else {
-                        injectTouch(MotionEvent.ACTION_DOWN, desk.cursorX, desk.cursorY)
+                        injectTouch(MotionEvent.ACTION_DOWN, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
                     }
                 }
-                desk.cursorView?.pulse()
+                desk.desktopCursor.cursorView?.pulse()
             }
         }
     }
@@ -527,10 +557,10 @@ internal class TouchSurface(
         val view = desk.surfaceView ?: return
         if (view.width <= 0 || view.height <= 0) return
         val region = desk.externalOutputs.regionFor(view)
-        desk.cursorX = region.left + x / view.width * region.width()
-        desk.cursorY = region.top + y / view.height * region.height()
+        desk.desktopCursor.cursorX = region.left + x / view.width * region.width()
+        desk.desktopCursor.cursorY = region.top + y / view.height * region.height()
         if (!desk.directTouch && !desk.virtualPointer.virtualMouseInputActive()) {
-            desk.updateCursorPosition()
+            desk.desktopCursor.updateCursorPosition()
         }
     }
 
@@ -545,8 +575,8 @@ internal class TouchSurface(
         // SharedPreferences and make input unusable.  Always use raw deltas.
         val effectiveDx = dx
         val effectiveDy = dy
-        desk.cursorX = (desk.cursorX + effectiveDx).coerceIn(0f, desk.targetWidth - 1f)
-        desk.cursorY = (desk.cursorY + effectiveDy).coerceIn(0f, desk.targetHeight - 1f)
+        desk.desktopCursor.cursorX = (desk.desktopCursor.cursorX + effectiveDx).coerceIn(0f, desk.targetWidth - 1f)
+        desk.desktopCursor.cursorY = (desk.desktopCursor.cursorY + effectiveDy).coerceIn(0f, desk.targetHeight - 1f)
         if (useVirtualPointer) {
             desk.virtualPointer.virtualMouseMove(effectiveDx, effectiveDy, allowVirtualPointer)
         } else if (allowVirtualPointer && desk.carCompanion.carCompanionPhoneTrackpadSurface != null) {
@@ -555,8 +585,8 @@ internal class TouchSurface(
             // display 0 and make an Auto window jump between drag targets.
             Unit
         } else {
-            desk.updateCursorPosition()
-            if (dragHeld) injectTouch(MotionEvent.ACTION_MOVE, desk.cursorX, desk.cursorY)
+            desk.desktopCursor.updateCursorPosition()
+            if (dragHeld) injectTouch(MotionEvent.ACTION_MOVE, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
         }
     }
 
@@ -566,9 +596,9 @@ internal class TouchSurface(
             desk.virtualPointer.virtualMouseButton("BTN_LEFT", true, allowVirtualPointer)
             desk.virtualPointer.virtualMouseButton("BTN_LEFT", false, allowVirtualPointer)
         } else {
-            injectTouch(MotionEvent.ACTION_DOWN, desk.cursorX, desk.cursorY)
-            injectTouch(MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY)
-            if (!desk.directTouch) desk.cursorView?.pulse()
+            injectTouch(MotionEvent.ACTION_DOWN, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
+            injectTouch(MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
+            if (!desk.directTouch) desk.desktopCursor.cursorView?.pulse()
         }
     }
 
@@ -585,8 +615,8 @@ internal class TouchSurface(
                 toolType = MotionEvent.TOOL_TYPE_MOUSE
             }
             val coordinates = MotionEvent.PointerCoords().apply {
-                x = desk.cursorX
-                y = desk.cursorY
+                x = desk.desktopCursor.cursorX
+                y = desk.desktopCursor.cursorY
                 pressure = 1f
                 size = 1f
             }
@@ -609,7 +639,7 @@ internal class TouchSurface(
                 check(desk.inputDispatcher.send(event, desk.targetDisplayId))
                 event.recycle()
             }
-            desk.cursorView?.pulse()
+            desk.desktopCursor.cursorView?.pulse()
         }.onFailure { Log.e(desk.logTag, "right click failed", it) }
     }
 
@@ -619,8 +649,8 @@ internal class TouchSurface(
             desk.virtualPointer.virtualMouseButton("BTN_LEFT", true)
             desk.root?.postDelayed({ desk.virtualPointer.virtualMouseButton("BTN_LEFT", false) }, 600)
         } else {
-            injectTouch(MotionEvent.ACTION_DOWN, desk.cursorX, desk.cursorY)
-            desk.root?.postDelayed({ injectTouch(MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY) }, 600)
+            injectTouch(MotionEvent.ACTION_DOWN, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
+            desk.root?.postDelayed({ injectTouch(MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY) }, 600)
         }
     }
 
@@ -629,7 +659,7 @@ internal class TouchSurface(
         if (desk.virtualPointer.virtualMouseInputActive()) {
             desk.virtualPointer.virtualMouseButton("BTN_LEFT", dragHeld)
         } else {
-            injectTouch(if (dragHeld) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_UP, desk.cursorX, desk.cursorY)
+            injectTouch(if (dragHeld) MotionEvent.ACTION_DOWN else MotionEvent.ACTION_UP, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
         }
     }
 
@@ -660,8 +690,8 @@ internal class TouchSurface(
             })
             check(desk.inputDispatcher.send(event, desk.targetDisplayId))
 
-            desk.cursorX = event.x.coerceIn(0f, desk.targetWidth - 1f)
-            desk.cursorY = event.y.coerceIn(0f, desk.targetHeight - 1f)
+            desk.desktopCursor.cursorX = event.x.coerceIn(0f, desk.targetWidth - 1f)
+            desk.desktopCursor.cursorY = event.y.coerceIn(0f, desk.targetHeight - 1f)
             event.recycle()
             true
         }.onFailure { Log.e(desk.logTag, "mouse forwarding failed", it) }
@@ -877,7 +907,7 @@ internal class TouchSurface(
         if (desk.targetDisplayId >= 0 && (directTouchHeld || scrolling || dragHeld) &&
             !desk.virtualPointer.virtualMouseInputActive()
         ) {
-            injectTouch(MotionEvent.ACTION_CANCEL, desk.cursorX, desk.cursorY)
+            injectTouch(MotionEvent.ACTION_CANCEL, desk.desktopCursor.cursorX, desk.desktopCursor.cursorY)
         }
         if (desk.virtualPointer.virtualMouseInputActive() && dragHeld) desk.virtualPointer.virtualMouseButton("BTN_LEFT", false)
         injectedDirectTouchActive = false
@@ -892,8 +922,8 @@ internal class TouchSurface(
         threeFinger = false
         maxPointers = 0
         longPressTriggered = false
-        desk.threeFingerEdgeSwipe = false
-        desk.edgeMenuTriggered = false
+        threeFingerEdgeSwipe = false
+        edgeMenuTriggered = false
         edgeGesturePrimaryPointerId = MotionEvent.INVALID_POINTER_ID
         edgeGestureLeadX = 0f
         edgeGestureLeadY = 0f

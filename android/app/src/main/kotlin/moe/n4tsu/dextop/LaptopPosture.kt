@@ -15,7 +15,6 @@ import kotlin.math.abs
 /** What [LaptopPosture] needs from the session beyond the shared interfaces. */
 internal interface LaptopPostureHost : DesktopSession, OverlayMenu {
     val externalInputDeck: Boolean
-    fun isFoldableMainDisplay(): Boolean
     fun isLaptopAutoDetectionEnabled(): Boolean
     fun isLaptopAutoOrientationEligible(): Boolean
     fun laptopHostIsFullHeight(): Boolean
@@ -184,7 +183,7 @@ internal class LaptopPosture(
         }
         // A half-open hinge is itself authoritative: inactive inner panels are
         // omitted from DisplayManager on several foldables and the emulator.
-        val mainDisplay = laptopPosture || desk.isFoldableMainDisplay()
+        val mainDisplay = laptopPosture || desk.deviceDisplays.isFoldableMainDisplay()
         if (!mainDisplay) laptopAutoActivated = false
         // Automatic laptop mode is limited to portrait holding orientation on
         // Fold8-style devices. Landscape sessions can still be enabled from

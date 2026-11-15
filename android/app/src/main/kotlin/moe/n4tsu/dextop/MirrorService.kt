@@ -106,8 +106,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val directTouch: Boolean get() = this@MirrorService.directTouch
         override val suspendedForLockScreen: Boolean get() = this@MirrorService.lockScreen.suspendedForLockScreen
         override val desktopEnvironment: DesktopEnvironment get() = this@MirrorService.desktopEnvironment
-        override val privilegedInputClient: PrivilegedInputClient get() = this@MirrorService.privilegedInputClient
+        override val privilegedInputClient: PrivilegedInputClient get() = this@MirrorService.privilegedInput.privilegedInputClient
         override val sessionJournal: SessionJournal get() = this@MirrorService.sessionJournal
+        override val desktopCursor: DesktopCursor get() = this@MirrorService.desktopCursor
+        override val deviceDisplays: DeviceDisplays get() = this@MirrorService.deviceDisplays
+        override val privilegedInput: PrivilegedInputLink get() = this@MirrorService.privilegedInput
+        override val requestedPortrait: Boolean get() = this@MirrorService.requestedPortrait
+        override val stopping: Boolean get() = this@MirrorService.stopping
         override fun dp(value: Int): Int = this@MirrorService.dp(value)
     }
 
@@ -150,7 +155,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      */
     private val posture: LaptopPosture = LaptopPosture(this, object : LaptopPostureHost, DesktopSession by session, OverlayMenu by overlayMenu {
         override val externalInputDeck: Boolean get() = this@MirrorService.externalOutputs.externalInputDeck
-        override fun isFoldableMainDisplay(): Boolean = this@MirrorService.isFoldableMainDisplay()
         override fun isLaptopAutoDetectionEnabled(): Boolean = this@MirrorService.laptopModeSwitch.isLaptopAutoDetectionEnabled()
         override fun isLaptopAutoOrientationEligible(): Boolean = this@MirrorService.laptopModeSwitch.isLaptopAutoOrientationEligible()
         override fun laptopHostIsFullHeight(): Boolean = this@MirrorService.laptopModeSwitch.laptopHostIsFullHeight()
@@ -183,7 +187,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val VIRTUAL_TOUCHPAD_MAX_Y = 1199
 
         /** Lower resolution makes Android's touchpad acceleration cover more distance. */
-        private const val VIRTUAL_TOUCHPAD_RESOLUTION = 12
+        internal const val VIRTUAL_TOUCHPAD_RESOLUTION = 12
         internal const val VIRTUAL_TOUCHPAD_TOUCH_MAJOR = 20
         internal const val VIRTUAL_TOUCHPAD_PRESSURE = 40
         internal const val VIRTUAL_TOUCHPAD_MOVE_LOG_INTERVAL_MS = 250L
@@ -436,7 +440,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
          * identify a foldable without relying on a model-name allowlist.
          */
         fun isFoldableDevice(context: Context? = null): Boolean {
-            instance?.let { if (it.isFoldableDevice()) return true }
+            instance?.let { if (it.deviceDisplays.isFoldableDevice()) return true }
             val resolved = context ?: return false
             val displays = resolved.getSystemService(DisplayManager::class.java)
             val internalPanels = displays.displays.count { display ->
@@ -856,8 +860,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             Handler(Looper.getMainLooper()).post {
                 if (instance === service && active && service.autoOnlySession) {
                     if (!service.carGestures.carPanHeld && anchorX.isFinite() && anchorY.isFinite()) {
-                        service.cursorX = anchorX.coerceIn(0f, 1f) * (service.targetWidth - 1)
-                        service.cursorY = anchorY.coerceIn(0f, 1f) * (service.targetHeight - 1)
+                        service.desktopCursor.cursorX = anchorX.coerceIn(0f, 1f) * (service.targetWidth - 1)
+                        service.desktopCursor.cursorY = anchorY.coerceIn(0f, 1f) * (service.targetHeight - 1)
                         if (!drag) service.carGestures.rememberCarTapAnchor(anchorX, anchorY)
                     }
                     service.carGestures.carPan(dx * service.targetWidth, dy * service.targetHeight, drag, release)
@@ -1032,9 +1036,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             get() = this@MirrorService.displayFactory.autoOwnedDisplay
             set(value) { this@MirrorService.displayFactory.autoOwnedDisplay = value }
         override fun closeExtendSink(): Unit = this@MirrorService.externalOutputs.closeExtendSink()
-        override val cursorView: CursorView? get() = this@MirrorService.cursorView
-        override val cursorX: Float get() = this@MirrorService.cursorX
-        override val cursorY: Float get() = this@MirrorService.cursorY
         override fun directDisplaySurface(): Surface = this@MirrorService.displayFactory.directDisplaySurface()
         override val displayBackend: DisplayMirrorBackend get() = this@MirrorService.displayBackend
         override var displayCreationInProgress: Boolean
@@ -1044,7 +1045,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val phoneOwnedDisplay: OwnedVirtualDisplay? get() = this@MirrorService.displayFactory.phoneOwnedDisplay
         override val phoneRegion: Rect? get() = this@MirrorService.externalOutputs.phoneRegion
         override fun stopRawMouseReader(): Unit = this@MirrorService.physicalInput.stopRawMouseReader()
-        override fun updateVirtualCursorVisibility(): Unit = this@MirrorService.updateVirtualCursorVisibility()
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
     })
 
@@ -1093,13 +1093,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun activateTouchInput(): Unit = this@MirrorService.activateTouchInput()
         override fun clearLaptopKeyboardPublication(reason: String): Unit = this@MirrorService.keyboardDeck.clearLaptopKeyboardPublication(reason)
         override fun currentInputMode(): String = this@MirrorService.currentInputMode()
-        override val cursorView: CursorView? get() = this@MirrorService.cursorView
-        override var cursorX: Float
-            get() = this@MirrorService.cursorX
-            set(value) { this@MirrorService.cursorX = value }
-        override var cursorY: Float
-            get() = this@MirrorService.cursorY
-            set(value) { this@MirrorService.cursorY = value }
         override fun displayGeometrySnapshot(reason: String, hostWidth: Int?, hostHeight: Int?): String = this@MirrorService.displayGeometrySnapshot(reason, hostWidth, hostHeight)
         override fun finishAllLaptopKeyPresses(): Unit = this@MirrorService.keyboardDeck.finishAllLaptopKeyPresses()
         override fun forwardMouseEvent(source: MotionEvent, view: View): Boolean = this@MirrorService.touchSurface.forwardMouseEvent(source, view)
@@ -1113,32 +1106,22 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val rawTouchscreen: RawTouchscreenBridge get() = this@MirrorService.rawTouchscreen
         override fun scheduleLaptopKeyboardReadyCheck(generation: Long, attempt: Int): Unit = this@MirrorService.keyboardDeck.scheduleLaptopKeyboardReadyCheck(generation, attempt)
         override fun setOverlayFocusable(focusable: Boolean): Unit = this@MirrorService.textInput.setOverlayFocusable(focusable)
-        override fun updateVirtualCursorVisibility(): Unit = this@MirrorService.updateVirtualCursorVisibility()
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
     })
 
     private val externalOutputs: ExternalDisplays = ExternalDisplays(this, object : ExternalDisplaysHost, DesktopSession by session, OverlayMenu by overlayMenu {
         override fun activateTouchInput(): Unit = this@MirrorService.activateTouchInput()
         override fun applyHostDisplayOrientation(portrait: Boolean): Unit = this@MirrorService.applyHostDisplayOrientation(portrait)
-        override val cursorView: CursorView? get() = this@MirrorService.cursorView
-        override var cursorX: Float
-            get() = this@MirrorService.cursorX
-            set(value) { this@MirrorService.cursorX = value }
-        override var cursorY: Float
-            get() = this@MirrorService.cursorY
-            set(value) { this@MirrorService.cursorY = value }
         override fun externalOutputDisplay(): Display? = this@MirrorService.externalOutputDisplay()
         override val mirror: MirrorLink get() = this@MirrorService.mirror
         override val phoneGuard: PhoneGuard get() = this@MirrorService.phoneGuard
         override val physicalInput: PhysicalInput get() = this@MirrorService.physicalInput
         override fun reattachExistingDisplay(width: Int, height: Int): Unit = this@MirrorService.displayFactory.reattachExistingDisplay(width, height)
-        override val requestedPortrait: Boolean get() = this@MirrorService.requestedPortrait
         override fun resizeActiveDisplay(next: Config, reason: String): Unit = this@MirrorService.hostFollower.resizeActiveDisplay(next, reason)
         override val rootWindowParams: WindowManager.LayoutParams? get() = this@MirrorService.rootWindowParams
         override fun setLaptopMode(enabled: Boolean, requestedStyle: KeyboardDeckStyle): Unit = this@MirrorService.laptopModeSwitch.setLaptopMode(enabled, requestedStyle)
         override val surfaceCallback: SurfaceHolder.Callback get() = this@MirrorService.surfaceCallback
         override fun surfaceCreated(holder: SurfaceHolder): Unit = this@MirrorService.surfaceCreated(holder)
-        override fun updateCursorPosition(x: Float, y: Float): Unit = this@MirrorService.updateCursorPosition(x, y)
         override var surfaceView: SurfaceView?
             get() = this@MirrorService.surfaceView
             set(value) { this@MirrorService.surfaceView = value }
@@ -1148,9 +1131,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val cast: CastController get() = this@MirrorService.cast
         override val gamepad: VirtualGamepad get() = this@MirrorService.gamepad
         override val hostFollower: HostDisplayFollower get() = this@MirrorService.hostFollower
-        override fun internalDisplays(manager: DisplayManager): List<Display> = this@MirrorService.internalDisplays(manager)
-        override fun isFoldableDevice(): Boolean = this@MirrorService.isFoldableDevice()
-        override fun isFoldableMainDisplay(): Boolean = this@MirrorService.isFoldableMainDisplay()
         override val menuWidgets: MenuWidgets get() = this@MirrorService.menuWidgets
         override val posture: LaptopPosture get() = this@MirrorService.posture
     })
@@ -1159,19 +1139,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val hostFollower: HostDisplayFollower = HostDisplayFollower(this, object : HostDisplayFollowerHost, DesktopSession by session, OverlayMenu by overlayMenu {
         override fun applyHostDisplayOrientation(portrait: Boolean): Unit = this@MirrorService.applyHostDisplayOrientation(portrait)
         override val coverDisplayController: CoverDisplaySessionController get() = this@MirrorService.coverMenu.coverDisplayController
-        override var cursorX: Float
-            get() = this@MirrorService.cursorX
-            set(value) { this@MirrorService.cursorX = value }
-        override var cursorY: Float
-            get() = this@MirrorService.cursorY
-            set(value) { this@MirrorService.cursorY = value }
-        override fun defaultDisplayUniqueId(): String? = this@MirrorService.defaultDisplayUniqueId()
         override val displayFactory: DisplayFactory get() = this@MirrorService.displayFactory
         override fun displayGeometrySnapshot(reason: String, hostWidth: Int?, hostHeight: Int?): String = this@MirrorService.displayGeometrySnapshot(reason, hostWidth, hostHeight)
         override val externalOutputs: ExternalDisplays get() = this@MirrorService.externalOutputs
-        override fun isFoldableDevice(): Boolean = this@MirrorService.isFoldableDevice()
-        override fun isFoldableMainDisplay(): Boolean = this@MirrorService.isFoldableMainDisplay()
-        override fun isWorkspaceMagnificationActive(): Boolean = this@MirrorService.isWorkspaceMagnificationActive()
         override val keyboardDeck: KeyboardDeck get() = this@MirrorService.keyboardDeck
         override val laptopModeSwitch: LaptopMode get() = this@MirrorService.laptopModeSwitch
         override val launcher: DesktopLauncher get() = this@MirrorService.launcher
@@ -1182,12 +1152,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val phoneGuard: PhoneGuard get() = this@MirrorService.phoneGuard
         override val posture: LaptopPosture get() = this@MirrorService.posture
         override val rawTouchscreen: RawTouchscreenBridge get() = this@MirrorService.rawTouchscreen
-        override val requestedPortrait: Boolean get() = this@MirrorService.requestedPortrait
         override fun scheduleCoverDisplayLifecycleCheck(reason: String): Unit = this@MirrorService.coverMenu.scheduleCoverDisplayLifecycleCheck(reason)
-        override val stopping: Boolean get() = this@MirrorService.stopping
         override fun systemService(name: String, interfaceName: String): Any = this@MirrorService.systemService(name, interfaceName)
         override val touchSurface: TouchSurface get() = this@MirrorService.touchSurface
-        override fun updateCursorPosition(x: Float, y: Float): Unit = this@MirrorService.updateCursorPosition(x, y)
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
         override val workspaces: Workspaces get() = this@MirrorService.workspaces
         override var density: Int
@@ -1217,17 +1184,15 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     /** Dextop's own window manager; null while the platform desktop owns the display. */
     private var plasmaShell: moe.n4tsu.dextop.plasma.DesktopShell? = null
     private var serviceDestroyed = false
-    private var cursorView: CursorView? = null
+    private val desktopCursor: DesktopCursor = DesktopCursor(this, object : DesktopCursorHost, DesktopSession by session, OverlayMenu by overlayMenu {
+        override val externalOutputs: ExternalDisplays get() = this@MirrorService.externalOutputs
+        override val menuScrim: View? get() = this@MirrorService.menuScrim
+        override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
+    })
+
     private val carCompanion: CarCompanionInput = CarCompanionInput(this, object : CarCompanionInputHost, DesktopSession by session, OverlayMenu by overlayMenu {
         override fun cancelDesktopTouchStream(): Unit = this@MirrorService.touchSurface.cancelDesktopTouchStream()
-        override var cursorX: Float
-            get() = this@MirrorService.cursorX
-            set(value) { this@MirrorService.cursorX = value }
-        override var cursorY: Float
-            get() = this@MirrorService.cursorY
-            set(value) { this@MirrorService.cursorY = value }
         override val inputGestureHandler: Handler get() = this@MirrorService.touchSurface.inputGestureHandler
-        override fun refreshPrivilegedInputConfig(reason: String): Unit = this@MirrorService.refreshPrivilegedInputConfig(reason)
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
     })
 
@@ -1314,14 +1279,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun applyLaptopGeometryWhenLaidOut(enabled: Boolean, attempt: Int, baseOverride: Config?, preserveMenu: Boolean): Unit = this@MirrorService.laptopModeSwitch.applyLaptopGeometryWhenLaidOut(enabled, attempt, baseOverride, preserveMenu)
         override val cast: CastController get() = this@MirrorService.cast
         override fun configForHostGeometry(base: Config, hostWidth: Int, hostHeight: Int, systemDensity: Int): Config = this@MirrorService.hostFollower.configForHostGeometry(base, hostWidth, hostHeight, systemDensity)
-        override val cursorView: CursorView? get() = this@MirrorService.cursorView
         override val gamepad: VirtualGamepad get() = this@MirrorService.gamepad
         override val haptics: Haptics get() = this@MirrorService.haptics
         override fun hasKeyboardStyleChoice(): Boolean = this@MirrorService.laptopModeSwitch.hasKeyboardStyleChoice()
         override fun injectKey(keyCode: Int, metaState: Int): Unit = this@MirrorService.touchSurface.injectKey(keyCode, metaState)
         override val inputDispatcher: InputDispatcher get() = this@MirrorService.inputDispatcher
         override val keyboardDeckStyle: MirrorService.KeyboardDeckStyle get() = this@MirrorService.keyboardDeckStyle
-        override val laptopModifiers: LaptopModifierState get() = this@MirrorService.laptopModifiers
         override val laptopTheme: LaptopThemeSettings get() = this@MirrorService.laptopTheme
         override val menuWidgets: MenuWidgets get() = this@MirrorService.menuWidgets
         override val mirror: MirrorLink get() = this@MirrorService.mirror
@@ -1348,7 +1311,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
     private val imeRegion: ImeRegionProbe = ImeRegionProbe(this, object : ImeRegionProbeHost, DesktopSession by session, OverlayMenu by overlayMenu {
         override fun rawTouchscreenViewBounds(view: View?): Rect? = this@MirrorService.rawTouchscreen.rawTouchscreenViewBounds(view)
-        override fun refreshPrivilegedInputConfig(reason: String) = this@MirrorService.refreshPrivilegedInputConfig(reason)
         override fun regionFor(view: View?): RectF = this@MirrorService.externalOutputs.regionFor(view)
     })
 
@@ -1394,15 +1356,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val cast: CastController get() = this@MirrorService.cast
         override fun configForHostGeometry(base: Config, hostWidth: Int, hostHeight: Int, systemDensity: Int): Config = this@MirrorService.hostFollower.configForHostGeometry(base, hostWidth, hostHeight, systemDensity)
         override val coverButtons: CoverBackButtons get() = this@MirrorService.coverButtons
-        override val cursorView: CursorView? get() = this@MirrorService.cursorView
-        override val cursorX: Float get() = this@MirrorService.cursorX
-        override val cursorY: Float get() = this@MirrorService.cursorY
-        override fun defaultDisplayUniqueId(): String? = this@MirrorService.defaultDisplayUniqueId()
         override val externalOutputs: ExternalDisplays get() = this@MirrorService.externalOutputs
         override val gamepad: VirtualGamepad get() = this@MirrorService.gamepad
         override fun isCurrentFoldableCoverDisplay(): Boolean = this@MirrorService.coverMenu.isCurrentFoldableCoverDisplay()
-        override fun isFoldableDevice(): Boolean = this@MirrorService.isFoldableDevice()
-        override fun isMenuOverlayVisible(): Boolean = this@MirrorService.isMenuOverlayVisible()
         override val keyboardDeck: KeyboardDeck get() = this@MirrorService.keyboardDeck
         override var keyboardDeckStyle: MirrorService.KeyboardDeckStyle
             get() = this@MirrorService.keyboardDeckStyle
@@ -1418,14 +1374,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val physicalInput: PhysicalInput get() = this@MirrorService.physicalInput
         override val posture: LaptopPosture get() = this@MirrorService.posture
         override val rawTouchscreen: RawTouchscreenBridge get() = this@MirrorService.rawTouchscreen
-        override fun refreshPrivilegedInputConfig(reason: String): Unit = this@MirrorService.refreshPrivilegedInputConfig(reason)
-        override val requestedPortrait: Boolean get() = this@MirrorService.requestedPortrait
         override fun resizeActiveDisplay(next: Config, reason: String): Unit = this@MirrorService.hostFollower.resizeActiveDisplay(next, reason)
         override fun setOverlayFocusable(focusable: Boolean): Unit = this@MirrorService.textInput.setOverlayFocusable(focusable)
         override val swipeTyping: SwipeTyping get() = this@MirrorService.swipeTyping
         override val touchSurface: TouchSurface get() = this@MirrorService.touchSurface
-        override fun updateCursorPosition(x: Float, y: Float): Unit = this@MirrorService.updateCursorPosition(x, y)
-        override fun updateVirtualCursorVisibility(): Unit = this@MirrorService.updateVirtualCursorVisibility()
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
         override var directTouch: Boolean
             get() = this@MirrorService.directTouch
@@ -1435,29 +1387,32 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             set(value) { this@MirrorService.laptopModeActive = value }
     })
 
-    private var privilegedInputStarting = false
-    private var privilegedPointerFallbackInProgress = false
-    private var privilegedPointerFallbackActive = false
-    private var privilegedInputConfigGeneration = 0
-    private var lastPrivilegedInputSemanticConfig: IntArray? = null
+    private val privilegedInput: PrivilegedInputLink = PrivilegedInputLink(this, object : PrivilegedInputLinkHost, DesktopSession by session, OverlayMenu by overlayMenu {
+        override val carCompanion: CarCompanionInput get() = this@MirrorService.carCompanion
+        override val coverButtons: CoverBackButtons get() = this@MirrorService.coverButtons
+        override fun displayGeometrySnapshot(reason: String, hostWidth: Int?, hostHeight: Int?): String = this@MirrorService.displayGeometrySnapshot(reason, hostWidth, hostHeight)
+        override val gamepad: VirtualGamepad get() = this@MirrorService.gamepad
+        override val haptics: Haptics get() = this@MirrorService.haptics
+        override val imeRegion: ImeRegionProbe get() = this@MirrorService.imeRegion
+        override val keyboardDeck: KeyboardDeck get() = this@MirrorService.keyboardDeck
+        override val rawTouchscreen: RawTouchscreenBridge get() = this@MirrorService.rawTouchscreen
+        override val touchSurface: TouchSurface get() = this@MirrorService.touchSurface
+        override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
+        override var directTouch: Boolean
+            get() = this@MirrorService.directTouch
+            set(value) { this@MirrorService.directTouch = value }
+    })
+
     private val virtualPointer: VirtualPointer = VirtualPointer(this, object : VirtualPointerHost, DesktopSession by session, OverlayMenu by overlayMenu {
-        override fun buildPrivilegedInputConfig(profile: String): IntArray = this@MirrorService.buildPrivilegedInputConfig(profile)
         override fun cancelDesktopTouchStream(): Unit = this@MirrorService.touchSurface.cancelDesktopTouchStream()
         override val carCompanionPhoneTrackpadSurface: View? get() = this@MirrorService.carCompanion.carCompanionPhoneTrackpadSurface
         override val coverTrackpadActive: Boolean get() = this@MirrorService.coverButtons.coverTrackpadActive
         override fun displayGeometrySnapshot(reason: String, hostWidth: Int?, hostHeight: Int?): String = this@MirrorService.displayGeometrySnapshot(reason, hostWidth, hostHeight)
         override val externalOutput: ExternalOutput? get() = this@MirrorService.externalOutputs.externalOutput
-        override fun fallbackToSoftwarePointer(reason: String): Unit = this@MirrorService.fallbackToSoftwarePointer(reason)
         override val laptopKeyboardRequested: Boolean get() = this@MirrorService.keyboardDeck.laptopKeyboardRequested
-        override fun logSuppressedRelativeTouchpadEvent(kind: String): Unit = this@MirrorService.logSuppressedRelativeTouchpadEvent(kind)
         override val physicalInputRouter: PhysicalInputRouter get() = this@MirrorService.physicalInput.physicalInputRouter
-        override var privilegedInputStarting: Boolean
-            get() = this@MirrorService.privilegedInputStarting
-            set(value) { this@MirrorService.privilegedInputStarting = value }
-        override fun refreshPrivilegedInputConfig(reason: String): Unit = this@MirrorService.refreshPrivilegedInputConfig(reason)
         override fun startRawTouchscreenReaderIfEligible(): Unit = this@MirrorService.rawTouchscreen.startRawTouchscreenReaderIfEligible()
         override fun stopRawTouchscreenReader(reason: String): Unit = this@MirrorService.rawTouchscreen.stopRawTouchscreenReader(reason)
-        override fun updateVirtualCursorVisibility(): Unit = this@MirrorService.updateVirtualCursorVisibility()
         override val virtualTouchpad: VirtualTouchpad get() = this@MirrorService.virtualTouchpad
     })
 
@@ -1477,17 +1432,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private val touchSurface: TouchSurface = TouchSurface(this, object : TouchSurfaceHost, DesktopSession by session, OverlayMenu by overlayMenu {
         override val carCompanion: CarCompanionInput get() = this@MirrorService.carCompanion
         override fun changeOrientation(): Unit = this@MirrorService.changeOrientation()
-        override val cursorView: CursorView? get() = this@MirrorService.cursorView
-        override var cursorX: Float
-            get() = this@MirrorService.cursorX
-            set(value) { this@MirrorService.cursorX = value }
-        override var cursorY: Float
-            get() = this@MirrorService.cursorY
-            set(value) { this@MirrorService.cursorY = value }
-        override fun dedicatedTrackpadInputActive(): Boolean = this@MirrorService.dedicatedTrackpadInputActive()
-        override var edgeMenuTriggered: Boolean
-            get() = this@MirrorService.edgeMenuTriggered
-            set(value) { this@MirrorService.edgeMenuTriggered = value }
         override val externalOutputs: ExternalDisplays get() = this@MirrorService.externalOutputs
         override val haptics: Haptics get() = this@MirrorService.haptics
         override val imeRegion: ImeRegionProbe get() = this@MirrorService.imeRegion
@@ -1496,17 +1440,18 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val launcher: DesktopLauncher get() = this@MirrorService.launcher
         override val physicalInput: PhysicalInput get() = this@MirrorService.physicalInput
         override val rawTouchscreen: RawTouchscreenBridge get() = this@MirrorService.rawTouchscreen
-        override fun recordTouchRouting(event: MotionEvent, direct: Boolean): Unit = this@MirrorService.recordTouchRouting(event, direct)
         override fun stop(): Unit = this@MirrorService.stop()
-        override var threeFingerEdgeSwipe: Boolean
-            get() = this@MirrorService.threeFingerEdgeSwipe
-            set(value) { this@MirrorService.threeFingerEdgeSwipe = value }
-        override fun updateCursorPosition(x: Float, y: Float): Unit = this@MirrorService.updateCursorPosition(x, y)
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
         override val virtualTouchpad: VirtualTouchpad get() = this@MirrorService.virtualTouchpad
+        override val coverButtons: CoverBackButtons get() = this@MirrorService.coverButtons
+        override fun currentInputMode(): String = this@MirrorService.currentInputMode()
+        override val diagnostics: InputDiagnostics get() = this@MirrorService.diagnostics
+        override fun displayGeometrySnapshot(reason: String, hostWidth: Int?, hostHeight: Int?): String = this@MirrorService.displayGeometrySnapshot(reason, hostWidth, hostHeight)
+        override var directTouch: Boolean
+            get() = this@MirrorService.directTouch
+            set(value) { this@MirrorService.directTouch = value }
     })
 
-    private val laptopModifiers = LaptopModifierState()
     private var targetDisplayId = -1
     private var targetWidth = 1920
     private var targetHeight = 1080
@@ -1527,12 +1472,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun activateTopologyForIndependentDisplays(reason: String): Unit = this@MirrorService.hostFollower.activateTopologyForIndependentDisplays(reason)
         override fun applyLaptopGeometryWhenLaidOut(enabled: Boolean, attempt: Int, baseOverride: Config?, preserveMenu: Boolean): Unit = this@MirrorService.laptopModeSwitch.applyLaptopGeometryWhenLaidOut(enabled, attempt, baseOverride, preserveMenu)
         override val coverDisplayController: CoverDisplaySessionController get() = this@MirrorService.coverMenu.coverDisplayController
-        override var cursorX: Float
-            get() = this@MirrorService.cursorX
-            set(value) { this@MirrorService.cursorX = value }
-        override var cursorY: Float
-            get() = this@MirrorService.cursorY
-            set(value) { this@MirrorService.cursorY = value }
         override val desktopModeConfigurator: DesktopModeConfigurator get() = this@MirrorService.desktopModeConfigurator
         override val displayBackend: DisplayMirrorBackend get() = this@MirrorService.displayBackend
         override fun displayGeometrySnapshot(reason: String, hostWidth: Int?, hostHeight: Int?): String = this@MirrorService.displayGeometrySnapshot(reason, hostWidth, hostHeight)
@@ -1544,16 +1483,12 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val phoneGuard: PhoneGuard get() = this@MirrorService.phoneGuard
         override val physicalInput: PhysicalInput get() = this@MirrorService.physicalInput
         override fun postMainDelayed(delayMs: Long, action: () -> Unit): Unit = this@MirrorService.postMainDelayed(delayMs, action)
-        override val requestedPortrait: Boolean get() = this@MirrorService.requestedPortrait
         override fun scheduleHostDisplayReconfiguration(reason: String, width: Int?, height: Int?, densityDpi: Int?): Unit = this@MirrorService.hostFollower.scheduleHostDisplayReconfiguration(reason, width, height, densityDpi)
         override fun scheduleTopologyReapplyAfterReconnect(): Unit = this@MirrorService.hostFollower.scheduleTopologyReapplyAfterReconnect()
         override fun startAutoOverlapCorrection(): Unit = this@MirrorService.taskRouting.startAutoOverlapCorrection()
         override fun stop(): Unit = this@MirrorService.stop()
-        override val stopping: Boolean get() = this@MirrorService.stopping
         override fun synchronizeDesktopWallpaperDimensions(width: Int, height: Int, reason: String): Unit = this@MirrorService.hostFollower.synchronizeDesktopWallpaperDimensions(width, height, reason)
         override fun systemService(name: String, interfaceName: String): Any = this@MirrorService.systemService(name, interfaceName)
-        override fun updateCursorPosition(x: Float, y: Float): Unit = this@MirrorService.updateCursorPosition(x, y)
-        override fun updateVirtualCursorVisibility(): Unit = this@MirrorService.updateVirtualCursorVisibility()
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
         override val workspaces: Workspaces get() = this@MirrorService.workspaces
         override var showSystemDecorations: Boolean
@@ -1578,7 +1513,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun postMainDelayed(delayMs: Long, action: () -> Unit): Unit = this@MirrorService.postMainDelayed(delayMs, action)
         override val serviceDestroyed: Boolean get() = this@MirrorService.serviceDestroyed
         override fun stop(): Unit = this@MirrorService.stop()
-        override val stopping: Boolean get() = this@MirrorService.stopping
         override fun systemService(name: String, interfaceName: String): Any = this@MirrorService.systemService(name, interfaceName)
         override fun waitForOverlayRequestCleared(existing: Set<Int>, staleOverlays: Set<Int>, width: Int, height: Int, attempt: Int, decorations: Boolean): Unit = this@MirrorService.displayFactory.waitForOverlayRequestCleared(existing, staleOverlays, width, height, attempt, decorations)
         override var plasmaShell: moe.n4tsu.dextop.plasma.DesktopShell?
@@ -1597,141 +1531,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun systemService(name: String, interfaceName: String): Any = this@MirrorService.systemService(name, interfaceName)
     })
 
-    private var cursorX = 960f
-    private var cursorY = 540f
     private var directTouch = false
-    private var threeFingerEdgeSwipe = false
-    private var edgeMenuTriggered = false
     private val cast: CastController = CastController(this, object : CastControllerHost, DesktopSession by session, OverlayMenu by overlayMenu {
     })
 
     private val rawTouchscreen: RawTouchscreenBridge = RawTouchscreenBridge(this, object : RawTouchscreenBridgeHost, DesktopSession by session, OverlayMenu by overlayMenu {
-        override fun buildPrivilegedInputConfig(profile: String): IntArray = this@MirrorService.buildPrivilegedInputConfig(profile)
         override val imeDirectTouchHeld: Boolean get() = this@MirrorService.touchSurface.imeDirectTouchHeld
         override val imeRegion: ImeRegionProbe get() = this@MirrorService.imeRegion
         override val laptopTrackpadView: View? get() = this@MirrorService.keyboardDeck.laptopTrackpadView
-        override fun refreshPrivilegedInputConfig(reason: String): Unit = this@MirrorService.refreshPrivilegedInputConfig(reason)
-        override fun updateVirtualCursorVisibility(): Unit = this@MirrorService.updateVirtualCursorVisibility()
         override val virtualPointer: VirtualPointer get() = this@MirrorService.virtualPointer
     })
 
-    private val privilegedInputClientDelegate: Lazy<PrivilegedInputClient> = lazy {
-        PrivilegedInputClient(this, object : PrivilegedInputClient.Listener {
-            override fun onInputState(category: String, message: String) {
-                Log.i(logTag, "privileged input [$category] $message")
-                when (category) {
-                    "uinput_created" -> {
-                        privilegedInputClient.acknowledgeEngineStarted()
-                        privilegedInputStarting = false
-                        val generation = virtualPointer.virtualMouseGeneration
-                        val profile = virtualPointer.virtualPointerRegisteredProfile
-                        if (profile.isNotBlank()) {
-                            virtualPointer.scheduleVirtualMouseReadyCheck(generation, profile, 0)
-                        }
-                    }
-
-                    "device_discovered" -> {
-                        rawTouchscreen.touchscreenReaderRunning = true
-                        // A readable EventHub node is only a candidate.  Do
-                        // not suppress the overlay's MotionEvent path until
-                        // the native reader has received an actual contact.
-                        rawTouchscreen.touchscreenReaderReady = false
-                        rawTouchscreen.touchscreenReaderCandidateCount =
-                            rawTouchscreen.touchscreenReaderCandidateCount.coerceAtLeast(1)
-                        rawTouchscreen.touchscreenReaderDevice = message.substringAfter("path=", "")
-                            .substringBefore(' ')
-                    }
-
-                    "source_selected" -> {
-                        rawTouchscreen.touchscreenReaderRunning = true
-                        rawTouchscreen.touchscreenReaderReady = true
-                        virtualPointer.virtualPointerOutputObserved = true
-                        rawTouchscreen.touchscreenReaderCandidateCount =
-                            rawTouchscreen.touchscreenReaderCandidateCount.coerceAtLeast(1)
-                        rawTouchscreen.touchscreenReaderDevice = message.substringAfter("path=", "")
-                            .substringBefore(' ')
-                        updateVirtualCursorVisibility()
-                    }
-
-                    "device_waiting" -> {
-                        rawTouchscreen.touchscreenReaderRunning = true
-                        rawTouchscreen.touchscreenReaderReady = false
-                        rawTouchscreen.touchscreenReaderCandidateCount = 0
-                    }
-
-                    "keyboard_created" -> {
-                        keyboardDeck.scheduleLaptopKeyboardReadyCheck(keyboardDeck.laptopKeyboardGeneration, 0)
-                    }
-
-                    "gamepad_created" -> gamepad.replayVirtualGamepadState()
-
-                    "keyboard_destroyed" -> keyboardDeck.clearLaptopKeyboardPublication("native_destroyed")
-
-                    "stopped" -> {
-                        if (!privilegedInputClient.isEngineRunning()) {
-                            privilegedInputStarting = false
-                            virtualPointer.virtualMouseReady = false
-                            virtualPointer.virtualPointerOutputObserved = false
-                            rawTouchscreen.touchscreenReaderRunning = false
-                            rawTouchscreen.touchscreenReaderReady = false
-                            rawTouchscreen.touchscreenReaderCandidateCount = 0
-                            updateVirtualCursorVisibility()
-                        }
-                    }
-
-                    "disconnected", "worker_exited" -> {
-                        privilegedInputClient.acknowledgeEngineStopped()
-                        privilegedInputStarting = false
-                        virtualPointer.virtualMouseReady = false
-                        virtualPointer.virtualPointerOutputObserved = false
-                        rawTouchscreen.touchscreenReaderRunning = false
-                        rawTouchscreen.touchscreenReaderReady = false
-                        rawTouchscreen.touchscreenReaderCandidateCount = 0
-                        fallbackToSoftwarePointer("$category:$message")
-                    }
-
-                    "uinput_destroyed" -> {
-                        virtualPointer.virtualMouseReady = false
-                        virtualPointer.virtualPointerOutputObserved = false
-                        privilegedInputClient.setOutputReady(false)
-                        updateVirtualCursorVisibility()
-                    }
-
-                    "native_error", "client_error" -> {
-                        privilegedInputStarting = false
-                        val pointerOutputFailed = category == "client_error" ||
-                                (message.contains("uinput", ignoreCase = true) &&
-                                        !message.contains("keyboard", ignoreCase = true))
-                        if (pointerOutputFailed) {
-                            fallbackToSoftwarePointer("$category:$message")
-                        }
-                        OperationLog.w(
-                            this@MirrorService,
-                            "PrivilegedInput",
-                            "$category: $message"
-                        )
-                    }
-                }
-                if (category != "raw_event" && category != "uinput_event") {
-                    OperationLog.i(
-                        this@MirrorService,
-                        "PrivilegedInput",
-                        "$category: $message"
-                    )
-                }
-            }
-
-            override fun onThreeFingerGesture() {
-                OperationLog.i(this@MirrorService, "PrivilegedInput", "three-finger action")
-                touchSurface.performConfiguredGesture()
-            }
-
-            override fun onHaptic(strong: Boolean) {
-                haptics.performLaptopHaptic(keyboardDeck.laptopTrackpadView, strong, HapticSource.POINTER)
-            }
-        })
-    }
-    private val privilegedInputClient: PrivilegedInputClient by privilegedInputClientDelegate
     private var inputManager: InputManager? = null
     private var sensorManager: SensorManager? = null
 
@@ -1752,38 +1562,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private fun laptopTrackpadInputActive(): Boolean =
         laptopModeActive && virtualPointer.virtualPointerInputActive(true)
 
-    private fun dedicatedTrackpadInputActive(): Boolean =
-        (laptopModeActive || coverButtons.coverTrackpadActive || carCompanion.carCompanionPhoneTrackpadSurface != null) &&
-                virtualPointer.virtualPointerInputActive(true)
-
-    private fun updateVirtualCursorVisibility() {
-        val cursor = cursorView ?: return
-        // The operation menu is handled by the accessibility overlay itself.
-        // Never let a delayed uinput failure expose the white software cursor
-        // over that menu while its touch controls are on screen.
-        if (isMenuDisplayedForCursor()) {
-            cursor.visibility = View.GONE
-            return
-        }
-        // Device publication alone does not guarantee that InputReader has
-        // rendered a pointer.  The software cursor remains authoritative
-        // until the native EventHub stream or an overlay touch frame has
-        // produced an actual virtual-pointer output.
-        val systemPointerActive = virtualPointer.virtualMouseReady && virtualPointer.virtualPointerOutputObserved
-        cursor.visibility = if (directTouch || systemPointerActive) {
-            View.GONE
-        } else {
-            View.VISIBLE
-        }
-    }
-
-    /**
-     * A mirror backend can fail after the input device has already hidden the
-     * software pointer (for example when a vendor rejects WindowManager or
-     * SurfaceControl mirroring).  Keep the failed backend from leaving the
-     * pointer in an invisible state: tear down the virtual pointer and make
-     * the accessibility cursor authoritative again.
-     */
     private fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String {
         val host = surfaceView
         val width = hostWidth ?: host?.width ?: 0
@@ -1838,30 +1616,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         if (accepted) OperationLog.i(this, "InputDispatch", detail)
         else OperationLog.w(this, "InputDispatch", detail)
-    }
-
-    private fun recordTouchRouting(event: MotionEvent, direct: Boolean) {
-        val now = SystemClock.uptimeMillis()
-        // See recordInputDispatch(): session logging must never become part of
-        // the touch rendering path. One geometry sample per 750 ms is enough
-        // for a useful report without synchronous file churn.
-        if (now - diagnostics.lastTouchDiagnosticAt < 750L) return
-        diagnostics.lastTouchDiagnosticAt = now
-        val view = surfaceView
-        val mappedX = if (view != null && view.width > 0) {
-            (event.x / view.width * targetWidth).coerceIn(0f, targetWidth - 1f)
-        } else 0f
-        val mappedY = if (view != null && view.height > 0) {
-            (event.y / view.height * targetHeight).coerceIn(0f, targetHeight - 1f)
-        } else 0f
-        OperationLog.i(
-            this,
-            "TouchRouting",
-            "action=${event.actionMasked} pointers=${event.pointerCount} source=${event.source} " +
-                    "pointX:${event.x} pointY:${event.y} mappedX:${mappedX} mappedY:${mappedY} " +
-                    "directTouch=$direct inputMode=${currentInputMode()} " +
-                    displayGeometrySnapshot("touch_event")
-        )
     }
 
     private val hingeListener = object : SensorEventListener {
@@ -2011,12 +1765,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     })
 
     private val carGestures: CarGestures = CarGestures(this, object : CarGesturesHost, DesktopSession by session, OverlayMenu by overlayMenu {
-        override var cursorX: Float
-            get() = this@MirrorService.cursorX
-            set(value) { this@MirrorService.cursorX = value }
-        override var cursorY: Float
-            get() = this@MirrorService.cursorY
-            set(value) { this@MirrorService.cursorY = value }
         override val inputDispatcher: InputDispatcher get() = this@MirrorService.inputDispatcher
         override val recentsExecutor: java.util.concurrent.ExecutorService get() = this@MirrorService.recentsExecutor
     })
@@ -2042,7 +1790,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             densityDpi = newConfig.densityDpi
         )
         root?.postDelayed({
-            if (active) refreshPrivilegedInputConfig("configuration_changed")
+            if (active) privilegedInput.refreshPrivilegedInputConfig("configuration_changed")
         }, 120L)
     }
 
@@ -2075,8 +1823,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 val view = surfaceView ?: return
                 if (view.width > 0 && view.height > 0) {
                     val region = externalOutputs.regionFor(view)
-                    cursorX = (region.left + event.x / view.width * region.width()).coerceIn(0f, targetWidth - 1f)
-                    cursorY = (region.top + event.y / view.height * region.height()).coerceIn(0f, targetHeight - 1f)
+                    desktopCursor.cursorX = (region.left + event.x / view.width * region.width()).coerceIn(0f, targetWidth - 1f)
+                    desktopCursor.cursorY = (region.top + event.y / view.height * region.height()).coerceIn(0f, targetHeight - 1f)
                 }
             }
         }
@@ -2094,8 +1842,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         inputManager = null
         sensorManager = null
         lockScreen.screenReceiverRegistered = false
-        if (privilegedInputClientDelegate.isInitialized()) {
-            privilegedInputClient.release("accessibility_unbound")
+        if (privilegedInput.privilegedInputClientDelegate.isInitialized()) {
+            privilegedInput.privilegedInputClient.release("accessibility_unbound")
         }
         if (instance === this) instance = null
         return super.onUnbind(intent)
@@ -2129,8 +1877,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         keyboardDeck.laptopInputExecutor.shutdownNow()
         keyboardDeck.laptopKeyExecutor.shutdownNow()
         hostFollower.desktopWallpaperController.cancel()
-        if (privilegedInputClientDelegate.isInitialized()) {
-            privilegedInputClient.release("service_destroyed")
+        if (privilegedInput.privilegedInputClientDelegate.isInitialized()) {
+            privilegedInput.privilegedInputClient.release("service_destroyed")
         }
         super.onDestroy()
     }
@@ -2178,8 +1926,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // A touchpad-to-mouse compatibility fallback is scoped to one session;
         // every new session retries the user's selected profile.
         virtualPointer.virtualPointerRuntimeProfile = null
-        privilegedPointerFallbackInProgress = false
-        privilegedPointerFallbackActive = false
+        privilegedInput.privilegedPointerFallbackInProgress = false
+        privilegedInput.privilegedPointerFallbackActive = false
         laptopModeActive = false
         laptopModeSwitch.laptopBaseConfig = null
         laptopModeSwitch.laptopFullHostHeightPx = 0
@@ -2271,7 +2019,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         carCompanion.carCompanionPhoneTrackpadSurface = null
         carCompanion.carCompanionPhoneUsesNativeTouchpad = false
         carCompanion.carCompanionPhonePreviousRuntimeProfile = null
-        lastPrivilegedInputSemanticConfig = null
+        privilegedInput.lastPrivilegedInputSemanticConfig = null
         forceFreeformSession = effectiveConfig.forceFreeform
         // removeWindow() below releases the previous mirror backend and clears
         // autoDestinationSurface. Retain the newly requested host Surface in
@@ -2304,8 +2052,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 "starting headless Auto display ${targetWidth}x${targetHeight}/$density; phone orientation unchanged"
             )
         }
-        cursorX = targetWidth / 2f
-        cursorY = targetHeight / 2f
+        desktopCursor.cursorX = targetWidth / 2f
+        desktopCursor.cursorY = targetHeight / 2f
         OperationLog.i(this, "DisplayGeometry", displayGeometrySnapshot("session_configured"))
         removeWindow()
         if (autoOnlySession) {
@@ -2536,7 +2284,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         rootWindowParams = params
         surfaceView = surface
         keyboardDeck.laptopContent = content
-        cursorView = cursor
+        desktopCursor.cursorView = cursor
         cursor.contentHeightFraction = 1f
         menu = controls
         menuScrim = scrim
@@ -2595,7 +2343,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             setFitInsetsIgnoringVisibility(true)
         }
         windowManager?.addView(cursor, cursorParams)
-        updateCursorPosition()
+        desktopCursor.updateCursorPosition()
         Log.i(logTag, "fullscreen accessibility overlay added")
     }
 
@@ -2606,9 +2354,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val coverDisplayController: CoverDisplaySessionController get() = this@MirrorService.coverMenu.coverDisplayController
         override fun coverDisplayLifecycleToken(): String = this@MirrorService.coverMenu.coverDisplayLifecycleToken()
         override val gamepad: VirtualGamepad get() = this@MirrorService.gamepad
-        override fun isFoldableDevice(): Boolean = this@MirrorService.isFoldableDevice()
         override val menuWidgets: MenuWidgets get() = this@MirrorService.menuWidgets
-        override fun refreshPrivilegedInputConfig(reason: String): Unit = this@MirrorService.refreshPrivilegedInputConfig(reason)
         override fun showCoverDisplayFailure(error: Throwable): Unit = this@MirrorService.coverMenu.showCoverDisplayFailure(error)
         override fun showCoverDisplayMenu(panel: LinearLayout): Unit = this@MirrorService.coverMenu.showCoverDisplayMenu(panel)
         override fun trackpad(event: MotionEvent, sourceView: View, forceCursorMode: Boolean, allowVirtualPointer: Boolean, hapticView: View?): Boolean = this@MirrorService.touchSurface.trackpad(event, sourceView, forceCursorMode, allowVirtualPointer, hapticView)
@@ -2616,239 +2362,9 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override val virtualTouchpad: VirtualTouchpad get() = this@MirrorService.virtualTouchpad
     })
 
-    private fun isMenuOverlayVisible(): Boolean {
-        return menu?.visibility == View.VISIBLE && menuScrim?.isClickable == true
-    }
-
-    /** True while the operation menu is visible, including its closing animation. */
-    private fun isMenuDisplayedForCursor(): Boolean {
-        return menu?.visibility == View.VISIBLE || menuScrim?.visibility == View.VISIBLE
-    }
-
-    private fun buildPrivilegedInputConfig(profile: String): IntArray {
-        val windowBounds = windowManager?.currentWindowMetrics?.bounds
-        val hostWidth = root?.width?.takeIf { it > 0 }
-            ?: surfaceView?.width?.takeIf { it > 0 }
-            ?: windowBounds?.width()
-            ?: resources.displayMetrics.widthPixels
-        val hostHeight = root?.height?.takeIf { it > 0 }
-            ?: surfaceView?.height?.takeIf { it > 0 }
-            ?: windowBounds?.height()
-            ?: resources.displayMetrics.heightPixels
-        val nativeProfile = if (isMenuOverlayVisible()) {
-            PrivilegedInputProtocol.PROFILE_DISABLED
-        } else {
-            when (profile) {
-                "touchpad" -> PrivilegedInputProtocol.PROFILE_TOUCHPAD
-                "mouse" -> PrivilegedInputProtocol.PROFILE_MOUSE
-                else -> PrivilegedInputProtocol.PROFILE_DISABLED
-            }
-        }
-        val fullscreenBounds = rawTouchscreen.rawTouchscreenViewBounds(surfaceView)
-        val trackpadBounds = rawTouchscreen.rawTouchscreenViewBounds(keyboardDeck.laptopTrackpadView)
-        // A touchpad reports relative movement from its absolute contact
-        // range.  Keep that range proportional to the actual input region;
-        // the former fixed landscape 1839×1199 range made portrait input
-        // horizontally over-sensitive and vertically sluggish.
-        // In laptop mode the trackpad rectangle is only the gesture's entry
-        // gate. Once a contact starts there, it may continue through the
-        // keyboard and the upper display area. Publish a host-sized absolute
-        // range so the native bridge does not pin that contact to the
-        // trackpad's top/side edges while it remains down.
-        val coverSurface = coverButtons.coverTrackpadSurface
-        val companionSurface = carCompanion.carCompanionPhoneTrackpadSurface?.takeIf {
-            autoOnlySession && it.isAttachedToWindow
-        }
-        val touchpadMaxX = if (carCompanion.carCompanionPhoneUsesNativeTouchpad &&
-            (companionSurface?.width ?: 0) > 0
-        ) {
-            checkNotNull(companionSurface).width
-        } else if (coverButtons.coverTrackpadActive && (coverSurface?.width ?: 0) > 0) {
-            checkNotNull(coverSurface).width
-        } else if (laptopModeActive) {
-            hostWidth.coerceAtLeast(1)
-        } else {
-            hostWidth.coerceAtLeast(1)
-        }
-        val touchpadMaxY = if (carCompanion.carCompanionPhoneUsesNativeTouchpad &&
-            (companionSurface?.height ?: 0) > 0
-        ) {
-            checkNotNull(companionSurface).height
-        } else if (coverButtons.coverTrackpadActive && (coverSurface?.height ?: 0) > 0) {
-            checkNotNull(coverSurface).height
-        } else if (laptopModeActive) {
-            hostHeight.coerceAtLeast(1)
-        } else {
-            hostHeight.coerceAtLeast(1)
-        }
-        val candidate = PrivilegedInputProtocol.buildConfig(
-            profile = nativeProfile,
-            rotation = rawTouchscreen.rawTouchscreenDisplayRotation(),
-            hostWidth = hostWidth,
-            hostHeight = hostHeight,
-            fullscreen = fullscreenBounds,
-            trackpad = trackpadBounds,
-            directTouch = directTouch,
-            laptopMode = laptopModeActive,
-            touchpadMaxX = touchpadMaxX,
-            touchpadMaxY = touchpadMaxY,
-            touchpadResolution = VIRTUAL_TOUCHPAD_RESOLUTION,
-            debugAllEvents = BuildConfig.DEBUG,
-            naturalScroll = virtualPointer.virtualMouseNaturalScroll(),
-            mouseSensitivity = 1f,
-            generation = 0,
-            imeTouch = imeRegion.imeTouchBoundsOnHost()
-        )
-        val previous = lastPrivilegedInputSemanticConfig
-        val changed = previous == null ||
-                (0 until PrivilegedInputProtocol.CONFIG_SIZE).any { index ->
-                    index != PrivilegedInputProtocol.CONFIG_GENERATION &&
-                            previous[index] != candidate[index]
-                }
-        if (changed) {
-            privilegedInputConfigGeneration += 1
-            candidate[PrivilegedInputProtocol.CONFIG_GENERATION] = privilegedInputConfigGeneration
-            lastPrivilegedInputSemanticConfig = candidate.copyOf()
-            Log.i(
-                logTag,
-                "privileged input semantic config changed generation=$privilegedInputConfigGeneration " +
-                        "profile=$profile rotation=${candidate[PrivilegedInputProtocol.CONFIG_ROTATION]} " +
-                        "host=${candidate[PrivilegedInputProtocol.CONFIG_HOST_WIDTH]}x" +
-                        candidate[PrivilegedInputProtocol.CONFIG_HOST_HEIGHT]
-            )
-        } else {
-            candidate[PrivilegedInputProtocol.CONFIG_GENERATION] =
-                checkNotNull(previous)[PrivilegedInputProtocol.CONFIG_GENERATION]
-        }
-        return candidate
-    }
-
-    private fun refreshPrivilegedInputConfig(reason: String) {
-        val profile = virtualPointer.virtualPointerRegisteredProfile.ifBlank { virtualPointer.activeVirtualPointerProfile() }
-        if (profile != "touchpad" && profile != "mouse") return
-        privilegedInputClient.updateConfig(buildPrivilegedInputConfig(profile))
-        Log.i(
-            logTag,
-            "privileged input geometry updated reason=$reason " +
-                    displayGeometrySnapshot("privileged_input_config")
-        )
-    }
-
-    /**
-     * Registers the selected kernel-backed pointer. The mouse profile reports
-     * relative motion; the touchpad profile exposes Linux MT Type-B contacts
-     * and lets Android's TouchpadInputMapper own acceleration and gestures.
-     */
-
-    private fun fallbackToSoftwarePointer(reason: String) {
-        if (privilegedPointerFallbackInProgress || privilegedPointerFallbackActive) return
-        if (!active || directTouch && !laptopModeActive && !coverButtons.coverTrackpadActive) {
-            privilegedInputStarting = false
-            updateVirtualCursorVisibility()
-            return
-        }
-        if (isMenuDisplayedForCursor()) {
-            // Menu input must remain owned by the menu overlay. A delayed
-            // native error during the menu animation is not permission to
-            // put the white software cursor on top of the controls.
-            privilegedInputStarting = false
-            cursorView?.visibility = View.GONE
-            OperationLog.i(
-                this,
-                "InputRouting",
-                "software cursor fallback suppressed while operation menu is displayed reason=$reason"
-            )
-            return
-        }
-        privilegedPointerFallbackInProgress = true
-        try {
-            virtualPointer.stopVirtualMouse()
-            virtualPointer.virtualPointerRuntimeProfile = "software"
-            privilegedPointerFallbackActive = true
-            privilegedInputStarting = false
-            virtualPointer.virtualMouseReady = false
-            virtualPointer.virtualPointerOutputObserved = false
-            cursorView?.apply {
-                visibility = if (directTouch) View.GONE else View.VISIBLE
-                if (!directTouch) bringToFront()
-            }
-            updateVirtualCursorVisibility()
-            val message = "privileged pointer unavailable; using session software cursor reason=$reason"
-            OperationLog.w(this, "InputRouting", message)
-            Log.w(logTag, message)
-        } finally {
-            privilegedPointerFallbackInProgress = false
-        }
-    }
-
-    private fun logSuppressedRelativeTouchpadEvent(kind: String) {
-        val now = SystemClock.uptimeMillis()
-        if (now - virtualPointer.virtualPointerLastUnsupportedEventLogAt < 1_000L) return
-        virtualPointer.virtualPointerLastUnsupportedEventLogAt = now
-        val message = "suppressed $kind for native touchpad profile; MT contacts must own motion and scrolling"
-        OperationLog.w(this, "InputRouting", message)
-        Log.w(logTag, message)
-    }
-
-    private fun defaultDisplayUniqueId(): String? = runCatching {
-        Display::class.java.getMethod("getUniqueId")
-            .invoke(getSystemService(DisplayManager::class.java).getDisplay(Display.DEFAULT_DISPLAY)) as String
-    }.getOrNull()
-
-    private fun isFoldableMainDisplay(): Boolean {
-        val manager = getSystemService(DisplayManager::class.java)
-        val internalDisplays = internalDisplays(manager)
-        if (internalDisplays.size < 2) return false
-        fun area(display: Display): Long {
-            val metrics = android.util.DisplayMetrics()
-            @Suppress("DEPRECATION")
-            display.getRealMetrics(metrics)
-            return metrics.widthPixels.toLong() * metrics.heightPixels
-        }
-
-        val current = manager.getDisplay(Display.DEFAULT_DISPLAY) ?: return false
-        return area(current) >= internalDisplays.maxOf(::area)
-    }
-
-    /**
-     * WindowManager's folding API is authoritative when the OEM extension is
-     * present. Older devices may not expose it, so the legacy display/sensor
-     * probe remains a fallback rather than being treated as a second signal.
-     */
-
-    private fun isFoldableDevice(): Boolean {
-        posture.refreshFoldingApiState("capability", force = true)
-        // Fold8 can expose only its active internal panel while the session
-        // starts, and a few One UI builds do not publish TYPE_HINGE_ANGLE to
-        // third-party services.  Its known model/profile is therefore a
-        // stable hardware capability signal, not an automatic-posture signal.
-        // Without it, even the explicit overlay action is rejected as a
-        // phone-sized non-foldable before the laptop deck is created.
-        if (posture.laptopFoldProfile() == LaptopFoldProfile.FOLD8) return true
-        // A fold transition can make WindowManager briefly publish an empty
-        // feature list while the inactive panel is being attached.  That is
-        // not proof that the device stopped being foldable. Keep the positive
-        // API result, but fall back to stable hardware signals before ever
-        // returning false so a transient result cannot disable auto detection.
-        if (posture.foldingApiFoldable == true) return true
-        val manager = getSystemService(DisplayManager::class.java)
-        val hardwareFoldable = internalDisplays(manager).size >= 2 ||
-                getSystemService(SensorManager::class.java)
-                    .getDefaultSensor(Sensor.TYPE_HINGE_ANGLE) != null
-        return hardwareFoldable || posture.foldingApiFoldable == true
-    }
-
-    /**
-     * Laptop mode needs enough surface for two usable panes. Foldables are
-     * explicitly supported even when one panel is narrower than a tablet;
-     * otherwise require a tablet-class display (600dp smallest width).
-     */
-
-    private fun internalDisplays(manager: DisplayManager): List<Display> =
-        manager.displays.filter { display ->
-            runCatching { Display::class.java.getMethod("getType").invoke(display) as Int == 1 }
-                .getOrDefault(display.displayId == Display.DEFAULT_DISPLAY)
-        }
+    private val deviceDisplays: DeviceDisplays = DeviceDisplays(this, object : DeviceDisplaysHost, DesktopSession by session, OverlayMenu by overlayMenu {
+        override val posture: LaptopPosture get() = this@MirrorService.posture
+    })
 
     private fun menuLayoutParams(): FrameLayout.LayoutParams {
         return if (menuUsesLandscapeLayout()) {
@@ -3242,7 +2758,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun beginOverlayTextInput(field: EditText): Unit = this@MirrorService.textInput.beginOverlayTextInput(field)
         override val cast: CastController get() = this@MirrorService.cast
         override fun changeOrientation(): Unit = this@MirrorService.changeOrientation()
-        override val requestedPortrait: Boolean get() = this@MirrorService.requestedPortrait
         override fun start(config: Config): Unit = this@MirrorService.start(config)
         override fun stop(): Unit = this@MirrorService.stop()
         override fun toggleDisplayRotation180(): Unit = this@MirrorService.toggleDisplayRotation180()
@@ -3274,7 +2789,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun effectiveConfig(config: Config): Config = this@MirrorService.effectiveConfig(config)
         override fun numberField(value: String, label: String): EditText = this@MirrorService.menuWidgets.numberField(value, label)
         override fun resizeActiveDisplay(next: Config, reason: String) = this@MirrorService.hostFollower.resizeActiveDisplay(next, reason)
-        override fun resolutionProfiles(): List<ResolutionProfile> = this@MirrorService.resolutionProfiles()
         override val resolutionRepository: ResolutionRepository get() = this@MirrorService.resolutionRepository
     })
 
@@ -3285,22 +2799,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         val reverse = getSharedPreferences(PREFS, MODE_PRIVATE)
             .getBoolean(rotate180PreferenceKey(portrait), false)
         MainActivity.setDisplayOrientation(portrait, reverse)
-    }
-
-    private fun updateCursorPosition(x: Float = cursorX, y: Float = cursorY) {
-        // Each screen draws the cursor while it is over its part of the desktop.
-        fun place(cursor: CursorView?, region: RectF) {
-            cursor ?: return
-            val nx = (x - region.left) / region.width().coerceAtLeast(1f)
-            val ny = (y - region.top) / region.height().coerceAtLeast(1f)
-            cursor.alpha = if (nx in 0f..1f && ny in 0f..1f) 1f else 0f
-            cursor.update(nx.coerceIn(0f, 1f), ny.coerceIn(0f, 1f))
-        }
-        // External only: the phone shows no desktop, and the system pointer is drawn on the external screen.
-        val output = externalOutputs.externalOutput
-        if (output?.mode == "external") cursorView?.alpha = 0f
-        else place(cursorView, externalOutputs.regionFor(output?.phoneSurface ?: surfaceView))
-        output?.let { place(externalOutputs.externalCursor, externalOutputs.regionFor(it.surface)) }
     }
 
     private fun toggleDisplayRotation180() {
@@ -3322,9 +2820,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
     }
 
-    private fun resolutionProfiles(): List<ResolutionProfile> =
-        resolutionRepository.profiles(density)
-
     private val haptics: Haptics = Haptics(this, object : HapticsHost, DesktopSession by session, OverlayMenu by overlayMenu {
     })
 
@@ -3344,10 +2839,10 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // the device from the system so Android cannot keep pointer focus
             // on the last mouse-controlled application.
             virtualPointer.stopVirtualMouse()
-            updateVirtualCursorVisibility()
+            desktopCursor.updateVirtualCursorVisibility()
         } else {
             virtualPointer.startVirtualMouse()
-            updateVirtualCursorVisibility()
+            desktopCursor.updateVirtualCursorVisibility()
         }
         OperationLog.i(
             this,
@@ -3373,7 +2868,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             } else {
                 virtualPointer.stopVirtualMouse()
             }
-            updateVirtualCursorVisibility()
+            desktopCursor.updateVirtualCursorVisibility()
             OperationLog.i(
                 this,
                 "InputRouting",
@@ -3386,8 +2881,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         }
         // ACTION_DOWN on the phone display hands cursor ownership back to the
         // touchpad immediately, even if the mouse remains connected.
-        updateVirtualCursorVisibility()
-        if (!directTouch && !virtualPointer.virtualMouseInputActive()) updateCursorPosition()
+        desktopCursor.updateVirtualCursorVisibility()
+        if (!directTouch && !virtualPointer.virtualMouseInputActive()) desktopCursor.updateCursorPosition()
         OperationLog.i(
             this,
             "InputRouting",
@@ -3421,8 +2916,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 animate().alpha(1f).setDuration(240).start()
             }
             panel.visibility = View.VISIBLE
-            updateVirtualCursorVisibility()
-            refreshPrivilegedInputConfig("menu_opened")
+            desktopCursor.updateVirtualCursorVisibility()
+            privilegedInput.refreshPrivilegedInputConfig("menu_opened")
             panel.alpha = 0f
             panel.scaleX = .94f
             panel.scaleY = .94f
@@ -3449,7 +2944,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // to Dextop immediately and must never hit the scrim's reopen click.
             frame.routeTouchesToSurface = !laptopModeActive
             menuScrim?.isClickable = false
-            refreshPrivilegedInputConfig("menu_closed")
+            privilegedInput.refreshPrivilegedInputConfig("menu_closed")
             menuScrim?.animate()?.alpha(0f)?.setDuration(180)?.start()
             val animation = if (menuUsesLandscapeLayout()) {
                 panel.animate().translationX(-panel.width.toFloat())
@@ -3475,7 +2970,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                 panel.scaleX = 1f
                 panel.scaleY = 1f
                 surfaceView?.requestFocus()
-                updateVirtualCursorVisibility()
+                desktopCursor.updateVirtualCursorVisibility()
             }.start()
         }
     }
@@ -3587,12 +3082,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * the clear has disappeared; if it does not, fail the start instead of
      * multiplying displays indefinitely.
      */
-
-    private fun isWorkspaceMagnificationActive(): Boolean {
-        val value = getSharedPreferences("FlutterSharedPreferences", MODE_PRIVATE)
-            .all["flutter.desktop_workspace_magnification_percent"]
-        return (value as? Number)?.toInt()?.let { it > 100 } == true
-    }
 
     private fun systemService(name: String, interfaceName: String): Any {
         return privilegedAccess.service(name, interfaceName)
@@ -3821,13 +3310,13 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // The next session's window is new; a role left from this one would skip shrinking it.
         externalOutputs.externalPhoneRole = null
         externalOutputs.externalInputDeck = false
-        cursorView?.let { runCatching { windowManager?.removeView(it) } }
+        desktopCursor.cursorView?.let { runCatching { windowManager?.removeView(it) } }
         root?.let { runCatching { windowManager?.removeView(it) } }
         root = null
         rootWindowParams = null
         surfaceView = null
         keyboardDeck.laptopContent = null
-        cursorView = null
+        desktopCursor.cursorView = null
         menu = null
         menuScrim = null
         performanceHud = null

@@ -1,5 +1,6 @@
 package moe.n4tsu.dextop
 
+import android.os.SystemClock
 import android.content.Context
 import android.hardware.display.DisplayManager
 import android.os.Handler
@@ -7,28 +8,21 @@ import android.util.Log
 import android.view.InputDevice
 import android.view.MotionEvent
 import android.view.View
-import moe.n4tsu.dextop.input.PrivilegedInputClient
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 
 /** What [VirtualPointer] needs from the session beyond the shared interfaces. */
 internal interface VirtualPointerHost : DesktopSession, OverlayMenu {
-    fun buildPrivilegedInputConfig(profile: String): IntArray
     fun cancelDesktopTouchStream()
     val carCompanionPhoneTrackpadSurface: View?
     val coverTrackpadActive: Boolean
     fun displayGeometrySnapshot(reason: String, hostWidth: Int? = null, hostHeight: Int? = null): String
     val externalOutput: MirrorService.ExternalOutput?
-    fun fallbackToSoftwarePointer(reason: String)
     val laptopKeyboardRequested: Boolean
-    fun logSuppressedRelativeTouchpadEvent(kind: String)
     val physicalInputRouter: PhysicalInputRouter
-    var privilegedInputStarting: Boolean
-    fun refreshPrivilegedInputConfig(reason: String)
     fun startRawTouchscreenReaderIfEligible()
     fun stopRawTouchscreenReader(reason: String)
-    fun updateVirtualCursorVisibility()
     val virtualTouchpad: VirtualTouchpad
 }
 
@@ -37,6 +31,15 @@ internal class VirtualPointer(
     private val context: Context,
     private val desk: VirtualPointerHost,
 ) {
+    internal fun logSuppressedRelativeTouchpadEvent(kind: String) {
+        val now = SystemClock.uptimeMillis()
+        if (now - virtualPointerLastUnsupportedEventLogAt < 1_000L) return
+        virtualPointerLastUnsupportedEventLogAt = now
+        val message = "suppressed $kind for native touchpad profile; MT contacts must own motion and scrolling"
+        OperationLog.w(context, "InputRouting", message)
+        Log.w(desk.logTag, message)
+    }
+
     @Volatile
     internal var virtualMouseReady = false
     /**
@@ -150,23 +153,23 @@ internal class VirtualPointer(
             (desk.directTouch && !desk.laptopModeActive && !desk.coverTrackpadActive &&
                     desk.carCompanionPhoneTrackpadSurface == null)
         ) {
-            desk.updateVirtualCursorVisibility()
+            desk.desktopCursor.updateVirtualCursorVisibility()
             return
         }
         if (virtualMouseProcessAlive() && virtualPointerRegisteredProfile == profile &&
             virtualMouseReady && virtualPointerDisplayId == desk.targetDisplayId
         ) {
-            desk.privilegedInputClient.updateConfig(desk.buildPrivilegedInputConfig(profile))
-            desk.updateVirtualCursorVisibility()
+            desk.privilegedInputClient.updateConfig(desk.privilegedInput.buildPrivilegedInputConfig(profile))
+            desk.desktopCursor.updateVirtualCursorVisibility()
             return
         }
         if (virtualMouseProcessAlive() && virtualPointerRegisteredProfile == profile) {
             virtualMouseGeneration += 1
             virtualMouseReady = false
             virtualPointerAssociationPending = false
-            desk.privilegedInputClient.updateConfig(desk.buildPrivilegedInputConfig(profile))
+            desk.privilegedInputClient.updateConfig(desk.privilegedInput.buildPrivilegedInputConfig(profile))
             scheduleVirtualMouseReadyCheck(virtualMouseGeneration, profile, 0)
-            desk.updateVirtualCursorVisibility()
+            desk.desktopCursor.updateVirtualCursorVisibility()
             return
         }
         if (virtualMouseProcessAlive() && desk.laptopKeyboardRequested) {
@@ -182,21 +185,21 @@ internal class VirtualPointer(
             virtualPointerDisplayId = -1
             virtualPointerAssociationPending = false
             virtualPointerRegisteredProfile = profile
-            desk.privilegedInputStarting = true
-            desk.privilegedInputClient.updateConfig(desk.buildPrivilegedInputConfig(profile))
+            desk.privilegedInput.privilegedInputStarting = true
+            desk.privilegedInputClient.updateConfig(desk.privilegedInput.buildPrivilegedInputConfig(profile))
             scheduleVirtualMouseReadyCheck(virtualMouseGeneration, profile, 0)
-            desk.updateVirtualCursorVisibility()
+            desk.desktopCursor.updateVirtualCursorVisibility()
             return
         }
         stopVirtualMouse()
         virtualMouseReady = false
         virtualPointerOutputObserved = false
         virtualPointerRegisteredProfile = profile
-        desk.privilegedInputStarting = true
+        desk.privilegedInput.privilegedInputStarting = true
         virtualMouseFractionX = 0f
         virtualMouseFractionY = 0f
-        desk.updateVirtualCursorVisibility()
-        desk.privilegedInputClient.start(desk.buildPrivilegedInputConfig(profile))
+        desk.desktopCursor.updateVirtualCursorVisibility()
+        desk.privilegedInputClient.start(desk.privilegedInput.buildPrivilegedInputConfig(profile))
         val message = "binding native privileged input profile=$profile generation=$virtualMouseGeneration"
         OperationLog.i(context, "InputRouting", message)
         Log.i(desk.logTag, message)
@@ -223,7 +226,7 @@ internal class VirtualPointer(
         virtualPointerDisplayId = -1
         virtualPointerAssociationPending = false
         virtualPointerRegisteredProfile = ""
-        desk.privilegedInputStarting = false
+        desk.privilegedInput.privilegedInputStarting = false
         desk.privilegedInputClient.setOutputReady(false)
         desk.privilegedInputClient.stopEngine("virtual_pointer_stopped")
         virtualMouseFractionX = 0f
@@ -246,11 +249,11 @@ internal class VirtualPointer(
         virtualPointerDisplayId = -1
         virtualPointerAssociationPending = false
         virtualPointerRegisteredProfile = ""
-        desk.privilegedInputStarting = false
+        desk.privilegedInput.privilegedInputStarting = false
         desk.privilegedInputClient.setOutputReady(false)
-        desk.privilegedInputClient.updateConfig(desk.buildPrivilegedInputConfig("software"))
+        desk.privilegedInputClient.updateConfig(desk.privilegedInput.buildPrivilegedInputConfig("software"))
         desk.virtualTouchpad.resetVirtualTouchpadState("pointer_suspended", logSummary = activeContacts > 0)
-        desk.updateVirtualCursorVisibility()
+        desk.desktopCursor.updateVirtualCursorVisibility()
         OperationLog.i(
             context,
             "InputRouting",
@@ -274,7 +277,7 @@ internal class VirtualPointer(
             ) return@Runnable
             if (!virtualMouseProcessAlive()) {
                 OperationLog.w(context, "InputRouting", "virtual mouse process exited before InputReader registration")
-                desk.fallbackToSoftwarePointer("native_process_unavailable_before_publication")
+                desk.privilegedInput.fallbackToSoftwarePointer("native_process_unavailable_before_publication")
                 return@Runnable
             }
             val device = findVirtualPointerDevice(profile)
@@ -307,7 +310,7 @@ internal class VirtualPointer(
                             "virtual pointer association timed out profile=$profile " +
                                 "deviceId=${device.id} displayId=${display.displayId}",
                         )
-                        desk.fallbackToSoftwarePointer("display_association_timeout:$profile")
+                        desk.privilegedInput.fallbackToSoftwarePointer("display_association_timeout:$profile")
                     }
                     return@Runnable
                 }
@@ -336,8 +339,8 @@ internal class VirtualPointer(
                 }
                 virtualMouseReady = true
                 desk.privilegedInputClient.setOutputReady(true)
-                desk.refreshPrivilegedInputConfig("input_reader_ready")
-                desk.updateVirtualCursorVisibility()
+                desk.privilegedInput.refreshPrivilegedInputConfig("input_reader_ready")
+                desk.desktopCursor.updateVirtualCursorVisibility()
                 val deviceDetails = virtualPointerDeviceDetails(device)
                 OperationLog.i(
                     context,
@@ -391,7 +394,7 @@ internal class VirtualPointer(
                     "uinput profile=$profile was not published by InputReader; " +
                             "candidates=${virtualPointerPublicationCandidates(profile)}"
                 )
-                desk.fallbackToSoftwarePointer("input_reader_publication_timeout:$profile")
+                desk.privilegedInput.fallbackToSoftwarePointer("input_reader_publication_timeout:$profile")
             }
         }
         // During the first display setup the root window may not have been
@@ -450,11 +453,11 @@ internal class VirtualPointer(
             desk.cancelDesktopTouchStream()
             stopVirtualMouse()
             startVirtualMouse()
-            desk.updateVirtualCursorVisibility()
+            desk.desktopCursor.updateVirtualCursorVisibility()
         } else {
             desk.cancelDesktopTouchStream()
             stopVirtualMouse()
-            desk.updateVirtualCursorVisibility()
+            desk.desktopCursor.updateVirtualCursorVisibility()
         }
         OperationLog.i(
             context,
@@ -514,7 +517,7 @@ internal class VirtualPointer(
             Log.w(desk.logTag, "privileged primitive injection rejected events=${events.size / 3}")
         } else if (!virtualPointerOutputObserved) {
             virtualPointerOutputObserved = true
-            desk.updateVirtualCursorVisibility()
+            desk.desktopCursor.updateVirtualCursorVisibility()
             OperationLog.i(context, "InputRouting", "virtual pointer output observed; software cursor hidden")
         }
         return sent
@@ -527,7 +530,7 @@ internal class VirtualPointer(
     ): Boolean {
         if (!virtualPointerInputActive(allowDirectTouch)) return false
         if (virtualPointerRegisteredProfile == "touchpad") {
-            desk.logSuppressedRelativeTouchpadEvent("REL_X/REL_Y movement")
+            logSuppressedRelativeTouchpadEvent("REL_X/REL_Y movement")
             return false
         }
         virtualMouseFractionX += dx
@@ -563,7 +566,7 @@ internal class VirtualPointer(
 
     internal fun virtualMouseScroll(delta: Float, allowDirectTouch: Boolean = false): Boolean {
         if (virtualPointerRegisteredProfile == "touchpad") {
-            desk.logSuppressedRelativeTouchpadEvent("REL_WHEEL scrolling")
+            logSuppressedRelativeTouchpadEvent("REL_WHEEL scrolling")
             return false
         }
         val direction = if (virtualMouseNaturalScroll()) 1f else -1f
@@ -588,7 +591,7 @@ internal class VirtualPointer(
         allowDirectTouch: Boolean = false
     ): Boolean {
         if (virtualPointerRegisteredProfile == "touchpad") {
-            desk.logSuppressedRelativeTouchpadEvent("REL_HWHEEL scrolling")
+            logSuppressedRelativeTouchpadEvent("REL_HWHEEL scrolling")
             return false
         }
         val direction = if (virtualMouseNaturalScroll()) 1f else -1f

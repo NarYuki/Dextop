@@ -17,7 +17,6 @@ import kotlin.math.roundToInt
 /** What [ImeRegionProbe] needs from the session beyond the shared interfaces. */
 internal interface ImeRegionProbeHost : DesktopSession, OverlayMenu {
     fun rawTouchscreenViewBounds(view: View?): Rect?
-    fun refreshPrivilegedInputConfig(reason: String)
     fun regionFor(view: View?): RectF
 }
 
@@ -86,7 +85,7 @@ internal class ImeRegionProbe(
                             Log.i(desk.logTag, message)
                             // The native EventHub reader uses the same cached
                             // rectangle to suppress its duplicate stream.
-                            desk.refreshPrivilegedInputConfig("ime_region:$reason")
+                            desk.privilegedInput.refreshPrivilegedInputConfig("ime_region:$reason")
                         }
                     }.onFailure { error ->
                         imeRegionProbePending = false

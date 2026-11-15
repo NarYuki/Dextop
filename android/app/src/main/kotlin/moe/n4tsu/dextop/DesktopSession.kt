@@ -34,5 +34,10 @@ internal interface DesktopSession {
     val desktopEnvironment: DesktopEnvironment
     val privilegedInputClient: PrivilegedInputClient
     val sessionJournal: SessionJournal
+    val desktopCursor: DesktopCursor
+    val deviceDisplays: DeviceDisplays
+    val privilegedInput: PrivilegedInputLink
+    val requestedPortrait: Boolean
+    val stopping: Boolean
     fun dp(value: Int): Int
 }
