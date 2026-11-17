@@ -17,11 +17,20 @@ internal enum class LinuxDesktopSessions(
     val ownsX: Boolean = true,
 ) {
     ICEWM("icewm", "icewm", "ICEWM"),
+    /** Experimental: KDE Plasma 6 on X11 (kwin_x11), installed from the settings with [PLASMA_PACKAGES]. */
+    PLASMA("plasma", "startplasma-x11", "KDE"),
     /** It may or may not run an X window manager. */
     CUSTOM("custom", "", "", ownsX = false);
 
     companion object {
         const val MAX_COMMAND = 2000
+        /**
+         * Debian's minimal Plasma desktop with the X11 window manager, plus what a desktop is expected
+         * to have: a terminal, files, the volume applet, Breeze for GTK applications, KDE's portal
+         * (file dialogs), screenshots and archives.
+         */
+        val PLASMA_PACKAGES = listOf("plasma-desktop", "kwin-x11", "konsole", "dolphin", "plasma-pa",
+            "breeze-gtk-theme", "xdg-desktop-portal-kde", "kde-spectacle", "ark")
         fun of(id: String?) = entries.firstOrNull { it.id == id } ?: ICEWM
 
         /** A custom command: one line of shell, no NUL. */
