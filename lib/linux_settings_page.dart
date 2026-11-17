@@ -448,6 +448,20 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
             ),
         ],
       ),
+      LinuxSection(linuxText(context, 'uiFileCompatibility')),
+      LinuxGroup(
+        children: [
+          LinuxToggle(
+            value: settings?['hardLinks'] == true,
+            onChanged: saving
+                ? null
+                : (value) => _save({'hardLinks': value}),
+            icon: M3EIcons.link_rounded,
+            title: linuxText(context, 'uiAllowHardLinks'),
+            subtitle: linuxText(context, 'uiAllowHardLinksDescription'),
+          ),
+        ],
+      ),
     ];
     List<Widget> network() => [
       LinuxSection(t('uiLinuxNetworkSettings')),

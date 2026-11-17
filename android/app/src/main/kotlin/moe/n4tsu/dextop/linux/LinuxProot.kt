@@ -247,7 +247,13 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         val sessionBinds = binds(id, fakeRoot) + extraBinds
         val root = LinuxPaths.rootfs(id)
         val fastSettings = LinuxSettings.read()
-        val fastMode = LinuxFastMode.from(fastSettings.optString("fastPathMode"))
+        // Hard links for ordinary sessions too (Android refuses link() to apps), by user choice.
+        val emulateLinks = fakeRoot || fastSettings.optBoolean("hardLinks")
+        // The unprotected library resolves paths and issues stat/unlink/rename itself, so
+        // PRoot's link emulation would not see them. Protected only bypasses openat.
+        val fastMode = LinuxFastMode.from(fastSettings.optString("fastPathMode")).let {
+            if (emulateLinks && it == LinuxFastMode.UNPROTECTED) LinuxFastMode.PROTECTED else it
+        }
         val fastPath = if (!fakeRoot && fastSettings.optBoolean("landlockFastPath") &&
             LinuxProotFastPath.stage(root, fastMode)) LinuxProotFastPath.create(root, sessionBinds, nativeLibraryDir, fastMode) else null
         val account = if (fakeRoot) "root" else LinuxUser.name(root) ?: "root"
@@ -255,9 +261,9 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         val accountUid = if (uid == 0 && account != "root") 1000 else uid
         return environment(ProcessBuilder(
             proot.absolutePath,
-            // Secure stores reject link-emulated temporary files and can retry forever.
-            // Keep emulation for installers; ordinary applications need real file semantics.
-            "--kill-on-exit", *(if (fakeRoot) arrayOf("--link2symlink") else emptyArray()),
+            // Secure stores reject link-emulated temporary files and can retry forever, so
+            // ordinary sessions get emulation only when the user turns hard links on.
+            "--kill-on-exit", *(if (emulateLinks) arrayOf("--link2symlink") else emptyArray()),
             *(if (fakeRoot) arrayOf("-0") else arrayOf("-i", "$accountUid:$accountUid")),
             "-r", LinuxPaths.rootfs(id).absolutePath,
             "-w", home,
