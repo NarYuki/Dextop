@@ -5,6 +5,7 @@ No PID 1, cgroups, kernel namespaces, socket activation or pretend sandboxing.
 Unsupported service/security directives fail explicitly before execution.
 """
 import argparse
+import random
 import fnmatch
 import fcntl
 import json
@@ -14,6 +15,7 @@ from pathlib import Path
 import re
 import shlex
 import signal
+import socket
 import subprocess
 import sys
 import time
@@ -22,6 +24,20 @@ import uuid
 NAME = re.compile(r'[A-Za-z0-9_.@:-]+\.(service|timer)\Z')
 BASE = Path(os.environ.get('DEXTOP_SERVICE_STATE', '/var/lib/dextop/services'))
 ROOT = Path(os.environ.get('DEXTOP_UNIT_ROOT', '/'))
+
+
+def user_base():
+    """The user manager's state: like systemd --user, one per account, run as that account."""
+    if os.environ.get('DEXTOP_USER_SERVICE_STATE'):
+        return Path(os.environ['DEXTOP_USER_SERVICE_STATE'])
+    home = Path.home()
+    name = os.environ.get('DEXTOP_LINUX_USER', '')
+    if os.geteuid() == 0 and name and name != 'root':
+        try:
+            home = Path(pwd.getpwnam(name).pw_dir)
+        except KeyError:
+            pass
+    return home/'.local/state/dextop/systemd'
 
 
 def atomic(path, value):
@@ -38,6 +54,16 @@ def read(path, default):
         return json.loads(path.read_text())
     except (OSError, ValueError):
         return default
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
 
 
 def unit_name(name):
@@ -89,55 +115,282 @@ def parse_unit(text, result=None):
 
 def paths(user=False):
     if user:
-        return [Path.home()/'.config/systemd/user', ROOT/'etc/systemd/user', ROOT/'usr/lib/systemd/user', ROOT/'lib/systemd/user']
-    return [ROOT/'etc/systemd/system', ROOT/'usr/local/lib/systemd/system', ROOT/'usr/lib/systemd/system', ROOT/'lib/systemd/system']
+        return [Path.home()/'.config/systemd/user', ROOT/'etc/systemd/user', user_base()/'transient',
+                ROOT/'usr/local/lib/systemd/user', ROOT/'usr/lib/systemd/user', ROOT/'lib/systemd/user']
+    return [ROOT/'etc/systemd/system', ROOT/'run/systemd/transient', ROOT/'run/systemd/system',
+            ROOT/'usr/local/lib/systemd/system', ROOT/'usr/lib/systemd/system', ROOT/'lib/systemd/system']
+
+
+def unit_file(name, user=False):
+    for candidate in (name, re.sub(r'@[^.]*\.', '@.', name, count=1) if '@' in name else None):
+        if candidate is None:
+            continue
+        for path in paths(user):
+            if (path/candidate).exists() or (path/candidate).is_symlink():
+                return path/candidate
+    return None
+
+
+# Units packages enable through these targets start with the container, as at boot. Others
+# (sockets, graphical sessions, hardware) need what PRoot cannot give.
+WANTED_BY = ('multi-user.target.wants', 'timers.target.wants')
+USER_WANTED_BY = ('default.target.wants', 'timers.target.wants')
+# What Dextop itself provides (network, audio, SSH, the desktop, devices) or Android forbids
+# (process accounting: atopacct, acct).
+NOT_STARTED = re.compile(r'(NetworkManager|ModemManager|wpa_supplicant|systemd-|networking|e2scrub|fstrim|smartmontools|'
+                         r'sshd?[@.]|sshd-keygen|bluetooth|getty|lm-sensors|apt-daily|dpkg-db-backup|fwupd|udisks|accounts-daemon|'
+                         r'power-profiles|pipewire|pulseaudio|wireplumber|filter-chain|drkonqi|plasma|kde-|gnome-keyring|'
+                         r'gcr-ssh-agent|xdg-|mpris-proxy|e2fsck|rsyslog|unattended-upgrades|dbus\.|atopacct|acct\.|psacct|atd\.)')
+
+
+TMPFILES_KEEP = ['--exclude-prefix=' + prefix for prefix in ('/tmp', '/var/tmp', '/run/user', '/dev', '/proc', '/sys', '/home', '/root')]
+
+
+def wanted(user=False):
+    """Units a package enabled through a boot target (a symlink in its .wants directory)."""
+    result = []
+    for directory in paths(user):
+        for target in (USER_WANTED_BY if user else WANTED_BY):
+            for link in sorted((directory/target).glob('*')):
+                if NAME.fullmatch(link.name) and '@.' not in link.name and not NOT_STARTED.match(link.name):
+                    result.append(link.name)
+    return list(dict.fromkeys(result))
+
+
+SHORTHANDS = {'minutely': '*-*-* *:*:00', 'hourly': '*-*-* *:00:00', 'daily': '*-*-* 00:00:00',
+              'weekly': 'Mon *-*-* 00:00:00', 'monthly': '*-*-01 00:00:00', 'yearly': '*-01-01 00:00:00',
+              'annually': '*-01-01 00:00:00', 'quarterly': '*-01,04,07,10-01 00:00:00',
+              'semiannually': '*-01,07-01 00:00:00'}
+WEEKDAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
+
+
+def calendar_values(field, low, high):
+    if field == '*':
+        return list(range(low, high+1))
+    values = set()
+    for item in field.split(','):
+        step = 1
+        if '/' in item:
+            item, step_text = item.split('/', 1)
+            step = int(step_text)
+            if step < 1:
+                raise ValueError('Invalid OnCalendar step')
+        if item == '*':
+            start, end = low, high
+        elif '..' in item:
+            start, end = (int(part) for part in item.split('..', 1))
+        else:
+            start = int(item.split('.')[0])
+            end = high if step != 1 or '/' in field else start
+        values.update(value for value in range(start, end+1, step) if low <= value <= high)
+    if not values:
+        raise ValueError('Empty OnCalendar field: ' + field)
+    return sorted(values)
+
+
+def weekday_values(field):
+    result = set()
+    for item in field.lower().split(','):
+        if '..' in item:
+            first, final = (WEEKDAYS.index(part[:3]) for part in item.split('..', 1))
+            result.update(range(first, final+1) if first <= final else list(range(first, 7))+list(range(0, final+1)))
+        else:
+            result.add(WEEKDAYS.index(item[:3]))
+    return result
+
+
+class Calendar:
+    def __init__(self, spec):
+        text = SHORTHANDS.get(spec.strip().lower(), spec.strip())
+        parts = text.split()
+        self.utc = bool(parts) and parts[-1].upper() in ('UTC', 'GMT', 'Z')
+        if self.utc:
+            parts = parts[:-1]
+        self.weekdays = None
+        if parts and parts[0][:3].lower() in WEEKDAYS:
+            self.weekdays = weekday_values(parts.pop(0))
+        date, clock = '*-*-*', '00:00:00'
+        for part in parts:
+            if ':' in part:
+                clock = part
+            elif '-' in part:
+                date = part
+            else:
+                raise ValueError('Unsupported OnCalendar: ' + spec)
+        pieces = date.split('-')
+        if len(pieces) == 2:
+            pieces = ['*'] + pieces
+        if len(pieces) != 3:
+            raise ValueError('Unsupported OnCalendar date: ' + date)
+        self.years = calendar_values(pieces[0], 1970, 2199)
+        self.months = calendar_values(pieces[1], 1, 12)
+        self.days = calendar_values(pieces[2], 1, 31)
+        clock_pieces = clock.split(':')
+        if len(clock_pieces) == 2:
+            clock_pieces.append('00')
+        if len(clock_pieces) != 3:
+            raise ValueError('Unsupported OnCalendar time: ' + clock)
+        self.hours = calendar_values(clock_pieces[0], 0, 23)
+        self.minutes = calendar_values(clock_pieces[1], 0, 59)
+        self.seconds = calendar_values(clock_pieces[2].split('.')[0], 0, 59)
+
+    def after(self, stamp):
+        convert = time.gmtime if self.utc else time.localtime
+        build = calendar_module_timegm if self.utc else time.mktime
+        current = convert(int(stamp))
+        day = time.mktime((current.tm_year, current.tm_mon, current.tm_mday, 12, 0, 0, 0, 0, -1))
+        for offset in range(0, 366*8):
+            date = time.localtime(day + offset*86400)
+            if date.tm_year not in self.years or date.tm_mon not in self.months or date.tm_mday not in self.days:
+                continue
+            if self.weekdays is not None and date.tm_wday not in self.weekdays:
+                continue
+            for hour in self.hours:
+                for minute in self.minutes:
+                    for second in self.seconds:
+                        value = build((date.tm_year, date.tm_mon, date.tm_mday, hour, minute, second, 0, 0, -1))
+                        if value > stamp:
+                            return value
+        return None
+
+
+def calendar_module_timegm(fields):
+    import calendar
+    return calendar.timegm(fields[:6] + (0, 0, 0))
+
+
+def masked(name, user=False):
+    for path in paths(user):
+        link = path/name
+        if link.is_symlink() and os.readlink(link) == '/dev/null':
+            return True
+        if link.exists() or link.is_symlink():
+            return False
+    return False
 
 
 def load_unit(name, user=False):
-    file = next((path/name for path in paths(user) if (path/name).exists() or (path/name).is_symlink()), None)
+    if masked(name, user):
+        raise ValueError('Unit is masked: ' + name)
+    file = unit_file(name, user)
     if file is None:
         raise ValueError('Unit not found: ' + name)
-    if file.is_symlink() and os.readlink(file) == '/dev/null':
-        raise ValueError('Unit is masked: ' + name)
     spec = parse_unit(file.read_text())
+    spec['_path'] = str(file)
     dropins = {}
+    template = re.sub(r'@[^.]*\.', '@.', name, count=1) if '@' in name else None
     for directory in reversed(paths(user)):
-        for dropin in (directory/(name+'.d')).glob('*.conf'):
-            dropins[dropin.name] = dropin
+        for dropin_name in filter(None, (template, name)):
+            for dropin in (directory/(dropin_name+'.d')).glob('*.conf'):
+                dropins[dropin.name] = dropin
     for basename in sorted(dropins):
         parse_unit(dropins[basename].read_text(), spec)
     return spec
 
 
 def last(spec, section, key, default=''):
+    if not isinstance(spec.get(section, {}), dict):
+        return default
     return (spec.get(section, {}).get(key) or [default])[-1]
 
 
+# Never silently downgrade a unit requesting confinement. Cosmetic/tuning
+# directives may be logged as ignored; security directives must fail closed.
+UNSUPPORTED_REFUSED = {
+    'DynamicUser', 'MountImages', 'ExtensionImages', 'NoNewPrivileges',
+    'CapabilityBoundingSet', 'AmbientCapabilities', 'SecureBits',
+    'ReadOnlyPaths', 'ReadWritePaths', 'InaccessiblePaths', 'TemporaryFileSystem',
+    'ExecPaths', 'NoExecPaths', 'MemoryDenyWriteExecute', 'LockPersonality',
+    'RemoveIPC', 'KeyringMode', 'SupplementaryGroups', 'PAMName',
+    'NetworkNamespacePath', 'IPCNamespacePath', 'MountFlags',
+    'ReadOnlyDirectories', 'ReadWriteDirectories', 'InaccessibleDirectories',
+    'SELinuxContext', 'AppArmorProfile', 'SmackProcessLabel', 'ProcSubset',
+}
+SECURITY_PREFIXES = ('Protect', 'Private', 'Restrict', 'Root', 'Bind',
+                     'SystemCall', 'Device', 'IPAddress', 'SocketBind', 'Limit')
+HANDLED = {'Type', 'ExecStart', 'ExecStartPre', 'ExecStartPost', 'ExecStop', 'ExecStopPost', 'ExecCondition',
+           'ExecReload', 'Restart', 'RestartSec', 'RemainAfterExit', 'WorkingDirectory',
+           'Environment', 'EnvironmentFile', 'User', 'Group', 'TimeoutStartSec', 'TimeoutStopSec', 'TimeoutSec',
+           'StandardOutput', 'StandardError', 'SyslogIdentifier', 'KillMode', 'KillSignal', 'PIDFile', 'UMask', 'Nice',
+           'SuccessExitStatus', 'Description', 'RuntimeDirectory', 'StateDirectory', 'CacheDirectory',
+           'LogsDirectory', 'ConfigurationDirectory', 'RuntimeDirectoryMode', 'StateDirectoryMode',
+           'CacheDirectoryMode', 'LogsDirectoryMode', 'ConfigurationDirectoryMode', 'RestartPreventExitStatus'}
+
+
+DIRECTORY_KEYS = ('RuntimeDirectory', 'StateDirectory', 'CacheDirectory', 'LogsDirectory', 'ConfigurationDirectory')
+
+
+def service_directory_names(spec):
+    result = []
+    for key in DIRECTORY_KEYS:
+        for entry in shlex.split(' '.join(spec.get('Service', {}).get(key, []))):
+            name = entry.split(':', 1)[0]
+            if not name or name.startswith('/') or '..' in Path(name).parts or name == '.':
+                raise ValueError('Invalid ' + key + ': ' + entry)
+            result.append((key, name))
+    return result
+
+
+def ensure_directory(path):
+    """Return a pinned directory FD, creating missing components without following links."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptor = os.open('/', flags)
+    try:
+        for part in Path(os.path.abspath(path)).parts[1:]:
+            try:
+                os.mkdir(part, 0o755, dir_fd=descriptor)
+            except FileExistsError:
+                pass
+            child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def ignored(spec):
+    """Directives this service sets that run without effect under PRoot."""
+    return sorted(key for key, values in spec.get('Service', {}).items() if values and key not in HANDLED)
+
+
+def kill_signal(spec):
+    value = last(spec, 'Service', 'KillSignal', 'SIGTERM')
+    if value.isdigit():
+        return int(value)
+    return getattr(signal, value if value.startswith('SIG') else 'SIG' + value)
+
+
 def validate_service(spec):
+    service_directory_names(spec)
     service = spec.get('Service', {})
-    supported = {'Type', 'ExecStart', 'ExecStartPre', 'ExecStartPost', 'ExecStop', 'ExecStopPost',
-                 'ExecReload', 'Restart', 'RestartSec', 'RemainAfterExit', 'WorkingDirectory',
-                 'Environment', 'EnvironmentFile', 'User', 'Group', 'TimeoutStartSec', 'TimeoutStopSec',
-                 'StandardOutput', 'StandardError', 'SyslogIdentifier', 'KillMode', 'KillSignal',
-                 'SuccessExitStatus', 'Description'}
-    unsupported = sorted(key for key, values in service.items() if values and key not in supported)
-    if unsupported:
-        raise ValueError('Unsupported service directives: ' + ', '.join(unsupported))
-    if last(spec, 'Service', 'Type', 'simple') not in ('simple', 'exec', 'oneshot', 'idle'):
-        raise ValueError('Supported service types: simple, exec, oneshot, idle')
-    for key in ('StandardOutput', 'StandardError'):
-        if last(spec, 'Service', key, 'journal') not in ('journal', 'inherit', 'null'):
-            raise ValueError('Unsupported ' + key)
-    if last(spec, 'Service', 'KillMode', 'control-group') not in ('control-group', 'mixed'):
-        raise ValueError('Only process-tree termination is supported')
-    if last(spec, 'Service', 'KillSignal', 'SIGTERM') not in ('SIGTERM', '15'):
-        raise ValueError('Only SIGTERM is supported')
-    # Do not silently claim that a PRoot service was isolated as another account.
-    allowed = {'', 'root', os.environ.get('DEXTOP_LINUX_USER', os.environ.get('USER', 'root'))}
-    if last(spec, 'Service', 'User') not in allowed or last(spec, 'Service', 'Group') not in allowed:
-        raise ValueError('This service requests an unsupported account change')
+    # An empty CapabilityBoundingSet= also requests a security restriction.
+    refused = sorted(key for key in service
+                     if key in UNSUPPORTED_REFUSED or key.startswith(SECURITY_PREFIXES))
+    if refused:
+        raise ValueError('Unsupported service directives: ' + ', '.join(refused))
+    if last(spec, 'Service', 'Type', 'simple') not in ('simple', 'exec', 'oneshot', 'idle', 'forking', 'notify', 'notify-reload', 'dbus'):
+        raise ValueError('Supported service types: simple, exec, oneshot, idle, forking, notify, dbus')
+    try:
+        kill_signal(spec)
+    except AttributeError:
+        raise ValueError('Unknown KillSignal')
+    # The system manager runs as PRoot's fake root, which switches to any account of the container
+    # (man-db's User=man); the user manager cannot leave its own account.
+    own = {'', os.environ.get('DEXTOP_LINUX_USER', os.environ.get('USER', 'root'))}
+    for key, lookup in (('User', pwd.getpwnam), ('Group', __import__('grp').getgrnam)):
+        value = last(spec, 'Service', key)
+        if value in own:
+            continue
+        if os.geteuid() != 0:
+            raise ValueError('A user service cannot run as another account (' + key + '=' + value + ')')
+        try:
+            lookup(value)
+        except KeyError:
+            raise ValueError('Unknown account: ' + key + '=' + value)
     restart = last(spec, 'Service', 'Restart', 'no')
-    if restart not in ('no', 'always', 'on-success', 'on-failure', 'on-abnormal', 'on-abort'):
+    if restart not in ('no', 'always', 'on-success', 'on-failure', 'on-abnormal', 'on-abort', 'on-watchdog'):
         raise ValueError('Unsupported Restart policy')
     starts = service.get('ExecStart', [])
     if not starts or (len(starts) > 1 and last(spec, 'Service', 'Type') != 'oneshot'):
@@ -169,12 +422,49 @@ def command(value, name, environment):
 
 
 class Supervisor:
-    def __init__(self, base=BASE):
-        self.base = base
+    """The system manager (fake root) runs system units; the user manager (the Linux account, without
+    fake root) runs user units, as systemd --user does."""
+    def __init__(self, base=None, user=False):
+        self.user = user
+        self.base = base or (user_base() if user else BASE)
         self.jobs = {}
-        self.enabled = read(base/'enabled.json', [])
+        self.enabled = [key for key in read(self.base/'enabled.json', self.imported() if user else [])
+                        if key.startswith('user:' if user else 'system:')]
         self.stopping = False
         self.started = time.monotonic()
+        self.wanted = []
+        self.autostarted = set()
+        self.described = {}
+
+    def start_wanted(self):
+        """Starts units packages enabled (at startup, and within seconds of an install), once each."""
+        builtin = self.key('dextop-atd.service', True)
+        if self.user and builtin not in self.autostarted and (ROOT/'usr/sbin/atd').exists() and unit_file('dextop-atd.service', True):
+            self.autostarted.add(builtin)
+            if self.jobs.get(builtin, {}).get('state') not in ('active', 'activating'):
+                try:
+                    self.start('dextop-atd.service', True)
+                except Exception as error:
+                    self.jobs[builtin] = dict(key=builtin, name='dextop-atd.service', user=True, state='failed', pid=0, error=str(error))
+        try:
+            self.wanted = wanted(self.user)
+        except OSError:
+            return
+        for name in self.wanted:
+            key = self.key(name, self.user)
+            if key in self.autostarted:
+                continue
+            self.autostarted.add(key)
+            if key in self.enabled:
+                continue
+            try:
+                self.start(name, self.user)
+            except Exception as error:
+                self.jobs[key] = dict(key=key, name=name, user=self.user, state='failed', pid=0, error=str(error))
+
+    def imported(self):
+        # User units enabled before the user manager existed were kept by the system manager.
+        return [key for key in read(BASE/'enabled.json', []) if key.startswith('user:')]
 
     def key(self, name, user=False):
         return ('user:' if user else 'system:') + unit_name(name)
@@ -212,19 +502,59 @@ class Supervisor:
         account = pwd.getpwnam(name)
         group = last(job['spec'], 'Service', 'Group')
         gid = __import__('grp').getgrnam(group).gr_gid if group else account.pw_gid
+        umask = last(job['spec'], 'Service', 'UMask')
+        nice = last(job['spec'], 'Service', 'Nice')
         def apply():
+            if umask:
+                os.umask(int(umask, 8))
+            if nice:
+                try:
+                    os.nice(int(nice))
+                except OSError:
+                    pass
             if os.getegid() != gid:
                 os.setgid(gid)
             if os.geteuid() != account.pw_uid:
                 os.setuid(account.pw_uid)
         return apply
 
-    def spawn(self, job, value):
-        args, ignore = command(value, job['name'], job['environment'])
+    def output(self, job):
+        """Where the service writes: its journal, or the file StandardOutput names (file:/append:/truncate:)."""
+        target = last(job['spec'], 'Service', 'StandardOutput', 'journal')
+        if target == 'null':
+            return open(os.devnull, 'ab')
+        for prefix, mode in (('append:', 'ab'), ('file:', 'ab'), ('truncate:', 'wb')):
+            if target.startswith(prefix):
+                return open(target[len(prefix):], mode)
         logfile = self.log_path(job['key'])
         logfile.parent.mkdir(parents=True, exist_ok=True)
-        with logfile.open('ab') as output:
-            process = subprocess.Popen(args, cwd=last(job['spec'], 'Service', 'WorkingDirectory', '/') or '/',
+        return logfile.open('ab')
+
+    def directories(self, job):
+        """RuntimeDirectory= and its siblings: created (and owned by the service's account) before it starts."""
+        roots = {'RuntimeDirectory': '/run', 'StateDirectory': '/var/lib', 'CacheDirectory': '/var/cache',
+                 'LogsDirectory': '/var/log', 'ConfigurationDirectory': '/etc'}
+        if job['user']:
+            home = Path(job['environment'].get('HOME', str(Path.home())))
+            roots = {'RuntimeDirectory': job['environment'].get('XDG_RUNTIME_DIR', '/tmp'), 'StateDirectory': str(home/'.local/state'),
+                     'CacheDirectory': str(home/'.cache'), 'LogsDirectory': str(home/'.local/state/log'),
+                     'ConfigurationDirectory': str(home/'.config')}
+        names = service_directory_names(job['spec'])
+        modes = {key: int(last(job['spec'], 'Service', key + 'Mode', '0755'), 8) for key in roots}
+        for key, name in names:
+            descriptor = ensure_directory(Path(roots[key])/name)
+            try:
+                if last(job['spec'], 'Service', 'User') and os.geteuid() == 0:
+                    account = pwd.getpwnam(last(job['spec'], 'Service', 'User'))
+                    os.fchown(descriptor, account.pw_uid, account.pw_gid)
+                os.fchmod(descriptor, modes[key])
+            finally:
+                os.close(descriptor)
+
+    def spawn(self, job, value):
+        args, ignore = command(value, job['name'], job['environment'])
+        with self.output(job) as output:
+            process = subprocess.Popen(args, cwd=last(job['spec'], 'Service', 'WorkingDirectory', '/').lstrip('-') or '/',
                                        env=job['environment'], stdin=subprocess.DEVNULL,
                                        stdout=output, stderr=subprocess.STDOUT, start_new_session=True, preexec_fn=self.identity(job))
         job.update(process=process, ignore=ignore, pid=process.pid, since=time.time())
@@ -235,14 +565,43 @@ class Supervisor:
             with self.log_path(job['key']).open('ab') as output:
                 process = subprocess.Popen(args, env=job['environment'], cwd=last(job['spec'], 'Service', 'WorkingDirectory', '/') or '/',
                                            stdin=subprocess.DEVNULL, stdout=output, stderr=subprocess.STDOUT, start_new_session=True, preexec_fn=self.identity(job))
-                try:
-                    code = process.wait(timeout=min(30, max(1, duration(last(job['spec'], 'Service', 'TimeoutStartSec', '30')))))
-                except subprocess.TimeoutExpired:
+                # Hooks often ask systemctl is-active/status about other units: answer such
+                # questions meanwhile, or the hook would wait on this very loop until it timed out.
+                end = time.monotonic() + min(30, max(1, duration(last(job['spec'], 'Service', 'TimeoutStartSec', '30'))))
+                while process.poll() is None and time.monotonic() < end:
+                    self.serve(readonly=True)
+                    time.sleep(.05)
+                code = process.poll()
+                if code is None:
                     os.killpg(process.pid, signal.SIGKILL)
                     process.wait()
                     raise ValueError(key + ' timed out')
                 if code and not ignore:
                     raise ValueError(key + ' failed: ' + str(code))
+
+    READONLY = ('list-units', 'list-unit-files', 'status', 'show', 'is-active', 'is-enabled', 'journal')
+
+    def serve(self, readonly=False):
+        """Answers pending systemctl requests; while a hook runs, only questions that change nothing."""
+        for file in sorted((self.base/'requests').glob('*.json'))[:32]:
+            if not re.fullmatch(r'[a-f0-9]{32}\.json', file.name):
+                continue
+            request = read(file, None)
+            if request is None:
+                file.unlink(missing_ok=True)
+                continue
+            if readonly and request.get('action', 'list-units') not in self.READONLY:
+                continue
+            try:
+                if time.time()-file.stat().st_mtime > 60:
+                    continue
+                try:
+                    result = self.action(request)
+                except Exception as error:
+                    result = dict(ok=False, error=str(error))
+                atomic(self.base/'responses'/file.name, result)
+            finally:
+                file.unlink(missing_ok=True)
 
     def start(self, name, user=False, chain=()):
         name = unit_name(name)
@@ -253,21 +612,27 @@ class Supervisor:
         if old and old['state'] in ('active', 'activating', 'waiting', 'waiting-dependencies'):
             return
         spec = load_unit(name, user)
+        if not user and name == 'atd.service' and unit_file('dextop-atd.service', True):
+            self.jobs[key] = dict(key=key, name=name, user=user, spec=spec, state='inactive', pid=0, since=time.time(),
+                                  error='', status='at jobs run in each account (systemctl --user status dextop-atd)')
+            return
         if name.endswith('.timer'):
-            if last(spec, 'Timer', 'OnCalendar'):
-                raise ValueError('Calendar timers are not supported; use OnBootSec / OnActiveSec / OnUnitActiveSec')
-            seconds = last(spec, 'Timer', 'OnBootSec') or last(spec, 'Timer', 'OnActiveSec') or last(spec, 'Timer', 'OnUnitActiveSec')
-            if not seconds:
-                raise ValueError('A monotonic timer interval is required')
-            interval = max(.1, duration(seconds))
-            target = unit_name(last(spec, 'Timer', 'Unit', name[:-6]+'.service'))
-            self.jobs[key] = dict(key=key, name=name, user=user, spec=spec, state='waiting', pid=0, since=time.time(),
-                                  target=target, deadline=time.monotonic()+interval, interval=interval,
-                                  repeat=bool(last(spec, 'Timer', 'OnUnitActiveSec')))
+            self.start_timer(key, name, user, spec)
             return
         validate_service(spec)
-        dependencies = shlex.split(' '.join(spec.get('Unit', {}).get('Requires', [])))
-        wants = shlex.split(' '.join(spec.get('Unit', {}).get('Wants', [])))
+        dependencies = self.listed(spec, 'Requires') + self.listed(spec, 'BindsTo')
+        wants = self.listed(spec, 'Wants')
+        for dependency in self.listed(spec, 'Requisite'):
+            if dependency.endswith('.target'):
+                continue
+            if self.jobs.get(self.key(dependency, user), {}).get('state') not in ('active', 'waiting'):
+                raise ValueError('Requisite unit is not active: ' + dependency)
+        for conflict in self.listed(spec, 'Conflicts'):
+            if not conflict.endswith('.target'):
+                self.stop(self.key(conflict, user))
+        for job_key, other in list(self.jobs.items()):
+            if other.get('user') == user and name in self.listed(other.get('spec') or {}, 'Conflicts'):
+                self.stop(job_key)
         for dependency in dependencies + wants:
             if dependency.endswith('.target'):
                 continue
@@ -291,6 +656,145 @@ class Supervisor:
         else:
             self.activate(job)
 
+    def open_syslog(self):
+        self.syslog = None
+        try:
+            endpoint = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+            endpoint.bind('/dev/log')
+            endpoint.setblocking(False)
+            self.syslog = endpoint
+        except OSError as error:
+            print('Dextop service manager: /dev/log unavailable:', error, file=sys.stderr, flush=True)
+
+    def read_syslog(self):
+        endpoints = [endpoint for endpoint in (getattr(self, 'syslog', None), getattr(self, 'syslog_file', None)) if endpoint is not None]
+        lines = []
+        for endpoint in endpoints:
+            for _ in range(256):
+                try:
+                    data = endpoint.recv(65536)
+                except (BlockingIOError, OSError):
+                    break
+                lines.append(data)
+        self.write_syslog(lines)
+
+    def write_syslog(self, messages):
+        lines = []
+        for data in messages:
+            text = data.decode('utf-8', 'replace').rstrip('\0\n')
+            match = re.match(r'<\d+>(?:\w{3} [ \d]\d \d\d:\d\d:\d\d |\S+T\S+ )?(.*)', text, re.S)
+            lines.append(time.strftime('%b %d %H:%M:%S ') + (match[1] if match else text))
+        if lines:
+            path = self.log_path('system:syslog.service')
+            path.parent.mkdir(parents=True, exist_ok=True)
+            with path.open('a', encoding='utf-8') as stream:
+                stream.write('\n'.join(lines) + '\n')
+
+    def open_notify(self, job):
+        directory = Path('/tmp' if self.user else '/run')/f'dextop-notify-{os.getuid()}'
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory/(__import__('hashlib').sha1(str(self.base/job['key']).encode()).hexdigest()[:16])
+        path.unlink(missing_ok=True)
+        endpoint = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        endpoint.bind(str(path))
+        endpoint.setblocking(False)
+        job['notify'] = endpoint
+        job['notify_path'] = path
+        job['environment']['NOTIFY_SOCKET'] = str(path)
+
+    def close_notify(self, job):
+        endpoint = job.pop('notify', None)
+        if endpoint is not None:
+            endpoint.close()
+        path = job.pop('notify_path', None)
+        if path is not None:
+            path.unlink(missing_ok=True)
+
+    def read_notify(self, job):
+        endpoint = job.get('notify')
+        if endpoint is None:
+            return
+        while True:
+            try:
+                data = endpoint.recv(4096)
+            except (BlockingIOError, OSError):
+                return
+            for line in data.decode('utf-8', 'replace').splitlines():
+                key, _, value = line.partition('=')
+                if key == 'READY' and value == '1' and job['state'] == 'activating':
+                    job['state'] = 'active'
+                    try:
+                        self.hooks(job, 'ExecStartPost')
+                    except Exception as error:
+                        job['error'] = str(error)
+                elif key == 'STATUS':
+                    job['status'] = value
+                elif key == 'MAINPID' and value.isdigit():
+                    job['mainpid_hint'] = int(value)
+                elif key == 'STOPPING' and value == '1':
+                    job['state'] = 'deactivating'
+                elif key == 'RELOADING' and value == '1':
+                    job['state'] = 'reloading'
+                elif key == 'READY' and value == '1' and job['state'] == 'reloading':
+                    job['state'] = 'active'
+
+    def start_timer(self, key, name, user, spec):
+        timer = spec.get('Timer', {})
+        calendars = [Calendar(value) for value in timer.get('OnCalendar', []) if value]
+        monotonic = any(timer.get(option) for option in ('OnBootSec', 'OnStartupSec', 'OnActiveSec', 'OnUnitActiveSec', 'OnUnitInactiveSec'))
+        if not calendars and not monotonic:
+            raise ValueError('The timer has no OnCalendar or monotonic setting')
+        target = unit_name(last(spec, 'Timer', 'Unit', name[:-6]+'.service'))
+        stamp_file = self.base/'timers'/name
+        job = dict(key=key, name=name, user=user, spec=spec, state='waiting', pid=0, since=time.time(), target=target,
+                   calendars=calendars, activated=time.monotonic(), fired=set(), stamp=stamp_file, deadline=None, next=None)
+        self.jobs[key] = job
+        if last(spec, 'Timer', 'Persistent') in ('yes', 'true', '1') and calendars and stamp_file.exists():
+            previous = stamp_file.stat().st_mtime
+            if any((moment := calendar.after(previous)) is not None and moment <= time.time() for calendar in calendars):
+                job['deadline'] = time.monotonic() + 1
+                job['next'] = time.time() + 1
+                return
+        self.schedule_timer(job)
+
+    def schedule_timer(self, job):
+        spec, now, wall = job['spec'], time.monotonic(), time.time()
+        candidates = []
+        for option, base in (('OnBootSec', self.started), ('OnStartupSec', self.started), ('OnActiveSec', job['activated'])):
+            value = last(spec, 'Timer', option)
+            if value and option not in job['fired']:
+                candidates.append((base + duration(value), option))
+        target = self.jobs.get(self.key(job['target'], job['user']), {})
+        active_value = last(spec, 'Timer', 'OnUnitActiveSec')
+        if active_value and job.get('last_trigger') is not None:
+            candidates.append((job['last_trigger'] + duration(active_value), 'OnUnitActiveSec'))
+        inactive_value = last(spec, 'Timer', 'OnUnitInactiveSec')
+        if inactive_value and target.get('stopped_at') is not None:
+            candidates.append((target['stopped_at'] + duration(inactive_value), 'OnUnitInactiveSec'))
+        for calendar in job['calendars']:
+            moment = calendar.after(wall)
+            if moment is not None:
+                candidates.append((now + (moment - wall), 'OnCalendar'))
+        if not candidates:
+            job.update(state='inactive', deadline=None, next=None)
+            return
+        deadline, reason = min(candidates)
+        spread = last(spec, 'Timer', 'RandomizedDelaySec')
+        if spread:
+            deadline += random.random() * duration(spread)
+        job.update(state='waiting', deadline=deadline, reason=reason, next=wall + (deadline - now))
+
+    def fire_timer(self, job):
+        job['fired'].add(job.get('reason'))
+        job['last_trigger'] = time.monotonic()
+        job['stamp'].parent.mkdir(parents=True, exist_ok=True)
+        job['stamp'].touch()
+        try:
+            self.start(job['target'], job['user'])
+        except Exception as error:
+            job['error'] = str(error)
+        self.schedule_timer(job)
+
     def activate(self, job):
         spec = job['spec']
         now = time.monotonic()
@@ -303,11 +807,25 @@ class Supervisor:
             job['attempts'] = attempts + [now]
             job['commands'] = list(spec['Service']['ExecStart'])
             job['state'] = 'activating'
-            job['start_deadline'] = now + max(.1, duration(last(spec, 'Service', 'TimeoutStartSec', '30')))
+            job['start_deadline'] = now + max(.1, duration(last(spec, 'Service', 'TimeoutStartSec', last(spec, 'Service', 'TimeoutSec', '30'))))
+            job.pop('mainpid', None)
+            skipped = ignored(spec)
+            if skipped:
+                with self.log_path(job['key']).open('ab') as log:
+                    log.write(('Dextop: running without ' + ', '.join(skipped) + ' (not available under PRoot)\n').encode())
+            self.directories(job)
+            self.close_notify(job)
+            if last(spec, 'Service', 'Type') in ('notify', 'notify-reload'):
+                self.open_notify(job)
+            try:
+                self.hooks(job, 'ExecCondition')
+            except ValueError as error:
+                job.update(state='inactive', error='Condition not met: ' + str(error))
+                return
             self.hooks(job, 'ExecStartPre')
             self.spawn(job, job['commands'].pop(0))
-            job['state'] = 'activating' if last(spec, 'Service', 'Type') == 'oneshot' else 'active'
-            if last(spec, 'Service', 'Type') != 'oneshot':
+            job['state'] = 'activating' if last(spec, 'Service', 'Type') in ('oneshot', 'forking', 'notify', 'notify-reload') else 'active'
+            if last(spec, 'Service', 'Type') not in ('oneshot', 'forking', 'notify', 'notify-reload'):
                 self.hooks(job, 'ExecStartPost')
         except Exception as error:
             process = job.pop('process', None)
@@ -320,18 +838,52 @@ class Supervisor:
             job.update(state='failed', pid=0, error=str(error))
             raise
 
-    def stop(self, key):
+    def listed(self, spec, option):
+        values = spec.get('Unit', {}).get(option, []) if isinstance(spec.get('Unit'), dict) else []
+        return [unit_name(value) if not value.endswith('.target') else value for value in shlex.split(' '.join(values))]
+
+    def dependents(self, name, user, options):
+        return [job_key for job_key, job in self.jobs.items()
+                if job.get('user') == user and job.get('spec') and any(name in self.listed(job['spec'], option) for option in options)]
+
+    def propagate_stop(self, job, chain=()):
+        for dependent in self.dependents(job['name'], job['user'], ('BindsTo', 'PartOf')):
+            if dependent not in chain and self.jobs[dependent].get('state') in ('active', 'activating', 'waiting-dependencies', 'restarting'):
+                self.stop(dependent, chain + (job['key'],))
+
+    def stop(self, key, chain=()):
         job = self.jobs.get(key)
         if not job:
             return
+        if job.get('state') not in ('inactive', 'failed'):
+            self.propagate_stop(job, chain + (key,))
         job['desired'] = False
         process = job.get('process')
-        if process and process.poll() is None:
+        mainpid = job.get('mainpid')
+        if mainpid and alive(mainpid):
+            try:
+                self.hooks(job, 'ExecStop')
+            finally:
+                end = time.monotonic() + min(10, max(1, duration(last(job['spec'], 'Service', 'TimeoutStopSec', '5'))))
+                try:
+                    os.kill(mainpid, kill_signal(job['spec']))
+                except ProcessLookupError:
+                    pass
+                while alive(mainpid) and time.monotonic() < end:
+                    time.sleep(.1)
+                if alive(mainpid):
+                    try:
+                        os.kill(mainpid, signal.SIGKILL)
+                    except ProcessLookupError:
+                        pass
+            job.pop('mainpid', None)
+            self.hooks(job, 'ExecStopPost')
+        elif process and process.poll() is None:
             try:
                 self.hooks(job, 'ExecStop')
             finally:
                 try:
-                    os.killpg(process.pid, signal.SIGTERM)
+                    os.killpg(process.pid, kill_signal(job['spec']))
                     process.wait(timeout=min(10, max(1, duration(last(job['spec'], 'Service', 'TimeoutStopSec', '5')))))
                 except subprocess.TimeoutExpired:
                     os.killpg(process.pid, signal.SIGKILL)
@@ -339,7 +891,8 @@ class Supervisor:
                 except ProcessLookupError:
                     pass
             self.hooks(job, 'ExecStopPost')
-        job.update(state='inactive', pid=0)
+        self.close_notify(job)
+        job.update(state='inactive', pid=0, stopped_at=time.monotonic())
 
     def tick(self):
         now = time.monotonic()
@@ -349,12 +902,13 @@ class Supervisor:
                 with logfile.open('r+b') as stream:
                     stream.truncate(0)
             if job['name'].endswith('.timer'):
-                if job['state'] == 'waiting' and now >= job['deadline']:
-                    try:
-                        self.start(job['target'], job['user'])
-                        job.update(state='waiting' if job['repeat'] else 'inactive', deadline=now+job['interval'])
-                    except Exception as error:
-                        job.update(state='failed', error=str(error))
+                if job['state'] == 'waiting' and job.get('deadline') is not None and now >= job['deadline']:
+                    self.fire_timer(job)
+                elif job['state'] == 'waiting':
+                    stopped = self.jobs.get(self.key(job['target'], job['user']), {}).get('stopped_at')
+                    if job.get('deadline') is None or (stopped is not None and stopped != job.get('seen_stop')):
+                        job['seen_stop'] = stopped
+                        self.schedule_timer(job)
                 continue
             if job['state'] == 'waiting-dependencies':
                 failed = [key for key in job['required'] if self.jobs.get(key, {}).get('state') == 'failed']
@@ -374,6 +928,15 @@ class Supervisor:
                     except Exception as error:
                         job.update(state='failed', error=str(error))
                 continue
+            if job.get('mainpid'):
+                if not alive(job['mainpid']):
+                    job.pop('mainpid', None)
+                    job.update(pid=0, state='failed' if job.get('desired') else 'inactive', error='Main process exited')
+                    policy = last(job['spec'], 'Service', 'Restart', 'no')
+                    if job.get('desired') and policy in ('always', 'on-failure', 'on-abnormal'):
+                        job.update(state='restarting', deadline=now+max(.1, duration(last(job['spec'], 'Service', 'RestartSec', '1'))))
+                continue
+            self.read_notify(job)
             process = job.get('process')
             timed_out = bool(process and job['state'] == 'activating' and
                              now >= job.get('start_deadline', float('inf')) and process.poll() is None)
@@ -388,11 +951,33 @@ class Supervisor:
                 continue
             code = process.returncode
             job.pop('process', None)
+            self.close_notify(job)
             job.update(pid=0, exitCode=code)
             success = not timed_out and (code == 0 or job.get('ignore') or str(code) in shlex.split(' '.join(job['spec'].get('Service', {}).get('SuccessExitStatus', []))))
             if success and job['commands']:
                 self.spawn(job, job['commands'].pop(0))
                 continue
+            if success and last(job['spec'], 'Service', 'Type') == 'forking':
+                pidfile = last(job['spec'], 'Service', 'PIDFile')
+                mainpid = 0
+                for _ in range(20):
+                    try:
+                        mainpid = int(Path(pidfile).read_text().split()[0]) if pidfile else 0
+                    except (OSError, ValueError, IndexError):
+                        mainpid = 0
+                    if mainpid or not pidfile:
+                        break
+                    time.sleep(.1)
+                try:
+                    self.hooks(job, 'ExecStartPost')
+                except Exception as error:
+                    job.update(state='failed', error=str(error))
+                    continue
+                # Without a PID file the daemon cannot be followed; it counts as running, like RemainAfterExit.
+                job.update(state='active', mainpid=mainpid or None, pid=mainpid)
+                continue
+            if job['state'] == 'reloading':
+                job['state'] = 'active'
             if success and last(job['spec'], 'Service', 'Type') == 'oneshot':
                 try:
                     self.hooks(job, 'ExecStartPost')
@@ -400,6 +985,10 @@ class Supervisor:
                     success = False
                     job.update(error=str(error), exitCode=1)
             job['state'] = 'active' if success and last(job['spec'], 'Service', 'RemainAfterExit') in ('yes', 'true', '1') else ('inactive' if success else 'failed')
+            if job['state'] != 'active':
+                job['stopped_at'] = now
+                if not (job.get('desired') and last(job['spec'], 'Service', 'Restart', 'no') != 'no'):
+                    self.propagate_stop(job)
             policy = last(job['spec'], 'Service', 'Restart', 'no')
             restart = policy == 'always' or policy == 'on-success' and success or policy == 'on-failure' and not success or policy in ('on-abnormal', 'on-abort') and code < 0
             if restart and job.get('desired'):
@@ -409,18 +998,46 @@ class Supervisor:
         names = set()
         for directory in paths(user):
             names.update(file.name for file in directory.glob('*') if NAME.fullmatch(file.name))
+        names.update(job['name'] for job in self.jobs.values() if job['user'] == user)
         result = []
         for name in sorted(names):
             key = self.key(name, user)
             job = self.jobs.get(key, {})
-            result.append(dict(name=name, user=user, state=job.get('state', 'inactive'),
-                               enabled=key in self.enabled, pid=job.get('pid', 0), error=job.get('error', ''), exitCode=job.get('exitCode')))
+            spec = job.get('spec')
+            if spec is None:
+                file = unit_file(name, user)
+                try:
+                    stamp = (str(file), file.stat().st_mtime) if file else None
+                except OSError:
+                    stamp = None
+                cached = self.described.get((user, name))
+                if cached is None or cached[0] != stamp:
+                    try:
+                        cached = (stamp, load_unit(name, user) if stamp else {})
+                    except (ValueError, OSError):
+                        cached = (stamp, {})
+                    self.described[(user, name)] = cached
+                spec = cached[1]
+            description = last(spec, 'Unit', 'Description') if spec else ''
+            if '%' in description:
+                instance = name.split('@', 1)[1].rsplit('.', 1)[0] if '@' in name else ''
+                description = description.replace('%i', instance).replace('%I', instance).replace('%n', name).replace('%N', name.rsplit('.', 1)[0]).replace('%%', '%')
+            state = job.get('state', 'inactive')
+            if masked(name, user):
+                state = 'masked'
+            result.append(dict(name=name, user=user, state=state, description=description,
+                               enabled=key in self.enabled or name in self.wanted, pid=job.get('pid', 0) or job.get('mainpid') or 0,
+                               error=job.get('error', ''), exitCode=job.get('exitCode'), status=job.get('status', ''),
+                               next=job.get('next'), last=job.get('stamp').stat().st_mtime if job.get('stamp') and job['stamp'].exists() else None,
+                               target=job.get('target', ''), since=job.get('since'), path=(spec or {}).get('_path', '')))
         return result
 
     def action(self, request):
         action, user = request.get('action', 'list-units'), bool(request.get('user'))
+        if user != self.user and action != 'shutdown':
+            raise ValueError('This is the user service manager' if self.user else 'Use systemctl --user for user units')
         names = [unit_name(value) for value in request.get('units', [])]
-        if action in ('list-units', 'list-unit-files'):
+        if action in ('list-units', 'list-unit-files', 'list-timers'):
             return dict(ok=True, units=self.units(user))
         if action == 'daemon-reload':
             return dict(ok=True)
@@ -429,6 +1046,10 @@ class Supervisor:
             return dict(ok=True)
         if action == 'journal':
             lines = []
+            if not names:
+                # Without -u: every unit's log, like the whole journal.
+                prefix = ('user_' if user else 'system_')
+                names = [file.name[len(prefix):-4] for file in sorted((self.base/'logs').glob(prefix + '*.log'), key=lambda f: f.stat().st_mtime)]
             for name in names:
                 file = self.log_path(self.key(name, user))
                 if file.exists():
@@ -440,11 +1061,17 @@ class Supervisor:
             raise ValueError('Specify a unit')
         for name in names:
             key = self.key(name, user)
+            restarted = []
+            if action == 'restart':
+                restarted = [dependent for dependent in self.dependents(name, user, ('PartOf',))
+                             if self.jobs[dependent].get('state') in ('active', 'activating')]
             if action in ('stop', 'restart'):
                 self.stop(key)
             if action in ('start', 'restart'):
                 try:
                     self.start(name, user)
+                    for dependent in restarted:
+                        self.start(self.jobs[dependent]['name'], user)
                 except Exception as error:
                     if key in self.jobs:
                         self.stop(key)
@@ -454,19 +1081,48 @@ class Supervisor:
                 load_unit(name, user)
                 if action == 'enable' and key not in self.enabled:
                     self.enabled.append(key)
+                if action in ('enable', 'disable'):
+                    for also in shlex.split(' '.join(load_unit(name, user).get('Install', {}).get('Also', []))):
+                        also_key = self.key(also, user)
+                        if action == 'enable' and also_key not in self.enabled:
+                            self.enabled.append(also_key)
+                        if action == 'disable' and also_key in self.enabled:
+                            self.enabled.remove(also_key)
                 if action == 'disable' and key in self.enabled:
                     self.enabled.remove(key)
+                if action == 'disable':
+                    for directory in paths(user)[:3]:
+                        for link in directory.glob('*.wants/' + name):
+                            if link.is_symlink():
+                                link.unlink(missing_ok=True)
+                    self.wanted = [unit for unit in self.wanted if unit != name]
                 atomic(self.base/'enabled.json', self.enabled)
                 if action == 'enable' and request.get('now'):
                     self.start(name, user)
                 if action == 'disable' and request.get('now'):
                     self.stop(key)
+            elif action in ('mask', 'unmask'):
+                link = paths(user)[0]/name
+                if action == 'mask':
+                    if link.exists() and not link.is_symlink():
+                        raise ValueError('Unit file exists in ' + str(paths(user)[0]) + ': remove it before masking')
+                    self.stop(key)
+                    link.parent.mkdir(parents=True, exist_ok=True)
+                    link.unlink(missing_ok=True)
+                    link.symlink_to('/dev/null')
+                elif link.is_symlink() and os.readlink(link) == '/dev/null':
+                    link.unlink()
             elif action == 'reload':
                 job = self.jobs.get(key)
                 if not job or job['state'] != 'active' or not job['spec'].get('Service', {}).get('ExecReload'):
                     raise ValueError('No running reloadable service')
                 self.hooks(job, 'ExecReload')
-            elif action not in ('start', 'stop', 'restart', 'status', 'show', 'is-active', 'is-enabled', 'reset-failed'):
+            elif action == 'kill':
+                job = self.jobs.get(key, {})
+                target = job.get('mainpid') or (job.get('process').pid if job.get('process') else 0)
+                if target:
+                    os.kill(target, getattr(signal, request.get('signal', 'SIGTERM')))
+            elif action not in ('start', 'stop', 'restart', 'status', 'show', 'is-active', 'is-enabled', 'is-failed', 'reset-failed', 'cat'):
                 raise ValueError('Unsupported systemctl operation: ' + action)
             if action == 'reset-failed' and key in self.jobs:
                 self.jobs[key].update(state='inactive', error='', attempts=[])
@@ -480,6 +1136,10 @@ class Supervisor:
             return dict(ok=any(row['state'] in ('active', 'waiting') for row in units), units=units, code=3)
         if action == 'is-enabled':
             return dict(ok=any(row['enabled'] for row in units), units=units, code=1)
+        if action == 'is-failed':
+            return dict(ok=any(row['state'] == 'failed' for row in units), units=units, code=1)
+        if action in ('status', 'cat'):
+            pass
         return dict(ok=True, units=units)
 
     def run(self):
@@ -490,34 +1150,52 @@ class Supervisor:
                 (self.base/kind).mkdir(exist_ok=True)
             signal.signal(signal.SIGTERM, lambda *_: setattr(self, 'stopping', True))
             signal.signal(signal.SIGINT, lambda *_: setattr(self, 'stopping', True))
+            marker = ROOT/'run/systemd/system'
+            if not self.user:
+                marker.mkdir(parents=True, exist_ok=True)
+                self.open_syslog()
             try:
-                atomic(self.base/'status.json', dict(pid=os.getpid(), updated=time.time(), units=self.units()+self.units(True)))
+                atomic(self.base/'status.json', dict(pid=os.getpid(), updated=time.time(), units=self.units(self.user)))
+                if not self.user:
+                    tmpfiles = subprocess.run(['python3', '/usr/local/libexec/dextop-tmpfiles', '--create', '--boot'] + TMPFILES_KEEP,
+                                              stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, timeout=120)
+                    if tmpfiles.returncode:
+                        print('Dextop service manager: tmpfiles:', tmpfiles.stderr.decode(errors='replace')[-2000:], file=sys.stderr, flush=True)
+                if self.user and (ROOT/'usr/sbin/atd').exists() and unit_file('dextop-atd.service', True):
+                    try:
+                        self.start('dextop-atd.service', True)
+                    except Exception as error:
+                        print('Dextop service manager: dextop-atd.service', error, file=sys.stderr, flush=True)
+                if not self.user and (ROOT/'usr/bin/dbus-daemon').exists():
+                    for name in ('dextop-systemd-bus.service',):
+                        if unit_file(name):
+                            try:
+                                self.start(name)
+                            except Exception as error:
+                                print('Dextop service manager:', name, error, file=sys.stderr, flush=True)
                 for key in self.enabled:
                     user, name = key.split(':', 1)
                     try:
                         self.start(name, user == 'user')
                     except Exception as error:
                         self.jobs[key] = dict(key=key, name=name, user=user == 'user', state='failed', pid=0, error=str(error))
+                rescan = 0.0
+                cleaned = time.monotonic()
                 while not self.stopping:
-                    for file in sorted((self.base/'requests').glob('*.json'))[:32]:
-                        if not re.fullmatch(r'[a-f0-9]{32}\.json', file.name):
-                            continue
-                        try:
-                            request = read(file, {})
-                            if time.time()-file.stat().st_mtime > 60:
-                                continue
-                            try:
-                                result = self.action(request)
-                            except Exception as error:
-                                result = dict(ok=False, error=str(error))
-                            atomic(self.base/'responses'/file.name, result)
-                        finally:
-                            file.unlink(missing_ok=True)
+                    if not self.user and time.monotonic() - cleaned > 86400:
+                        cleaned = time.monotonic()
+                        subprocess.Popen(['python3', '/usr/local/libexec/dextop-tmpfiles', '--clean'] + TMPFILES_KEEP, stdin=subprocess.DEVNULL,
+                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                    self.read_syslog()
+                    if time.monotonic() >= rescan:
+                        rescan = time.monotonic() + 5
+                        self.start_wanted()
+                    self.serve()
                     try:
                         self.tick()
                     except Exception as error:
                         print('Dextop service monitor:', error, file=sys.stderr, flush=True)
-                    atomic(self.base/'status.json', dict(pid=os.getpid(), updated=time.time(), units=self.units()+self.units(True)))
+                    atomic(self.base/'status.json', dict(pid=os.getpid(), updated=time.time(), units=self.units(self.user)))
                     for file in (self.base/'responses').glob('*.json'):
                         if time.time()-file.stat().st_mtime > 120:
                             file.unlink(missing_ok=True)
@@ -529,6 +1207,11 @@ class Supervisor:
                     except Exception as error:
                         print('Dextop service stop:', error, file=sys.stderr, flush=True)
                 (self.base/'status.json').unlink(missing_ok=True)
+                if not self.user:
+                    try:
+                        marker.rmdir()
+                    except OSError:
+                        pass
 
 
 def rpc(request, base=BASE, timeout=45):
@@ -551,44 +1234,243 @@ def rpc(request, base=BASE, timeout=45):
         response.unlink(missing_ok=True)
 
 
+CHANGES = ('start', 'stop', 'restart', 'try-restart', 'reload', 'reload-or-restart', 'enable', 'disable', 'reenable',
+           'reset-failed', 'daemon-reload', 'mask', 'unmask', 'kill')
+
+
+def active_sub(row):
+    state = row.get('state', 'inactive')
+    if state == 'masked':
+        return 'inactive', 'dead'
+    if state == 'waiting':
+        return 'active', 'waiting'
+    if state == 'active':
+        return 'active', 'running' if row.get('pid') else 'exited'
+    if state == 'failed':
+        return 'failed', 'failed'
+    if state in ('activating', 'deactivating', 'reloading'):
+        return state, 'start' if state == 'activating' else state
+    if state in ('restarting', 'waiting-dependencies'):
+        return 'activating', 'auto-restart' if state == 'restarting' else 'start'
+    return 'inactive', 'dead'
+
+
+def file_state(row):
+    if row.get('state') == 'masked':
+        return 'masked'
+    return 'enabled' if row.get('enabled') else 'disabled'
+
+
+def stamp_text(value):
+    return time.strftime('%a %Y-%m-%d %H:%M:%S %Z', time.localtime(value)) if value else 'n/a'
+
+
+def left_text(value):
+    if not value:
+        return 'n/a'
+    seconds = int(value - time.time())
+    if seconds < 0:
+        return 'passed'
+    days, rest = divmod(seconds, 86400)
+    hours, rest = divmod(rest, 3600)
+    minutes, seconds = divmod(rest, 60)
+    if days:
+        return f'{days} days {hours}h'
+    if hours:
+        return f'{hours}h {minutes}min'
+    if minutes:
+        return f'{minutes}min {seconds}s'
+    return f'{seconds}s'
+
+
+def table(rows, headers, legend):
+    if legend:
+        rows = [headers] + rows
+    widths = [max(len(str(row[index])) for row in rows) for index in range(len(headers))] if rows else []
+    for row in rows:
+        print('  '.join(str(cell).ljust(widths[index]) for index, cell in enumerate(row)).rstrip())
+
+
+def offline_enable(action, names, user):
+    base = user_base() if user else BASE
+    enabled = read(base/'enabled.json', [])
+    for name in names:
+        key = ('user:' if user else 'system:') + unit_name(name)
+        if action == 'enable' and key not in enabled:
+            enabled.append(key)
+        if action == 'disable' and key in enabled:
+            enabled.remove(key)
+    atomic(base/'enabled.json', enabled)
+
+
+def print_status(row, user):
+    active, sub = active_sub(row)
+    dot = '●' if active == 'active' else '×' if active == 'failed' else '○'
+    print(f"{dot} {row['name']}" + (f" - {row['description']}" if row.get('description') else ''))
+    load = 'masked' if row.get('state') == 'masked' else 'loaded'
+    print(f"     Loaded: {load} ({row.get('path') or 'n/a'}; {file_state(row)})")
+    since = f" since {stamp_text(row['since'])}" if row.get('since') and active != 'inactive' else ''
+    print(f"     Active: {active} ({sub}){since}")
+    if row['name'].endswith('.timer'):
+        print(f"    Trigger: {stamp_text(row.get('next'))}; {left_text(row.get('next'))} left")
+        print(f"   Triggers: ● {row.get('target')}")
+    if row.get('pid'):
+        print(f"   Main PID: {row['pid']}")
+    if row.get('status'):
+        print(f"     Status: \"{row['status']}\"")
+    if row.get('error'):
+        print(f"      Error: {row['error']}")
+    journal = rpc(dict(action='journal', units=[row['name']], user=user, lines=10), user_base() if user else BASE)
+    if journal.get('output'):
+        print()
+        print(journal['output'])
+
+
 def cli(args):
     user, now, as_json, follow, lines = False, False, False, False, 100
-    quiet = False
+    quiet = legend_off = show_all = value_only = False
+    properties = []
+    kill_signal_name = 'SIGTERM'
     positionals = []
     journal = '--journal' in args
     index = 0
     while index < len(args):
         arg = args[index]
         index += 1
+        if re.fullmatch(r'-n\d+', arg) or arg.startswith('--lines='):
+            lines = int(arg.split('=', 1)[1] if arg.startswith('--') else arg[2:]); continue
+        if journal and (arg.startswith('--unit=') or (arg.startswith('-u') and len(arg) > 2 and not arg.startswith('--'))):
+            positionals.append(arg.split('=', 1)[1] if arg.startswith('--') else arg[2:]); continue
+        if arg.startswith('--property=') or (arg.startswith('-p') and len(arg) > 2):
+            properties += (arg.split('=', 1)[1] if arg.startswith('--') else arg[2:]).split(','); continue
+        if arg.startswith('--signal=') or (arg.startswith('-s') and len(arg) > 2):
+            kill_signal_name = arg.split('=', 1)[1] if arg.startswith('--') else arg[2:]; continue
         if arg == '--user': user = True
         elif arg == '--now': now = True
         elif arg == '--json': as_json = True
         elif arg in ('-q', '--quiet'): quiet = True
         elif arg in ('-f', '--follow'): follow = True
+        elif arg in ('-a', '--all'): show_all = True
+        elif arg == '--no-legend': legend_off = True
+        elif arg == '--value': value_only = True
         elif arg in ('-n', '--lines'):
             lines = int(args[index]); index += 1
+        elif arg in ('-p', '--property'):
+            properties += args[index].split(','); index += 1
+        elif arg in ('-s', '--signal'):
+            kill_signal_name = args[index]; index += 1
         elif arg in ('-u', '--unit') and journal:
             positionals.append(args[index]); index += 1
-        elif arg in ('--system', '--no-pager', '--plain', '--all', '--no-legend', '--no-block', '-l', '-q', '--quiet', '--journal') or arg.startswith('--type='):
+        elif arg in ('--system', '--no-pager', '--plain', '--no-block', '-l', '--full', '--no-ask-password', '--journal',
+                     '-b', '--boot', '-e', '--pager-end', '-x', '--catalog', '--force', '--runtime', '--global') or \
+                arg.startswith(('--type=', '--state=', '-o', '--output=', '--since=', '--until=', '--priority=')):
             pass
         elif arg.startswith('-'):
             raise ValueError('Unsupported option: ' + arg)
         else:
             positionals.append(arg)
     action = 'journal' if journal else (positionals.pop(0) if positionals else 'list-units')
+    signal_name = kill_signal_name if kill_signal_name.startswith('SIG') else 'SIG' + kill_signal_name
+    if action == 'reenable':
+        cli(['disable'] + (['--user'] if user else []) + positionals)
+        action = 'enable'
+    action = {'try-restart': 'restart', 'reload-or-restart': 'restart', 'condrestart': 'restart', 'force-reload': 'restart'}.get(action, action)
+    if not user and os.geteuid() != 0 and action in CHANGES:
+        print('Failed to ' + action + ': Access denied. Run it with sudo, or use systemctl --user for your own units.', file=sys.stderr)
+        return 4
+    targets = [name for name in positionals if name.endswith('.target')]
+    if targets and action not in ('journal', 'list-units', 'list-unit-files', 'list-timers'):
+        positionals = [name for name in positionals if not name.endswith('.target')]
+        for name in targets:
+            if quiet:
+                continue
+            if action in ('is-active', 'is-failed'):
+                print('active' if action == 'is-active' else 'active')
+            elif action == 'is-enabled':
+                print('static')
+            elif action == 'status':
+                print(f'\u25cf {name}\n     Loaded: loaded\n     Active: active since boot')
+            elif action == 'show':
+                values = dict(Id=name, LoadState='loaded', ActiveState='active', SubState='active', UnitFileState='static')
+                for key, value in values.items():
+                    if not properties or key in properties:
+                        print(value if value_only else f'{key}={value}')
+        if not positionals:
+            return 1 if action == 'is-failed' else 0
+    base = user_base() if user else BASE
+    request = dict(action=action, units=positionals, user=user, now=now, lines=lines, signal=signal_name)
+    try:
+        result = rpc(request, base)
+    except ValueError:
+        if action in ('enable', 'disable'):
+            offline_enable(action, positionals, user)
+            return 0
+        if os.environ.get('DPKG_MAINTSCRIPT_PACKAGE') or action in ('daemon-reload', 'reset-failed'):
+            return 0
+        if action in ('is-active', 'is-failed'):
+            if not quiet:
+                print('inactive')
+            return 3
+        raise
     previous = None
     while True:
-        result = rpc(dict(action=action, units=positionals, user=user, now=now, lines=lines))
         if as_json:
             print(json.dumps(result, ensure_ascii=False), flush=True)
-        elif not quiet and action == 'journal':
+        elif action == 'journal':
             output = result.get('output', '')
-            if output != previous:
+            if not quiet and output != previous:
                 print(output if previous is None or not output.startswith(previous) else output[len(previous):].lstrip('\n'), flush=True)
                 previous = output
-        elif not quiet:
+        elif quiet:
+            pass
+        elif action == 'list-units':
+            rows = [row for row in result.get('units', []) if show_all or positionals or row.get('state') not in ('inactive', 'masked')]
+            if positionals:
+                rows = [row for row in rows if any(fnmatch.fnmatch(row['name'], pattern) for pattern in positionals)]
+            table([[row['name'], 'masked' if row.get('state') == 'masked' else 'loaded', *active_sub(row), row.get('description', '')] for row in rows],
+                  ['UNIT', 'LOAD', 'ACTIVE', 'SUB', 'DESCRIPTION'], not legend_off)
+            if not legend_off:
+                print(f'\n{len(rows)} loaded units listed.')
+        elif action == 'list-unit-files':
+            rows = result.get('units', [])
+            if positionals:
+                rows = [row for row in rows if any(fnmatch.fnmatch(row['name'], pattern) for pattern in positionals)]
+            table([[row['name'], file_state(row)] for row in rows], ['UNIT FILE', 'STATE'], not legend_off)
+            if not legend_off:
+                print(f'\n{len(rows)} unit files listed.')
+        elif action == 'list-timers':
+            rows = [row for row in result.get('units', []) if row['name'].endswith('.timer') and (show_all or row.get('state') == 'waiting')]
+            rows.sort(key=lambda row: row.get('next') or float('inf'))
+            table([[stamp_text(row.get('next')), left_text(row.get('next')), stamp_text(row.get('last')), row['name'], row.get('target', '')] for row in rows],
+                  ['NEXT', 'LEFT', 'LAST', 'UNIT', 'ACTIVATES'], not legend_off)
+            if not legend_off:
+                print(f'\n{len(rows)} timers listed.')
+        elif action == 'status':
+            for number, row in enumerate(result.get('units', [])):
+                if number:
+                    print()
+                print_status(row, user)
+        elif action == 'cat':
             for row in result.get('units', []):
-                print(row['name'], row['state'], 'enabled' if row['enabled'] else 'disabled', row.get('error', ''))
+                if row.get('path'):
+                    print('# ' + row['path'])
+                    print(Path(row['path']).read_text().rstrip('\n'))
+        elif action == 'show':
+            for row in result.get('units', []):
+                active, sub = active_sub(row)
+                values = dict(Id=row['name'], Description=row.get('description', ''), LoadState='masked' if row.get('state') == 'masked' else 'loaded',
+                              ActiveState=active, SubState=sub, UnitFileState=file_state(row), MainPID=row.get('pid') or 0,
+                              FragmentPath=row.get('path', ''), StatusText=row.get('status', ''), Result='success' if row.get('state') != 'failed' else 'exit-code')
+                for key, value in values.items():
+                    if properties and key not in properties:
+                        continue
+                    print(value if value_only else f'{key}={value}')
+        elif action in ('is-active', 'is-failed'):
+            for row in result.get('units', []) or [dict(state='inactive')]:
+                print(active_sub(row)[0])
+        elif action == 'is-enabled':
+            for row in result.get('units', []):
+                print(file_state(row))
         if not result.get('ok'):
             if result.get('error') and not quiet:
                 print(result['error'], file=sys.stderr)
@@ -596,12 +1478,116 @@ def cli(args):
         if not (journal and follow):
             return 0
         time.sleep(1)
+        result = rpc(request, base)
+
+
+def systemd_run(args):
+    user = wait = remain = quiet = pipe = no_block = False
+    unit = description = None
+    properties, environment, timer = [], [], []
+    service_type = 'simple'
+    directory = None
+    index = 0
+    while index < len(args) and args[index].startswith('-'):
+        arg = args[index]
+        index += 1
+        if arg == '--':
+            break
+        name, has_value, value = arg.partition('=')
+        def take():
+            nonlocal index
+            if has_value:
+                return value
+            index += 1
+            return args[index-1]
+        if arg == '--user': user = True
+        elif arg == '--system': user = False
+        elif arg in ('--wait', '-W'): wait = True
+        elif arg in ('--remain-after-exit', '-r'): remain = True
+        elif arg in ('--quiet', '-q'): quiet = True
+        elif arg in ('--pty', '-t', '--pipe', '-P', '--scope', '-S', '--shell'): pipe = True
+        elif arg == '--no-block': no_block = True
+        elif arg in ('--collect', '-G', '--no-ask-password', '--send-sighup'): pass
+        elif name in ('--unit', '-u'): unit = take()
+        elif name == '--description': description = take()
+        elif name in ('--property', '-p'): properties.append(take())
+        elif name in ('--setenv', '-E'): environment.append(take())
+        elif name == '--service-type': service_type = take()
+        elif name in ('--working-directory', '--same-dir', '-d'):
+            directory = os.getcwd() if name in ('--same-dir', '-d') else take()
+        elif name == '--nice': properties.append('Nice=' + take())
+        elif name in ('--uid', '--gid'): properties.append(('User=' if name == '--uid' else 'Group=') + take())
+        elif name in ('--on-active', '--on-boot', '--on-startup', '--on-unit-active', '--on-unit-inactive', '--on-calendar'):
+            key = {'--on-active': 'OnActiveSec', '--on-boot': 'OnBootSec', '--on-startup': 'OnStartupSec', '--on-unit-active': 'OnUnitActiveSec',
+                   '--on-unit-inactive': 'OnUnitInactiveSec', '--on-calendar': 'OnCalendar'}[name]
+            timer.append(f'{key}={take()}')
+        elif name == '--timer-property': timer.append(take())
+        else:
+            raise ValueError('Unsupported option: ' + arg)
+    command = args[index:]
+    if pipe:
+        if not command:
+            command = [os.environ.get('SHELL', '/bin/sh')]
+        for item in environment:
+            key, _, value = item.partition('=')
+            os.environ[key] = value
+        if directory:
+            os.chdir(directory)
+        os.execvp(command[0], command)
+    if not command:
+        raise ValueError('A command is required')
+    if not user and os.geteuid() != 0:
+        print('Failed to start transient service unit: Access denied. Run it with sudo, or use systemd-run --user.', file=sys.stderr)
+        return 4
+    name = unit_name(unit or f'run-{uuid.uuid4().hex[:12]}')
+    if not name.endswith('.service'):
+        name = name.rsplit('.', 1)[0] + '.service'
+    folder = (user_base()/'transient') if user else ROOT/'run/systemd/transient'
+    folder.mkdir(parents=True, exist_ok=True)
+    resolved = shutil_which(command[0]) or command[0]
+    text = ['[Unit]', 'Description=' + (description or '[systemd-run] ' + ' '.join(command)), '', '[Service]',
+            'Type=' + (service_type or 'simple'), 'ExecStart=' + ' '.join(shlex.quote(part) for part in [resolved] + command[1:])]
+    text += ['RemainAfterExit=yes'] if remain else []
+    text += ['WorkingDirectory=' + directory] if directory else []
+    text += ['Environment=' + shlex.quote(item) for item in environment]
+    text += properties
+    (folder/name).write_text('\n'.join(text) + '\n')
+    base = user_base() if user else BASE
+    if timer:
+        timer_name = name[:-8] + '.timer'
+        (folder/timer_name).write_text('\n'.join(['[Unit]', 'Description=[systemd-run] ' + ' '.join(command), '', '[Timer]'] + timer + ['Unit=' + name]) + '\n')
+        result = rpc(dict(action='start', units=[timer_name], user=user), base)
+        if not quiet:
+            print(f'Running timer as unit: {timer_name}\nWill run service as unit: {name}', file=sys.stderr)
+        return 0 if result.get('ok') else 1
+    result = rpc(dict(action='start', units=[name], user=user), base)
+    if not result.get('ok'):
+        print(result.get('error', 'Failed to start ' + name), file=sys.stderr)
+        return 1
+    if not quiet:
+        print(f'Running as unit: {name}', file=sys.stderr)
+    if not wait or no_block:
+        return 0
+    while True:
+        time.sleep(.5)
+        rows = rpc(dict(action='status', units=[name], user=user), base).get('units', [])
+        row = rows[0] if rows else dict(state='inactive')
+        if row.get('state') in ('inactive', 'failed') or (remain and row.get('state') == 'active' and not row.get('pid')):
+            code = row.get('exitCode') or 0
+            if not quiet:
+                print(f"Finished with result: {'success' if row.get('state') != 'failed' else 'exit-code'}", file=sys.stderr)
+            return code if isinstance(code, int) and code >= 0 else 1
+
+
+def shutil_which(name):
+    return __import__('shutil').which(name)
 
 
 if __name__ == '__main__':
+    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
     try:
         if sys.argv[1:2] == ['daemon']:
-            Supervisor().run()
+            Supervisor(user='--user' in sys.argv[2:]).run()
         elif sys.argv[1:2] == ['write-unit']:
             request = json.load(sys.stdin)
             name = unit_name(request['name'])
@@ -611,7 +1597,8 @@ if __name__ == '__main__':
             spec = parse_unit(content)
             if name.endswith('.service'):
                 validate_service(spec)
-            directory = paths(bool(request.get('user')))[0]
+            user = bool(request.get('user'))
+            directory = (ROOT/('usr/local/lib/systemd/' + ('user' if user else 'system'))) if request.get('vendor') else paths(user)[0]
             directory.mkdir(parents=True, exist_ok=True)
             pending = directory/('.'+name+'.dextop')
             pending.unlink(missing_ok=True)
@@ -619,6 +1606,8 @@ if __name__ == '__main__':
                 stream.write(content)
             pending.chmod(0o644)
             pending.replace(directory/name)
+        elif sys.argv[1:2] == ['run']:
+            sys.exit(systemd_run(sys.argv[2:]))
         else:
             sys.exit(cli(sys.argv[2:] if sys.argv[1:2] == ['ctl'] else sys.argv[1:]))
     except (ValueError, OSError) as error:

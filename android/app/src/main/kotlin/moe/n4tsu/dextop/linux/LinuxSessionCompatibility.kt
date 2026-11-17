@@ -30,6 +30,14 @@ internal object LinuxSessionCompatibility {
         stageScript(root, "dextop-steam-stop", "usr/local/libexec/dextop-steam-stop")
         stageScript(root, "dextop-systemctl", "usr/local/libexec/dextop-systemctl")
         stageScript(root, "dextop-journalctl", "usr/local/libexec/dextop-journalctl")
+        stageScript(root, "dextop-systemd-bus", "usr/local/libexec/dextop-systemd-bus")
+        stageScript(root, "dextop-hostctl", "usr/local/libexec/dextop-hostctl")
+        stageScript(root, "dextop-tmpfiles", "usr/local/libexec/dextop-tmpfiles")
+        stageScript(root, "dextop-atd", "usr/local/libexec/dextop-atd")
+        stageScript(root, "dextop-atd.service", "usr/local/lib/systemd/user/dextop-atd.service", executable = false)
+        stageScript(root, "dextop-systemd-bus.service", "usr/local/lib/systemd/system/dextop-systemd-bus.service", executable = false)
+        File(root, "usr/local/lib/systemd/system/dextop-system-bus.service").delete()
+        File(root, "etc/dextop/dbus-system.conf").delete()
         stageScript(root, "dextop-ui.json", "usr/local/libexec/dextop-ui.json", executable = false)
         stageScript(root, "dextop-integrate", "usr/local/libexec/dextop-integrate")
         stageScript(root, "dextop-desktop-session", "usr/local/libexec/dextop-desktop-session")
@@ -37,6 +45,10 @@ internal object LinuxSessionCompatibility {
         stageScript(root, "dextop-user-setup", "usr/local/libexec/dextop-user-setup")
         stageScript(root, "dextop-sudo", "usr/local/libexec/dextop-sudo")
         if (LinuxUser.name(root) != null) stageScript(root, "dextop-sudo", "usr/local/bin/sudo")
+        if (File(root, "etc/sudoers.d").isDirectory) runCatching {
+            stageScript(root, "dextop-sudoers", "etc/sudoers.d/dextop-runtime", executable = false)
+            android.system.Os.chmod(File(root, "etc/sudoers.d/dextop-runtime").path, 0x120)
+        }
         stageScript(root, "dextop-path.sh", "etc/profile.d/dextop-path.sh")
         stageScript(root, "dextop-toolkit-theme", "usr/local/libexec/dextop-toolkit-theme")
         stageScript(root, "dextop-toolkit.sh", "etc/profile.d/dextop-toolkit.sh")
@@ -55,6 +67,19 @@ internal object LinuxSessionCompatibility {
             if (!file.isFile || file.readText() != LinuxStorage.APT_NO_CACHE_TEXT) file.writeText(LinuxStorage.APT_NO_CACHE_TEXT)
         }
         stageScript(root, "dextop-apt-heal", "usr/local/sbin/dextop-apt-heal")
+        if (File(root, "etc/apt/apt.conf.d").isDirectory) runCatching {
+            val fixups = File(root, "usr/local/libexec/dextop-package-fixups")
+            val text = LinuxCatalog.packageFixups
+            if (!fixups.isFile || fixups.readText() != text) {
+                fixups.parentFile?.mkdirs()
+                fixups.writeText(text)
+                fixups.setExecutable(true, false)
+                fixups.setReadable(true, false)
+            }
+            val hook = File(root, "etc/apt/apt.conf.d/99dextop-package-fixups")
+            val rule = "DPkg::Post-Invoke { \"if [ -x /usr/local/libexec/dextop-package-fixups ]; then /usr/local/libexec/dextop-package-fixups || true; fi\"; };\n"
+            if (!hook.isFile || hook.readText() != rule) hook.writeText(rule)
+        }
         stageScript(root, "macos/launch_app.py", "usr/local/lib/dextop/macos/launch_app.py")
         stageScript(root, "macos/asset_catalog_cache.py", "usr/local/lib/dextop/macos/asset_catalog_cache.py")
         stageScript(root, "macos/runtime_archive.py", "usr/local/lib/dextop/macos/runtime_archive.py")
