@@ -66,6 +66,8 @@ internal object LinuxSettings {
         if (!chosen) it.put("gpu", it.optJSONObject("gpuProbe")?.takeIf { probe -> probe.optInt("version") >= LinuxGpuProbe.VERSION }
             ?.optString("recommended")?.takeIf { id -> id.isNotEmpty() }
             ?: (if (LinuxGraphics.turnipCapable) LinuxGpuMode.TURNIP else LinuxGpuMode.HARDWARE).id)
+        if (!it.has("landlockFastPath")) it.put("landlockFastPath", false)
+        it.put("fastPathMode", LinuxFastMode.from(it.optString("fastPathMode")).id)
         if (!it.has("uiScale")) it.put("uiScale", 100)
         if (!it.has("dnsServers")) it.put("dnsServers", org.json.JSONArray())
         if (!it.has("defaultContainer")) it.put("defaultContainer", "")
@@ -97,6 +99,8 @@ internal object LinuxSettings {
         update.optString("gpu").takeIf { it.isNotEmpty() }?.let { merged.put("gpu", LinuxGpuMode.of(it).id) }
         // Back to the device test's recommendation.
         if (update.optBoolean("gpuRecommended")) merged.remove("gpu")
+        if (update.has("landlockFastPath")) merged.put("landlockFastPath", update.getBoolean("landlockFastPath"))
+        if (update.has("fastPathMode")) merged.put("fastPathMode", LinuxFastMode.from(update.getString("fastPathMode")).id)
         if (update.has("flatpakCompatibility")) merged.put("flatpakCompatibility", update.getBoolean("flatpakCompatibility"))
         if (update.has("defaultContainer")) {
             val id = update.optString("defaultContainer")

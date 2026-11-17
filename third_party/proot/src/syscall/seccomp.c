@@ -45,9 +45,12 @@
 #include <asm/ioctls.h>
 #include <asm/termbits.h>
 #include <linux/fs.h>
+#include <fcntl.h>
 #include <assert.h>        /* assert(3), */
 
 #include "syscall/seccomp.h"
+#include "tracee/landlock.h"
+#include "syscall/landlock-filter.h"
 #include "tracee/tracee.h"
 #include "syscall/syscall.h"
 #include "syscall/sysnum.h"
@@ -83,85 +86,25 @@ static int new_program_filter(struct sock_fprog *program)
 
 
 
-#define FASTPATH_STUB_ADDR 0xffff00000ULL
-#define FASTPATH_STUB_SIZE 0x1000ULL
-#define LENGTH_FASTPATH_TAIL 7
-
-static bool fastpath_enabled(void)
+static bool unprotected_fastpath_enabled(void)
 {
 	static int enabled = -1;
 	if (enabled < 0)
-		enabled = getenv("PROOT_FASTPATH") != NULL;
+		enabled = getenv("PROOT_FASTPATH") != NULL &&
+			getenv("PROOT_FASTPATH_MODE") != NULL &&
+			strcmp(getenv("PROOT_FASTPATH_MODE"), "unprotected") == 0;
 	return enabled;
-}
-
-static bool is_ret_trace(const struct sock_filter *statement)
-{
-	return statement->code == (BPF_RET + BPF_K)
-		&& (statement->k & SECCOMP_RET_ACTION_FULL) == SECCOMP_RET_TRACE;
 }
 
 static int add_statements_raw(struct sock_fprog *program, size_t nb_statements,
 			struct sock_filter *statements);
 
-
-
+/* No statement is ever rewritten to trust the fast-path trampoline address:
+ * the only exemptions are the Landlock-confined prologues below. */
 static int add_statements(struct sock_fprog *program, size_t nb_statements,
 			struct sock_filter *statements)
 {
-	struct sock_filter out[64];
-	size_t position[33];
-	size_t i, o;
-
-	if (!fastpath_enabled())
-		return add_statements_raw(program, nb_statements, statements);
-
-	assert(nb_statements <= 32);
-	for (i = 0, o = 0; i < nb_statements; i++) {
-		position[i] = o;
-		o += is_ret_trace(&statements[i]) ? LENGTH_FASTPATH_TAIL : 1;
-	}
-	position[nb_statements] = o;
-
-#define NEW_TARGET(index) (((index) <= nb_statements) ? position[(index)] : position[nb_statements] + (index) - nb_statements)
-
-	for (i = 0, o = 0; i < nb_statements; i++) {
-		struct sock_filter statement = statements[i];
-
-		if (BPF_CLASS(statement.code) == BPF_JMP) {
-			if (BPF_OP(statement.code) == BPF_JA)
-				statement.k = NEW_TARGET(i + 1 + statement.k) - position[i] - 1;
-			else {
-				statement.jt = NEW_TARGET(i + 1 + statement.jt) - position[i] - 1;
-				statement.jf = NEW_TARGET(i + 1 + statement.jf) - position[i] - 1;
-			}
-		}
-
-		if (!is_ret_trace(&statement)) {
-			out[o++] = statement;
-			continue;
-		}
-
-		{
-			const size_t ip = offsetof(struct seccomp_data, instruction_pointer);
-			const uint32_t hi = (uint32_t) (FASTPATH_STUB_ADDR >> 32);
-			const uint32_t lo = (uint32_t) FASTPATH_STUB_ADDR;
-			struct sock_filter tail[LENGTH_FASTPATH_TAIL] = {
-				BPF_STMT(BPF_LD + BPF_W + BPF_ABS, ip + sizeof(uint32_t)),
-				BPF_JUMP(BPF_JMP + BPF_JEQ + BPF_K, hi, 0, 4),
-				BPF_STMT(BPF_LD + BPF_W + BPF_ABS, ip),
-				BPF_JUMP(BPF_JMP + BPF_JGE + BPF_K, lo, 0, 2),
-				BPF_JUMP(BPF_JMP + BPF_JGE + BPF_K, lo + (uint32_t) FASTPATH_STUB_SIZE, 1, 0),
-				BPF_STMT(BPF_RET + BPF_K, SECCOMP_RET_ALLOW),
-				statement,
-			};
-			memcpy(&out[o], tail, sizeof(tail));
-			o += LENGTH_FASTPATH_TAIL;
-		}
-	}
-#undef NEW_TARGET
-
-	return add_statements_raw(program, o, out);
+	return add_statements_raw(program, nb_statements, statements);
 }
 
 static int add_statements_raw(struct sock_fprog *program, size_t nb_statements,
@@ -181,6 +124,21 @@ static int add_statements_raw(struct sock_fprog *program, size_t nb_statements,
 		memcpy(&program->filter[length], &statements[i], sizeof(struct sock_filter));
 
 	return 0;
+}
+
+/* The protected library runs only under Landlock and is limited to openat.
+ * The unprotected ("broad") library runs without Landlock and may also use the
+ * other file operations and metadata-only lookups. Permission, socket, watch,
+ * exec, ptrace and signal operations always use PRoot. The address is a
+ * dispatch optimization, never an authentication boundary. */
+static int add_landlock_fastpath(struct sock_fprog *program)
+{
+	if (unprotected_fastpath_enabled())
+		return add_statements(program, sizeof landlock_broad_filter / sizeof landlock_broad_filter[0],
+			(struct sock_filter *)landlock_broad_filter);
+	if (!proot_landlock_active()) return 0;
+	return add_statements(program, sizeof landlock_open_filter / sizeof landlock_open_filter[0],
+		(struct sock_filter *)landlock_open_filter);
 }
 
 /**
@@ -303,7 +261,7 @@ static size_t trace_length_raw(Sysnum sysnum);
 static size_t trace_length(Sysnum sysnum)
 {
 
-	return trace_length_raw(sysnum) + (fastpath_enabled() ? LENGTH_FASTPATH_TAIL - 1 : 0);
+	return trace_length_raw(sysnum);
 }
 
 static size_t trace_length_raw(Sysnum sysnum)
@@ -479,6 +437,9 @@ static int set_seccomp_filters(const FilteredSysnum *sysnums)
 	status = new_program_filter(&program);
 	if (status < 0)
 		goto end;
+
+	status = add_landlock_fastpath(&program);
+	if (status < 0) goto end;
 
 	/* For each handled architectures */
 	for (i = 0; i < nb_archs; i++) {
