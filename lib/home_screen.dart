@@ -361,6 +361,8 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? latestReleaseUrl;
   String? releaseCheckError;
   DateTime? releaseCheckedAt;
+  /// GitHub builds only: also offer pre-releases (betas) as updates.
+  var receivePreReleases = false;
   AppUpdateInfo? playUpdateInfo;
   // Product flavors live on the Android side. A Gradle BuildConfig field is
   // not a Dart --define, so String.fromEnvironment would always fall back to
@@ -423,6 +425,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         secure = preferences.getBool('secure_display') ?? false;
+        receivePreReleases = preferences.getBool(_preReleasesKey) ?? false;
         final savedOrientation = preferences.getString('home_orientation_mode');
         orientationMode = switch (savedOrientation) {
           'automatic' => _HomeOrientationMode.automatic,
@@ -645,10 +648,15 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (current.isEmpty) {
         throw FormatException(currentUiText('uiMissingAppVersion'));
       }
+      final preferences = await SharedPreferences.getInstance();
+      final preReleases = preferences.getBool(_preReleasesKey) ?? false;
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
+      // releases/latest never returns pre-releases; the list does.
       final request = await client.getUrl(
         Uri.parse(
-          'https://api.github.com/repos/NarYuki/Dextop/releases/latest',
+          preReleases
+              ? 'https://api.github.com/repos/NarYuki/Dextop/releases?per_page=30'
+              : 'https://api.github.com/repos/NarYuki/Dextop/releases/latest',
         ),
       );
       request.headers
@@ -665,8 +673,13 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
           ]),
         );
       }
-      final payload = jsonDecode(await response.transform(utf8.decoder).join());
-      if (payload is! Map) {
+      final decoded = jsonDecode(await response.transform(utf8.decoder).join());
+      final Map? payload = decoded is List
+          ? _newestRelease(decoded)
+          : decoded is Map
+          ? decoded
+          : null;
+      if (payload == null) {
         throw FormatException(currentUiText('uiInvalidGitHubResponse'));
       }
       final latest = '${payload['tag_name'] ?? ''}'.replaceFirst(
@@ -677,7 +690,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         throw FormatException(currentUiText('uiMissingReleaseVersion'));
       }
       final url = '${payload['html_url'] ?? ''}';
-      final newer = _isNewerVersion(latest, current);
+      final newer = isNewerRelease(latest, current);
       if (!mounted) return;
       mutate(() {
         fetchedReleaseVersion = latest;
@@ -805,27 +818,28 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  bool _isNewerVersion(String candidate, String current) {
-    List<int> parts(String value) {
-      final normalized = value.split('-').first.split('+').first;
-      return normalized
-          .split('.')
-          .map(
-            (part) =>
-                int.tryParse(RegExp(r'\d+').stringMatch(part) ?? '0') ?? 0,
-          )
-          .toList();
-    }
+  static const _preReleasesKey = 'update_receive_prereleases';
 
-    final latestParts = parts(candidate);
-    final currentParts = parts(current);
-    final length = max(latestParts.length, currentParts.length);
-    for (var index = 0; index < length; index++) {
-      final latestPart = index < latestParts.length ? latestParts[index] : 0;
-      final currentPart = index < currentParts.length ? currentParts[index] : 0;
-      if (latestPart != currentPart) return latestPart > currentPart;
+  /// The newest published release in a GitHub release list, pre-releases included.
+  Map? _newestRelease(List releases) {
+    Map? newest;
+    for (final release in releases) {
+      if (release is! Map || release['draft'] == true) continue;
+      final tag = '${release['tag_name'] ?? ''}';
+      if (tag.isEmpty) continue;
+      if (newest == null || isNewerRelease(tag, '${newest['tag_name']}')) {
+        newest = release;
+      }
     }
-    return false;
+    return newest;
+  }
+
+  Future<void> _setReceivePreReleases(bool value) async {
+    final preferences = await SharedPreferences.getInstance();
+    await preferences.setBool(_preReleasesKey, value);
+    if (!mounted) return;
+    mutate(() => receivePreReleases = value);
+    await _checkForUpdates();
   }
 
   Future<void> _consumeTileAction() async {

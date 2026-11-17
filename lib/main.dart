@@ -18,6 +18,7 @@ import 'package:free_dextop/linux/linux_expressive.dart';
 import 'package:free_dextop/linux/macos_feature.dart';
 import 'package:free_dextop/linux/landlock_feature.dart';
 import 'package:free_dextop/penguin_icon.dart';
+import 'package:free_dextop/release_version.dart';
 import 'package:free_dextop/setup_page.dart';
 import 'package:free_dextop/embedded_binder_setup.dart';
 import 'package:in_app_update/in_app_update.dart';
