@@ -737,6 +737,7 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       if (_forContainer)
         LinuxDesktopSessionSettings(
           key: ValueKey(widget.containerId),
+          containerId: widget.containerId!,
           settings: _containerSettings,
           enabled: !saving,
           onSave: _save,

@@ -1,8 +1,10 @@
 #!/bin/sh
 # The session of Dextop's full Linux desktop (LinuxDesktopSessions):
-#   dextop-desktop-session icewm|custom
-# "custom" runs DEXTOP_DESKTOP_COMMAND. One that ends within a few seconds (a typo, a missing
-# program) falls back to IceWM so the desktop still opens; the reason goes to the session log. Files Dextop manages in ~/.icewm start with $MARK; delete that line to keep
+#   dextop-desktop-session icewm|plasma|custom
+#   dextop-desktop-session restore-plasma   (dextop-toolkit.sh: undo a Plasma session's theme)
+# "plasma" runs KDE Plasma on X11 (experimental); "custom" runs DEXTOP_DESKTOP_COMMAND. A session
+# that is missing or ends within a few seconds (a typo, a crash) falls back to IceWM so the desktop
+# still opens; the reason goes to the session log. Files Dextop manages in ~/.icewm start with $MARK; delete that line to keep
 # your own version.
 id=$1
 MARK='# Managed by Dextop. Delete this line to keep your own changes.'
@@ -87,12 +89,150 @@ icewm_session() {
     icewm-session || icewm
 }
 
-[ "$id" = custom ] && [ -n "${DEXTOP_DESKTOP_COMMAND:-}" ] || { icewm_session; exit; }
+# Writes [section] key=value into a KDE config file unless the user already set the key there.
+kde_default() {
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/$1" section=$2 key=$3 value=$4
+    mkdir -p "${file%/*}"
+    awk -v s="[$section]" -v k="$key" '
+        $0 == s { inside = 1; next } /^\[/ { inside = 0 }
+        inside && index($0, k "=") == 1 { found = 1 }
+        END { exit !found }' "$file" 2>/dev/null && return
+    if grep -qxF "[$section]" "$file" 2>/dev/null; then
+        awk -v s="[$section]" -v line="$key=$value" '{ print } $0 == s { print line }' "$file" >"$file.dextop" &&
+            mv "$file.dextop" "$file"
+    else
+        printf '\n[%s]\n%s=%s\n' "$section" "$key" "$value" >>"$file"
+    fi
+}
+
+# Writes [section] key=value into a KDE config file, replacing what is there: for what follows the
+# display (scale), which Dextop sets on every start.
+kde_set() {
+    file="${XDG_CONFIG_HOME:-$HOME/.config}/$1" section=$2 key=$3 value=$4
+    mkdir -p "${file%/*}"
+    [ -f "$file" ] || : >"$file"
+    awk -v s="[$section]" -v k="$key" -v line="$3=$4" '
+        $0 == s { print; if (!done) { print line; done = 1 }; inside = 1; next }
+        /^\[/ { inside = 0 }
+        inside && index($0, k "=") == 1 { next }
+        { print }
+        END { if (!done) { print ""; print s; print line } }' "$file" >"$file.dextop" && mv "$file.dextop" "$file"
+}
+
+# Plasma's size follows the desktop's DPI as IceWM's does: its global scale (whole quarters) and
+# font DPI, for every output of this display.
+plasma_scale() {
+    dpi=$(xrdb -query 2>/dev/null | awk '/^Xft.dpi:/ { print int($2 + 0.5); exit }')
+    [ -n "$dpi" ] && [ "$dpi" -ge 48 ] 2>/dev/null || dpi=96
+    scale=$(awk -v d="$dpi" 'BEGIN { q = int(d / 96 * 4 + 0.5) / 4; if (q < 1) q = 1; printf "%g", q }')
+    factors=""
+    for output in $(xrandr --query 2>/dev/null | awk '$2 == "connected" { print $1 }'); do
+        factors="$factors$output=$scale;"
+    done
+    kde_set kdeglobals KScreen ScaleFactor "$scale"
+    [ -n "$factors" ] && kde_set kdeglobals KScreen ScreenScaleFactors "$factors"
+    kde_set kcmfonts General forceFontDPI "$(awk -v s="$scale" 'BEGIN { printf "%d", 96 * s + 0.5 }')"
+}
+
+# Plasma themes the whole account: its GTK sync writes Breeze into the GTK settings, GTK 2's rc
+# file and the default cursor, which IceWM and Android-window applications read too. Those files
+# are saved before a Plasma session and put back after it; dextop-toolkit.sh also puts them back
+# when a session was killed before it could.
+plasma_saved="${XDG_DATA_HOME:-$HOME/.local/share}/dextop/plasma-saved"
+plasma_files=".config/gtk-3.0/settings.ini .config/gtk-3.0/gtk.css .config/gtk-3.0/colors.css
+.config/gtk-4.0/settings.ini .config/gtk-4.0/gtk.css .config/gtk-4.0/colors.css .gtkrc-2.0
+.icons/default/index.theme .config/xsettingsd/xsettingsd.conf .config/Trolltech.conf"
+
+plasma_save() {
+    rm -rf "$plasma_saved" && mkdir -p "$plasma_saved/files" || return
+    for f in $plasma_files; do
+        if [ -e "$HOME/$f" ]; then
+            mkdir -p "$plasma_saved/files/$(dirname "$f")" && cp -p "$HOME/$f" "$plasma_saved/files/$f"
+        else
+            echo "$f" >>"$plasma_saved/absent"
+        fi
+    done
+    : >"$plasma_saved/active"
+}
+
+plasma_restore() {
+    [ -f "$plasma_saved/active" ] || return 0
+    for f in $plasma_files; do
+        if [ -e "$plasma_saved/files/$f" ]; then
+            mkdir -p "$HOME/$(dirname "$f")" && cp -p "$plasma_saved/files/$f" "$HOME/$f"
+        elif grep -qxF "$f" "$plasma_saved/absent" 2>/dev/null; then
+            rm -f "$HOME/$f"
+        fi
+    done
+    rm -rf "$plasma_saved"
+}
+
+# The first Plasma sessions ran before the files were saved: undo Breeze where Plasma put it, once.
+plasma_repair() {
+    stamp="${XDG_CONFIG_HOME:-$HOME/.config}/dextop/plasma-theme-repaired-v1"
+    [ -e "$stamp" ] && return
+    for version in 3.0 4.0; do
+        file="${XDG_CONFIG_HOME:-$HOME/.config}/gtk-$version"
+        [ -f "$file/settings.ini" ] && awk '
+            /^gtk-theme-name=[Bb]reeze/ { print "gtk-theme-name=Adwaita"; next }
+            /^gtk-icon-theme-name=[Bb]reeze/ { print "gtk-icon-theme-name=Adwaita"; next }
+            /^gtk-cursor-theme-name=[Bb]reeze/ { next }
+            { print }' "$file/settings.ini" >"$file/settings.ini.dextop" &&
+            mv "$file/settings.ini.dextop" "$file/settings.ini"
+        for css in gtk.css colors.css; do
+            grep -qi 'kde\|breeze' "$file/$css" 2>/dev/null && rm -f "$file/$css"
+        done
+    done
+    grep -qi breeze "$HOME/.gtkrc-2.0" 2>/dev/null && rm -f "$HOME/.gtkrc-2.0"
+    grep -qi breeze "$HOME/.icons/default/index.theme" 2>/dev/null && rm -f "$HOME/.icons/default/index.theme"
+    mkdir -p "${stamp%/*}" && : >"$stamp"
+}
+
+if [ "$id" = restore-plasma ]; then
+    # Never while Plasma runs: its own applications start through dextop-toolkit.sh too.
+    pgrep -x plasmashell >/dev/null 2>&1 && exit 0
+    plasma_restore
+    plasma_repair
+    exit 0
+fi
+
+# KDE Plasma under PRoot: no systemd user manager to boot through, no GPU compositing worth its
+# cost, and no screen lock or file indexer by default. Each default stays the user's to change.
+plasma_session() {
+    kde_default startkderc General systemdBoot false
+    kde_default kwinrc Compositing Enabled false
+    kde_default kscreenlockerrc Daemon Autolock false
+    kde_default kscreenlockerrc Daemon LockOnResume false
+    kde_default baloofilerc 'Basic Settings' Indexing-Enabled false
+    # KScreen would apply its own (saved or "preferred") mode to the X screen whose size Dextop sets.
+    kde_default kded6rc Module-kscreen autoload false
+    plasma_scale
+    export XDG_CURRENT_DESKTOP=KDE XDG_SESSION_DESKTOP=KDE DESKTOP_SESSION=plasma XDG_SESSION_TYPE=x11 \
+        KDE_FULL_SESSION=true KDE_SESSION_VERSION=6 QT_QPA_PLATFORM=xcb QSG_RENDER_LOOP=basic
+    # (QSG_RENDER_LOOP=basic: the X display has no vsync to time Qt Quick's animations by.)
+    # Dextop's own theme (dextop-toolkit.sh) pins qt5ct, Adwaita and a GTK 2 rc file; Plasma themes itself.
+    unset WAYLAND_DISPLAY QT_QPA_PLATFORMTHEME GTK_THEME GTK2_RC_FILES ADW_DEBUG_COLOR_SCHEME
+    plasma_restore
+    plasma_repair
+    plasma_save
+    startplasma-x11
+    status=$?
+    plasma_restore
+    return $status
+}
+
+case "$id" in
+    plasma)
+        command -v startplasma-x11 >/dev/null 2>&1 || { say "KDE Plasma is not installed; starting IceWM"; icewm_session; exit; } ;;
+    custom)
+        [ -n "${DEXTOP_DESKTOP_COMMAND:-}" ] || { icewm_session; exit; } ;;
+    *) icewm_session; exit ;;
+esac
 
 started=$(date +%s)
-sh -c "$DEXTOP_DESKTOP_COMMAND"
+if [ "$id" = plasma ]; then (plasma_session); else sh -c "$DEXTOP_DESKTOP_COMMAND"; fi
 status=$?
 if [ $(( $(date +%s) - started )) -lt 5 ]; then
-    say "the command ended after less than 5 seconds (exit $status); starting IceWM"
+    say "the $id session ended after less than 5 seconds (exit $status); starting IceWM"
     icewm_session
 fi
