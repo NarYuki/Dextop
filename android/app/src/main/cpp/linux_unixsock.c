@@ -29,6 +29,8 @@
 #define SYS_prctl 167
 #define SYS_fchownat 54
 #define SYS_fchmodat 53
+#define SYS_sendto 206
+#define SYS_sendmsg 211
 #elif defined(__x86_64__)
 #define SYS_bind 49
 #define SYS_socket 41
@@ -40,6 +42,8 @@
 #define SYS_prctl 157
 #define SYS_fchownat 260
 #define SYS_fchmodat 268
+#define SYS_sendto 44
+#define SYS_sendmsg 46
 #elif defined(__i386__)
 #define SYS_bind 361
 #define SYS_socket 359
@@ -118,6 +122,37 @@ static long raw_syscall5(long number, long a, long b, long c, long d, long e) {
         : "=a"(result) : "a"(number), "r"(a), "c"(b), "d"(c), "S"(d), "D"(e) : "memory", "cc");
     return result;
 #endif
+}
+
+#if !defined(__i386__)
+static long raw_syscall6(long number, long a, long b, long c, long d, long e, long f) {
+#if defined(__aarch64__)
+    register long x8 __asm__("x8") = number;
+    register long x0 __asm__("x0") = a;
+    register long x1 __asm__("x1") = b;
+    register long x2 __asm__("x2") = c;
+    register long x3 __asm__("x3") = d;
+    register long x4 __asm__("x4") = e;
+    register long x5 __asm__("x5") = f;
+    __asm__ volatile("svc #0" : "+r"(x0) : "r"(x8), "r"(x1), "r"(x2), "r"(x3), "r"(x4), "r"(x5) : "memory", "cc");
+    return x0;
+#else
+    long result;
+    register long r10 __asm__("r10") = d;
+    register long r8 __asm__("r8") = e;
+    register long r9 __asm__("r9") = f;
+    __asm__ volatile("syscall" : "=a"(result) : "a"(number), "D"(a), "S"(b), "d"(c), "r"(r10), "r"(r8), "r"(r9) : "rcx", "r11", "memory", "cc");
+    return result;
+#endif
+}
+#endif
+
+static long finish_long(long result) {
+    if (result < 0 && result > -4096) {
+        *__errno_location() = (int)-result;
+        return -1;
+    }
+    return result;
 }
 
 static int finish(long result) {
@@ -253,8 +288,70 @@ int bind(int fd, const void *address, unsigned length) {
     return finish(result);
 }
 
+/*
+ * Dextop's faked (linux_faked_loopback.c) listens on 127.0.0.1, which every app on the device
+ * can reach, and serves only clients that first send its token. It publishes
+ * "<32 hex>\n<pid>\n" in /tmp/.dextop-faked/<port>, readable by the container's user only.
+ * Returns 1 and fills token when [address] is such a daemon (the recorded pid is still a
+ * faked), so no other service on a reused port ever receives the bytes.
+ */
+static int faked_token(const void *address, unsigned length, char token[32]) {
+    const unsigned char *in = address;
+    if (!address || length < 16 || *(const unsigned short *)address != 2 /* AF_INET */ ||
+        in[4] != 127 || in[5] != 0 || in[6] != 0 || in[7] != 1) return 0;
+    unsigned port = (unsigned)in[2] << 8 | in[3];
+    char path[48], digits[8];
+    static const char dir[] = "/tmp/.dextop-faked/";
+    unsigned at = 0, n = 0;
+    for (; dir[at]; ++at) path[at] = dir[at];
+    do { digits[n++] = (char)('0' + port % 10); port /= 10; } while (port);
+    while (n) path[at++] = digits[--n];
+    path[at] = 0;
+    long file = raw_syscall5(SYS_openat, -100, (long)path, 02000000 /* O_CLOEXEC */, 0, 0);
+    if (file < 0) return 0;
+    char body[64];
+    long got = raw_syscall3(SYS_read, file, (long)body, sizeof body - 1);
+    raw_syscall3(SYS_close, file, 0, 0);
+    if (got < 34 || body[32] != '\n') return 0;
+    for (unsigned i = 0; i < 32; ++i) {
+        char c = body[i];
+        if (!((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f'))) return 0;
+        token[i] = c;
+    }
+    /* /proc/<pid>/comm of the daemon that wrote it: Dextop runs faked as
+     * /run/dextop-faked-original ("dextop-faked-or"); a distro faked is "faked-tcp". */
+    char comm[48], name[16];
+    static const char proc[] = "/proc/";
+    at = 0;
+    for (; proc[at]; ++at) comm[at] = proc[at];
+    for (long i = 33; i < got && body[i] != '\n' && at < 30; ++i) {
+        if (body[i] < '0' || body[i] > '9') return 0;
+        comm[at++] = body[i];
+    }
+    static const char tail[] = "/comm";
+    for (unsigned i = 0; tail[i]; ++i) comm[at++] = tail[i];
+    comm[at] = 0;
+    file = raw_syscall5(SYS_openat, -100, (long)comm, 02000000, 0, 0);
+    if (file < 0) return 0;
+    got = raw_syscall3(SYS_read, file, (long)name, sizeof name);
+    raw_syscall3(SYS_close, file, 0, 0);
+    static const char dextop[] = "dextop-faked", plain[] = "faked";
+    int is_dextop = got >= (long)sizeof dextop - 1, is_plain = got >= (long)sizeof plain - 1;
+    for (unsigned i = 0; i < sizeof dextop - 1 && is_dextop; ++i) is_dextop = name[i] == dextop[i];
+    for (unsigned i = 0; i < sizeof plain - 1 && is_plain; ++i) is_plain = name[i] == plain[i];
+    return is_dextop || is_plain;
+}
+
 __attribute__((visibility("default")))
 int connect(int fd, const void *address, unsigned length) {
+    char token[32];
+    if (faked_token(address, length, token)) {
+        long result = raw_syscall3(SYS_connect, fd, (long)address, length);
+        /* libfakeroot connects blocking; its first bytes must be the token. */
+        if (result == 0 && raw_syscall6(SYS_sendto, fd, (long)token, sizeof token, 0x4000 /* MSG_NOSIGNAL */, 0, 0) != (long)sizeof token)
+            result = -E_CONNREFUSED;
+        return finish(result);
+    }
     struct sockaddr_un_compat twin;
     unsigned twin_length = abstract_twin(address, length, &twin);
     if (twin_length && abstract_transport()) {
@@ -320,3 +417,60 @@ __attribute__((visibility("default")))
 int chmod(const char *path, unsigned mode) {
     return finish(pts_error(path, raw_syscall5(SYS_fchmodat, -100, (long)path, mode, 0, 0)));
 }
+
+#if !defined(__i386__)
+struct msghdr_compat {
+    void *name;
+    unsigned namelen;
+    void *iov;
+    unsigned long iovlen;
+    void *control;
+    unsigned long controllen;
+    int flags;
+};
+
+static int retry_with_twin(long result) {
+    return result == -E_NOENT || result == -E_CONNREFUSED || result == -E_ACCES;
+}
+
+__attribute__((visibility("default")))
+long sendto(int fd, const void *buffer, unsigned long length, int flags, const void *address, unsigned address_length) {
+    struct sockaddr_un_compat twin;
+    unsigned twin_length = address != 0 ? abstract_twin(address, address_length, &twin) : 0;
+    if (twin_length && abstract_transport()) {
+        long result = raw_syscall6(SYS_sendto, fd, (long)buffer, (long)length, flags, (long)&twin, twin_length);
+        if (!retry_with_twin(result)) return finish_long(result);
+    }
+    long result = raw_syscall6(SYS_sendto, fd, (long)buffer, (long)length, flags, (long)address, address_length);
+    if (twin_length && retry_with_twin(result)) {
+        long retry = raw_syscall6(SYS_sendto, fd, (long)buffer, (long)length, flags, (long)&twin, twin_length);
+        if (retry >= 0) result = retry;
+    }
+    return finish_long(result);
+}
+
+__attribute__((visibility("default")))
+long sendmsg(int fd, const struct msghdr_compat *message, int flags) {
+    struct sockaddr_un_compat twin;
+    unsigned twin_length = message != 0 && message->name != 0 ? abstract_twin(message->name, message->namelen, &twin) : 0;
+    if (!twin_length) return finish_long(raw_syscall3(SYS_sendmsg, fd, (long)message, flags));
+    struct msghdr_compat copy;
+    copy.name = &twin;
+    copy.namelen = twin_length;
+    copy.iov = message->iov;
+    copy.iovlen = message->iovlen;
+    copy.control = message->control;
+    copy.controllen = message->controllen;
+    copy.flags = message->flags;
+    if (abstract_transport()) {
+        long result = raw_syscall3(SYS_sendmsg, fd, (long)&copy, flags);
+        if (!retry_with_twin(result)) return finish_long(result);
+    }
+    long result = raw_syscall3(SYS_sendmsg, fd, (long)message, flags);
+    if (retry_with_twin(result)) {
+        long retry = raw_syscall3(SYS_sendmsg, fd, (long)&copy, flags);
+        if (retry >= 0) result = retry;
+    }
+    return finish_long(result);
+}
+#endif
