@@ -5,34 +5,21 @@
 
 ### New features
 
-* **linux:** add an experimental KDE Plasma desktop session ([095a1d8](https://github.com/NarYuki/Dextop/commit/095a1d8bd837130e188c92705ec5b422b5a151ea))
 * **linux:** add an experimental KDE Plasma desktop session ([d5d3105](https://github.com/NarYuki/Dextop/commit/d5d31055bd09a78ef6a63a6bb741f7b09c14c3fa))
-* **linux:** add Landlock fast mode with protected and unprotected modes ([342b085](https://github.com/NarYuki/Dextop/commit/342b08535a2481f1d897dd46b29630e575a0f5bf))
 * **linux:** add Landlock fast mode with protected and unprotected modes ([abff3ea](https://github.com/NarYuki/Dextop/commit/abff3ea98cd5414abac88c856e14d08e0b72a2f2))
-* **linux:** explain what sharing the whole storage gives Linux before turning it on ([ad6416d](https://github.com/NarYuki/Dextop/commit/ad6416d2062f284a6cc77e14a538ff3762fd4627))
 * **linux:** explain what sharing the whole storage gives Linux before turning it on ([65fb7f9](https://github.com/NarYuki/Dextop/commit/65fb7f95fece65c6f0a69baf704682f34dffa954))
-* **linux:** keep container snapshots in the app's own storage ([573e03d](https://github.com/NarYuki/Dextop/commit/573e03dda15b5f41fd54884c8cb2ceb6e145500f))
 * **linux:** keep container snapshots in the app's own storage ([95c1239](https://github.com/NarYuki/Dextop/commit/95c12395b2b0ae3629f59c4de55a508b374d6314))
-* **linux:** optionally allow hard links in ordinary sessions ([bd0868b](https://github.com/NarYuki/Dextop/commit/bd0868b7a4fce7bdbe7ff948fe4467c19025d7aa))
 * **linux:** optionally allow hard links in ordinary sessions ([c49c80d](https://github.com/NarYuki/Dextop/commit/c49c80d57c714ae6db997cc48e6110fa706096b3))
-* **linux:** run integrations as systemd-compatible units and start them at boot ([2b17a38](https://github.com/NarYuki/Dextop/commit/2b17a38144b53c2c3557ad4ef53ee90cf68f82a2))
 * **linux:** run integrations as systemd-compatible units and start them at boot ([3d2435d](https://github.com/NarYuki/Dextop/commit/3d2435dc995699efe43141d4972893fd8d86a768))
-* **linux:** stand in for Android-denied /proc, netlink and syslog data ([4a8db96](https://github.com/NarYuki/Dextop/commit/4a8db96f9575a48b6a415eb994f461cc58ea6381))
 * **linux:** stand in for Android-denied /proc, netlink and syslog data ([e288890](https://github.com/NarYuki/Dextop/commit/e2888905eeeb68df371c04f3b8efbd79e54a6882))
-* **settings:** reorganize Linux settings around devices and shared services ([56bbe88](https://github.com/NarYuki/Dextop/commit/56bbe8894a06f282643dca565fdbe5f0629de252))
 * **settings:** reorganize Linux settings around devices and shared services ([10148d4](https://github.com/NarYuki/Dextop/commit/10148d40ec06573c4a82c3447f41b31cfd475283))
-* **update:** offer pre-releases on request and order versions by semver ([a8bdbd0](https://github.com/NarYuki/Dextop/commit/a8bdbd07209a1b17f3a3b3dcefe9fc091b11d5dc))
 * **update:** offer pre-releases on request and order versions by semver ([0235cec](https://github.com/NarYuki/Dextop/commit/0235cec548f00114433d88dbf0d1300cacf539a0))
 
 
 ### Fixes
 
-* **input:** give the laptop keyboard one owner and drop the slow fallback path ([db38290](https://github.com/NarYuki/Dextop/commit/db38290f2a29a8c9ad2d9c62d99fa270f0df9238))
 * **input:** give the laptop keyboard one owner and drop the slow fallback path ([86772ba](https://github.com/NarYuki/Dextop/commit/86772ba6037c18e6f63fe9fb897dbadb78e5701a))
-* **linux:** ask for notifications for printing and accept full-width port digits ([306e38e](https://github.com/NarYuki/Dextop/commit/306e38ede899795447de98c647bfa4ccfb1c8265))
 * **linux:** ask for notifications for printing and accept full-width port digits ([8dc0c02](https://github.com/NarYuki/Dextop/commit/8dc0c0274c224b8551032bd7fd48d51b4f19cbdf))
-* **linux:** fix integrations, SSH, USB storage and the desktop; rework the terminal ([282dbc7](https://github.com/NarYuki/Dextop/commit/282dbc79fa627b451b8390940bfed606c1cca5c9))
-* **linux:** read Bluetooth file requests without trusting guest-controlled files ([93512fe](https://github.com/NarYuki/Dextop/commit/93512febf2ff1b06cab14be7fbb40802bd1ca9e7))
 * **linux:** read Bluetooth file requests without trusting guest-controlled files ([9728d78](https://github.com/NarYuki/Dextop/commit/9728d78ce65f08e14f5873c96009ba81ae2648a3))
 
 ## 2.0.0
