@@ -102,6 +102,7 @@ internal object LinuxSettings {
         if (update.has("landlockFastPath")) merged.put("landlockFastPath", update.getBoolean("landlockFastPath"))
         if (update.has("fastPathMode")) merged.put("fastPathMode", LinuxFastMode.from(update.getString("fastPathMode")).id)
         if (update.has("flatpakCompatibility")) merged.put("flatpakCompatibility", update.getBoolean("flatpakCompatibility"))
+        if (update.has("hardLinks")) merged.put("hardLinks", update.getBoolean("hardLinks"))
         if (update.has("defaultContainer")) {
             val id = update.optString("defaultContainer")
             merged.put("defaultContainer", id.takeIf { runCatching { LinuxPaths.container(it).isDirectory }.getOrDefault(false) } ?: "")
