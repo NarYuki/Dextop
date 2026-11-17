@@ -1,0 +1,8 @@
+[Unit]
+Description=Deferred execution scheduler
+
+[Service]
+ExecStartPre=-/usr/bin/find /var/spool/cron/atjobs -type f -name "=*" -delete
+ExecStart=/bin/sh /usr/local/libexec/dextop-atd
+Restart=on-failure
+RestartSec=5

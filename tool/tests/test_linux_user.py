@@ -31,30 +31,24 @@ else:
 
 
 class LinuxUserTests(unittest.TestCase):
-    def test_sudo_authentication_checks_hash_and_rejects_locked_accounts(self):
-        crypt = SimpleNamespace(crypt=SimpleNamespace())
-        with tempfile.TemporaryDirectory() as directory:
-            shadow = Path(directory) / 'shadow'
-            shadow.write_text('yuuki:$6$salt$hash:20000:0:99999:7:::\n')
-            from unittest.mock import Mock
-            crypt.crypt = Mock(return_value=b'$6$salt$hash')
-            with patch.object(sudo.ctypes, 'CDLL', return_value=crypt), patch.object(sudo.ctypes.util, 'find_library', return_value='libcrypt.so.1'):
-                self.assertTrue(sudo.authenticate('yuuki', 'my password', shadow))
-                crypt.crypt.assert_called_once_with(b'my password', b'$6$salt$hash')
-                crypt.crypt.return_value = b'$6$salt$wrong'
-                self.assertFalse(sudo.authenticate('yuuki', 'wrong', shadow))
-                self.assertFalse(sudo.authenticate('unknown', 'my password', shadow))
-                shadow.write_text('yuuki:!locked:20000:0:99999:7:::\n')
-                self.assertFalse(sudo.authenticate('yuuki', 'my password', shadow))
+    def test_sudo_always_runs_the_real_sudo_under_fakeroot(self):
+        from unittest.mock import Mock
+        execute = Mock(side_effect=SystemExit)
+        with patch.object(sudo.os, 'execve', execute), patch.object(sudo.os, 'geteuid', return_value=2000, create=True), \
+             patch.object(sudo.os, 'getuid', return_value=2000, create=True), patch.object(sudo.os, 'getgid', return_value=2000, create=True), \
+             patch.object(sudo.shutil, 'which', side_effect=lambda name, path=None: '/usr/bin/' + name if name == 'fakeroot-tcp' else None):
+            with self.assertRaises(SystemExit):
+                sudo.main(['-n', 'id'])
+        program, arguments, environment = execute.call_args.args
+        self.assertEqual('/usr/bin/fakeroot-tcp', program)
+        self.assertEqual(['/usr/bin/fakeroot-tcp', '--', '/usr/bin/sudo', '-n', 'id'], arguments)
+        self.assertEqual('0', environment['FAKEROOTEUID'])
 
-    def test_sudo_rejects_unsupported_user_and_missing_password_before_execution(self):
-        with patch.object(sudo.os, 'execv') as execute:
-            with self.assertRaises(ValueError):
-                sudo.main(['-u', 'nobody', 'id'])
-            with patch.object(sudo.Path, 'read_text', return_value='yuuki\n'), patch.object(sudo.os, 'geteuid', return_value=2000, create=True):
-                with self.assertRaisesRegex(ValueError, 'password is required'):
-                    sudo.main(['-n', 'id'])
-            execute.assert_not_called()
+    def test_sudo_has_no_password_check_of_its_own(self):
+        self.assertFalse(hasattr(sudo, 'authenticate'))
+        source = (RESOURCE / 'dextop-sudo').read_text()
+        for unwanted in ('/etc/shadow', 'getpass', 'crypt'):
+            self.assertNotIn(unwanted, source)
 
     def test_setup_sends_only_a_hash_to_chpasswd(self):
         from unittest.mock import Mock

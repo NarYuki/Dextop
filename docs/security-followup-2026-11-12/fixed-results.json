@@ -1,0 +1,7 @@
+{
+  "x_rule_preserves_sentinel": true,
+  "boot_only_remove_requires_boot": true,
+  "f_plus_replaces_existing_contents": "NEW",
+  "absolute_runtime_directory_refused": true,
+  "cache_directory_symlink_refused": true
+}

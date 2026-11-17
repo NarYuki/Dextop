@@ -1,0 +1,1214 @@
+{
+  "started_utc": "2026-11-12T10:12:10.341864+00:00",
+  "platform": "macOS-26.4-x86_64-i386-64bit-Mach-O",
+  "python": "3.14.7 (main, Aug  5 2026, 10:29:49) [Clang 21.0.0 (clang-2100.1.1.101)]",
+  "total": 200,
+  "unique_tests": 200,
+  "passed": 200,
+  "failures": 0,
+  "errors": 0,
+  "skipped": 0,
+  "seconds": 22.362,
+  "cases": [
+    {
+      "id": "test_linux_service_security.DBusFramingTests.test_big_endian_reply_body",
+      "status": "passed",
+      "seconds": 0.000375,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.DBusFramingTests.test_fragmented_big_endian_frame",
+      "status": "passed",
+      "seconds": 0.000361,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.DBusFramingTests.test_invalid_and_oversized_headers_close_connection",
+      "status": "passed",
+      "seconds": 0.000384,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.DBusFramingTests.test_mixed_endian_stream_keeps_processing_followups",
+      "status": "passed",
+      "seconds": 0.00035,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.ServicePolicyTests.test_live_supervisor_refuses_protected_unit_but_runs_ordinary_unit",
+      "status": "passed",
+      "seconds": 0.849487,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.ServicePolicyTests.test_security_directives_fail_closed_including_empty_capability_set",
+      "status": "passed",
+      "seconds": 0.001528,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.ServicePolicyTests.test_supported_daemon_types_remain_supported",
+      "status": "passed",
+      "seconds": 0.000341,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_create_and_clean_still_work",
+      "status": "passed",
+      "seconds": 0.004932,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_create_remove_and_metadata_do_not_follow_links",
+      "status": "passed",
+      "seconds": 0.007205,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_directory_swap_between_stat_and_open_cannot_reach_target",
+      "status": "passed",
+      "seconds": 0.003509,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_file_swap_before_open_cannot_truncate_link_target",
+      "status": "passed",
+      "seconds": 0.003248,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_hardlink_cannot_overwrite_excluded_file",
+      "status": "passed",
+      "seconds": 0.00258,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_recursive_clean_preserves_excluded_subtree_and_link_targets",
+      "status": "passed",
+      "seconds": 0.003381,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_recursive_remove_and_globs_respect_exclusions",
+      "status": "passed",
+      "seconds": 0.005614,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_regular_create_write_copy_and_remove_remain_functional",
+      "status": "passed",
+      "seconds": 0.006931,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_starting_and_parent_symlinks_are_never_followed",
+      "status": "passed",
+      "seconds": 0.003141,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_security.TmpfilesSecurityTests.test_unsupported_operation_options_fail_before_mutating",
+      "status": "passed",
+      "seconds": 0.912248,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.ServiceDirectoryFollowupTests.test_absolute_parent_and_empty_names_rejected_before_mutating",
+      "status": "passed",
+      "seconds": 0.007628,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.ServiceDirectoryFollowupTests.test_directory_swap_to_symlink_before_open_is_rejected",
+      "status": "passed",
+      "seconds": 0.003855,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.ServiceDirectoryFollowupTests.test_nested_directory_created_with_requested_mode",
+      "status": "passed",
+      "seconds": 0.002886,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.ServiceDirectoryFollowupTests.test_symlink_at_leaf_or_parent_cannot_change_target_permissions",
+      "status": "passed",
+      "seconds": 0.003261,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_X_preserves_directory_but_cleans_contents",
+      "status": "passed",
+      "seconds": 0.004565,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_boot_modifier_applies_to_remove_and_clean",
+      "status": "passed",
+      "seconds": 0.008621,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_child_directory_cleanup_policy_overrides_parent",
+      "status": "passed",
+      "seconds": 0.003312,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_copy_into_source_subtree_is_rejected_without_recursive_creation",
+      "status": "passed",
+      "seconds": 0.003306,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_e_glob_cleans_existing_directories",
+      "status": "passed",
+      "seconds": 0.002936,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_f_plus_truncates_and_preserves_unicode_and_escapes",
+      "status": "passed",
+      "seconds": 0.004005,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_invalid_age_fails_without_deleting",
+      "status": "passed",
+      "seconds": 0.004588,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_missing_mode_does_not_reset_existing_permissions",
+      "status": "passed",
+      "seconds": 0.006644,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_repeated_append_rules_are_all_applied",
+      "status": "passed",
+      "seconds": 0.002749,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_suppressed_boot_entry_does_not_hide_regular_entry",
+      "status": "passed",
+      "seconds": 0.002146,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_unknown_owner_fails_before_overwriting_file",
+      "status": "passed",
+      "seconds": 0.006642,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_write_overwrites_at_start_and_plus_appends",
+      "status": "passed",
+      "seconds": 0.003177,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_followup.TmpfilesFollowupTests.test_x_glob_preserves_subtree_regardless_of_rule_order",
+      "status": "passed",
+      "seconds": 0.005134,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_after_waits_for_oneshot_dependency_and_its_post_hook",
+      "status": "passed",
+      "seconds": 1.981895,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_enable_now_restart_stop_and_persisted_autostart",
+      "status": "passed",
+      "seconds": 2.707718,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_failed_ordered_dependency_prevents_the_dependent_process",
+      "status": "passed",
+      "seconds": 1.27559,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_failed_pre_hook_reports_failed_without_process",
+      "status": "passed",
+      "seconds": 1.114616,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_failing_process_hits_restart_limit_and_reports_error",
+      "status": "passed",
+      "seconds": 1.860689,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_oneshot_runs_once_and_timer_retriggers_it",
+      "status": "passed",
+      "seconds": 2.27887,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_oneshot_start_timeout_terminates_its_process",
+      "status": "passed",
+      "seconds": 1.43748,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_restart_rebuilds_oneshot_commands_and_counts_initial_start",
+      "status": "passed",
+      "seconds": 2.30984,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_status_exit_codes_distinguish_inactive_and_unknown_units",
+      "status": "passed",
+      "seconds": 1.451501,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_target_dependencies_do_not_require_an_unimplemented_target_manager",
+      "status": "passed",
+      "seconds": 1.22471,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.SupervisorTests.test_timer_repeatedly_starts_its_oneshot_service",
+      "status": "passed",
+      "seconds": 2.472621,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.UnitParserTests.test_dropins_accumulate_reset_and_order_by_filename",
+      "status": "passed",
+      "seconds": 0.006872,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.UnitParserTests.test_duration_and_multiline_reset",
+      "status": "passed",
+      "seconds": 0.000475,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.UnitParserTests.test_units_and_exec_are_not_shell_fragments",
+      "status": "passed",
+      "seconds": 0.000647,
+      "detail": null
+    },
+    {
+      "id": "test_linux_systemd.UnitParserTests.test_unsupported_sandbox_directives_are_refused",
+      "status": "passed",
+      "seconds": 0.000275,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.ControlProtocolTests.test_credentials_precede_the_password_and_fragmented_reply_is_accepted",
+      "status": "passed",
+      "seconds": 0.003995,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.ControlProtocolTests.test_different_uid_never_receives_a_password",
+      "status": "passed",
+      "seconds": 0.003306,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.ControlProtocolTests.test_truncated_or_invalid_reply_is_not_success",
+      "status": "passed",
+      "seconds": 0.006261,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.ControlProtocolTests.test_wrong_password_is_a_denial_not_an_absent_daemon",
+      "status": "passed",
+      "seconds": 0.003287,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.UnlockTests.test_empty_secret_never_invokes_a_prompt",
+      "status": "passed",
+      "seconds": 9.9e-05,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.UnlockTests.test_existing_unlocked_collection_does_not_replace_the_daemon",
+      "status": "passed",
+      "seconds": 0.000381,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.UnlockTests.test_optional_pam_success_without_collection_still_unlocks_directly",
+      "status": "passed",
+      "seconds": 0.000338,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.UnlockTests.test_pam_receives_one_line_and_direct_unlock_receives_the_exact_secret",
+      "status": "passed",
+      "seconds": 0.00049,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.UnlockTests.test_pam_success_with_locked_collection_does_not_hide_failure",
+      "status": "passed",
+      "seconds": 0.00047,
+      "detail": null
+    },
+    {
+      "id": "test_linux_keyring_unlock.UnlockTests.test_wrong_password_never_replaces_daemon_or_changes_alias",
+      "status": "passed",
+      "seconds": 0.000651,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_composite",
+      "status": "passed",
+      "seconds": 0.000868,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_days",
+      "status": "passed",
+      "seconds": 0.000618,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_exponent",
+      "status": "passed",
+      "seconds": 0.002296,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_fractional",
+      "status": "passed",
+      "seconds": 0.000601,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_garbage",
+      "status": "passed",
+      "seconds": 0.002074,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_infinity",
+      "status": "passed",
+      "seconds": 0.002088,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_microseconds",
+      "status": "passed",
+      "seconds": 0.000629,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_milliseconds",
+      "status": "passed",
+      "seconds": 0.000587,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_mixed_invalid",
+      "status": "passed",
+      "seconds": 0.002213,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_negative",
+      "status": "passed",
+      "seconds": 0.002088,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_punctuation",
+      "status": "passed",
+      "seconds": 0.002402,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_second",
+      "status": "passed",
+      "seconds": 0.000824,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_suffix",
+      "status": "passed",
+      "seconds": 0.002147,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_unknown_unit",
+      "status": "passed",
+      "seconds": 0.002066,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_week",
+      "status": "passed",
+      "seconds": 0.000595,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_age_zero",
+      "status": "passed",
+      "seconds": 0.000611,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_D_X",
+      "status": "passed",
+      "seconds": 0.004139,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_D_cli",
+      "status": "passed",
+      "seconds": 0.003211,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_D_nested",
+      "status": "passed",
+      "seconds": 0.003876,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_D_x",
+      "status": "passed",
+      "seconds": 0.004365,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_d_X",
+      "status": "passed",
+      "seconds": 0.003888,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_d_cli",
+      "status": "passed",
+      "seconds": 0.003109,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_d_nested",
+      "status": "passed",
+      "seconds": 0.003754,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_d_x",
+      "status": "passed",
+      "seconds": 0.004558,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_e_X",
+      "status": "passed",
+      "seconds": 0.003702,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_e_cli",
+      "status": "passed",
+      "seconds": 0.003162,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_e_nested",
+      "status": "passed",
+      "seconds": 0.003626,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_cleanup_e_x",
+      "status": "passed",
+      "seconds": 0.004363,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_F_existing",
+      "status": "passed",
+      "seconds": 0.002413,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_F_missing",
+      "status": "passed",
+      "seconds": 0.002133,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_f_existing",
+      "status": "passed",
+      "seconds": 0.002167,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_f_missing",
+      "status": "passed",
+      "seconds": 0.002074,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_f_plus_escape",
+      "status": "passed",
+      "seconds": 0.002349,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_f_plus_existing",
+      "status": "passed",
+      "seconds": 0.002344,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_f_plus_missing",
+      "status": "passed",
+      "seconds": 0.00265,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_f_utf8",
+      "status": "passed",
+      "seconds": 0.002414,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_multiple_appends",
+      "status": "passed",
+      "seconds": 0.002725,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_w_append",
+      "status": "passed",
+      "seconds": 0.002181,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_w_missing",
+      "status": "passed",
+      "seconds": 0.001343,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_content_w_overwrite",
+      "status": "passed",
+      "seconds": 0.002375,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_CacheDirectory_leaf",
+      "status": "passed",
+      "seconds": 0.003149,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_CacheDirectory_parent",
+      "status": "passed",
+      "seconds": 0.003406,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_CacheDirectory_root",
+      "status": "passed",
+      "seconds": 0.002559,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_ConfigurationDirectory_leaf",
+      "status": "passed",
+      "seconds": 0.002838,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_ConfigurationDirectory_parent",
+      "status": "passed",
+      "seconds": 0.002856,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_ConfigurationDirectory_root",
+      "status": "passed",
+      "seconds": 0.002619,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_LogsDirectory_leaf",
+      "status": "passed",
+      "seconds": 0.003784,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_LogsDirectory_parent",
+      "status": "passed",
+      "seconds": 0.003604,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_LogsDirectory_root",
+      "status": "passed",
+      "seconds": 0.003284,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_RuntimeDirectory_leaf",
+      "status": "passed",
+      "seconds": 0.002984,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_RuntimeDirectory_parent",
+      "status": "passed",
+      "seconds": 0.002759,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_RuntimeDirectory_root",
+      "status": "passed",
+      "seconds": 0.002553,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_StateDirectory_leaf",
+      "status": "passed",
+      "seconds": 0.003238,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_StateDirectory_parent",
+      "status": "passed",
+      "seconds": 0.003771,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_link_StateDirectory_root",
+      "status": "passed",
+      "seconds": 0.002995,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_CacheDirectory_absolute",
+      "status": "passed",
+      "seconds": 0.001117,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_CacheDirectory_current_directory",
+      "status": "passed",
+      "seconds": 0.000952,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_CacheDirectory_empty_destination",
+      "status": "passed",
+      "seconds": 0.000998,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_CacheDirectory_nested_parent",
+      "status": "passed",
+      "seconds": 0.000986,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_CacheDirectory_parent",
+      "status": "passed",
+      "seconds": 0.000978,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_CacheDirectory_valid_then_absolute",
+      "status": "passed",
+      "seconds": 0.001403,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_ConfigurationDirectory_absolute",
+      "status": "passed",
+      "seconds": 0.001105,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_ConfigurationDirectory_current_directory",
+      "status": "passed",
+      "seconds": 0.00095,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_ConfigurationDirectory_empty_destination",
+      "status": "passed",
+      "seconds": 0.000923,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_ConfigurationDirectory_nested_parent",
+      "status": "passed",
+      "seconds": 0.00097,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_ConfigurationDirectory_parent",
+      "status": "passed",
+      "seconds": 0.000994,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_ConfigurationDirectory_valid_then_absolute",
+      "status": "passed",
+      "seconds": 0.00109,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_LogsDirectory_absolute",
+      "status": "passed",
+      "seconds": 0.001047,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_LogsDirectory_current_directory",
+      "status": "passed",
+      "seconds": 0.000921,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_LogsDirectory_empty_destination",
+      "status": "passed",
+      "seconds": 0.000995,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_LogsDirectory_nested_parent",
+      "status": "passed",
+      "seconds": 0.000962,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_LogsDirectory_parent",
+      "status": "passed",
+      "seconds": 0.001043,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_LogsDirectory_valid_then_absolute",
+      "status": "passed",
+      "seconds": 0.001084,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_RuntimeDirectory_absolute",
+      "status": "passed",
+      "seconds": 0.000982,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_RuntimeDirectory_current_directory",
+      "status": "passed",
+      "seconds": 0.000857,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_RuntimeDirectory_empty_destination",
+      "status": "passed",
+      "seconds": 0.000864,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_RuntimeDirectory_nested_parent",
+      "status": "passed",
+      "seconds": 0.001645,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_RuntimeDirectory_parent",
+      "status": "passed",
+      "seconds": 0.000963,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_RuntimeDirectory_valid_then_absolute",
+      "status": "passed",
+      "seconds": 0.001035,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_StateDirectory_absolute",
+      "status": "passed",
+      "seconds": 0.001009,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_StateDirectory_current_directory",
+      "status": "passed",
+      "seconds": 0.000878,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_StateDirectory_empty_destination",
+      "status": "passed",
+      "seconds": 0.000878,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_StateDirectory_nested_parent",
+      "status": "passed",
+      "seconds": 0.000918,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_StateDirectory_parent",
+      "status": "passed",
+      "seconds": 0.000962,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_directory_name_StateDirectory_valid_then_absolute",
+      "status": "passed",
+      "seconds": 0.001017,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_AmbientCapabilities",
+      "status": "passed",
+      "seconds": 0.000773,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_CapabilityBoundingSet",
+      "status": "passed",
+      "seconds": 0.000719,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_IPCNamespacePath",
+      "status": "passed",
+      "seconds": 0.000707,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_InaccessibleDirectories",
+      "status": "passed",
+      "seconds": 0.000725,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_InaccessiblePaths",
+      "status": "passed",
+      "seconds": 0.000806,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_LockPersonality",
+      "status": "passed",
+      "seconds": 0.000731,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_MemoryDenyWriteExecute",
+      "status": "passed",
+      "seconds": 0.000732,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_MountFlags",
+      "status": "passed",
+      "seconds": 0.000797,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_NetworkNamespacePath",
+      "status": "passed",
+      "seconds": 0.000782,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_NoNewPrivileges",
+      "status": "passed",
+      "seconds": 0.000742,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_PrivateDevices",
+      "status": "passed",
+      "seconds": 0.001101,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_PrivateNetwork",
+      "status": "passed",
+      "seconds": 0.000763,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_PrivateTmp",
+      "status": "passed",
+      "seconds": 0.000713,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_PrivateUsers",
+      "status": "passed",
+      "seconds": 0.000713,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ProtectClock",
+      "status": "passed",
+      "seconds": 0.000708,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ProtectControlGroups",
+      "status": "passed",
+      "seconds": 0.000718,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ProtectHome",
+      "status": "passed",
+      "seconds": 0.000702,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ProtectHostname",
+      "status": "passed",
+      "seconds": 0.000715,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ProtectKernelModules",
+      "status": "passed",
+      "seconds": 0.000738,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ProtectKernelTunables",
+      "status": "passed",
+      "seconds": 0.000738,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ProtectSystem",
+      "status": "passed",
+      "seconds": 0.000732,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ReadOnlyDirectories",
+      "status": "passed",
+      "seconds": 0.000741,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ReadOnlyPaths",
+      "status": "passed",
+      "seconds": 0.000731,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ReadWriteDirectories",
+      "status": "passed",
+      "seconds": 0.000739,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_ReadWritePaths",
+      "status": "passed",
+      "seconds": 0.000724,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_RestrictAddressFamilies",
+      "status": "passed",
+      "seconds": 0.000723,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_RestrictNamespaces",
+      "status": "passed",
+      "seconds": 0.000712,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_RestrictRealtime",
+      "status": "passed",
+      "seconds": 0.000714,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_RestrictSUIDSGID",
+      "status": "passed",
+      "seconds": 0.000718,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_SecureBits",
+      "status": "passed",
+      "seconds": 0.000703,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_SystemCallFilter",
+      "status": "passed",
+      "seconds": 0.000926,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_protection_TemporaryFileSystem",
+      "status": "passed",
+      "seconds": 0.001121,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_C_leaf",
+      "status": "passed",
+      "seconds": 0.003266,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_C_parent",
+      "status": "passed",
+      "seconds": 0.003194,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_D_leaf",
+      "status": "passed",
+      "seconds": 0.003152,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_D_parent",
+      "status": "passed",
+      "seconds": 0.003241,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_F_leaf",
+      "status": "passed",
+      "seconds": 0.003844,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_F_parent",
+      "status": "passed",
+      "seconds": 0.00358,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_R_leaf",
+      "status": "passed",
+      "seconds": 0.002977,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_R_parent",
+      "status": "passed",
+      "seconds": 0.002996,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_Z_leaf",
+      "status": "passed",
+      "seconds": 0.002983,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_Z_parent",
+      "status": "passed",
+      "seconds": 0.002981,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_d_leaf",
+      "status": "passed",
+      "seconds": 0.003451,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_d_parent",
+      "status": "passed",
+      "seconds": 0.003218,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_e_leaf",
+      "status": "passed",
+      "seconds": 0.003089,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_e_parent",
+      "status": "passed",
+      "seconds": 0.003208,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_f_plus_leaf",
+      "status": "passed",
+      "seconds": 0.003072,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_f_plus_parent",
+      "status": "passed",
+      "seconds": 0.003487,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_r_leaf",
+      "status": "passed",
+      "seconds": 0.003396,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_r_parent",
+      "status": "passed",
+      "seconds": 0.003054,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_w_leaf",
+      "status": "passed",
+      "seconds": 0.003108,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_w_parent",
+      "status": "passed",
+      "seconds": 0.00307,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_w_plus_leaf",
+      "status": "passed",
+      "seconds": 0.00326,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_w_plus_parent",
+      "status": "passed",
+      "seconds": 0.003504,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_z_leaf",
+      "status": "passed",
+      "seconds": 0.004103,
+      "detail": null
+    },
+    {
+      "id": "test_linux_service_matrix.ServiceMatrixTests.test_tmpfiles_link_z_parent",
+      "status": "passed",
+      "seconds": 0.003228,
+      "detail": null
+    }
+  ]
+}

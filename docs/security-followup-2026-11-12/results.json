@@ -1,0 +1,7 @@
+{
+  "x_rule_ignored_sentinel_deleted": true,
+  "boot_only_remove_runs_without_boot": true,
+  "f_plus_does_not_replace_existing_contents": "OLD",
+  "absolute_runtime_directory_changes_outside_root_mode": "0o777",
+  "cache_directory_follows_symlink_and_changes_target_mode": "0o777"
+}
