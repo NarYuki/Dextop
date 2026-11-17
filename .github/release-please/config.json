@@ -1,0 +1,32 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "release-type": "dart",
+  "include-component-in-tag": false,
+  "pull-request-title-pattern": "release: Dextop ${version}",
+  "changelog-sections": [
+    {
+      "type": "feat",
+      "section": "New features"
+    },
+    {
+      "type": "fix",
+      "section": "Fixes"
+    },
+    {
+      "type": "perf",
+      "section": "Improvements"
+    },
+    {
+      "type": "revert",
+      "section": "Reverts"
+    }
+  ],
+  "packages": {
+    ".": {
+      "package-name": "dextop",
+      "changelog-path": "CHANGELOG.md",
+      "release-as": "2.0.0-beta.1",
+      "prerelease": true
+    }
+  }
+}
