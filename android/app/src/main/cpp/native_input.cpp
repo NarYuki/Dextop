@@ -363,10 +363,11 @@ public:
 
     ~Engine() {
         stop("engine_destructor");
-        // stop() tears down the pointer/keyboard worker state but intentionally
-        // keeps the independently-owned gamepad alive across pointer restarts.
-        // The process is about to exit here, so explicitly remove that device
+        // stop() tears down only the pointer worker. The keyboard and gamepad
+        // are independently-owned outputs that survive pointer restarts. The
+        // process is about to exit here, so explicitly remove those devices
         // before releasing the JNI object as well.
+        destroyKeyboard();
         destroyGamepad();
         JNIEnv* env = attach();
         if (env != nullptr && service_ != nullptr) {
@@ -411,11 +412,13 @@ public:
         if (wasRunning && worker_.joinable()) worker_.join();
         if (!wasRunning && worker_.joinable()) worker_.join();
         cleanupGesture("stop:" + reason);
-        // The virtual gamepad is a separate output from the pointer engine.
-        // Keep it registered while the pointer is stopped/recreated (for
-        // example when the laptop deck changes geometry). It is removed only
-        // by setGamepadVisible(false) or when this process exits.
-        destroyKeyboard();
+        // The virtual keyboard and gamepad are separate outputs from the
+        // pointer engine. Keep them registered while the pointer is
+        // stopped/recreated (for example when the laptop deck changes geometry
+        // or the touch mode removes the pointer). Each is removed only by its
+        // own setXxxVisible(false) or when this process exits. Tying the
+        // keyboard to this worker used to delete it on every pointer stop and
+        // left the on-screen keys dead until the pointer happened to restart.
         destroyOutput();
         closeDevices();
         std::ostringstream out;
@@ -519,7 +522,12 @@ public:
     }
 
     void setKeyboardVisible(bool visible) {
-        keyboardRequested_.store(visible);
+        std::lock_guard<std::recursive_mutex> lock(keyboardMutex_);
+        if (visible) {
+            if (keyboardFd_ < 0) createKeyboard();
+        } else if (keyboardFd_ >= 0) {
+            destroyKeyboard();
+        }
     }
 
     void setGamepadVisible(bool visible) {
@@ -583,7 +591,6 @@ private:
     std::atomic<bool> configDirty_{true};
     std::atomic<bool> running_{false};
     std::atomic<bool> outputReady_{false};
-    std::atomic<bool> keyboardRequested_{false};
     std::thread worker_;
 
     struct KeyboardPress {
@@ -765,7 +772,6 @@ private:
         lastScanAt_ = 0;
         while (running_.load()) {
             applyConfigIfNeeded();
-            applyKeyboardIfNeeded();
             scanDevicesIfNeeded();
             checkMouseLongPress();
 
@@ -835,13 +841,6 @@ private:
         out << "generation=" << cfg.generation << " duplicate=" << duplicate
             << " invalidatesGesture=" << invalidatesGesture << " recreate=" << recreate;
         state("config_applied", out.str());
-    }
-
-    void applyKeyboardIfNeeded() {
-        std::lock_guard<std::recursive_mutex> lock(keyboardMutex_);
-        const bool requested = keyboardRequested_.load();
-        if (requested && keyboardFd_ < 0) createKeyboard();
-        if (!requested && keyboardFd_ >= 0) destroyKeyboard();
     }
 
     bool writeKeyboardEvents(std::vector<input_event> events, const std::string& reason) {
