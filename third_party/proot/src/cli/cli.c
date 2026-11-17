@@ -48,6 +48,9 @@
 #include <extension/sysvipc/sysvipc.h>
 
 #include "build.h"
+#ifdef DEXTOP_BINDER_GUARD
+#include "syscall/binder-guard.h"
+#endif
 
 /**
  * Print a (@detailed) usage of PRoot.
@@ -450,6 +453,17 @@ int main(int argc, char *const argv[])
 	Tracee *tracee;
 	int status;
 
+#ifdef DEXTOP_BINDER_GUARD
+	/* Security is mandatory, including --shm-helper and fast-mode re-execs.
+	 * Do not couple this to PROOT_NO_SECCOMP or tracing optimizations. The
+	 * tracer also inherits the binder restriction, not just guest processes. */
+	if (prctl(PR_SET_DUMPABLE, 0, 0, 0, 0) < 0 ||
+	    dextop_install_binder_guard() < 0) {
+		perror("proot: mandatory Android process protection");
+		return EXIT_FAILURE;
+	}
+#endif
+
 	/* Configure the memory allocator.  */
 	talloc_enable_leak_report();
 
@@ -486,6 +500,16 @@ int main(int argc, char *const argv[])
 
 	/* Start the first tracee.  */
 	status = launch_process(tracee, &argv[status]);
+	if (status == -ECANCELED && getenv("PROOT_FASTPATH") != NULL) {
+		/* Start a fresh tracer without the experimental request or failed
+		 * launch state. The guest filter probe will remain inactive. */
+		unsetenv("PROOT_FASTPATH");
+		unsetenv("PROOT_LANDLOCK_PATHS");
+		unsetenv("PROOT_FASTPATH_MODE");
+		note(tracee, WARNING, INTERNAL, "Fast mode unavailable; using normal PRoot");
+		execv("/proc/self/exe", argv);
+		goto error;
+	}
 	if (status < 0) {
 		print_execve_help(tracee, tracee->exe, status);
 		goto error;

@@ -57,7 +57,7 @@ set(PROOT_SOURCES
     path/binding.c path/glue.c path/canon.c path/f2fs-bug.c path/path.c path/proc.c path/temp.c
     syscall/seccomp.c syscall/syscall.c syscall/chain.c syscall/enter.c syscall/exit.c syscall/sysnum.c
     syscall/socket.c syscall/heap.c syscall/rlimit.c
-    tracee/tracee.c tracee/mem.c tracee/reg.c tracee/event.c tracee/seccomp.c tracee/statx.c
+    tracee/tracee.c tracee/mem.c tracee/reg.c tracee/event.c tracee/landlock.c tracee/seccomp.c tracee/statx.c
     ptrace/ptrace.c ptrace/user.c ptrace/wait.c
     extension/extension.c extension/ashmem_memfd/ashmem_memfd.c extension/kompat/kompat.c
     extension/fake_id0/chown.c extension/fake_id0/chroot.c extension/fake_id0/getsockopt.c
@@ -78,7 +78,7 @@ set_source_files_properties("${PROOT_SRC}/extension/ashmem_memfd/ashmem_memfd.c"
 
 add_executable(proot ${PROOT_SOURCES} "${PROOT_GEN}/loader-info.c")
 target_include_directories(proot PRIVATE "${PROOT_GEN}" "${PROOT_SRC}")
-target_compile_definitions(proot PRIVATE ${PROOT_DEFINES})
+target_compile_definitions(proot PRIVATE ${PROOT_DEFINES} DEXTOP_BINDER_GUARD=1)
 target_compile_options(proot PRIVATE -O2 -Wall -Wextra -Wno-unused-parameter -Wno-sign-compare
     -Wno-error=implicit-function-declaration)
 target_link_libraries(proot PRIVATE dextop_talloc)

@@ -100,14 +100,15 @@ internal object LinuxSessionCompatibility {
         val entries = current.lineSequence().flatMap { it.substringBefore('#').split(Regex("[\\s:]+")) }.toSet()
         // sshd clears LD_PRELOAD for login sessions. Keep Android device hooks active
         // there too, before the session and socket hooks as in LinuxProot.guest.
-        val managed = listOf("${LinuxProot.GUEST_LIBRARY_DIR}/libdextop_androidproc.so", GUEST_PRELOAD, GUEST_SOCKET_SHIM, LinuxProotFastPath.LIBRARY)
+        val managed = listOf("${LinuxProot.GUEST_LIBRARY_DIR}/libdextop_androidproc.so", GUEST_PRELOAD, GUEST_SOCKET_SHIM)
+        val retired = listOf(LinuxProotFastPath.LIBRARY)
         val missing = managed.filterNot { it in entries }
-        if (missing.isNotEmpty()) {
+        if (missing.isNotEmpty() || retired.any { it in entries }) {
             preload.parentFile?.mkdirs()
             val temporary = File(preload.parentFile, preload.name + ".staged")
             val remaining = current.lineSequence().map { line ->
                 val content = line.substringBefore('#').split(Regex("[\\s:]+"))
-                    .filter { it.isNotEmpty() && it !in managed }.joinToString(" ")
+                    .filter { it.isNotEmpty() && it !in managed && it !in retired }.joinToString(" ")
                 val comment = if ('#' in line) "#" + line.substringAfter('#') else ""
                 listOf(content, comment).filter { it.isNotEmpty() }.joinToString(" ")
             }.filter { it.isNotEmpty() }.joinToString("\n", postfix = if (current.isNotEmpty()) "\n" else "")
@@ -218,8 +219,7 @@ internal object LinuxSessionCompatibility {
         }.use { it.readBytes() }
         val metadata = checkNotNull(javaClass.getResourceAsStream(
             "/moe/n4tsu/dextop/linux/gaming/dextop-wine-tray-x86_64.exe")) { moe.n4tsu.dextop.localText("uiWineTrayMetadataBridgeIsNotPackaged") }.use { it.readBytes() }
-        replace(LinuxProotFastPath.LIBRARY, checkNotNull(javaClass.getResourceAsStream(
-            "/moe/n4tsu/dextop/linux/gaming/libblfastpath-aarch64.bin")) { moe.n4tsu.dextop.localText("uiPRootFastPathIsNotPackaged") }.use { it.readBytes() })
+        // Fast path is staged on demand by LinuxProot.guest, never globally preloaded.
         replace("/usr/local/lib/dextop/dextop-wine-tray.exe", metadata)
         replace(library, bytes)
         // Flatpak replaces /usr but preserves /usr/local. The WSI capability

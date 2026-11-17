@@ -16,6 +16,7 @@ import 'package:free_dextop/features_page.dart';
 import 'package:free_dextop/linux_page.dart';
 import 'package:free_dextop/linux/linux_expressive.dart';
 import 'package:free_dextop/linux/macos_feature.dart';
+import 'package:free_dextop/linux/landlock_feature.dart';
 import 'package:free_dextop/penguin_icon.dart';
 import 'package:free_dextop/setup_page.dart';
 import 'package:free_dextop/embedded_binder_setup.dart';
@@ -26,6 +27,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'l10n/inline_text.dart';
+import 'experimental_feature_style.dart';
 
 part 'app_info.dart';
 part 'samsung_desktop_settings.dart';

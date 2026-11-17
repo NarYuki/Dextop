@@ -34,6 +34,8 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     result.error("linux", error.message ?: error.javaClass.simpleName, null)
                 }
             when (call.method) {
+                "syncExperimentalFastMode" -> LinuxContainerClient.syncExperimentalFastMode(context,
+                    { result.success(it) }, { result.error("linux", it.message, null) })
                 "status" -> result.success(mapOf(
                     "supportedDevice" to Build.SUPPORTED_ABIS.contains("arm64-v8a"),
                     "privilege" to LinuxContainerClient.privilegeAvailable(context),
