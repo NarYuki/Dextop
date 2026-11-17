@@ -1570,5 +1570,16 @@
   "uiTheDownloadedLinuxImageCouldNotBeSaved": "ダウンロードした Linux イメージを保存できませんでした。",
   "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "USB ストレージの準備ができていません。ディスクが挿入されているか確認してください。",
   "uiCouldNotReadTheUSBStorageCapacity": "USB ストレージの容量を読み取れませんでした。",
-  "uiUSBStorageErrorErrno0": "USB ストレージのエラー（errno {0}）"
+  "uiUSBStorageErrorErrno0": "USB ストレージのエラー（errno {0}）",
+  "uiNewTerminalTab": "新しいタブ",
+  "uiPreviousTerminalSessionRestored": "前回のセッションを復元しました",
+  "uiTheShellEndedPressAKeyToStartANewOne": "シェルが終了しました。キーを押すと新しいシェルを起動します。",
+  "uiPort0IsAlreadyInUse": "ポート {0} はまだ使用中です。少し待ってからやり直すか、別のポートを選んでください。",
+  "uiDesktopSession": "デスクトップ環境",
+  "uiDesktopSessionIcewmDescription": "デフォルトのWM",
+  "uiDesktopSessionCustom": "自分のコマンド",
+  "uiDesktopSessionCommand": "起動コマンド",
+  "uiDesktopSessionCommandHelp": "例: openbox-session、exec ~/.xsession",
+  "uiUseOneLineOfUpTo0Characters": "{0}文字以内の1行で入力してください",
+  "uiDesktopSessionIcewm": "IceWM"
 }

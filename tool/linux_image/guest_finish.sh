@@ -1,6 +1,7 @@
 #!/bin/sh
 # Runs inside the proot after guest_build.sh: records and fetches the corresponding source
 # for GPL compliance, then removes everything that must not ship in the image.
+set -e
 export DEBIAN_FRONTEND=noninteractive
 IMAGE_VERSION="$1"
 TAG="$2"

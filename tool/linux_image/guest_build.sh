@@ -22,7 +22,7 @@ apt-get update
 install_packages \
     xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
     fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme xz-utils procps \
-    python3 passwd sudo libcrypt1 gnome-keyring libpam-gnome-keyring libsecret-tools gnome-themes-extra libgtk-3-bin libglib2.0-bin qt5ct qt6ct
+    python3 passwd sudo libcrypt1 gnupg pinentry-gnome3 gnome-keyring libpam-gnome-keyring libsecret-tools gnome-themes-extra libgtk-3-bin libglib2.0-bin qt5ct qt6ct
 if apt-cache show adwaita-icon-theme-legacy >/dev/null 2>&1; then
     install_packages adwaita-icon-theme-legacy
 fi

@@ -196,7 +196,8 @@ internal object DesktopEnvironmentRegistry {
     internal fun samsungDex(autoResizeWithHostDisplay: Boolean = false) = DesktopEnvironment(
         "samsung_dex", "Samsung DeX", true, emptyMap(), false,
         DesktopStartupMode.OEM_MANAGED, DisplayChromeMode.HIDDEN,
-        autoResizeWithHostDisplay = autoResizeWithHostDisplay
+        autoResizeWithHostDisplay = autoResizeWithHostDisplay,
+        defaultWindowManager = "system",
     )
 
     internal fun aospFreeform(identity: DeviceIdentity): DesktopEnvironment {

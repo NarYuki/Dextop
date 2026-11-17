@@ -70,6 +70,9 @@ class LinuxSessionCompatibilityTest {
                 parentFile!!.mkdirs(); writeText("export LANG=ja_JP.UTF-8\nexport CUSTOM_SETTING=1\n")
             }
             LinuxSessionCompatibility.install(root, native.path, "dextop-cfresh", true)
+            assertEquals("abstract\n", File(root, "etc/dextop/socket-transport").readText())
+            assertContentEquals(kotlin.test.assertNotNull(LinuxSessionCompatibility.script("dextop-keyring-unlock")),
+                File(root, "usr/local/libexec/dextop-keyring-unlock").readBytes())
             val macosLauncher = kotlin.test.assertNotNull(LinuxSessionCompatibility.script("macos/launch_app.py"))
             assertContentEquals(macosLauncher, File(root, "usr/local/lib/dextop/macos/launch_app.py").readBytes())
             val macosInstaller = kotlin.test.assertNotNull(LinuxSessionCompatibility.script("macos/runtime_archive.py"))
@@ -86,10 +89,16 @@ class LinuxSessionCompatibilityTest {
             kotlin.test.assertContains(installed, "export CUSTOM_SETTING=1")
             kotlin.test.assertTrue(File(root, "usr/local/share/vulkan/implicit_layer.d/dextop-xvfb.json").isFile)
             LinuxSessionCompatibility.install(root, native.path, "dextop-cfresh", true)
+            assertEquals("abstract\n", File(root, "etc/dextop/socket-transport").readText())
+            assertContentEquals(kotlin.test.assertNotNull(LinuxSessionCompatibility.script("dextop-keyring-unlock")),
+                File(root, "usr/local/libexec/dextop-keyring-unlock").readBytes())
             assertEquals(installed, env.readText())
             policy.writeText("invalid\n")
             audioConfigs.first().writeText("module.rt.args = { rtportal.enabled = true }\n")
             LinuxSessionCompatibility.install(root, native.path, "dextop-cfresh", true)
+            assertEquals("abstract\n", File(root, "etc/dextop/socket-transport").readText())
+            assertContentEquals(kotlin.test.assertNotNull(LinuxSessionCompatibility.script("dextop-keyring-unlock")),
+                File(root, "usr/local/libexec/dextop-keyring-unlock").readBytes())
             assertEquals("xvfb\n", policy.readText())
             audioConfigs.forEach { assertEquals(audioPolicy, it.readText()) }
             assertEquals(installed, env.readText())

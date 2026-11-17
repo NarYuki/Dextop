@@ -257,6 +257,7 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             // The X servers Dextop starts require their cookie (LinuxXAuth).
             "XAUTHORITY=${LinuxXAuth.GUEST}",
             "DEXTOP_EVDEV_UDEV=1",
+            "DEXTOP_SOCKET_TRANSPORT=abstract",
             // libudev must accept Dextop's file-backed sysfs device entries.
             "SYSTEMD_DEVICE_VERIFY_SYSFS=0",
             *fastPath?.guestEnvironment?.toTypedArray().orEmpty(),
