@@ -162,9 +162,6 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private const val KEY_BLACKBERRY_HEIGHT_PERCENT = "blackberry_height_percent"
         private const val VIRTUAL_MOUSE_NAME = "Dextop Virtual Mouse"
         private const val VIRTUAL_TOUCHPAD_NAME = "Dextop Virtual Touchpad"
-        private const val LAPTOP_KEYBOARD_NAME = "Dextop Laptop Keyboard"
-        private const val LAPTOP_KEYBOARD_VENDOR_ID = 6353
-        private const val LAPTOP_KEYBOARD_PRODUCT_ID = 5417
         private const val VIRTUAL_TOUCHPAD_MAX_SLOTS = 5
         private const val VIRTUAL_TOUCHPAD_MAX_X = 1839
         private const val VIRTUAL_TOUCHPAD_MAX_Y = 1199
@@ -1168,14 +1165,17 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     private var laptopBaseConfig: Config? = null
     /** Full-height host Surface measured in physical view pixels before the deck is added. */
     private var laptopFullHostHeightPx = 0
-    private var laptopKeyboardRequested = false
-    private var laptopKeyboardReady = false
-    private var laptopKeyboardAssociationPending = false
-    private var laptopKeyboardDeviceId = -1
-    private var laptopKeyboardDisplayId = -1
-    private var laptopKeyboardDisplayUniqueId: String? = null
-    private var laptopKeyboardDescriptor: String? = null
-    private var laptopKeyboardGeneration = 0L
+    private val laptopKeyboard by lazy {
+        LaptopKeyboardDevice(
+            context = this,
+            client = { privilegedInputClient },
+            router = { physicalInputRouter },
+            targetDisplayId = { targetDisplayId },
+            sessionActive = { active },
+            onDeviceLost = ::finishAllLaptopKeyPresses,
+            logTag = logTag,
+        )
+    }
     private var privilegedInputStarting = false
     private var privilegedPointerFallbackInProgress = false
     private var privilegedPointerFallbackActive = false
@@ -1412,13 +1412,11 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
                         touchscreenReaderCandidateCount = 0
                     }
 
-                    "keyboard_created" -> {
-                        scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-                    }
+                    "keyboard_created" -> laptopKeyboard.onNativeCreated()
 
                     "gamepad_created" -> replayVirtualGamepadState()
 
-                    "keyboard_destroyed" -> clearLaptopKeyboardPublication("native_destroyed")
+                    "keyboard_destroyed" -> laptopKeyboard.onNativeDestroyed()
 
                     "stopped" -> {
                         if (!privilegedInputClient.isEngineRunning()) {
@@ -1744,30 +1742,20 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         override fun onInputDeviceAdded(deviceId: Int) {
             refreshPhysicalInputState()
             scheduleRawTouchscreenTopologyRefresh("input_device_added_$deviceId", force = true)
-            if (laptopKeyboardRequested) {
-                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-            }
+            laptopKeyboard.refresh("input_device_added")
         }
 
         override fun onInputDeviceRemoved(deviceId: Int) {
             refreshPhysicalInputState()
                 scheduleRawTouchscreenTopologyRefresh("input_device_removed_$deviceId", force = true)
-            if (deviceId == laptopKeyboardDeviceId) {
-                finishAllLaptopKeyPresses()
-                clearLaptopKeyboardPublication("input_device_removed")
-                if (laptopKeyboardRequested) {
-                    scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-                }
-            }
+            laptopKeyboard.onInputDeviceRemoved(deviceId)
         }
 
         override fun onInputDeviceChanged(deviceId: Int) {
             refreshPhysicalInputState()
             scheduleRawTouchscreenTopologyRefresh("input_device_changed_$deviceId", force = true)
-            if (laptopKeyboardRequested &&
-                (deviceId == laptopKeyboardDeviceId || laptopKeyboardDeviceId < 0)
-            ) {
-                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
+            if (deviceId == laptopKeyboard.deviceId || laptopKeyboard.deviceId < 0) {
+                laptopKeyboard.refresh("input_device_changed")
             }
         }
     }
@@ -1785,9 +1773,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleTopologyReapplyAfterReconnect()
             scheduleLaptopModeReevaluation("display_added")
-            if (laptopKeyboardRequested) {
-                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-            }
+            laptopKeyboard.refresh("display_added")
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display added")
             }
@@ -1809,10 +1795,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             }
             scheduleInternal120HzReapply(requireExternalDisplay = false)
             scheduleLaptopModeReevaluation("display_removed")
-            if (displayId == laptopKeyboardDisplayId) {
-                finishAllLaptopKeyPresses()
-                clearLaptopKeyboardPublication("associated_display_removed")
-            }
+            laptopKeyboard.onDisplayRemoved(displayId)
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleHostDisplayReconfiguration("default display removed")
             }
@@ -1831,9 +1814,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             refreshExternalDisplayState()
             scheduleInternal120HzReapply(requireExternalDisplay = true)
             scheduleLaptopModeReevaluation("display_changed")
-            if (laptopKeyboardRequested && displayId == targetDisplayId) {
-                scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-            }
+            if (displayId == targetDisplayId) laptopKeyboard.refresh("display_changed")
             if (active && displayId == Display.DEFAULT_DISPLAY) {
                 scheduleRawTouchscreenTopologyRefresh("default_display_changed")
                 leaveLaptopModeOnCoverDisplay()
@@ -4290,125 +4271,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
      * display before key output is enabled, so native uinput events follow the
      * physical-keyboard IME path without relying on global keyboard focus.
      */
-    private fun startLaptopHardwareKeyboard() {
-        if (!laptopKeyboardRequested) {
-            laptopKeyboardRequested = true
-            laptopKeyboardGeneration += 1
-        }
-        privilegedInputClient.setKeyboardVisible(true)
-        scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-        OperationLog.i(
-            this,
-            "LaptopMode",
-            "requested native external keyboard; waiting for InputReader publication"
-        )
-    }
-
-    private fun scheduleLaptopKeyboardReadyCheck(generation: Long, attempt: Int) {
-        val check = Runnable {
-            if (generation != laptopKeyboardGeneration || !laptopKeyboardRequested || !active) {
-                return@Runnable
-            }
-            val displayId = targetDisplayId
-            val display = if (displayId >= 0) {
-                getSystemService(DisplayManager::class.java).getDisplay(displayId)
-            } else {
-                null
-            }
-            val device = findLaptopKeyboardDevice()
-            if (device != null && display != null) {
-                val displayUniqueId = runCatching {
-                    Display::class.java.getMethod("getUniqueId").invoke(display) as String
-                }.getOrNull()
-                if (laptopKeyboardReady && laptopKeyboardDeviceId == device.id &&
-                    laptopKeyboardDisplayId == displayId &&
-                    laptopKeyboardDisplayUniqueId == displayUniqueId &&
-                    physicalInputRouter.isDeviceRouted(device, display)
-                ) {
-                    return@Runnable
-                }
-                if (physicalInputRouter.isDeviceRouted(device, display)) {
-                    laptopKeyboardReady = true
-                    laptopKeyboardAssociationPending = false
-                    laptopKeyboardDeviceId = device.id
-                    laptopKeyboardDisplayId = displayId
-                    laptopKeyboardDisplayUniqueId = displayUniqueId
-                    laptopKeyboardDescriptor = device.descriptor
-                    val message = "native keyboard ready deviceId=${device.id} displayId=$displayId " +
-                            "vendor=${device.vendorId} product=${device.productId} " +
-                            "sources=0x${device.sources.toString(16)}"
-                    Log.i(logTag, "$message descriptor=${device.descriptor}")
-                    OperationLog.i(this, "LaptopKeyboard", message)
-                    return@Runnable
-                }
-                laptopKeyboardReady = false
-                if (!laptopKeyboardAssociationPending) {
-                    laptopKeyboardAssociationPending = physicalInputRouter.routeDevice(device, display)
-                }
-            }
-            if (attempt == 0 || attempt == 5 || attempt == 10 || attempt == 20) {
-                Log.i(
-                    logTag,
-                    "waiting for native laptop keyboard attempt=$attempt/20 " +
-                            "displayId=$displayId candidates=${laptopKeyboardPublicationCandidates()}"
-                )
-            }
-            if (attempt < 20) {
-                scheduleLaptopKeyboardReadyCheck(generation, attempt + 1)
-            } else {
-                OperationLog.w(
-                    this,
-                    "LaptopKeyboard",
-                    "native keyboard was not associated with display=$displayId after ${attempt + 1} probes"
-                )
-            }
-        }
-        root?.postDelayed(check, if (attempt == 0) 40L else 100L)
-            ?: Handler(mainLooper).postDelayed(check, if (attempt == 0) 40L else 100L)
-    }
-
-    private fun findLaptopKeyboardDevice(): InputDevice? = InputDevice.getDeviceIds()
-        .asSequence()
-        .mapNotNull(InputDevice::getDevice)
-        .firstOrNull { device ->
-            device.name == LAPTOP_KEYBOARD_NAME &&
-                    device.vendorId == LAPTOP_KEYBOARD_VENDOR_ID &&
-                    device.productId == LAPTOP_KEYBOARD_PRODUCT_ID &&
-                    device.sources and InputDevice.SOURCE_KEYBOARD == InputDevice.SOURCE_KEYBOARD
-        }
-
-    private fun laptopKeyboardPublicationCandidates(): String {
-        val candidates = InputDevice.getDeviceIds().asSequence()
-            .mapNotNull(InputDevice::getDevice)
-            .filter { it.name == LAPTOP_KEYBOARD_NAME || it.name.startsWith("Dextop Laptop") }
-            .toList()
-        return if (candidates.isEmpty()) {
-            "none"
-        } else {
-            candidates.joinToString(prefix = "[", postfix = "]") { device ->
-                "id=${device.id},name=${device.name},vendor=${device.vendorId}," +
-                        "product=${device.productId},sources=0x${device.sources.toString(16)}"
-            }
-        }
-    }
-
-    private fun clearLaptopKeyboardPublication(reason: String) {
-        val descriptor = laptopKeyboardDescriptor
-        if (descriptor != null) physicalInputRouter.restoreDeviceDescriptor(descriptor)
-        if (laptopKeyboardDeviceId >= 0 || laptopKeyboardReady) {
-            Log.i(
-                logTag,
-                "native laptop keyboard cleared reason=$reason deviceId=$laptopKeyboardDeviceId " +
-                        "displayId=$laptopKeyboardDisplayId"
-            )
-        }
-        laptopKeyboardReady = false
-        laptopKeyboardAssociationPending = false
-        laptopKeyboardDeviceId = -1
-        laptopKeyboardDisplayId = -1
-        laptopKeyboardDisplayUniqueId = null
-        laptopKeyboardDescriptor = null
-    }
+    private fun startLaptopHardwareKeyboard() = laptopKeyboard.start()
 
     private fun isMenuOverlayVisible(): Boolean {
         return menu?.visibility == View.VISIBLE && menuScrim?.isClickable == true
@@ -4565,7 +4428,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             updateVirtualCursorVisibility()
             return
         }
-        if (virtualMouseProcessAlive() && laptopKeyboardRequested) {
+        if (virtualMouseProcessAlive() && laptopKeyboard.requested) {
             // The laptop keyboard and pointer are outputs of the same native
             // engine. Reconfigure the pointer in place after a phone-surface
             // tap instead of stopEngine(), which would remove the keyboard as
@@ -5391,13 +5254,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         )
     }
 
-    private fun stopLaptopHardwareKeyboard() {
-        finishAllLaptopKeyPresses()
-        laptopKeyboardRequested = false
-        laptopKeyboardGeneration += 1
-        clearLaptopKeyboardPublication("laptop_keyboard_stopped")
-        privilegedInputClient.setKeyboardVisible(false)
-    }
+    private fun stopLaptopHardwareKeyboard() = laptopKeyboard.stop()
 
     private fun leaveLaptopModeOnCoverDisplay(): Boolean {
         if (!laptopModeActive || isDebugLaptopModeForced()) return false
@@ -6731,7 +6588,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         // Binder/input dispatch can block on some One UI builds. Never make a
         // key animation or the rest of the overlay wait for that IPC.
         laptopInputExecutor.execute {
-            if (laptopKeyboardReady &&
+            if (laptopKeyboard.ready &&
                 injectLaptopKeyboardEvent(KeyEvent.KEYCODE_BACK, KeyEvent.ACTION_DOWN, 0, 0)
             ) {
                 injectLaptopKeyboardEvent(KeyEvent.KEYCODE_BACK, KeyEvent.ACTION_UP, 0, 0)
@@ -7221,7 +7078,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun pasteLaptopSwipeUnicode(value: String): Boolean {
-        if (!laptopKeyboardReady || value.isEmpty()) return false
+        if (!laptopKeyboard.ready || value.isEmpty()) return false
         val clipboard = getSystemService(CLIPBOARD_SERVICE) as ClipboardManager
         val previous = clipboard.primaryClip
         clipboard.setPrimaryClip(ClipData.newPlainText("Dextop swipe", value))
@@ -7417,7 +7274,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
     }
 
     private fun emitBlackBerryNavigationKey(keyCode: Int) {
-        if (laptopKeyboardReady &&
+        if (laptopKeyboard.ready &&
             injectLaptopKeyboardEvent(keyCode, KeyEvent.ACTION_DOWN, 0, 0)
         ) {
             injectLaptopKeyboardEvent(keyCode, KeyEvent.ACTION_UP, 0, 0)
@@ -10934,7 +10791,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             // boundary when the first phone-surface touch is received as
             // well, including a device that was attached by the laptop deck.
             cancelDesktopTouchStream()
-            if (laptopModeActive && laptopKeyboardRequested) {
+            if (laptopModeActive && laptopKeyboard.requested) {
                 suspendVirtualMouseForLaptopKeyboard()
             } else {
                 stopVirtualMouse()
@@ -11766,63 +11623,46 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         injectLaptopKeyboardEvent(keyCode, KeyEvent.ACTION_UP, metaState, 0)
     }
 
-    private val laptopFallbackKeyDownTimes = ConcurrentHashMap<Int, Long>()
+    private val directDeckKeyDownTimes = ConcurrentHashMap<Int, Long>()
 
+    /**
+     * Sends an on-screen key through the native uinput keyboard. While that
+     * keyboard is not ready, or rejects the event, the key is dropped: there is
+     * no slower second route.
+     */
     private fun injectLaptopKeyboardEvent(
         keyCode: Int,
         action: Int,
         metaState: Int,
         repeatCount: Int
     ): Boolean {
-        if (desktopEnvironment.directDeckKeyboardToApp &&
-            plasmaShell is moe.n4tsu.dextop.plasma.CompositedWindowShell) {
-            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
+        val directShell = if (desktopEnvironment.directDeckKeyboardToApp) {
+            plasmaShell as? moe.n4tsu.dextop.plasma.CompositedWindowShell
+        } else null
+        if (directShell != null) {
+            return injectDeckKeyDirectToApp(directShell, keyCode, action, metaState, repeatCount)
         }
-        // Once a key-down used the targeted path, keep repeats and key-up on
-        // that same virtual device even if uinput becomes ready mid-press.
-        if (laptopFallbackKeyDownTimes.containsKey(keyCode)) {
-            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
-        }
-        if (!laptopKeyboardReady) {
-            Log.w(
-                logTag,
-                "native laptop keyboard unavailable; using targeted fallback " +
-                        "action=$action repeat=$repeatCount deviceId=$laptopKeyboardDeviceId"
-            )
-            scheduleLaptopKeyboardReadyCheck(laptopKeyboardGeneration, 0)
-            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
-        }
-        val injected = privilegedInputClient.injectKeyboard(keyCode, action, metaState, repeatCount)
-        if (!injected) {
-            Log.w(
-                logTag,
-                "native laptop keyboard injection failed; using targeted fallback " +
-                        "action=$action repeat=$repeatCount deviceId=$laptopKeyboardDeviceId"
-            )
-            return injectLaptopKeyboardFallback(keyCode, action, metaState, repeatCount)
-        }
-        return true
+        return laptopKeyboard.inject(keyCode, action, metaState, repeatCount)
     }
 
     /**
-     * Keeps the on-screen keyboard usable while a foldable panel hand-off is
-     * republishing or re-associating the uinput keyboard. The event is sent
-     * directly to Dextop's display instead of depending on global focus.
+     * Device profiles that set directDeckKeyboardToApp deliver deck keys to the
+     * composited shell's host display instead of the uinput keyboard. This is
+     * that profile's only route, not a fallback.
      */
-    private fun injectLaptopKeyboardFallback(
+    private fun injectDeckKeyDirectToApp(
+        shell: moe.n4tsu.dextop.plasma.CompositedWindowShell,
         keyCode: Int,
         action: Int,
         metaState: Int,
         repeatCount: Int,
     ): Boolean {
-        val displayId = if (desktopEnvironment.directDeckKeyboardToApp) {
-            (plasmaShell as? moe.n4tsu.dextop.plasma.CompositedWindowShell)?.hostKeyboardDisplayId() ?: targetDisplayId
-        } else targetDisplayId
+        val displayId = shell.hostKeyboardDisplayId()
         if (displayId < 0) return false
         val eventTime = SystemClock.uptimeMillis()
         val downTime = when (action) {
-            KeyEvent.ACTION_DOWN -> laptopFallbackKeyDownTimes.computeIfAbsent(keyCode) { eventTime }
-            KeyEvent.ACTION_UP -> laptopFallbackKeyDownTimes.remove(keyCode) ?: eventTime
+            KeyEvent.ACTION_DOWN -> directDeckKeyDownTimes.computeIfAbsent(keyCode) { eventTime }
+            KeyEvent.ACTION_UP -> directDeckKeyDownTimes.remove(keyCode) ?: eventTime
             else -> eventTime
         }
         val event = KeyEvent(
@@ -11837,27 +11677,16 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
             0,
             InputDevice.SOURCE_KEYBOARD,
         )
-        if (desktopEnvironment.directDeckKeyboardToApp) {
-            // WAIT_FOR_RESULT on the UI thread can wait for this service's own
-            // accessibility key callback. Keep DOWN/repeats/UP ordered off-thread.
-            return runCatching {
-                laptopKeyExecutor.execute {
-                    if (!inputDispatcher.send(event, displayId, waitForResult = false)) {
-                        Log.e(logTag, "deck key submission failed display=$displayId action=$action")
-                    }
+        // WAIT_FOR_RESULT on the UI thread can wait for this service's own
+        // accessibility key callback. Keep DOWN/repeats/UP ordered off-thread.
+        return runCatching {
+            laptopKeyExecutor.execute {
+                if (!inputDispatcher.send(event, displayId, waitForResult = false)) {
+                    Log.e(logTag, "deck key submission failed display=$displayId action=$action")
                 }
-                true
-            }.getOrDefault(false)
-        }
-        val accepted = inputDispatcher.send(event, displayId)
-        if (!accepted) {
-            Log.e(
-                logTag,
-                "targeted laptop keyboard fallback rejected display=$displayId " +
-                        "keyCode=$keyCode action=$action repeat=$repeatCount"
-            )
-        }
-        return accepted
+            }
+            true
+        }.getOrDefault(false)
     }
 
     /** Forwards physical-keyboard input while preserving modifiers and repeat state. */
