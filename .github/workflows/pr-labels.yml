@@ -48,7 +48,7 @@ jobs:
 
           changed = int(os.environ['ADDITIONS']) + int(os.environ['DELETIONS'])
           size = next(f'size/{name}' for limit, name in
-                      ((10, 'XS'), (50, 'S'), (250, 'M'), (1000, 'L'), (float('inf'), 'XL'))
+                      ((10, 'XS'), (50, 'S'), (250, 'M'), (1000, 'L'), (5000, 'XL'), (float('inf'), 'XXL'))
                       if changed < limit)
 
           match = re.match(r'^([a-z]+)(\(([^)]*)\))?!?:', os.environ['TITLE'])
