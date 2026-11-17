@@ -128,6 +128,18 @@ internal object LinuxSettings {
             val gpu = update.optString("gpu")
             if (gpu.isEmpty()) merged.remove("gpu") else merged.put("gpu", LinuxGpuMode.of(gpu).id)
         }
+        // The full desktop's session: a preset id, or "custom" with "desktopCommand"; "" is IceWM.
+        if (update.has("desktop")) {
+            val desktop = update.optString("desktop")
+            if (desktop.isEmpty()) merged.remove("desktop") else merged.put("desktop", LinuxDesktopSessions.of(desktop).id)
+        }
+        if (update.has("desktopCommand")) {
+            val command = update.optString("desktopCommand").trim()
+            require(LinuxDesktopSessions.validCommand(command)) {
+                moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUseOneLineOfUpTo0Characters"), LinuxDesktopSessions.MAX_COMMAND)
+            }
+            if (command.isEmpty()) merged.remove("desktopCommand") else merged.put("desktopCommand", command)
+        }
         if (update.has("wm")) {
             val wm = update.optString("wm")
             if (wm.isEmpty()) merged.remove("wm") else merged.put("wm", LinuxWindowManager.of(wm).id)
@@ -156,6 +168,10 @@ internal object LinuxSettings {
     fun customResolver(): String? {
         val servers = read().getJSONArray("dnsServers")
         return LinuxNetworkLink.resolver((0 until servers.length()).map { servers.getString(it) })
+    }
+
+    fun desktopSession(id: String): LinuxDesktopChoice = readContainer(id).let {
+        LinuxDesktopChoice(LinuxDesktopSessions.of(it.optString("desktop")), it.optString("desktopCommand"))
     }
 
     fun windowManager(id: String): LinuxWindowManager =

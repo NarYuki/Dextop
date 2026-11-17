@@ -27,10 +27,12 @@ internal object LinuxSessionCompatibility {
 
     fun stage(root: File, nativeLibraryDir: String, socketNamespace: String? = null) {
         stageScript(root, "dextop-systemd", "usr/local/libexec/dextop-systemd")
+        stageScript(root, "dextop-steam-stop", "usr/local/libexec/dextop-steam-stop")
         stageScript(root, "dextop-systemctl", "usr/local/libexec/dextop-systemctl")
         stageScript(root, "dextop-journalctl", "usr/local/libexec/dextop-journalctl")
         stageScript(root, "dextop-ui.json", "usr/local/libexec/dextop-ui.json", executable = false)
         stageScript(root, "dextop-integrate", "usr/local/libexec/dextop-integrate")
+        stageScript(root, "dextop-desktop-session", "usr/local/libexec/dextop-desktop-session")
         stageScript(root, "dextop-print-backend", "usr/local/libexec/dextop-print-backend")
         stageScript(root, "dextop-user-setup", "usr/local/libexec/dextop-user-setup")
         stageScript(root, "dextop-sudo", "usr/local/libexec/dextop-sudo")
@@ -42,6 +44,7 @@ internal object LinuxSessionCompatibility {
         stageScript(root, "dextop-pipewire-client.conf", "etc/pipewire/client-rt.conf.d/99-dextop-session.conf")
         stageVulkan(root)
         stageSystemPrompter(root)
+        stageScript(root, "dextop-keyring-unlock", "usr/local/libexec/dextop-keyring-unlock")
         LinuxPam.stage(root, ::script)
         stageSystemServices(root)
         stageWindowsHelper(root)
@@ -89,6 +92,7 @@ internal object LinuxSessionCompatibility {
         if (socketNamespace != null) {
             require(socketNamespace.matches(Regex("dextop-c[a-zA-Z0-9]+")))
             File(root, "etc/dextop/socket-namespace").apply { parentFile?.mkdirs(); writeText("$socketNamespace\n") }
+            File(root, "etc/dextop/socket-transport").writeText("abstract\n")
         }
     }
 

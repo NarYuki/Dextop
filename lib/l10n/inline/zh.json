@@ -1570,5 +1570,16 @@
   "uiTheDownloadedLinuxImageCouldNotBeSaved": "无法保存已下载的 Linux 映像。",
   "uiTheUSBStorageIsNotReadyCheckThatADiskIsInserted": "USB 存储设备尚未就绪。请检查是否已插入磁盘。",
   "uiCouldNotReadTheUSBStorageCapacity": "无法读取 USB 存储设备的容量。",
-  "uiUSBStorageErrorErrno0": "USB 存储设备错误（errno {0}）"
+  "uiUSBStorageErrorErrno0": "USB 存储设备错误（errno {0}）",
+  "uiNewTerminalTab": "新建标签页",
+  "uiPreviousTerminalSessionRestored": "已恢复上次的会话",
+  "uiTheShellEndedPressAKeyToStartANewOne": "Shell 已结束。按任意键启动新的 Shell。",
+  "uiPort0IsAlreadyInUse": "端口 {0} 仍被占用。请稍后重试，或选择其他端口。",
+  "uiDesktopSession": "桌面环境",
+  "uiDesktopSessionIcewmDescription": "默认窗口管理器",
+  "uiDesktopSessionCustom": "自定义命令",
+  "uiDesktopSessionCommand": "启动命令",
+  "uiDesktopSessionCommandHelp": "例如 openbox-session、exec ~/.xsession",
+  "uiUseOneLineOfUpTo0Characters": "请输入一行，不超过 {0} 个字符",
+  "uiDesktopSessionIcewm": "IceWM"
 }

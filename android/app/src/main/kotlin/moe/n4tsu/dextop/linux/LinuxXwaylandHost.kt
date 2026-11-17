@@ -20,8 +20,14 @@ internal class LinuxXwaylandHost private constructor(
     private var surface: Surface? = null
     private var stopped = false
     private var configuration: LinuxDisplayConfiguration? = null
-    private var inputWidth = width
-    private var inputHeight = height
+    /** The size until the first [updateDisplay]. */
+    private val initialWidth = width
+    private val initialHeight = height
+    /** Room kept for fixed-size application windows ([ensureInputExtent]); it never sets the size by itself,
+     * or a desktop opened large would keep its large X screen in a smaller window (shown scaled down,
+     * while input follows the window's size). */
+    private var inputWidth = 0
+    private var inputHeight = 0
     private val compositor: WaylandCompositor = WaylandCompositor(
         LinuxProot.socketNamespace(containerId) + "/tmp/runtime-root/" + displayName(display), width, height,
         File(LinuxPaths.rootfs(containerId), "tmp/runtime-root/${displayName(display)}.lock"),
@@ -69,7 +75,7 @@ internal class LinuxXwaylandHost private constructor(
     }
 
     private fun effectiveConfiguration(): LinuxDisplayConfiguration {
-        val config = configuration ?: LinuxDisplayConfiguration.create(inputWidth, inputHeight, 160, 60f)
+        val config = configuration ?: LinuxDisplayConfiguration.create(initialWidth, initialHeight, 160, 60f)
         return config.copy(width = maxOf(config.width, inputWidth), height = maxOf(config.height, inputHeight))
     }
 
