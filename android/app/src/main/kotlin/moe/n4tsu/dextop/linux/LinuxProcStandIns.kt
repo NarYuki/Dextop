@@ -1,6 +1,5 @@
 package moe.n4tsu.dextop.linux
 
-import android.os.SystemClock
 import java.io.File
 
 /**
@@ -10,19 +9,9 @@ import java.io.File
 internal object LinuxProcStandIns {
     private fun readable(path: String) = runCatching { File(path).inputStream().use { it.read() } }.isSuccess
 
+    /** /proc/stat, /proc/uptime and /proc/loadavg are live (LinuxSysStandIns). */
     private fun contents(): Map<String, String> {
-        val uptime = SystemClock.elapsedRealtime() / 1000.0
-        val cpus = Runtime.getRuntime().availableProcessors()
-        val boot = (System.currentTimeMillis() - SystemClock.elapsedRealtime()) / 1000
-        val stat = buildString {
-            append("cpu  0 0 0 0 0 0 0 0 0 0\n")
-            repeat(cpus) { append("cpu$it 0 0 0 0 0 0 0 0 0 0\n") }
-            append("intr 0\nctxt 0\nbtime $boot\nprocesses 0\nprocs_running 1\nprocs_blocked 0\nsoftirq 0\n")
-        }
         return mapOf(
-            "/proc/stat" to stat,
-            "/proc/uptime" to "%.2f %.2f\n".format(java.util.Locale.ROOT, uptime, uptime * cpus),
-            "/proc/loadavg" to "0.50 0.50 0.50 1/100 1\n",
             "/proc/version" to "Linux version ${System.getProperty("os.version")} (dextop@android) #1 SMP PREEMPT\n",
             "/proc/vmstat" to "nr_free_pages 0\nnr_inactive_anon 0\nnr_active_anon 0\nnr_inactive_file 0\nnr_active_file 0\n" +
                 "pgpgin 0\npgpgout 0\npswpin 0\npswpout 0\npgfault 0\npgmajfault 0\n",
