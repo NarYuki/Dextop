@@ -198,7 +198,7 @@ dependencies {
     // Signs the generated home-screen launchers of Linux applications on the device.
     implementation("com.android.tools.build:apksig:8.11.1")
     // Reads winget package manifests (YAML) for the Store's Windows applications.
-    implementation("org.snakeyaml:snakeyaml-engine:2.10")
+    implementation("org.snakeyaml:snakeyaml-engine:3.2")
     // USB serial adapters for Linux (CDC-ACM, FTDI, CP210x, CH34x, PL2303) without a kernel driver.
     implementation("com.github.mik3y:usb-serial-for-android:3.8.1")
     testImplementation(kotlin("test"))
