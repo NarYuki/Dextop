@@ -1,0 +1,483 @@
+#!/usr/bin/python3
+import fnmatch
+import glob
+import grp
+import math
+import os
+import pwd
+import re
+import shutil
+import stat
+import sys
+import time
+from pathlib import Path
+
+ROOT = Path(os.environ.get('DEXTOP_UNIT_ROOT', '/'))
+SYSTEM_DIRS = ['etc/tmpfiles.d', 'run/tmpfiles.d', 'usr/local/lib/tmpfiles.d', 'usr/lib/tmpfiles.d', 'lib/tmpfiles.d']
+SCALES = {'': 1, 's': 1, 'sec': 1, 'm': 60, 'min': 60, 'h': 3600, 'd': 86400, 'w': 604800, 'ms': .001, 'us': .000001}
+
+
+def user_dirs():
+    home = Path.home()
+    return [home/'.config/user-tmpfiles.d', home/'.local/share/user-tmpfiles.d', ROOT/'etc/user-tmpfiles.d', ROOT/'usr/share/user-tmpfiles.d']
+
+
+def configurations(user, explicit):
+    if explicit:
+        result = []
+        for name in explicit:
+            if name == '-':
+                result.append(('stdin', sys.stdin.read()))
+                continue
+            path = Path(name)
+            if not path.is_absolute():
+                for directory in (user_dirs() if user else [ROOT/d for d in SYSTEM_DIRS]):
+                    if (directory/name).exists():
+                        path = directory/name
+                        break
+            result.append((str(path), path.read_text()))
+        return result
+    chosen = {}
+    for directory in reversed(user_dirs() if user else [ROOT/d for d in SYSTEM_DIRS]):
+        for file in sorted(Path(directory).glob('*.conf')):
+            chosen[file.name] = file
+    for name, file in list(chosen.items()):
+        if file.is_symlink() and os.readlink(file) == '/dev/null':
+            del chosen[name]
+    return [(str(chosen[name]), chosen[name].read_text()) for name in sorted(chosen)]
+
+
+def specifiers(text, user):
+    account = pwd.getpwuid(os.getuid())
+    values = {'%h': account.pw_dir, '%u': account.pw_name, '%U': str(account.pw_uid), '%g': grp.getgrgid(os.getgid()).gr_name,
+              '%G': str(os.getgid()), '%t': os.environ.get('XDG_RUNTIME_DIR', '/run/user/%d' % os.getuid()) if user else '/run',
+              '%S': str(Path.home()/'.local/state') if user else '/var/lib', '%C': str(Path.home()/'.cache') if user else '/var/cache',
+              '%L': str(Path.home()/'.local/state/log') if user else '/var/log', '%T': '/tmp', '%V': '/var/tmp',
+              '%m': Path('/etc/machine-id').read_text().strip() if Path('/etc/machine-id').exists() else '',
+              '%b': '', '%H': os.uname().nodename, '%l': os.uname().nodename.split('.')[0], '%v': os.uname().release, '%%': '%'}
+    return re.sub(r'%[a-zA-Z%]', lambda match: values.get(match[0], match[0]), text)
+
+
+def parse(user, explicit, boot=True):
+    entries, seen = [], set()
+    for source, text in configurations(user, explicit):
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or line.startswith('#'):
+                continue
+            fields = re.findall(r'"[^"]*"|\S+', line)
+            fields = [field[1:-1] if field.startswith('"') and field.endswith('"') else field for field in fields]
+            fields += ['-'] * (6 - len(fields))
+            kind, path, mode, owner, group, age = fields[:6]
+            argument = line.split(None, 6)[6] if len(line.split(None, 6)) > 6 else ''
+            if '!' in kind[1:] and not boot:
+                continue
+            path = specifiers(path, user)
+            if (kind, path) in seen and not (kind.startswith(('x', 'X')) or (kind.startswith('w') and '+' in kind)):
+                continue
+            seen.add((kind, path))
+            entries.append(dict(kind=kind[0], flags=kind[1:], path=path, mode=mode, owner=owner, group=group, age=age,
+                                argument=specifiers(argument, user), source=source))
+    return entries
+
+
+def resolve_owner(entry, default_uid, default_gid):
+    uid, gid = default_uid, default_gid
+    if entry['owner'] not in ('-', ''):
+        owner = entry['owner'].lstrip(':')
+        try:
+            uid = int(owner) if owner.isdigit() else pwd.getpwnam(owner).pw_uid
+        except KeyError as error:
+            raise ValueError('Unknown tmpfiles account: ' + str(error)) from error
+    if entry['group'] not in ('-', ''):
+        group = entry['group'].lstrip(':')
+        try:
+            gid = int(group) if group.isdigit() else grp.getgrnam(group).gr_gid
+        except KeyError as error:
+            raise ValueError('Unknown tmpfiles account: ' + str(error)) from error
+    return uid, gid
+
+
+def mode_of(entry, default):
+    value = entry['mode'].lstrip('~:')
+    if value in ('-', ''):
+        return default
+    return int(value, 8)
+
+
+def age_seconds(text):
+    text = text.lstrip('~')
+    if text in ('-', ''):
+        return None
+    units = dict(SCALES, second=1, seconds=1, minute=60, minutes=60,
+                 hour=3600, hours=3600, day=86400, days=86400,
+                 week=604800, weeks=604800, millisecond=.001,
+                 milliseconds=.001, microsecond=.000001, microseconds=.000001)
+    total, position = 0.0, 0
+    for match in re.finditer(r'\s*(\d+(?:\.\d+)?)\s*([a-z]*)', text):
+        if match.start() != position or match[2] not in units:
+            raise ValueError('Invalid cleanup age: ' + text)
+        total += float(match[1]) * units[match[2]]
+        position = match.end()
+    if not position or text[position:].strip() or not math.isfinite(total):
+        raise ValueError('Invalid cleanup age: ' + text)
+    return total
+
+
+def path_matches(path, pattern):
+    # Shell-style wildcards match one pathname component, never '/'.
+    parts = Path(os.path.abspath(path)).parts
+    patterns = Path(os.path.abspath(pattern)).parts
+    return len(parts) == len(patterns) and all(fnmatch.fnmatchcase(part, glob) for part, glob in zip(parts, patterns))
+
+
+def clean_ignored(path, rules, recursive_only=False):
+    path = os.path.abspath(path)
+    for kind, pattern in rules:
+        if kind == 'x':
+            if any(path_matches(candidate, pattern) for candidate in (Path(path), *Path(path).parents)):
+                return True
+        elif not recursive_only and path_matches(path, pattern):
+            return True
+    return False
+
+
+def beneath(path, prefix):
+    path, prefix = os.path.abspath(path), os.path.abspath(prefix)
+    return path == prefix or path.startswith(prefix.rstrip('/') + '/')
+
+
+def open_directory(path):
+    """Pin every component; never follow a symlink, including a parent or root."""
+    path = os.path.abspath(path)
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    descriptor = os.open('/', flags)
+    try:
+        for part in Path(path).parts[1:]:
+            child = os.open(part, flags, dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def clean(directory, age, keep_first_level, excludes=(), rules=(), boundaries=()):
+    limit = time.time() - age
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+
+    def walk(descriptor, path, first):
+        with os.scandir(descriptor) as entries:
+            for entry in entries:
+                child_path = os.path.join(path, entry.name)
+                if any(beneath(child_path, prefix) for prefix in excludes):
+                    continue
+                try:
+                    status = os.stat(entry.name, dir_fd=descriptor, follow_symlinks=False)
+                    is_directory = stat.S_ISDIR(status.st_mode)
+                    if clean_ignored(child_path, rules, recursive_only=True):
+                        continue
+                    if is_directory and any(path_matches(child_path, pattern) for pattern in boundaries):
+                        # Nested entries own their cleanup policy, including age '-'.
+                        continue
+                    if is_directory:
+                        child = os.open(entry.name, flags, dir_fd=descriptor)
+                        try:
+                            pinned = os.fstat(child)
+                            if (pinned.st_dev, pinned.st_ino) != (status.st_dev, status.st_ino):
+                                continue
+                            walk(child, child_path, False)
+                        finally:
+                            os.close(child)
+                    if clean_ignored(child_path, rules):
+                        continue
+                    if max(status.st_atime, status.st_mtime, status.st_ctime) >= limit or (first and keep_first_level):
+                        continue
+                    current = os.stat(entry.name, dir_fd=descriptor, follow_symlinks=False)
+                    if (current.st_dev, current.st_ino) != (status.st_dev, status.st_ino):
+                        continue
+                    if is_directory:
+                        os.rmdir(entry.name, dir_fd=descriptor)
+                    else:
+                        # A symlink itself can expire; its target is never visited.
+                        os.unlink(entry.name, dir_fd=descriptor)
+                except OSError:
+                    continue
+
+    if excluded(directory, excludes) or clean_ignored(directory, rules, recursive_only=True):
+        return
+    descriptor = open_directory(directory)
+    try:
+        walk(descriptor, os.path.abspath(directory), True)
+    finally:
+        os.close(descriptor)
+
+
+def excluded(path, excludes):
+    return any(beneath(path, prefix) for prefix in excludes)
+
+
+def parent_directory(path, create=False):
+    """Pin parents before any mutation; mkdir is relative to the pinned parent."""
+    parts = Path(os.path.abspath(path)).parts
+    descriptor = open_directory('/')
+    try:
+        for part in parts[1:-1]:
+            if create:
+                try:
+                    os.mkdir(part, dir_fd=descriptor)
+                except FileExistsError:
+                    pass
+            child = os.open(part, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                            dir_fd=descriptor)
+            os.close(descriptor)
+            descriptor = child
+        return descriptor, parts[-1]
+    except BaseException:
+        os.close(descriptor)
+        raise
+
+
+def adjust_fd(descriptor, entry, default):
+    uid, gid = resolve_owner(entry, -1, -1)
+    if entry['mode'] not in ('-', '') or default is not None:
+        os.fchmod(descriptor, mode_of(entry, default) & 0o7777)
+    if entry['owner'] not in ('-', '') or entry['group'] not in ('-', ''):
+        os.fchown(descriptor, uid, gid)
+
+
+def open_node(parent, name, flags=os.O_RDONLY):
+    descriptor = os.open(name, flags | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_CLOEXEC, 0o600, dir_fd=parent)
+    status = os.fstat(descriptor)
+    if not (stat.S_ISDIR(status.st_mode) or stat.S_ISREG(status.st_mode)) or (
+            stat.S_ISREG(status.st_mode) and status.st_nlink != 1):
+        os.close(descriptor)
+        raise ValueError('Refusing special file or multiply linked file')
+    return descriptor
+
+
+def delete_node(parent, name, path, excludes, recursive=True, contents_only=False):
+    if excluded(path, excludes):
+        return
+    status = os.stat(name, dir_fd=parent, follow_symlinks=False)
+    if stat.S_ISDIR(status.st_mode):
+        descriptor = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+        try:
+            pinned = os.fstat(descriptor)
+            if (pinned.st_dev, pinned.st_ino) != (status.st_dev, status.st_ino):
+                raise ValueError('Directory changed while opening removal target')
+            if recursive or contents_only:
+                with os.scandir(descriptor) as entries:
+                    for child in entries:
+                        delete_node(descriptor, child.name, os.path.join(path, child.name), excludes)
+            current = os.stat(name, dir_fd=parent, follow_symlinks=False)
+            pinned = os.fstat(descriptor)
+            if not contents_only and (current.st_dev, current.st_ino) == (pinned.st_dev, pinned.st_ino):
+                try:
+                    os.rmdir(name, dir_fd=parent)
+                except OSError:
+                    # Excluded descendants keep their containing directories alive.
+                    if not excludes:
+                        raise
+        finally:
+            os.close(descriptor)
+    elif not contents_only:
+        os.unlink(name, dir_fd=parent)
+    else:
+        raise ValueError('Refusing non-directory cleanup target')
+
+
+def adjust_tree(parent, name, path, entry, excludes, recursive):
+    if excluded(path, excludes):
+        return
+    descriptor = open_node(parent, name)
+    try:
+        directory = stat.S_ISDIR(os.fstat(descriptor).st_mode)
+        adjust_fd(descriptor, entry, None)
+        if recursive and directory:
+            with os.scandir(descriptor) as entries:
+                for child in entries:
+                    # Symlinks have no permissions to adjust; never follow them.
+                    if child.is_symlink():
+                        continue
+                    adjust_tree(descriptor, child.name, os.path.join(path, child.name), entry, excludes, True)
+    finally:
+        os.close(descriptor)
+
+
+def copy_node(source_parent, source_name, parent, name, path, excludes):
+    if excluded(path, excludes):
+        return
+    source = open_node(source_parent, source_name)
+    try:
+        status = os.fstat(source)
+        if stat.S_ISDIR(status.st_mode):
+            os.mkdir(name, stat.S_IMODE(status.st_mode), dir_fd=parent)
+            destination = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+            try:
+                with os.scandir(source) as entries:
+                    for child in entries:
+                        copy_node(source, child.name, destination, child.name, os.path.join(path, child.name), excludes)
+            finally:
+                os.close(destination)
+        else:
+            destination = open_node(parent, name, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+            with os.fdopen(destination, 'wb') as output, os.fdopen(os.dup(source), 'rb') as input_stream:
+                shutil.copyfileobj(input_stream, output, 65536)
+                os.fchmod(output.fileno(), stat.S_IMODE(status.st_mode))
+    finally:
+        os.close(source)
+
+
+def create(entry, boot, excludes=()):
+    kind, flags, path = entry['kind'], entry['flags'], entry['path']
+    if '!' in flags and not boot:
+        return
+    resolve_owner(entry, -1, -1)
+    targets = glob.iglob(path) if kind in 'zZtThHxXrRaAwe' else [path]
+    for target in targets:
+        if excluded(target, excludes):
+            continue
+        parent, name = parent_directory(target, kind in 'fFdDvqQL')
+        try:
+            if kind in 'fFw':
+                # Decode escapes alone so ordinary UTF-8 text is preserved.
+                content = re.sub(r'\\(?:[abfnrtv\\\'"]|x[0-9a-fA-F]{2}|u[0-9a-fA-F]{4}|U[0-9a-fA-F]{8}|[0-7]{1,3})',
+                                 lambda match: match[0].encode('ascii').decode('unicode_escape'), entry['argument']).encode()
+                options = os.O_WRONLY
+                if kind in 'fF':
+                    options |= os.O_CREAT
+                created = False
+                if kind == 'f' and '+' not in flags:
+                    try:
+                        descriptor = open_node(parent, name, options | os.O_EXCL)
+                        fresh = created = True
+                    except FileExistsError:
+                        descriptor = open_node(parent, name, os.O_RDONLY)
+                        fresh = False
+                else:
+                    if kind in 'fF':
+                        try:
+                            descriptor = open_node(parent, name, options | os.O_EXCL)
+                            created = True
+                        except FileExistsError:
+                            descriptor = open_node(parent, name, os.O_WRONLY)
+                    else:
+                        descriptor = open_node(parent, name, options | (os.O_APPEND if '+' in flags else 0))
+                    fresh = True
+                with os.fdopen(descriptor, ('ab' if kind == 'w' and '+' in flags else 'wb') if fresh else 'rb') as stream:
+                    if fresh:
+                        if kind in 'fF':
+                            os.ftruncate(stream.fileno(), 0)
+                        stream.write(content)
+                    if kind != 'w':
+                        adjust_fd(stream.fileno(), entry, 0o644 if created else None)
+            elif kind in 'dDvqQe':
+                created = False
+                if kind != 'e':
+                    try:
+                        os.mkdir(name, dir_fd=parent)
+                        created = True
+                    except FileExistsError:
+                        pass
+                descriptor = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+                try:
+                    adjust_fd(descriptor, entry, 0o755 if created else None)
+                finally:
+                    os.close(descriptor)
+            elif kind == 'L':
+                if '+' in flags:
+                    try:
+                        delete_node(parent, name, target, excludes)
+                    except FileNotFoundError:
+                        pass
+                try:
+                    os.symlink(entry['argument'] or str(Path('/usr/share/factory')/path.lstrip('/')), name, dir_fd=parent)
+                except FileExistsError:
+                    pass
+            elif kind == 'C':
+                try:
+                    os.stat(name, dir_fd=parent, follow_symlinks=False)
+                except FileNotFoundError:
+                    source = entry['argument'] or str(Path('/usr/share/factory')/path.lstrip('/'))
+                    if beneath(target, source):
+                        raise ValueError('Copy destination must not be inside its source')
+                    source_parent, source_name = parent_directory(source)
+                    try:
+                        copy_node(source_parent, source_name, parent, name, target, excludes)
+                    finally:
+                        os.close(source_parent)
+            elif kind in 'zZ':
+                adjust_tree(parent, name, target, entry, excludes, kind == 'Z')
+        finally:
+            os.close(parent)
+
+
+def remove(entry, excludes=()):
+    for target in glob.iglob(entry['path']):
+        if excluded(target, excludes):
+            continue
+        parent, name = parent_directory(target)
+        try:
+            delete_node(parent, name, target, excludes, entry['kind'] != 'r', entry['kind'] == 'D')
+        finally:
+            os.close(parent)
+
+
+def main(args):
+    do_create = do_remove = do_clean = boot = user = False
+    prefixes, excludes, files = [], [], []
+    for arg in args:
+        if arg == '--create': do_create = True
+        elif arg == '--remove': do_remove = True
+        elif arg == '--clean': do_clean = True
+        elif arg == '--boot': boot = True
+        elif arg == '--user': user = True
+        elif arg.startswith('--prefix='): prefixes.append(arg.split('=', 1)[1])
+        elif arg.startswith('--exclude-prefix='): excludes.append(arg.split('=', 1)[1])
+        elif arg == '--no-pager': pass
+        elif arg == '--cat-config':
+            for source, text in configurations(user, files):
+                print('# ' + source)
+                print(text)
+            return 0
+        elif arg.startswith('-'):
+            print('Unsupported option: ' + arg, file=sys.stderr)
+            return 1
+        else:
+            files.append(arg)
+    if not (do_create or do_remove or do_clean):
+        print('You need to specify at least one of --clean, --create, or --remove.', file=sys.stderr)
+        return 1
+    failures = 0
+    entries = parse(user, files, boot)
+    rules = [(entry['kind'], os.path.abspath(entry['path'])) for entry in entries if entry['kind'] in 'xX']
+    for entry in entries:
+        path = entry['path']
+        if prefixes and not any(beneath(path, prefix) for prefix in prefixes):
+            continue
+        if any(beneath(path, prefix) for prefix in excludes):
+            continue
+        try:
+            if do_remove and entry['kind'] in 'rRD':
+                remove(entry, excludes)
+            if do_create and entry['kind'] not in 'rRxXcbpthHaA':
+                create(entry, boot, excludes)
+            if do_clean and entry['kind'] in 'dDvqQCe':
+                age = age_seconds(entry['age'])
+                if age is not None:
+                    targets = glob.iglob(path) if entry['kind'] == 'e' else [path]
+                    for target in targets:
+                        if os.path.isdir(target):
+                            clean(target, age, entry['age'].startswith('~'), excludes, rules,
+                                  [os.path.abspath(other['path']) for other in entries
+                                   if other is not entry and other['kind'] in 'dDvqQCe'])
+        except (OSError, ValueError) as error:
+            failures += 1
+            print(f"{entry['source']}: {path}: {error}", file=sys.stderr)
+    return 1 if failures and not os.environ.get('DPKG_MAINTSCRIPT_PACKAGE') else 0
+
+
+if __name__ == '__main__':
+    sys.exit(main(sys.argv[1:]))

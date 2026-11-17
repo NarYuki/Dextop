@@ -14,13 +14,20 @@ import java.net.Socket
 import java.security.SecureRandom
 import java.util.concurrent.ConcurrentHashMap
 
-/** Dextop's opt-in remote access, service supervisor, calendar and print runtime. */
+/** Dextop's opt-in remote access, service supervisor, calendar and print runtime.
+ *
+ * Two managers run while a container runs, as on systemd: the system manager (fake root, system
+ * units) and the user manager (the Linux account without fake root, user units). SSH, VNC, the
+ * calendar server and printing are user units of Dextop's own (dextop-<feature>.service); turning
+ * one on enables it, so the user manager starts it again whenever the container starts. VNC follows
+ * the full desktop instead: it is started on whichever display that desktop gets. */
 internal class LinuxIntegration(
     private val proot: () -> LinuxProot,
     private val family: (String) -> LinuxPackageFamily,
     private val desktop: (String) -> Int,
     private val log: (String, String) -> Unit,
     private val changed: () -> Unit,
+    private val servicesStarted: () -> Unit = {},
 ) {
     private val processes = ConcurrentHashMap<String, Process>()
     private val errors = ConcurrentHashMap<String, String>()
@@ -30,15 +37,23 @@ internal class LinuxIntegration(
     private val jobName = Regex("[a-f0-9]{32}")
     private val unitName = Regex("[A-Za-z0-9_.@:-]+\\.(service|timer)")
     private val features = setOf("ssh", "vnc", "calendar", "printing", "services")
+    private val managers = listOf("services", "user-services")
 
     private fun directory(id: String) = File(LinuxPaths.container(id), "integration").apply { mkdirs() }
+    /** The VNC password is never stored here: the app keeps it encrypted with Android Keystore
+     * and hands it over each connection ("vnc-secret"). */
     private fun config(id: String): JSONObject = File(directory(id), "settings.json").let {
         if (it.isFile) JSONObject(it.readText()) else JSONObject()
     }
+    private fun validVncSecret(secret: String) = secret.length == 8 && secret.all { it.code in 33..126 }
+    private fun vncSecret(id: String): String =
+        checkNotNull(vncPasswords["$id:vnc"]) { moe.n4tsu.dextop.localText("uiLinuxIsNotConnected") }
     private fun save(id: String, value: JSONObject) {
         val dir = directory(id)
         val staged = File(dir, "settings.staged")
-        staged.writeText(value.toString())
+        val stored = JSONObject(value.toString())
+        stored.optJSONObject("vnc")?.remove("secret")
+        staged.writeText(stored.toString())
         Os.chmod(staged.path, 0x180)
         check(staged.renameTo(File(dir, "settings.json")))
     }
@@ -76,22 +91,127 @@ internal class LinuxIntegration(
             checked(id, command, timeout = 1800)
         }
         LinuxSessionCompatibility.stage(LinuxPaths.rootfs(id), proot().nativeLibraryDir, LinuxProot.socketNamespace(id))
-        if (feature == "services") checked(id, "set -e; cp /usr/local/libexec/dextop-systemctl /usr/local/bin/systemctl; cp /usr/local/libexec/dextop-journalctl /usr/local/bin/journalctl; chmod 755 /usr/local/bin/systemctl /usr/local/bin/journalctl")
+        if (feature == "services") checked(id, "set -e; cp /usr/local/libexec/dextop-systemctl /usr/local/bin/systemctl; " +
+            "cp /usr/local/libexec/dextop-journalctl /usr/local/bin/journalctl; " +
+            "printf '#!/bin/sh\\nexec python3 /usr/local/libexec/dextop-systemd run \"\$@\"\\n' >/usr/local/bin/systemd-run; " +
+            "printf '#!/bin/sh\\nexec python3 /usr/local/libexec/dextop-tmpfiles \"\$@\"\\n' >/usr/local/bin/systemd-tmpfiles; chmod 755 /usr/local/bin/systemd-tmpfiles; " +
+            "for tool in hostnamectl timedatectl localectl loginctl; do printf '#!/bin/sh\\nexec python3 /usr/local/libexec/dextop-hostctl %s \"\$@\"\\n' \$tool >/usr/local/bin/\$tool; done; " +
+            "chmod 755 /usr/local/bin/systemctl /usr/local/bin/journalctl /usr/local/bin/systemd-run /usr/local/bin/hostnamectl /usr/local/bin/timedatectl /usr/local/bin/localectl /usr/local/bin/loginctl")
     }
 
     fun running(id: String): Boolean = processes.entries.any { it.key.startsWith("$id:") && it.value.isAlive }
-    private fun alive(id: String, feature: String) = processes["$id:$feature"]?.isAlive == true
+    private fun manager(id: String, name: String) = processes["$id:$name"]?.isAlive == true
+    private fun alive(id: String, feature: String) =
+        if (feature in managers) manager(id, feature) else unitRow(id, feature)?.optString("state") == "active"
+
+    private fun unitOf(feature: String) = "dextop-$feature.service"
+    private fun userState(id: String) = File(LinuxPaths.rootfs(id), LinuxUser.home(id).trimStart('/') + "/.local/state/dextop/systemd")
+    private fun systemStatus(id: String) = File(LinuxPaths.rootfs(id), "var/lib/dextop/services/status.json")
+    private fun managerUnits(id: String, name: String): JSONArray? {
+        if (!manager(id, name)) return null
+        val file = if (name == "user-services") File(userState(id), "status.json") else systemStatus(id)
+        return runCatching { JSONObject(file.readText()).optJSONArray("units") }.getOrNull()
+    }
+    /** The feature's unit as the user manager last reported it, or null when it is not known there. */
+    private fun unitRow(id: String, feature: String): JSONObject? = managerUnits(id, "user-services")?.let { units ->
+        (0 until units.length()).map(units::getJSONObject).firstOrNull { it.optString("name") == unitOf(feature) }
+    }
+    private fun unitLog(id: String, feature: String) =
+        runCatching { File(userState(id), "logs/user_${unitOf(feature)}.log").readText().takeLast(3000) }.getOrDefault("")
+
+    /** systemctl --user, as the account; the parsed answer, failing with the manager's own error. */
+    private fun userCtl(id: String, arguments: String): JSONObject {
+        val result = run(id, "python3 /usr/local/libexec/dextop-systemd ctl --json --user $arguments", timeout = 60, root = false)
+        val answer = result.output.lineSequence().lastOrNull { it.trimStart().startsWith('{') }?.let(::JSONObject)
+            ?: error(result.output.takeLast(2000).ifBlank { moe.n4tsu.dextop.localText("uiServiceOperationFailed") })
+        check(answer.optBoolean("ok")) { answer.optString("error", moe.n4tsu.dextop.localText("uiServiceOperationFailed")) }
+        return answer
+    }
+
+    /** Writes Dextop's unit for [feature] beside packaged user units (/usr/local/lib/systemd/user). */
+    private fun writeUnit(id: String, feature: String, port: Int?, lan: Boolean) {
+        val description = mapOf("ssh" to "SSH server", "vnc" to "VNC server", "calendar" to "Calendar server", "printing" to "Print server").getValue(feature)
+        val service = when (feature) {
+            "ssh" -> "ExecStartPre=-/usr/bin/python3 /usr/local/libexec/dextop-integrate ssh-environment\n" +
+                "ExecStart=/usr/sbin/sshd -D -e -f /etc/dextop/ssh/sshd_config\nRestart=on-failure\nRestartSec=2"
+            // The display is the full desktop's, written each time that desktop starts (desktopStarted).
+            "vnc" -> "EnvironmentFile=/etc/dextop/vnc/display.env\nExecStart=/usr/bin/x11vnc -display :${'$'}{DEXTOP_VNC_DISPLAY} -rfbport $port " +
+                "-passwdfile rm:/etc/dextop/vnc/password -forever -shared -noxdamage -noshm -no6 ${if (lan) "-listen 0.0.0.0" else "-localhost"} " +
+                // Every app reaches the loopback listener and VNC passwords are 8 characters:
+                // connections that never authenticate lock further ones out (dextop-integrate vnc_guard).
+                "-accept 'python3 /usr/local/libexec/dextop-integrate vnc-accept' " +
+                "-afteraccept 'python3 /usr/local/libexec/dextop-integrate vnc-accepted'"
+            "calendar" -> "ExecStart=/usr/bin/python3 /usr/local/libexec/dextop-integrate calendar-server\nRestart=on-failure\nRestartSec=2"
+            // A unix socket of the container: a TCP port on 127.0.0.1 is reachable by every app on the device.
+            else -> "ExecStart=/usr/sbin/cupsd -f -c /etc/dextop/cups/cupsd.conf -s /etc/dextop/cups/cups-files.conf\nRestart=on-failure\nRestartSec=2"
+        }
+        val content = "# Managed by Dextop (Linux settings → Integrations); changes here are replaced.\n" +
+            "[Unit]\nDescription=Dextop $description\n\n[Service]\n$service\n\n[Install]\nWantedBy=default.target\n"
+        checked(id, "python3 /usr/local/libexec/dextop-systemd write-unit",
+            JSONObject().put("name", unitOf(feature)).put("content", content).put("user", true).put("vendor", true).toString())
+    }
+
+    /** Waits until the started unit answers on its port or socket; fails with its log when it does not. */
+    private fun awaitUnit(id: String, feature: String, port: Int?, socket: String? = null) {
+        val end = System.nanoTime() + 15_000_000_000L
+        while (System.nanoTime() < end) {
+            val row = unitRow(id, feature)
+            if (row?.optString("state") == "failed") break
+            if (row?.optString("state") == "active") {
+                val ready = if (socket != null) runCatching {
+                    // Path sockets are abstract under the container's namespace (linux_unixsock.c).
+                    android.net.LocalSocket().use { it.connect(android.net.LocalSocketAddress(LinuxProot.socketNamespace(id) + socket,
+                        android.net.LocalSocketAddress.Namespace.ABSTRACT)) }
+                    true
+                }.getOrDefault(false)
+                else port == null || runCatching { Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 150) }; true }.getOrDefault(false)
+                if (ready) return
+            }
+            Thread.sleep(150)
+        }
+        val row = unitRow(id, feature)
+        error("$feature: " + listOfNotNull(row?.optString("error")?.takeIf { it.isNotBlank() }, unitLog(id, feature).ifBlank { null })
+            .joinToString("\n").ifBlank { moe.n4tsu.dextop.localText("uiStartupTimedOut") })
+    }
 
     /** Service management is part of the Linux runtime, not an opt-in integration. */
     fun ensureServices(id: String) = synchronized(lock) {
-        if (!alive(id, "services")) {
+        if (!manager(id, "services")) {
             prepare(id, "services")
-            startProcess(id, "services", "exec python3 /usr/local/libexec/dextop-systemd daemon", root = true)
+            startProcess(id, "services", "exec python3 /usr/local/libexec/dextop-systemd daemon", root = true, readyFile = systemStatus(id))
             changed()
         }
+        if (!manager(id, "user-services")) {
+            prepare(id, "services")
+            val settings = runCatching { config(id) }.getOrDefault(JSONObject())
+            for (feature in listOf("ssh", "vnc", "calendar", "printing")) {
+                val value = settings.optJSONObject(feature) ?: continue
+                if (!value.optBoolean("enabled")) continue
+                val defaultPort = mapOf("ssh" to 2222, "vnc" to 5900, "calendar" to 8585, "printing" to 8631).getValue(feature)
+                runCatching { writeUnit(id, feature, value.optInt("port", defaultPort), value.optBoolean("lan")) }
+                    .onFailure { log(id, "Refreshing ${unitOf(feature)} failed: ${it.message}") }
+            }
+            // Without fake root, like the terminal: the account's own processes, on PRoot's fast path.
+            startProcess(id, "user-services", "exec python3 /usr/local/libexec/dextop-systemd daemon --user",
+                readyFile = File(userState(id), "status.json"))
+            changed()
+        }
+        servicesStarted()
     }
 
-    /** Make systemctl ready before launch, then restore optional integrations. */
+    fun servicesRunning(): Boolean = processes.entries.any { it.key.endsWith(":services") && it.value.isAlive }
+
+    private fun servicesSettings(id: String, request: JSONObject): String {
+        val settings = config(id)
+        val value = settings.optJSONObject("services") ?: JSONObject()
+        if (request.has("atBoot")) value.put("atBoot", request.getBoolean("atBoot"))
+        settings.put("services", value)
+        save(id, settings)
+        changed()
+        return status(id)
+    }
+
+    /** Make systemctl ready before launch; the user manager starts the integrations turned on. */
     fun restore(id: String) {
         runCatching { ensureServices(id) }.onFailure {
             errors["$id:services"] = it.message.orEmpty()
@@ -103,24 +223,51 @@ internal class LinuxIntegration(
             val settings = runCatching { config(id) }.getOrDefault(JSONObject())
             for (feature in listOf("ssh", "calendar", "printing")) {
                 val value = settings.optJSONObject(feature) ?: continue
-                if (value.optBoolean("enabled")) runCatching { action(id, JSONObject(value.toString()).put("op", "start").put("feature", feature).toString()) }
-                    .onFailure { errors["$id:$feature"] = it.message.orEmpty(); changed() }
+                // Turned on before integrations were units, or the unit went missing: set it up once.
+                if (value.optBoolean("enabled") && unitRow(id, feature)?.optBoolean("enabled") != true)
+                    runCatching { action(id, JSONObject(value.toString()).put("op", "start").put("feature", feature).toString()) }
+                        .onFailure { errors["$id:$feature"] = it.message.orEmpty(); changed() }
             }
+            // VNC shows the full desktop, so it brings that desktop up (desktopStarted starts VNC on it).
+            if (settings.optJSONObject("vnc")?.optBoolean("enabled") == true)
+                runCatching { desktop(id) }.onFailure { errors["$id:vnc"] = it.message.orEmpty(); changed() }
         }, "DextopIntegrations-$id").apply { isDaemon = true; start() }
+    }
+
+    /** The full desktop started on [display]: VNC, when turned on, follows it there. */
+    fun desktopStarted(id: String, display: Int) {
+        if (config(id).optJSONObject("vnc")?.optBoolean("enabled") != true) return
+        Thread({
+            runCatching {
+                ensureServices(id)
+                synchronized(lock) {
+                    val value = config(id).getJSONObject("vnc")
+                    checked(id, "mkdir -p /etc/dextop/vnc && printf 'DEXTOP_VNC_DISPLAY=%s\\n' $display >/etc/dextop/vnc/display.env")
+                    writeUnit(id, "vnc", value.optInt("port", 5900), value.optBoolean("lan"))
+                    // x11vnc removes the password file once it has read it (-passwdfile rm:).
+                    helper(id, "vnc", JSONObject(value.toString()).put("secret", vncSecret(id)))
+                    userCtl(id, "restart ${unitOf("vnc")}")
+                    awaitUnit(id, "vnc", value.optInt("port", 5900))
+                    errors.remove("$id:vnc")
+                }
+            }.onFailure { errors["$id:vnc"] = it.message.orEmpty(); log(id, "VNC start failed: ${it.message}") }
+            changed()
+        }, "DextopVnc-$id").apply { isDaemon = true; start() }
     }
 
     private fun stopProcess(id: String, feature: String) {
         val key = "$id:$feature"
         processes.remove(key)?.let { process ->
-            if (feature == "services" && process.isAlive) runCatching {
-                run(id, "python3 /usr/local/libexec/dextop-systemd ctl --json shutdown", timeout = 5)
+            // The managers stop their units before exiting.
+            if (feature in managers && process.isAlive) runCatching {
+                if (feature == "services") run(id, "python3 /usr/local/libexec/dextop-systemd ctl --json shutdown", timeout = 5)
+                else run(id, "python3 /usr/local/libexec/dextop-systemd ctl --json --user shutdown", timeout = 5, root = false)
                 process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)
             }
             if (process.isAlive) LinuxRuntime.terminate(process)
             // A restart rebinds the same port: wait until the old server has really exited.
             runCatching { process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) }
         }
-        vncPasswords.remove(key)
     }
 
     /** Fails early on a busy port, retrying briefly while a just-stopped server releases it. */
@@ -138,7 +285,7 @@ internal class LinuxIntegration(
         }
     }
 
-    private fun startProcess(id: String, feature: String, command: String, port: Int? = null, root: Boolean = false, socket: String? = null) {
+    private fun startProcess(id: String, feature: String, command: String, port: Int? = null, root: Boolean = false, socket: String? = null, readyFile: File? = null) {
         stopProcess(id, feature)
         if (port != null) claimPort(port)
         val key = "$id:$feature"
@@ -171,7 +318,7 @@ internal class LinuxIntegration(
                     true
                 }.getOrDefault(false)
                 else if (port != null) runCatching { Socket().use { it.connect(InetSocketAddress("127.0.0.1", port), 150) }; true }.getOrDefault(false)
-                else File(LinuxPaths.rootfs(id), "var/lib/dextop/services/status.json").let { file -> file.isFile && System.currentTimeMillis()-file.lastModified() < 2000 }
+                else (readyFile ?: systemStatus(id)).let { file -> file.isFile && System.currentTimeMillis()-file.lastModified() < 2000 }
                 if (ready) break
                 Thread.sleep(100)
             }
@@ -192,19 +339,33 @@ internal class LinuxIntegration(
         result.put("addresses", JSONArray(addresses))
         for (feature in features) {
             val value = settings.optJSONObject(feature) ?: JSONObject()
-            value.put("running", alive(id, feature)).put("error", errors["$id:$feature"].orEmpty())
+            val row = if (feature == "services") null else unitRow(id, feature)
+            val failed = row?.takeIf { it.optString("state") == "failed" }?.let { it.optString("error").ifBlank { unitLog(id, feature).takeLast(500) } }
+            value.put("running", alive(id, feature)).put("error", errors["$id:$feature"] ?: failed.orEmpty())
             if (feature == "services") value.put("enabled", true)
-            if (feature == "vnc") value.put("secret", vncPasswords["$id:$feature"] ?: value.optString("secret"))
+                .put("atBoot", value.optBoolean("atBoot"))
+            if (feature == "vnc") value.put("secret", vncPasswords["$id:$feature"].orEmpty())
             result.put(feature, value)
         }
-        val unitStatus = File(LinuxPaths.rootfs(id), "var/lib/dextop/services/status.json")
-        val units = if (alive(id, "services")) runCatching { JSONObject(unitStatus.readText()).optJSONArray("units") }.getOrNull() else null
-        result.put("units", units ?: JSONArray()).put("printJobs", printJobs(id))
+        val units = JSONArray()
+        for (name in managers) managerUnits(id, name)?.let { list -> (0 until list.length()).forEach { units.put(list.get(it)) } }
+        result.put("units", units).put("printJobs", printJobs(id))
         return result.toString()
     }
 
     fun action(id: String, json: String): String {
         val request = JSONObject(json)
+        if (request.optString("op") == "services-settings") return servicesSettings(id, request)
+        if (request.optString("op") == "vnc-secret") {
+            val secret = request.optString("secret")
+            require(validVncSecret(secret)) { moe.n4tsu.dextop.localText("uiVNCRequiresAn8CharacterASCIIPassword") }
+            vncPasswords["$id:vnc"] = secret
+            return status(id)
+        }
+        if (request.optString("op") == "autostart") {
+            if (config(id).optJSONObject("services")?.optBoolean("atBoot") == true) restore(id)
+            return status(id)
+        }
         if (request.optString("op") == "services-ready" ||
             (request.optString("op") == "start" && request.optString("feature") == "services")) {
             ensureServices(id)
@@ -226,7 +387,8 @@ internal class LinuxIntegration(
             require(value.optInt("port", defaultPort) in 1024..65535) { moe.n4tsu.dextop.localText("uiUseAPortFrom1024To65535") }
             if (feature == "vnc") {
                 val password = value.optString("secret")
-                require(password.isEmpty() || (password.length == 8 && password.all { it.code in 33..126 })) { moe.n4tsu.dextop.localText("uiVNCRequiresAn8CharacterASCIIPassword") }
+                require(password.isEmpty() || validVncSecret(password)) { moe.n4tsu.dextop.localText("uiVNCRequiresAn8CharacterASCIIPassword") }
+                if (password.isNotEmpty()) vncPasswords["$id:vnc"] = password
             }
             if (feature == "ssh") {
                 val keys = value.optString("keys")
@@ -248,7 +410,7 @@ internal class LinuxIntegration(
             }
             return restartRequest?.let { action(id, it.toString()) } ?: savedStatus
         }
-        if (request.optString("op") == "start") ensureServices(id)
+        if (request.optString("op") in setOf("start", "stop")) ensureServices(id)
         val vncDisplay = if (request.optString("op") == "start" && request.optString("feature") == "vnc") desktop(id) else null
         return synchronized(lock) {
         val operation = request.getString("op")
@@ -282,7 +444,8 @@ internal class LinuxIntegration(
             val action = request.getString("action").also { require(it in setOf("start", "stop", "restart", "enable", "disable", "reload", "journal", "daemon-reload", "reset-failed")) }
             val name = request.optString("unit").also { require(action == "daemon-reload" || unitName.matches(it)) }
             val journal = if (action == "journal") "--journal -u $name -n 150" else "$action $name"
-            val output = checked(id, "python3 /usr/local/libexec/dextop-systemd ctl --json ${if (request.optBoolean("user")) "--user" else ""} $journal", timeout = 60)
+            val user = request.optBoolean("user")
+            val output = checked(id, "python3 /usr/local/libexec/dextop-systemd ctl --json ${if (user) "--user" else ""} $journal", timeout = 60, root = !user)
             val answer = JSONObject(output.lineSequence().last { it.trimStart().startsWith('{') })
             check(answer.optBoolean("ok")) { answer.optString("error", moe.n4tsu.dextop.localText("uiServiceOperationFailed")) }
             return if (action == "journal") answer.toString() else status(id)
@@ -291,7 +454,9 @@ internal class LinuxIntegration(
         val settings = config(id)
         if (operation == "stop") {
             require(feature != "services") { moe.n4tsu.dextop.localText("uiServiceManagementIsPartOfTheLinuxRuntime") }
-            stopProcess(id, feature)
+            // A feature turned on before integrations were units has no unit to stop.
+            if (unitRow(id, feature) != null) userCtl(id, (if (feature == "vnc") "stop " else "disable --now ") + unitOf(feature))
+            errors.remove("$id:$feature")
             val value = settings.optJSONObject(feature) ?: JSONObject()
             value.put("enabled", false)
             settings.put(feature, value)
@@ -310,34 +475,30 @@ internal class LinuxIntegration(
         if (port != null) value.put("port", port)
         value.put("lan", request.optBoolean("lan", false))
         when (feature) {
-            "ssh" -> {
-                value.put("password", request.optBoolean("password", true)).put("keys", request.optString("keys"))
-                helper(id, feature, value)
-                startProcess(id, feature, "exec /usr/sbin/sshd -D -e -f /etc/dextop/ssh/sshd_config", port)
-            }
-            "vnc" -> {
-                val secret = request.optString("secret").ifEmpty { random(6).take(8) }
-                value.put("secret", secret)
-                helper(id, feature, value)
-                val display = checkNotNull(vncDisplay)
-                startProcess(id, feature, "exec x11vnc -display :$display -rfbport $port -passwdfile /etc/dextop/vnc/password -forever -shared -noxdamage -noshm -no6 ${if (value.optBoolean("lan")) "-listen 0.0.0.0" else "-localhost"}", port)
-                vncPasswords["$id:$feature"] = secret
-            }
-            "calendar" -> {
-                val old = settings.optJSONObject(feature)
-                value.put("token", old?.optString("token")?.takeIf { it.length >= 32 } ?: random(32))
-                helper(id, feature, value)
-                startProcess(id, feature, "exec python3 /usr/local/libexec/dextop-integrate calendar-server", port)
-            }
-            "printing" -> {
-                helper(id, feature, value)
-                // A unix socket of the container: a TCP port on 127.0.0.1 is reachable by every app on the device.
-                startProcess(id, feature, "exec cupsd -f -c /etc/dextop/cups/cupsd.conf -s /etc/dextop/cups/cups-files.conf",
-                    socket = "/run/dextop-cups/cups.sock")
-                try { helper(id, "printer", value) } catch (error: Throwable) { stopProcess(id, feature); throw error }
-            }
-            "services" -> startProcess(id, feature, "exec python3 /usr/local/libexec/dextop-systemd daemon", root = true)
+            "ssh" -> value.put("password", request.optBoolean("password", true)).put("keys", request.optString("keys"))
+            "vnc" -> value.put("secret", request.optString("secret").ifEmpty { vncPasswords["$id:vnc"] ?: random(6).take(8) })
+            "calendar" -> value.put("token", settings.optJSONObject(feature)?.optString("token")?.takeIf { it.length >= 32 } ?: random(32))
         }
+        val unit = unitOf(feature)
+        helper(id, feature, value)
+        writeUnit(id, feature, port, value.optBoolean("lan"))
+        // A restart rebinds the same port: the old server has exited once stop returns.
+        runCatching { userCtl(id, "stop $unit") }
+        if (port != null) claimPort(port)
+        try {
+            if (feature == "vnc") {
+                val display = checkNotNull(vncDisplay)
+                checked(id, "mkdir -p /etc/dextop/vnc && printf 'DEXTOP_VNC_DISPLAY=%s\\n' $display >/etc/dextop/vnc/display.env")
+                userCtl(id, "start $unit")
+            } else userCtl(id, "enable --now $unit")
+            awaitUnit(id, feature, port, if (feature == "printing") "/run/dextop-cups/cups.sock" else null)
+            if (feature == "printing") helper(id, "printer", value)
+        } catch (error: Throwable) {
+            runCatching { userCtl(id, if (feature == "vnc") "stop $unit" else "disable --now $unit") }
+            throw error
+        }
+        if (feature == "vnc") vncPasswords["$id:$feature"] = value.optString("secret")
+        errors.remove("$id:$feature")
         value.put("enabled", true)
         settings.put(feature, value)
         save(id, settings)
@@ -421,7 +582,7 @@ internal class LinuxIntegration(
     }
 
     fun stop(id: String) = synchronized(lock) {
-        features.forEach { stopProcess(id, it) }
+        managers.forEach { stopProcess(id, it) }
         restored.remove(id)
     }
     fun stopAll() { processes.keys.map { it.substringBefore(':') }.toSet().forEach(::stop) }

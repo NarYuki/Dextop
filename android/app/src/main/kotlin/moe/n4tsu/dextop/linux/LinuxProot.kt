@@ -150,25 +150,42 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             val tree = File(LinuxPaths.rootfs(id), name)
             if (tree.isDirectory) add("${tree.absolutePath}:${tree.absolutePath}")
         }
-        if (!fakeRoot) accounts(id, runtime)?.let { (passwd, group) -> add("$passwd:/etc/passwd"); add("$group:/etc/group") }
+        if (!fakeRoot) accounts(id)
         addAll(fakeProc(runtime))
         addAll(gpuNode(runtime))
     }
 
-    /** Match the session account to the kernel uid for D-Bus EXTERNAL and file ownership. */
-    private fun accounts(id: String, runtime: File): Pair<String, String>? = runCatching {
+    /**
+     * Match the session account to the kernel uid for D-Bus EXTERNAL and file ownership, in the
+     * container's own /etc/passwd and /etc/group. A copy bound over them went stale and swallowed
+     * every change made inside (groupadd and useradd in package scripts, passwd, chsh), and dpkg
+     * then failed on groups it had just created.
+     */
+    private fun accounts(id: String) = runCatching {
         val rootfs = LinuxPaths.rootfs(id)
-        val name = LinuxUser.name(rootfs) ?: "root"
+        val name = LinuxUser.name(rootfs) ?: return@runCatching
         val home = LinuxUser.home(rootfs)
-        val accountUid = if (uid == 0 && name != "root") 1000 else uid
+        val accountUid = if (uid == 0) 1000 else uid
         val etc = File(rootfs, "etc")
-        fun copy(file: String, replacement: String) = File(runtime, file).apply {
-            writeText(File(etc, file).readLines().joinToString("\n", postfix = "\n") {
-                if (it.startsWith("$name:")) replacement else it
-            })
-        }.absolutePath
-        copy("passwd", "$name:x:$accountUid:$accountUid:$name:$home:/bin/bash") to copy("group", "$name:x:$accountUid:")
-    }.getOrNull()
+        fun rewrite(file: String, fields: (List<String>) -> List<String>) {
+            val target = File(etc, file)
+            val lines = target.readLines()
+            var changed = false
+            val updated = lines.map { line ->
+                val parts = line.split(':')
+                if (parts.firstOrNull() != name || parts.size < 3) line
+                else fields(parts).joinToString(":").also { if (it != line) changed = true }
+            }
+            if (!changed) return
+            val staged = File(etc, ".$file.dextop")
+            staged.writeText(updated.joinToString("\n", postfix = "\n"))
+            android.system.Os.chmod(staged.path, 0x1a4)
+            check(staged.renameTo(target))
+        }
+        rewrite("passwd") { parts -> listOf(name, parts[1], "$accountUid", "$accountUid") +
+            (parts.drop(4).takeIf { it.size >= 3 } ?: listOf(name, home, "/bin/bash")) }
+        rewrite("group") { parts -> listOf(parts[0], parts[1], "$accountUid") + parts.drop(3) }
+    }.onFailure { android.util.Log.w("DextopProot", "Account uid update failed", it) }
 
     /** Stand-ins for /proc files the shell user may not read (DroidDeck's fake proc). */
     private fun fakeProc(runtime: File): List<String> {

@@ -1,0 +1,592 @@
+#!/usr/bin/python3
+import os
+import select
+import socket
+import struct
+import sys
+import time
+from importlib.machinery import SourceFileLoader
+
+core = SourceFileLoader('dextop_systemd', os.environ.get('DEXTOP_SYSTEMD', '/usr/local/libexec/dextop-systemd')).load_module()
+
+BUS_NAME = 'org.freedesktop.systemd1'
+ROOT_PATH = '/org/freedesktop/systemd1'
+MANAGER = 'org.freedesktop.systemd1.Manager'
+UNIT = 'org.freedesktop.systemd1.Unit'
+SERVICE = 'org.freedesktop.systemd1.Service'
+TIMER = 'org.freedesktop.systemd1.Timer'
+PROPERTIES = 'org.freedesktop.DBus.Properties'
+ALIGN = {'y': 1, 'b': 4, 'n': 2, 'q': 2, 'i': 4, 'u': 4, 'x': 8, 't': 8, 'd': 8, 's': 4, 'o': 4, 'g': 1, 'a': 4, '(': 8, '{': 8, 'v': 1, 'h': 4}
+MAX_MESSAGE_BYTES = 16 * 1024 * 1024
+
+FIXED = {'y': 'B', 'b': 'I', 'n': 'h', 'q': 'H', 'i': 'i', 'u': 'I', 'x': 'q', 't': 'Q', 'd': 'd', 'h': 'I'}
+
+
+class Error(Exception):
+    def __init__(self, name, text):
+        super().__init__(text)
+        self.name = name
+
+
+class ObjectPath(str):
+    pass
+
+
+class Signature(str):
+    pass
+
+
+class Variant:
+    def __init__(self, signature, value):
+        self.signature = signature
+        self.value = value
+
+
+def split_signature(signature):
+    result, index = [], 0
+    while index < len(signature):
+        end = complete_type(signature, index)
+        result.append(signature[index:end])
+        index = end
+    return result
+
+
+def complete_type(signature, index):
+    code = signature[index]
+    if code == 'a':
+        return complete_type(signature, index + 1)
+    if code in '({':
+        close = ')' if code == '(' else '}'
+        depth, position = 0, index
+        while True:
+            if signature[position] in '({':
+                depth += 1
+            elif signature[position] in ')}':
+                depth -= 1
+                if depth == 0:
+                    return position + 1
+            position += 1
+    return index + 1
+
+
+class Writer:
+    def __init__(self, offset=0):
+        self.data = bytearray()
+        self.offset = offset
+
+    def pad(self, alignment):
+        while (len(self.data) + self.offset) % alignment:
+            self.data.append(0)
+
+    def write(self, signature, value):
+        code = signature[0]
+        if code in FIXED:
+            self.pad(ALIGN[code])
+            self.data += struct.pack('<' + FIXED[code], int(bool(value)) if code == 'b' else value)
+        elif code in 'so':
+            encoded = value.encode()
+            self.pad(4)
+            self.data += struct.pack('<I', len(encoded)) + encoded + b'\0'
+        elif code == 'g':
+            encoded = value.encode()
+            self.data += struct.pack('<B', len(encoded)) + encoded + b'\0'
+        elif code == 'v':
+            self.write('g', value.signature)
+            self.write(value.signature, value.value)
+        elif code == 'a':
+            element = signature[1:]
+            self.pad(4)
+            length_at = len(self.data)
+            self.data += b'\0\0\0\0'
+            self.pad(ALIGN[element[0]])
+            start = len(self.data)
+            if element[0] == '{':
+                inner = split_signature(element[1:-1])
+                for key, item in value.items():
+                    self.pad(8)
+                    self.write(inner[0], key)
+                    self.write(inner[1], item)
+            else:
+                for item in value:
+                    self.write(element, item)
+            struct.pack_into('<I', self.data, length_at, len(self.data) - start)
+        elif code == '(':
+            self.pad(8)
+            for part, item in zip(split_signature(signature[1:-1]), value):
+                self.write(part, item)
+        else:
+            raise ValueError('Unsupported type ' + code)
+
+    def write_all(self, signature, values):
+        for part, value in zip(split_signature(signature), values):
+            self.write(part, value)
+        return self
+
+
+class Reader:
+    def __init__(self, data, offset=0, byte_order='<'):
+        self.data = data
+        self.position = offset
+        self.byte_order = byte_order
+
+    def align(self, alignment):
+        self.position += (-self.position) % alignment
+
+    def read(self, signature):
+        code = signature[0]
+        if code in FIXED:
+            self.align(ALIGN[code])
+            size = struct.calcsize(self.byte_order + FIXED[code])
+            value = struct.unpack_from(self.byte_order + FIXED[code], self.data, self.position)[0]
+            self.position += size
+            return bool(value) if code == 'b' else value
+        if code in 'so':
+            self.align(4)
+            length = struct.unpack_from(self.byte_order + 'I', self.data, self.position)[0]
+            self.position += 4
+            value = bytes(self.data[self.position:self.position + length]).decode('utf-8', 'replace')
+            self.position += length + 1
+            return value
+        if code == 'g':
+            length = self.data[self.position]
+            value = bytes(self.data[self.position + 1:self.position + 1 + length]).decode()
+            self.position += length + 2
+            return value
+        if code == 'v':
+            inner = self.read('g')
+            return Variant(inner, self.read(inner))
+        if code == 'a':
+            element = signature[1:]
+            self.align(4)
+            length = struct.unpack_from(self.byte_order + 'I', self.data, self.position)[0]
+            self.position += 4
+            self.align(ALIGN[element[0]])
+            end = self.position + length
+            if element[0] == '{':
+                inner = split_signature(element[1:-1])
+                result = {}
+                while self.position < end:
+                    self.align(8)
+                    key = self.read(inner[0])
+                    result[key] = self.read(inner[1])
+                return result
+            items = []
+            while self.position < end:
+                items.append(self.read(element))
+            return items
+        if code == '(':
+            self.align(8)
+            return tuple(self.read(part) for part in split_signature(signature[1:-1]))
+        raise ValueError('Unsupported type ' + code)
+
+
+class Message:
+    def __init__(self, kind, serial=0, path=None, interface=None, member=None, error=None, reply=None,
+                 destination=None, sender=None, signature='', body=(), flags=0):
+        self.kind, self.serial, self.path, self.interface, self.member = kind, serial, path, interface, member
+        self.error, self.reply, self.destination, self.sender = error, reply, destination, sender
+        self.signature, self.body, self.flags = signature, list(body), flags
+
+    def encode(self):
+        body = Writer().write_all(self.signature, self.body).data if self.signature else bytearray()
+        fields = []
+        for code, kind, value in ((1, 'o', self.path), (2, 's', self.interface), (3, 's', self.member), (4, 's', self.error),
+                                  (5, 'u', self.reply), (6, 's', self.destination), (7, 's', self.sender),
+                                  (8, 'g', self.signature or None)):
+            if value is not None:
+                fields.append((code, Variant(kind, value)))
+        header = Writer()
+        header.data += struct.pack('<cBBBII', b'l', self.kind, self.flags, 1, len(body), self.serial)
+        header.write('a(yv)', fields)
+        header.pad(8)
+        return bytes(header.data + body)
+
+    @staticmethod
+    def decode(data):
+        byte_order = {b'l': '<', b'B': '>'}.get(data[0:1])
+        if byte_order is None or len(data) < 16 or data[3] != 1:
+            raise ValueError('Invalid D-Bus header')
+        kind, flags, _, length, serial = struct.unpack_from(byte_order + 'BBBII', data, 1)
+        reader = Reader(data, 12, byte_order)
+        fields = {code: variant.value for code, variant in reader.read('a(yv)')}
+        reader.align(8)
+        start = reader.position
+        signature = fields.get(8, '')
+        body = []
+        if signature:
+            body_reader = Reader(data[start:start + length], byte_order=byte_order)
+            body = [body_reader.read(part) for part in split_signature(signature)]
+        return Message(kind, serial, fields.get(1), fields.get(2), fields.get(3), fields.get(4), fields.get(5),
+                       fields.get(6), fields.get(7), signature, body, flags), start + length
+
+
+class Connection:
+    def __init__(self, address):
+        path = address.split('path=', 1)[1].split(',', 1)[0]
+        self.socket = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.socket.settimeout(10)
+        self.socket.connect(path)
+        self.socket.sendall(b'\0AUTH EXTERNAL ' + str(os.getuid()).encode().hex().encode() + b'\r\n')
+        answer = self.receive_line()
+        if not answer.startswith(b'OK'):
+            self.socket.sendall(b'AUTH ANONYMOUS\r\n')
+            answer = self.receive_line()
+        if not answer.startswith(b'OK'):
+            raise OSError('D-Bus authentication failed: ' + answer.decode(errors='replace'))
+        self.socket.sendall(b'BEGIN\r\n')
+        self.socket.settimeout(None)
+        self.buffer = bytearray()
+        self.serial = 0
+        self.pending = {}
+        self.name = self.call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'Hello')[0]
+
+    def receive_line(self):
+        line = b''
+        while not line.endswith(b'\r\n'):
+            chunk = self.socket.recv(1)
+            if not chunk:
+                raise OSError('D-Bus closed during authentication')
+            line += chunk
+        return line
+
+    def send(self, message):
+        self.serial += 1
+        message.serial = self.serial
+        self.socket.sendall(message.encode())
+        return self.serial
+
+    def call(self, destination, path, interface, member, signature='', body=()):
+        serial = self.send(Message(1, path=path, interface=interface, member=member, destination=destination,
+                                   signature=signature, body=body))
+        end = time.monotonic() + 25
+        while time.monotonic() < end:
+            for message in self.read_socket(1):
+                if message.reply == serial:
+                    if message.kind == 3:
+                        raise Error(message.error, message.body[0] if message.body else message.error)
+                    return message.body
+                self.pending.setdefault('queue', []).append(message)
+        raise Error('org.freedesktop.DBus.Error.NoReply', 'No reply from ' + destination)
+
+    def receive(self, timeout):
+        queued = self.pending.pop('queue', [])
+        if queued:
+            return queued
+        return self.read_socket(timeout)
+
+    def read_socket(self, timeout):
+        ready, _, _ = select.select([self.socket], [], [], timeout)
+        if ready:
+            chunk = self.socket.recv(65536)
+            if not chunk:
+                raise OSError('D-Bus connection closed')
+            self.buffer += chunk
+        messages = []
+        while len(self.buffer) >= 16:
+            byte_order = {ord('l'): '<', ord('B'): '>'}.get(self.buffer[0])
+            if byte_order is None or self.buffer[3] != 1:
+                self.socket.close()
+                raise OSError('Invalid D-Bus header')
+            body_length, _, fields_length = struct.unpack_from(byte_order + 'III', self.buffer, 4)
+            header_length = 16 + fields_length + ((-(16 + fields_length)) % 8)
+            total = header_length + body_length
+            if total > MAX_MESSAGE_BYTES:
+                self.socket.close()
+                raise OSError('D-Bus message exceeds service limit')
+            if len(self.buffer) < total:
+                break
+            try:
+                message, _ = Message.decode(bytes(self.buffer[:total]))
+            except (ValueError, IndexError, KeyError, struct.error, RecursionError) as error:
+                self.socket.close()
+                raise OSError('Invalid D-Bus message') from error
+            del self.buffer[:total]
+            messages.append(message)
+        return messages
+
+
+def escape(name):
+    result = []
+    for index, char in enumerate(name):
+        if char.isascii() and (char.isalpha() or (char.isdigit() and index > 0)):
+            result.append(char)
+        else:
+            result.append('_%02x' % ord(char))
+    return ''.join(result)
+
+
+def unescape(text):
+    result, index = [], 0
+    while index < len(text):
+        if text[index] == '_' and index + 2 < len(text):
+            result.append(chr(int(text[index + 1:index + 3], 16)))
+            index += 3
+        else:
+            result.append(text[index])
+            index += 1
+    return ''.join(result)
+
+
+def unit_path(name):
+    return ObjectPath(ROOT_PATH + '/unit/' + escape(name))
+
+
+def microseconds(stamp):
+    return int(stamp * 1_000_000) if stamp else 0
+
+
+class Service:
+    def __init__(self, connection):
+        self.connection = connection
+        self.jobs = 0
+        self.subscribers = set()
+        self.snapshot = {}
+
+    def manager(self, action, units=(), **extra):
+        result = core.rpc(dict(action=action, units=list(units), user=False, **extra), core.BASE)
+        if not result.get('ok') and action not in ('status', 'is-active', 'is-enabled', 'is-failed'):
+            raise Error('org.freedesktop.systemd1.UnitOperationFailed' if action != 'status' else 'org.freedesktop.systemd1.NoSuchUnit',
+                        result.get('error', 'Operation failed'))
+        return result
+
+    def rows(self):
+        return {row['name']: row for row in self.manager('list-units').get('units', [])}
+
+    def row(self, name):
+        rows = self.rows()
+        if name not in rows:
+            raise Error('org.freedesktop.systemd1.NoSuchUnit', f'Unit {name} not loaded.')
+        return rows[name]
+
+    def caller_uid(self, sender):
+        return self.connection.call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus',
+                                    'GetConnectionUnixUser', 's', [sender])[0]
+
+    def authorize(self, message):
+        if self.caller_uid(message.sender) != 0:
+            raise Error('org.freedesktop.DBus.Error.AccessDenied', 'Access denied: run the request as root.')
+
+    def job(self, name, action, operation):
+        self.jobs += 1
+        path = ObjectPath(f'{ROOT_PATH}/job/{self.jobs}')
+        result = 'done'
+        try:
+            self.manager(operation, [name])
+        except Error:
+            result = 'failed'
+        self.signal(ROOT_PATH, MANAGER, 'JobRemoved', 'uoss', [self.jobs, path, name, result])
+        if result == 'failed':
+            raise Error('org.freedesktop.systemd1.UnitOperationFailed', f'Job for {name} failed.')
+        return path
+
+    def signal(self, path, interface, member, signature, body):
+        self.connection.send(Message(4, path=path, interface=interface, member=member, signature=signature, body=body))
+
+    def unit_properties(self, row):
+        active, sub = core.active_sub(row)
+        name = row['name']
+        values = {
+            UNIT: {'Id': Variant('s', name), 'Names': Variant('as', [name]), 'Description': Variant('s', row.get('description', '')),
+                   'LoadState': Variant('s', 'masked' if row.get('state') == 'masked' else 'loaded'),
+                   'ActiveState': Variant('s', active), 'SubState': Variant('s', sub),
+                   'UnitFileState': Variant('s', core.file_state(row)), 'FragmentPath': Variant('s', row.get('path', '')),
+                   'ActiveEnterTimestamp': Variant('t', microseconds(row.get('since')) if active == 'active' else 0),
+                   'CanStart': Variant('b', True), 'CanStop': Variant('b', True), 'CanReload': Variant('b', True)},
+        }
+        if name.endswith('.service'):
+            values[SERVICE] = {'MainPID': Variant('u', row.get('pid') or 0), 'ExecMainPID': Variant('u', row.get('pid') or 0),
+                               'StatusText': Variant('s', row.get('status', '')),
+                               'Result': Variant('s', 'exit-code' if row.get('state') == 'failed' else 'success'),
+                               'ExecMainStatus': Variant('i', row.get('exitCode') or 0)}
+        if name.endswith('.timer'):
+            values[TIMER] = {'Unit': Variant('s', row.get('target', '')),
+                             'NextElapseUSecRealtime': Variant('t', microseconds(row.get('next'))),
+                             'LastTriggerUSec': Variant('t', microseconds(row.get('last')))}
+        return values
+
+    def manager_properties(self):
+        return {'Version': Variant('s', '257-dextop'), 'Features': Variant('s', ''), 'Virtualization': Variant('s', 'proot'),
+                'Architecture': Variant('s', {'aarch64': 'arm64', 'x86_64': 'x86-64'}.get(os.uname().machine, os.uname().machine)),
+                'Tainted': Variant('s', ''), 'SystemState': Variant('s', 'running'),
+                'NNames': Variant('u', len(self.rows())), 'NJobs': Variant('u', 0), 'NFailedUnits': Variant('u', 0),
+                'DefaultStandardOutput': Variant('s', 'journal'), 'Environment': Variant('as', [])}
+
+    def introspect(self, path):
+        if path == '/':
+            nodes = '<node name="org"/>'
+        elif path in ('/org', '/org/freedesktop'):
+            nodes = '<node name="freedesktop"/>' if path == '/org' else '<node name="systemd1"/>'
+        elif path == ROOT_PATH:
+            nodes = '<node name="unit"/>' + f'<interface name="{MANAGER}"><method name="StartUnit"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="o" direction="out"/></method><method name="StopUnit"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="o" direction="out"/></method><method name="RestartUnit"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="o" direction="out"/></method><method name="ListUnits"><arg type="a(ssssssouso)" direction="out"/></method><method name="ListUnitFiles"><arg type="a(ss)" direction="out"/></method><method name="GetUnit"><arg type="s" direction="in"/><arg type="o" direction="out"/></method><signal name="JobRemoved"><arg type="u"/><arg type="o"/><arg type="s"/><arg type="s"/></signal></interface>'
+        elif path == ROOT_PATH + '/unit':
+            nodes = ''.join(f'<node name="{escape(name)}"/>' for name in self.rows())
+        else:
+            nodes = f'<interface name="{UNIT}"><method name="Start"><arg type="s" direction="in"/><arg type="o" direction="out"/></method><method name="Stop"><arg type="s" direction="in"/><arg type="o" direction="out"/></method><method name="Restart"><arg type="s" direction="in"/><arg type="o" direction="out"/></method></interface>'
+        return ('<!DOCTYPE node PUBLIC "-//freedesktop//DTD D-BUS Object Introspection 1.0//EN" '
+                '"http://www.freedesktop.org/standards/dbus/1.0/introspect.dtd"><node>'
+                '<interface name="org.freedesktop.DBus.Introspectable"><method name="Introspect"><arg type="s" direction="out"/></method></interface>'
+                '<interface name="org.freedesktop.DBus.Properties"><method name="Get"><arg type="s" direction="in"/><arg type="s" direction="in"/><arg type="v" direction="out"/></method>'
+                '<method name="GetAll"><arg type="s" direction="in"/><arg type="a{sv}" direction="out"/></method></interface>'
+                + nodes + '</node>')
+
+    def changes(self, units):
+        result = []
+        for name in units:
+            name = core.unit_name(name) if '.' in name or not name.endswith(('.target', '.socket')) else name
+            result.append(('symlink', f'/etc/systemd/system/multi-user.target.wants/{name}', f'/usr/lib/systemd/system/{name}'))
+        return result
+
+    def handle(self, message):
+        path, interface, member, body = message.path, message.interface, message.member, message.body
+        if interface == 'org.freedesktop.DBus.Introspectable' and member == 'Introspect':
+            return 's', [self.introspect(path)]
+        if interface == 'org.freedesktop.DBus.Peer':
+            if member == 'GetMachineId':
+                return 's', [open('/etc/machine-id').read().strip()]
+            return '', []
+        if interface == PROPERTIES:
+            if path == ROOT_PATH:
+                values = {MANAGER: self.manager_properties()}
+            elif path.startswith(ROOT_PATH + '/unit/'):
+                values = self.unit_properties(self.row(unescape(path.rsplit('/', 1)[1])))
+            else:
+                raise Error('org.freedesktop.DBus.Error.UnknownObject', 'Unknown object ' + path)
+            if member == 'GetAll':
+                return 'a{sv}', [values.get(body[0], {}) if body[0] else {key: value for group in values.values() for key, value in group.items()}]
+            if member == 'Get':
+                group = values.get(body[0], {})
+                if body[1] not in group:
+                    raise Error('org.freedesktop.DBus.Error.UnknownProperty', 'Unknown property ' + body[1])
+                return 'v', [group[body[1]]]
+            raise Error('org.freedesktop.DBus.Error.PropertyReadOnly', 'Properties are read-only')
+        if path.startswith(ROOT_PATH + '/unit/') and interface in (UNIT, None):
+            name = unescape(path.rsplit('/', 1)[1])
+            operation = {'Start': 'start', 'Stop': 'stop', 'Restart': 'restart', 'TryRestart': 'restart',
+                         'ReloadOrRestart': 'restart', 'Reload': 'reload'}.get(member)
+            if operation:
+                self.authorize(message)
+                return 'o', [self.job(name, member, operation)]
+            if member == 'ResetFailed':
+                self.authorize(message)
+                self.manager('reset-failed', [name])
+                return '', []
+        if path == ROOT_PATH and interface in (MANAGER, None):
+            operation = {'StartUnit': 'start', 'StopUnit': 'stop', 'RestartUnit': 'restart', 'TryRestartUnit': 'restart',
+                         'ReloadOrRestartUnit': 'restart', 'ReloadOrTryRestartUnit': 'restart', 'ReloadUnit': 'reload'}.get(member)
+            if operation:
+                self.authorize(message)
+                return 'o', [self.job(body[0], member, operation)]
+            if member in ('GetUnit', 'LoadUnit'):
+                self.row(core.unit_name(body[0]))
+                return 'o', [unit_path(core.unit_name(body[0]))]
+            if member == 'GetUnitByPID':
+                for row in self.rows().values():
+                    if row.get('pid') == body[0]:
+                        return 'o', [unit_path(row['name'])]
+                raise Error('org.freedesktop.systemd1.NoUnitForPID', f'PID {body[0]} does not belong to any loaded unit.')
+            if member in ('ListUnits', 'ListUnitsFiltered', 'ListUnitsByPatterns', 'ListUnitsByNames'):
+                rows = list(self.rows().values())
+                if member == 'ListUnitsByNames':
+                    rows = [row for row in rows if row['name'] in body[0]]
+                if member == 'ListUnitsFiltered' or member == 'ListUnitsByPatterns':
+                    states = body[0]
+                    rows = [row for row in rows if not states or set(core.active_sub(row)) & set(states)]
+                    if member == 'ListUnitsByPatterns' and body[1]:
+                        rows = [row for row in rows if any(core.fnmatch.fnmatch(row['name'], pattern) for pattern in body[1])]
+                listed = []
+                for row in rows:
+                    active, sub = core.active_sub(row)
+                    listed.append((row['name'], row.get('description', ''), 'masked' if row.get('state') == 'masked' else 'loaded',
+                                   active, sub, '', unit_path(row['name']), 0, '', ObjectPath('/')))
+                return 'a(ssssssouso)', [listed]
+            if member in ('ListUnitFiles', 'ListUnitFilesByPatterns'):
+                return 'a(ss)', [[(row.get('path') or row['name'], core.file_state(row)) for row in self.rows().values()]]
+            if member == 'GetUnitFileState':
+                return 's', [core.file_state(self.row(os.path.basename(body[0])))]
+            if member in ('EnableUnitFiles', 'DisableUnitFiles', 'MaskUnitFiles', 'UnmaskUnitFiles', 'ReenableUnitFiles'):
+                self.authorize(message)
+                operation = {'EnableUnitFiles': 'enable', 'DisableUnitFiles': 'disable', 'MaskUnitFiles': 'mask',
+                             'UnmaskUnitFiles': 'unmask', 'ReenableUnitFiles': 'enable'}[member]
+                names = [os.path.basename(name) for name in body[0]]
+                self.manager(operation, names)
+                changes = self.changes(names) if operation == 'enable' else [('unlink', name, '') for name in names]
+                if member in ('EnableUnitFiles', 'ReenableUnitFiles'):
+                    return 'ba(sss)', [True, changes]
+                return 'a(sss)', [changes]
+            if member == 'KillUnit':
+                self.authorize(message)
+                self.manager('kill', [body[0]], signal='SIG' + {9: 'KILL', 15: 'TERM', 1: 'HUP', 2: 'INT', 10: 'USR1', 12: 'USR2'}.get(body[2], 'TERM'))
+                return '', []
+            if member in ('ResetFailed', 'ResetFailedUnit'):
+                self.authorize(message)
+                self.manager('reset-failed', [body[0]] if body else [row for row in self.rows() if self.rows()[row].get('state') == 'failed'])
+                return '', []
+            if member in ('Reload', 'Reexecute'):
+                self.authorize(message)
+                self.signal(ROOT_PATH, MANAGER, 'Reloading', 'b', [True])
+                self.signal(ROOT_PATH, MANAGER, 'Reloading', 'b', [False])
+                return '', []
+            if member == 'Subscribe':
+                self.subscribers.add(message.sender)
+                return '', []
+            if member == 'Unsubscribe':
+                self.subscribers.discard(message.sender)
+                return '', []
+            if member == 'GetDefaultTarget':
+                return 's', ['graphical.target']
+            if member == 'ListJobs':
+                return 'a(usssoo)', [[]]
+            if member in ('PowerOff', 'Reboot', 'Halt', 'KExec', 'SoftReboot'):
+                raise Error('org.freedesktop.DBus.Error.NotSupported', 'Android owns the device: close Linux from Dextop.')
+        raise Error('org.freedesktop.DBus.Error.UnknownMethod', f'Unknown method {interface}.{member} on {path}')
+
+    def watch(self):
+        try:
+            rows = self.rows()
+        except (ValueError, OSError):
+            return
+        for name, row in rows.items():
+            state = (row.get('state'), row.get('pid'), row.get('enabled'))
+            if self.snapshot.get(name) not in (None, state):
+                active, sub = core.active_sub(row)
+                self.signal(unit_path(name), PROPERTIES, 'PropertiesChanged', 'sa{sv}as',
+                            [UNIT, {'ActiveState': Variant('s', active), 'SubState': Variant('s', sub)}, []])
+            if name not in self.snapshot:
+                if self.snapshot:
+                    self.signal(ROOT_PATH, MANAGER, 'UnitNew', 'so', [name, unit_path(name)])
+            self.snapshot[name] = state
+
+    def run(self):
+        reply = self.connection.call('org.freedesktop.DBus', '/org/freedesktop/DBus', 'org.freedesktop.DBus', 'RequestName', 'su', [BUS_NAME, 4])
+        if reply[0] not in (1, 4):
+            raise OSError(f'Cannot own {BUS_NAME} ({reply[0]})')
+        self.watch()
+        last = time.monotonic()
+        while True:
+            for message in self.connection.receive(1):
+                if message.kind != 1:
+                    continue
+                try:
+                    signature, body = self.handle(message)
+                    if not message.flags & 1:
+                        self.connection.send(Message(2, reply=message.serial, destination=message.sender, signature=signature, body=body))
+                except Error as error:
+                    self.connection.send(Message(3, reply=message.serial, destination=message.sender, error=error.name, signature='s', body=[str(error)]))
+                except Exception as error:
+                    self.connection.send(Message(3, reply=message.serial, destination=message.sender,
+                                                 error='org.freedesktop.DBus.Error.Failed', signature='s', body=[str(error)]))
+            if time.monotonic() - last >= 1:
+                last = time.monotonic()
+                self.watch()
+
+
+if __name__ == '__main__':
+    address = os.environ.get('DBUS_SYSTEM_BUS_ADDRESS', 'unix:path=/run/dbus/system_bus_socket')
+    delay = 2
+    while True:
+        try:
+            Service(Connection(address)).run()
+        except (OSError, Error) as error:
+            print('systemd D-Bus interface:', error, file=sys.stderr, flush=True)
+        time.sleep(delay)
+        delay = min(60, delay * 2)

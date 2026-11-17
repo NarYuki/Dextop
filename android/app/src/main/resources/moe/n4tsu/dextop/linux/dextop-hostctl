@@ -1,0 +1,270 @@
+#!/usr/bin/python3
+import json
+import os
+import platform
+import pwd
+import re
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+DEVICE = Path('/run/dextop-standins/device.json')
+
+
+def device():
+    try:
+        return json.loads(DEVICE.read_text())
+    except (OSError, ValueError):
+        return {}
+
+
+def read(path, default=''):
+    try:
+        return Path(path).read_text().strip()
+    except OSError:
+        return default
+
+
+def os_release():
+    values = {}
+    for line in read('/etc/os-release').splitlines():
+        key, _, value = line.partition('=')
+        values[key] = value.strip('"')
+    return values
+
+
+def need_root(verb):
+    if os.geteuid() != 0:
+        print(f'Could not {verb}: Access denied. Run it with sudo.', file=sys.stderr)
+        sys.exit(1)
+
+
+def show(rows):
+    width = max(len(key) for key, _ in rows)
+    for key, value in rows:
+        if value:
+            print(f'{key.rjust(width)}: {value}')
+
+
+def write(path, text):
+    target = Path(path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    pending = target.with_name('.' + target.name + '.dextop')
+    pending.write_text(text)
+    pending.chmod(0o644)
+    pending.replace(target)
+
+
+def hostnamectl(args):
+    info = device()
+    static = read('/etc/hostname') or platform.node()
+    command = args[0] if args else 'status'
+    if command in ('status', 'show'):
+        release = os_release()
+        chassis = info.get('chassis', 'handset')
+        rows = [('Static hostname', static), ('Transient hostname', platform.node() if platform.node() != static else ''),
+                ('Icon name', 'computer-' + chassis), ('Chassis', chassis), ('Machine ID', read('/etc/machine-id')),
+                ('Boot ID', read('/proc/sys/kernel/random/boot_id').replace('-', '')), ('Virtualization', 'proot'),
+                ('Operating System', release.get('PRETTY_NAME', 'Linux')), ('Kernel', f'{platform.system()} {platform.release()}'),
+                ('Architecture', {'aarch64': 'arm64', 'x86_64': 'x86-64'}.get(platform.machine(), platform.machine())),
+                ('Hardware Vendor', info.get('manufacturer', '')), ('Hardware Model', info.get('model', '')),
+                ('Firmware Version', ('Android ' + info['android']) if info.get('android') else '')]
+        if command == 'show':
+            for key, value in rows:
+                print(key.replace(' ', '') + '=' + str(value))
+        else:
+            show(rows)
+        return 0
+    if command == 'hostname' and len(args) == 1:
+        print(static)
+        return 0
+    if command in ('hostname', 'set-hostname') and len(args) >= 2:
+        need_root('set hostname')
+        name = args[-1]
+        if not re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9.-]{0,62}', name):
+            print('Invalid hostname', file=sys.stderr)
+            return 1
+        write('/etc/hostname', name + '\n')
+        hosts = read('/etc/hosts').splitlines()
+        hosts = [line for line in hosts if not line.startswith('127.0.1.1')] + [f'127.0.1.1\t{name}']
+        write('/etc/hosts', '\n'.join(hosts) + '\n')
+        return 0
+    if command in ('chassis', 'icon-name', 'deployment', 'location'):
+        print(info.get('chassis', 'handset') if command == 'chassis' else 'computer-' + info.get('chassis', 'handset') if command == 'icon-name' else '')
+        return 0
+    print(f'Unknown command verb {command}.', file=sys.stderr)
+    return 1
+
+
+def zone():
+    value = os.environ.get('TZ', '').lstrip(':')
+    if not value:
+        value = read('/etc/timezone')
+    if not value:
+        try:
+            value = os.readlink('/etc/localtime').split('zoneinfo/', 1)[1]
+        except (OSError, IndexError):
+            value = 'UTC'
+    return value
+
+
+def timedatectl(args):
+    command = args[0] if args else 'status'
+    if command in ('status', 'show'):
+        now = time.time()
+        local = time.strftime('%a %Y-%m-%d %H:%M:%S %Z', time.localtime(now))
+        utc = time.strftime('%a %Y-%m-%d %H:%M:%S UTC', time.gmtime(now))
+        offset = time.strftime('%z', time.localtime(now))
+        rows = [('Local time', local), ('Universal time', utc), ('RTC time', 'n/a'),
+                ('Time zone', f'{zone()} ({time.strftime("%Z", time.localtime(now))}, {offset})'),
+                ('System clock synchronized', 'yes'), ('NTP service', 'n/a (managed by Android)'), ('RTC in local TZ', 'no')]
+        if command == 'show':
+            print(f'Timezone={zone()}\nLocalRTC=no\nCanNTP=no\nNTP=no\nNTPSynchronized=yes\nTimeUSec={time.strftime("%a %Y-%m-%d %H:%M:%S %Z")}')
+        else:
+            show(rows)
+        return 0
+    if command == 'list-timezones':
+        root = Path('/usr/share/zoneinfo')
+        names = sorted(str(path.relative_to(root)) for path in root.rglob('*')
+                       if path.is_file() and path.relative_to(root).parts[0] not in ('posix', 'right', 'Etc') and '.' not in path.name and path.name[0].isupper())
+        print('\n'.join(names))
+        return 0
+    if command == 'set-timezone' and len(args) == 2:
+        need_root('set time zone')
+        name = args[1]
+        source = Path('/usr/share/zoneinfo')/name
+        if '..' in name or not source.is_file():
+            print(f'Invalid or not installed time zone "{name}".', file=sys.stderr)
+            return 1
+        link = Path('/etc/localtime')
+        link.unlink(missing_ok=True)
+        link.symlink_to(str(source))
+        write('/etc/timezone', name + '\n')
+        if os.environ.get('TZ'):
+            print('Note: this session follows TZ, which Dextop sets from Android.', file=sys.stderr)
+        return 0
+    if command in ('set-time', 'set-ntp', 'set-local-rtc'):
+        print('The clock belongs to Android: set the date, time and network time there.', file=sys.stderr)
+        return 1
+    print(f'Unknown command verb {command}.', file=sys.stderr)
+    return 1
+
+
+def locale_values():
+    values = {}
+    for path in ('/etc/default/locale', '/etc/locale.conf'):
+        for line in read(path).splitlines():
+            key, _, value = line.partition('=')
+            if key.strip() and not key.startswith('#'):
+                values[key.strip()] = value.strip().strip('"')
+    return values
+
+
+def keyboard_values():
+    values = {}
+    for line in read('/etc/default/keyboard').splitlines():
+        key, _, value = line.partition('=')
+        values[key.strip()] = value.strip().strip('"')
+    return values
+
+
+def localectl(args):
+    command = args[0] if args else 'status'
+    if command == 'status':
+        values = locale_values()
+        keyboard = keyboard_values()
+        system = ', '.join(f'{key}={value}' for key, value in values.items()) or 'LANG=' + os.environ.get('LANG', 'C.UTF-8')
+        show([('System Locale', system), ('VC Keymap', 'n/a'), ('X11 Layout', keyboard.get('XKBLAYOUT', 'n/a')),
+              ('X11 Model', keyboard.get('XKBMODEL', '')), ('X11 Variant', keyboard.get('XKBVARIANT', '')),
+              ('X11 Options', keyboard.get('XKBOPTIONS', ''))])
+        return 0
+    if command == 'list-locales':
+        return subprocess.call(['locale', '-a'])
+    if command == 'list-x11-keymap-layouts':
+        layouts = re.findall(r'^\s+(\S+)\s', read('/usr/share/X11/xkb/rules/base.lst').split('! layout', 1)[-1].split('! variant', 1)[0], re.M)
+        print('\n'.join(layouts))
+        return 0
+    if command == 'set-locale' and len(args) >= 2:
+        need_root('set locale')
+        values = locale_values()
+        for item in args[1:]:
+            key, separator, value = item.partition('=')
+            if not separator:
+                key, value = 'LANG', item
+            values[key] = value
+        write('/etc/default/locale', ''.join(f'{key}={value}\n' for key, value in values.items()))
+        return 0
+    if command == 'set-x11-keymap' and len(args) >= 2:
+        need_root('set keymap')
+        keyboard = keyboard_values()
+        for key, value in zip(('XKBLAYOUT', 'XKBMODEL', 'XKBVARIANT', 'XKBOPTIONS'), args[1:]):
+            keyboard[key] = value
+        write('/etc/default/keyboard', ''.join(f'{key}="{value}"\n' for key, value in keyboard.items()))
+        return 0
+    if command == 'set-keymap':
+        print('There is no virtual console here: use set-x11-keymap.', file=sys.stderr)
+        return 1
+    print(f'Unknown command verb {command}.', file=sys.stderr)
+    return 1
+
+
+def session_user():
+    name = os.environ.get('DEXTOP_LINUX_USER') or os.environ.get('SUDO_USER') or os.environ.get('USER') or 'root'
+    try:
+        account = pwd.getpwnam(name)
+    except KeyError:
+        account = pwd.getpwuid(os.getuid())
+    return account
+
+
+def loginctl(args):
+    command = args[0] if args else 'list-sessions'
+    account = session_user()
+    linger = Path('/var/lib/systemd/linger')/account.pw_name
+    if command == 'list-sessions':
+        print('SESSION  UID  USER  SEAT  TTY')
+        print(f'c1  {account.pw_uid}  {account.pw_name}  seat0  -\n\n1 sessions listed.')
+        return 0
+    if command == 'list-users':
+        print(f'UID  USER  LINGER  STATE\n{account.pw_uid}  {account.pw_name}  {"yes" if linger.exists() else "no"}  active\n\n1 users listed.')
+        return 0
+    if command == 'list-seats':
+        print('SEAT\nseat0\n\n1 seats listed.')
+        return 0
+    if command in ('show-session', 'session-status'):
+        print(f'Id=c1\nName={account.pw_name}\nUser={account.pw_uid}\nSeat=seat0\nType=x11\nClass=user\nActive=yes\nState=active\nRemote=no')
+        return 0
+    if command in ('show-user', 'user-status'):
+        print(f'UID={account.pw_uid}\nName={account.pw_name}\nLinger={"yes" if linger.exists() else "no"}\nState=active\nRuntimePath={os.environ.get("XDG_RUNTIME_DIR", "")}')
+        return 0
+    if command in ('enable-linger', 'disable-linger'):
+        if command == 'enable-linger':
+            linger.parent.mkdir(parents=True, exist_ok=True)
+            linger.touch()
+        else:
+            linger.unlink(missing_ok=True)
+        return 0
+    if command in ('lock-session', 'unlock-session', 'lock-sessions', 'unlock-sessions', 'activate'):
+        return 0
+    if command in ('terminate-session', 'terminate-user', 'kill-session', 'kill-user', 'poweroff', 'reboot'):
+        print('Sessions belong to Android here: close Linux from Dextop.', file=sys.stderr)
+        return 1
+    print(f'Unknown command verb {command}.', file=sys.stderr)
+    return 1
+
+
+COMMANDS = {'hostnamectl': hostnamectl, 'timedatectl': timedatectl, 'localectl': localectl, 'loginctl': loginctl}
+
+if __name__ == '__main__':
+    name = Path(sys.argv[0]).name
+    arguments = [arg for arg in sys.argv[1:] if arg not in ('--no-pager', '--no-ask-password', '--static', '--pretty', '--transient')]
+    if name not in COMMANDS and arguments and arguments[0] in COMMANDS:
+        name = arguments.pop(0)
+    if name not in COMMANDS:
+        print('Usage: hostnamectl | timedatectl | localectl | loginctl', file=sys.stderr)
+        sys.exit(2)
+    try:
+        sys.exit(COMMANDS[name](arguments))
+    except BrokenPipeError:
+        sys.exit(0)
