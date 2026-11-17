@@ -5390,7 +5390,7 @@ abstract class AppLocalizations {
   /// No description provided for @linuxSetupIntro.
   ///
   /// In ja, this message translates to:
-  /// **'使い方に合わせて Linux を準備します。デスクトップ、言語、入力方法、アプリを順番に選びましょう。'**
+  /// **'使い方に合わせて Linux を準備します。言語、入力方法、アプリを順番に選びましょう。'**
   String get linuxSetupIntro;
 
   /// No description provided for @linuxSetupExisting.
@@ -5450,7 +5450,7 @@ abstract class AppLocalizations {
   /// No description provided for @linuxSetupDoneDetail.
   ///
   /// In ja, this message translates to:
-  /// **'Linux タブからデスクトップを開くか、Plasma から Linux アプリを起動できます。Fcitx 5 の入力切り替えは Ctrl+Space です。'**
+  /// **'Linux タブからアプリを開けます。'**
   String get linuxSetupDoneDetail;
 
   /// No description provided for @linuxSetupNext.
@@ -5960,7 +5960,7 @@ abstract class AppLocalizations {
   /// No description provided for @linuxGpuTurnipSetup.
   ///
   /// In ja, this message translates to:
-  /// **'コンテナのセットアップで「3D グラフィックス」を有効にすると使えます（ビルドに 30 分ほどかかります）。それまでは VirGL を使います。'**
+  /// **'コンテナを修復すると使えます。それまでは VirGL を使います。'**
   String get linuxGpuTurnipSetup;
 
   /// No description provided for @linuxSetupPhaseGpu.
