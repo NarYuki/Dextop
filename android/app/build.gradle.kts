@@ -185,7 +185,7 @@ dependencies {
     implementation("androidx.appcompat:appcompat:1.7.1")
     // Material 3 Expressive (MaterialExpressiveTheme, floating toolbar, MaterialShapes) for Dextop Book.
     implementation("androidx.compose.material3:material3:1.5.0-alpha18")
-    implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
+    implementation("com.google.android.gms:play-services-cast-framework:23.0.0")
     implementation("androidx.media3:media3-muxer:1.10.1")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
