@@ -53,5 +53,6 @@ if ($LASTEXITCODE) { throw 'Failed to build PRoot guest fast path' }
 
 # Legacy broad syscall fast path, selected only by the unprotected mode.
 & $Zig cc -target aarch64-linux-gnu.2.31 -shared -fPIC -DDEXTOP_BINFMT -O2 -pthread -s `
+    "-Wl,--version-script=$repo/third_party/droiddeck-fastpath/fastpath.exports" `
     "$repo/third_party/droiddeck-fastpath/fastpath.c" -ldl -o "$out/libblfastpath-unprotected-aarch64.bin"
 if ($LASTEXITCODE) { throw 'Failed to build unprotected PRoot guest fast path' }
