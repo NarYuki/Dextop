@@ -1151,6 +1151,8 @@ int statvfs64(const char *path, struct statvfs64 *buf) {
 
 static ssize_t getxattr_common(const char *path, const char *name, void *value, size_t size, int follow,
                                ssize_t (*real)(const char *, const char *, void *, size_t)) {
+  /* Dextop: getxattr/lgetxattr are not exempted by PRoot's broad prologue; PRoot translates them. */
+  return real(path, name, value, size);
   struct res r;
   long rs = resolve(AT_FDCWD, path, follow | MAY_BE_UNSEEN, &r);
   if (rs == 1) rs = -ENOENT;
@@ -1170,6 +1172,8 @@ ssize_t lgetxattr(const char *path, const char *name, void *value, size_t size) 
 
 static ssize_t listxattr_common(const char *path, char *list, size_t size, int follow,
                                 ssize_t (*real)(const char *, char *, size_t)) {
+  /* Dextop: listxattr/llistxattr are not exempted by PRoot's broad prologue; PRoot translates them. */
+  return real(path, list, size);
   struct res r;
   long rs = resolve(AT_FDCWD, path, follow | MAY_BE_UNSEEN, &r);
   if (rs == 1) rs = -ENOENT;
