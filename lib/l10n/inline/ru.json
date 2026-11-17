@@ -1616,5 +1616,7 @@
   "uiSystemAndSharedServices": "Система и общие службы",
   "uiAndroidIntegrationCategory": "Интеграция с Android",
   "uiProcessesAndPerformance": "Процессы и производительность",
-  "uiClipboardAndShortcuts": "Буфер обмена и ярлыки"
+  "uiClipboardAndShortcuts": "Буфер обмена и ярлыки",
+  "uiReceivePreReleases": "Получать предварительные версии",
+  "uiReceivePreReleasesDescription": "Предлагать как обновления и бета-версии, выходящие до стабильного выпуска. В них могут быть ошибки."
 }
