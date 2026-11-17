@@ -16,7 +16,8 @@ concurrency:
 jobs:
   build:
     name: Analyze, test, and build
-    runs-on: self-hosted
+    # Gradle needs several GB: Android jobs share one runner so they never run side by side.
+    runs-on: [self-hosted, android]
     timeout-minutes: 30
 
     steps:
