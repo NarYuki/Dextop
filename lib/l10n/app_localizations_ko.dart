@@ -2787,8 +2787,7 @@ class AppLocalizationsKo extends AppLocalizations {
   String get linuxSetupDone => 'Linux 준비가 끝났습니다';
 
   @override
-  String get linuxSetupDoneDetail =>
-      'Linux 탭에서 앱을 열 수 있습니다.';
+  String get linuxSetupDoneDetail => 'Linux 탭에서 앱을 열 수 있습니다.';
 
   @override
   String get linuxSetupNext => '다음';

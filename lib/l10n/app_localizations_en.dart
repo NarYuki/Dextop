@@ -2873,8 +2873,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get linuxSetupDone => 'Your Linux workspace is ready';
 
   @override
-  String get linuxSetupDoneDetail =>
-      'Open your apps from the Linux tab.';
+  String get linuxSetupDoneDetail => 'Open your apps from the Linux tab.';
 
   @override
   String get linuxSetupNext => 'Continue';
