@@ -125,16 +125,7 @@ class _DisplayEnvironmentSettingsCardState
     );
     if (!widget.wrapInCard) return column;
     return Card(
-      child: ListTileTheme(
-        data: const ListTileThemeData(
-          dense: true,
-          minTileHeight: 64,
-          minVerticalPadding: 6,
-          contentPadding: EdgeInsets.symmetric(horizontal: 16),
-          visualDensity: VisualDensity(vertical: -1),
-        ),
-        child: column,
-      ),
+      child: ListTileTheme(data: experimentalFeatureTileTheme, child: column),
     );
   }
 }

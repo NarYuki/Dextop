@@ -48,6 +48,7 @@ OBJECTS += \
 	tracee/tracee.o		\
 	tracee/mem.o		\
 	tracee/reg.o		\
+	tracee/landlock.o	\
 	tracee/event.o		\
 	tracee/seccomp.o        \
 	tracee/statx.o		\

@@ -110,6 +110,18 @@ internal object LinuxContainerClient {
         }
     }
 
+    /** Does not start or bind Linux merely to change an experimental preference. */
+    fun syncExperimentalFastMode(context: Context, onResult: (Boolean) -> Unit, onError: (Throwable) -> Unit) {
+        calls.execute {
+            runCatching {
+                // The candidate covers changes queued during connection initialization.
+                (remote ?: activeConnection?.candidate)?.let { LinuxExperimentalFeatures.publish(context, it) }
+                LinuxExperimentalFeatures.fastModeEnabled(context)
+            }.onSuccess { value -> onMain { onResult(value) } }
+                .onFailure { error -> onMain { onError(error) } }
+        }
+    }
+
     private class RuntimeConnection(val attempt: LinuxConnectionEpoch.Attempt) : ServiceConnection {
         @Volatile var candidate: ILinuxContainerService? = null
         override fun onServiceConnected(name: ComponentName?, binder: IBinder?) = onMain {
@@ -150,6 +162,7 @@ internal object LinuxContainerClient {
                         error(moe.n4tsu.dextop.localText("uiLinuxServiceProtocolOrAPKVersionDoesNotMatchReconnectDextop"))
                     }
                     service.initialize(context.applicationInfo.nativeLibraryDir, runtimeCallback(attempt))
+                    LinuxExperimentalFeatures.publish(context, service)
                     check(epochs.owns(attempt)) { moe.n4tsu.dextop.localText("uiLinuxConnectionChangedDuringInitialization") }
                     runCatching { LinuxKeyring.publish(context, service) }
                         .onFailure { Log.w(TAG, "Cannot hand over keyring passwords", it) }
