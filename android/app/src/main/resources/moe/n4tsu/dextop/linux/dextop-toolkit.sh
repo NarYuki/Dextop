@@ -1,4 +1,12 @@
 # Sourced by Dextop's application launcher, desktop session and login shells.
+# A Plasma desktop session changes the account's GTK theme, icons and cursor; they are put back
+# if it ended without doing so itself (dextop-desktop-session restore-plasma).
+if [ -x /usr/local/libexec/dextop-desktop-session ] &&
+    { [ -f "${XDG_DATA_HOME:-${HOME:-/root}/.local/share}/dextop/plasma-saved/active" ] ||
+      { grep -qi breeze "${HOME:-/root}/.config/gtk-3.0/settings.ini" 2>/dev/null &&
+        [ ! -e "${HOME:-/root}/.config/dextop/plasma-theme-repaired-v1" ]; }; }; then
+    /usr/local/libexec/dextop-desktop-session restore-plasma
+fi
 [ ! -r /etc/dextop/theme.env ] || . /etc/dextop/theme.env
 _dextop_theme_stamp="${HOME:-/root}/.config/dextop/toolkit-theme-v1"
 _dextop_theme_applied=
