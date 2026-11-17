@@ -35,6 +35,9 @@ internal object LinuxPrintBridge {
         manager.createNotificationChannel(NotificationChannel(CHANNEL,
             moe.n4tsu.dextop.localText("uiPrintFromLinux"), NotificationManager.IMPORTANCE_DEFAULT))
         val active = HashSet<String>()
+        // A job noticed while notifications were off must still be offered
+        // once they are allowed, so only count it as shown when it can be.
+        val canNotify = manager.areNotificationsEnabled()
         for (id in containers) {
             val jobs = JSONObject(service.integrationStatus(id)).optJSONArray("printJobs") ?: JSONArray()
             for (index in 0 until jobs.length()) {
@@ -42,7 +45,7 @@ internal object LinuxPrintBridge {
                 val jobId = job.getString("id")
                 val key = "$id:$jobId"
                 active += key
-                if (!shown.add(key)) continue
+                if (!canNotify || !shown.add(key)) continue
                 val title = job.optString("title").ifBlank { moe.n4tsu.dextop.localText("uiLinuxDocument") }
                 val open = PendingIntent.getActivity(context, key.hashCode(),
                     Intent(context, LinuxPrintActivity::class.java).putExtra("container", id).putExtra("job", jobId).putExtra("title", title),
