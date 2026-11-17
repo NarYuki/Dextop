@@ -1,0 +1,34 @@
+name: Assign author
+
+# A pull request without an assignee is assigned to the person who opened it.
+on:
+  pull_request:
+    types: [opened, reopened]
+
+permissions: {}
+
+jobs:
+  assign:
+    name: Assign author
+    if: >-
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.type != 'Bot' &&
+      toJSON(github.event.pull_request.assignees) == '[]'
+    runs-on: self-hosted
+    timeout-minutes: 2
+    permissions:
+      pull-requests: write
+    steps:
+      - name: Assign the author
+        env:
+          GH_TOKEN: ${{ github.token }}
+          API: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+        run: |
+          curl -fsS -X POST \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            "$API/repos/$REPOSITORY/issues/$NUMBER/assignees" \
+            -d "{\"assignees\":[\"$AUTHOR\"]}" > /dev/null

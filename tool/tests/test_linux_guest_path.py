@@ -1,5 +1,6 @@
 """Exercise the profile hook in a real POSIX shell, also on Windows Git Bash."""
 from pathlib import Path
+import os
 import shutil
 import subprocess
 import unittest
@@ -16,7 +17,9 @@ class GuestPathTest(unittest.TestCase):
         body = before + '\n' + SCRIPT + '\nprintf "%s\\n" "$PATH"\n'
         if twice:
             body += SCRIPT + '\nprintf "%s\\n" "$PATH"\n'
-        return subprocess.check_output([SHELL, '-c', body], text=True).splitlines()
+        # Like a guest login without HOME: the user's paths fall back to root's, whatever the host's HOME.
+        environment = {key: value for key, value in os.environ.items() if key != 'HOME'}
+        return subprocess.check_output([SHELL, '-c', body], text=True, env=environment).splitlines()
 
     def test_keeps_vendor_path_precedence_and_deduplicates(self):
         first, second = self.execute("PATH='/opt/vendor/bin:/usr/games:/usr/bin'", twice=True)

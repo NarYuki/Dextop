@@ -100,11 +100,18 @@ class StoreSourceTests(unittest.TestCase):
                 self.handlers['new-operation'](self, SimpleNamespace(get_ref=lambda: 'app/org.example.App/aarch64/stable'), State())
                 return True
         tx = Transaction()
-        api = SimpleNamespace(Installation=SimpleNamespace(new_user=lambda _: object()), Transaction=SimpleNamespace(new_for_installation=lambda *args: tx))
+        # libflatpak needs the full ref: the store resolves it from the remote's refs for this arch.
+        ref = lambda name, arch, branch: SimpleNamespace(get_kind=lambda: 'app', get_name=lambda: name, get_arch=lambda: arch,
+                                                         get_branch=lambda: branch, format_ref=lambda: f'app/{name}/{arch}/{branch}')
+        installation = SimpleNamespace(list_remote_refs_sync=lambda *args: [
+            ref('org.example.App', 'x86_64', 'stable'), ref('org.example.App', 'aarch64', 'beta'),
+            ref('org.example.App', 'aarch64', 'stable'), ref('org.example.Other', 'aarch64', 'stable')])
+        api = SimpleNamespace(Installation=SimpleNamespace(new_user=lambda _: installation), Transaction=SimpleNamespace(new_for_installation=lambda *args: tx),
+                              get_default_arch=lambda: 'aarch64', RefKind=SimpleNamespace(APP='app'))
         with patch.object(store, 'flatpak_api', return_value=api), patch.object(store, 'progress', side_effect=lambda *args: emitted.append(args)):
             store.flatpak_operate('install', 'org.example.App')
         self.assertTrue(tx.noninteractive)
-        self.assertEqual(tx.install, ('flathub', 'org.example.App', None))
+        self.assertEqual(tx.install, ('flathub', 'app/org.example.App/aarch64/stable', None))
         update = next(x for x in emitted if len(x) == 4)
         self.assertEqual(update[0], 37)
         self.assertTrue(update[3])
