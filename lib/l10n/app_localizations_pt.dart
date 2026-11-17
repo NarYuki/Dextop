@@ -6226,8 +6226,7 @@ class AppLocalizationsPtBr extends AppLocalizationsPt {
   String get linuxSetupDone => 'Seu espaço de trabalho Linux está pronto';
 
   @override
-  String get linuxSetupDoneDetail =>
-      'Abra os seus apps na aba Linux.';
+  String get linuxSetupDoneDetail => 'Abra os seus apps na aba Linux.';
 
   @override
   String get linuxSetupNext => 'Continuar';

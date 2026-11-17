@@ -2746,8 +2746,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get linuxSetupDone => 'Linux 已准备就绪';
 
   @override
-  String get linuxSetupDoneDetail =>
-      '可以从 Linux 标签页打开应用。';
+  String get linuxSetupDoneDetail => '可以从 Linux 标签页打开应用。';
 
   @override
   String get linuxSetupNext => '下一步';
@@ -3024,8 +3023,7 @@ class AppLocalizationsZh extends AppLocalizations {
       'Linux 应用直接使用 Adreno GPU（Vulkan 和 OpenGL 4.6）。最快，适合游戏。';
 
   @override
-  String get linuxGpuTurnipSetup =>
-      '修复容器后可用。在此之前使用 VirGL。';
+  String get linuxGpuTurnipSetup => '修复容器后可用。在此之前使用 VirGL。';
 
   @override
   String get linuxSetupPhaseGpu => '正在构建 GPU 驱动（Turnip）';

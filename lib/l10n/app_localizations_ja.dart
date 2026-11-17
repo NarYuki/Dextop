@@ -2742,8 +2742,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get linuxSetupTitle => 'Linux のセットアップ';
 
   @override
-  String get linuxSetupIntro =>
-      '使い方に合わせて Linux を準備します。言語、入力方法、アプリを順番に選びましょう。';
+  String get linuxSetupIntro => '使い方に合わせて Linux を準備します。言語、入力方法、アプリを順番に選びましょう。';
 
   @override
   String get linuxSetupExisting =>
@@ -2774,8 +2773,7 @@ class AppLocalizationsJa extends AppLocalizations {
   String get linuxSetupDone => 'Linux の準備ができました';
 
   @override
-  String get linuxSetupDoneDetail =>
-      'Linux タブからアプリを開けます。';
+  String get linuxSetupDoneDetail => 'Linux タブからアプリを開けます。';
 
   @override
   String get linuxSetupNext => '次へ';
@@ -3058,8 +3056,7 @@ class AppLocalizationsJa extends AppLocalizations {
       'Linux アプリが Adreno GPU を直接使います（Vulkan と OpenGL 4.6）。最も速く、ゲームにも向いています。';
 
   @override
-  String get linuxGpuTurnipSetup =>
-      'コンテナを修復すると使えます。それまでは VirGL を使います。';
+  String get linuxGpuTurnipSetup => 'コンテナを修復すると使えます。それまでは VirGL を使います。';
 
   @override
   String get linuxSetupPhaseGpu => 'GPU ドライバー（Turnip）をビルド中';
