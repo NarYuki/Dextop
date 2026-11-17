@@ -169,7 +169,10 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                         "if command -v python3 >/dev/null 2>&1; then " + LinuxStoreSources.helper() +
                             "dextop-store status ${if (call.argument<Boolean>("refresh") == true) "refresh" else ""}; else printf '%s\\n' '{\"installed\":[],\"upgradable\":[]}'; fi", 120))
                 }) { jsonMap(it) }
-                "integrationStatus" -> remote({ it.integrationStatus(call.argument<String>("id")!!) }) { jsonMap(it) }
+                "integrationStatus" -> remote({ service ->
+                    val id = call.argument<String>("id")!!
+                    service.integrationStatus(id).also { LinuxVncSecrets.remember(context, id, it) }
+                }) { jsonMap(it) }
                 "integrationAction" -> remote({ service ->
                     val id = call.argument<String>("id")!!
                     val request = JSONObject(call.argument<Map<String, Any?>>("request") ?: emptyMap<String, Any?>())
@@ -187,6 +190,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                             if (JSONObject(it).getJSONObject("calendar").optBoolean("running")) LinuxCalendarBridge.sync(context, service, id, force = true)
                         }
                     } else service.integrationAction(id, request.toString())
+                        .also { LinuxVncSecrets.remember(context, id, it) }
                 }) { jsonMap(it).also { LinuxSessionService.start(context) } }
                 "calendarList" -> {
                     fun reply() {
@@ -264,6 +268,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                 "restoreSnapshot" -> remote({ it.restoreSnapshot(call.argument<String>("file")!!); true })
                 "deleteSnapshot" -> remote({ it.deleteSnapshot(call.argument<String>("file")!!) })
                 "exportSnapshot" -> {
+                    val file = call.argument<String>("file")!!
                     val uri = android.net.Uri.parse(call.argument<String>("uri")!!)
                     val output = runCatching { context.contentResolver.openFileDescriptor(uri, "wt") }.getOrNull()
                     if (output == null) result.error("linux", moe.n4tsu.dextop.localText("uiCannotWriteThePickedDocument"), null)
@@ -313,6 +318,7 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     it.remove(id).also { removed ->
                         if (removed) {
                             LinuxKeyring.forget(context, id)
+                            LinuxVncSecrets.forget(context, id)
                             LinuxTerminalSessions.forget(context, id)
                             LinuxCalendarBridge.forget(context, id)
                             LinuxFolders.clear(LinuxFolders.scope(context, id))

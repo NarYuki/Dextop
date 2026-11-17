@@ -112,7 +112,16 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         { id -> startDesktop(id, 1280, 720, 160) },
         { id, message -> log(id, message) },
         { notifyChanged() },
+        { androidContext?.let(LinuxRuntimeService::keep) },
     ) }
+
+    internal fun bootServices(id: String) {
+        val context = androidContext ?: return
+        if (proot == null) initialize(context.applicationInfo.nativeLibraryDir, null)
+        if (readConfig(id)?.optString("state") == "installed") integrations.restore(id)
+    }
+
+    internal fun servicesRunning(): Boolean = integrations.servicesRunning()
     private fun integrationCaller(id: String) {
         check(android.os.Binder.getCallingUid() == audioClientUid) { moe.n4tsu.dextop.localText("uiIntegrationCallerIsNotTheConnectedApplication") }
         check(readConfig(id)?.optString("state") == "installed") { moe.n4tsu.dextop.localText("uiLinuxEnvironmentIsNotInstalled") }
@@ -630,6 +639,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         sessions[containerId] = session
         session.onClipboard = { text -> shareClipboard(containerId, text) }
         integrations.restore(containerId)
+        integrations.desktopStarted(containerId, display)
         startNotifications(containerId, display)
         monitor(containerId, { session.alive }) { sessions[containerId] === session }
         notifyChanged()
@@ -1273,7 +1283,6 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
                     }
                 }
             }
-            file
         }
     }
 

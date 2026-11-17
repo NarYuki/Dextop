@@ -153,6 +153,8 @@ internal object LinuxContainerClient {
                     check(epochs.owns(attempt)) { moe.n4tsu.dextop.localText("uiLinuxConnectionChangedDuringInitialization") }
                     runCatching { LinuxKeyring.publish(context, service) }
                         .onFailure { Log.w(TAG, "Cannot hand over keyring passwords", it) }
+                    runCatching { LinuxVncSecrets.publish(context, service) }
+                        .onFailure { Log.w(TAG, "Cannot hand over VNC passwords", it) }
                 }.onSuccess {
                     onMain {
                         if (!epochs.owns(attempt)) return@onMain
@@ -349,9 +351,9 @@ internal object LinuxContainerClient {
                     if (!epochs.owns(attempt)) return@execute
                     runCatching {
                         val command = LinuxServiceHost.startCommand(context.packageName,
-                            context.applicationInfo.sourceDir, context.applicationInfo.nativeLibraryDir,
-                            moe.n4tsu.dextop.privilege.PublisherKeys.issue(context, moe.n4tsu.dextop.privilege.PublisherKeys.LINUX))
-                        val result = DistributionPrivilegeRuntime.execute(arrayOf("/system/bin/sh", "-c", command))
+                            context.applicationInfo.sourceDir, context.applicationInfo.nativeLibraryDir)
+                        val key = moe.n4tsu.dextop.privilege.PublisherKeys.issue(context, moe.n4tsu.dextop.privilege.PublisherKeys.LINUX)
+                        val result = DistributionPrivilegeRuntime.execute(arrayOf("/system/bin/sh", "-c", command), key + "\n")
                             ?: error(moe.n4tsu.dextop.localText("uiDextopBuiltInAccessIsNotRunning"))
                         check(result.exitCode == 0) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiLinuxServiceLaunchFailed0"), result.error) }
                     }.onFailure { error -> onMain { failConnection(connection, error) } }

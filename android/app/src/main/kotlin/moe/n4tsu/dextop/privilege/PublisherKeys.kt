@@ -36,6 +36,11 @@ internal object PublisherKeys {
 
     fun runtimePid(context: Context): Int = prefs(context).getInt("$RUNTIME-pid", -1)
 
+    /** The Linux daemon whose process was verified for the current key ([issue] forgets it). */
+    fun bindLinux(context: Context, pid: Int) { prefs(context).edit().putInt("$LINUX-pid", pid).commit() }
+
+    fun linuxPid(context: Context): Int = prefs(context).getInt("$LINUX-pid", -1)
+
     /** Whether [presented] is the current key for [kind]. */
     fun matches(context: Context, kind: String, presented: String?): Boolean {
         val expected = prefs(context).getString(kind, null) ?: return false

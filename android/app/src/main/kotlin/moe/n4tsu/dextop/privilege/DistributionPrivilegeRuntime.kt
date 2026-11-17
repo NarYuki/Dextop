@@ -71,7 +71,7 @@ object DistributionPrivilegeRuntime {
         }
     }
 
-    fun execute(arguments: Array<out String>): RuntimeCommandResult? {
+    fun execute(arguments: Array<out String>, input: String? = null): RuntimeCommandResult? {
         if (!enabled) return null
         val remote = runtime?.takeIf { it.isBinderAlive } ?: return null
         val data = Parcel.obtain()
@@ -79,7 +79,9 @@ object DistributionPrivilegeRuntime {
         return try {
             data.writeInterfaceToken(EmbeddedPrivilegeProtocol.descriptor)
             data.writeStringArray(Array(arguments.size) { arguments[it] })
-            check(remote.transact(EmbeddedPrivilegeProtocol.executeCommand, data, reply, 0))
+            if (input != null) data.writeString(input)
+            val code = if (input != null) EmbeddedPrivilegeProtocol.executeCommandWithInput else EmbeddedPrivilegeProtocol.executeCommand
+            check(remote.transact(code, data, reply, 0))
             reply.readException()
             RuntimeCommandResult(reply.readInt(), reply.readString().orEmpty(), reply.readString().orEmpty())
         } finally {

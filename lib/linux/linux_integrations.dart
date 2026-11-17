@@ -595,6 +595,20 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
               t('uiPreparingServiceManagement'),
         ),
       ],
+      LinuxGroup(
+        children: [
+          LinuxToggle(
+            value: state('services')['atBoot'] == true,
+            onChanged: busy
+                ? null
+                : (value) =>
+                      _action({'op': 'services-settings', 'atBoot': value}),
+            icon: M3EIcons.restart_alt_rounded,
+            title: t('uiStartServicesWhenTheDeviceStarts'),
+            subtitle: t('uiStartServicesWhenTheDeviceStartsHelp'),
+          ),
+        ],
+      ),
       ...[
         Padding(
           padding: const EdgeInsets.all(12),
