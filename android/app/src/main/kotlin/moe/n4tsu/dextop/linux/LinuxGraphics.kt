@@ -359,7 +359,10 @@ internal class LinuxGraphics(private val nativeLibraryDir: String) {
                         else -> LinuxGpuMode.SOFTWARE
                     }
                     put(dir.name, LinuxSettings.readContainer(dir.name).put("gpuEffective", effective.id)
-                        .put("wmEffective", LinuxSettings.windowManager(dir.name).id))
+                        .put("wmEffective", LinuxSettings.windowManager(dir.name).id)
+                        // The experimental KDE Plasma desktop session (LinuxDesktopSessions.PLASMA).
+                        .put("plasmaInstalled", File(LinuxPaths.rootfs(dir.name), "usr/bin/startplasma-x11").isFile)
+                        .put("plasmaPackages", org.json.JSONArray(LinuxDesktopSessions.PLASMA_PACKAGES)))
                 }
             }
         })
