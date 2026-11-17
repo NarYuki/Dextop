@@ -16,7 +16,13 @@ Source: https://github.com/pulseaudio/pulseaudio/tree/v13.0
 
 PulseAudio, libsndfile and libltdl retain their LGPL licensing; see COPYING and
 PULSEAUDIO-LICENSE. libffi retains its MIT license in LIBFFI-LICENSE.
-Build the native modules with tool/experiments/deck_audio/build.ps1, then stage
-with python tool/stage_deck_audio.py. The prebuilt host libraries originate in
-DD's pinned checkout; this script does not rebuild those libraries from source.
+Since the 16 KB page-size migration (Google Play, Android 15+), every ELF file
+here is rebuilt from source by tool/build_16k_native_libs.sh with NDK r28 and
+`-z max-page-size=16384`: PulseAudio 13.0 (pulseaudio-13.0.tar.xz, SHA-256
+961b23ca1acfd28f2bc87414c27bb40e12436efcf2158d29721b1e89f3f28057) with
+pulseaudio-13.0-android.patch (bionic build fixes only), libsndfile 1.0.31,
+libltdl from libtool 2.4.7, and the DirectAudio sink in this directory.
+libffi is the separate 16 KB build from third_party/libffi.
+The earlier DD prebuilt host libraries (4 KB-aligned) are no longer shipped;
+tool/stage_deck_audio.py and tool/experiments/deck_audio/build.ps1 describe that old path.
 manifest.json records the exact staged files and SHA-256 values.
