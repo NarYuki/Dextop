@@ -125,6 +125,11 @@ static int traced_by_match(const char *key) {
   if (!line) return 0;
   tracer = strtol(line + 11, NULL, 10);
   if (tracer <= 0) return 0;
+  /* Dextop: the unprotected library runs only under PRoot's Landlock-confined
+   * broad prologue, which alone answers this synthetic prctl with EUCLEAN.
+   * Landlock also hides the tracer's environ, so the key check below is moot. */
+  (void)key; (void)path; (void)want;
+  return sc(SYS_prctl, 0x44584c4c, 0, 0, 0, 0) == -117;
   snprintf(path, sizeof path, "/proc/%ld/environ", tracer);
   if (snprintf(want, sizeof want, "PROOT_FASTPATH=%s", key) >= (int)sizeof want) return 0;
   fd = sc(SYS_openat, AT_FDCWD, (long)path, O_RDONLY | O_CLOEXEC, 0, 0);
@@ -1030,6 +1035,8 @@ int symlink(const char *target, const char *path) { return symlinkat(target, AT_
 
 int fchmodat(int dirfd, const char *path, mode_t mode, int flags) {
   REAL(fchmodat, int (*)(int, const char *, mode_t, int));
+  /* Dextop: permission changes are not covered by Landlock; PRoot translates them. */
+  return real_fchmodat(dirfd, path, mode, flags);
   struct res r;
   long rs = flags ? FP_SLOW : resolve(dirfd, path, 1 | MAY_BE_UNSEEN, &r);
   if (rs == 1) rs = -ENOENT;
@@ -1040,6 +1047,8 @@ int chmod(const char *path, mode_t mode) { return fchmodat(AT_FDCWD, path, mode,
 
 static int utimens_common(int dirfd, const char *path, const struct timespec times[2], int flags) {
   REAL(utimensat, int (*)(int, const char *, const struct timespec[2], int));
+  /* Dextop: timestamp changes are not covered by Landlock; PRoot translates them. */
+  return real_utimensat(dirfd, path, times, flags);
   struct res r;
   long rs;
   if (!path && fp_ready()) {
@@ -1180,6 +1189,8 @@ ssize_t llistxattr(const char *path, char *list, size_t size) {
 
 int inotify_add_watch(int fd, const char *path, uint32_t mask) {
   REAL(inotify_add_watch, int (*)(int, const char *, uint32_t));
+  /* Dextop: watches are not covered by Landlock; PRoot translates them. */
+  return real_inotify_add_watch(fd, path, mask);
   struct res r;
   long rs = resolve(AT_FDCWD, path, (mask & IN_DONT_FOLLOW ? 0 : 1) | MAY_BE_UNSEEN, &r);
   if (rs == 1) rs = -ENOENT;
@@ -1289,6 +1300,9 @@ static int nonblocking(int fd) {
 
 int connect(int fd, const struct sockaddr *addr, socklen_t len) {
   REAL(connect, int (*)(int, const struct sockaddr *, socklen_t));
+  /* Unix sockets go to the next definition: Dextop's socket shim falls back to
+   * abstract names where Android refuses path sockets, and blsession emulates udev. */
+  if (addr && addr->sa_family == AF_UNIX) return real_connect(fd, addr, len);
   struct sockaddr_un un;
   socklen_t un_len;
   long dir = -1;
@@ -1305,6 +1319,7 @@ int connect(int fd, const struct sockaddr *addr, socklen_t len) {
 
 int bind(int fd, const struct sockaddr *addr, socklen_t len) {
   REAL(bind, int (*)(int, const struct sockaddr *, socklen_t));
+  if (addr && addr->sa_family == AF_UNIX) return real_bind(fd, addr, len);
   struct sockaddr_un un;
   socklen_t un_len;
   long dir = -1;
@@ -1363,6 +1378,8 @@ static int pending(int fd) {
 
 static int accept_common(int fd, struct sockaddr *addr, socklen_t *len, int flags) {
   REAL(accept4, int (*)(int, struct sockaddr *, socklen_t *, int));
+  /* Dextop: accept4 is not exempted by PRoot's broad prologue; let PRoot detranslate. */
+  return real_accept4(fd, addr, len, flags);
   if (!fp_ready() || (addr && !len) || (!nonblocking(fd) && !pending(fd))) { missed(__func__, AT_FDCWD, "(accept)"); return real_accept4(fd, addr, len, flags); }
   hits++;
   struct sockaddr_storage got;
@@ -1377,6 +1394,8 @@ int accept4(int fd, struct sockaddr *addr, socklen_t *len, int flags) { return a
 int accept(int fd, struct sockaddr *addr, socklen_t *len) { return accept_common(fd, addr, len, 0); }
 
 static int name_common(long nr, int fd, struct sockaddr *addr, socklen_t *len, int (*real)(int, struct sockaddr *, socklen_t *)) {
+  /* Dextop: socket names are not exempted by PRoot's broad prologue; PRoot detranslates. */
+  return real(fd, addr, len);
   if (!fp_ready() || !addr || !len) { missed(__func__, AT_FDCWD, "(name)"); return real(fd, addr, len); }
   hits++;
   struct sockaddr_storage got;
