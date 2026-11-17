@@ -1188,7 +1188,7 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
     // region Snapshots, backups and AppImages
     /**
      * The one long file job at a time (snapshot, restore, export, import, AppImage), run off the
-     * binder thread; [listSnapshots] reports it: {type, container, state, bytes, error, result}.
+     * binder thread; [fileJob] reports it: {type, container, state, bytes, error, result}.
      */
     @Volatile private var fileJob: JSONObject? = null
 
@@ -1222,18 +1222,31 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         }
     }
 
-    override fun createSnapshot(containerId: String) {
-        check(readConfig(containerId)?.optString("state") == "installed") { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
-        check(!containerBusy(containerId)) { moe.n4tsu.dextop.localText("uiStopTheContainerSSessionsAndApplicationsFirst") }
-        startFileJob("snapshot", containerId) { job ->
-            val file = LinuxBackups.create(containerId, bytes(job))
-            log(containerId, "Snapshot saved: ${file.name} (${file.length() / 1_048_576} MiB)")
-            file.name
+    override fun createSnapshot(containerId: String, name: String, output: android.os.ParcelFileDescriptor) {
+        closeOnRefusal(output) {
+            check(readConfig(containerId)?.optString("state") == "installed") { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiContainer0IsNotInstalled"), containerId) }
+            check(!containerBusy(containerId)) { moe.n4tsu.dextop.localText("uiStopTheContainerSSessionsAndApplicationsFirst") }
+            startFileJob("snapshot", containerId) { job ->
+                val progress = bytes(job)
+                var written = 0L
+                android.os.ParcelFileDescriptor.AutoCloseOutputStream(output).buffered(1 shl 20).use { stream ->
+                    LinuxBackups.create(containerId, object : java.io.FilterOutputStream(stream) {
+                        override fun write(b: ByteArray, off: Int, len: Int) { out.write(b, off, len); written += len }
+                        override fun write(b: Int) { out.write(b); written++ }
+                    }, progress)
+                }
+                log(containerId, "Snapshot saved: $name (${written / 1_048_576} MiB)")
+                name
+            }
         }
     }
 
-    override fun listSnapshots(): String = JSONObject()
-        .put("snapshots", runCatching { LinuxBackups.list() }.getOrDefault(org.json.JSONArray()))
+    /** Closes [descriptor] when [start] throws before a job took it over. */
+    private fun closeOnRefusal(vararg descriptor: android.os.ParcelFileDescriptor, start: () -> Unit) {
+        try { start() } catch (error: Throwable) { descriptor.forEach { runCatching { it.close() } }; throw error }
+    }
+
+    override fun fileJob(): String = JSONObject()
         .put("job", fileJob?.let { synchronized(it) { JSONObject(it.toString()) } } ?: JSONObject.NULL)
         .toString()
 
@@ -1253,44 +1266,44 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         return id
     }
 
-    override fun restoreSnapshot(file: String) {
-        val snapshot = LinuxBackups.file(file)
-        check(snapshot.isFile) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiSnapshot0DoesNotExist"), file) }
-        startFileJob("restore", "") { job -> restoreAs(job) { snapshot.inputStream() } }
+    override fun restoreSnapshot(input: android.os.ParcelFileDescriptor) {
+        closeOnRefusal(input) {
+            startFileJob("restore", "") { job ->
+                input.use {
+                    // Read twice (what it holds, then everything): each read rewinds a duplicate.
+                    restoreAs(job) { android.os.ParcelFileDescriptor.AutoCloseInputStream(input.dup()).also { it.channel.position(0) } }
+                }
+            }
+        }
     }
 
-    @Synchronized
-    override fun deleteSnapshot(file: String): Boolean {
-        check(fileJob?.let { synchronized(it) { it.optString("state") } } != "running") { moe.n4tsu.dextop.localText("uiABackupJobIsRunning") }
-        return LinuxBackups.file(file).delete().also { notifyChanged() }
-    }
-
-    override fun exportSnapshot(file: String, output: android.os.ParcelFileDescriptor) {
-        val snapshot = LinuxBackups.file(file)
-        if (!snapshot.isFile) { output.close(); error(moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiSnapshot0DoesNotExist"), file)) }
-        startFileJob("export", file.substringBefore('-')) { job ->
-            val progress = bytes(job)
-            android.os.ParcelFileDescriptor.AutoCloseOutputStream(output).use { stream ->
-                snapshot.inputStream().use { input ->
-                    val buffer = ByteArray(1 shl 20)
-                    var copied = 0L
-                    while (true) {
-                        val count = input.read(buffer)
-                        if (count < 0) break
-                        stream.write(buffer, 0, count)
-                        copied += count
-                        progress(copied)
+    override fun exportSnapshot(containerId: String, input: android.os.ParcelFileDescriptor, output: android.os.ParcelFileDescriptor) {
+        closeOnRefusal(input, output) {
+            startFileJob("export", containerId) { job ->
+                val progress = bytes(job)
+                android.os.ParcelFileDescriptor.AutoCloseOutputStream(output).use { stream ->
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(input).use { source ->
+                        val buffer = ByteArray(1 shl 20)
+                        var copied = 0L
+                        while (true) {
+                            val count = source.read(buffer)
+                            if (count < 0) break
+                            stream.write(buffer, 0, count)
+                            copied += count
+                            progress(copied)
+                        }
                     }
                 }
+                containerId
             }
         }
     }
 
     override fun importBackup(input: android.os.ParcelFileDescriptor) {
         startFileJob("import", "") { job ->
-            // A document may not be readable twice: it is copied next to the snapshots first.
-            LinuxBackups.directory.mkdirs()
-            val copy = File(LinuxBackups.directory, ".import-${System.currentTimeMillis()}.tmp")
+            // A document may not be readable twice: it is copied beside the containers first.
+            LinuxPaths.containers.mkdirs()
+            val copy = File(LinuxPaths.containers, ".import-${System.currentTimeMillis()}.tmp")
             try {
                 android.os.ParcelFileDescriptor.AutoCloseInputStream(input).use { stream ->
                     copy.outputStream().use { out -> stream.copyTo(out, 1 shl 20) }
@@ -1375,9 +1388,8 @@ class LinuxContainerService(context: android.content.Context? = null) : ILinuxCo
         check(readConfig(containerId) != null) { moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiUnknownContainer0"), containerId) }
         startFileJob("usage", containerId) { job ->
             val root = LinuxPaths.rootfs(containerId)
+            // The app adds snapshotBytes: snapshots are in its own storage.
             LinuxStorage.usage(root, LinuxUser.home(root), bytes(job))
-                .put("snapshotBytes", LinuxBackups.directory.listFiles().orEmpty()
-                    .filter { it.name.startsWith("$containerId-") && it.name.endsWith(LinuxBackups.EXTENSION) }.sumOf { it.length() })
         }
     }
 
