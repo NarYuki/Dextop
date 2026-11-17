@@ -102,7 +102,8 @@ jobs:
     name: Android unit tests
     needs: changes
     if: needs.changes.outputs.android == 'true'
-    runs-on: self-hosted
+    # Gradle needs several GB: Android jobs share one runner so they never run side by side.
+    runs-on: [self-hosted, android]
     timeout-minutes: 30
     steps:
       - name: Check out repository
