@@ -202,7 +202,9 @@ int translate_syscall_enter(Tracee *tracee)
 
 
 
-		if (getenv("PROOT_FASTPATH") != NULL) {
+		if (getenv("PROOT_FASTPATH") != NULL &&
+		    getenv("PROOT_FASTPATH_MODE") != NULL &&
+		    !strcmp(getenv("PROOT_FASTPATH_MODE"), "unprotected")) {
 			int fd = open(path, O_PATH | O_DIRECTORY | O_CLOEXEC);
 
 
@@ -244,7 +246,9 @@ int translate_syscall_enter(Tracee *tracee)
 		tracee->fs->cwd = tmp;
 		talloc_set_name_const(tracee->fs->cwd, "$cwd");
 
-		if (getenv("PROOT_FASTPATH") != NULL) {
+		if (getenv("PROOT_FASTPATH") != NULL &&
+		    getenv("PROOT_FASTPATH_MODE") != NULL &&
+		    !strcmp(getenv("PROOT_FASTPATH_MODE"), "unprotected")) {
 
 			status = syscall_number == PR_chdir
 				? set_sysarg_path(tracee, oldpath, SYSARG_1)

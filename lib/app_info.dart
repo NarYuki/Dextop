@@ -260,23 +260,31 @@ class _ExperimentalFeaturesPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) => Scaffold(
     appBar: AppBar(title: Text(currentLocalizations().uiExperimentalFeatures)),
-    body: ListView(
-      padding: const EdgeInsets.all(16),
-      children: [
-        DisplayEnvironmentSettingsCard(bridge: bridge, showConvenience: false),
-        const SizedBox(height: 12),
-        _MacosCompatibilityExperimentalTile(onChanged: onChanged),
-        const SizedBox(height: 12),
-        _GamepadExperimentalTile(isRunning: isRunning),
-        const SizedBox(height: 12),
-        _ForceLaptopModeExperimentalTile(isRunning: isRunning),
-        const SizedBox(height: 12),
-        _SamsungExperimentalSettingsTile(
-          bridge: bridge,
-          isRunning: isRunning,
-          onOpenSettings: onOpenSamsungSettings,
-        ),
-      ],
+    body: ListTileTheme(
+      data: experimentalFeatureTileTheme,
+      child: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          DisplayEnvironmentSettingsCard(
+            bridge: bridge,
+            showConvenience: false,
+          ),
+          const SizedBox(height: 12),
+          _MacosCompatibilityExperimentalTile(onChanged: onChanged),
+          const SizedBox(height: 12),
+          LinuxFastModeExperimentalTile(onChanged: onChanged),
+          const SizedBox(height: 12),
+          _GamepadExperimentalTile(isRunning: isRunning),
+          const SizedBox(height: 12),
+          _ForceLaptopModeExperimentalTile(isRunning: isRunning),
+          const SizedBox(height: 12),
+          _SamsungExperimentalSettingsTile(
+            bridge: bridge,
+            isRunning: isRunning,
+            onOpenSettings: onOpenSamsungSettings,
+          ),
+        ],
+      ),
     ),
   );
 }

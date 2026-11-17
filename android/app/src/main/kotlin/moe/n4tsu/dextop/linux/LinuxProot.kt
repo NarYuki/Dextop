@@ -56,6 +56,8 @@ internal class LinuxProot(val nativeLibraryDir: String) {
     private fun environment(builder: ProcessBuilder): ProcessBuilder = builder.apply {
         LinuxPaths.prootTmp.mkdirs()
         environment().apply {
+            remove("PROOT_FASTPATH")
+            remove("PROOT_LANDLOCK_PATHS")
             put("PROOT_LOADER", loader.absolutePath)
             put("PROOT_TMP_DIR", LinuxPaths.prootTmp.absolutePath)
         }
@@ -244,12 +246,13 @@ internal class LinuxProot(val nativeLibraryDir: String) {
         LinuxSessionCompatibility.stageNpm(LinuxPaths.rootfs(id))
         val sessionBinds = binds(id, fakeRoot) + extraBinds
         val root = LinuxPaths.rootfs(id)
+        val fastSettings = LinuxSettings.read()
+        val fastMode = LinuxFastMode.from(fastSettings.optString("fastPathMode"))
+        val fastPath = if (!fakeRoot && fastSettings.optBoolean("landlockFastPath") &&
+            LinuxProotFastPath.stage(root, fastMode)) LinuxProotFastPath.create(root, sessionBinds, nativeLibraryDir, fastMode) else null
         val account = if (fakeRoot) "root" else LinuxUser.name(root) ?: "root"
         val home = if (fakeRoot) "/root" else LinuxUser.home(root)
         val accountUid = if (uid == 0 && account != "root") 1000 else uid
-        // Package management requires fake ownership/permissions; retain PRoot's full translation there.
-        val fastPath = if (!fakeRoot && "PROOT_FP_OFF=1" !in extraEnvironment && extraBinds.isEmpty() && File(root, LinuxProotFastPath.LIBRARY.removePrefix("/")).isFile &&
-            System.getenv("PROOT_NO_SECCOMP") == null) LinuxProotFastPath.create(root, sessionBinds) else null
         return environment(ProcessBuilder(
             proot.absolutePath,
             // Secure stores reject link-emulated temporary files and can retry forever.
@@ -265,12 +268,14 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             // Android's time zone (images default to UTC); sites compare it with the network location.
             *timeZone(id)?.let { arrayOf("TZ=$it") }.orEmpty(),
             *(if (fakeRoot) arrayOf("DEXTOP_HARDLINK_COPY=1") else emptyArray()),
+            *fastPath?.guestEnvironment.orEmpty().toTypedArray(),
             "TMPDIR=/tmp", "PATH=${GUEST_PATH.replace("/root/.local/bin", "$home/.local/bin")}",
             // Path unix sockets fall back to abstract ones (the shell user may not create them).
             // DD's bind/connect hooks must run before the socket shim: its udev
             // stand-in sockets need bind() emulation before the real syscall.
             *(if (shim.isFile) arrayOf("LD_PRELOAD=" +
                 // Devices from Android (USB, serial, controllers) in both modes; /proc stand-ins where denied.
+                (if (fastPath != null) "${fastPath.mode.library}:" else "") +
                 "$GUEST_LIBRARY_DIR/libdextop_androidproc.so:" +
                 (if (File(LinuxPaths.rootfs(id), LinuxSessionCompatibility.GUEST_PRELOAD.removePrefix("/")).isFile)
                     "${LinuxSessionCompatibility.GUEST_PRELOAD}:" else "") +
@@ -283,13 +288,22 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             "DEXTOP_SOCKET_TRANSPORT=abstract",
             // libudev must accept Dextop's file-backed sysfs device entries.
             "SYSTEMD_DEVICE_VERIFY_SYSFS=0",
-            *fastPath?.guestEnvironment?.toTypedArray().orEmpty(),
             *guestEnvironment(id).toTypedArray(),
             *extraEnvironment.toTypedArray(),
             "/bin/sh", "-c", script,
         )).apply {
             environment().remove("PROOT_FASTPATH")
-            if (fastPath != null) environment()["PROOT_FASTPATH"] = fastPath.key
+            environment().remove("PROOT_LANDLOCK_PATHS")
+            environment().remove("PROOT_FASTPATH_MODE")
+            if (fastPath != null) {
+                environment()["PROOT_FASTPATH"] = fastPath.key
+                environment()["PROOT_FASTPATH_MODE"] = fastPath.mode.id
+                // Protected runs under Landlock and PRoot refuses it unconfined.
+                // Unprotected deliberately runs without Landlock.
+                if (fastPath.mode == LinuxFastMode.PROTECTED) {
+                    environment()["PROOT_LANDLOCK_PATHS"] = fastPath.landlockPaths.joinToString("\n")
+                }
+            }
         }
     }
 
