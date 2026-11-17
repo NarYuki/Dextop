@@ -1,0 +1,7 @@
+# Secret scanning for pull requests (.github/workflows/safety.yml).
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Vendored, minified xterm.js bundles: identifiers such as FourKeyMap look like keys"
+paths = ['''^android/app/src/main/assets/terminal/(xterm|addon-[a-z0-9-]+)\.js$''']

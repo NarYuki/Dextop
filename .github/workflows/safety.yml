@@ -1,0 +1,101 @@
+name: Safety checks
+
+# Every pull request: no secrets in its commits, and the workflows stay pinned and
+# free of dangerous patterns. "Safety checks" reports the overall result.
+on:
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: safety-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+  ZIZMOR_VERSION: 1.32.0
+  ZIZMOR_SHA256: bb110cc765eca9cd7efb2e284a956be5974c60027b0970f16397d86208a9957b
+  PINACT_VERSION: 5.0.2
+  PINACT_SHA256: 7f003d8f51e984c2264d2009d430e3e0e87ae404a0e2dc2a9a277b0f731bf5b7
+
+jobs:
+  secrets:
+    name: Secrets
+    # The self-hosted runner must never run code from a fork's pull request.
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install gitleaks
+        run: |
+          dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/gitleaks.tar.gz" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          echo "${GITLEAKS_SHA256}  $dir/gitleaks.tar.gz" | sha256sum -c -
+          tar -xzf "$dir/gitleaks.tar.gz" -C "$dir" gitleaks
+          echo "$dir" >> "$GITHUB_PATH"
+
+      - name: Scan the pull request's commits
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: gitleaks git --no-banner --redact --config .gitleaks.toml --log-opts="$BASE..HEAD"
+
+  workflows:
+    name: Workflows
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Install zizmor and pinact
+        run: |
+          dir="$RUNNER_TEMP/workflow-tools"
+          mkdir -p "$dir"
+          curl -fsSL -o "$dir/zizmor.tar.gz" \
+            "https://github.com/zizmorcore/zizmor/releases/download/v${ZIZMOR_VERSION}/zizmor-x86_64-unknown-linux-gnu.tar.gz"
+          echo "${ZIZMOR_SHA256}  $dir/zizmor.tar.gz" | sha256sum -c -
+          curl -fsSL -o "$dir/pinact.tar.gz" \
+            "https://github.com/suzuki-shunsuke/pinact/releases/download/v${PINACT_VERSION}/pinact_linux_amd64.tar.gz"
+          echo "${PINACT_SHA256}  $dir/pinact.tar.gz" | sha256sum -c -
+          tar -xzf "$dir/zizmor.tar.gz" -C "$dir" zizmor
+          tar -xzf "$dir/pinact.tar.gz" -C "$dir" pinact
+          echo "$dir" >> "$GITHUB_PATH"
+
+      # The macOS compatibility workflow is maintained separately and not checked here.
+      - name: Check the workflows
+        run: |
+          files=$(find .github/workflows -name '*.yml' ! -name macos-compat.yml | sort)
+          zizmor --offline $files
+          pinact run --check $files
+
+  result:
+    name: Safety checks
+    needs: [secrets, workflows]
+    if: always()
+    runs-on: self-hosted
+    timeout-minutes: 1
+    permissions: {}
+    steps:
+      - name: Report the result
+        env:
+          SECRETS: ${{ needs.secrets.result }}
+          WORKFLOWS: ${{ needs.workflows.result }}
+        run: |
+          # Skipped checks (a fork's pull request) are not a pass.
+          [ "$SECRETS" = success ] && [ "$WORKFLOWS" = success ]
