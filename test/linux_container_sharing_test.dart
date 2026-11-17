@@ -90,6 +90,9 @@ void main() {
       expect(find.text('c1 folder'), findsNothing);
       await tester.tap(find.text('Whole storage'));
       await tester.pumpAndSettle();
+      // Turning whole storage on first explains what Linux gets, then asks to continue.
+      await tester.tap(find.text('Continue'));
+      await tester.pumpAndSettle();
       expect(grants['c2']!['wholeStorage'], true);
       expect(grants['c1']!['wholeStorage'], false);
       expect(find.text('c2 folder'), findsNothing);
