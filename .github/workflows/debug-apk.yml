@@ -1,9 +1,9 @@
 name: Debug APK
 
+# Nightly APKs from main. Pull requests are checked by pr-checks.yml without building.
 on:
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -16,8 +16,6 @@ concurrency:
 jobs:
   build:
     name: Analyze, test, and build
-    # The self-hosted runner must never run code from a fork's pull request.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
     runs-on: self-hosted
     timeout-minutes: 30
 
