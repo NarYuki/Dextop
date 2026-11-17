@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 
+import 'linux_compat.dart';
 import 'linux_expressive.dart';
 import 'linux_widgets.dart';
 
@@ -15,10 +16,14 @@ class LinuxIntegrationsPanel extends StatefulWidget {
     required this.containers,
     this.features = const {'ssh', 'vnc', 'calendar', 'services', 'printing'},
     this.selectedFeature,
+    this.containerId,
   });
   final List<Map<Object?, Object?>> containers;
   final Set<String> features;
   final String? selectedFeature;
+
+  /// Fixed by the page around it, which then owns the container choice.
+  final String? containerId;
 
   @override
   State<LinuxIntegrationsPanel> createState() => _LinuxIntegrationsPanelState();
@@ -56,7 +61,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
   void initState() {
     super.initState();
     feature = widget.selectedFeature;
-    id = widget.containers.firstOrNull?['id'] as String?;
+    id = widget.containerId ?? widget.containers.firstOrNull?['id'] as String?;
     _load();
     if (feature == 'calendar') _calendars();
     timer = Timer.periodic(const Duration(seconds: 5), (_) {
@@ -690,6 +695,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
       return _note(t('uiSetUpALinuxEnvironmentFirst'));
     }
     final labels = {
+      'devices': t('uiDevices'),
       'ssh': t('uiSSHExperimental'),
       'vnc': t('uiVNCExperimental'),
       'calendar': t('uiCalendarSharingExperimental'),
@@ -699,7 +705,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (feature != null)
+        if (feature != null && widget.containerId == null)
           Padding(
             padding: const EdgeInsets.symmetric(vertical: 12),
             child: AbsorbPointer(
@@ -766,6 +772,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                       ? t('uiRunning')
                       : t('uiStopped'),
                   leading: Icon(switch (name) {
+                    'devices' => M3EIcons.devices_rounded,
                     'ssh' => M3EIcons.terminal_rounded,
                     'vnc' => M3EIcons.desktop_windows_rounded,
                     'calendar' => M3EIcons.calendar_month_rounded,
@@ -795,6 +802,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                                   LinuxIntegrationsPanel(
                                     containers: widget.containers,
                                     selectedFeature: name,
+                                    containerId: widget.containerId,
                                   ),
                                 ],
                               ),
@@ -810,6 +818,9 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
           )
         else ...[
           ...switch (feature) {
+            'devices' => [
+              LinuxCompatPanel(containerId: id, processes: false),
+            ],
             'ssh' || 'vnc' => _remote(feature!),
             'calendar' => _calendar(),
             'printing' => _printing(),

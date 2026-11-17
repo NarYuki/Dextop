@@ -9,9 +9,20 @@ import 'linux_widgets.dart';
 
 /// Linux settings → Compatibility and permissions: Android's limits and grants for Linux.
 class LinuxCompatPanel extends StatefulWidget {
-  const LinuxCompatPanel({super.key, this.containerId});
+  const LinuxCompatPanel({
+    super.key,
+    this.containerId,
+    this.processes = true,
+    this.devices = true,
+  });
 
   final String? containerId;
+
+  /// Android's app-wide child process limit.
+  final bool processes;
+
+  /// Storage, camera, microphone and USB sharing of the selected container.
+  final bool devices;
 
   @override
   State<LinuxCompatPanel> createState() => _LinuxCompatPanelState();
@@ -179,27 +190,47 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (widget.containerId == null) ...[
+        if (widget.containerId == null && widget.devices) ...[
+          // Everything below belongs to the chosen container; keep it apart from the app-wide items above.
+          Padding(
+            padding: const EdgeInsets.only(top: 24),
+            child: Divider(
+              height: 1,
+              thickness: 1,
+              color: Theme.of(context).colorScheme.outline,
+            ),
+          ),
           LinuxSection(t('uiContainer')),
-          LinuxGroup(
-            children: [
-              for (final container in containers)
-                LinuxChoice<String>(
-                  value: container['id'] as String,
-                  groupValue: selectedId!,
-                  enabled: !busy,
-                  onChanged: (id) {
-                    setState(() {
-                      selectedId = id;
-                      status = null;
-                    });
-                    _load();
-                  },
-                  icon: M3EIcons.folder_rounded,
-                  title:
-                      container['name'] as String? ?? container['id'] as String,
+          Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: AbsorbPointer(
+              absorbing: busy,
+              child: M3EDropdownMenu<String>(
+                singleSelect: true,
+                showChipAnimation: false,
+                items: [
+                  for (final container in containers)
+                    M3EDropdownItem(
+                      value: container['id'] as String,
+                      label: container['name'] as String? ??
+                          container['id'] as String,
+                      selected: container['id'] == selectedId,
+                    ),
+                ],
+                fieldStyle: M3EDropdownFieldStyle(
+                  hintText: t('uiContainer'),
+                  prefixIcon: const Icon(M3EIcons.folder_rounded),
                 ),
-            ],
+                onSelectionChanged: (items) {
+                  if (items.isEmpty || items.first.value == selectedId) return;
+                  setState(() {
+                    selectedId = items.first.value;
+                    status = null;
+                  });
+                  _load();
+                },
+              ),
+            ),
           ),
         ],
         if (busy) const M3EProgressIndicator.linearWavy(),
@@ -211,9 +242,9 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
               style: TextStyle(color: Theme.of(context).colorScheme.error),
             ),
           ),
-        _note(t('uiContainerSharingScope')),
+        if (widget.devices) _note(t('uiContainerSharingScope')),
         // Android's process limit is app-wide; sharing below belongs to the selected container.
-        if (android) ...[
+        if (android && widget.processes) ...[
           LinuxSection(t('uiProcesses')),
           LinuxGroup(
             children: [
@@ -236,6 +267,7 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
             ],
           ),
         ],
+        if (widget.devices) ...[
         LinuxSection(t('uiStorage')),
         if (foldersActive && s['wholeStorage'] != true) ...[
           LinuxGroup(
@@ -404,6 +436,7 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
               ? t('uiInTheAndroidModeAndroidAsksBeforeEachDeviceIsUsed')
               : t('uiPrivilegedAccessGrantsAndroidAccessAutomatically'),
         ),
+        ],
       ],
     );
   }
