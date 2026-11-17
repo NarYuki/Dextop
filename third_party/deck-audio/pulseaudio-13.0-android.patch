@@ -1,0 +1,297 @@
+--- a/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/meson.build	2026-11-13 17:14:54.501043784 +0900
+@@ -146,7 +146,8 @@
+ cdata.set_quoted('DESKTOPFILEDIR', join_paths(datadir, 'applications'))
+ cdata.set_quoted('PULSE_LOCALEDIR', localedir)
+ cdata.set_quoted('GETTEXT_PACKAGE', 'pulseaudio')
+-cdata.set('ENABLE_NLS', 1)
++# Android bionic has no libintl.
++# cdata.set('ENABLE_NLS', 1)
+ 
+ # Platform specifics
+ # First some defaults to keep config file generation happy
+@@ -180,9 +181,7 @@
+ check_headers = [
+   'arpa/inet.h',
+   'byteswap.h',
+-  'cpuid.h',
+   'dlfcn.h',
+-  'execinfo.h',
+   'grp.h',
+   'langinfo.h',
+   'linux/sockios.h',
+@@ -199,7 +198,6 @@
+   'sched.h',
+   'stdint.h',
+   'sys/atomic.h',
+-  'sys/capability.h',
+   'sys/conf.h',
+   'sys/dl.h',
+   'sys/eventfd.h',
+@@ -292,7 +290,7 @@
+   endif
+ endforeach
+ 
+-if cc.has_function('SYS_memfd_create', prefix : '#include <sys/syscall.h>')
++if cc.has_header_symbol('sys/syscall.h', 'SYS_memfd_create')
+   cdata.set('HAVE_MEMFD', 1)
+ endif
+ 
+--- a/src/daemon/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/daemon/meson.build	2026-11-13 17:14:54.501128407 +0900
+@@ -27,7 +27,6 @@
+   pulseaudio_sources,
+   pulseaudio_headers,
+   install: true,
+-  install_rpath : privlibdir,
+   include_directories : [configinc, topinc],
+   link_args : ['-ffast-math'],
+   link_with : [libpulsecore, libpulsecommon, libpulse],
+--- a/src/modules/alsa/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/alsa/meson.build	2026-11-13 17:14:54.501157430 +0900
+@@ -34,7 +34,6 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, alsa_dep, dbus_dep, libatomic_ops_dep, libm_dep, udev_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+ 
+--- a/src/modules/bluetooth/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/bluetooth/meson.build	2026-11-13 17:14:54.501183667 +0900
+@@ -28,6 +28,5 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, dbus_dep, sbc_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+--- a/src/modules/echo-cancel/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/echo-cancel/meson.build	2026-11-13 17:14:54.501207490 +0900
+@@ -17,6 +17,5 @@
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, libatomic_ops_dep, webrtc_dep],
+   link_args : [nodelete_link_args, '-Wl,--unresolved-symbols=ignore-in-object-files'],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+--- a/src/modules/gsettings/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/gsettings/meson.build	2026-11-13 17:14:54.501229109 +0900
+@@ -11,7 +11,6 @@
+   link_with : [libpulsecommon, libpulse],
+   dependencies : [gio_dep],
+   install_dir : pulselibexecdir,
+-  install_rpath : privlibdir,
+   install : true,
+ )
+ 
+--- a/src/modules/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/meson.build	2026-11-13 17:14:54.501258723 +0900
+@@ -282,7 +282,6 @@
+     include_directories : [configinc, topinc],
+     c_args : [pa_c_args, server_c_args, '-DPA_MODULE_NAME=' + name.underscorify()] + extra_flags,
+     install : true,
+-    install_rpath : rpath_dirs,
+     install_dir : modlibexecdir,
+     dependencies : [thread_dep, libpulse_dep, libpulsecommon_dep, libpulsecore_dep] + extra_deps,
+     link_args : [nodelete_link_args, '-Wl,--no-undefined' ],
+--- a/src/modules/oss/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/oss/meson.build	2026-11-13 17:14:54.501289098 +0900
+@@ -13,6 +13,5 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+--- a/src/modules/raop/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/raop/meson.build	2026-11-13 17:14:54.501311518 +0900
+@@ -25,6 +25,5 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, librtp_dep, openssl_dep],
+   install : true,
+-  install_rpath : rpath_dirs,
+   install_dir : modlibexecdir,
+ )
+--- a/src/modules/rtp/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/modules/rtp/meson.build	2026-11-13 17:14:54.501332486 +0900
+@@ -22,7 +22,6 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, libatomic_ops_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+ 
+--- a/src/pulse/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/pulse/meson.build	2026-11-13 17:14:54.501365295 +0900
+@@ -75,12 +75,10 @@
+ libpulse = shared_library('pulse',
+   libpulse_sources,
+   libpulse_headers,
+-  version : libpulse_version,
+   include_directories : [configinc, topinc],
+   c_args : [pa_c_args],
+-  link_args : [nodelete_link_args, versioning_link_args],
++  link_args : [nodelete_link_args],
+   install : true,
+-  install_rpath : privlibdir,
+   dependencies : [libm_dep, thread_dep, libpulsecommon_dep, dbus_dep, dl_dep, iconv_dep],
+   implicit_include_directories : false)
+ 
+@@ -96,11 +94,10 @@
+   'simple.h',
+   version : libpulse_simple_version,
+   c_args : [pa_c_args],
+-  link_args : [nodelete_link_args, versioning_link_args],
++  link_args : [nodelete_link_args],
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep],
+   install : true,
+-  install_rpath : privlibdir,
+ )
+ 
+ libpulse_simple_dep = declare_dependency(link_with: libpulse_simple)
+@@ -111,11 +108,10 @@
+     'glib-mainloop.h',
+     version : libpulse_mainloop_glib_version,
+     c_args : [pa_c_args],
+-    link_args : [nodelete_link_args, versioning_link_args],
++    link_args : [nodelete_link_args],
+     include_directories : [configinc, topinc],
+     dependencies : [libpulse_dep, libpulsecommon_dep, glib_dep],
+     install : true,
+-    install_rpath : privlibdir,
+   )
+ 
+   libpulse_mainloop_glib_dep = declare_dependency(link_with: libpulse_mainloop_glib)
+--- a/src/pulse/utf8.c	2018-11-20 16:37:59.000000000 +0900
++++ b/src/pulse/utf8.c	2026-11-13 17:54:23.409174652 +0900
+@@ -184,7 +184,8 @@
+     return utf8_validate(str, new_str);
+ }
+ 
+-#ifdef HAVE_ICONV
++/* Android: bionic iconv has no "" (current locale) name and bionic is always UTF-8. */
++#if defined(HAVE_ICONV) && !defined(__ANDROID__)
+ 
+ static char* iconv_simple(const char *str, const char *to, const char *from) {
+     char *new_str;
+--- a/src/pulsecore/core-error.c	2018-07-14 04:06:12.000000000 +0900
++++ b/src/pulsecore/core-error.c	2026-11-13 17:54:23.407198528 +0900
+@@ -49,7 +49,7 @@
+     if ((t = PA_STATIC_TLS_GET(cstrerror)))
+         pa_xfree(t);
+ 
+-#if defined(HAVE_STRERROR_R) && defined(__GLIBC__)
++#if defined(HAVE_STRERROR_R) && (defined(__GLIBC__) || (defined(__ANDROID__) && defined(__USE_GNU)))
+     original = strerror_r(errnum, errbuf, sizeof(errbuf));
+ #elif defined(HAVE_STRERROR_R)
+     if (strerror_r(errnum, errbuf, sizeof(errbuf)) == 0) {
+--- a/src/pulsecore/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/pulsecore/meson.build	2026-11-13 17:14:54.501402302 +0900
+@@ -195,7 +195,6 @@
+   c_args : [pa_c_args, server_c_args],
+   link_args : [nodelete_link_args],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : privlibdir,
+   link_with : libpulsecore_simd_lib,
+   dependencies : [libm_dep, libpulsecommon_dep, libpulse_dep, ltdl_dep, shm_dep, sndfile_dep, database_dep, dbus_dep, libatomic_ops_dep, orc_dep, samplerate_dep, soxr_dep, speex_dep, x11_dep],
+@@ -215,7 +214,6 @@
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, avahi_dep],
+   implicit_include_directories : false, # pulsecore/poll.h <vs> /usr/include/poll.h
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+ 
+@@ -227,7 +225,6 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+ 
+@@ -244,7 +241,6 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, libcli_dep],
+   install : true,
+-  install_rpath : rpath_dirs,
+   install_dir : modlibexecdir,
+ )
+ 
+@@ -256,7 +252,6 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+ 
+@@ -268,7 +263,6 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep, dbus_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+ 
+@@ -280,6 +274,5 @@
+   include_directories : [configinc, topinc],
+   dependencies : [libpulse_dep, libpulsecommon_dep, libpulsecore_dep],
+   install : true,
+-  install_rpath : privlibdir,
+   install_dir : modlibexecdir,
+ )
+--- a/src/utils/meson.build	2019-09-13 22:10:23.000000000 +0900
++++ b/src/utils/meson.build	2026-11-13 17:14:54.501450730 +0900
+@@ -12,7 +12,6 @@
+ executable('pacat',
+   pacat_sources,
+   install: true,
+-  install_rpath : privlibdir,
+   include_directories : [configinc, topinc],
+   link_with : [libpulsecommon, libpulse],
+   dependencies : [sndfile_dep],
+@@ -33,7 +32,6 @@
+ executable('pactl',
+   pactl_sources,
+   install: true,
+-  install_rpath : privlibdir,
+   include_directories : [configinc, topinc],
+   link_with : [libpulsecommon, libpulse],
+   dependencies : [sndfile_dep],
+@@ -47,7 +45,6 @@
+ executable('pasuspender',
+   pasuspender_sources,
+   install: true,
+-  install_rpath : privlibdir,
+   include_directories : [configinc, topinc],
+   link_with : [libpulsecommon, libpulse],
+   c_args : pa_c_args,
+@@ -60,7 +57,6 @@
+ executable('pacmd',
+   pacmd_sources,
+   install: true,
+-  install_rpath : privlibdir,
+   include_directories : [configinc, topinc],
+   link_with : [libpulsecommon, libpulse],
+   c_args : pa_c_args,
+@@ -74,7 +70,6 @@
+   executable('pax11publish',
+     pax11publish_sources,
+     install: true,
+-    install_rpath : privlibdir,
+     include_directories : [configinc, topinc],
+     link_with : [libpulsecommon, libpulse],
+     dependencies : [x11_dep],
+@@ -91,7 +86,6 @@
+     libpulsecommon_sources,
+     install: true,
+     install_dir : padsplibdir,
+-    install_rpath : privlibdir,
+     include_directories : [configinc, topinc],
+     link_with : [libpulsecommon, libpulse],
+     link_args : [nodelete_link_args],
