@@ -109,6 +109,12 @@ internal class LinuxProot(val nativeLibraryDir: String) {
             add("${File(LinuxPaths.base, "folders/$id").apply { mkdirs() }.absolutePath}:${LinuxFolders.GUEST}")
         }
         File(runtime, "empty").apply { mkdirs() }.let {
+            // Android's init/daemon sockets (property_service, logd/logdr, traced_consumer, statsdw,
+            // dnsproxyd...) and the system property areas are for bionic programs; no Linux program
+            // needs them, and in the shell mode they would let guests set properties, read or clear
+            // the whole Android log and start system traces.
+            add("${it.absolutePath}:/dev/socket")
+            add("${it.absolutePath}:/dev/__properties__")
             add("${it.absolutePath}:/sys/fs/selinux")
             // Android exposes PCI entries whose attributes the shell cannot read.
             // libpci treats the denied vendor read as fatal and calls exit(1), taking
