@@ -1616,5 +1616,7 @@
   "uiSystemAndSharedServices": "Sistema e serviços compartilhados",
   "uiAndroidIntegrationCategory": "Integração com o Android",
   "uiProcessesAndPerformance": "Processos e desempenho",
-  "uiClipboardAndShortcuts": "Área de transferência e atalhos"
+  "uiClipboardAndShortcuts": "Área de transferência e atalhos",
+  "uiReceivePreReleases": "Receber pré-lançamentos",
+  "uiReceivePreReleasesDescription": "Oferecer também como atualizações as versões beta lançadas antes da versão estável. Elas podem conter bugs."
 }
