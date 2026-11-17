@@ -2899,8 +2899,7 @@ class AppLocalizationsRu extends AppLocalizations {
   String get linuxSetupDone => 'Рабочее пространство Linux готово';
 
   @override
-  String get linuxSetupDoneDetail =>
-      'Откройте приложения на вкладке Linux.';
+  String get linuxSetupDoneDetail => 'Откройте приложения на вкладке Linux.';
 
   @override
   String get linuxSetupNext => 'Далее';
