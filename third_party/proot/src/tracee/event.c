@@ -36,6 +36,7 @@
 #include <inttypes.h>   /* PRI*, */
 
 #include "tracee/event.h"
+#include "tracee/landlock.h"
 #include "tracee/seccomp.h"
 #include "tracee/mem.h"
 #include "tracee/reg.h"
@@ -50,8 +51,51 @@
 
 #include "attribute.h"
 #include "compat.h"
+#ifdef DEXTOP_BINDER_GUARD
+#include <sys/prctl.h>
+#endif
 
 static bool seccomp_after_ptrace_enter = false;
+
+/* Bind initialization canonicalizes guest symlinks and adds induced bindings.
+ * Export that final table, not the caller's raw -b arguments. Otherwise the
+ * fast path can read the hidden underlying file at a canonicalized bind target.
+ * The mapping is per-launch argv data; nothing is written into the rootfs. */
+static char **fastpath_guest_argv(Tracee *tracee, char *const argv[])
+{
+	const Binding *binding;
+	char *mapping = talloc_strdup(tracee, "PROOT_FP_BINDS=");
+	char *root = talloc_asprintf(tracee, "PROOT_FP_ROOT=%s", get_root(tracee));
+	char **result;
+	size_t argc, env_end, i, count = 0;
+	bool found_root = false, found_binds = false;
+	/* Only rewrite the application's explicit env -i assignments, never
+	 * arguments belonging to a guest command or script. */
+	if (!argv[0] || !argv[1] || strcmp(argv[1], "-i")) return NULL;
+	if (!mapping || !root || !tracee->fs->bindings.guest) return NULL;
+	CIRCLEQ_FOREACH(binding, tracee->fs->bindings.guest, link.guest) {
+		if (!strcmp(binding->guest.path, "/")) continue;
+		if (++count > 256 || strpbrk(binding->host.path, "|:\n") ||
+		    strpbrk(binding->guest.path, "|:\n")) return NULL;
+		mapping = talloc_asprintf_append(mapping, "%s%s:%s", count > 1 ? "|" : "",
+			binding->host.path, binding->guest.path);
+		if (!mapping || strlen(mapping) > 65535) return NULL;
+	}
+	for (argc = 0; argv[argc] != NULL; argc++) {}
+	for (env_end = 2; env_end < argc && strchr(argv[env_end], '='); env_end++) {}
+	result = talloc_array(tracee, char *, argc + 1);
+	if (!result) return NULL;
+	for (i = 0; i <= argc; i++) {
+		result[i] = argv[i];
+		if (i < 2 || i >= env_end) continue;
+		if (!strncmp(argv[i], "PROOT_FP_ROOT=", 14)) {
+			result[i] = root; found_root = true;
+		} else if (!strncmp(argv[i], "PROOT_FP_BINDS=", 15)) {
+			result[i] = mapping; found_binds = true;
+		}
+	}
+	return found_root && found_binds ? result : NULL;
+}
 
 /**
  * Start @tracee->exe with the given @argv[].  This function
@@ -62,6 +106,13 @@ int launch_process(Tracee *tracee, char *const argv[])
 	char *const default_argv[] = { "-sh", NULL };
 	long status;
 	pid_t pid;
+	int ready[2] = {-1, -1};
+	bool requested = getenv("PROOT_FASTPATH") != NULL;
+	char **fast_argv = NULL;
+	if (requested) {
+		fast_argv = fastpath_guest_argv(tracee, argv);
+		if (!fast_argv) return -ECANCELED;
+	}
 
 	/* Set pokedata workaround stub addr if needed. */
 	mem_prepare_before_first_execve(tracee);
@@ -71,13 +122,37 @@ int launch_process(Tracee *tracee, char *const argv[])
 	if (tracee->verbose > 0)
 		list_open_fd(tracee);
 
+	if (requested && pipe(ready) < 0) return -ECANCELED;
 	pid = fork();
 	switch(pid) {
 	case -1:
+		if (requested) { close(ready[0]); close(ready[1]); }
 		note(tracee, ERROR, SYSTEM, "fork()");
 		return -errno;
 
 	case 0: /* child */
+#ifdef DEXTOP_BINDER_GUARD
+		/* The tracer remains non-dumpable. Its child must be dumpable for
+		 * PTRACE_TRACEME and the tracer's process_vm_readv/writev access.
+		 * This changes only the child; the binder filter remains inherited. */
+		if (prctl(PR_SET_DUMPABLE, 1, 0, 0, 0) < 0) _exit(125);
+#endif
+		/* Before ptrace/path translation and before installing any exemption.
+		 * Parent waits for the actual restriction, not just an ABI probe. */
+		if (requested) {
+			/* The protected fast path requires Landlock: without it its
+			 * trampoline syscalls would reach the host filesystem
+			 * untranslated. Fail closed. The unprotected mode is that
+			 * broad path deliberately without Landlock; the user chose it
+			 * knowing it is not confined. */
+			const char *mode = getenv("PROOT_FASTPATH_MODE");
+			const bool unprotected = mode != NULL && strcmp(mode, "unprotected") == 0;
+			char ok = getenv("PROOT_NO_SECCOMP") == NULL &&
+				(unprotected || proot_landlock_apply() == 0);
+			close(ready[0]);
+			if (write(ready[1], &ok, 1) != 1 || !ok) _exit(125);
+			close(ready[1]);
+		}
 		/* Declare myself as ptraceable before executing the
 		 * requested program. */
 		status = ptrace(PTRACE_TRACEME, 0, NULL, NULL);
@@ -95,26 +170,35 @@ int launch_process(Tracee *tracee, char *const argv[])
 
 		/* Improve performance by using seccomp mode 2, unless
 		 * this support is explicitly disabled.  */
-		if (getenv("PROOT_NO_SECCOMP") == NULL)
-			(void) enable_syscall_filtering(tracee);
-
-
-
-
-		if (getenv("PROOT_FASTPATH") != NULL) {
-			char host_cwd[PATH_MAX];
-			if (translate_path(tracee, host_cwd, AT_FDCWD, tracee->fs->cwd, true) >= 0)
-				(void) chdir(host_cwd);
+		if (getenv("PROOT_NO_SECCOMP") == NULL) {
+			status = enable_syscall_filtering(tracee);
+			/* Never execute the guest translator without our filter. */
+			if (requested && status < 0) _exit(125);
 		}
+
+
+
 
 		/* Now process is ptraced, so the current rootfs is already the
 		 * guest rootfs.  Note: Valgrind can't handle execve(2) on
 		 * "foreign" binaries (ENOEXEC) but can handle execvp(3) on such
 		 * binaries.  */
-		execvp(tracee->exe, argv[0] != NULL ? argv : default_argv);
+		execvp(tracee->exe, fast_argv ? fast_argv : (argv[0] != NULL ? argv : default_argv));
 		return -errno;
 
 	default: /* parent */
+		if (requested) {
+			char ok = 0;
+			ssize_t got;
+			close(ready[1]);
+			do { got = read(ready[0], &ok, 1); } while (got < 0 && errno == EINTR);
+			close(ready[0]);
+			if (got != 1 || !ok) {
+				kill(pid, SIGKILL);
+				while (waitpid(pid, NULL, 0) < 0 && errno == EINTR) {}
+				return -ECANCELED;
+			}
+		}
 		/* We know the pid of the first tracee now.  */
 		set_tracee_pid(tracee, pid);
 		return 0;
