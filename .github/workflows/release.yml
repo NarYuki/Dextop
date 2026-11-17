@@ -45,14 +45,13 @@ jobs:
       # Release Please's Dart updater cannot read a pre-release version: from
       # "2.0.0-beta.1+42" it writes "2.0.0-beta.2+-beta.1+42". Write the version
       # line of the release pull request as "<next version>+<main's build + 1>".
+      # Runs every time: Release Please reports the pull request only when it rewrites it.
       - name: Fix the version line of the release pull request
-        if: steps.release.outputs.pr
         env:
           GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
           API: ${{ github.api_url }}
           REPOSITORY: ${{ github.repository }}
           BASE: ${{ github.sha }}
-          PR: ${{ steps.release.outputs.pr }}
         run: |
           python3 - <<'PY'
           import base64, json, os, re, urllib.parse, urllib.request
@@ -71,7 +70,11 @@ jobs:
               item = call('GET', f"{api}/contents/{path}?ref={urllib.parse.quote(ref, safe='')}")
               return base64.b64decode(item['content']).decode(), item['sha']
 
-          branch = json.loads(os.environ['PR'])['headBranchName']
+          owner = os.environ['REPOSITORY'].split('/')[0]
+          branch = 'release-please--branches--main--components--dextop'
+          if not call('GET', f"{api}/pulls?state=open&head={owner}:{branch}"):
+              print('no open release pull request')
+              raise SystemExit(0)
           version = json.loads(read('.github/release-please/manifest.json', branch)[0])['.']
           base_pubspec = read('pubspec.yaml', os.environ['BASE'])[0]
           build = int(re.search(r'^version:\s*\S*?\+(\d+)\s*$', base_pubspec, re.M).group(1))
