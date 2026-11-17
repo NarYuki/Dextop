@@ -120,6 +120,9 @@ class GamingTest(unittest.TestCase):
     def respond(self, table):
         def opened(url, timeout=None):
             answer = table[url]
+            # A list answers one call after another, the last one from then on.
+            if isinstance(answer, list):
+                answer = answer.pop(0) if len(answer) > 1 else answer[0]
             if isinstance(answer, int):
                 raise urllib.error.HTTPError(url, answer, 'gone', {}, None)
             return io.BytesIO(answer)
@@ -151,9 +154,44 @@ class GamingTest(unittest.TestCase):
                 self.gaming.download_fex(str(Path(tmp) / 'fex.deb'))
 
     def test_fex_errors_other_than_not_found_are_reported(self):
-        with patch.object(urllib.request, 'urlopen', self.respond({self.gaming.FEX_URL: 503})), \
+        # Both the PPA host and Launchpad's file server stay unavailable.
+        files = self.gaming.FEX_FILES + self.gaming.FEX_URL.rsplit('/', 1)[1]
+        with patch.object(urllib.request, 'urlopen', self.respond({self.gaming.FEX_URL: 503, files: 503})), \
+                patch.object(self.gaming.time, 'sleep'), patch.object(sys, 'stderr', io.StringIO()), \
                 self.assertRaises(urllib.error.HTTPError):
             self.gaming.download_fex('/nonexistent')
+
+    def test_a_busy_fex_repository_is_retried(self):
+        package = b'fex package'
+        table = {self.gaming.FEX_URL: [503, 503, package]}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(self.gaming, 'FEX_SHA256', hashlib.sha256(package).hexdigest()), \
+                patch.object(urllib.request, 'urlopen', self.respond(table)), \
+                patch.object(self.gaming.time, 'sleep') as slept, patch.object(sys, 'stderr', io.StringIO()):
+            target = Path(tmp) / 'fex.deb'
+            self.gaming.download_fex(str(target))
+            self.assertEqual(target.read_bytes(), package)
+            self.assertEqual(slept.call_count, 2)
+
+    def test_fex_comes_from_launchpads_file_server_while_the_ppa_host_is_down(self):
+        package = b'fex package'
+        files = self.gaming.FEX_FILES + self.gaming.FEX_URL.rsplit('/', 1)[1]
+        table = {self.gaming.FEX_URL: 503, files: package}
+        with tempfile.TemporaryDirectory() as tmp, patch.object(self.gaming, 'FEX_SHA256', hashlib.sha256(package).hexdigest()), \
+                patch.object(urllib.request, 'urlopen', self.respond(table)), \
+                patch.object(self.gaming.time, 'sleep'), patch.object(sys, 'stderr', io.StringIO()):
+            target = Path(tmp) / 'fex.deb'
+            self.gaming.download_fex(str(target))
+            self.assertEqual(target.read_bytes(), package)
+
+    def test_a_missing_fex_build_is_not_retried(self):
+        calls = []
+        def opened(url, timeout=None):
+            calls.append(url)
+            raise urllib.error.HTTPError(url, 404, 'gone', {}, None)
+        with patch.object(urllib.request, 'urlopen', opened), patch.object(self.gaming.time, 'sleep') as slept, \
+                self.assertRaises(urllib.error.HTTPError):
+            self.gaming.fex_open(self.gaming.FEX_URL)
+        self.assertEqual((len(calls), slept.call_count), (1, 0))
 
     def test_a_pruned_steam_runtime_uses_the_published_stable_digest(self):
         digest = 'a' * 64
