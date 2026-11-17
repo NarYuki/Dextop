@@ -1,73 +1,103 @@
 <!doctype html>
-<!-- Dextop's Linux terminal: xterm.js (MIT, see LICENSE) drawing a container shell's PTY. -->
+<!-- Dextop's Linux terminal: xterm.js (MIT, see LICENSE) drawing the container shells' PTYs. -->
 <html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <link rel="stylesheet" href="xterm.css">
 <style>
-  :root { --bg: #101418; --bar: #1b2026; --key: #2a3038; --text: #e2e6ea; --accent: #9ccaff; }
+  @font-face { font-family: "DextopTermMono"; font-weight: 400; src: url("DextopTermMono-Regular.woff2") format("woff2"); }
+  @font-face { font-family: "DextopTermMono"; font-weight: 700; src: url("DextopTermMono-Bold.woff2") format("woff2"); }
+  @font-face { font-family: "SymbolsNerdFontMono"; src: url("SymbolsNerdFontMono.woff2") format("woff2"); }
+  :root { --bg: #101418; --bar: #1b2026; --key: #2a3038; --text: #e2e6ea; --dim: #9aa4ae; --accent: #9ccaff; }
   html, body { margin: 0; height: 100%; background: var(--bg); overflow: hidden; }
-  body { display: flex; flex-direction: column; }
-  #term { flex: 1; min-height: 0; padding: 6px 4px 0 8px; box-sizing: border-box; }
-  #keys { display: flex; gap: 6px; padding: 6px 8px; background: var(--bar); overflow-x: auto; flex: none; }
-  #keys button {
-    flex: none; min-width: 44px; height: 34px; padding: 0 10px; border: 0; border-radius: 10px;
-    background: var(--key); color: var(--text); font: 500 14px system-ui, sans-serif;
-  }
-  #keys button.on { background: var(--accent); color: #003258; }
-  #keys button:active { filter: brightness(1.3); }
-  #term { position: relative; }
+  body { display: flex; flex-direction: column; font: 14px system-ui, sans-serif; color: var(--text); }
+  button { font: inherit; color: inherit; border: 0; }
+  #tabs { display: flex; flex: none; gap: 4px; padding: 6px 8px 0; background: var(--bar); overflow-x: auto; scrollbar-width: none; }
+  #tabs::-webkit-scrollbar, #keys::-webkit-scrollbar { display: none; }
+  .tab { display: flex; flex: none; align-items: center; max-width: 200px; height: 36px; border-radius: 10px 10px 0 0; background: var(--key); color: var(--dim); }
+  .tab.active { background: var(--bg); color: var(--text); }
+  .tab .name { flex: 1; min-width: 0; padding: 0 2px 0 12px; height: 100%; background: none; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; text-align: left; }
+  .tab .close { flex: none; width: 34px; height: 100%; background: none; font-size: 18px; line-height: 1; }
+  #new { flex: none; width: 40px; height: 36px; border-radius: 10px; background: none; font-size: 22px; line-height: 1; }
+  #stage { position: relative; flex: 1; min-height: 0; overflow: hidden; touch-action: none; }
+  .pane { position: absolute; inset: 0; padding: 2px 0 0 2px; box-sizing: border-box; visibility: hidden; }
+  .xterm, .xterm * { touch-action: none; }
+  .xterm .scrollbar, .xterm .decorationsOverviewRuler { display: none !important; }
+  .pane.active { visibility: visible; }
   #selection { position: absolute; inset: 0; z-index: 10; display: none; touch-action: none; }
   #selection.active { display: block; }
+  .handle { position: absolute; z-index: 11; width: 18px; height: 18px; margin: -2px 0 0 -9px; border-radius: 50%; background: var(--accent); display: none; pointer-events: none; }
+  #selbar { position: absolute; top: 8px; right: 8px; z-index: 12; display: none; gap: 2px; padding: 4px; border-radius: 12px; background: #2f3741; box-shadow: 0 2px 10px #0008; }
+  #selbar.active { display: flex; }
+  #selbar button { height: 36px; padding: 0 12px; border-radius: 9px; background: none; font-weight: 500; }
+  #toast { position: absolute; left: 50%; bottom: 14px; z-index: 13; transform: translateX(-50%); padding: 8px 14px; border-radius: 10px; background: #2f3741; opacity: 0; transition: opacity .15s; pointer-events: none; }
+  #toast.show { opacity: 1; }
+  #keys { display: flex; gap: 6px; padding: 6px 8px; background: var(--bar); overflow-x: auto; flex: none; scrollbar-width: none; }
+  #keys button { flex: none; min-width: 44px; height: 34px; padding: 0 10px; border-radius: 10px; background: var(--key); font-weight: 500; }
+  #keys button.on { background: var(--accent); color: #003258; }
+  button:active { filter: brightness(1.3); }
   #compose {
-    position: absolute; left: 12px; bottom: 56px; padding: 4px 10px; border-radius: 8px; display: none;
+    position: absolute; left: 12px; bottom: 56px; z-index: 13; padding: 4px 10px; border-radius: 8px; display: none;
     background: #3b4b5e; color: var(--text); font: 15px "Noto Sans Mono CJK JP", monospace; text-decoration: underline;
   }
 </style>
 </head>
 <body>
-<div id="term"><div id="selection"></div></div>
+<div id="tabs"><button id="new">+</button></div>
+<div id="stage">
+  <div id="selection"></div>
+  <div class="handle" id="startHandle"></div>
+  <div class="handle" id="endHandle"></div>
+  <div id="selbar">
+    <button id="barCopy" data-i18n="uiCopy"></button>
+    <button id="barPaste" data-i18n="uiPaste"></button>
+    <button id="barAll" data-i18n="uiAll"></button>
+    <button id="barClose" data-i18n="uiClose"></button>
+  </div>
+  <div id="toast"></div>
+</div>
 <div id="compose"></div>
 <div id="keys">
+  <button id="select" data-i18n="uiSelect" aria-pressed="false"></button>
+  <button id="copy" data-i18n="uiCopy"></button>
+  <button id="paste" data-i18n="uiPaste"></button>
   <button data-send="\x1b" data-i18n="uiKeyEscape"></button>
   <button data-send="\t" data-i18n="uiKeyTab"></button>
+  <button data-send="\x1b[Z">⇧⇥</button>
   <button id="ctrl" data-i18n="uiKeyControl"></button>
   <button id="alt" data-i18n="uiKeyAlt"></button>
-  <button data-send="\x1b[A">↑</button>
-  <button data-send="\x1b[B">↓</button>
-  <button data-send="\x1b[D">←</button>
-  <button data-send="\x1b[C">→</button>
+  <button data-send="\x1b[A" data-repeat>↑</button>
+  <button data-send="\x1b[B" data-repeat>↓</button>
+  <button data-send="\x1b[D" data-repeat>←</button>
+  <button data-send="\x1b[C" data-repeat>→</button>
   <button data-send="\x1b[H" data-i18n="uiKeyHome"></button>
   <button data-send="\x1b[F" data-i18n="uiKeyEnd"></button>
   <button data-send="|">|</button>
   <button data-send="~">~</button>
   <button data-send="/">/</button>
   <button data-send="-">-</button>
-  <button id="select" data-i18n="uiSelect" aria-pressed="false"></button>
   <button id="all" data-i18n="uiAll"></button>
-  <button id="copy" data-i18n="uiCopy"></button>
-  <button id="paste" data-i18n="uiPaste"></button>
 </div>
 <script src="xterm.js"></script>
-<script src="addon-fit.js"></script>
+<script src="addon-webgl.js"></script>
+<script src="addon-image.js"></script>
+<script src="addon-unicode-graphemes.js"></script>
+<script src="addon-web-links.js"></script>
 <script>
   for (const element of document.querySelectorAll('[data-i18n]')) {
     element.textContent = Dextop.translate(element.dataset.i18n);
   }
+  document.getElementById('new').setAttribute('aria-label', Dextop.translate('uiNewTerminalTab'));
   Terminal.strings.promptLabel = Dextop.translate('uiTerminalInput');
   Terminal.strings.tooMuchOutput = Dextop.translate('uiTooMuchOutputToAnnounceNavigateToRowsManuallyToRead');
-  const term = new Terminal({
-    fontFamily: '"Noto Sans Mono CJK JP", "Noto Sans Mono", "Droid Sans Mono", monospace',
-    fontSize: Dextop.fontSize(),
-    cursorBlink: true,
-    scrollback: 10000,
-    allowProposedApi: true,
-    theme: { background: '#101418', foreground: '#e2e6ea', cursor: '#9ccaff', selectionBackground: '#3b4b5e' },
-  });
-  const fit = new FitAddon.FitAddon();
-  term.loadAddon(fit);
-  term.open(document.getElementById('term'));
+
+  const stage = document.getElementById('stage');
+  const tabBar = document.getElementById('tabs');
+  const newButton = document.getElementById('new');
+  const tabs = new Map();
+  let activeId = null;
+  const current = () => tabs.get(activeId);
 
   // On-screen Ctrl and Alt apply to the next key typed.
   const ctrl = document.getElementById('ctrl');
@@ -84,112 +114,600 @@
     alt.classList.remove('on');
     return out;
   }
-  ctrl.onclick = () => { ctrl.classList.toggle('on'); term.focus(); };
-  alt.onclick = () => { alt.classList.toggle('on'); term.focus(); };
-  for (const key of document.querySelectorAll('#keys [data-send]')) {
-    key.onclick = () => {
-      Dextop.input(modified(key.dataset.send.replace(/\\x1b/g, '\x1b').replace(/\\t/g, '\t')));
-      term.focus();
-    };
+  const focusTerminal = () => { const tab = current(); if (tab) tab.term.focus(); };
+  ctrl.onclick = () => { ctrl.classList.toggle('on'); focusTerminal(); };
+  alt.onclick = () => { alt.classList.toggle('on'); focusTerminal(); };
+  const REPEAT_DELAY_MS = 400, REPEAT_EVERY_MS = 50;
+  function sendBarKey(key) {
+    Dextop.lineChanged();
+    if (activeId) Dextop.input(activeId, modified(key.dataset.send.replace(/\\x1b/g, '\x1b').replace(/\\t/g, '\t')));
   }
-  // xterm's mouse selection does not provide touch selection handles. In Select mode,
-  // dragging a finger selects cells instead of scrolling or sending terminal mouse input.
+  for (const key of document.querySelectorAll('#keys [data-send]')) {
+    let held = false, delay = null, repeat = null;
+    key.onclick = () => {
+      if (!held) sendBarKey(key);
+      held = false;
+      focusTerminal();
+    };
+    if (!key.hasAttribute('data-repeat')) continue;
+    const stop = () => { clearTimeout(delay); clearInterval(repeat); delay = repeat = null; };
+    // The bar scrolls sideways, so nothing is sent until the finger has stayed on the key.
+    key.addEventListener('pointerdown', () => {
+      stop();
+      held = false;
+      delay = setTimeout(() => {
+        held = true;
+        sendBarKey(key);
+        repeat = setInterval(() => sendBarKey(key), REPEAT_EVERY_MS);
+      }, REPEAT_DELAY_MS);
+    });
+    for (const end of ['pointerup', 'pointercancel', 'pointerleave']) key.addEventListener(end, stop);
+  }
+  document.getElementById('keys').addEventListener('contextmenu', e => e.preventDefault());
+
+  const FONT_MIN = 6, FONT_MAX = 32, CLIPBOARD_LIMIT = 8 * 1024 * 1024;
+  const openLink = uri => { if (/^https?:\/\//i.test(uri)) Dextop.openLink(uri); };
+  let fontSize = Dextop.fontSize();
+  let resizeTimer = null;
+
+  function sendSizes() {
+    resizeTimer = null;
+    for (const tab of tabs.values()) {
+      if (tab.sentRows === tab.term.rows && tab.sentCols === tab.term.cols) continue;
+      tab.sentRows = tab.term.rows;
+      tab.sentCols = tab.term.cols;
+      Dextop.resize(tab.id, tab.term.rows, tab.term.cols);
+    }
+  }
+  // The whole pane is used: FitAddon would keep a strip for a scrollbar that is never shown.
+  function fitLocally(tab) {
+    if (tab.replaying) return;
+    const cell = tab.term._core._renderService.dimensions.css.cell;
+    if (!cell.width || !cell.height) return;
+    const style = getComputedStyle(tab.pane);
+    const width = tab.pane.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight);
+    const height = tab.pane.clientHeight - parseFloat(style.paddingTop) - parseFloat(style.paddingBottom);
+    const cols = Math.max(2, Math.floor(width / cell.width));
+    const rows = Math.max(2, Math.floor(height / cell.height));
+    if (cols !== tab.term.cols || rows !== tab.term.rows) tab.term.resize(cols, rows);
+  }
+  // Applications redraw on every size they are told about, so a gesture only reports its last one.
+  function fitTab(tab) {
+    try { fitLocally(tab); } catch (e) {}
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(sendSizes, 120);
+  }
+  function setFontSize(size, tab) {
+    tab.term.options.fontSize = size;
+    fitTab(tab);
+  }
+
+  function selectTab(id) {
+    if (!tabs.has(id)) return;
+    if (selecting) selectMode(false);
+    activeId = id;
+    for (const tab of tabs.values()) {
+      const active = tab.id === id;
+      tab.pane.classList.toggle('active', active);
+      tab.label.classList.toggle('active', active);
+    }
+    const tab = tabs.get(id);
+    tab.label.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    fitTab(tab);
+    tab.term.focus();
+    Dextop.lineChanged();
+    Dextop.activate(id);
+  }
+
+  window.dextopAddTab = (id, title, activate) => {
+    const pane = document.createElement('div');
+    pane.className = 'pane';
+    stage.insertBefore(pane, document.getElementById('selection'));
+    const term = new Terminal({
+      fontFamily: '"DextopTermMono", "SymbolsNerdFontMono", "Noto Sans Mono CJK JP", "Droid Sans Mono", monospace, "Noto Color Emoji", "Samsung Color Emoji"',
+      fontSize,
+      cursorBlink: true,
+      scrollback: 10000,
+      allowProposedApi: true,
+      customGlyphs: true,
+      rescaleOverlappingGlyphs: true,
+      // Links written with OSC 8; plain URLs are found by the links addon below.
+      linkHandler: { activate: (event, uri) => openLink(uri), allowNonHttpProtocols: false },
+      theme: { background: '#101418', foreground: '#e2e6ea', cursor: '#9ccaff', selectionBackground: '#3b4b5e' },
+    });
+    term.open(pane);
+    // Sixel and iTerm inline images; flags, skin tones and joined emoji as one character.
+    try { term.loadAddon(new ImageAddon.ImageAddon()); } catch (e) {}
+    try {
+      term.loadAddon(new UnicodeGraphemesAddon.UnicodeGraphemesAddon());
+      term.unicode.activeVersion = '15-graphemes';
+    } catch (e) {}
+    try { term.loadAddon(new WebLinksAddon.WebLinksAddon((event, uri) => openLink(uri))); } catch (e) {}
+    // Without WebGL, or once its context is lost, xterm falls back to drawing with the DOM.
+    try {
+      const webgl = new WebglAddon.WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch (e) {}
+
+    const label = document.createElement('div');
+    label.className = 'tab';
+    const name = document.createElement('button');
+    name.className = 'name';
+    name.textContent = title;
+    name.onclick = () => selectTab(id);
+    const close = document.createElement('button');
+    close.className = 'close';
+    close.textContent = '×';
+    close.setAttribute('aria-label', Dextop.translate('uiClose'));
+    close.onclick = () => Dextop.closeTab(id);
+    label.append(name, close);
+    tabBar.insertBefore(label, newButton);
+
+    const tab = { id, term, pane, label, name, sentRows: 0, sentCols: 0 };
+    tabs.set(id, tab);
+    term.onData(data => Dextop.input(id, modified(data)));
+    term.onBinary(data => Dextop.binary(id, data));
+    term.onTitleChange(value => { name.textContent = value || title; Dextop.title(id, value); });
+    term.onSelectionChange(() => { if (id === activeId) placeHandles(); });
+    // OSC 52: programs may set the clipboard. Reading it back is never answered.
+    term.parser.registerOscHandler(52, data => {
+      const payload = data.slice(data.indexOf(';') + 1);
+      if (payload === '?' || !payload || payload.length > CLIPBOARD_LIMIT) return true;
+      try {
+        const binary = atob(payload);
+        const text = new TextDecoder().decode(Uint8Array.from(binary, c => c.charCodeAt(0)));
+        if (text) { Dextop.copy(text); showToast(Dextop.translate('uiCopied')); }
+      } catch (e) {}
+      return true;
+    });
+    // OSC 7 from the shell: the directory a restored tab returns to.
+    term.parser.registerOscHandler(7, data => {
+      const match = /^file:\/\/[^/]*(\/.*)$/.exec(data);
+      if (match) { try { Dextop.directory(id, decodeURIComponent(match[1])); } catch (e) { Dextop.directory(id, match[1]); } }
+      return true;
+    });
+    if (activate || !activeId) selectTab(id);
+    try { fitLocally(tab); } catch (e) {}
+    tab.sentRows = term.rows;
+    tab.sentCols = term.cols;
+    Dextop.opened(id, term.rows, term.cols);
+  };
+
+  window.dextopRemoveTab = id => {
+    const tab = tabs.get(id);
+    if (!tab) return;
+    const order = [...tabs.keys()];
+    const index = order.indexOf(id);
+    tab.term.dispose();
+    tab.pane.remove();
+    tab.label.remove();
+    tabs.delete(id);
+    if (activeId === id) {
+      activeId = null;
+      const next = order[index + 1] || order[index - 1];
+      if (next) selectTab(next);
+    }
+  };
+
+  window.dextopNewTab = () => Dextop.newTab();
+  window.dextopCloseTab = () => { if (activeId) Dextop.closeTab(activeId); };
+  window.dextopCycleTab = step => {
+    const order = [...tabs.keys()];
+    if (order.length > 1) selectTab(order[(order.indexOf(activeId) + step + order.length) % order.length]);
+  };
+  newButton.onclick = () => Dextop.newTab();
+
+  // Selection. A long press selects the word under the finger; dragging extends it, and the
+  // handles move either end. xterm's own selection only follows a mouse.
   const selection = document.getElementById('selection');
   const selectButton = document.getElementById('select');
-  let selecting = false, anchor = null, pointer = null, scrollTimer = null;
+  const selbar = document.getElementById('selbar');
+  const startHandle = document.getElementById('startHandle');
+  const endHandle = document.getElementById('endHandle');
+  let selecting = false, anchor = null, pointer = null, origin = null, moved = false, scrollTimer = null;
+  let pressTimer = null, pressOrigin = null, pressDragging = false, lastPointerType = 'touch';
+
   function selectMode(enabled) {
     selecting = enabled;
     selection.classList.toggle('active', enabled);
+    selbar.classList.toggle('active', enabled);
     selectButton.classList.toggle('on', enabled);
     selectButton.setAttribute('aria-pressed', String(enabled));
     Dextop.selecting(enabled);
-    if (!enabled) { stopSelection(); term.focus(); }
+    if (!enabled) { stopSelection(); hideHandles(); focusTerminal(); } else placeHandles();
   }
+  const screenRect = tab => tab.term.element.querySelector('.xterm-screen').getBoundingClientRect();
   function cell(x, y) {
-    const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
-    const col = Math.max(0, Math.min(term.cols - 1, Math.floor((x - rect.left) * term.cols / rect.width)));
-    const row = Math.max(0, Math.min(term.rows - 1, Math.floor((y - rect.top) * term.rows / rect.height)));
-    return { col, row: term.buffer.active.viewportY + row };
+    const tab = current();
+    const rect = screenRect(tab);
+    const col = Math.max(0, Math.min(tab.term.cols - 1, Math.floor((x - rect.left) * tab.term.cols / rect.width)));
+    const row = Math.max(0, Math.min(tab.term.rows - 1, Math.floor((y - rect.top) * tab.term.rows / rect.height)));
+    return { col, row: tab.term.buffer.active.viewportY + row };
   }
   function extendSelection() {
-    if (!anchor || !pointer) return;
+    const tab = current();
+    if (!tab || !anchor || !pointer) return;
     const end = cell(pointer.x, pointer.y);
-    const a = anchor.row * term.cols + anchor.col;
-    const b = end.row * term.cols + end.col;
+    const a = anchor.row * tab.term.cols + anchor.col;
+    const b = end.row * tab.term.cols + end.col;
     const start = Math.min(a, b);
-    term.select(start % term.cols, Math.floor(start / term.cols), Math.abs(b - a) + 1);
+    tab.term.select(start % tab.term.cols, Math.floor(start / tab.term.cols), Math.abs(b - a) + 1);
   }
   function stopSelection() {
     clearInterval(scrollTimer);
     scrollTimer = null;
-    anchor = pointer = null;
+    anchor = pointer = origin = null;
   }
-  selectButton.onclick = () => selectMode(!selecting);
-  document.getElementById('all').onclick = () => { selectMode(true); term.selectAll(); };
+  function hideHandles() { startHandle.style.display = endHandle.style.display = 'none'; }
+  function placeHandle(handle, tab, col, row) {
+    const screen = screenRect(tab), stageRect = stage.getBoundingClientRect();
+    const line = row - tab.term.buffer.active.viewportY;
+    if (line < 0 || line >= tab.term.rows) { handle.style.display = 'none'; return; }
+    const cellWidth = screen.width / tab.term.cols, cellHeight = screen.height / tab.term.rows;
+    handle.style.display = 'block';
+    handle.style.left = (screen.left - stageRect.left + col * cellWidth) + 'px';
+    handle.style.top = (screen.top - stageRect.top + (line + 1) * cellHeight) + 'px';
+  }
+  function placeHandles() {
+    const tab = current();
+    const position = tab && tab.term.getSelectionPosition();
+    if (!selecting || !position) { hideHandles(); return; }
+    placeHandle(startHandle, tab, position.start.x, position.start.y);
+    placeHandle(endHandle, tab, position.end.x, position.end.y);
+  }
+  function selectWord(tab, at) {
+    const line = tab.term.buffer.active.getLine(at.row);
+    const text = line ? line.translateToString(false) : '';
+    const isWord = i => i >= 0 && i < text.length && text[i] !== ' ';
+    if (!isWord(at.col)) { tab.term.select(at.col, at.row, 1); return; }
+    let start = at.col, end = at.col;
+    while (isWord(start - 1)) start--;
+    while (isWord(end + 1)) end++;
+    tab.term.select(start, at.row, end - start + 1);
+  }
+  function startScrolling() {
+    clearInterval(scrollTimer);
+    scrollTimer = setInterval(() => {
+      const tab = current();
+      if (!pointer || !tab || !moved) return;
+      const rect = screenRect(tab);
+      if (pointer.y < rect.top + 16) tab.term.scrollLines(-1);
+      else if (pointer.y > rect.bottom - 16) tab.term.scrollLines(1);
+      else return;
+      extendSelection();
+      placeHandles();
+    }, 60);
+  }
+
+  window.addEventListener('pointerdown', e => { lastPointerType = e.pointerType; }, true);
+  // One finger scrolls with momentum, two pinch the text size, and holding one still selects.
+  // xterm's own touch handling only moves whole lines and has no momentum, so it never sees these.
+  const PRESS_MS = 550, MOVE_SLOP = 6, SAMPLE_MS = 100, FRICTION = 0.9975;
+  let scrolling = false, lastTouch = null, remainder = 0, velocity = 0, flingFrame = null;
+  let samples = [], pinch = null, offsetScreen = null;
+
+  const isPlain = tab => tab.term.buffer.active.type === 'normal' && tab.term.modes.mouseTrackingMode === 'none';
+  function shiftScreen(tab, pixels, animate) {
+    const screen = tab.term.element.querySelector('.xterm-screen');
+    offsetScreen = pixels ? screen : null;
+    screen.style.transition = animate ? 'transform .1s ease-out' : '';
+    screen.style.transform = pixels ? `translateY(${-pixels}px)` : '';
+  }
+  // Applications on the alternate screen or reading the mouse scroll themselves, from wheel events
+  // that need a position inside the terminal.
+  function wheel(tab, lines, point) {
+    const target = tab.term.element.querySelector('.xterm-screen') || tab.term.element;
+    const rect = target.getBoundingClientRect();
+    const init = {
+      deltaY: Math.sign(lines), deltaMode: WheelEvent.DOM_DELTA_LINE, bubbles: true, cancelable: true,
+      clientX: point ? point.x : rect.left + rect.width / 2, clientY: point ? point.y : rect.top + rect.height / 2,
+    };
+    for (let i = Math.min(Math.abs(lines), 5); i > 0; i--) target.dispatchEvent(new WheelEvent('wheel', init));
+  }
+  function applyScroll(tab, pixels, point) {
+    const cellHeight = screenRect(tab).height / tab.term.rows;
+    remainder += pixels;
+    const lines = Math.trunc(remainder / cellHeight);
+    remainder -= lines * cellHeight;
+    if (!isPlain(tab)) {
+      if (lines) wheel(tab, lines, point);
+      return true;
+    }
+    if (lines) tab.term.scrollLines(lines);
+    const buffer = tab.term.buffer.active;
+    // Against either end of the history there is nothing further to move to.
+    const atEnd = (remainder < 0 && buffer.viewportY === 0) || (remainder > 0 && buffer.viewportY >= buffer.baseY);
+    if (atEnd) remainder = 0;
+    shiftScreen(tab, remainder, false);
+    return !atEnd;
+  }
+  // The text lands on a whole line when the movement ends.
+  function settle(tab) {
+    if (!tab) return;
+    if (isPlain(tab)) {
+      const cellHeight = screenRect(tab).height / tab.term.rows;
+      const lines = Math.round(remainder / cellHeight);
+      if (lines) tab.term.scrollLines(lines);
+    }
+    remainder = 0;
+    shiftScreen(tab, 0, true);
+  }
+  function stopFling(tab) {
+    if (flingFrame === null) return;
+    cancelAnimationFrame(flingFrame);
+    flingFrame = null;
+    if (tab) settle(tab);
+  }
+  function fling(tab) {
+    let previous = performance.now();
+    const step = now => {
+      const elapsed = now - previous;
+      previous = now;
+      if (!tabs.has(tab.id)) { flingFrame = null; return; }
+      const open = applyScroll(tab, velocity * elapsed, null);
+      velocity *= Math.pow(FRICTION, elapsed);
+      if (open && Math.abs(velocity) > 0.02) flingFrame = requestAnimationFrame(step);
+      else { flingFrame = null; settle(tab); }
+    };
+    flingFrame = requestAnimationFrame(step);
+  }
+  function cancelPress() {
+    clearTimeout(pressTimer);
+    pressTimer = null;
+  }
+  const fingers = touches => Math.hypot(touches[0].clientX - touches[1].clientX, touches[0].clientY - touches[1].clientY);
+  function finishPinch() {
+    pinch = null;
+    Dextop.setFontSize(fontSize);
+    for (const tab of tabs.values()) if (tab.term.options.fontSize !== fontSize) setFontSize(fontSize, tab);
+  }
+  stage.addEventListener('touchstart', e => {
+    e.stopPropagation();
+    const wasFlinging = flingFrame !== null;
+    stopFling(current());
+    cancelPress();
+    if (e.touches.length === 2 && !selecting && !pressDragging && current()) {
+      if (scrolling) settle(current());
+      scrolling = false;
+      lastTouch = null;
+      pinch = { distance: Math.max(1, fingers(e.touches)), size: fontSize };
+      return;
+    }
+    scrolling = false;
+    if (pinch || selecting || e.touches.length !== 1 || !current() || e.target.closest('#selbar')) { lastTouch = null; return; }
+    const touch = e.touches[0];
+    pressOrigin = { x: touch.clientX, y: touch.clientY };
+    lastTouch = { y: touch.clientY, time: e.timeStamp };
+    samples = [lastTouch];
+    remainder = 0;
+    velocity = 0;
+    // A touch that only stops a moving list is not the start of a long press.
+    if (wasFlinging) return;
+    pressTimer = setTimeout(() => {
+      pressTimer = null;
+      const tab = current();
+      if (!tab || scrolling) return;
+      selectMode(true);
+      const at = cell(pressOrigin.x, pressOrigin.y);
+      selectWord(tab, at);
+      anchor = at;
+      pointer = { ...pressOrigin };
+      moved = false;
+      pressDragging = true;
+      startScrolling();
+    }, PRESS_MS);
+  }, { capture: true, passive: true });
+  stage.addEventListener('touchmove', e => {
+    e.stopPropagation();
+    if (pinch) {
+      e.preventDefault();
+      if (e.touches.length < 2) return;
+      const tab = current();
+      const size = Math.max(FONT_MIN, Math.min(FONT_MAX, Math.round(pinch.size * fingers(e.touches) / pinch.distance)));
+      if (tab && size !== fontSize) {
+        fontSize = size;
+        setFontSize(size, tab);
+        showToast(String(size));
+      }
+      return;
+    }
+    const touch = e.touches[0];
+    if (pressDragging) {
+      e.preventDefault();
+      pointer = { x: touch.clientX, y: touch.clientY };
+      if (Math.hypot(pointer.x - pressOrigin.x, pointer.y - pressOrigin.y) > 10) moved = true;
+      if (moved) { extendSelection(); placeHandles(); }
+      return;
+    }
+    if (selecting || !lastTouch || e.touches.length !== 1) return;
+    if (!scrolling) {
+      const across = Math.abs(touch.clientX - pressOrigin.x), down = Math.abs(touch.clientY - pressOrigin.y);
+      if (Math.hypot(across, down) > MOVE_SLOP) cancelPress();
+      if (down <= MOVE_SLOP || down < across) return;
+      scrolling = true;
+      lastTouch = { y: touch.clientY, time: e.timeStamp };
+      samples = [lastTouch];
+      return;
+    }
+    e.preventDefault();
+    const tab = current();
+    const pixels = lastTouch.y - touch.clientY;
+    lastTouch = { y: touch.clientY, time: e.timeStamp };
+    samples.push(lastTouch);
+    while (samples.length > 2 && e.timeStamp - samples[0].time > SAMPLE_MS) samples.shift();
+    if (tab) applyScroll(tab, pixels, { x: touch.clientX, y: touch.clientY });
+  }, { capture: true, passive: false });
+  function endTouch(e) {
+    e.stopPropagation();
+    cancelPress();
+    if (pinch) { if (e.touches.length < 2) finishPinch(); return; }
+    if (e.touches.length) return;
+    if (pressDragging) { pressDragging = false; stopSelection(); placeHandles(); return; }
+    const tab = current();
+    if (scrolling && tab) {
+      const first = samples[0], last = samples[samples.length - 1];
+      const span = last.time - first.time;
+      // A finger that rested before lifting has no momentum left.
+      velocity = span > 0 && e.timeStamp - last.time < 80 ? (first.y - last.y) / span : 0;
+      if (Math.abs(velocity) > 0.3) fling(tab); else settle(tab);
+    }
+    scrolling = false;
+    lastTouch = null;
+  }
+  stage.addEventListener('touchend', endTouch, { capture: true, passive: true });
+  stage.addEventListener('touchcancel', endTouch, { capture: true, passive: true });
+
   selection.addEventListener('pointerdown', e => {
-    if (!e.isPrimary || e.button !== 0) return;
+    const tab = current();
+    if (!tab || !e.isPrimary || e.button !== 0) return;
     e.preventDefault();
     selection.setPointerCapture(e.pointerId);
-    anchor = cell(e.clientX, e.clientY);
     pointer = { x: e.clientX, y: e.clientY };
-    extendSelection();
-    scrollTimer = setInterval(() => {
-      if (!pointer) return;
-      const rect = term.element.querySelector('.xterm-screen').getBoundingClientRect();
-      if (pointer.y < rect.top + 16) term.scrollLines(-1);
-      else if (pointer.y > rect.bottom - 16) term.scrollLines(1);
-      extendSelection();
-    }, 60);
+    origin = { ...pointer };
+    moved = false;
+    anchor = cell(e.clientX, e.clientY);
+    const position = tab.term.getSelectionPosition();
+    if (position) {
+      const near = handle => handle.style.display === 'block' && (() => {
+        const rect = handle.getBoundingClientRect();
+        return Math.hypot(e.clientX - rect.left - 9, e.clientY - rect.top - 9) < 36;
+      })();
+      if (near(endHandle)) anchor = { col: position.start.x, row: position.start.y };
+      else if (near(startHandle)) anchor = { col: Math.max(0, position.end.x - 1), row: position.end.y };
+    }
+    startScrolling();
   });
   selection.addEventListener('pointermove', e => {
     if (!anchor) return;
     pointer = { x: e.clientX, y: e.clientY };
-    extendSelection();
+    if (Math.hypot(pointer.x - origin.x, pointer.y - origin.y) > 6) moved = true;
+    if (moved) { extendSelection(); placeHandles(); }
   });
-  selection.addEventListener('pointerup', stopSelection);
+  selection.addEventListener('pointerup', () => {
+    const tapped = anchor && !moved;
+    stopSelection();
+    placeHandles();
+    // A tap outside the drag ends the selection, as in Android's text fields.
+    if (tapped) { const tab = current(); if (tab) tab.term.clearSelection(); selectMode(false); }
+  });
   selection.addEventListener('pointercancel', stopSelection);
-  selection.addEventListener('lostpointercapture', stopSelection);
-  document.getElementById('copy').onclick = () => window.dextopCopy();
-  document.getElementById('paste').onclick = () => window.dextopPaste();
-  // Keep the soft keyboard up when the bar is tapped.
-  for (const key of document.querySelectorAll('#keys button')) key.onmousedown = e => e.preventDefault();
+  selectButton.onclick = () => selectMode(!selecting);
+
+  const toast = document.getElementById('toast');
+  let toastTimer = null;
+  function showToast(message) {
+    toast.textContent = message;
+    toast.classList.add('show');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => toast.classList.remove('show'), 1500);
+  }
+  function selectAll() { const tab = current(); if (tab) { selectMode(true); tab.term.selectAll(); placeHandles(); } }
+  window.dextopSelectAll = selectAll;
+  window.dextopCopy = () => {
+    const tab = current();
+    const text = tab ? tab.term.getSelection() : '';
+    if (!text) return;
+    Dextop.copy(text);
+    showToast(Dextop.translate('uiCopied'));
+    tab.term.clearSelection();
+    if (selecting) selectMode(false);
+  };
+  window.dextopPaste = () => { if (selecting) selectMode(false); Dextop.paste(); };
+  // xterm handles bracketed paste and newline normalization for the active shell.
+  window.dextopPasteText = text => { const tab = current(); if (tab) { Dextop.lineChanged(); tab.term.paste(text); tab.term.focus(); } };
+  for (const [id, action] of [['copy', window.dextopCopy], ['barCopy', window.dextopCopy], ['paste', window.dextopPaste],
+      ['barPaste', window.dextopPaste], ['all', selectAll], ['barAll', selectAll],
+      ['barClose', () => { const tab = current(); if (tab) tab.term.clearSelection(); selectMode(false); }]]) {
+    document.getElementById(id).onclick = action;
+  }
+  // A secondary mouse button copies a selection, or pastes when there is none.
+  stage.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    // Android reports a finger's long press as a context menu too; that one only selects.
+    if (lastPointerType !== 'mouse') return;
+    const tab = current();
+    if (tab && tab.term.hasSelection()) window.dextopCopy(); else window.dextopPaste();
+  });
+  // Keep the soft keyboard up when the bars are tapped.
+  for (const button of document.querySelectorAll('#keys button, #selbar button')) button.onmousedown = e => e.preventDefault();
 
   // Keys and IME text come from Android (see LinuxTerminalActivity), already encoded.
   window.dextopKey = (normal, application) => {
-    term.input(application !== null && term.modes.applicationCursorKeysMode ? application : normal, true);
+    const tab = current();
+    if (tab) tab.term.input(application !== null && tab.term.modes.applicationCursorKeysMode ? application : normal, true);
   };
-  window.dextopCopy = () => { Dextop.copy(term.getSelection()); };
-  window.dextopPaste = () => { selectMode(false); Dextop.paste(); };
-  // xterm handles bracketed paste and newline normalization for the active shell.
-  window.dextopPasteText = text => { term.paste(text); term.focus(); };
-  window.dextopSelectAll = () => { selectMode(true); term.selectAll(); };
   const compose = document.getElementById('compose');
   window.dextopCompose = text => {
     compose.textContent = text;
     compose.style.display = text ? 'block' : 'none';
   };
 
-  term.onData(data => Dextop.input(modified(data)));
-  term.onBinary(data => Dextop.binary(data));
-  term.onTitleChange(title => Dextop.title(title));
+  new ResizeObserver(() => { for (const tab of tabs.values()) fitTab(tab); placeHandles(); }).observe(stage);
 
-  function resize() {
-    try { fit.fit(); } catch (e) {}
-    Dextop.resize(term.rows, term.cols);
-  }
-  new ResizeObserver(resize).observe(document.getElementById('term'));
-
-  window.dextopWrite = base64 => {
+  window.dextopWrite = (id, base64) => {
+    const tab = tabs.get(id);
+    if (!tab) return;
     const text = atob(base64);
     const bytes = new Uint8Array(text.length);
     for (let i = 0; i < text.length; i++) bytes[i] = text.charCodeAt(i);
-    term.write(bytes);
+    if (tab.held) tab.held.push(bytes); else tab.term.write(bytes);
   };
-  window.dextopNotice = message => term.write('\r\n\x1b[2m' + message + '\x1b[0m\r\n');
 
-  try { fit.fit(); } catch (e) {}
-  term.focus();
-  Dextop.ready(term.rows, term.cols);
+  window.dextopReplayStart = (id, rows, cols) => {
+    const tab = tabs.get(id);
+    if (!tab) return;
+    tab.replaying = true;
+    if (rows >= 2 && cols >= 2) { try { tab.term.resize(cols, rows); } catch (e) {} }
+  };
+  // Not ?1049l on the normal screen: it also moves the cursor back to wherever it was last saved.
+  const LEAVE_PROGRAM = '\x1b[r\x1b[0m\x1b[?6l\x1b[?7h\x1b[4l\x1b[?25h\x1b[?1l\x1b>\x1b(B\x1b[?1000l\x1b[?1002l\x1b[?1003l\x1b[?1004l\x1b[?1006l\x1b[?2004l';
+  function lastContentRow(buffer) {
+    for (let row = buffer.length - 1; row >= 0; row--) {
+      const line = buffer.getLine(row);
+      if (line && line.translateToString(true).length) return row;
+    }
+    return -1;
+  }
+  window.dextopReplayEnd = (id, restored) => {
+    const tab = tabs.get(id);
+    if (!tab) return;
+    const term = tab.term;
+    // Output from a new shell waits until the kept output and the notice are on screen.
+    tab.held = [];
+    const finish = () => {
+      const held = tab.held;
+      tab.held = null;
+      tab.replaying = false;
+      fitTab(tab);
+      for (const bytes of held) term.write(bytes);
+    };
+    term.write('', () => {
+      if (restored === null) { finish(); return; }
+      const leave = term.buffer.active.type === 'alternate' ? '\x1b[?1049l' : '';
+      term.write(leave + LEAVE_PROGRAM, () => {
+        // The next prompt goes under everything that was kept.
+        const buffer = term.buffer.active;
+        const last = lastContentRow(buffer);
+        const line = last < 0 ? '' : `\x1b[${Math.max(0, last - buffer.baseY) + 1};1H\r\n`;
+        term.write(`${line}\x1b[2m${restored}\x1b[0m\r\n`, finish);
+      });
+    });
+  };
+  window.dextopNotice = (id, message) => {
+    const tab = tabs.get(id);
+    if (tab) tab.term.write('\r\n\x1b[2m' + message + '\x1b[0m\r\n');
+  };
+
+  // Cells are measured once, so the fonts have to be there before the first terminal opens.
+  Promise.race([
+    Promise.all([
+      document.fonts.load('12px "DextopTermMono"'),
+      document.fonts.load('bold 12px "DextopTermMono"'),
+      document.fonts.load('12px "SymbolsNerdFontMono"', '\uf120'),
+    ]),
+    new Promise(resolve => setTimeout(resolve, 2000)),
+  ]).catch(() => {}).finally(() => Dextop.ready());
 </script>
 </body>
 </html>

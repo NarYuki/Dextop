@@ -103,7 +103,7 @@ internal object LinuxSteam {
 
     /** Registers existing ARM64 clients too, including containers installed before Steam setup. */
     fun stage(root: java.io.File) {
-        if (!java.io.File(root, "root/.local/share/Steam/steamrtarm64/steam").isFile) return
+        if (!java.io.File(root, LinuxUser.home(root).removePrefix("/") + "/.local/share/Steam/steamrtarm64/steam").isFile) return
         stageGaming(root)
         stageIcon(root)
         java.io.File(root, LAUNCHER.removePrefix("/")).apply {
@@ -112,7 +112,7 @@ internal object LinuxSteam {
             check(setExecutable(true, false)) { moe.n4tsu.dextop.localText("uiCannotMakeSteamLauncherExecutable") }
         }
         stageCommandAlias(root)
-        java.io.File(root, "root/.local/share/applications/dextop-steam.desktop").apply {
+        java.io.File(root, LinuxUser.home(root).removePrefix("/") + "/.local/share/applications/dextop-steam.desktop").apply {
             parentFile?.mkdirs()
             if (!isFile || readText() != desktopEntry) writeText(desktopEntry)
         }
@@ -122,7 +122,7 @@ internal object LinuxSteam {
     /** Steam-generated game shortcuts invoke `steam`, while our ARM64 client
      * launcher is named dextop-steam. Preserve any user or distribution command. */
     internal fun stageCommandAlias(root: java.io.File) {
-        if (!java.io.File(root, "root/.local/share/Steam/steamrtarm64/steam").isFile) return
+        if (!java.io.File(root, LinuxUser.home(root).removePrefix("/") + "/.local/share/Steam/steamrtarm64/steam").isFile) return
         val alias = java.io.File(root, "usr/local/bin/steam").toPath()
         val vendor = java.io.File(root, "usr/bin/steam").toPath()
         if (java.nio.file.Files.exists(alias, java.nio.file.LinkOption.NOFOLLOW_LINKS) ||
@@ -300,8 +300,7 @@ internal object LinuxSteam {
     const val STEAM_MODE_RATE = "dextop-steam-rate.conf"
     const val STEAM_MODE_VSYNC = "dextop-steam-vsync.conf"
     /** Ends a running Steam mode: the launcher, the client with its web helpers and gamescope. */
-    const val STEAM_MODE_STOP = "pkill -TERM -f '[d]extop-steam-gamemode'; pkill -TERM -f '[s]teamrtarm64/steam'; " +
-        "pkill -TERM -f '[g]amescope --backend'; true"
+    const val STEAM_MODE_STOP = "python3 /usr/local/libexec/dextop-steam-stop"
 
     /**
      * Dextop's Steam mode, after DroidDeck's Steam session: a full-screen gamescope on Dextop's
@@ -603,7 +602,7 @@ internal object LinuxSteam {
             if (!isFile || readText() != steamModeLauncher) writeText(steamModeLauncher)
             check(setExecutable(true, false)) { moe.n4tsu.dextop.localText("uiCannotMakeTheSteamModeLauncherExecutable") }
         }
-        java.io.File(root, "root/.local/share/applications/$STEAM_MODE_ENTRY").apply {
+        java.io.File(root, LinuxUser.home(root).removePrefix("/") + "/.local/share/applications/$STEAM_MODE_ENTRY").apply {
             parentFile?.mkdirs()
             if (!isFile || readText() != steamModeEntry) writeText(steamModeEntry)
         }

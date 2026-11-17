@@ -10,9 +10,10 @@ stamp=$steam_root/package/droiddeck-installed
 legacy_stamp=$steam_root/package/bannerlator-installed
 unconfirmed=$steam_root/package/droiddeck-unconfirmed
 repair_request=$HOME/.bl-steam-repair
-if [ -f "$legacy_stamp" ] && [ ! -f "$stamp" ]; then
-  mv -f "$legacy_stamp" "$stamp" || true
-fi
+# Serialize repair/update writers for this Steam installation.
+mkdir -p "$steam_root/package"
+exec 9>"$steam_root/package/dextop-installer.lock"
+flock -x 9
 repair=""
 if [ -e "$repair_request" ]; then
   repair="requested"
@@ -22,8 +23,6 @@ elif [ -f "$unconfirmed" ] && ! grep -qx repaired "$unconfirmed" \
 fi
 if [ -n "$repair" ]; then
   echo "== STEP $(date -u +%H:%M:%S) repairing the Steam client ($repair)"
-  rm -f "$stamp" "$legacy_stamp" "$steam_root/.crash" "$steam_root/steam.pid" \
-    "$steam_root"/package/steam_client_*.manifest "$steam_root"/package/steam_client_*.installed
   for part in "$steam_root"/package/*.zip.*; do
     [ -f "$part" ] || continue
     sum=${part##*.}
@@ -49,13 +48,42 @@ select_channel() {
   printf '%s\n' "${sync:-$steam_channel}" > "$steam_root/package/beta.staged"
   mv -f "$steam_root/package/beta.staged" "$steam_root/package/beta"
 }
-if [ -z "$sync" ] && [ -x "$steam_root/steamrtarm64/steam" ] && [ -f "$stamp" ] && [ -s "$steam_root/package/$manifest.installed" ]; then
+if [ -z "$repair" ] && [ -z "$sync" ] && [ -x "$steam_root/steamrtarm64/steam" ] && { [ -f "$stamp" ] || [ -f "$legacy_stamp" ]; } && [ -s "$steam_root/package/$manifest.installed" ]; then
   select_channel
   exit 0
 fi
 
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT
+metadata_transaction=0
+metadata_committed=0
+metadata=("$stamp" "$legacy_stamp" "$steam_root/package/beta"
+          "$steam_root/package/$manifest.manifest" "$steam_root/package/$manifest.installed"
+          "$unconfirmed")
+finish_install() {
+  status=$?
+  set +e
+  restored=1
+  if [ "$metadata_transaction" = 1 ] && [ "$metadata_committed" != 1 ]; then
+    for target in "${metadata[@]}"; do
+      saved="$work/metadata/${target##*/}"
+      if [ -f "$saved" ]; then
+        cp -p "$saved" "$target.restore.$$" && mv -f "$target.restore.$$" "$target" || restored=0
+      else
+        rm -f "$target" || restored=0
+      fi
+    done
+  fi
+  if [ "$restored" = 1 ]; then
+    rm -rf "$work"
+  else
+    echo "Steam metadata rollback failed; backup retained in $work/metadata" >&2
+    status=1
+  fi
+  exit "$status"
+}
+trap finish_install EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
 cdn=""
 for candidate in $cdn_list; do
   if curl -fsSL --connect-timeout 10 --max-time 30 --retry 2 --retry-connrefused --retry-delay 3 \
@@ -84,8 +112,8 @@ if [ -n "$sync" ]; then
   installed=$(awk -F'"' '$2 == "version" { print $4; exit }' "$steam_root/package/$manifest.manifest" 2>/dev/null || true)
   # Steam itself writes pending manifests, so a matching downloaded manifest is not
   # proof that our ARM64 payload was installed successfully.
-  completed=$(cat "$stamp" 2>/dev/null || true)
-  if [ -x "$steam_root/steamrtarm64/steam" ] && [ "$installed" = "$version" ] && [ "$completed" = "$version" ] && [ -s "$steam_root/package/$manifest.installed" ]; then
+  completed=$(cat "$stamp" 2>/dev/null || cat "$legacy_stamp" 2>/dev/null || true)
+  if [ -z "$repair" ] && [ -x "$steam_root/steamrtarm64/steam" ] && [ "$installed" = "$version" ] && [ "$completed" = "$version" ] && [ -s "$steam_root/package/$manifest.installed" ]; then
     select_channel
     clear_applied_pending
     chmod -R a+x "$steam_root/steamrtarm64" "$steam_root/linuxarm64" 2>/dev/null || true
@@ -133,6 +161,13 @@ find "$work/client" -depth -name '*\\*' | while read -r odd; do
 done
 # Replace each inode rather than truncating executables mapped by a remaining helper.
 # The launchers call --sync only after the main client exits.
+# Keep old metadata until all payload downloads have passed verification. Restore it
+# if copying, state recording, or final publication fails (including an explicit repair).
+mkdir -p "$work/metadata"
+for target in "${metadata[@]}"; do
+  [ ! -f "$target" ] || cp -p "$target" "$work/metadata/${target##*/}"
+done
+metadata_transaction=1
 cp -a --remove-destination "$work/client/." "$steam_root/"
 chmod -R a+x "$steam_root/steamrtarm64" "$steam_root/linuxarm64" 2>/dev/null || true
 cp "$work/manifest" "$steam_root/package/$manifest.manifest.staged"
@@ -152,9 +187,16 @@ fi
 ln -sfn "$steam_root/linuxarm64" "$HOME/.steam/sdkarm64"
 ln -sfn "$steam_root/steamrtarm64" "$HOME/.steam/binarm64"
 ln -sfn "$steam_root/linux32" "$HOME/.steam/sdk32"
-echo "$version" > "$stamp"
+printf '%s\n' "$version" > "$stamp.staged"
+mv -f "$stamp.staged" "$stamp"
 clear_applied_pending
 if [ -n "$repair" ]; then
   echo repaired > "$unconfirmed"
   rm -f "$repair_request"
+fi
+
+metadata_committed=1
+# Runtime crash hints are cleared only after a complete, recorded repair.
+if [ -n "$repair" ]; then
+  rm -f "$steam_root/.crash" "$steam_root/steam.pid"
 fi

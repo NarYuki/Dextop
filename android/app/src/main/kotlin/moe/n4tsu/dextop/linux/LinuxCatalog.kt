@@ -160,7 +160,7 @@ internal object LinuxCatalog {
             apt-get install -y --no-install-recommends \
                 xvfb x11-xserver-utils xauth icewm xterm dbus-x11 pulseaudio pulseaudio-utils \
                 fonts-dejavu-core xdg-utils ca-certificates fakeroot adwaita-icon-theme xz-utils procps \
-                python3 passwd sudo libcrypt1 gnome-keyring libpam-gnome-keyring libsecret-tools gnome-themes-extra libgtk-3-bin libglib2.0-bin qt5ct qt6ct
+                python3 passwd sudo libcrypt1 gnupg pinentry-gnome3 gnome-keyring libpam-gnome-keyring libsecret-tools gnome-themes-extra libgtk-3-bin libglib2.0-bin qt5ct qt6ct
             if dpkg-query -W -f='${'$'}{db:Status-Status}' libreoffice-core 2>/dev/null | grep -qx installed; then
                 apt-get install -y --no-install-recommends libreoffice-gtk3
             fi
@@ -173,7 +173,7 @@ internal object LinuxCatalog {
             pacman -S --noconfirm --needed \
                 xorg-server-xvfb xorg-xrdb xorg-xrandr xorg-xauth icewm xterm dbus pulseaudio \
                 ttf-dejavu xdg-utils ca-certificates fakeroot adwaita-icon-theme xz procps-ng \
-                python shadow sudo libxcrypt gnome-keyring libsecret gnome-themes-extra qt5ct qt6ct
+                python shadow sudo libxcrypt gnupg pinentry gnome-keyring libsecret gnome-themes-extra qt5ct qt6ct
             if pacman -Si adwaita-icon-theme-legacy >/dev/null 2>&1; then
                 pacman -S --noconfirm --needed adwaita-icon-theme-legacy
             fi
@@ -185,7 +185,8 @@ internal object LinuxCatalog {
      * /tmp/dextop-fb-<display> (mmapped by the service), then the session
      * ([session] is "icewm" for desktop mode). Runs until the session ends.
      */
-    fun desktopScript(display: Int, width: Int, height: Int, dpi: Int, session: String, xwayland: Boolean = false, uiScale: Int = 100): String = """
+    fun desktopScript(display: Int, width: Int, height: Int, dpi: Int, session: String, xwayland: Boolean = false, uiScale: Int = 100,
+                      choice: LinuxDesktopChoice = LinuxDesktopChoice(LinuxDesktopSessions.ICEWM)): String = """
         # The keyring password, handed over on standard input only (LinuxContainerService.takeKeyring).
         DEXTOP_KR=
         [ "${'$'}{DEXTOP_KEYRING_STDIN:-}" = 1 ] && IFS= read -r DEXTOP_KR
@@ -209,13 +210,22 @@ internal object LinuxCatalog {
         mkdir -p ${'$'}XDG_RUNTIME_DIR && chmod 700 ${'$'}XDG_RUNTIME_DIR
         ${sessionSetup(xDpi(dpi))}
         ${LinuxUiScale.script(uiScale)}
+        # Applications started from the desktop's menu and panel inherit full window buttons.
+        ${windowDecorations(androidWindows = false, gsettings = false)}
         echo dextop-x-ready
         case "$session" in
-            icewm) icewm-session >/tmp/session-${'$'}D.log 2>&1 || icewm >>/tmp/session-${'$'}D.log 2>&1 ;;
+            icewm) ${desktopSessionCommand(choice, width, height)} >/tmp/session-${'$'}D.log 2>&1 ;;
             *) wait ${'$'}XPID ;;
         esac
         kill ${'$'}XPID 2>/dev/null
     """.trimIndent() + "\n"
+
+    /** Runs the chosen desktop session (dextop-desktop-session), the custom command in its environment. */
+    internal fun desktopSessionCommand(choice: LinuxDesktopChoice, width: Int, height: Int): String {
+        val session = choice.effective
+        val command = if (session == LinuxDesktopSessions.CUSTOM) "DEXTOP_DESKTOP_COMMAND=${shellQuote(choice.command)} " else ""
+        return command + "/usr/local/libexec/dextop-desktop-session ${session.id}"
+    }
 
     /**
      * Starts Xvfb for application windows: no window manager (Dextop is
@@ -303,25 +313,36 @@ internal object LinuxCatalog {
     """.trimIndent() + "\n"
     }
 
-    /** GTK reads user settings and GSettings before system settings. Keep both in sync
-     * with the host's decorations, including after reinstalling a container. */
-    private fun windowDecorations(androidWindows: Boolean): String {
+    /**
+     * Window buttons of GTK's own title bars (Chrome, Firefox, GNOME applications). An Android
+     * window has Android's buttons, so its applications show only their menu; an application of
+     * the full Linux desktop or a Dextop desktop window needs minimize, maximize and close.
+     *
+     * Both kinds share one home, so the choice is not written to the user's settings.ini (the
+     * last launch would win for every window, including those started from the desktop's own
+     * menu). Each mode has a settings.ini of its own, put first in XDG_CONFIG_DIRS, which GTK 3
+     * and 4 read per process; the user's file must not set the key, since it is read last.
+     * Wayland applications take the layout from GSettings instead; only application windows run
+     * on Wayland, so it follows the launch.
+     */
+    internal fun windowDecorations(androidWindows: Boolean, gsettings: Boolean = true): String {
         val layout = if (androidWindows) "menu:" else "appmenu:minimize,maximize,close"
+        val mode = if (androidWindows) "android" else "desktop"
         return """
         DEXTOP_LAYOUT='$layout'
+        DEXTOP_GTK_DIR="${'$'}{XDG_DATA_HOME:-${'$'}HOME/.local/share}/dextop/gtk-layout/$mode"
         for version in 3.0 4.0; do
+            mkdir -p "${'$'}DEXTOP_GTK_DIR/gtk-${'$'}version"
+            printf '[Settings]\ngtk-decoration-layout=%s\n' "${'$'}DEXTOP_LAYOUT" >"${'$'}DEXTOP_GTK_DIR/gtk-${'$'}version/settings.ini"
+            # Earlier versions of Dextop wrote the layout here, where it overrides every mode.
             settings="${'$'}{XDG_CONFIG_HOME:-${'$'}HOME/.config}/gtk-${'$'}version/settings.ini"
-            mkdir -p "${'$'}{settings%/*}"
-            # Preserve theme and other preferences; replace only the button layout.
-            [ -f "${'$'}settings" ] || printf '[Settings]\n' >"${'$'}settings"
-            awk -v layout="${'$'}DEXTOP_LAYOUT" '
-                /^\[Settings\]$/ { section=1; found=1; print; print "gtk-decoration-layout=" layout; next }
-                /^\[/ { section=0 }
-                section && /^[[:space:]]*gtk-decoration-layout[[:space:]]*=/ { next }
-                { print }
-                END { if (!found) print "[Settings]\ngtk-decoration-layout=" layout }
-            ' "${'$'}settings" >"${'$'}settings.dextop" && mv "${'$'}settings.dextop" "${'$'}settings"
+            if grep -q '^[[:space:]]*gtk-decoration-layout[[:space:]]*=' "${'$'}settings" 2>/dev/null; then
+                grep -v '^[[:space:]]*gtk-decoration-layout[[:space:]]*=' "${'$'}settings" >"${'$'}settings.dextop" &&
+                    mv "${'$'}settings.dextop" "${'$'}settings"
+            fi
         done
+        export XDG_CONFIG_DIRS="${'$'}DEXTOP_GTK_DIR:${'$'}{XDG_CONFIG_DIRS:-/etc/xdg}"
+        """.trimIndent() + if (!gsettings) "" else "\n" + """
         if ! ls /usr/lib/*/gio/modules/libdconfsettings.so /usr/lib/gio/modules/libdconfsettings.so >/dev/null 2>&1; then
             export GSETTINGS_BACKEND=keyfile
         fi
@@ -469,78 +490,14 @@ internal object LinuxCatalog {
         [ ! -f /etc/dextop/start-session.sh ] || sh /etc/dextop/start-session.sh
     """.trimIndent()
 
-    /**
-     * The keyring Dextop set up (LinuxKeyring): its password, handed over for this session
-     * only, creates the login keyring the first time (as the default one) and unlocks it, so
-     * applications store secrets encrypted without asking for a password at every start.
-     *
-     * When it is the account password and the container has pam_gnome_keyring, the session
-     * logs in through PAM as a desktop's does (LinuxPam), and the module unlocks the keyring.
-     * Otherwise, without PAM:
-     *
-     * A login keyring that password cannot open (an application asked for a new keyring before
-     * Dextop unlocked one, and the user typed another password; or the account password changed)
-     * would make every application ask again at every start. Such a keyring is kept aside, under
-     * its name with the date, and a new one is made with Dextop's password.
-     * Expects the session bus to run.
-     */
+    /** Passwords stay on stdin. Verify the optional PAM module through Secret Service,
+     * fall back to direct unlock, and preserve existing collections on failure. */
     private val KEYRING_UNLOCK = """
-        # An earlier version handed the password over in this file; none is left behind.
         rm -f /var/lib/dextop/keyring-unlock
-        if [ -n "${'$'}DEXTOP_KR" ]; then
-            if command -v gnome-keyring-daemon >/dev/null 2>&1; then
-                KD="${'$'}{HOME:-/root}/.local/share/keyrings"
-                mkdir -p "${'$'}KD" && chmod 700 "${'$'}KD"
-                [ -s "${'$'}KD/default" ] || printf 'login\n' >"${'$'}KD/default"
-                dextop_unlock() {
-                    # Bounded: with a login keyring of another password the daemon waits on a prompt
-                    # nobody sees; the session starts anyway and the check below repairs the keyring.
-                    printf '%s' "${'$'}DEXTOP_KR" | timeout -k 1 4 gnome-keyring-daemon --replace --unlock --daemonize --components=secrets >/dev/null 2>&1
-                }
-                dextop_locked() {
-                    dbus-send --session --reply-timeout=1500 --print-reply=literal --dest=org.freedesktop.secrets \
-                        /org/freedesktop/secrets/collection/login org.freedesktop.DBus.Properties.Get \
-                        string:org.freedesktop.Secret.Collection string:Locked 2>/dev/null | grep -q true
-                }
-                # Locked only when the daemon answers "locked" every time, over two seconds, and a second
-                # unlock does not help: a slow daemon or bus must never get a keyring moved aside.
-                dextop_still_locked() {
-                    for dextop_try in 1 2 3 4; do
-                        sleep 0.5
-                        dextop_locked || return 1
-                    done
-                    return 0
-                }
-                if [ -f /etc/pam.d/${LinuxPam.SERVICE} ] && [ -f ${LinuxPam.LOGIN} ] && command -v python3 >/dev/null 2>&1; then
-                    # As on a desktop: the session logs in through PAM, and pam_gnome_keyring unlocks the
-                    # login keyring with the account password (and passwd keeps the two in step).
-                    # Bounded so that, with the direct unlock after it, the session reports ready in time.
-                    printf '%s\n' "${'$'}DEXTOP_KR" | timeout -k 1 5 python3 ${LinuxPam.LOGIN} >/dev/null 2>&1
-                    dextop_pam=${'$'}?
-                    # The daemon PAM started holds the login keyring; the session starts its Secret Service,
-                    # as gnome-session does.
-                    [ "${'$'}dextop_pam" != 0 ] || timeout -k 1 3 gnome-keyring-daemon --start --components=secrets >/dev/null 2>&1
-                else
-                    dextop_pam=
-                fi
-                # Not the account password (a keyring password Dextop made) or no PAM module: unlock directly.
-                [ "${'$'}dextop_pam" = 0 ] || dextop_unlock
-                # Checked in the background: the session (and its readiness signal) never waits on it.
-                # With PAM a keyring of another password stays as it is and asks, as on a desktop.
-                if [ -z "${'$'}dextop_pam" ] && [ -s "${'$'}KD/login.keyring" ] && command -v dbus-send >/dev/null 2>&1; then
-                    (
-                        if dextop_still_locked && { dextop_unlock; dextop_still_locked; }; then
-                            echo 'Dextop: the login keyring has another password; kept aside, a new one is made' >&2
-                            mv "${'$'}KD/login.keyring" "${'$'}KD/login.keyring.before-dextop-${'$'}(date +%Y%m%d-%H%M%S)"
-                            dextop_unlock
-                        fi
-                    ) </dev/null >/dev/null 2>&1 &
-                fi
-                # Applications that store secrets use the login keyring, never a new one asking for a password.
-                printf 'login\n' >"${'$'}KD/default"
-            fi
-            unset DEXTOP_KR
+        if [ -n "${'$'}DEXTOP_KR" ] && command -v gnome-keyring-daemon >/dev/null 2>&1; then
+            printf '%s' "${'$'}DEXTOP_KR" | python3 /usr/local/libexec/dextop-keyring-unlock
         fi
+        unset DEXTOP_KR
     """.trimIndent()
 
     /** Where the GPU package installs its Vulkan driver manifest (see [turnipScript]). */

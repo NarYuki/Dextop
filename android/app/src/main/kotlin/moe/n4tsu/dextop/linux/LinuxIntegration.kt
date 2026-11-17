@@ -117,13 +117,30 @@ internal class LinuxIntegration(
                 process.waitFor(12, java.util.concurrent.TimeUnit.SECONDS)
             }
             if (process.isAlive) LinuxRuntime.terminate(process)
+            // A restart rebinds the same port: wait until the old server has really exited.
+            runCatching { process.waitFor(5, java.util.concurrent.TimeUnit.SECONDS) }
         }
         vncPasswords.remove(key)
     }
 
+    /** Fails early on a busy port, retrying briefly while a just-stopped server releases it. */
+    private fun claimPort(port: Int) {
+        val end = System.nanoTime() + 5_000_000_000L
+        while (true) {
+            try {
+                ServerSocket().use { it.reuseAddress = true; it.bind(InetSocketAddress("0.0.0.0", port)) }
+                return
+            } catch (error: java.io.IOException) {
+                if (System.nanoTime() >= end) throw IllegalStateException(
+                    moe.n4tsu.dextop.InlineStrings.format(moe.n4tsu.dextop.localText("uiPort0IsAlreadyInUse"), port), error)
+                Thread.sleep(150)
+            }
+        }
+    }
+
     private fun startProcess(id: String, feature: String, command: String, port: Int? = null, root: Boolean = false, socket: String? = null) {
         stopProcess(id, feature)
-        if (port != null) ServerSocket().use { it.reuseAddress = true; it.bind(InetSocketAddress("0.0.0.0", port)) }
+        if (port != null) claimPort(port)
         val key = "$id:$feature"
         val output = File(directory(id), "$feature.log").apply { writeText("") }
         val process = proot().guest(id, command, fakeRoot = root,
