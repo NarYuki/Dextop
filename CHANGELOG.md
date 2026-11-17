@@ -20,6 +20,7 @@
 
 * **input:** give the laptop keyboard one owner and drop the slow fallback path ([86772ba](https://github.com/NarYuki/Dextop/commit/86772ba6037c18e6f63fe9fb897dbadb78e5701a))
 * **linux:** ask for notifications for printing and accept full-width port digits ([8dc0c02](https://github.com/NarYuki/Dextop/commit/8dc0c0274c224b8551032bd7fd48d51b4f19cbdf))
+* **linux:** fix integrations, SSH, USB storage and the desktop; rework the terminal ([94b5666](https://github.com/NarYuki/Dextop/commit/94b56661001deec56f4d82c8c3647b24e14ce1a4))
 * **linux:** read Bluetooth file requests without trusting guest-controlled files ([9728d78](https://github.com/NarYuki/Dextop/commit/9728d78ce65f08e14f5873c96009ba81ae2648a3))
 
 ## 2.0.0
