@@ -46,6 +46,8 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
 
   /// How home-screen launchers are installed ('ask', 'auto' or 'manual').
   String launcherMode = 'ask';
+  /// Container the services page works on; null follows the first one.
+  String? _serviceContainer;
   bool silentAvailable = false;
 
   /// Google Play build: launchers are home-screen shortcuts, with nothing to install.
@@ -402,28 +404,29 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
     };
 
     List<Widget> general() => [
-      if (privilegedModeOffered) LinuxGroup(
-        children: [
-          M3EListItem(
-            supportingMaxLines: null,
-            headline: linuxText(context, 'uiAdvancedSettings'),
-            supportingText: linuxText(
-              context,
-              'uiLinuxExecutionModeAndPrivilegedAccess',
+      if (privilegedModeOffered)
+        LinuxGroup(
+          children: [
+            M3EListItem(
+              supportingMaxLines: null,
+              headline: linuxText(context, 'uiAdvancedSettings'),
+              supportingText: linuxText(
+                context,
+                'uiLinuxExecutionModeAndPrivilegedAccess',
+              ),
+              leading: const Icon(Icons.admin_panel_settings_rounded),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () async {
+                await Navigator.of(context).push<void>(
+                  MaterialPageRoute(
+                    builder: (_) => const LinuxAdvancedSettingsPage(),
+                  ),
+                );
+                if (mounted) _load();
+              },
             ),
-            leading: const Icon(Icons.admin_panel_settings_rounded),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () async {
-              await Navigator.of(context).push<void>(
-                MaterialPageRoute(
-                  builder: (_) => const LinuxAdvancedSettingsPage(),
-                ),
-              );
-              if (mounted) _load();
-            },
-          ),
-        ],
-      ),
+          ],
+        ),
       LinuxSection(l.linuxDefaultSection),
       LinuxGroup(
         children: [
@@ -675,13 +678,15 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       else
         LinuxGroup(
           children: [
-            LinuxChoice<String>(
-              value: 'ask',
-              groupValue: launcherMode,
-              onChanged: _setLauncherMode,
-              icon: M3EIcons.help_outline_rounded,
-              title: linuxText(context, 'uiAskTheFirstTime'),
-            ),
+            // Only the starting state: once another way is chosen it cannot be chosen again.
+            if (launcherMode == 'ask')
+              LinuxChoice<String>(
+                value: 'ask',
+                groupValue: launcherMode,
+                onChanged: _setLauncherMode,
+                icon: M3EIcons.help_outline_rounded,
+                title: linuxText(context, 'uiAskTheFirstTime'),
+              ),
             LinuxChoice<String>(
               value: 'auto',
               groupValue: launcherMode,
@@ -714,6 +719,54 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           ],
         ),
     ];
+    List<Widget> services() {
+      final ids = [for (final c in containers) c['id'] as String];
+      final selected = ids.contains(_serviceContainer)
+          ? _serviceContainer
+          : ids.firstOrNull;
+      return [
+        if (selected != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 8, bottom: 12),
+            child: M3EDropdownMenu<String>(
+              singleSelect: true,
+              showChipAnimation: false,
+              items: [
+                for (final container in containers)
+                  M3EDropdownItem(
+                    value: container['id'] as String,
+                    label: container['name'] as String? ??
+                        container['id'] as String,
+                    selected: container['id'] == selected,
+                  ),
+              ],
+              fieldStyle: M3EDropdownFieldStyle(
+                hintText: t('uiContainer'),
+                prefixIcon: const Icon(M3EIcons.folder_rounded),
+              ),
+              onSelectionChanged: (items) {
+                if (items.isEmpty || items.first.value == selected) return;
+                setState(() => _serviceContainer = items.first.value);
+              },
+            ),
+          ),
+        LinuxIntegrationsPanel(
+          // A new container starts every panel over with its own state.
+          key: ValueKey(selected),
+          containers: containers,
+          containerId: selected,
+          features: const {
+            'devices',
+            'ssh',
+            'vnc',
+            'calendar',
+            'services',
+            'printing',
+          },
+        ),
+      ];
+    }
+
     List<Widget> store() => [
       LinuxStoreSourcesPanel(
         containers: containers,
@@ -855,20 +908,20 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
           category(
             'integration',
             M3EIcons.phone_android_rounded,
-            t('uiAndroidIntegrationAndPermissions'),
-            t('uiIntegrationPermissionsCompatibilitySSHVNCAndCalendars'),
+            t('uiAndroidIntegrationCategory'),
+            t('uiClipboardAndShortcuts'),
           ),
           category(
             'services',
             M3EIcons.settings_applications_rounded,
-            t('uiServicesAndPrinting'),
-            t('uiServiceCompatibilityAndAndroidPrinting'),
+            t('uiSystemAndSharedServices'),
+            t('uiDevicesSSHVNCCalendarsServicesAndPrinting'),
           ),
           category(
             'resources',
             M3EIcons.monitor_heart_rounded,
             t('uiResources'),
-            t('uiProcessesCPUGPUStorageHardwareContainersAndDrivers'),
+            t('uiProcessesAndPerformance'),
           ),
           category(
             'store',
@@ -908,10 +961,10 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'general' => t('uiGeneral'),
       'display' => t('uiDisplayAndGraphics'),
       'network' => t('uiNetwork'),
-      'integration' => t('uiAndroidIntegrationAndPermissions'),
+      'integration' => t('uiAndroidIntegrationCategory'),
       'store' => 'Store',
       'resources' => t('uiResources'),
-      'services' => t('uiServicesAndPrinting'),
+      'services' => t('uiSystemAndSharedServices'),
       'macos' => t('uiMacOSCompatibility4f7a9442'),
       _ => l.linuxSettingsTitle,
     };
@@ -922,21 +975,11 @@ class _LinuxSettingsPageState extends State<LinuxSettingsPage> {
       'network' => network(),
       'integration' => [
         ...integration(),
-        LinuxCompatPanel(containerId: widget.containerId),
-        LinuxSection(t('uiSSHVNCAndCalendars')),
-        LinuxIntegrationsPanel(
-          containers: containers,
-          features: const {'ssh', 'vnc', 'calendar'},
-        ),
+        LinuxCompatPanel(containerId: widget.containerId, devices: false),
       ],
       'store' => store(),
       'resources' => const [LinuxResourcesPanel()],
-      'services' => [
-        LinuxIntegrationsPanel(
-          containers: containers,
-          features: const {'services', 'printing'},
-        ),
-      ],
+      'services' => services(),
       'macos' =>
         macosCompatibilityEnabled
             ? [LinuxMacosPanel(containers: containers)]

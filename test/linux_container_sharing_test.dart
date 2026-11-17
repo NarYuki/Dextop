@@ -1,5 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux/linux_compat.dart';
@@ -84,7 +85,10 @@ void main() {
       expect(grants['c1']!['wholeStorage'], false);
       expect(grants['c2']!['wholeStorage'], false);
       expect(find.text('c1 folder'), findsOneWidget);
-      await tester.tap(find.text('Second Debian'));
+      // The container is chosen from a dropdown.
+      await tester.tap(find.byType(M3EDropdownMenu<String>));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Second Debian').last);
       await tester.pumpAndSettle();
       expect(find.text('c2 folder'), findsOneWidget);
       expect(find.text('c1 folder'), findsNothing);
