@@ -107,6 +107,7 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
       await _run('setContainerGrant', {'kind': kind, 'enabled': false});
       return;
     }
+    if (kind == 'wholeStorage' && !await _confirmWholeStorage()) return;
     await _run('setContainerGrant', {'kind': kind, 'enabled': true});
     if (!mounted || error != null) return;
     if (kind == 'wholeStorage') {
@@ -114,6 +115,39 @@ class _LinuxCompatPanelState extends State<LinuxCompatPanel>
     } else if (status?[kind] != true) {
       await _run('requestPermission', {'kind': kind});
     }
+  }
+
+  /// What sharing the whole storage hands to Linux, asked before it is turned on and before
+  /// Android's "All files access" screen opens. True when the user goes on.
+  Future<bool> _confirmWholeStorage() async {
+    String t(String key) => linuxText(context, key);
+    final accepted = await showDialog<bool>(
+      context: context,
+      builder: (dialog) {
+        final theme = Theme.of(dialog);
+        return AlertDialog(
+          icon: Icon(
+            Icons.warning_amber_rounded,
+            color: theme.colorScheme.error,
+          ),
+          title: Text(t('uiBeforeSharingTheWholeStorage')),
+          content: SingleChildScrollView(
+            child: Text(t('uiWholeStorageWarning')),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialog, false),
+              child: Text(t('uiCancel')),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialog, true),
+              child: Text(t('uiContinueToAllowAccess')),
+            ),
+          ],
+        );
+      },
+    );
+    return accepted == true;
   }
 
   Widget _state(bool ok) => Icon(
