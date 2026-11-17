@@ -1,0 +1,149 @@
+name: PR checks
+
+# Pull requests are checked without building the APK: only the checks for what
+# the pull request changes run, and "PR checks" reports the overall result.
+on:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pr-checks-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: Find what changed
+    # The self-hosted runner must never run code from a fork's pull request.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    timeout-minutes: 5
+    outputs:
+      flutter: ${{ steps.diff.outputs.flutter }}
+      helpers: ${{ steps.diff.outputs.helpers }}
+      android: ${{ steps.diff.outputs.android }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: List changed areas
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: |
+          # A manual run checks everything.
+          if [ -z "$BASE" ]; then
+            printf 'flutter=true\nhelpers=true\nandroid=true\n' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          files=$(git diff --name-only "$BASE...HEAD")
+          printf '%s\n' "$files"
+          area() {
+            if printf '%s\n' "$files" | grep -qE "$1|^\.github/workflows/pr-checks\.yml$"; then echo true; else echo false; fi
+          }
+          {
+            echo "flutter=$(area '^(lib/|test/|pubspec\.(yaml|lock)$|analysis_options\.yaml$|l10n\.yaml$|tool/check_localization\.py$|android/app/src/main/(assets|resources)/|third_party/material_3_expressive/)')"
+            echo "helpers=$(area '^(tool/|android/app/src/main/resources/)')"
+            echo "android=$(area '^(android/|pubspec\.(yaml|lock)$)')"
+          } >> "$GITHUB_OUTPUT"
+
+  flutter:
+    name: Flutter
+    needs: changes
+    if: needs.changes.outputs.flutter == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Check UI localization
+        run: python3 tool/check_localization.py
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Test
+        run: flutter test
+
+  helpers:
+    name: Linux helpers
+    needs: changes
+    if: needs.changes.outputs.helpers == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Test
+        run: python3 -m unittest discover -s tool/tests -p 'test_*.py'
+
+  android:
+    name: Android unit tests
+    needs: changes
+    if: needs.changes.outputs.android == 'true'
+    runs-on: self-hosted
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+          cache: gradle
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Prepare the Gradle project
+        run: |
+          flutter pub get
+          flutter build apk --config-only --flavor github --debug
+
+      - name: Test
+        working-directory: android
+        run: ./gradlew :app:testGithubDebugUnitTest :cardex:testDebugUnitTest
+
+  result:
+    name: PR checks
+    needs: [changes, flutter, helpers, android]
+    if: always()
+    runs-on: self-hosted
+    timeout-minutes: 1
+    steps:
+      - name: Report the result
+        env:
+          CHANGES: ${{ needs.changes.result }}
+          FAILED: ${{ contains(needs.*.result, 'failure') || contains(needs.*.result, 'cancelled') }}
+        run: |
+          # Skipped change detection (a fork's pull request) is not a pass.
+          if [ "$CHANGES" != success ] || [ "$FAILED" = true ]; then exit 1; fi
