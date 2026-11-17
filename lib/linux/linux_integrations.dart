@@ -231,10 +231,21 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
           });
         case 'printing':
           request['port'] = _port(printPort);
+          // A Linux print job reaches Android as a notification the user taps;
+          // without notification permission it would wait unseen.
+          if (!saveOnly) {
+            try {
+              await const MethodChannel('app.freedextop/display')
+                  .invokeMethod<bool>('requestStoreNotificationPermission');
+            } on PlatformException {
+              /* Printing still starts; the job stays queued until allowed. */
+            }
+          }
       }
       await _action(request);
     } catch (e) {
-      if (mounted) setState(() => error = '$e');
+      // Validation messages are for people; never show "FormatException: ".
+      if (mounted) setState(() => error = e is FormatException ? e.message : '$e');
     }
   }
 
@@ -327,6 +338,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
     String label, {
     String? help,
     bool password = false,
+    bool port = false,
     int maxLines = 1,
   }) => Padding(
     padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
@@ -339,6 +351,15 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
       obscureText: password,
       showPasswordToggle: password,
       maxLines: maxLines,
+      // Ports: the number pad, and no full-width digits from a CJK keyboard.
+      keyboardType: port ? TextInputType.number : null,
+      inputFormatters: port
+          ? [
+              _AsciiDigits(),
+              FilteringTextInputFormatter.digitsOnly,
+              LengthLimitingTextInputFormatter(5),
+            ]
+          : null,
     ),
   );
 
@@ -401,7 +422,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
                 'uiShareTheLinuxDesktopAnEmptyPasswordGeneratesANewOneAtEachStart',
               ),
       ),
-      _field(ssh ? sshPort : vncPort, t('uiPort')),
+      _field(ssh ? sshPort : vncPort, t('uiPort'), port: true),
       LinuxGroup(
         children: [
           LinuxToggle(
@@ -504,7 +525,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
       ),
     if (calendarGranted && calendars.isEmpty)
       _note(t('uiNoAndroidCalendarsFound')),
-    _field(calendarPort, t('uiLocalCalendarPort')),
+    _field(calendarPort, t('uiLocalCalendarPort'), port: true),
     ..._controls('calendar'),
     if ((state('calendar')['token'] as String? ?? '').isNotEmpty)
       LinuxGroup(
@@ -544,7 +565,7 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
           'uiChooseAndroidDextopInALinuxPrintDialogThenOpenTheAndroidNotificationToChooseAPrinter',
         ),
       ),
-      _field(printPort, t('uiLocalPrintPort')),
+      _field(printPort, t('uiLocalPrintPort'), port: true),
       ..._controls('printing'),
       if (jobs.isNotEmpty) LinuxSection(t('uiWaitingToPrint')),
       LinuxGroup(
@@ -739,7 +760,9 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
               for (final name in labels.keys.where(widget.features.contains))
                 M3EListItem(
                   headline: labels[name]!,
-                  supportingText: running(name)
+                  supportingText: name == 'devices'
+                      ? t('uiStorageCameraMicrophoneAndUSB')
+                      : running(name)
                       ? t('uiRunning')
                       : t('uiStopped'),
                   leading: Icon(switch (name) {
@@ -795,5 +818,17 @@ class _LinuxIntegrationsPanelState extends State<LinuxIntegrationsPanel> {
         ],
       ],
     );
+  }
+}
+
+/// Turns full-width digits (０-９) into ASCII ones, so a port typed on a CJK
+/// keyboard is still a number.
+class _AsciiDigits extends TextInputFormatter {
+  @override
+  TextEditingValue formatEditUpdate(TextEditingValue oldValue, TextEditingValue newValue) {
+    final text = String.fromCharCodes(newValue.text.runes.map(
+      (rune) => rune >= 0xFF10 && rune <= 0xFF19 ? rune - 0xFF10 + 0x30 : rune,
+    ));
+    return text == newValue.text ? newValue : newValue.copyWith(text: text);
   }
 }
