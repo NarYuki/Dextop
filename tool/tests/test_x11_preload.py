@@ -2,12 +2,14 @@
 from pathlib import Path
 import os
 import subprocess
+import sys
 import tempfile
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 
 
+@unittest.skipUnless(sys.platform.startswith('linux'), 'builds and loads Linux shared libraries')
 class X11PreloadTest(unittest.TestCase):
     def test_late_local_and_global_xlib(self):
         with tempfile.TemporaryDirectory() as directory:

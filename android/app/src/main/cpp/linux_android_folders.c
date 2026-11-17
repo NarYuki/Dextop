@@ -334,6 +334,7 @@ typedef int (*renameat2_fn)(int, const char *, int, const char *, unsigned int);
 typedef int (*creat_fn)(const char *, mode_t);
 typedef int (*truncate_fn)(const char *, off_t);
 typedef DIR *(*opendir_fn)(const char *);
+DIR *dextop_sys_listing(const char *path);
 typedef int (*closedir_fn)(DIR *);
 typedef int (*fclose_fn)(FILE *);
 typedef int (*fchdir_fn)(int);
@@ -448,6 +449,8 @@ DIR *opendir(const char *path) {
     if (mine) refresh(socket_name, guest);
     NEXT(opendir, opendir_fn);
     DIR *dir = next_opendir(path);
+    /* A /sys directory Android refuses to list (linux_android_proc.c). */
+    if (dir == NULL && errno == EACCES) dir = dextop_sys_listing(path);
     if (dir != NULL) {
         dextop_folder_forget(dirfd(dir));
         if (mine) remember(directories, dirfd(dir), guest);
