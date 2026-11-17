@@ -16,6 +16,8 @@ import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.system.Os
+import android.system.OsConstants
 import android.util.Log
 import org.json.JSONArray
 import org.json.JSONObject
@@ -49,11 +51,9 @@ internal class LinuxBluetoothBridge(private val roots: () -> List<File>) {
                 installed.forEach { root ->
                     val directory = File(root, "etc/dextop-bluetooth-requests")
                     directory.mkdirs()
-                    directory.listFiles().orEmpty().filter { it.name.matches(Regex("[a-f0-9]{32}[.]json")) }.take(32).forEach { request ->
+                    requestBatch(directory).forEach { request ->
                         val result = runCatching {
-                            require(!Files.isSymbolicLink(request.toPath())) { moe.n4tsu.dextop.localText("uiBluetoothRequestMustBeARegularFile") }
-                            require(request.length() <= 8192) { moe.n4tsu.dextop.localText("uiBluetoothRequestIsTooLarge") }
-                            val value = JSONObject(request.readText())
+                            val value = JSONObject(readRequest(request))
                             require(value.optLong("deadline") > SystemClock.elapsedRealtime()) { moe.n4tsu.dextop.localText("uiBluetoothRequestExpired") }
                             backend.action(value)
                         }.getOrElse { error ->
@@ -64,7 +64,12 @@ internal class LinuxBluetoothBridge(private val roots: () -> List<File>) {
                         request.delete()
                     }
                     // The caller normally removes results; also remove orphaned replies.
-                    directory.listFiles().orEmpty().filter { it.name.endsWith(".result") && System.currentTimeMillis() - it.lastModified() > 180_000 }.forEach { it.delete() }
+                    Files.newDirectoryStream(directory.toPath()).use { entries ->
+                        entries.forEach { path ->
+                            val file = path.toFile()
+                            if (file.name.endsWith(".result") && System.currentTimeMillis() - file.lastModified() > 180_000) file.delete()
+                        }
+                    }
                 }
                 val state = backend.snapshot().toString()
                 installed.forEach { write(File(it, "etc/dextop-bluetooth.json"), state) }
@@ -72,8 +77,41 @@ internal class LinuxBluetoothBridge(private val roots: () -> List<File>) {
         }, 0, 1, TimeUnit.SECONDS)
     }
     fun close() { worker.shutdownNow(); controller?.close() }
+    internal fun requestBatch(directory: File): List<File> {
+        val selected = ArrayList<File>(32)
+        Files.newDirectoryStream(directory.toPath()).use { entries ->
+            for (path in entries) {
+                if (path.fileName.toString().matches(REQUEST_NAME)) {
+                    selected.add(path.toFile())
+                    if (selected.size == 32) break
+                }
+            }
+        }
+        return selected
+    }
+    private companion object { val REQUEST_NAME = Regex("[a-f0-9]{32}[.]json") }
+    private fun readRequest(file: File): String {
+        // Check the opened descriptor, not a pathname that the guest can swap.
+        // NONBLOCK prevents a substituted FIFO from hanging this shared worker.
+        val descriptor = Os.open(file.path, OsConstants.O_RDONLY or OsConstants.O_NOFOLLOW or
+            OsConstants.O_NONBLOCK or OsConstants.O_CLOEXEC, 0)
+        try {
+            require(OsConstants.S_ISREG(Os.fstat(descriptor).st_mode)) {
+                moe.n4tsu.dextop.localText("uiBluetoothRequestMustBeARegularFile")
+            }
+            val bytes = ByteArray(8193)
+            var count = 0
+            while (count < bytes.size) {
+                val read = Os.read(descriptor, bytes, count, bytes.size - count)
+                if (read == 0) break
+                count += read
+            }
+            require(count <= 8192) { moe.n4tsu.dextop.localText("uiBluetoothRequestIsTooLarge") }
+            return String(bytes, 0, count, Charsets.UTF_8)
+        } finally { Os.close(descriptor) }
+    }
     private fun write(file: File, value: String) {
-        if (file.isFile && file.readText() == value) return
+        // Replace atomically without reading guest-controlled existing contents.
         file.parentFile?.mkdirs()
         val temporary = File.createTempFile(".dextop-bt-", ".staged", file.parentFile)
         try {
