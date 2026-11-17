@@ -8,6 +8,7 @@ import 'package:material_ui/material_ui.dart';
 
 import 'linux_expressive.dart';
 import 'linux_widgets.dart';
+import 'linux_progress_dialog.dart';
 
 /// Snapshots and backups of containers, and AppImages, on the Linux page.
 ///
@@ -57,7 +58,7 @@ class LinuxBackupsUi {
 
     await read();
     if (!context.mounted) return job.value;
-    final dialog = M3EDialog.show<void>(
+    final dialog = LinuxProgressDialog.show<void>(
       context,
       dialog: Builder(
         builder: (dialog) => ValueListenableBuilder<Map<Object?, Object?>?>(
@@ -70,18 +71,10 @@ class LinuxBackupsUi {
               });
             }
             final bytes = (value?['bytes'] as num?) ?? 0;
-            return M3EDialog(
+            return LinuxProgressDialog(
               title: title,
-              icon: const Icon(M3EIcons.inventory_2_rounded),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const M3EProgressIndicator.linearWavy(),
-                  const SizedBox(height: 12),
-                  Text(bytes > 0 ? size(bytes) : text(context, 'uiPreparing')),
-                ],
-              ),
+              icon: M3EIcons.inventory_2_rounded,
+              detail: bytes > 0 ? size(bytes) : text(context, 'uiPreparing'),
             );
           },
         ),
@@ -103,28 +96,18 @@ class LinuxBackupsUi {
     Future<T> Function() operation,
   ) async {
     final ready = Completer<BuildContext>();
-    final closed = showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialog) {
-        if (!ready.isCompleted) ready.complete(dialog);
-        return PopScope(
-          canPop: false,
-          child: M3EDialog(
+    final closed = LinuxProgressDialog.show<void>(
+      context,
+      dialog: Builder(
+        builder: (dialog) {
+          if (!ready.isCompleted) ready.complete(dialog);
+          return LinuxProgressDialog(
             title: title,
-            icon: const Icon(M3EIcons.delete_forever_rounded),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const M3EProgressIndicator.linearWavy(),
-                const SizedBox(height: 12),
-                Text(detail),
-              ],
-            ),
-          ),
-        );
-      },
+            icon: M3EIcons.delete_forever_rounded,
+            detail: detail,
+          );
+        },
+      ),
     );
     final dialog = await ready.future;
     try {
