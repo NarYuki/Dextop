@@ -18,6 +18,9 @@ object EmbeddedPrivilegeServer {
         arguments.getOrNull(1)?.takeIf { it.isNotBlank() }?.let { nativeInputLibrary ->
             System.setProperty("moe.n4tsu.dextop.embedded_input_library", nativeInputLibrary)
         }
+        // Linux programs in the privileged mode run as this same shell user: refuse them ptrace and
+        // /proc/<pid>/mem before this process reads its key. Nothing needs to inspect it.
+        hideMemory()
         // The key Dextop gave this process (PublisherKeys), so its provider accepts this server only.
         val key = System.`in`.bufferedReader().readLine()
         val payload = Bundle().apply { if (key != null) putString(PublisherKeys.EXTRA, key) }
@@ -62,6 +65,12 @@ object EmbeddedPrivilegeServer {
         }
         publishAndWatch()
         Looper.loop()
+    }
+
+    /** PR_SET_DUMPABLE 0: other processes of the shell user can no longer attach to or read this one. */
+    internal fun hideMemory() {
+        runCatching { android.system.Os.prctl(4 /* PR_SET_DUMPABLE */, 0, 0, 0, 0) }
+            .onFailure { android.util.Log.w("DextopPrivilege", "cannot make this process non-dumpable", it) }
     }
 
     internal fun publishBinder(
@@ -140,9 +149,10 @@ object EmbeddedPrivilegeServer {
                         nested.recycle()
                     }
                 }
-                EmbeddedPrivilegeProtocol.executeCommand -> {
+                EmbeddedPrivilegeProtocol.executeCommand, EmbeddedPrivilegeProtocol.executeCommandWithInput -> {
                     val command = data.createStringArray() ?: emptyArray()
-                    val result = runCommand(command)
+                    val input = if (code == EmbeddedPrivilegeProtocol.executeCommandWithInput) data.readString() else null
+                    val result = runCommand(command, input)
                     reply?.writeNoException()
                     reply?.writeInt(result.exitCode)
                     reply?.writeString(result.output)
@@ -165,10 +175,12 @@ object EmbeddedPrivilegeServer {
             }
         }
 
-        private fun runCommand(command: Array<String>): RuntimeCommandResult {
+        /** [input] reaches the command on stdin only: secrets stay out of argv, which every shell process can read. */
+        private fun runCommand(command: Array<String>, input: String? = null): RuntimeCommandResult {
             if (command.isEmpty()) return RuntimeCommandResult(-1, "", "Empty command")
             return runCatching {
                 val process = ProcessBuilder(*command).directory(File("/data/local/tmp")).start()
+                process.outputStream.use { stdin -> if (input != null) stdin.write(input.toByteArray()) }
                 val stdout = process.inputStream.bufferedReader().use { it.readText() }
                 val stderr = process.errorStream.bufferedReader().use { it.readText() }
                 RuntimeCommandResult(process.waitFor(), stdout.trim(), stderr.trim())

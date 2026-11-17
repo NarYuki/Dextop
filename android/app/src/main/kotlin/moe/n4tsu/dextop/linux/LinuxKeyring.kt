@@ -96,14 +96,14 @@ internal object LinuxKeyring {
         return generator.generateKey()
     }
 
-    private fun encrypt(text: String): String {
+    internal fun encrypt(text: String): String {
         val cipher = Cipher.getInstance("AES/GCM/NoPadding").apply { init(Cipher.ENCRYPT_MODE, key()) }
         val plaintext = text.toByteArray(Charsets.UTF_8)
         val sealed = try { cipher.iv + cipher.doFinal(plaintext) } finally { plaintext.fill(0) }
         return Base64.encodeToString(sealed, Base64.NO_WRAP)
     }
 
-    private fun decrypt(stored: String): ByteArray {
+    internal fun decrypt(stored: String): ByteArray {
         val sealed = Base64.decode(stored, Base64.NO_WRAP)
         val cipher = Cipher.getInstance("AES/GCM/NoPadding")
         cipher.init(Cipher.DECRYPT_MODE, key(), GCMParameterSpec(TAG_BITS, sealed, 0, 12))

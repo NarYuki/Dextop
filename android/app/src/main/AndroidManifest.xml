@@ -26,6 +26,7 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
     <uses-permission android:name="roro.stellar.manager.permission.API_V23" />
     <uses-permission android:name="android.permission.QUERY_ALL_PACKAGES" />
@@ -44,7 +45,18 @@
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <service android:name=".linux.LinuxRuntimeService" android:exported="false"
-            android:process=":linux_runtime" />
+            android:process=":linux_runtime"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Linux services that keep running after the app is closed" />
+        </service>
+        <receiver android:name=".linux.LinuxBootReceiver" android:exported="false">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+                <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+            </intent-filter>
+        </receiver>
         <meta-data
             android:name="google_analytics_automatic_screen_reporting_enabled"
             android:value="false" />

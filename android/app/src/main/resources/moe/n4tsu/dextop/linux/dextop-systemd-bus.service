@@ -1,0 +1,7 @@
+[Unit]
+Description=systemd D-Bus interface
+
+[Service]
+ExecStart=/usr/bin/python3 /usr/local/libexec/dextop-systemd-bus
+Restart=on-failure
+RestartSec=30
