@@ -142,16 +142,17 @@ interface ILinuxContainerService {
     ParcelFileDescriptor openIntegrationPrint(String containerId, String job) = 68;
     ParcelFileDescriptor filterIntegrationPrint(String containerId, String job, String ranges) = 69;
     /**
-     * Snapshots (LinuxBackups): local backups of stopped containers. These start background
-     * jobs and return at once; [listSnapshots] reports the snapshots and the running job (JSON).
+     * Snapshots (LinuxBackups format). The app keeps the files in its own storage and passes a
+     * descriptor for the one a job uses. These start background jobs and return at once;
+     * [fileJob] reports the running or last job (JSON {job}).
      */
-    void createSnapshot(String containerId) = 70;
-    String listSnapshots() = 71;
-    /** Restores snapshot [file] (a name from [listSnapshots]) as a new container. */
-    void restoreSnapshot(String file) = 72;
-    boolean deleteSnapshot(String file) = 73;
-    /** Writes snapshot [file] to [output] (a document the user picked) in the background. */
-    void exportSnapshot(String file, in ParcelFileDescriptor output) = 74;
+    /** Writes stopped [containerId] to [output]; the job's result is [name]. */
+    void createSnapshot(String containerId, String name, in ParcelFileDescriptor output) = 70;
+    String fileJob() = 71;
+    /** Restores the snapshot read from [input] (a regular file, read twice) as a new container. */
+    void restoreSnapshot(in ParcelFileDescriptor input) = 72;
+    /** Copies the snapshot of [containerId] read from [input] to [output] (a document the user picked). */
+    void exportSnapshot(String containerId, in ParcelFileDescriptor input, in ParcelFileDescriptor output) = 74;
     /** Restores a backup read from [input] (a document the user picked) as a new container. */
     void importBackup(in ParcelFileDescriptor input) = 75;
     /**
@@ -161,7 +162,7 @@ interface ILinuxContainerService {
     String installAppImage(String containerId, in ParcelFileDescriptor file, String fileName) = 76;
     /** Removes an AppImage installed with [installAppImage] by its desktop entry. */
     boolean removeAppImage(String containerId, String desktopId) = 77;
-    /** Measures where [containerId]'s storage goes, as a background job ([listSnapshots]'s job result). */
+    /** Measures where [containerId]'s storage goes, as a background job ([fileJob]'s job result). */
     void containerUsage(String containerId) = 78;
     /** Removes [containerId]'s caches (package downloads, ~/.cache, temporary files) as a background job. */
     void cleanContainer(String containerId) = 79;
