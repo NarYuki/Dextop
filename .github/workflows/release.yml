@@ -16,7 +16,7 @@ concurrency:
 jobs:
   release-pr:
     name: Update the release pull request
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     timeout-minutes: 10
 
     steps:
