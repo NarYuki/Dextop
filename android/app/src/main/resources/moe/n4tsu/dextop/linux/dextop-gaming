@@ -17,6 +17,7 @@ import signal
 import sys
 import subprocess
 import tempfile
+import time
 import tarfile
 import urllib.error
 import urllib.request
@@ -27,8 +28,10 @@ TOOL = 'dextop-proton-fex'
 FEX_PREFIX = '/opt/dextop-fex/usr'
 FEX_REPOSITORY = 'https://ppa.launchpadcontent.net/fex-emu/fex/ubuntu'
 FEX_INDEX = FEX_REPOSITORY + '/dists/noble/main/binary-arm64/Packages.gz'
-FEX_URL = FEX_REPOSITORY + '/pool/main/f/fex-emu-armv8.0/fex-emu-armv8.0_2611-1~n_arm64.deb'
-FEX_SHA256 = '9aff51171b4dbd3adefd62fe0c18b902fdcba53632bd9ad4fba98df1f4549f42'
+# The same files through Launchpad's librarian, which stays up when the PPA host answers 503.
+FEX_FILES = 'https://launchpad.net/~fex-emu/+archive/ubuntu/fex/+files/'
+FEX_URL = FEX_REPOSITORY + '/pool/main/f/fex-emu-armv8.0/fex-emu-armv8.0_2611.1-1~n_arm64.deb'
+FEX_SHA256 = '2ae7b3017bb36b067a29040209996040c45a9b65959bab00879ac8cb88decb78'
 
 RUNTIME_VERSION = '4.0.20260928.262390'
 RUNTIME_HOME = Path('/opt/dextop-runtime') / ('steamrt4-' + RUNTIME_VERSION)
@@ -256,9 +259,40 @@ def open_runtime():
     raise RuntimeError('The Steam runtime is not listed by its download server')
 
 
+def fex_open(url, attempts=6):
+    """Opens a FEX repository URL. Launchpad's PPA host often answers 503 for a while:
+    retry server errors, rate limits and dropped connections. A 404 is final."""
+    for attempt in range(attempts):
+        try:
+            return urllib.request.urlopen(url, timeout=60)
+        except urllib.error.HTTPError as error:
+            if error.code < 500 and error.code != 429 or attempt == attempts - 1:
+                raise
+        except (urllib.error.URLError, TimeoutError, ConnectionError):
+            if attempt == attempts - 1:
+                raise
+        delay = min(2 ** (attempt + 1), 30)
+        print(f'Dextop: the FEX repository is busy; retrying in {delay}s', file=sys.stderr, flush=True)
+        time.sleep(delay)
+
+
+def fex_package(url):
+    """Opens a FEX .deb from the PPA host, or from the librarian when the host stays busy.
+    The SHA-256 is checked either way. A 404 from the PPA host means the build is gone."""
+    try:
+        return fex_open(url, attempts=4)
+    except urllib.error.HTTPError as error:
+        if error.code == 404:
+            raise
+    except (urllib.error.URLError, TimeoutError, ConnectionError):
+        pass
+    print('Dextop: the FEX repository is unavailable; using Launchpad\'s file server', file=sys.stderr, flush=True)
+    return fex_open(FEX_FILES + url.rsplit('/', 1)[1])
+
+
 def listed_fex():
     """The newest FEX build its repository lists: the PPA deletes a build when it publishes the next."""
-    with urllib.request.urlopen(FEX_INDEX, timeout=60) as source:
+    with fex_open(FEX_INDEX) as source:
         index = gzip.decompress(source.read()).decode()
     best = None
     for stanza in index.split('\n\n'):
@@ -278,13 +312,13 @@ def listed_fex():
 def download_fex(package):
     url, expected = FEX_URL, FEX_SHA256
     try:
-        response = urllib.request.urlopen(url, timeout=60)
+        response = fex_package(url)
     except urllib.error.HTTPError as error:
         if error.code != 404:
             raise
         url, expected = listed_fex()
         print('Dextop: the pinned FEX build is gone; using ' + url.rsplit('/', 1)[1], file=sys.stderr, flush=True)
-        response = urllib.request.urlopen(url, timeout=60)
+        response = fex_package(url)
     with response as source, open(package, 'wb') as target:
         shutil.copyfileobj(source, target)
     if hashlib.sha256(Path(package).read_bytes()).hexdigest() != expected:
