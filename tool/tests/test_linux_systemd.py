@@ -56,8 +56,8 @@ class UnitParserTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.unit_name('../../outside')
 
-    def test_unsupported_sandbox_and_daemon_types_are_refused(self):
-        for directive in ('ProtectSystem=strict', 'PrivateTmp=true', 'Type=forking', 'Type=notify', 'DynamicUser=true'):
+    def test_unsupported_sandbox_directives_are_refused(self):
+        for directive in ('ProtectSystem=strict', 'PrivateTmp=true', 'DynamicUser=true'):
             with self.assertRaises(ValueError):
                 module.validate_service(module.parse_unit('[Service]\nExecStart=/bin/true\n'+directive))
 
@@ -81,14 +81,14 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(row['pid'], 0)
 
     def test_target_dependencies_do_not_require_an_unimplemented_target_manager(self):
-        (self.units/'worker.service').write_text('[Unit]\nRequires=network.target\nAfter=network.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/bin/true\n')
+        (self.units/'worker.service').write_text('[Unit]\nRequires=network.target\nAfter=network.target\n[Service]\nType=oneshot\nRemainAfterExit=yes\nExecStart=/usr/bin/true\n')
         self.start_manager()
         self.ctl('start', 'worker.service')
         self.wait_state('worker.service', 'active')
 
     def test_failed_ordered_dependency_prevents_the_dependent_process(self):
         marker = self.root/'must-not-run'
-        (self.units/'dependency.service').write_text('[Service]\nType=oneshot\nExecStart=/bin/false\n')
+        (self.units/'dependency.service').write_text('[Service]\nType=oneshot\nExecStart=/usr/bin/false\n')
         (self.units/'worker.service').write_text('[Unit]\nRequires=dependency.service\nAfter=dependency.service\n[Service]\nExecStart=/usr/bin/touch '+str(marker)+'\n')
         self.start_manager()
         self.ctl('start', 'worker.service')
@@ -123,7 +123,7 @@ class SupervisorTests(unittest.TestCase):
         self.assertTrue(module.rpc(dict(action='status', units=['worker.service'], user=True), base=self.state)['ok'])
 
     def test_failed_pre_hook_reports_failed_without_process(self):
-        (self.units/'pre.service').write_text('[Service]\nExecStartPre=/bin/false\nExecStart=/bin/true\n')
+        (self.units/'pre.service').write_text('[Service]\nExecStartPre=/usr/bin/false\nExecStart=/usr/bin/true\n')
         self.start_manager()
         result = module.rpc(dict(action='start', units=['pre.service'], user=True), base=self.state, timeout=5)
         self.assertFalse(result['ok'])
@@ -153,12 +153,12 @@ class SupervisorTests(unittest.TestCase):
         self.units = self.home/'.config/systemd/user'
         self.units.mkdir(parents=True)
         self.state = self.root/'state'
-        self.env = dict(os.environ, HOME=str(self.home), DEXTOP_UNIT_ROOT=str(self.root), DEXTOP_SERVICE_STATE=str(self.state),
+        self.env = dict(os.environ, HOME=str(self.home), DEXTOP_UNIT_ROOT=str(self.root), DEXTOP_SERVICE_STATE=str(self.state), DEXTOP_USER_SERVICE_STATE=str(self.state),
                         DEXTOP_LINUX_USER=__import__('pwd').getpwuid(os.getuid()).pw_name)
         self.process = None
 
     def start_manager(self):
-        self.process = subprocess.Popen([sys.executable, str(SOURCE), 'daemon'], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        self.process = subprocess.Popen([sys.executable, str(SOURCE), 'daemon', '--user'], env=self.env, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         end = time.monotonic()+5
         while time.monotonic() < end:
             if (self.state/'status.json').exists():
@@ -188,7 +188,7 @@ class SupervisorTests(unittest.TestCase):
         if self.process:
             if self.process.poll() is None:
                 try:
-                    module.rpc(dict(action='shutdown'), base=self.state, timeout=3)
+                    module.rpc(dict(action='shutdown', user=True), base=self.state, timeout=3)
                     self.process.wait(timeout=10)
                 except Exception:
                     self.process.kill()
@@ -227,7 +227,7 @@ class SupervisorTests(unittest.TestCase):
         self.assertEqual(output.read_text(), 'xx')
 
     def test_failing_process_hits_restart_limit_and_reports_error(self):
-        (self.units/'failure.service').write_text('[Unit]\nStartLimitBurst=2\nStartLimitIntervalSec=10\n[Service]\nExecStart=/bin/false\nRestart=on-failure\nRestartSec=100ms\n')
+        (self.units/'failure.service').write_text('[Unit]\nStartLimitBurst=2\nStartLimitIntervalSec=10\n[Service]\nExecStart=/usr/bin/false\nRestart=on-failure\nRestartSec=100ms\n')
         self.start_manager()
         self.ctl('start', 'failure.service')
         end = time.monotonic()+5
@@ -243,7 +243,7 @@ class SupervisorTests(unittest.TestCase):
         output = self.root/'timer-count'
         command = sys.executable+' -c "from pathlib import Path; p=Path(\''+str(output)+'\'); p.write_text(p.read_text()+\'x\' if p.exists() else \'x\')"'
         (self.units/'tick.service').write_text('[Service]\nType=oneshot\nExecStart='+command+'\n')
-        (self.units/'tick.timer').write_text('[Timer]\nOnUnitActiveSec=300ms\nUnit=tick.service\n')
+        (self.units/'tick.timer').write_text('[Timer]\nOnActiveSec=100ms\nOnUnitActiveSec=300ms\nUnit=tick.service\n')
         self.start_manager()
         self.ctl('start', 'tick.timer')
         end = time.monotonic()+5

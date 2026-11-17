@@ -27,11 +27,18 @@ class EmbeddedPrivilegeProvider : ContentProvider() {
             val binder = extras.getBinder(EmbeddedPrivilegeProtocol.providerBinder)
             // Every Linux program runs as the shell user with full privilege; only the daemon Dextop
             // started, unaltered, may become the Linux service that receives keyring passwords.
-            val genuine = PublisherKeys.matches(currentContext, PublisherKeys.LINUX, extras.getString(PublisherKeys.EXTRA)) &&
-                genuineDextopProcess(Binder.getCallingPid(), currentContext.applicationInfo.sourceDir)
+            // After the first check the daemon hides its memory and /proc from other shell processes
+            // (non-dumpable), so a republish from the same verified pid is trusted by its key alone.
+            val pid = Binder.getCallingPid()
+            val keyMatches = PublisherKeys.matches(currentContext, PublisherKeys.LINUX, extras.getString(PublisherKeys.EXTRA))
+            val genuine = keyMatches && (PublisherKeys.linuxPid(currentContext) == pid ||
+                genuineDextopProcess(pid, currentContext.applicationInfo.sourceDir))
             if (!genuine) android.util.Log.w("DextopPrivilege", "rejected a Linux service published by pid ${Binder.getCallingPid()}")
             val accepted = genuine && !outdated && binder?.isBinderAlive == true
-            if (accepted) LinuxContainerClient.acceptEmbeddedService(currentContext, binder!!)
+            if (accepted) {
+                PublisherKeys.bindLinux(currentContext, pid)
+                LinuxContainerClient.acceptEmbeddedService(currentContext, binder!!)
+            }
             return Bundle().apply {
                 putBoolean("accepted", accepted)
                 putBoolean("outdated", outdated)

@@ -1,0 +1,14 @@
+#!/bin/sh
+/usr/sbin/atd -f &
+daemon=$!
+trap 'kill $daemon 2>/dev/null; exit 0' TERM INT
+last=$(stat -c %Y /var/spool/cron/atjobs 2>/dev/null)
+while kill -0 "$daemon" 2>/dev/null; do
+    sleep 2
+    now=$(stat -c %Y /var/spool/cron/atjobs 2>/dev/null)
+    if [ "$now" != "$last" ]; then
+        last=$now
+        kill -HUP "$daemon" 2>/dev/null
+    fi
+done
+wait "$daemon"

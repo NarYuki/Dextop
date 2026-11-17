@@ -652,8 +652,9 @@ internal object LinuxCatalog {
 
     /** Puts the current [CHROMIUM_VIRGL_FLAGS] into browser launchers written by earlier versions. */
     /**
-     * Sessions run as the real uid (see LinuxProot.guest), so package managers
-     * and sudo go through fakeroot; every file already belongs to that uid.
+     * Sessions run as the real uid (see LinuxProot.guest), so package managers go
+     * through fakeroot; every file already belongs to that uid. sudo is always the
+     * distribution's own, run under fakeroot by dextop-sudo once a user exists.
      * fakeroot-tcp: Android has no SysV IPC for the default faked.
      */
     private val ROOT_TOOLS: String get() = """
@@ -673,16 +674,18 @@ internal object LinuxCatalog {
                 } >/usr/local/sbin/${'$'}tool
                 chmod 755 /usr/local/sbin/${'$'}tool
             done
-            # Real sudo cannot work: Android starts the shell with no_new_privs.
-            {
-                echo '#!/bin/sh'
-                echo 'while [ ${'$'}# -gt 0 ]; do case "${'$'}1" in -u|-g|-C|-D|-h|-p|-r|-t|-U) shift 2 ;; --) shift; break ;; -*) shift ;; *) break ;; esac; done'
-                echo '[ "${'$'}(id -u)" = 0 ] && exec "${'$'}@"'
-                echo "exec ${'$'}fakeroot \"\${'$'}@\""
-            } >/usr/local/bin/sudo
-            chmod 755 /usr/local/bin/sudo
         fi
     """.trimIndent()
+
+    val packageFixups: String get() = "#!/bin/sh\n" + """
+        $BROWSER_LAUNCHER_MIGRATION
+        $ROOT_TOOLS
+        if command -v dbus-uuidgen >/dev/null 2>&1; then
+            grep -qE '^[0-9a-f]{32}${'$'}' /etc/machine-id 2>/dev/null || { chmod u+w /etc/machine-id 2>/dev/null; dbus-uuidgen >/etc/machine-id 2>/dev/null; }
+            mkdir -p /var/lib/dbus && cp -f /etc/machine-id /var/lib/dbus/machine-id 2>/dev/null
+        fi
+        exit 0
+    """.trimIndent() + "\n"
 
     private val BROWSER_LAUNCHER_MIGRATION = """
         for launcher in /usr/local/bin/dextop-chrome /usr/local/bin/dextop-chromium; do

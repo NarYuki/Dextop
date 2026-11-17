@@ -1,0 +1,368 @@
+[
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-bluez",
+    "sha256": "ab62610c2a19a65a669cb691f0a0f90e751e6d60c7f0e3d6bc86cc30a209bf11",
+    "lines": 243,
+    "imports": [
+      "gi",
+      "gi.repository",
+      "json",
+      "pathlib",
+      "signal",
+      "time",
+      "uuid",
+      "xml.sax.saxutils"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-deck-gamescope",
+    "sha256": "01d51087245a94ffc777ac741f5147f74353807de2ae88d34d57b7e122be0f25",
+    "lines": 100,
+    "imports": [
+      "fcntl",
+      "hashlib",
+      "json",
+      "os",
+      "pathlib",
+      "shutil",
+      "sys",
+      "tarfile",
+      "tempfile"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-deck-input",
+    "sha256": "2a7a32c5e2f548bb5a92d30fbcfce0a832e943f5fd897fcc74029e5b7c76e38c",
+    "lines": 178,
+    "imports": [
+      "ctypes",
+      "fcntl",
+      "os",
+      "select",
+      "struct",
+      "sys",
+      "time"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-gaming",
+    "sha256": "bacbecd89a20c68518bab2c55c6621dfc5101b13128627032dbc1873b9504d84",
+    "lines": 473,
+    "imports": [
+      "fcntl",
+      "glob",
+      "gzip",
+      "hashlib",
+      "importlib.machinery",
+      "json",
+      "os",
+      "pathlib",
+      "re",
+      "shutil",
+      "signal",
+      "subprocess",
+      "sys",
+      "tarfile",
+      "tempfile",
+      "urllib.error",
+      "urllib.request"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-hostctl",
+    "sha256": "8ebfb5f8f0d37e1977488315d1bb0ae44d92741ad88b0542a93b4089acd0ebdf",
+    "lines": 270,
+    "imports": [
+      "json",
+      "os",
+      "pathlib",
+      "platform",
+      "pwd",
+      "re",
+      "subprocess",
+      "sys",
+      "time"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-integrate",
+    "sha256": "53bb8641e73ca3ae700c449a1fe61374be3289cd1392bb7c095392a502e0a560",
+    "lines": 308,
+    "imports": [
+      "hashlib",
+      "hmac",
+      "html",
+      "http.server",
+      "json",
+      "os",
+      "pathlib",
+      "pwd",
+      "re",
+      "shutil",
+      "subprocess",
+      "sys"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-keyring-repair",
+    "sha256": "1f0a683e9971b448217b544b05e1a07723b3b645d8a3d57df02337d33bb82496",
+    "lines": 61,
+    "imports": [
+      "os",
+      "pathlib",
+      "re",
+      "tempfile"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-keyring-unlock",
+    "sha256": "000ec09f7bcdc333a4b2aa55939013b402d6527bf3c624923e2fa28052fb904b",
+    "lines": 137,
+    "imports": [
+      "os",
+      "pathlib",
+      "socket",
+      "struct",
+      "subprocess",
+      "sys",
+      "time"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-pam-login",
+    "sha256": "cd4759023ce990a5217376eebeee5e73e576384db79abc71869a3ebc576f7968",
+    "lines": 122,
+    "imports": [
+      "ctypes",
+      "ctypes.util",
+      "os",
+      "pwd",
+      "sys"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-passwd-sync",
+    "sha256": "4dd276d27db433d4ffade49a85772101d559cdba7e353505e2d15d894188a679",
+    "lines": 39,
+    "imports": [
+      "os",
+      "socket",
+      "sys"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-print-backend",
+    "sha256": "3266a6cbc1e19c2e5bfbfb86d301364db02a69fcb0194bbc3fa40c6a4ee413e2",
+    "lines": 76,
+    "imports": [
+      "json",
+      "os",
+      "pathlib",
+      "resource",
+      "shutil",
+      "subprocess",
+      "sys",
+      "uuid"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-proton-arm64",
+    "sha256": "63cb5103f99dc0de855d6b0218af398e21c896abcc08638e9b76843080e54bfd",
+    "lines": 222,
+    "imports": [
+      "fcntl",
+      "hashlib",
+      "importlib.machinery",
+      "os",
+      "pathlib",
+      "shutil",
+      "subprocess",
+      "sys",
+      "tarfile",
+      "tempfile",
+      "time",
+      "urllib.request"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-steam-state",
+    "sha256": "25913e0bcaedbe666d3c15620e0ec1eb20059febed5f35a940de0982f71cdcec",
+    "lines": 120,
+    "imports": [
+      "os",
+      "pathlib",
+      "re",
+      "sys",
+      "zlib"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-steam-stop",
+    "sha256": "fc9cd2e961c6c630cd30c7f13fcaadf34b347bd2ed5e1f9eb6ce391354bcf906",
+    "lines": 78,
+    "imports": [
+      "os",
+      "pathlib",
+      "re",
+      "signal",
+      "sys"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-store",
+    "sha256": "f421fe1f892adcd0e9578cac34e97b81a2a754989e0b0afb6e8987ddb08b7b3f",
+    "lines": 372,
+    "imports": [
+      "codecs",
+      "csv",
+      "gi",
+      "gi.repository",
+      "hashlib",
+      "importlib",
+      "io",
+      "json",
+      "os",
+      "pathlib",
+      "re",
+      "shutil",
+      "subprocess",
+      "sys",
+      "tarfile",
+      "tempfile",
+      "time",
+      "urllib.request"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-sudo",
+    "sha256": "93be335abdc216d323649fe21c90c83f34873e0b2ca7bd1cd6a1e54260ad55bc",
+    "lines": 61,
+    "imports": [
+      "os",
+      "shutil",
+      "sys"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-systemd",
+    "sha256": "1f13dc0b5aee1ea5a85c27068cbcffdb54e49784fa185aabd988f32a87be2b5c",
+    "lines": 1569,
+    "imports": [
+      "argparse",
+      "calendar",
+      "fcntl",
+      "fnmatch",
+      "json",
+      "os",
+      "pathlib",
+      "pwd",
+      "random",
+      "re",
+      "shlex",
+      "signal",
+      "socket",
+      "subprocess",
+      "sys",
+      "time",
+      "uuid"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-systemd-bus",
+    "sha256": "ceb07616c47b555cc079a2befe62404784d27a1d3747571ae09939716981274f",
+    "lines": 577,
+    "imports": [
+      "importlib.machinery",
+      "os",
+      "select",
+      "socket",
+      "struct",
+      "sys",
+      "time"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-tmpfiles",
+    "sha256": "556d2ab2bde14af9838648d2f764864ad124a6d400fbe8bafa3a9bc2a07999c4",
+    "lines": 272,
+    "imports": [
+      "fnmatch",
+      "glob",
+      "grp",
+      "os",
+      "pathlib",
+      "pwd",
+      "re",
+      "shutil",
+      "sys",
+      "time"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-toolkit-theme",
+    "sha256": "b56ef20f44694da17d1789150039a9116b1b292015cd18a3711f0f59bfea78b9",
+    "lines": 73,
+    "imports": [
+      "argparse",
+      "configparser",
+      "io",
+      "os",
+      "pathlib",
+      "tempfile"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-user-setup",
+    "sha256": "af681789b22b6061a642261ba61cdc2ab6dab9449c74c28915a4d38959dfce95",
+    "lines": 80,
+    "imports": [
+      "grp",
+      "os",
+      "pathlib",
+      "pwd",
+      "re",
+      "shutil",
+      "subprocess",
+      "sys"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-windows",
+    "sha256": "ca35a33c360f1be10c5b8ca4cc4edf1e2b853a9417e143b791c587c76a50a987",
+    "lines": 328,
+    "imports": [
+      "hashlib",
+      "json",
+      "os",
+      "pathlib",
+      "re",
+      "shutil",
+      "subprocess",
+      "sys",
+      "time",
+      "urllib.parse",
+      "urllib.request",
+      "zipfile"
+    ]
+  },
+  {
+    "path": "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-wine-sync",
+    "sha256": "4875aace165f3aefb84e7e378ab90a3d64a84999fb69f112270f83446975b958",
+    "lines": 1266,
+    "imports": [
+      "contextlib",
+      "fcntl",
+      "hashlib",
+      "json",
+      "os",
+      "pathlib",
+      "re",
+      "resource",
+      "shutil",
+      "stat",
+      "struct",
+      "sys",
+      "time"
+    ]
+  }
+]

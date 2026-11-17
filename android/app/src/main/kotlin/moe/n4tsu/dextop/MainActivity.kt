@@ -161,6 +161,7 @@ open class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         applyDefaultWindowManager()
         super.onCreate(savedInstanceState)
+        if (savedInstanceState == null) moe.n4tsu.dextop.linux.LinuxBootReceiver.startConfigured(this, "app opened")
         // Flutter draws its own focus indicators. Android's legacy theme otherwise
         // outlines the focused, full-screen FlutterView in yellow-green.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {

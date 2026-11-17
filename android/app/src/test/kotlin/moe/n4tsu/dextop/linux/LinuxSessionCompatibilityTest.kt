@@ -125,7 +125,7 @@ class LinuxSessionCompatibilityTest {
             val expected = config.readText()
             source.writeBytes(byteArrayOf(2, 3))
             LinuxSessionCompatibility.stage(root, native.path)
-            assertEquals("${LinuxProot.GUEST_LIBRARY_DIR}/libdextop_androidproc.so\n${LinuxSessionCompatibility.GUEST_PRELOAD}\n${LinuxSessionCompatibility.GUEST_SOCKET_SHIM}\n${LinuxProotFastPath.LIBRARY}\n# user's preload\n/usr/local/lib/custom.so\n", expected)
+            assertEquals("${LinuxProot.GUEST_LIBRARY_DIR}/libdextop_androidproc.so\n${LinuxSessionCompatibility.GUEST_PRELOAD}\n${LinuxSessionCompatibility.GUEST_SOCKET_SHIM}\n# user's preload\n/usr/local/lib/custom.so\n", expected)
             assertEquals(expected, config.readText())
             assertContentEquals(byteArrayOf(2, 3), File(root, LinuxSessionCompatibility.GUEST_PRELOAD.removePrefix("/")).readBytes())
         } finally { dir.deleteRecursively() }

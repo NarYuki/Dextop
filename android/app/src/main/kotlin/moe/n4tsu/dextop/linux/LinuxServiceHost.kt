@@ -38,6 +38,9 @@ object LinuxServiceHost {
                 service.destroy()
             } else {
                 val lifecycle = response?.takeIf { it.getBoolean("accepted") }?.getBinder("providerLifecycleBinder")
+                // Linux programs run as this same shell user. Once Dextop has checked this process,
+                // refuse them ptrace and /proc/<pid>/mem: it holds keyring and account passwords.
+                if (lifecycle != null) EmbeddedPrivilegeServer.hideMemory()
                 if (lifecycle == null) handler.postDelayed(publish, 1_500)
                 else runCatching { lifecycle.linkToDeath({ handler.postDelayed(publish, 500) }, 0) }
                     .onFailure { handler.postDelayed(publish, 500) }
@@ -81,8 +84,9 @@ object LinuxServiceHost {
             .onFailure { android.util.Log.w("DextopLinuxHost", "Cannot initialize SVG icon fonts", it) }
     }
 
-    fun startCommand(packageName: String, apk: String, nativeDirectory: String, key: String): String =
-        "printf '%s\\n' ${quote(key)} | CLASSPATH=${quote(apk)} nohup /system/bin/setsid /system/bin/app_process /system/bin " +
+    /** Reads the daemon's key from its own stdin ([LinuxContainerClient] writes it); the key is never in argv. */
+    fun startCommand(packageName: String, apk: String, nativeDirectory: String): String =
+        "IFS= read -r key; echo \"\$key\" | CLASSPATH=${quote(apk)} nohup /system/bin/setsid /system/bin/app_process /system/bin " +
             "--nice-name=${quote("$packageName:dextop_linux_embedded")} " +
             "moe.n4tsu.dextop.linux.LinuxServiceHost ${quote(packageName)} ${quote(apk)} ${quote(nativeDirectory)} " +
             ">/data/local/tmp/dextop-linux-embedded.log 2>&1 &"

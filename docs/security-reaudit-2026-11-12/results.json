@@ -1,0 +1,47 @@
+{
+  "date": "2026-11-12",
+  "timezone": "Asia/Tokyo",
+  "product_code_modified_during_reaudit": false,
+  "findings": [
+    {
+      "id": "R1",
+      "priority": "P1",
+      "scope": "tmpfiles create/remove",
+      "verified": "host and Android PRoot disposable sentinels",
+      "result": "excluded target deleted through D symlink and overwritten through F parent symlink"
+    },
+    {
+      "id": "R2",
+      "priority": "P2",
+      "scope": "unhandled service security directives",
+      "verified": "host and Android PRoot validation and live disposable supervisor",
+      "result": "NetworkNamespacePath to nonexistent namespace accepted and command executed"
+    },
+    {
+      "id": "R3",
+      "priority": "P2",
+      "scope": "Bluetooth directory enumeration",
+      "verified": "production expression extracted into isolated JVM",
+      "result": "100000 empty files exhaust 16 MiB heap before take(32)",
+      "limitations": "no OOM attack against live Android service"
+    }
+  ],
+  "source_sha256": {
+    "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-systemd": "671d2e124ed44d29f121cf32d77bef6badd03165869762f98c4b1a5703142f1d",
+    "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-systemd-bus": "ac3a6c46d885f3dd2e9bfb047183bcd9cb6f9d4dfbbbbb2888a8dcc2c86671c1",
+    "android/app/src/main/resources/moe/n4tsu/dextop/linux/dextop-tmpfiles": "0f48d2f9ed1cd6235f625e9c4432292286752c7e24148484e6470cc6823f33fe",
+    "android/app/src/main/kotlin/moe/n4tsu/dextop/linux/LinuxBluetoothBridge.kt": "1723f0e37f604a6cb2f18ba39cafeca019a662aeb52c8ae0425c367ea35cc603"
+  },
+  "tests": {
+    "host_python": {
+      "passed": 26,
+      "failed": 0
+    },
+    "device_security": {
+      "passed": 12,
+      "failed": 0
+    },
+    "device_dbus": "big-endian and subsequent ordinary requests both answered"
+  },
+  "device_fixtures_removed": true
+}

@@ -1,0 +1,82 @@
+{
+  "date": "2026-11-12",
+  "timezone": "Asia/Tokyo",
+  "product_code_modified": false,
+  "scope": {
+    "python_entrypoints": 23,
+    "python_lines": 7025
+  },
+  "findings": [
+    {
+      "id": "A1",
+      "priority": "P1",
+      "verified": [
+        "host disposable files",
+        "Android PRoot disposable files"
+      ],
+      "result": "dry-run writes sentinel; --root writes outside requested image"
+    },
+    {
+      "id": "A2",
+      "priority": "P1",
+      "verified": [
+        "host disposable files",
+        "Android PRoot disposable files"
+      ],
+      "result": "clean follows starting symlink and deletes explicitly excluded sentinel"
+    },
+    {
+      "id": "A3",
+      "priority": "P2",
+      "verified": [
+        "Android PRoot isolated dbus-daemon",
+        "Gio-generated valid big-endian message"
+      ],
+      "result": [
+        "CONTROL normal call: ['graphical.target']",
+        "GIO big-endian valid message bytes: 176",
+        "RESULT follow-up replies: 0 service alive: True",
+        "CONFIRMED one valid big-endian call stalls the connection"
+      ]
+    },
+    {
+      "id": "A4",
+      "priority": "P2",
+      "verified": [
+        "current validate_service",
+        "existing parser tests"
+      ],
+      "result": "five protection directives accepted and classified as ignored"
+    },
+    {
+      "id": "A5",
+      "priority": "P2",
+      "verified": [
+        "exact extracted Kotlin method on host JVM, synthetic file"
+      ],
+      "result": "CONFIRMED exact Bluetooth write() exhausts 16MiB heap reading 64MiB guest file",
+      "limitations": "no live Android service OOM attack"
+    }
+  ],
+  "structural_note": [
+    "CONFIRMED same-kernel-UID replacement socket receives synthetic password and is accepted",
+    "Structural same-UID limitation; not proof of access to Android Keystore"
+  ],
+  "existing_tests": {
+    "keyring_unlock": {
+      "passed": 10,
+      "failed": 0
+    },
+    "systemd_parser": {
+      "passed": 3,
+      "failed": 1
+    }
+  },
+  "live_device_bluetooth_or_real_credentials_used": false,
+  "device_fixtures_removed": true,
+  "related_source_sha256": {
+    "android/app/src/main/kotlin/moe/n4tsu/dextop/linux/LinuxBluetoothBridge.kt": "79d8420b0e098a3a6f03c51e7c39505900e966ec8eecce42dcd2565ea4f14410",
+    "android/app/src/main/kotlin/moe/n4tsu/dextop/linux/LinuxCatalog.kt": "5be7aa5f39c1a515ebbadd9c6eb9577f6b1fb12fc36d88fa620eb51049ec42bd",
+    "android/app/src/main/kotlin/moe/n4tsu/dextop/linux/LinuxContainerService.kt": "bd2297a79a3742b8ff366ebd593159853aa63ad5805a21640f49b9eba4ade145"
+  }
+}
