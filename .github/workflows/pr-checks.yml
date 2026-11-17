@@ -1,7 +1,8 @@
 name: PR checks
 
-# Pull requests are checked without building the APK: only the checks for what
-# the pull request changes run, and "PR checks" reports the overall result.
+# Pull requests are checked without building the APK or running Gradle: only the
+# checks for what the pull request changes run, and "PR checks" reports the overall
+# result. Android code is built by the Debug APK workflow once it reaches main.
 on:
   pull_request:
   workflow_dispatch:
@@ -23,7 +24,6 @@ jobs:
     outputs:
       flutter: ${{ steps.diff.outputs.flutter }}
       helpers: ${{ steps.diff.outputs.helpers }}
-      android: ${{ steps.diff.outputs.android }}
     steps:
       - name: Check out repository
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -38,7 +38,7 @@ jobs:
         run: |
           # A manual run checks everything.
           if [ -z "$BASE" ]; then
-            printf 'flutter=true\nhelpers=true\nandroid=true\n' >> "$GITHUB_OUTPUT"
+            printf 'flutter=true\nhelpers=true\n' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           files=$(git diff --name-only "$BASE...HEAD")
@@ -49,7 +49,6 @@ jobs:
           {
             echo "flutter=$(area '^(lib/|test/|pubspec\.(yaml|lock)$|analysis_options\.yaml$|l10n\.yaml$|tool/check_localization\.py$|android/app/src/main/(assets|resources)/|third_party/material_3_expressive/)')"
             echo "helpers=$(area '^(tool/|android/app/src/main/resources/)')"
-            echo "android=$(area '^(android/|pubspec\.(yaml|lock)$)')"
           } >> "$GITHUB_OUTPUT"
 
   flutter:
@@ -98,45 +97,9 @@ jobs:
       - name: Test
         run: python3 -m unittest discover -s tool/tests -p 'test_*.py'
 
-  android:
-    name: Android unit tests
-    needs: changes
-    if: needs.changes.outputs.android == 'true'
-    # Gradle needs several GB: Android jobs share one runner so they never run side by side.
-    runs-on: [self-hosted, android]
-    timeout-minutes: 30
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
-        with:
-          persist-credentials: false
-
-      - name: Set up Java
-        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
-        with:
-          distribution: temurin
-          java-version: "17"
-          cache: gradle
-
-      - name: Set up Flutter
-        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
-        with:
-          channel: stable
-          flutter-version: 3.47.7
-          cache: true
-
-      - name: Prepare the Gradle project
-        run: |
-          flutter pub get
-          flutter build apk --config-only --flavor github --debug
-
-      - name: Test
-        working-directory: android
-        run: ./gradlew :app:testGithubDebugUnitTest :cardex:testDebugUnitTest
-
   result:
     name: PR checks
-    needs: [changes, flutter, helpers, android]
+    needs: [changes, flutter, helpers]
     if: always()
     runs-on: self-hosted
     timeout-minutes: 1
