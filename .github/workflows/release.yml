@@ -27,13 +27,15 @@ jobs:
       - name: Get the release app's token
         id: app
         if: vars.DEXTOP_RELEASE_APP_ID != ''
-        uses: actions/create-github-app-token@v3
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
           app-id: ${{ vars.DEXTOP_RELEASE_APP_ID }}
           private-key: ${{ secrets.DEXTOP_RELEASE_APP_KEY }}
+          permission-contents: write
+          permission-pull-requests: write
 
       - name: Open or update the release pull request
-        uses: googleapis/release-please-action@v5
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app.outputs.token || github.token }}
           config-file: .github/release-please/config.json
