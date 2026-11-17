@@ -1,0 +1,54 @@
+name: Beta release
+
+# Publishes a pre-release (for example 2.1.0-beta.1) from main by hand. The app's
+# GitHub build offers it only to people who turned on "Receive pre-releases".
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Pre-release version, such as 2.1.0-beta.1
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: beta-release
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    name: Publish the pre-release
+    if: github.ref == 'refs/heads/main'
+    runs-on: self-hosted
+    timeout-minutes: 5
+    steps:
+      - name: Get the release app's token
+        id: app
+        if: vars.DEXTOP_RELEASE_APP_ID != ''
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ vars.DEXTOP_RELEASE_APP_ID }}
+          private-key: ${{ secrets.DEXTOP_RELEASE_APP_KEY }}
+          permission-contents: write
+
+      - name: Create the tag and pre-release
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          VERSION: ${{ inputs.version }}
+          REPOSITORY: ${{ github.repository }}
+          TARGET: ${{ github.sha }}
+        run: |
+          # Only versions with a pre-release part: stable releases come from the release PR.
+          if ! printf '%s' "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z]+(\.[0-9A-Za-z]+)*$'; then
+            echo "::error::$VERSION is not a pre-release version such as 2.1.0-beta.1"
+            exit 1
+          fi
+          tag="v$VERSION"
+          if gh release view "$tag" --repo "$REPOSITORY" > /dev/null 2>&1; then
+            echo "::error::$tag already exists"
+            exit 1
+          fi
+          gh release create "$tag" --repo "$REPOSITORY" --target "$TARGET" \
+            --title "Dextop $VERSION" --prerelease --generate-notes
