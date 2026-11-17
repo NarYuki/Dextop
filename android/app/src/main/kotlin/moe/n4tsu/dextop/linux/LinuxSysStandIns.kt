@@ -14,6 +14,14 @@ import java.io.File
  *    (BatteryManager in the Android mode, `dumpsys battery` in the privileged one), every 10 s.
  *  - /sys/firmware/devicetree/base/model: denied; the device's name.
  *  - /proc/swaps and /proc/sys/kernel/hostname: missing; a header-only swap list and a name.
+ *  - /proc/stat, /proc/uptime, /proc/loadavg: denied to apps; Dextop's own CPU time, uptime and
+ *    run queue (LinuxCpuSampler), every second.
+ *  - /proc/net/dev: denied to apps; the interfaces above as the kernel would list them, read
+ *    through the guest library (linux_android_proc.c) since /proc/net is a per-process link.
+ *  - /sys/class/hwmon: denied; one sensor per thermal zone Android lets apps read, every 2 s.
+ *  - Directory listings of /sys (/sys, /sys/devices, /sys/class…): denied while what is inside
+ *    stays readable by path. A directory of links to the entries that exist stands in for the
+ *    listing (DIR_GUEST); the guest library opens it when the real one is refused.
  *
  * Only what the running process cannot read is replaced; proot binds the stand-ins over the
  * real paths, so programs that bypass libc see them too.
@@ -27,6 +35,28 @@ internal object LinuxSysStandIns {
     private val base: File get() = File(LinuxPaths.base, "sys-standins")
     private val net get() = File(base, "net")
     private val power get() = File(base, "power_supply")
+    private val proc get() = File(base, "proc")
+    private val hwmon get() = File(base, "hwmon")
+    private val dirs get() = File(base, "dirs")
+
+    /** Where the guest sees [base]: the guest library reads /proc/net/dev and listings from here. */
+    const val GUEST = "/run/dextop-standins"
+
+    /** Denied /sys directories and the entries probed in each (only those that exist are linked). */
+    private val LISTINGS: Map<String, List<String>> = mapOf(
+        "/sys" to listOf("block", "bus", "class", "dev", "devices", "firmware", "fs", "hypervisor", "kernel", "module", "power"),
+        "/sys/devices" to listOf("system", "virtual", "platform", "software", "tracepoint", "breakpoint", "uprobe", "kprobe", "armv8_pmuv3", "soc0"),
+        "/sys/devices/system" to listOf("cpu", "memory", "node", "clocksource", "clockevents", "container", "soc", "workqueue"),
+        "/sys/devices/virtual" to listOf("thermal", "net", "misc", "tty", "mem", "block", "input", "powercap", "workqueue", "sound", "dmi"),
+        "/sys/class" to listOf("net", "thermal", "power_supply", "hwmon", "block", "drm", "input", "tty", "misc", "mem", "sound",
+            "graphics", "backlight", "leds", "rtc", "kgsl", "devfreq", "regulator", "remoteproc", "gpio", "pwm", "powercap",
+            "watchdog", "bluetooth", "ieee80211", "rfkill", "video4linux", "media", "mmc_host", "scsi_host", "scsi_disk",
+            "scsi_device", "dma_heap", "typec", "udc", "usb_role", "i2c-dev", "spi_master", "dmi", "nvme", "iommu"),
+        "/sys/bus" to listOf("platform", "cpu", "usb", "pci", "i2c", "spi", "scsi", "mmc", "virtio", "nvmem", "soc", "workqueue",
+            "clockevents", "clocksource", "event_source", "node", "memory", "container", "gpio", "iio"),
+        "/sys/kernel" to listOf("mm", "debug", "tracing", "security", "config", "irq", "slab", "kexec_loaded", "osrelease"),
+        "/sys/fs" to listOf("cgroup", "bpf", "ext4", "f2fs", "fuse", "pstore", "selinux"),
+    )
 
     /** Set by the service in the Android mode, for the battery and traffic APIs. */
     @Volatile var context: android.content.Context? = null
@@ -34,6 +64,10 @@ internal object LinuxSysStandIns {
     @Volatile private var refresher: Thread? = null
     @Volatile private var netLive = false
     @Volatile private var powerLive = false
+    @Volatile private var procLive = false
+    @Volatile private var netDevLive = false
+    @Volatile private var hwmonZones: List<File> = emptyList()
+    private val cpu by lazy { LinuxCpuSampler() }
 
     private fun readable(path: String) = runCatching { File(path).inputStream().use { it.read() } }.isSuccess
     private fun listable(path: String) = File(path).list() != null
@@ -45,10 +79,23 @@ internal object LinuxSysStandIns {
         if (netLive && runCatching { writeNet() }.isSuccess) add("${net.absolutePath}:/sys/class/net")
         powerLive = !listable("/sys/class/power_supply") || File("/sys/class/power_supply").list().isNullOrEmpty()
         if (powerLive && runCatching { writePower() }.isSuccess) add("${power.absolutePath}:/sys/class/power_supply")
+        procLive = !readable("/proc/stat")
+        if (procLive && runCatching { writeProc() }.isSuccess) {
+            for (name in listOf("stat", "uptime", "loadavg")) add("${File(proc, name).absolutePath}:/proc/$name")
+        }
+        netDevLive = !readable("/proc/net/dev")
+        if (netDevLive) runCatching { writeNetDev() }
+        if (!listable("/sys/class/hwmon")) {
+            hwmonZones = runCatching { thermalZones() }.getOrDefault(emptyList())
+            if (hwmonZones.isNotEmpty() && runCatching { writeHwmon() }.isSuccess) add("${hwmon.absolutePath}:/sys/class/hwmon")
+        }
+        runCatching { writeListings() }.onFailure { android.util.Log.w("DextopSysStandIns", "Directory stand-ins unavailable", it) }
+        runCatching { writeDevice() }
+        add("${base.absolutePath}:$GUEST")
         static("/sys/firmware/devicetree/base/model", "model", "${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\u0000")
         static("/proc/swaps", "swaps", "Filename\t\t\t\tType\t\tSize\t\tUsed\t\tPriority\n")
         static("/proc/sys/kernel/hostname", "hostname", "localhost\n")
-        if (netLive || powerLive) start()
+        if (netLive || powerLive || procLive || netDevLive || hwmonZones.isNotEmpty()) start()
     }
 
     /** A fixed stand-in for [path] when it cannot be read. */
@@ -64,6 +111,9 @@ internal object LinuxSysStandIns {
             var tick = 0
             while (true) {
                 if (netLive) runCatching { writeNet() }
+                if (netDevLive) runCatching { writeNetDev() }
+                if (procLive) runCatching { writeProc() }
+                if (hwmonZones.isNotEmpty() && tick % 2 == 0) runCatching { writeHwmon() }
                 if (powerLive && tick % 10 == 0) runCatching { writePower() }
                 tick++
                 Thread.sleep(1_000)
@@ -117,6 +167,82 @@ internal object LinuxSysStandIns {
         }
         return root.listFiles().orEmpty().filter { it.isDirectory && it.name !in all }.mapNotNull { directory ->
             runCatching { removeStale(directory) }.exceptionOrNull()?.let { directory to it }
+        }
+    }
+    // endregion
+
+    /** /proc/net/dev in the kernel's layout. */
+    internal fun netDev(all: Map<String, List<String>>): String = buildString {
+        append("Inter-|   Receive                                                |  Transmit\n")
+        append(" face |bytes    packets errs drop fifo frame compressed multicast|bytes    packets errs drop fifo colls carrier compressed\n")
+        all.forEach { (name, values) -> append(name.padStart(6)).append(": ").append(values.joinToString(" ")).append('\n') }
+    }
+
+    private fun writeNetDev() {
+        proc.mkdirs()
+        replace(File(proc, "net_dev"), netDev(interfaces()))
+    }
+    // endregion
+
+    // region cpu
+    private fun writeProc() {
+        val uptime = android.os.SystemClock.elapsedRealtime() / 1000.0
+        cpu.sample(uptime, cpu.processes())
+        proc.mkdirs()
+        replace(File(proc, "stat"), cpu.stat((System.currentTimeMillis() - android.os.SystemClock.elapsedRealtime()) / 1000))
+        replace(File(proc, "uptime"), cpu.uptime(uptime))
+        replace(File(proc, "loadavg"), cpu.loadavg())
+    }
+    // endregion
+
+    // region sensors
+    /** Thermal zones with a readable temperature, the CPU, GPU and battery ones first, one per kind. */
+    private fun thermalZones(): List<File> {
+        val zones = File("/sys/class/thermal").listFiles().orEmpty().filter { it.name.startsWith("thermal_zone") }
+            .filter { readable("${it.path}/temp") && readable("${it.path}/type") }
+        val seen = HashSet<String>()
+        fun rank(type: String) = listOf("cpu", "gpu", "battery", "skin", "soc", "ddr").indexOfFirst { type.contains(it, true) }.let { if (it < 0) 99 else it }
+        return zones.map { it to runCatching { File(it, "type").readText().trim() }.getOrDefault("") }
+            .filter { (_, type) -> type.isNotEmpty() && seen.add(type) }
+            .sortedWith(compareBy({ rank(it.second) }, { it.first.name.removePrefix("thermal_zone").toIntOrNull() ?: 0 }))
+            .take(32).map { it.first }
+    }
+
+    private fun writeHwmon() {
+        hwmonZones.forEachIndexed { index, zone ->
+            val dir = File(hwmon, "hwmon$index").apply { mkdirs() }
+            val type = runCatching { File(zone, "type").readText().trim() }.getOrDefault("thermal")
+            val temp = runCatching { File(zone, "temp").readText().trim().toLong() }.getOrNull() ?: return@forEachIndexed
+            replace(File(dir, "name"), type.replace(Regex("[^A-Za-z0-9_]"), "_") + "\n")
+            replace(File(dir, "temp1_label"), "$type\n")
+            // Zones report millidegrees, a few report degrees.
+            replace(File(dir, "temp1_input"), "${if (temp in -100..200) temp * 1000 else temp}\n")
+        }
+    }
+    // endregion
+
+    private fun writeDevice() {
+        val tablet = context?.resources?.configuration?.smallestScreenWidthDp?.let { it >= 600 } == true
+        replace(File(base, "device.json"), org.json.JSONObject()
+            .put("manufacturer", android.os.Build.MANUFACTURER.replaceFirstChar { it.uppercase() })
+            .put("model", android.os.Build.MODEL)
+            .put("android", android.os.Build.VERSION.RELEASE)
+            .put("chassis", if (tablet) "tablet" else "handset")
+            .toString() + "\n")
+    }
+
+    // region listings
+    private fun writeListings() {
+        if (dirs.exists()) LinuxRootfsArchive.deleteTree(dirs)
+        File(dirs, ".empty").mkdirs()
+        LISTINGS.forEach { (path, names) ->
+            if (listable(path) || !File(path).exists()) return@forEach
+            // One flat directory per listing ("/sys/class" → "sys!class"): a listing's entries are links,
+            // so a nested layout would put /sys/class's listing where /sys lists its "class" link.
+            val dir = File(dirs, path.removePrefix("/").replace('/', '!')).apply { mkdirs() }
+            names.filter { File(path, it).exists() }.forEach { name ->
+                java.nio.file.Files.createSymbolicLink(File(dir, name).toPath(), java.nio.file.Paths.get("$path/$name"))
+            }
         }
     }
     // endregion

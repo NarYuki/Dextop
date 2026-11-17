@@ -40,7 +40,7 @@ foreach ($pair in @(@('aarch64', 'aarch64-linux-gnu.2.31'), @('x86_64', 'x86_64-
 
 # /proc/stat, uptime and loadavg stand-ins, controllers, USB, cameras and picked folders for the Android execution mode.
 & $Zig cc -target aarch64-linux-gnu.2.31 -shared -fPIC -O2 -pthread -s -o "$repo/android/app/src/main/jniLibs/arm64-v8a/libdextop_androidproc.so" `
-    "$repo/android/app/src/main/cpp/linux_android_proc.c" "$repo/android/app/src/main/cpp/linux_android_folders.c" "$repo/android/app/src/main/cpp/linux_android_pads.c" "$repo/android/app/src/main/cpp/linux_android_usb.c" "$repo/android/app/src/main/cpp/linux_android_disk.c" "$repo/android/app/src/main/cpp/linux_android_camera.c" -ldl
+    "$repo/android/app/src/main/cpp/linux_android_proc.c" "$repo/android/app/src/main/cpp/linux_android_folders.c" "$repo/android/app/src/main/cpp/linux_android_pads.c" "$repo/android/app/src/main/cpp/linux_android_usb.c" "$repo/android/app/src/main/cpp/linux_android_disk.c" "$repo/android/app/src/main/cpp/linux_android_camera.c" "$repo/android/app/src/main/cpp/linux_android_netlink.c" "$repo/android/app/src/main/cpp/linux_android_syslog.c" -ldl
 if ($LASTEXITCODE) { throw 'Failed to build Android-mode /proc stand-ins' }
 
 & $Zig cc -target x86_64-windows-gnu -O2 -s -o "$out/dextop-wine-tray-x86_64.exe" `
@@ -48,5 +48,10 @@ if ($LASTEXITCODE) { throw 'Failed to build Android-mode /proc stand-ins' }
 if ($LASTEXITCODE) { throw 'Failed to build Wine tray metadata bridge' }
 
 & $Zig cc -target aarch64-linux-gnu.2.31 -shared -fPIC -DDEXTOP_BINFMT -O2 -pthread -s `
-    "$repo/third_party/droiddeck-fastpath/fastpath.c" -ldl -o "$out/libblfastpath-aarch64.bin"
+    "$repo/third_party/droiddeck-fastpath/landlock_fastpath.c" -ldl -o "$out/libblfastpath-aarch64.bin"
 if ($LASTEXITCODE) { throw 'Failed to build PRoot guest fast path' }
+
+# Legacy broad syscall fast path, selected only by the unprotected mode.
+& $Zig cc -target aarch64-linux-gnu.2.31 -shared -fPIC -DDEXTOP_BINFMT -O2 -pthread -s `
+    "$repo/third_party/droiddeck-fastpath/fastpath.c" -ldl -o "$out/libblfastpath-unprotected-aarch64.bin"
+if ($LASTEXITCODE) { throw 'Failed to build unprotected PRoot guest fast path' }

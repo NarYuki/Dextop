@@ -235,7 +235,11 @@ int ioctl(int fd, unsigned long request, ...) {
     if (dextop_camera_ioctl(fd, request, arg, &handled)) return handled;
     static ioctl_fn next;
     if (!next) next = (ioctl_fn)dlsym(RTLD_NEXT, "ioctl");
-    return next(fd, request, arg);
+    int result = next(fd, request, arg);
+    /* Android refuses ethtool to apps: answer as an interface without ethtool support does, which
+     * psutil, iftop and NetworkManager clients handle, instead of a permission error they do not. */
+    if (result < 0 && request == 0x8946 /* SIOCETHTOOL */ && errno == EACCES) errno = EOPNOTSUPP;
+    return result;
 }
 
 /* Picked folders (linux_android_folders.c), linked only into the Android-mode library. */
@@ -273,11 +277,15 @@ ssize_t write(int fd, const void *buffer, size_t count) {
 }
 
 typedef int (*close_fn)(int);
+/* Netlink emulation (linux_android_netlink.c), absent from the controller grab library. */
+__attribute__((weak)) void dextop_netlink_close(int fd);
+
 int close(int fd) {
     if (fd >= 0 && fd < MAX_FDS) tracked[fd] = 0;
     dextop_serial_close(fd);
     dextop_camera_close(fd);
     if (dextop_folder_close) dextop_folder_close(fd);
+    if (dextop_netlink_close) dextop_netlink_close(fd);
     static close_fn next;
     if (!next) next = (close_fn)dlsym(RTLD_NEXT, "close");
     return next(fd);
@@ -317,6 +325,12 @@ static int real_stat(const char *name, const char *xname, const char *path, stru
 int dextop_folder_missing(int dir, const char *path) __attribute__((weak));
 #define FOLDER_MISSING(dir, path) (result != 0 && errno == ENOENT && dextop_folder_missing && dextop_folder_missing(dir, path))
 
+/* Copies standing in for hard links report a link count of 2 to their creator (linux_android_proc.c). */
+/* Weak: the controller grab library links this file without linux_android_proc.c. */
+__attribute__((weak)) int dextop_link_counted(int result, struct stat *info);
+__attribute__((weak)) void dextop_link_counted_x(struct statx *info);
+#define LINK_COUNTED(result, st) (dextop_link_counted ? dextop_link_counted(result, st) : (result))
+
 int dextop_stat(const char *path, struct stat *st) __asm__("stat");
 int dextop_stat(const char *path, struct stat *st) {
     int result = real_stat("stat", "__xstat", path, st);
@@ -324,7 +338,7 @@ int dextop_stat(const char *path, struct stat *st) {
     int pad = result == 0 ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
     if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
-    return result;
+    return LINK_COUNTED(result, st);
 }
 
 int dextop_lstat(const char *path, struct stat *st) __asm__("lstat");
@@ -334,7 +348,7 @@ int dextop_lstat(const char *path, struct stat *st) {
     int pad = result == 0 ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
     if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
-    return result;
+    return LINK_COUNTED(result, st);
 }
 
 int dextop_xstat(int version, const char *path, struct stat *st) __asm__("__xstat");
@@ -346,7 +360,7 @@ int dextop_xstat(int version, const char *path, struct stat *st) {
     int pad = result == 0 ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
     if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
-    return result;
+    return LINK_COUNTED(result, st);
 }
 
 int dextop_fstatat(int dir, const char *path, struct stat *st, int flags) __asm__("fstatat");
@@ -358,7 +372,7 @@ int dextop_fstatat(int dir, const char *path, struct stat *st, int flags) {
     int pad = result == 0 && path && path[0] == '/' ? pad_index_of_path(path) : -1;
     if (pad >= 0) as_device(st, pad);
     if (dextop_serial_stat(path, st) == 0 || dextop_camera_stat(path, st) == 0) return 0;
-    return result;
+    return LINK_COUNTED(result, st);
 }
 
 int dextop_fstat(int fd, struct stat *st) __asm__("fstat");
@@ -366,7 +380,7 @@ int dextop_fstat(int fd, struct stat *st) {
     if (dextop_serial_fstat(fd, st) == 0) return 0;
     int (*next)(int, struct stat *) = dlsym(RTLD_NEXT, "fstat");
     if (!next) { errno = ENOSYS; return -1; }
-    return next(fd, st);
+    return LINK_COUNTED(next(fd, st), st);
 }
 int __fxstat(int version, int fd, struct stat *st) { (void)version; return dextop_fstat(fd, st); }
 #if defined(__LP64__)
@@ -396,7 +410,9 @@ int statx(int dir, const char *path, int flags, unsigned mask, struct statx *out
     }
     int (*next)(int, const char *, int, unsigned, struct statx *) = dlsym(RTLD_NEXT, "statx");
     if (!next) { errno = ENOSYS; return -1; }
-    return next(dir, path, flags, mask, out);
+    int result = next(dir, path, flags, mask, out);
+    if (result == 0 && dextop_link_counted_x) dextop_link_counted_x(out);
+    return result;
 }
 
 /* Camera buffers are memory of this process (see linux_android_camera.c). */
