@@ -1,0 +1,70 @@
+name: Label pull requests
+
+# Every pull request gets one size label (from the lines it changes) and one
+# category label (from the type in its conventional-commit title). The release
+# pull request's "autorelease: …" labels come from Release Please itself.
+on:
+  pull_request:
+    types: [opened, reopened, edited, synchronize]
+
+permissions: {}
+
+concurrency:
+  group: pr-labels-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  label:
+    name: Label size and category
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: self-hosted
+    timeout-minutes: 2
+    permissions:
+      pull-requests: write
+      issues: write
+    steps:
+      - name: Apply labels
+        env:
+          GH_TOKEN: ${{ github.token }}
+          API: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          NUMBER: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          ADDITIONS: ${{ github.event.pull_request.additions }}
+          DELETIONS: ${{ github.event.pull_request.deletions }}
+        run: |
+          python3 - <<'PY'
+          import json, os, re, urllib.parse, urllib.request
+
+          api = f"{os.environ['API']}/repos/{os.environ['REPOSITORY']}/issues/{os.environ['NUMBER']}/labels"
+          headers = {'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                     'Accept': 'application/vnd.github+json'}
+
+          def call(method, url, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              request = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(request) as response:
+                  return json.loads(response.read() or 'null')
+
+          changed = int(os.environ['ADDITIONS']) + int(os.environ['DELETIONS'])
+          size = next(f'size/{name}' for limit, name in
+                      ((10, 'XS'), (50, 'S'), (250, 'M'), (1000, 'L'), (float('inf'), 'XL'))
+                      if changed < limit)
+
+          match = re.match(r'^([a-z]+)(\(([^)]*)\))?!?:', os.environ['TITLE'])
+          kind, scope = (match.group(1), match.group(3) or '') if match else ('', '')
+          categories = {'feat': 'feature', 'fix': 'bug', 'perf': 'performance',
+                        'refactor': 'refactor', 'docs': 'documentation', 'test': 'test',
+                        'build': 'build', 'ci': 'ci', 'chore': 'chore', 'revert': 'revert'}
+          category = 'dependencies' if scope == 'deps' else categories.get(kind)
+
+          managed = set(categories.values()) | {'dependencies'}
+          wanted = {size} | ({category} if category else set())
+          current = {label['name'] for label in call('GET', api)}
+          for name in current - wanted:
+              if name.startswith('size/') or name in managed:
+                  call('DELETE', f"{api}/{urllib.parse.quote(name, safe='')}")
+          if wanted - current:
+              call('POST', api, {'labels': sorted(wanted - current)})
+          print(f'{changed} lines: {sorted(wanted)}')
+          PY
