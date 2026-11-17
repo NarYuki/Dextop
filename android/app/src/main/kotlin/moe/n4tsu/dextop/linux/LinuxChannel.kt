@@ -249,7 +249,14 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     else remote({ service -> try { service.installAppImage(call.argument<String>("id")!!, file, name) } finally { file.close() } }) { jsonMap(it) }
                 }
                 "removeAppImage" -> remote({ it.removeAppImage(call.argument<String>("id")!!, call.argument<String>("desktopId")!!) })
-                "snapshots" -> remote({ it.listSnapshots() }) { jsonMap(it) }
+                "snapshots" -> remote({ service ->
+                    val job = JSONObject(service.fileJob()).optJSONObject("job")
+                    LinuxSnapshots.settle(context, job)
+                    if (job?.optString("type") == "usage" && job.optString("state") == "done")
+                        job.optJSONObject("result")?.put("snapshotBytes", LinuxSnapshots.bytes(context, job.optString("container")))
+                    JSONObject().put("snapshots", runCatching { LinuxSnapshots.list(context) }.getOrDefault(JSONArray()))
+                        .put("job", job ?: JSONObject.NULL)
+                }) { toMap(it) }
                 "containerUsage" -> remote({ it.containerUsage(call.argument<String>("id")!!); true })
                 "storageBreakdown" -> remote({ it.storageBreakdown(call.argument<String>("id")!!,
                     call.argument<String>("category")!!, call.argument<String>("path")!!,
@@ -264,15 +271,38 @@ internal class LinuxChannel(private val context: Context, messenger: BinaryMesse
                     } catch (error: Exception) { main.post { result.error("uninstall", error.message ?: error.toString(), null) } }
                 }, "DextopUninstall").start()
                 "cleanContainer" -> remote({ it.cleanContainer(call.argument<String>("id")!!); true })
-                "createSnapshot" -> remote({ it.createSnapshot(call.argument<String>("id")!!); true })
-                "restoreSnapshot" -> remote({ it.restoreSnapshot(call.argument<String>("file")!!); true })
-                "deleteSnapshot" -> remote({ it.deleteSnapshot(call.argument<String>("file")!!) })
+                "createSnapshot" -> remote({ service ->
+                    val id = call.argument<String>("id")!!
+                    val name = LinuxSnapshots.newName(id)
+                    var started = false
+                    try {
+                        LinuxSnapshots.openNew(context, name).use { output -> service.createSnapshot(id, name, output) }
+                        started = true
+                    } finally {
+                        LinuxSnapshots.release(context, name, started)
+                    }
+                    true
+                })
+                "restoreSnapshot" -> remote({ service ->
+                    LinuxSnapshots.openRead(context, call.argument<String>("file")!!).use { service.restoreSnapshot(it) }
+                    true
+                })
+                "deleteSnapshot" -> remote({ service ->
+                    val job = JSONObject(service.fileJob()).optJSONObject("job")
+                    check(job?.optString("state") != "running") { moe.n4tsu.dextop.localText("uiABackupJobIsRunning") }
+                    LinuxSnapshots.delete(context, call.argument<String>("file")!!)
+                })
                 "exportSnapshot" -> {
                     val file = call.argument<String>("file")!!
                     val uri = android.net.Uri.parse(call.argument<String>("uri")!!)
                     val output = runCatching { context.contentResolver.openFileDescriptor(uri, "wt") }.getOrNull()
                     if (output == null) result.error("linux", moe.n4tsu.dextop.localText("uiCannotWriteThePickedDocument"), null)
-                    else remote({ service -> try { service.exportSnapshot(call.argument<String>("file")!!, output) } finally { output.close() }; true })
+                    else remote({ service ->
+                        try {
+                            LinuxSnapshots.openRead(context, file).use { input -> service.exportSnapshot(file.substringBefore('-'), input, output) }
+                        } finally { output.close() }
+                        true
+                    })
                 }
                 "importBackup" -> {
                     val uri = android.net.Uri.parse(call.argument<String>("uri")!!)

@@ -26,52 +26,22 @@ import java.util.zip.GZIPOutputStream
  * container's directory under `container/` (config.json, settings.json, rootfs). What the
  * running system makes again by itself is left out: the session runtime and shared memory,
  * logs, /dev, /proc, /sys, /tmp and apt's downloaded packages. Snapshots are such files kept
- * on the device ([directory]); export copies one to a document, and import and restore unpack
- * one into a new container, so a backup never replaces an existing one.
+ * in Dextop's own storage ([LinuxSnapshots]); export copies one to a document, and import and
+ * restore unpack one into a new container, so a backup never replaces an existing one.
  */
 internal object LinuxBackups {
     const val FORMAT = 1
     const val EXTENSION = ".dextop-backup"
     private const val METADATA = "dextop-backup.json"
     private const val PREFIX = "container/"
-    private val NAME = Regex("c[a-zA-Z0-9]+-[0-9]{8}-[0-9]{6}\\.dextop-backup")
     private val SKIPPED_CONTAINER = setOf("runtime", "shm", "rootfs-extract", "overlay-extract", "restore-staging")
     private val SKIPPED_ROOTFS = listOf("dev", "proc", "sys", "tmp", "run", "var/cache/apt/archives", "var/tmp")
 
-    val directory: File get() = File(LinuxPaths.base, "snapshots")
-
-    fun file(name: String): File {
-        require(NAME.matches(name)) { moe.n4tsu.dextop.localText("uiInvalidSnapshotName") }
-        return File(directory, name)
-    }
-
-    /** Snapshot files, newest first, with what each holds. */
-    fun list(): JSONArray = JSONArray().apply {
-        directory.listFiles().orEmpty().filter { NAME.matches(it.name) && it.isFile }
-            .sortedByDescending { it.name.substringAfter('-') }
-            .forEach { file ->
-                val metadata = runCatching { readMetadata(file.inputStream()) }.getOrNull() ?: return@forEach
-                put(JSONObject().put("file", file.name).put("size", file.length())
-                    .put("container", metadata.optString("container")).put("name", metadata.optString("name"))
-                    .put("distro", metadata.optString("distro")).put("created", metadata.optLong("created")))
-            }
-    }
-
-    /** Writes [containerId] as a snapshot file; [onBytes] reports what was read so far. */
-    fun create(containerId: String, onBytes: (Long) -> Unit): File {
+    /** Writes [containerId] as a backup to [output]; [onBytes] reports what was read so far. */
+    fun create(containerId: String, output: OutputStream, onBytes: (Long) -> Unit) {
         val config = JSONObject(LinuxPaths.config(containerId).readText())
         check(config.optString("state") == "installed") { moe.n4tsu.dextop.localText("uiOnlyAnInstalledContainerCanBeBackedUp") }
-        directory.mkdirs()
-        val stamp = java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date())
-        val target = File(directory, "$containerId-$stamp$EXTENSION")
-        val staged = File(directory, target.name + ".staged")
-        try {
-            staged.outputStream().buffered(1 shl 20).use { write(containerId, config, it, onBytes) }
-            check(staged.renameTo(target)) { moe.n4tsu.dextop.localText("uiCannotSaveTheSnapshot") }
-        } finally {
-            staged.delete()
-        }
-        return target
+        write(containerId, config, output, onBytes)
     }
 
     private fun write(containerId: String, config: JSONObject, output: OutputStream, onBytes: (Long) -> Unit) {
@@ -156,7 +126,7 @@ internal object LinuxBackups {
     private fun mode(permissions: Set<PosixFilePermission>): Int =
         PosixFilePermission.entries.foldIndexed(0) { index, mode, permission -> if (permission in permissions) mode or (256 shr index) else mode }
 
-    private fun readMetadata(input: InputStream): JSONObject = input.use {
+    internal fun readMetadata(input: InputStream): JSONObject = input.use {
         TarArchiveInputStream(GZIPInputStream(it.buffered(64 * 1024))).use { tar ->
             val entry = tar.nextEntry ?: error(moe.n4tsu.dextop.localText("uiEmptyBackup"))
             require(entry.name == METADATA && entry.size in 1..65536) { moe.n4tsu.dextop.localText("uiNotADextopBackup") }
