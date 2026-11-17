@@ -15,6 +15,8 @@ class AppInfoPage extends StatelessWidget {
     this.onOpenSamsungSettings,
     this.onOpenDiagnosticLog,
     this.onExperimentalFeaturesChanged,
+    this.receivePreReleases = false,
+    this.onReceivePreReleasesChanged,
     super.key,
   });
 
@@ -31,6 +33,10 @@ class AppInfoPage extends StatelessWidget {
   final VoidCallback? onOpenSamsungSettings;
   final VoidCallback? onOpenDiagnosticLog;
   final VoidCallback? onExperimentalFeaturesChanged;
+  final bool receivePreReleases;
+
+  /// Null where updates do not come from GitHub releases (the Play build).
+  final ValueChanged<bool>? onReceivePreReleasesChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -168,6 +174,20 @@ class AppInfoPage extends StatelessWidget {
             onTap: checking ? null : onCheck,
           ),
         ),
+        if (onReceivePreReleasesChanged != null) ...[
+          SizedBox(height: 12),
+          Card(
+            child: SwitchListTile(
+              secondary: const Icon(Icons.science_outlined),
+              value: receivePreReleases,
+              onChanged: onReceivePreReleasesChanged,
+              title: Text(linuxText(context, 'uiReceivePreReleases')),
+              subtitle: Text(
+                linuxText(context, 'uiReceivePreReleasesDescription'),
+              ),
+            ),
+          ),
+        ],
         SizedBox(height: 12),
         Card(
           child: Column(

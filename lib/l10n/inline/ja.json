@@ -1616,5 +1616,7 @@
   "uiSystemAndSharedServices": "システムと共有サービス",
   "uiAndroidIntegrationCategory": "Android統合",
   "uiProcessesAndPerformance": "プロセスとパフォーマンス",
-  "uiClipboardAndShortcuts": "クリップボードとショートカット"
+  "uiClipboardAndShortcuts": "クリップボードとショートカット",
+  "uiReceivePreReleases": "プレリリースも受け取る",
+  "uiReceivePreReleasesDescription": "正式リリースの前のベータ版も、更新として通知します。不具合が含まれることがあります。"
 }
