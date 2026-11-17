@@ -483,6 +483,8 @@ static void link2symlink_handle_statx(struct statx_syscall_state *state)
 	}
 
 	state->statx_buf.stx_nlink = atoi(&path_ending[ending_len - 4]);
+	/* Without this the corrected count is never copied back to the tracee. */
+	state->updated_stats = true;
 }
 
 /**
@@ -670,6 +672,9 @@ int link2symlink_callback(Extension *extension, ExtensionEvent event,
 			{ PR_newfstatat,	FILTER_SYSEXIT },
 			{ PR_stat,		FILTER_SYSEXIT },
 			{ PR_stat64,		FILTER_SYSEXIT },
+			/* PRoot drops statx exit stops on Linux >= 5.8; the link count
+			 * still has to be corrected there. */
+			{ PR_statx,		FILTER_SYSEXIT },
 			{ PR_rename,		FILTER_SYSEXIT },
 			{ PR_renameat,		FILTER_SYSEXIT },
 			{ PR_renameat2,		FILTER_SYSEXIT },
