@@ -35,8 +35,56 @@ jobs:
           permission-pull-requests: write
 
       - name: Open or update the release pull request
+        id: release
         uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
           token: ${{ steps.app.outputs.token || github.token }}
           config-file: .github/release-please/config.json
           manifest-file: .github/release-please/manifest.json
+
+      # Release Please's Dart updater cannot read a pre-release version: from
+      # "2.0.0-beta.1+42" it writes "2.0.0-beta.2+-beta.1+42". Write the version
+      # line of the release pull request as "<next version>+<main's build + 1>".
+      - name: Fix the version line of the release pull request
+        if: steps.release.outputs.pr
+        env:
+          GH_TOKEN: ${{ steps.app.outputs.token || github.token }}
+          API: ${{ github.api_url }}
+          REPOSITORY: ${{ github.repository }}
+          BASE: ${{ github.sha }}
+          PR: ${{ steps.release.outputs.pr }}
+        run: |
+          python3 - <<'PY'
+          import base64, json, os, re, urllib.parse, urllib.request
+
+          api = f"{os.environ['API']}/repos/{os.environ['REPOSITORY']}"
+          headers = {'Authorization': f"Bearer {os.environ['GH_TOKEN']}",
+                     'Accept': 'application/vnd.github+json'}
+
+          def call(method, url, body=None):
+              data = json.dumps(body).encode() if body is not None else None
+              request = urllib.request.Request(url, data=data, headers=headers, method=method)
+              with urllib.request.urlopen(request) as response:
+                  return json.loads(response.read() or 'null')
+
+          def read(path, ref):
+              item = call('GET', f"{api}/contents/{path}?ref={urllib.parse.quote(ref, safe='')}")
+              return base64.b64decode(item['content']).decode(), item['sha']
+
+          branch = json.loads(os.environ['PR'])['headBranchName']
+          version = json.loads(read('.github/release-please/manifest.json', branch)[0])['.']
+          base_pubspec = read('pubspec.yaml', os.environ['BASE'])[0]
+          build = int(re.search(r'^version:\s*\S*?\+(\d+)\s*$', base_pubspec, re.M).group(1))
+          wanted = f'version: {version}+{build + 1}'
+
+          pubspec, sha = read('pubspec.yaml', branch)
+          fixed = re.sub(r'^version:.*$', wanted, pubspec, count=1, flags=re.M)
+          if fixed == pubspec:
+              print(f'{wanted}: already set')
+          else:
+              call('PUT', f'{api}/contents/pubspec.yaml', {
+                  'message': f'chore: set version {version}+{build + 1}',
+                  'content': base64.b64encode(fixed.encode()).decode(),
+                  'sha': sha, 'branch': branch})
+              print(f'set {wanted}')
+          PY
