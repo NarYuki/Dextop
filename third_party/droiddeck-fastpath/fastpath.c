@@ -1305,8 +1305,12 @@ static int nonblocking(int fd) {
 int connect(int fd, const struct sockaddr *addr, socklen_t len) {
   REAL(connect, int (*)(int, const struct sockaddr *, socklen_t));
   /* Unix sockets go to the next definition: Dextop's socket shim falls back to
-   * abstract names where Android refuses path sockets, and blsession emulates udev. */
-  if (addr && addr->sa_family == AF_UNIX) return real_connect(fd, addr, len);
+   * abstract names where Android refuses path sockets, and blsession emulates udev.
+   * Dextop: so do network sockets. blsession records loopback ports so its lsof
+   * answer works where Android hides /proc/net/tcp; a direct syscall here skipped
+   * that, and Steam then rejected its own webhelper's connections. */
+  if (!addr || addr->sa_family == AF_UNIX || addr->sa_family == AF_INET || addr->sa_family == AF_INET6)
+    return real_connect(fd, addr, len);
   struct sockaddr_un un;
   socklen_t un_len;
   long dir = -1;
@@ -1323,7 +1327,9 @@ int connect(int fd, const struct sockaddr *addr, socklen_t len) {
 
 int bind(int fd, const struct sockaddr *addr, socklen_t len) {
   REAL(bind, int (*)(int, const struct sockaddr *, socklen_t));
-  if (addr && addr->sa_family == AF_UNIX) return real_bind(fd, addr, len);
+  /* Dextop: network sockets go to the next definition too (see connect). */
+  if (!addr || addr->sa_family == AF_UNIX || addr->sa_family == AF_INET || addr->sa_family == AF_INET6)
+    return real_bind(fd, addr, len);
   struct sockaddr_un un;
   socklen_t un_len;
   long dir = -1;

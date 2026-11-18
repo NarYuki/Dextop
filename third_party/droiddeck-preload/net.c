@@ -15,6 +15,8 @@
 #include <signal.h>
 #include <time.h>
 #include <unistd.h>
+#include <dirent.h>
+#include <sys/syscall.h>
 #include "socket_metadata.h"
 
 static const char *net_dir(void) {
@@ -272,6 +274,76 @@ __attribute__((visibility("hidden"))) int bl_binfmt_spawn(pid_t *pid, const char
                                                           const posix_spawnattr_t *attr, char *const argv[], char *const envp[],
                                                           spawn_fn real);
 
+/* Dextop: find the process that owns a loopback TCP port when no record was
+ * written (for example a connect that bypassed this preload). Android hides
+ * /proc/net/tcp from apps, but a process of the same user may take a copy of
+ * another's socket with pidfd_getfd and ask it for its address. */
+static int scan_port_owner(unsigned port, int *pid_out, int *ppid_out, int *uid_out, unsigned *peer_out) {
+  DIR *proc = opendir("/proc");
+  if (!proc) return -1;
+  struct dirent *entry;
+  int found = -1;
+  while (found < 0 && (entry = readdir(proc))) {
+    int pid = atoi(entry->d_name);
+    if (pid <= 0 || pid == getpid()) continue;
+    char dir_path[64];
+    snprintf(dir_path, sizeof(dir_path), "/proc/%d/fd", pid);
+    DIR *fds = opendir(dir_path);
+    if (!fds) continue;
+    int pidfd = (int)syscall(434 /* pidfd_open */, pid, 0);
+    if (pidfd < 0) { closedir(fds); continue; }
+    struct dirent *fd_entry;
+    while (found < 0 && (fd_entry = readdir(fds))) {
+      int target = atoi(fd_entry->d_name);
+      if (target < 0 || fd_entry->d_name[0] < '0' || fd_entry->d_name[0] > '9') continue;
+      char link_path[96], link[64];
+      snprintf(link_path, sizeof(link_path), "/proc/%d/fd/%d", pid, target);
+      ssize_t n = readlink(link_path, link, sizeof(link) - 1);
+      if (n <= 0) continue;
+      link[n] = '\0';
+      if (strncmp(link, "socket:", 7)) continue;
+      int copy = (int)syscall(438 /* pidfd_getfd */, pidfd, target, 0);
+      if (copy < 0) continue;
+      struct sockaddr_storage ss;
+      socklen_t len = sizeof(ss);
+      if (getsockname(copy, (struct sockaddr *)&ss, &len) == 0 && loopback_family((struct sockaddr *)&ss, len)) {
+        unsigned own = ss.ss_family == AF_INET ? ntohs(((struct sockaddr_in *)&ss)->sin_port)
+                                               : ntohs(((struct sockaddr_in6 *)&ss)->sin6_port);
+        if (own == port) {
+          *pid_out = pid;
+          *peer_out = 0;
+          struct sockaddr_storage peer;
+          socklen_t peer_len = sizeof(peer);
+          if (getpeername(copy, (struct sockaddr *)&peer, &peer_len) == 0)
+            *peer_out = peer.ss_family == AF_INET ? ntohs(((struct sockaddr_in *)&peer)->sin_port)
+                                                  : ntohs(((struct sockaddr_in6 *)&peer)->sin6_port);
+          found = 0;
+        }
+      }
+      syscall(SYS_close, copy);
+    }
+    syscall(SYS_close, pidfd);
+    closedir(fds);
+  }
+  closedir(proc);
+  if (found < 0) return -1;
+  char stat_path[64], stat[512];
+  snprintf(stat_path, sizeof(stat_path), "/proc/%d/stat", *pid_out);
+  int in = open(stat_path, O_RDONLY);
+  *ppid_out = 0;
+  if (in >= 0) {
+    int n = read(in, stat, sizeof(stat) - 1);
+    syscall(SYS_close, in);
+    if (n > 0) {
+      stat[n] = '\0';
+      char *end = strrchr(stat, ')');
+      if (end) sscanf(end + 1, " %*c %d", ppid_out);
+    }
+  }
+  *uid_out = (int)syscall(SYS_getuid);
+  return 0;
+}
+
 static int maybe_answer_lsof(const char *path, char *const argv[]) {
   const char *base = strrchr(path, '/');
   base = base ? base + 1 : path;
@@ -291,20 +363,18 @@ static int maybe_answer_lsof(const char *path, char *const argv[]) {
   }
   char path_buf[300];
   snprintf(path_buf, sizeof(path_buf), "%s/p%u", net_dir(), (unsigned)atoi(port_str));
-  int in = open(path_buf, O_RDONLY);
-  if (in < 0) {
-    _exit(1);
-  }
-  char buf[64];
-  int n = read(in, buf, sizeof(buf) - 1);
-  syscall(SYS_close, in);
-  if (n <= 0) {
-    _exit(1);
-  }
-  buf[n] = '\0';
   int pid = 0, ppid = 0, uid = 0;
   unsigned peer = 0;
-  sscanf(buf, "%d %d %d %u", &pid, &ppid, &uid, &peer);
+  int in = open(path_buf, O_RDONLY);
+  char buf[64];
+  int n = in >= 0 ? read(in, buf, sizeof(buf) - 1) : -1;
+  if (in >= 0) syscall(SYS_close, in);
+  if (n > 0) {
+    buf[n] = '\0';
+    sscanf(buf, "%d %d %d %u", &pid, &ppid, &uid, &peer);
+  } else if (scan_port_owner((unsigned)atoi(port_str), &pid, &ppid, &uid, &peer) != 0) {
+    _exit(1);
+  }
   char out[160];
   int m = peer ? snprintf(out, sizeof(out), "p%d\nR%d\nu%d\nn127.0.0.1:%u->127.0.0.1:%u\n",
                           pid, ppid, uid, (unsigned)atoi(port_str), peer)
