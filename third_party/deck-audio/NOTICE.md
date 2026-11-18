@@ -24,5 +24,5 @@ pulseaudio-13.0-android.patch (bionic build fixes only), libsndfile 1.0.31,
 libltdl from libtool 2.4.7, and the DirectAudio sink in this directory.
 libffi is the separate 16 KB build from third_party/libffi.
 The earlier DD prebuilt host libraries (4 KB-aligned) are no longer shipped;
-tool/stage_deck_audio.py and tool/experiments/deck_audio/build.ps1 describe that old path.
+tool/stage_deck_audio.py describes that old path.
 manifest.json records the exact staged files and SHA-256 values.

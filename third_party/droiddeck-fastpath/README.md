@@ -22,7 +22,6 @@ defaults to Disabled. Libraries are
 staged separately and preloaded per launch. No device/kernel-release blacklist
 or global fast-path preload is installed. Landlock capability or application
 failure falls back to normal PRoot in both modes.
-See [implementation and validation](../../docs/linux-landlock-fastpath.md).
 
 The Dextop resource `dextop-wine-sync` derives from the same upstream commit,
 `tools/linuxfs/overlay/usr/local/bin/droiddeck-esync` (GPL-3.0). Dextop adds
