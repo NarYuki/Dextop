@@ -67,8 +67,8 @@ class LinuxProotFastPathTest {
             val protected = File(dir, LinuxFastMode.PROTECTED.library.removePrefix("/")).readBytes()
             val legacy = File(dir, LinuxFastMode.UNPROTECTED.library.removePrefix("/")).readBytes()
             assertEquals(false, protected.contentEquals(legacy))
-            assertEquals(LinuxFastMode.PROTECTED, LinuxFastMode.from(null))
-            assertEquals(LinuxFastMode.PROTECTED, LinuxFastMode.from("invalid"))
+            assertEquals(LinuxFastMode.UNPROTECTED, LinuxFastMode.from(null))
+            assertEquals(LinuxFastMode.UNPROTECTED, LinuxFastMode.from("invalid"))
             assertEquals(LinuxFastMode.UNPROTECTED, LinuxFastMode.from("unprotected"))
         } finally { dir.deleteRecursively() }
     }
