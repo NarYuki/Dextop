@@ -50,6 +50,27 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   var accessibilityDisclosureAccepted = false;
   AppLocalizations get l => AppLocalizations.of(context);
 
+  var _tutorialImagesCached = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Decode the tutorial pictures up front so the first slide does not stall.
+    if (_tutorialImagesCached) return;
+    _tutorialImagesCached = true;
+    final language = Localizations.localeOf(context).languageCode == 'ja'
+        ? 'ja'
+        : 'en';
+    for (final name in const ['connect', 'accessibility', 'ready']) {
+      unawaited(
+        precacheImage(
+          AssetImage('assets/setup_tutorial/${name}_$language.jpg'),
+          context,
+        ),
+      );
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -402,6 +423,9 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     }
   }
 
+  /// Material's shared-axis (X) transition: the pages move a short way in
+  /// the direction of travel while the old one fades out and the new one in.
+  /// Both use one curve, so they stay in step instead of jerking past each other.
   Widget _slideTransition(
     Widget child,
     Animation<double> animation, {
@@ -409,20 +433,28 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     required bool forward,
   }) {
     final isIncoming = child.key == currentKey;
-    final beginOffset = isIncoming
-        ? Offset(forward ? 1.0 : -1.0, 0)
-        : Offset(forward ? -1.0 : 1.0, 0);
+    final side = forward ? 1.0 : -1.0;
+    final offset = isIncoming ? Offset(.18 * side, 0) : Offset(-.18 * side, 0);
     final curved = CurvedAnimation(
       parent: animation,
-      curve: Curves.easeOutCubic,
-      reverseCurve: Curves.easeInCubic,
+      curve: Curves.easeInOutCubicEmphasized,
     );
-    return SlideTransition(
-      position: Tween<Offset>(
-        begin: beginOffset,
-        end: Offset.zero,
-      ).animate(curved),
-      child: child,
+    // The outgoing page is gone by the halfway point; the incoming one starts there.
+    final fade = CurvedAnimation(
+      parent: animation,
+      curve: const Interval(.35, 1, curve: Curves.easeOut),
+    );
+    return RepaintBoundary(
+      child: FadeTransition(
+        opacity: fade,
+        child: SlideTransition(
+          position: Tween<Offset>(
+            begin: offset,
+            end: Offset.zero,
+          ).animate(curved),
+          child: child,
+        ),
+      ),
     );
   }
 
@@ -434,7 +466,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         body: SafeArea(
           child: ClipRect(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 320),
+              duration: const Duration(milliseconds: 380),
               transitionBuilder: (child, animation) => _slideTransition(
                 child,
                 animation,
@@ -538,7 +570,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
           Expanded(
             child: ClipRect(
               child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 300),
+                duration: const Duration(milliseconds: 380),
                 transitionBuilder: (child, animation) => _slideTransition(
                   child,
                   animation,
@@ -878,7 +910,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         Expanded(
           child: ClipRect(
             child: AnimatedSwitcher(
-              duration: const Duration(milliseconds: 260),
+              duration: const Duration(milliseconds: 380),
               transitionBuilder: (child, animation) => _slideTransition(
                 child,
                 animation,
@@ -1012,6 +1044,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         child: Image.asset(
           'assets/setup_tutorial/${name}_$language.jpg',
           fit: BoxFit.contain,
+          gaplessPlayback: true,
         ),
       ),
     );
