@@ -547,8 +547,8 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
                                 size: M3EButtonSize.md,
                                 icon: submitting
                                     ? const SizedBox.square(
-                                        dimension: 20,
-                                        child: M3ELoadingIndicator(size: 20),
+                                        dimension: 24,
+                                        child: M3ELoadingIndicator(size: 24),
                                       )
                                     : Icon(
                                         step == 5
@@ -982,22 +982,27 @@ class _LinuxSetupPageState extends State<LinuxSetupPage> {
                 child: child,
               ),
               child: done || failed
-                  ? M3EShapeContainer(
+                  ? DecoratedBox(
                       key: ValueKey(done),
-                      kind: done ? M3EShapeKind.sunny : M3EShapeKind.softBoom,
-                      width: 112,
-                      height: 112,
-                      color: failed
-                          ? theme.colorScheme.errorContainer
-                          : theme.colorScheme.primaryContainer,
-                      child: Icon(
-                        done
-                            ? M3EIcons.check_rounded
-                            : M3EIcons.error_outline_rounded,
-                        size: 56,
+                      decoration: ShapeDecoration(
+                        shape: const CircleBorder(),
                         color: failed
-                            ? theme.colorScheme.onErrorContainer
-                            : theme.colorScheme.onPrimaryContainer,
+                            ? theme.colorScheme.errorContainer
+                            : theme.colorScheme.primaryContainer,
+                      ),
+                      child: SizedBox.square(
+                        dimension: 96,
+                        child: Center(
+                          child: Icon(
+                            done
+                                ? M3EIcons.check_rounded
+                                : M3EIcons.error_outline_rounded,
+                            size: 48,
+                            color: failed
+                                ? theme.colorScheme.onErrorContainer
+                                : theme.colorScheme.onPrimaryContainer,
+                          ),
+                        ),
                       ),
                     )
                   : const M3ELoadingIndicator(
