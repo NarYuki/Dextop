@@ -35,6 +35,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   bool get isPlayDistribution => status['distributionChannel'] != 'github';
   bool get accessibilityEnabled => status['accessibilityEnabled'] == true;
   var page = -1;
+  var _pageForward = true;
+  var _tutorialForward = true;
   var status = <String, dynamic>{};
   var loading = false;
   Timer? statusTimer;
@@ -164,7 +166,10 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   }
 
   void go(int target) {
-    setState(() => page = target);
+    setState(() {
+      _pageForward = target >= page;
+      page = target;
+    });
     if (target == 2) {
       refreshStatus(clearPrevious: true);
       statusTimer?.cancel();
@@ -397,15 +402,47 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     }
   }
 
+  Widget _slideTransition(
+    Widget child,
+    Animation<double> animation, {
+    required Key currentKey,
+    required bool forward,
+  }) {
+    final isIncoming = child.key == currentKey;
+    final beginOffset = isIncoming
+        ? Offset(forward ? 1.0 : -1.0, 0)
+        : Offset(forward ? -1.0 : 1.0, 0);
+    final curved = CurvedAnimation(
+      parent: animation,
+      curve: Curves.easeOutCubic,
+      reverseCurve: Curves.easeInCubic,
+    );
+    return SlideTransition(
+      position: Tween<Offset>(
+        begin: beginOffset,
+        end: Offset.zero,
+      ).animate(curved),
+      child: child,
+    );
+  }
+
   @override
   Widget build(BuildContext context) => EnsureDextopExpressive(
     child: Builder(
       builder: (context) => Scaffold(
         backgroundColor: Theme.of(context).colorScheme.surface,
         body: SafeArea(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 300),
-            child: page < 0 ? welcome() : phasePage(),
+          child: ClipRect(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 320),
+              transitionBuilder: (child, animation) => _slideTransition(
+                child,
+                animation,
+                currentKey: ValueKey(page < 0 ? 'welcome' : 'phase-shell'),
+                forward: _pageForward,
+              ),
+              child: page < 0 ? welcome() : phasePage(),
+            ),
           ),
         ),
       ),
@@ -470,8 +507,9 @@ class _DextopSetupPageState extends State<DextopSetupPage>
   Widget phasePage() {
     final steps = isPlayDistribution ? [0, 1, 2, 3, 4, 5] : [0, 1, 2, 4, 5];
     final stepPos = (steps.indexOf(page) + 1).clamp(1, steps.length);
+    final phaseList = phases();
     return Padding(
-      key: ValueKey(page),
+      key: const ValueKey('phase-shell'),
       padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -489,12 +527,30 @@ class _DextopSetupPageState extends State<DextopSetupPage>
             contentColor: Theme.of(context).colorScheme.onSecondaryContainer,
           ),
           const SizedBox(height: 10),
-          M3EProgressIndicator.linearWavy(
-            value: stepPos / steps.length,
+          TweenAnimationBuilder<double>(
+            tween: Tween<double>(end: stepPos / steps.length),
+            duration: const Duration(milliseconds: 350),
+            curve: Curves.easeOutCubic,
+            builder: (context, value, _) =>
+                M3EProgressIndicator.linearWavy(value: value),
           ),
           const SizedBox(height: 12),
           Expanded(
-            child: IndexedStack(index: page, children: phases()),
+            child: ClipRect(
+              child: AnimatedSwitcher(
+                duration: const Duration(milliseconds: 300),
+                transitionBuilder: (child, animation) => _slideTransition(
+                  child,
+                  animation,
+                  currentKey: ValueKey(page),
+                  forward: _pageForward,
+                ),
+                child: KeyedSubtree(
+                  key: ValueKey(page),
+                  child: phaseList[page],
+                ),
+              ),
+            ),
           ),
           const SizedBox(height: 12),
           Row(
@@ -505,7 +561,10 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                 M3EButton.text(
                   onPressed: () {
                     if (page == 1 && tutorialStep > 0) {
-                      setState(() => tutorialStep--);
+                      setState(() {
+                        _tutorialForward = false;
+                        tutorialStep--;
+                      });
                     } else if (page == 4 && !isPlayDistribution) {
                       go(2);
                     } else {
@@ -521,7 +580,10 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                 onPressed: canContinue
                     ? () {
                         if (page == 1 && tutorialStep < 2) {
-                          setState(() => tutorialStep++);
+                          setState(() {
+                            _tutorialForward = true;
+                            tutorialStep++;
+                          });
                         } else if (page == 2 && !isPlayDistribution) {
                           go(4);
                         } else if (page == 5) {
@@ -563,10 +625,13 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     demo(),
   ];
 
-  Widget _phaseBadge(IconData icon) {
+  Widget _phaseBadge(
+    IconData icon, {
+    AlignmentGeometry alignment = AlignmentDirectional.centerStart,
+  }) {
     final colors = Theme.of(context).colorScheme;
     return Align(
-      alignment: AlignmentDirectional.centerStart,
+      alignment: alignment,
       child: DecoratedBox(
         decoration: ShapeDecoration(
           shape: const CircleBorder(),
@@ -574,9 +639,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
         ),
         child: SizedBox.square(
           dimension: 72,
-          child: Center(
-            child: Icon(icon, size: 36, color: colors.primary),
-          ),
+          child: Center(child: Icon(icon, size: 36, color: colors.primary)),
         ),
       ),
     );
@@ -635,9 +698,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
           usesEmbeddedProvider
               ? l.setupEmbeddedWirelessDebuggingDescription
               : providerText(l.setupShizukuDescription),
-          style: Theme.of(
-            context,
-          ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
+          style: Theme.of(context).textTheme.bodyMedium
+              ?.copyWith(color: colors.onSurfaceVariant),
         ),
         const SizedBox(height: 20),
         DextopGroup(
@@ -747,9 +809,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
                     children: [
                       Text(
                         providerText(l.setupShizukuHint),
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: colors.onSurfaceVariant,
-                        ),
+                        style: Theme.of(context).textTheme.bodyMedium
+                            ?.copyWith(color: colors.onSurfaceVariant),
                       ),
                       const SizedBox(height: 12),
                       M3EButton.filled(
@@ -815,27 +876,35 @@ class _DextopSetupPageState extends State<DextopSetupPage>
     return Column(
       children: [
         Expanded(
-          child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 240),
-            child: ListView(
-              key: ValueKey(tutorialStep),
-              children: [
-                tutorialImage(slide.image),
-                const SizedBox(height: 20),
-                Text(
-                  slide.title,
-                  style: Theme.of(context).textTheme.headlineMedium,
-                ),
-                if (slide.description.isNotEmpty) ...[
-                  const SizedBox(height: 12),
+          child: ClipRect(
+            child: AnimatedSwitcher(
+              duration: const Duration(milliseconds: 260),
+              transitionBuilder: (child, animation) => _slideTransition(
+                child,
+                animation,
+                currentKey: ValueKey(tutorialStep),
+                forward: _tutorialForward,
+              ),
+              child: ListView(
+                key: ValueKey(tutorialStep),
+                children: [
+                  tutorialImage(slide.image),
+                  const SizedBox(height: 20),
                   Text(
-                    slide.description,
-                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: Theme.of(context).colorScheme.onSurfaceVariant,
-                    ),
+                    slide.title,
+                    style: Theme.of(context).textTheme.headlineMedium,
                   ),
+                  if (slide.description.isNotEmpty) ...[
+                    const SizedBox(height: 12),
+                    Text(
+                      slide.description,
+                      style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ],
                 ],
-              ],
+              ),
             ),
           ),
         ),
@@ -981,9 +1050,8 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       const SizedBox(height: 12),
       Text(
         l.setupDeviceDescription,
-        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-        ),
+        style: Theme.of(context).textTheme.bodyMedium
+            ?.copyWith(color: Theme.of(context).colorScheme.onSurfaceVariant),
       ),
     ],
   );
@@ -1006,7 +1074,7 @@ class _DextopSetupPageState extends State<DextopSetupPage>
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        _phaseBadge(M3EIcons.swipe_right_rounded),
+        _phaseBadge(M3EIcons.swipe_right_rounded, alignment: Alignment.center),
         const SizedBox(height: 24),
         Text(
           l.setupGestureTitle,
@@ -1246,9 +1314,9 @@ class _GestureDemoFlowState extends State<GestureDemoFlow>
                                       decoration: BoxDecoration(
                                         shape: BoxShape.circle,
                                         border: Border.all(
-                                          color: Theme.of(
-                                            context,
-                                          ).colorScheme.primary,
+                                          color: Theme.of(context)
+                                              .colorScheme
+                                              .primary,
                                           width: 3,
                                         ),
                                         color: Theme.of(context)
