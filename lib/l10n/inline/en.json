@@ -1616,5 +1616,7 @@
   "uiSystemAndSharedServices": "System and shared services",
   "uiAndroidIntegrationCategory": "Android integration",
   "uiProcessesAndPerformance": "Processes and performance",
-  "uiClipboardAndShortcuts": "Clipboard and shortcuts"
+  "uiClipboardAndShortcuts": "Clipboard and shortcuts",
+  "uiReceivePreReleases": "Receive pre-releases",
+  "uiReceivePreReleasesDescription": "Also offer beta versions released before the stable release as updates. They may contain bugs."
 }

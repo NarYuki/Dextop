@@ -1616,5 +1616,7 @@
   "uiSystemAndSharedServices": "系统和共享服务",
   "uiAndroidIntegrationCategory": "Android 集成",
   "uiProcessesAndPerformance": "进程和性能",
-  "uiClipboardAndShortcuts": "剪贴板和快捷方式"
+  "uiClipboardAndShortcuts": "剪贴板和快捷方式",
+  "uiReceivePreReleases": "接收预发布版本",
+  "uiReceivePreReleasesDescription": "在正式版发布之前，也将测试版作为更新通知。其中可能包含错误。"
 }
