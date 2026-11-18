@@ -1,67 +1,26 @@
-import 'package:flutter/material.dart' as fm;
-import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:material_ui/material_ui.dart' as mui;
 
-import '../l10n/inline_text.dart';
+import '../expressive/dextop_expressive.dart';
 
 /// Hosts Material 3 Expressive widgets inside Dextop's app.
-///
-/// material_3_expressive builds on `material_ui`, a Material library separate
-/// from the framework's `flutter/material.dart` the rest of Dextop uses. This
-/// wraps the whole app (MaterialApp.builder) so the Linux pages and their
-/// dialogs and sheets get a `material_ui` theme with Dextop's seed colour and
-/// brightness, and an expressive theme derived from it.
 class LinuxExpressive extends StatelessWidget {
   const LinuxExpressive({super.key, required this.child});
 
   final Widget child;
 
-  /// The seed of Dextop's own theme (see `appTheme` in app_shell.dart): the
-  /// system's Material You accent once known, purple before that and below Android 12.
-  static Color seed = const Color(0xff6750a4);
+  static Color get seed => DextopExpressive.seed;
+  static set seed(Color value) => DextopExpressive.seed = value;
 
   @override
-  Widget build(BuildContext context) {
-    final brightness = fm.Theme.of(context).brightness;
-    final scheme = mui.ColorScheme.fromSeed(
-      seedColor: seed,
-      brightness: brightness,
-      dynamicSchemeVariant: mui.DynamicSchemeVariant.tonalSpot,
-    );
-    final theme = mui.ThemeData(colorScheme: scheme, useMaterial3: true);
-    // The status bar style every screen falls back to. Sheets and dialogs switch the
-    // icons to light over their scrim; without a style below them the light icons stayed
-    // on light screens after they closed.
-    final overlay = brightness == Brightness.light
-        ? SystemUiOverlayStyle.dark
-        : SystemUiOverlayStyle.light;
-    return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: overlay.copyWith(
-        statusBarColor: const Color(0x00000000),
-        systemNavigationBarColor: const Color(0x00000000),
-      ),
-      child: mui.Theme(
-        data: theme,
-        child: M3ETheme(data: M3EThemeData.fromMaterial(theme), child: child),
-      ),
-    );
-  }
+  Widget build(BuildContext context) => DextopExpressive(child: child);
 }
 
-/// Whether the window is tablet-sized (DeX, a tablet, an unfolded phone): the Linux
-/// pages then use a compact header and lay their content out across the width.
-bool linuxWide(BuildContext context) => MediaQuery.sizeOf(context).width >= 840;
+bool linuxWide(BuildContext context) => dextopWide(context);
 
-/// Opens [page] as a route of the expressive Linux pages.
-Route<T> linuxRoute<T>(Widget page) =>
-    mui.MaterialPageRoute<T>(builder: (_) => page);
+Route<T> linuxRoute<T>(Widget page) => dextopRoute<T>(page);
 
-/// The expressive widgets use a separate localization type from Flutter.
-/// Its global delegate translates built-in dialogs, controls and semantics.
 const LocalizationsDelegate<mui.MaterialLocalizations>
-linuxMaterialUiLocalizations = mui.GlobalMaterialLocalizations.delegate;
+linuxMaterialUiLocalizations = dextopMaterialUiLocalizations;
 
-/// Resolves a Linux interface string from the shared locale catalog.
-String linuxText(BuildContext context, String key) => localText(context, key);
+String linuxText(BuildContext context, String key) => dextopText(context, key);

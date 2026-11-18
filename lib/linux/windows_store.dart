@@ -1,3 +1,4 @@
+import '../expressive/dextop_widgets.dart';
 import '../l10n/inline_text.dart';
 
 import 'dart:async';
@@ -194,6 +195,9 @@ class _WindowsStoreViewState extends State<WindowsStoreView> {
             padding: EdgeInsets.fromLTRB(16, 4, wide ? 24 : 16, 32),
             sliver: M3EList.sliver(
               itemCount: list?.length ?? 0,
+              outerRadius: dextopGroupOuterRadius,
+              innerRadius: dextopGroupInnerRadius,
+              gap: dextopGroupGap,
               onTap: (index) => Navigator.of(context).push(
                 StoreAppRoute(
                   WindowsAppPage(store: widget.store, package: list![index]),
@@ -513,6 +517,9 @@ class _WindowsResultsSliverState extends State<WindowsResultsSliver> {
     padding: EdgeInsets.fromLTRB(16, 4, linuxWide(context) ? 24 : 16, 8),
     sliver: M3EList.sliver(
       itemCount: packages.length,
+      outerRadius: dextopGroupOuterRadius,
+      innerRadius: dextopGroupInnerRadius,
+      gap: dextopGroupGap,
       onTap: (index) => Navigator.of(context).push(
         StoreAppRoute(
           WindowsAppPage(store: widget.store, package: packages[index]),
@@ -602,6 +609,9 @@ class _AptPackagesSliverState extends State<AptPackagesSliver> {
       padding: EdgeInsets.fromLTRB(16, 4, linuxWide(context) ? 24 : 16, 8),
       sliver: M3EList.sliver(
         itemCount: shown.length,
+        outerRadius: dextopGroupOuterRadius,
+        innerRadius: dextopGroupInnerRadius,
+        gap: dextopGroupGap,
         itemBuilder: (context, index) {
           final (name, summary) = shown[index];
           final job = store.jobs[name];

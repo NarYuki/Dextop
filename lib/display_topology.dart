@@ -75,58 +75,47 @@ class _DisplayEnvironmentSettingsCardState
         autoHideTaskbar = previousTaskbar;
         forceInternal120Hz = previous120Hz;
       });
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(exception.toString())));
+      M3ESnackbar.show(context, message: exception.toString());
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final column = Column(
-      children: [
-        if (widget.showConvenience)
-          SwitchListTile(
-            secondary: const Icon(Icons.phone_android_rounded),
-            title: Text(currentLocalizations().samsungIncludePhoneDisplay),
-            subtitle: Text(currentLocalizations().displayIncludePhoneSummary),
-            value: includePhoneDisplay,
-            onChanged: loading
-                ? null
-                : (value) => save('includePhoneDisplay', value),
-          ),
-        if (widget.showConvenience) const Divider(height: 1),
-        if (widget.showConvenience)
-          SwitchListTile(
-            secondary: const Icon(Icons.vertical_align_bottom_rounded),
-            title: Text(currentLocalizations().samsungAutoHideTaskbar),
-            subtitle: Text(
-              currentLocalizations().displayAutoHideTaskbarSummary,
-            ),
-            value: autoHideTaskbar,
-            onChanged: loading
-                ? null
-                : (value) => save('autoHideTaskbar', value),
-          ),
-        if (widget.showDisplay && supportsInternal120Hz) ...[
-          if (widget.displayLeadingDivider) const Divider(height: 1),
-          SwitchListTile(
-            secondary: const Icon(Icons.speed_rounded),
-            title: Text(currentLocalizations().displayForceInternal120Hz),
-            subtitle: Text(
-              currentLocalizations().displayForceInternal120HzSummary,
-            ),
-            value: forceInternal120Hz,
-            onChanged: loading
-                ? null
-                : (value) => save('forceInternal120Hz', value),
-          ),
-        ],
-      ],
-    );
-    if (!widget.wrapInCard) return column;
-    return Card(
-      child: ListTileTheme(data: experimentalFeatureTileTheme, child: column),
-    );
+    final items = <Widget>[
+      if (widget.showConvenience)
+        DextopToggle(
+          icon: M3EIcons.phone_android_rounded,
+          title: currentLocalizations().samsungIncludePhoneDisplay,
+          subtitle: currentLocalizations().displayIncludePhoneSummary,
+          value: includePhoneDisplay,
+          enabled: !loading,
+          onChanged: loading
+              ? null
+              : (value) => save('includePhoneDisplay', value),
+        ),
+      if (widget.showConvenience)
+        DextopToggle(
+          icon: M3EIcons.vertical_align_bottom_rounded,
+          title: currentLocalizations().samsungAutoHideTaskbar,
+          subtitle: currentLocalizations().displayAutoHideTaskbarSummary,
+          value: autoHideTaskbar,
+          enabled: !loading,
+          onChanged: loading ? null : (value) => save('autoHideTaskbar', value),
+        ),
+      if (widget.showDisplay && supportsInternal120Hz)
+        DextopToggle(
+          icon: M3EIcons.speed_rounded,
+          title: currentLocalizations().displayForceInternal120Hz,
+          subtitle: currentLocalizations().displayForceInternal120HzSummary,
+          value: forceInternal120Hz,
+          enabled: !loading,
+          onChanged: loading
+              ? null
+              : (value) => save('forceInternal120Hz', value),
+        ),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
+    return EnsureDextopExpressive(child: DextopGroup(children: items));
   }
 }
 
@@ -137,7 +126,11 @@ class DisplaySettingsPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(currentLocalizations().displaySettingsTitle)),
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    appBar: M3EAppBar.top(
+      automaticallyImplyLeading: true,
+      titleText: currentLocalizations().displaySettingsTitle,
+    ),
     body: DisplayTopologyEditor(
       bridge: bridge,
       showSettingsHeader: true,
@@ -202,14 +195,13 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     if (!mounted) return;
     setState(() => busy = false);
     if (outcome == 'ok') return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(switch (outcome) {
-          'no_session' => t('uiStartTheDesktopFirst'),
-          'no_display' => t('uiTheExternalDisplayIsGone'),
-          _ => t('uiCouldNotShowTheDesktopOnTheExternalDisplay'),
-        }),
-      ),
+    M3ESnackbar.show(
+      context,
+      message: switch (outcome) {
+        'no_session' => t('uiStartTheDesktopFirst'),
+        'no_display' => t('uiTheExternalDisplayIsGone'),
+        _ => t('uiCouldNotShowTheDesktopOnTheExternalDisplay'),
+      },
     );
   }
 
@@ -228,24 +220,40 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     if (mode == 'extend' || mode == 'external') await choose(mode as String);
   }
 
-  Widget dropdown(
-    String value,
+  Future<void> _pickString(
+    String title,
+    IconData icon,
+    String current,
     Map<String, String> items,
-    ValueChanged<String>? onChanged,
-  ) => DropdownButton<String>(
-    value: value,
-    underline: const SizedBox.shrink(),
-    borderRadius: BorderRadius.circular(16),
-    onChanged: onChanged == null
-        ? null
-        : (next) {
-            if (next != null && next != value) onChanged(next);
-          },
-    items: [
-      for (final entry in items.entries)
-        DropdownMenuItem(value: entry.key, child: Text(entry.value)),
-    ],
-  );
+    ValueChanged<String> onSelected,
+  ) async {
+    final selected = await M3EDialog.show<String>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: Icon(icon),
+            title: title,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
+              children: [
+                for (final entry in items.entries)
+                  DextopChoice<String>(
+                    value: entry.key,
+                    groupValue: current,
+                    allowReselect: true,
+                    title: entry.value,
+                    onChanged: (next) => Navigator.pop(dialogContext, next),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (selected != null && selected != current) onSelected(selected);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -254,70 +262,118 @@ class _ExternalDisplayModeCardState extends State<ExternalDisplayModeCard> {
     final running = state['running'] == true;
     final enabled = !busy;
     final name = state['name'] as String? ?? t('uiExternalDisplay');
+    final modeItems = {
+      'mirror': t('uiDuplicateTheseDisplays'),
+      'extend': t('uiExtendTheseDisplays'),
+      'off': t('uiShowOnlyOn1'),
+      'external': t('uiShowOnlyOn2'),
+    };
+    final phoneItems = {
+      'phone': t('uiPhone'),
+      'touchpad': t('uiTrackpadAndKeyboard'),
+    };
+    final mainItems = {
+      '1': t('ui1Phone'),
+      '2': inlineFormat(t('ui20'), [name]),
+    };
     return Padding(
-      padding: const EdgeInsets.only(top: 12),
-      child: Card(
-        margin: EdgeInsets.zero,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.connected_tv_outlined),
-              title: Text(t('uiMultipleDisplays')),
-              subtitle: Text(
-                running
-                    ? inlineFormat(t('ui1Phone20'), [name])
-                    : t('uiAppliesWhenTheDesktopStarts'),
-              ),
-              trailing: dropdown(mode, {
-                'mirror': t('uiDuplicateTheseDisplays'),
-                'extend': t('uiExtendTheseDisplays'),
-                'off': t('uiShowOnlyOn1'),
-                'external': t('uiShowOnlyOn2'),
-              }, enabled ? choose : null),
+      padding: const EdgeInsets.only(top: 14),
+      child: DextopGroup(
+        children: [
+          M3EListItem(
+            leading: const Icon(M3EIcons.connected_tv_outlined),
+            headline: t('uiMultipleDisplays'),
+            supportingText: running
+                ? inlineFormat(t('ui1Phone20'), [name])
+                : t('uiAppliesWhenTheDesktopStarts'),
+            supportingMaxLines: null,
+            enabled: enabled,
+            trailing: DextopDropdownButton(
+              label: modeItems[mode] ?? mode,
+              enabled: enabled,
+              onPressed: enabled
+                  ? () => _pickString(
+                      t('uiMultipleDisplays'),
+                      M3EIcons.connected_tv_outlined,
+                      mode,
+                      modeItems,
+                      choose,
+                    )
+                  : null,
             ),
-            if (mode == 'external') ...[
-              const Divider(height: 1),
-              ListTile(
-                title: Text(t('uiUseThePhoneAs')),
-                subtitle: Text(
-                  phoneRole == 'phone'
-                      ? t('uiThePhoneWorksAsUsual')
-                      : t('uiControlTheDesktopFromThePhoneScreen'),
-                ),
-                trailing: dropdown(
-                  phoneRole,
-                  {
-                    'phone': t('uiPhone'),
-                    'touchpad': t('uiTrackpadAndKeyboard'),
-                  },
-                  enabled
-                      ? (value) =>
-                            setArrangement('external_display_phone', value)
-                      : null,
-                ),
+            onTap: enabled
+                ? () => _pickString(
+                    t('uiMultipleDisplays'),
+                    M3EIcons.connected_tv_outlined,
+                    mode,
+                    modeItems,
+                    choose,
+                  )
+                : null,
+          ),
+          if (mode == 'external')
+            M3EListItem(
+              leading: const Icon(M3EIcons.touch_app_rounded),
+              headline: t('uiUseThePhoneAs'),
+              supportingText: phoneRole == 'phone'
+                  ? t('uiThePhoneWorksAsUsual')
+                  : t('uiControlTheDesktopFromThePhoneScreen'),
+              supportingMaxLines: null,
+              enabled: enabled,
+              trailing: DextopDropdownButton(
+                label: phoneItems[phoneRole] ?? phoneRole,
+                enabled: enabled,
+                onPressed: enabled
+                    ? () => _pickString(
+                        t('uiUseThePhoneAs'),
+                        M3EIcons.touch_app_rounded,
+                        phoneRole,
+                        phoneItems,
+                        (v) => setArrangement('external_display_phone', v),
+                      )
+                    : null,
               ),
-            ],
-            if (mode == 'extend') ...[
-              const Divider(height: 1),
-              ListTile(
-                title: Text(t('uiMainDisplay')),
-                subtitle: Text(t('uiTheScreenThatShowsTheTaskbar')),
-                trailing: dropdown(
-                  main,
-                  {
-                    '1': t('ui1Phone'),
-                    '2': inlineFormat(t('ui20'), [name]),
-                  },
-                  enabled
-                      ? (value) =>
-                            setArrangement('external_display_main', value)
-                      : null,
-                ),
+              onTap: enabled
+                  ? () => _pickString(
+                      t('uiUseThePhoneAs'),
+                      M3EIcons.touch_app_rounded,
+                      phoneRole,
+                      phoneItems,
+                      (v) => setArrangement('external_display_phone', v),
+                    )
+                  : null,
+            ),
+          if (mode == 'extend')
+            M3EListItem(
+              leading: const Icon(M3EIcons.monitor_rounded),
+              headline: t('uiMainDisplay'),
+              supportingText: t('uiTheScreenThatShowsTheTaskbar'),
+              supportingMaxLines: null,
+              enabled: enabled,
+              trailing: DextopDropdownButton(
+                label: mainItems[main] ?? main,
+                enabled: enabled,
+                onPressed: enabled
+                    ? () => _pickString(
+                        t('uiMainDisplay'),
+                        M3EIcons.monitor_rounded,
+                        main,
+                        mainItems,
+                        (v) => setArrangement('external_display_main', v),
+                      )
+                    : null,
               ),
-            ],
-          ],
-        ),
+              onTap: enabled
+                  ? () => _pickString(
+                      t('uiMainDisplay'),
+                      M3EIcons.monitor_rounded,
+                      main,
+                      mainItems,
+                      (v) => setArrangement('external_display_main', v),
+                    )
+                  : null,
+            ),
+        ],
       ),
     );
   }
@@ -330,7 +386,11 @@ class DisplayTopologyPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(currentLocalizations().topologyTitle)),
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    appBar: M3EAppBar.top(
+      automaticallyImplyLeading: true,
+      titleText: currentLocalizations().topologyTitle,
+    ),
     body: DisplayTopologyEditor(bridge: bridge),
   );
 }
@@ -392,55 +452,58 @@ class _DisplayResolutionListPageState extends State<DisplayResolutionListPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(
-      title: Text(currentLocalizations().displayResolutionListTitle),
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    appBar: M3EAppBar.top(
+      automaticallyImplyLeading: true,
+      titleText: currentLocalizations().displayResolutionListTitle,
       actions: [
-        IconButton(
+        M3EIconButton(
+          variant: M3EIconButtonVariant.standard,
           tooltip: currentLocalizations().topologyRefresh,
           onPressed: loading ? null : load,
-          icon: const Icon(Icons.refresh_rounded),
+          icon: const Icon(M3EIcons.refresh_rounded),
         ),
       ],
     ),
     body: loading
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(
+            child: M3ELoadingIndicator(
+              variant: M3ELoadingIndicatorVariant.contained,
+            ),
+          )
         : error != null
         ? Center(
-            child: FilledButton.tonalIcon(
+            child: M3EButton.tonal(
               onPressed: load,
-              icon: const Icon(Icons.refresh_rounded),
+              icon: const Icon(M3EIcons.refresh_rounded),
               label: Text(currentLocalizations().topologyRefresh),
             ),
           )
         : ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
-              Card(
-                child: Column(
-                  children: [
-                    for (var index = 0; index < displays.length; index++) ...[
-                      if (index > 0) const Divider(height: 1),
-                      ListTile(
-                        leading: Icon(
-                          displays[index].dextopOverlay
-                              ? Icons.phone_android_rounded
-                              : Icons.monitor_rounded,
-                        ),
-                        title: Text(displays[index].name),
-                        subtitle: Text(displays[index].modeLabel),
-                        trailing: const Icon(Icons.chevron_right_rounded),
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute<void>(
-                            builder: (_) => DisplayResolutionDetailPage(
-                              bridge: widget.bridge,
-                              displayId: displays[index].id,
-                            ),
+              DextopGroup(
+                children: [
+                  for (final item in displays)
+                    M3EListItem(
+                      leading: Icon(
+                        item.dextopOverlay
+                            ? M3EIcons.phone_android_rounded
+                            : M3EIcons.monitor_rounded,
+                      ),
+                      headline: item.name,
+                      supportingText: item.modeLabel,
+                      trailing: const Icon(M3EIcons.chevron_right_rounded),
+                      onTap: () => Navigator.of(context).push(
+                        dextopRoute<void>(
+                          DisplayResolutionDetailPage(
+                            bridge: widget.bridge,
+                            displayId: item.id,
                           ),
                         ),
                       ),
-                    ],
-                  ],
-                ),
+                    ),
+                ],
               ),
             ],
           ),
@@ -522,14 +585,14 @@ class _DisplayResolutionDetailPageState
       );
       await load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(currentLocalizations().displayModeApplied)),
+        M3ESnackbar.show(
+          context,
+          message: currentLocalizations().displayModeApplied,
         );
       }
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(exception.toString())));
+        M3ESnackbar.show(context, message: exception.toString());
       }
     } finally {
       if (mounted) setState(() => applying = false);
@@ -549,87 +612,74 @@ class _DisplayResolutionDetailPageState
     }
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          current?.name ?? currentLocalizations().displayDetailsTitle,
-        ),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      appBar: M3EAppBar.top(
+        automaticallyImplyLeading: true,
+        titleText: current?.name ?? currentLocalizations().displayDetailsTitle,
       ),
       body: loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: M3ELoadingIndicator(
+                variant: M3ELoadingIndicatorVariant.contained,
+              ),
+            )
           : error != null || current == null
           ? Center(
-              child: FilledButton.tonalIcon(
+              child: M3EButton.tonal(
                 onPressed: load,
-                icon: const Icon(Icons.refresh_rounded),
+                icon: const Icon(M3EIcons.refresh_rounded),
                 label: Text(currentLocalizations().topologyRefresh),
               ),
             )
           : ListView(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
               children: [
-                Card(
-                  child: ListTile(
-                    leading: Icon(
-                      current.dextopOverlay
-                          ? Icons.phone_android_rounded
-                          : Icons.monitor_rounded,
+                DextopGroup(
+                  children: [
+                    M3EListItem(
+                      leading: Icon(
+                        current.dextopOverlay
+                            ? M3EIcons.phone_android_rounded
+                            : M3EIcons.monitor_rounded,
+                      ),
+                      headline: current.name,
+                      supportingText:
+                          '${current.widthPx} × ${current.heightPx} · '
+                          '${current.densityDpi} dpi · ID ${current.id}',
                     ),
-                    title: Text(current.name),
-                    subtitle: Text(
-                      '${current.widthPx} × ${current.heightPx} · '
-                      '${current.densityDpi} dpi · ID ${current.id}',
-                    ),
-                  ),
+                  ],
                 ),
-                const SizedBox(height: 20),
-                Text(
+                DextopSection(
                   currentLocalizations().displaySupportedResolutions,
-                  style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w600,
-                  ),
                 ),
-                const SizedBox(height: 8),
                 if (current.dextopOverlay)
-                  Card(
-                    child: ListTile(
-                      leading: const Icon(Icons.info_outline_rounded),
-                      title: Text(
-                        currentLocalizations().displayDextopResolutionTitle,
+                  DextopGroup(
+                    children: [
+                      M3EListItem(
+                        leading: const Icon(M3EIcons.info_outline_rounded),
+                        headline:
+                            currentLocalizations().displayDextopResolutionTitle,
+                        supportingText: currentLocalizations()
+                            .displayDextopResolutionSummary,
+                        supportingMaxLines: null,
                       ),
-                      subtitle: Text(
-                        currentLocalizations().displayDextopResolutionSummary,
-                      ),
-                    ),
+                    ],
                   )
                 else
-                  Card(
-                    child: RadioGroup<int>(
-                      groupValue: current.activeModeId,
-                      onChanged: onModeChanged,
-                      child: Column(
-                        children: [
-                          for (
-                            var index = 0;
-                            index < current.supportedModes.length;
-                            index++
-                          ) ...[
-                            if (index > 0) const Divider(height: 1),
-                            RadioListTile<int>(
-                              value: current.supportedModes[index].id,
-                              title: Text(current.supportedModes[index].label),
-                              subtitle:
-                                  current.supportedModes[index].id ==
-                                      current.activeModeId
-                                  ? Text(
-                                      currentLocalizations().displayCurrentMode,
-                                    )
-                                  : null,
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
+                  DextopGroup(
+                    children: [
+                      for (final mode in current.supportedModes)
+                        DextopChoice<int>(
+                          value: mode.id,
+                          groupValue: current.activeModeId,
+                          title: mode.label,
+                          subtitle: mode.id == current.activeModeId
+                              ? currentLocalizations().displayCurrentMode
+                              : null,
+                          enabled: !applying,
+                          onChanged: (id) => onModeChanged(id),
+                        ),
+                    ],
                   ),
               ],
             ),
@@ -805,13 +855,13 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
           selectedDisplayId = null;
         }
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(currentLocalizations().topologyApplied)),
+      M3ESnackbar.show(
+        context,
+        message: currentLocalizations().topologyApplied,
       );
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(exception.toString())));
+        M3ESnackbar.show(context, message: exception.toString());
       }
     } finally {
       if (mounted) setState(() => applying = false);
@@ -819,29 +869,34 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
   }
 
   void identify() {
-    showDialog<void>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text(currentLocalizations().topologyIdentify),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (var index = 0; index < displays.length; index++)
-              ListTile(
-                leading: CircleAvatar(child: Text('${index + 1}')),
-                title: Text(displays[index].name),
-                subtitle: Text(
-                  '${displays[index].widthPx} × ${displays[index].heightPx} · ID ${displays[index].id}',
-                ),
+    M3EDialog.show<void>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: const Icon(M3EIcons.visibility_rounded),
+            title: currentLocalizations().topologyIdentify,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
+              children: [
+                for (var index = 0; index < displays.length; index++)
+                  M3EListItem(
+                    leading: CircleAvatar(child: Text('${index + 1}')),
+                    headline: displays[index].name,
+                    supportingText:
+                        '${displays[index].widthPx} × ${displays[index].heightPx} · ID ${displays[index].id}',
+                  ),
+              ],
+            ),
+            actions: [
+              M3EButton.text(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: Text(currentLocalizations().close),
               ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(currentLocalizations().close),
-          ),
-        ],
+            ],
+          );
+        },
       ),
     );
   }
@@ -859,14 +914,14 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       );
       await load();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(currentLocalizations().displayModeApplied)),
+        M3ESnackbar.show(
+          context,
+          message: currentLocalizations().displayModeApplied,
         );
       }
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(exception.toString())));
+        M3ESnackbar.show(context, message: exception.toString());
       }
     } finally {
       if (mounted) setState(() => applying = false);
@@ -883,8 +938,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
       await load();
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(exception.toString())));
+        M3ESnackbar.show(context, message: exception.toString());
       }
     } finally {
       if (mounted) setState(() => applying = false);
@@ -901,51 +955,83 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
     return value;
   }
 
-  Widget _settingRow({
+  Future<void> _pickSetting<T>(
+    String title,
+    IconData icon,
+    T current,
+    List<(T, String)> items,
+    ValueChanged<T> onSelected,
+  ) async {
+    final selected = await M3EDialog.show<T>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: Icon(icon),
+            title: title,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
+              children: [
+                for (final (item, label) in items)
+                  DextopChoice<T>(
+                    value: item,
+                    groupValue: current,
+                    allowReselect: true,
+                    title: label,
+                    onChanged: (next) => Navigator.pop(dialogContext, next),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (selected != null && selected != current) onSelected(selected);
+  }
+
+  M3EListItem _settingRow<T>({
     required IconData icon,
     required String title,
     String? subtitle,
-    required Widget trailing,
-  }) => Card(
-    margin: const EdgeInsets.only(top: 8),
-    child: ListTile(
+    required T value,
+    required List<(T, String)> items,
+    required ValueChanged<T>? onSelected,
+  }) {
+    final activeLabel = items
+        .firstWhere((entry) => entry.$1 == value, orElse: () => items.first)
+        .$2;
+    void openPicker() =>
+        _pickSetting<T>(title, icon, value, items, onSelected!);
+    return M3EListItem(
       leading: Icon(icon),
-      title: Text(title),
-      subtitle: subtitle == null ? null : Text(subtitle),
-      trailing: trailing,
-    ),
-  );
-
-  Widget _dropdown<T>(
-    T value,
-    List<(T, String)> items,
-    ValueChanged<T>? onChanged,
-  ) => DropdownButton<T>(
-    value: value,
-    underline: const SizedBox.shrink(),
-    borderRadius: BorderRadius.circular(16),
-    onChanged: onChanged == null
-        ? null
-        : (next) {
-            if (next != null && next != value) onChanged(next);
-          },
-    items: [
-      for (final (item, label) in items)
-        DropdownMenuItem(value: item, child: Text(label)),
-    ],
-  );
+      headline: title,
+      supportingText: subtitle,
+      supportingMaxLines: null,
+      enabled: onSelected != null,
+      trailing: DextopDropdownButton(
+        label: activeLabel,
+        enabled: onSelected != null,
+        onPressed: onSelected == null ? null : openPicker,
+      ),
+      onTap: onSelected == null ? null : openPicker,
+    );
+  }
 
   Widget _selectedDisplaySettings(BuildContext context) {
     final display = selectedDisplay;
     if (display == null) return const SizedBox.shrink();
     if (display.dextopOverlay) {
-      return Card(
-        margin: EdgeInsets.zero,
-        child: ListTile(
-          leading: const Icon(Icons.info_outline_rounded),
-          title: Text(display.name),
-          subtitle: Text(currentLocalizations().displayDextopResolutionSummary),
-        ),
+      return DextopGroup(
+        children: [
+          M3EListItem(
+            leading: const Icon(M3EIcons.info_outline_rounded),
+            headline: display.name,
+            supportingText:
+                currentLocalizations().displayDextopResolutionSummary,
+            supportingMaxLines: null,
+          ),
+        ],
       );
     }
     final extendedScreen = display.extendedScreen != null;
@@ -998,138 +1084,134 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
         '${value.toStringAsFixed(value == value.roundToDouble() ? 0 : 2)} Hz';
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 4, bottom: 4),
-          child: Text(
-            display.name,
-            style: Theme.of(context).textTheme.titleMedium,
-          ),
+        DextopSection(display.name),
+        DextopGroup(
+          children: [
+            if (extendedScreen)
+              _settingRow<int>(
+                icon: M3EIcons.aspect_ratio_rounded,
+                title: t('uiScale'),
+                subtitle: t('uiChangeTheSizeOfTextAppsAndOtherItems'),
+                value: display.scalePercent,
+                items: [
+                  for (final value in {
+                    ...display.scalePercents,
+                    display.scalePercent,
+                  }.toList()..sort())
+                    (
+                      value,
+                      value == 100
+                          ? inlineFormat(t('ui0Recommended'), [value])
+                          : '$value%',
+                    ),
+                ],
+                onSelected: !enabled
+                    ? null
+                    : (value) => applyDisplaySetting(
+                        () => widget.bridge.setExtendedDisplayScale(
+                          display.id,
+                          value,
+                        ),
+                      ),
+              )
+            else
+              _settingRow<int>(
+                icon: M3EIcons.aspect_ratio_rounded,
+                title: t('uiScale'),
+                subtitle: t('uiChangeTheSizeOfTextAppsAndOtherItems'),
+                value: currentPercent,
+                items: [
+                  for (final value in percents) (value, percentLabel(value)),
+                ],
+                onSelected: !enabled
+                    ? null
+                    : (value) => applyDisplaySetting(
+                        () => widget.bridge.setDisplayDensity(
+                          display.id,
+                          value == recommendedPercent
+                              ? 0
+                              : (value * 160 / 100).round(),
+                        ),
+                      ),
+              ),
+            if (sizes.isNotEmpty && activeSize != null)
+              _settingRow<String>(
+                icon: M3EIcons.fit_screen_rounded,
+                title: t('uiDisplayResolution'),
+                subtitle: t('uiAdjustTheResolutionToFitYourConnectedDisplay'),
+                value: activeSize,
+                items: [
+                  for (final mode in sizes)
+                    ('${mode.width}x${mode.height}', sizeLabel(mode)),
+                ],
+                onSelected: !enabled
+                    ? null
+                    : (value) => applyDisplaySetting(() async {
+                        final mode = bySize[value]!;
+                        await widget.bridge.setDisplayPreferredMode(
+                          displayId: display.id,
+                          width: mode.width,
+                          height: mode.height,
+                          refreshRate: mode.refreshRate,
+                        );
+                      }),
+              ),
+            if (active != null && rates.length > 1)
+              _settingRow<int>(
+                icon: M3EIcons.speed_rounded,
+                title: t('uiRefreshRate'),
+                value: active.id,
+                items: [
+                  for (final mode in rates)
+                    (mode.id, rateLabel(mode.refreshRate)),
+                ],
+                onSelected: !enabled
+                    ? null
+                    : (id) => applyDisplaySetting(() async {
+                        final mode = rates.firstWhere((item) => item.id == id);
+                        await widget.bridge.setDisplayPreferredMode(
+                          displayId: display.id,
+                          width: mode.width,
+                          height: mode.height,
+                          refreshRate: mode.refreshRate,
+                        );
+                      }),
+              ),
+            if (!extendedScreen)
+              _settingRow<int>(
+                icon: M3EIcons.screen_rotation_alt_rounded,
+                title: t('uiDisplayOrientation'),
+                value: display.rotation,
+                items: [
+                  (0, t('uiLandscape')),
+                  (1, t('uiPortrait')),
+                  (2, t('uiLandscapeFlipped')),
+                  (3, t('uiPortraitFlipped')),
+                ],
+                onSelected: !enabled
+                    ? null
+                    : (value) => applyDisplaySetting(
+                        () =>
+                            widget.bridge.setDisplayRotation(display.id, value),
+                      ),
+              ),
+          ],
         ),
-        if (extendedScreen)
-          // The extended desktop sizes each screen's part itself; 100 % is the recommended size.
-          _settingRow(
-            icon: Icons.aspect_ratio_rounded,
-            title: t('uiScale'),
-            subtitle: t('uiChangeTheSizeOfTextAppsAndOtherItems'),
-            trailing: _dropdown<int>(
-              display.scalePercent,
-              [
-                for (final value in {
-                  ...display.scalePercents,
-                  display.scalePercent,
-                }.toList()..sort())
-                  (
-                    value,
-                    value == 100
-                        ? inlineFormat(t('ui0Recommended'), [value])
-                        : '$value%',
-                  ),
-              ],
-              !enabled
-                  ? null
-                  : (value) => applyDisplaySetting(
-                      () => widget.bridge.setExtendedDisplayScale(
-                        display.id,
-                        value,
-                      ),
-                    ),
-            ),
-          )
-        else
-          _settingRow(
-            icon: Icons.aspect_ratio_rounded,
-            title: t('uiScale'),
-            subtitle: t('uiChangeTheSizeOfTextAppsAndOtherItems'),
-            trailing: _dropdown<int>(
-              currentPercent,
-              [for (final value in percents) (value, percentLabel(value))],
-              !enabled
-                  ? null
-                  : (value) => applyDisplaySetting(
-                      () => widget.bridge.setDisplayDensity(
-                        display.id,
-                        value == recommendedPercent
-                            ? 0
-                            : (value * 160 / 100).round(),
-                      ),
-                    ),
-            ),
-          ),
-        if (sizes.isNotEmpty && activeSize != null)
-          _settingRow(
-            icon: Icons.fit_screen_rounded,
-            title: t('uiDisplayResolution'),
-            subtitle: t('uiAdjustTheResolutionToFitYourConnectedDisplay'),
-            trailing: _dropdown<String>(
-              activeSize,
-              [
-                for (final mode in sizes)
-                  ('${mode.width}x${mode.height}', sizeLabel(mode)),
-              ],
-              !enabled
-                  ? null
-                  : (value) => applyDisplaySetting(() async {
-                      final mode = bySize[value]!;
-                      await widget.bridge.setDisplayPreferredMode(
-                        displayId: display.id,
-                        width: mode.width,
-                        height: mode.height,
-                        refreshRate: mode.refreshRate,
-                      );
-                    }),
-            ),
-          ),
-        if (active != null && rates.length > 1)
-          _settingRow(
-            icon: Icons.speed_rounded,
-            title: t('uiRefreshRate'),
-            trailing: _dropdown<int>(
-              active.id,
-              [
-                for (final mode in rates)
-                  (mode.id, rateLabel(mode.refreshRate)),
-              ],
-              !enabled
-                  ? null
-                  : (id) => applyDisplaySetting(() async {
-                      final mode = rates.firstWhere((item) => item.id == id);
-                      await widget.bridge.setDisplayPreferredMode(
-                        displayId: display.id,
-                        width: mode.width,
-                        height: mode.height,
-                        refreshRate: mode.refreshRate,
-                      );
-                    }),
-            ),
-          ),
-        if (!extendedScreen)
-          _settingRow(
-            icon: Icons.screen_rotation_alt_rounded,
-            title: t('uiDisplayOrientation'),
-            trailing: _dropdown<int>(
-              display.rotation,
-              [
-                (0, t('uiLandscape')),
-                (1, t('uiPortrait')),
-                (2, t('uiLandscapeFlipped')),
-                (3, t('uiPortraitFlipped')),
-              ],
-              !enabled
-                  ? null
-                  : (value) => applyDisplaySetting(
-                      () => widget.bridge.setDisplayRotation(display.id, value),
-                    ),
-            ),
-          ),
       ],
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (loading) return const Center(child: CircularProgressIndicator());
+    if (loading) {
+      return const Center(
+        child: M3ELoadingIndicator(
+          variant: M3ELoadingIndicatorVariant.contained,
+        ),
+      );
+    }
     if (error != null) {
       return Center(
         child: Padding(
@@ -1137,13 +1219,13 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const Icon(Icons.desktop_access_disabled_rounded, size: 42),
+              const Icon(M3EIcons.desktop_access_disabled_rounded, size: 42),
               const SizedBox(height: 12),
               Text(error!, textAlign: TextAlign.center),
               const SizedBox(height: 16),
-              OutlinedButton.icon(
+              M3EButton.outlined(
                 onPressed: load,
-                icon: const Icon(Icons.refresh_rounded),
+                icon: const Icon(M3EIcons.refresh_rounded),
                 label: Text(currentLocalizations().topologyRefresh),
               ),
             ],
@@ -1153,7 +1235,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
     }
     return LayoutBuilder(
       builder: (context, constraints) => ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
         children: [
           if (widget.showSettingsHeader) ...[
             Text(
@@ -1162,13 +1244,19 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
             ),
             const SizedBox(height: 4),
           ],
-          Text(currentLocalizations().topologyDescription),
+          Text(
+            currentLocalizations().topologyDescription,
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: Theme.of(context).colorScheme.onSurfaceVariant,
+            ),
+          ),
           const SizedBox(height: 12),
           SizedBox(
             height: (constraints.maxHeight * .42).clamp(250.0, 390.0),
-            child: Card(
-              margin: EdgeInsets.zero,
-              clipBehavior: Clip.antiAlias,
+            child: M3ECard(
+              variant: M3ECardVariant.elevated,
+              borderRadius: BorderRadius.circular(28),
+              padding: EdgeInsets.zero,
               child: _TopologyCanvas(
                 displays: displays,
                 selectedDisplayId: selectedDisplayId,
@@ -1194,7 +1282,7 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
               ),
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 14),
           LayoutBuilder(
             builder: (context, constraints) {
               final columns = constraints.maxWidth >= 600 ? 4 : 2;
@@ -1206,12 +1294,13 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                 children: [
                   SizedBox(
                     width: buttonWidth,
-                    height: 44,
-                    child: FilledButton.tonalIcon(
+                    child: M3EButton.tonal(
+                      size: M3EButtonSize.sm,
+                      enabled: !applying,
                       onPressed: applying
                           ? null
                           : () => Navigator.maybePop(context),
-                      icon: const Icon(Icons.close_rounded, size: 18),
+                      icon: const Icon(M3EIcons.close_rounded, size: 18),
                       label: Text(
                         MaterialLocalizations.of(context).cancelButtonLabel,
                       ),
@@ -1219,28 +1308,31 @@ class _DisplayTopologyEditorState extends State<DisplayTopologyEditor> {
                   ),
                   SizedBox(
                     width: buttonWidth,
-                    height: 44,
-                    child: FilledButton.tonalIcon(
+                    child: M3EButton.tonal(
+                      size: M3EButtonSize.sm,
+                      enabled: !applying,
                       onPressed: applying ? null : resetPositions,
-                      icon: const Icon(Icons.restart_alt_rounded, size: 18),
+                      icon: const Icon(M3EIcons.restart_alt_rounded, size: 18),
                       label: Text(currentLocalizations().topologyReset),
                     ),
                   ),
                   SizedBox(
                     width: buttonWidth,
-                    height: 44,
-                    child: FilledButton.tonalIcon(
+                    child: M3EButton.tonal(
+                      size: M3EButtonSize.sm,
+                      enabled: displays.isNotEmpty,
                       onPressed: displays.isEmpty ? null : identify,
-                      icon: const Icon(Icons.visibility_rounded, size: 18),
+                      icon: const Icon(M3EIcons.visibility_rounded, size: 18),
                       label: Text(currentLocalizations().topologyIdentify),
                     ),
                   ),
                   SizedBox(
                     width: buttonWidth,
-                    height: 44,
-                    child: FilledButton.icon(
+                    child: M3EButton.filled(
+                      size: M3EButtonSize.sm,
+                      enabled: !applying && displays.length >= 2,
                       onPressed: applying || displays.length < 2 ? null : apply,
-                      icon: const Icon(Icons.check_rounded, size: 18),
+                      icon: const Icon(M3EIcons.check_rounded, size: 18),
                       label: Text(currentLocalizations().topologyApply),
                     ),
                   ),

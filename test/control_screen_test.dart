@@ -1,4 +1,5 @@
 import 'package:free_dextop/main.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/material.dart';
@@ -79,7 +80,10 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Input and gestures').last);
     await tester.pumpAndSettle();
-    final shortcut = find.widgetWithText(ListTile, 'Add home screen shortcut');
+    final shortcut = find.widgetWithText(
+      M3EListItem,
+      'Add home screen shortcut',
+    );
     await Scrollable.ensureVisible(
       tester.element(shortcut),
       alignment: .3,
