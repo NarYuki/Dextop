@@ -361,8 +361,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? latestReleaseUrl;
   String? releaseCheckError;
   DateTime? releaseCheckedAt;
-  /// GitHub builds only: also offer pre-releases (betas) as updates.
-  var receivePreReleases = false;
   AppUpdateInfo? playUpdateInfo;
   // Product flavors live on the Android side. A Gradle BuildConfig field is
   // not a Dart --define, so String.fromEnvironment would always fall back to
@@ -425,7 +423,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (mounted) {
       setState(() {
         secure = preferences.getBool('secure_display') ?? false;
-        receivePreReleases = preferences.getBool(_preReleasesKey) ?? false;
         final savedOrientation = preferences.getString('home_orientation_mode');
         orientationMode = switch (savedOrientation) {
           'automatic' => _HomeOrientationMode.automatic,
@@ -648,8 +645,9 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       if (current.isEmpty) {
         throw FormatException(currentUiText('uiMissingAppVersion'));
       }
-      final preferences = await SharedPreferences.getInstance();
-      final preReleases = preferences.getBool(_preReleasesKey) ?? false;
+      // A beta build follows the beta channel: it is offered the newest
+      // release, pre-releases included. A stable build sees stable only.
+      final preReleases = isPreRelease(current);
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       // releases/latest never returns pre-releases; the list does.
       final request = await client.getUrl(
@@ -818,8 +816,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     }
   }
 
-  static const _preReleasesKey = 'update_receive_prereleases';
-
   /// The newest published release in a GitHub release list, pre-releases included.
   Map? _newestRelease(List releases) {
     Map? newest;
@@ -832,14 +828,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       }
     }
     return newest;
-  }
-
-  Future<void> _setReceivePreReleases(bool value) async {
-    final preferences = await SharedPreferences.getInstance();
-    await preferences.setBool(_preReleasesKey, value);
-    if (!mounted) return;
-    mutate(() => receivePreReleases = value);
-    await _checkForUpdates();
   }
 
   Future<void> _consumeTileAction() async {
