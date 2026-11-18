@@ -5,131 +5,129 @@ extension _SettingsContent on _HomeScreenState {
     final l = AppLocalizations.of(context);
     if (wideLayout) return _desktopSettings(l);
     return CustomScrollView(
-      key: ValueKey('settings'),
+      key: const ValueKey('settings'),
       slivers: [
-        SliverAppBar.large(title: Text(l.settings)),
+        M3EAppBar.sliver(
+          pinned: true,
+          variant: M3EAppBarVariant.largeFlexible,
+          titleText: l.settings,
+        ),
         SliverPadding(
-          padding: EdgeInsets.fromLTRB(16, 0, 16, 32),
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
           sliver: SliverList.list(
             children: [
-              sectionTitle(l.theme),
-              SizedBox(height: 12),
+              DextopSection(
+                l.theme,
+                padding: const EdgeInsets.fromLTRB(8, 8, 8, 10),
+              ),
               rootMyGalaxyThemeSwitch(l),
-              SizedBox(height: 32),
-              settingsCard([
-                _categoryTile(
-                  Icons.display_settings_outlined,
-                  l.display,
-                  currentLocalizations().uiSecureDisplayFoldable,
-                  _unlessLinuxOnly(() => _openDisplaySettings(l)),
-                ),
-                Divider(height: 1),
-                if (carCompanionInstalled) ...[
+              const SizedBox(height: 24),
+              DextopGroup(
+                children: [
                   _categoryTile(
-                    Icons.directions_car_outlined,
-                    l.autoSettingsTitle,
-                    l.autoSettingsDescription,
+                    M3EIcons.display_settings_outlined,
+                    l.display,
+                    currentLocalizations().uiSecureDisplayFoldable,
+                    _unlessLinuxOnly(() => _openDisplaySettings(l)),
+                  ),
+                  if (carCompanionInstalled)
+                    _categoryTile(
+                      M3EIcons.directions_car_outlined,
+                      l.autoSettingsTitle,
+                      l.autoSettingsDescription,
+                      _unlessLinuxOnly(
+                        () => Navigator.of(context)
+                            .push(dextopRoute<void>(const AutoSettingsPage())),
+                      ),
+                    ),
+                  _categoryTile(
+                    M3EIcons.mouse_outlined,
+                    l.mouseSettingsTitle,
+                    l.mouseSettingsDescription,
+                    _unlessLinuxOnly(() => _openMouseSettings(l)),
+                  ),
+                  _categoryTile(
+                    M3EIcons.keyboard_alt_outlined,
+                    l.keyboardSettingsTitle,
+                    l.keyboardSettingsDescription,
                     _unlessLinuxOnly(
                       () => Navigator.of(context).push(
-                        MaterialPageRoute<void>(
-                          builder: (_) => const AutoSettingsPage(),
+                        dextopRoute<void>(
+                          KeyboardSettingsPage(isRunning: active),
                         ),
                       ),
                     ),
                   ),
-                  Divider(height: 1),
-                ],
-                _categoryTile(
-                  Icons.mouse_outlined,
-                  l.mouseSettingsTitle,
-                  l.mouseSettingsDescription,
-                  _unlessLinuxOnly(() => _openMouseSettings(l)),
-                ),
-                Divider(height: 1),
-                _categoryTile(
-                  Icons.keyboard_alt_outlined,
-                  l.keyboardSettingsTitle,
-                  l.keyboardSettingsDescription,
-                  _unlessLinuxOnly(
+                  _categoryTile(
+                    M3EIcons.apps_outlined,
+                    currentLocalizations().uiAppLauncherSettings,
+                    currentLocalizations()
+                        .uiManageLaunchedAppsAndConfigurations,
+                    _unlessLinuxOnly(
+                      () => _openFeatureCategory('apps', launcherOnly: true),
+                    ),
+                  ),
+                  _categoryTile(
+                    M3EIcons.gesture_rounded,
+                    currentLocalizations().uiInputAndGestures,
+                    currentLocalizations()
+                        .uiTapPressAndHoldMultiFingerOperation,
+                    _unlessLinuxOnly(() => _openFeatureCategory('interaction')),
+                  ),
+                  _categoryTile(
+                    M3EIcons.monitor_heart_outlined,
+                    currentLocalizations().uiConditionAndDiagnosis,
+                    currentLocalizations().uiPerformanceCompatibility,
+                    _unlessLinuxOnly(() => _openFeatureCategory('status')),
+                  ),
+                  _categoryTile(
+                    M3EIcons.devices_outlined,
+                    currentLocalizations().uiTerminalAndPermissions,
+                    currentLocalizations()
+                        .uiDeviceInformationDesktopModeAccessibility,
+                    _unlessLinuxOnly(() => _openDeviceSettings(l)),
+                  ),
+                  _categoryTile(
+                    M3EIcons.info_outline_rounded,
+                    l.appInfo,
+                    appVersion.isEmpty ? 'Dextop' : 'Dextop $appVersion',
                     () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => KeyboardSettingsPage(isRunning: active),
+                      dextopRoute<void>(
+                        AppInfoPage(
+                          bridge: bridge,
+                          appVersion: appVersion,
+                          updateAvailable: updateAvailable,
+                          checking: releaseChecking,
+                          checkSucceeded: releaseCheckSucceeded,
+                          checkError: releaseCheckError,
+                          onCheck: () => _checkForUpdates(manual: true),
+                          onShowUpdate: _showUpdateDialog,
+                          isRunning: active,
+                          onExperimentalFeaturesChanged: _loadHomeSelections,
+                          receivePreReleases: receivePreReleases,
+                          onReceivePreReleasesChanged: isPlayDistribution
+                              ? null
+                              : _setReceivePreReleases,
+                        ),
                       ),
                     ),
+                    badge: updateAvailable ? l.updateAvailable : null,
                   ),
-                ),
-                Divider(height: 1),
-                _categoryTile(
-                  Icons.apps_outlined,
-                  currentLocalizations().uiAppLauncherSettings,
-                  currentLocalizations().uiManageLaunchedAppsAndConfigurations,
-                  _unlessLinuxOnly(
-                    () => _openFeatureCategory('apps', launcherOnly: true),
+                ],
+              ),
+              const SizedBox(height: 16),
+              DextopGroup(
+                children: [
+                  _categoryTile(
+                    M3EIcons.fact_check_outlined,
+                    currentLocalizations().deviceReport,
+                    currentLocalizations().deviceReportDescription,
+                    () =>
+                        Navigator.of(context)
+                            .push(dextopRoute<void>(const DeviceReportPage())),
                   ),
-                ),
-                Divider(height: 1),
-                _categoryTile(
-                  Icons.gesture_rounded,
-                  currentLocalizations().uiInputAndGestures,
-                  currentLocalizations().uiTapPressAndHoldMultiFingerOperation,
-                  _unlessLinuxOnly(() => _openFeatureCategory('interaction')),
-                ),
-                Divider(height: 1),
-                _categoryTile(
-                  Icons.monitor_heart_outlined,
-                  currentLocalizations().uiConditionAndDiagnosis,
-                  currentLocalizations().uiPerformanceCompatibility,
-                  _unlessLinuxOnly(() => _openFeatureCategory('status')),
-                ),
-                Divider(height: 1),
-                _categoryTile(
-                  Icons.devices_outlined,
-                  currentLocalizations().uiTerminalAndPermissions,
-                  currentLocalizations()
-                      .uiDeviceInformationDesktopModeAccessibility,
-                  _unlessLinuxOnly(() => _openDeviceSettings(l)),
-                ),
-                Divider(height: 1),
-                _categoryTile(
-                  Icons.info_outline_rounded,
-                  l.appInfo,
-                  appVersion.isEmpty ? 'Dextop' : 'Dextop $appVersion',
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => AppInfoPage(
-                        bridge: bridge,
-                        appVersion: appVersion,
-                        updateAvailable: updateAvailable,
-                        checking: releaseChecking,
-                        checkSucceeded: releaseCheckSucceeded,
-                        checkError: releaseCheckError,
-                        onCheck: () => _checkForUpdates(manual: true),
-                        onShowUpdate: _showUpdateDialog,
-                        isRunning: active,
-                        onExperimentalFeaturesChanged: _loadHomeSelections,
-                        receivePreReleases: receivePreReleases,
-                        onReceivePreReleasesChanged: isPlayDistribution
-                            ? null
-                            : _setReceivePreReleases,
-                      ),
-                    ),
-                  ),
-                  badge: updateAvailable ? l.updateAvailable : null,
-                ),
-              ]),
-              SizedBox(height: 20),
-              settingsCard([
-                _categoryTile(
-                  Icons.fact_check_outlined,
-                  currentLocalizations().deviceReport,
-                  currentLocalizations().deviceReportDescription,
-                  () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const DeviceReportPage(),
-                    ),
-                  ),
-                ),
-              ]),
+                ],
+              ),
             ],
           ),
         ),
@@ -141,73 +139,74 @@ extension _SettingsContent on _HomeScreenState {
     final sections = <(String, IconData, String, String)>[
       (
         'display',
-        Icons.display_settings_outlined,
+        M3EIcons.display_settings_outlined,
         l.display,
         currentLocalizations().uiSecureDisplayFoldable,
       ),
       if (carCompanionInstalled)
         (
           'auto',
-          Icons.directions_car_outlined,
+          M3EIcons.directions_car_outlined,
           l.autoSettingsTitle,
           l.autoSettingsDescription,
         ),
       (
         'mouse',
-        Icons.mouse_outlined,
+        M3EIcons.mouse_outlined,
         l.mouseSettingsTitle,
         l.mouseSettingsDescription,
       ),
       (
         'keyboard',
-        Icons.keyboard_alt_outlined,
+        M3EIcons.keyboard_alt_outlined,
         l.keyboardSettingsTitle,
         l.keyboardSettingsDescription,
       ),
       (
         'apps',
-        Icons.apps_outlined,
+        M3EIcons.apps_outlined,
         currentLocalizations().uiAppLauncherSettings,
         currentLocalizations().uiManageLaunchedAppsAndConfigurations,
       ),
       (
         'interaction',
-        Icons.gesture_rounded,
+        M3EIcons.gesture_rounded,
         currentLocalizations().uiInputAndGestures,
         currentLocalizations().uiTapPressAndHoldMultiFingerOperation,
       ),
       (
         'status',
-        Icons.monitor_heart_outlined,
+        M3EIcons.monitor_heart_outlined,
         currentLocalizations().uiConditionAndDiagnosis,
         currentLocalizations().uiPerformanceCompatibility,
       ),
       (
         'device',
-        Icons.devices_outlined,
+        M3EIcons.devices_outlined,
         currentLocalizations().uiTerminalAndPermissions,
         currentLocalizations().uiDeviceInformationDesktopModeAccessibility,
       ),
       (
         'about',
-        Icons.info_outline_rounded,
+        M3EIcons.info_outline_rounded,
         l.appInfo,
         appVersion.isEmpty ? 'Dextop' : 'Dextop $appVersion',
       ),
     ];
+    final colors = Theme.of(context).colorScheme;
     return LayoutBuilder(
       key: const ValueKey('desktop-settings'),
       builder: (context, constraints) {
         final selected = switch (desktopSettingsSection) {
           'samsung' => (
             'samsung',
-            Icons.desktop_windows_outlined,
+            M3EIcons.desktop_windows_outlined,
             currentLocalizations().samsungSettingsTitle,
             '',
           ),
           'diagnostics' => (
             'diagnostics',
-            Icons.article_outlined,
+            M3EIcons.article_outlined,
             currentLocalizations().diagnosticLog,
             '',
           ),
@@ -216,149 +215,198 @@ extension _SettingsContent on _HomeScreenState {
         return Row(
           children: [
             SizedBox(
-              width: constraints.maxWidth >= 1200
-                  ? 340
-                  : constraints.maxWidth >= 820
-                  ? 300
-                  : 240,
-              child: Material(
-                color: Theme.of(context).colorScheme.surfaceContainerLow,
+              width: constraints.maxWidth >= 1200 ? 276 : 240,
+              child: DecoratedBox(
+                decoration: BoxDecoration(color: colors.surfaceContainerLow),
+                child: SafeArea(
+                  right: false,
+                  top: !widget.desktopWindow,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 16, 12),
+                        child: Text(
+                          l.settings,
+                          style: Theme.of(context).textTheme.headlineSmall,
+                        ),
+                      ),
+                      Expanded(
+                        child: ListView.builder(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 4,
+                          ),
+                          itemCount: sections.length,
+                          itemBuilder: (context, index) {
+                            final item = sections[index];
+                            final isSelected =
+                                item.$1 == desktopSettingsSection ||
+                                (item.$1 == 'about' &&
+                                    (desktopSettingsSection == 'samsung' ||
+                                        desktopSettingsSection ==
+                                            'diagnostics'));
+                            final enabled =
+                                !widget.linuxOnly || item.$1 == 'about';
+                            final fg = !enabled
+                                ? colors.onSurfaceVariant.withValues(
+                                    alpha: 0.38,
+                                  )
+                                : isSelected
+                                ? colors.onSecondaryContainer
+                                : colors.onSurface;
+                            final iconColor = !enabled
+                                ? colors.onSurfaceVariant.withValues(
+                                    alpha: 0.38,
+                                  )
+                                : isSelected
+                                ? colors.onSecondaryContainer
+                                : colors.onSurfaceVariant;
+                            return Padding(
+                              padding: const EdgeInsets.symmetric(vertical: 2),
+                              child: Material(
+                                color: isSelected
+                                    ? colors.secondaryContainer
+                                    : Colors.transparent,
+                                shape: const StadiumBorder(),
+                                clipBehavior: Clip.antiAlias,
+                                child: InkWell(
+                                  onTap: enabled
+                                      ? () => mutate(
+                                          () =>
+                                              desktopSettingsSection = item.$1,
+                                        )
+                                      : null,
+                                  child: Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 12,
+                                    ),
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          item.$2,
+                                          size: 20,
+                                          color: iconColor,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        Expanded(
+                                          child: Text(
+                                            item.$3,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: Theme.of(context)
+                                                .textTheme
+                                                .labelLarge
+                                                ?.copyWith(
+                                                  color: fg,
+                                                  fontWeight: isSelected
+                                                      ? FontWeight.w700
+                                                      : FontWeight.w500,
+                                                ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 14),
+                        child: rootMyGalaxyThemeSwitch(l, compact: true),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+            const M3EDivider(axis: M3EDividerAxis.vertical),
+            Expanded(
+              child: SafeArea(
+                left: false,
+                top: !widget.desktopWindow,
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(24, 24, 24, 14),
-                      child: Text(
-                        l.settings,
-                        style: Theme.of(context).textTheme.headlineMedium,
+                      padding: EdgeInsets.fromLTRB(
+                        desktopSettingsSection == 'samsung' ||
+                                desktopSettingsSection == 'diagnostics'
+                            ? 16
+                            : 28,
+                        20,
+                        28,
+                        14,
                       ),
-                    ),
-                    Expanded(
-                      child: ListView.builder(
-                        padding: const EdgeInsets.symmetric(horizontal: 12),
-                        itemCount: sections.length,
-                        itemBuilder: (context, index) {
-                          final item = sections[index];
-                          return Padding(
-                            padding: const EdgeInsets.only(bottom: 4),
-                            child: ListTile(
-                              dense: true,
-                              minTileHeight: item.$1 == 'about' ? 58 : 52,
-                              selected:
-                                  item.$1 == desktopSettingsSection ||
-                                  (item.$1 == 'about' &&
-                                      (desktopSettingsSection == 'samsung' ||
-                                          desktopSettingsSection ==
-                                              'diagnostics')),
-                              selectedTileColor: Theme.of(context)
-                                  .colorScheme
-                                  .secondaryContainer,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(14),
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween(
+                              begin: const Offset(.04, 0),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                        child: Row(
+                          key: ValueKey('header-$desktopSettingsSection'),
+                          children: [
+                            if (desktopSettingsSection == 'samsung' ||
+                                desktopSettingsSection == 'diagnostics') ...[
+                              M3EIconButton(
+                                variant: M3EIconButtonVariant.standard,
+                                tooltip: l.back,
+                                onPressed: () => mutate(
+                                  () => desktopSettingsSection = 'about',
+                                ),
+                                icon: const Icon(M3EIcons.arrow_back_rounded),
                               ),
-                              leading: Icon(item.$2),
-                              enabled: !widget.linuxOnly || item.$1 == 'about',
-                              title: Text(
-                                item.$3,
-                                style: const TextStyle(fontSize: 15),
-                              ),
-                              subtitle: item.$1 == 'about'
-                                  ? Text(
-                                      item.$4,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: const TextStyle(fontSize: 12),
-                                    )
-                                  : null,
-                              trailing: const Icon(Icons.chevron_right_rounded),
-                              onTap: () => mutate(
-                                () => desktopSettingsSection = item.$1,
-                              ),
+                              const SizedBox(width: 4),
+                            ],
+                            Icon(selected.$2, color: colors.primary),
+                            const SizedBox(width: 12),
+                            Text(
+                              selected.$3,
+                              style: Theme.of(context).textTheme.headlineSmall,
                             ),
-                          );
-                        },
+                          ],
+                        ),
                       ),
                     ),
-                    Padding(
-                      padding: const EdgeInsets.all(20),
-                      child: rootMyGalaxyThemeSwitch(l),
+                    const M3EDivider(),
+                    Expanded(
+                      child: AnimatedSwitcher(
+                        duration: const Duration(milliseconds: 240),
+                        transitionBuilder: (child, animation) => FadeTransition(
+                          opacity: animation,
+                          child: SlideTransition(
+                            position: Tween(
+                              begin: const Offset(.025, 0),
+                              end: Offset.zero,
+                            ).animate(animation),
+                            child: child,
+                          ),
+                        ),
+                        child: KeyedSubtree(
+                          key: ValueKey(desktopSettingsSection),
+                          child: Align(
+                            alignment: Alignment.topCenter,
+                            child: ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 760),
+                              child: _desktopSettingsDetail(l),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ],
                 ),
-              ),
-            ),
-            const VerticalDivider(width: 1),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: EdgeInsets.fromLTRB(
-                      desktopSettingsSection == 'samsung' ||
-                              desktopSettingsSection == 'diagnostics'
-                          ? 16
-                          : 28,
-                      22,
-                      28,
-                      14,
-                    ),
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 240),
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween(
-                            begin: const Offset(.04, 0),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
-                      child: Row(
-                        key: ValueKey('header-$desktopSettingsSection'),
-                        children: [
-                          if (desktopSettingsSection == 'samsung' ||
-                              desktopSettingsSection == 'diagnostics') ...[
-                            IconButton(
-                              tooltip: l.back,
-                              onPressed: () => mutate(
-                                () => desktopSettingsSection = 'about',
-                              ),
-                              icon: const Icon(Icons.arrow_back_rounded),
-                            ),
-                            const SizedBox(width: 4),
-                          ],
-                          Icon(selected.$2),
-                          const SizedBox(width: 12),
-                          Text(
-                            selected.$3,
-                            style: Theme.of(context).textTheme.headlineSmall,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  const Divider(height: 1),
-                  Expanded(
-                    child: AnimatedSwitcher(
-                      duration: const Duration(milliseconds: 240),
-                      transitionBuilder: (child, animation) => FadeTransition(
-                        opacity: animation,
-                        child: SlideTransition(
-                          position: Tween(
-                            begin: const Offset(.025, 0),
-                            end: Offset.zero,
-                          ).animate(animation),
-                          child: child,
-                        ),
-                      ),
-                      child: KeyedSubtree(
-                        key: ValueKey(desktopSettingsSection),
-                        child: _desktopSettingsDetail(l),
-                      ),
-                    ),
-                  ),
-                ],
               ),
             ),
           ],
@@ -445,40 +493,42 @@ extension _SettingsContent on _HomeScreenState {
   VoidCallback? _unlessLinuxOnly(VoidCallback action) =>
       widget.linuxOnly ? null : action;
 
-  Widget _categoryTile(
+  M3EListItem _categoryTile(
     IconData icon,
     String title,
     String subtitle,
     VoidCallback? action, {
     String? badge,
-  }) => ListTile(
-    enabled: action != null,
-    leading: Icon(icon),
-    title: Text(title),
-    subtitle: Text(subtitle),
-    trailing: Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (badge != null) ...[
-          Text(
-            badge,
-            style: TextStyle(
-              color: Theme.of(context).colorScheme.error,
-              fontWeight: FontWeight.w600,
+  }) {
+    final colors = Theme.of(context).colorScheme;
+    return M3EListItem(
+      enabled: action != null,
+      leading: Icon(icon),
+      headline: title,
+      supportingText: subtitle,
+      supportingMaxLines: null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (badge != null) ...[
+            DextopStatusPill(
+              label: badge,
+              containerColor: colors.errorContainer,
+              contentColor: colors.onErrorContainer,
             ),
-          ),
-          SizedBox(width: 8),
+            const SizedBox(width: 8),
+          ],
+          const Icon(M3EIcons.chevron_right_rounded),
         ],
-        Icon(Icons.chevron_right_rounded),
-      ],
-    ),
-    onTap: action,
-  );
+      ),
+      onTap: action,
+    );
+  }
 
   void _openFeatureCategory(String category, {bool launcherOnly = false}) {
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => DextopFeaturesPage(
+      dextopRoute<void>(
+        DextopFeaturesPage(
           isRunning: active,
           category: category,
           launcherOnly: launcherOnly,
@@ -492,10 +542,14 @@ extension _SettingsContent on _HomeScreenState {
   void _openDisplaySettings(AppLocalizations l) {
     AppAnalytics.screen('display_settings');
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => StatefulBuilder(
+      dextopRoute<void>(
+        StatefulBuilder(
           builder: (routeContext, updateRoute) => Scaffold(
-            appBar: AppBar(title: Text(l.display)),
+            backgroundColor: Theme.of(routeContext).colorScheme.surface,
+            appBar: M3EAppBar.top(
+              automaticallyImplyLeading: true,
+              titleText: l.display,
+            ),
             body: _displaySettingsContent(l, updateRoute),
           ),
         ),
@@ -506,118 +560,106 @@ extension _SettingsContent on _HomeScreenState {
   void _openMouseSettings(AppLocalizations l) {
     AppAnalytics.screen('mouse_settings');
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => MouseSettingsPage(bridge: bridge, isRunning: active),
-      ),
+      dextopRoute<void>(MouseSettingsPage(bridge: bridge, isRunning: active)),
     );
   }
 
-  Widget _displaySettingsContent(AppLocalizations l, StateSetter updateRoute) =>
-      ListView(
-        padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+  Widget _displaySettingsContent(
+    AppLocalizations l,
+    StateSetter updateRoute,
+  ) => ListView(
+    padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+    children: [
+      DextopSection(currentLocalizations().uiDisplayCategory),
+      DextopGroup(
         children: [
-          _displaySettingsSection(currentLocalizations().uiDisplayCategory, [
-            ListTile(
-              leading: const Icon(Icons.desktop_windows_outlined),
-              title: Text(currentLocalizations().displaySettingsTitle),
-              subtitle: Text(currentLocalizations().displaySettingsSummary),
-              trailing: const Icon(Icons.chevron_right_rounded),
-              onTap: () => Navigator.of(context).push(
-                MaterialPageRoute<void>(
-                  builder: (_) => DisplaySettingsPage(bridge: bridge),
-                ),
-              ),
-            ),
-            Divider(height: 1),
-            ListTile(
-              enabled: !active,
-              leading: Icon(Icons.account_tree_outlined),
-              title: Text(l.mirrorBackend),
-              subtitle: Text(_mirrorBackendLabel(l, mirrorBackend)),
-              trailing: Icon(Icons.chevron_right_rounded),
-              onTap: active
-                  ? null
-                  : () => _selectMirrorBackend(context, l, updateRoute),
-            ),
-            ...[
-              Divider(height: 1),
-              ListTile(
-                leading: const Icon(Icons.space_dashboard_outlined),
-                title: Text(l.windowManager),
-                subtitle: Text(_windowManagerLabel(l, windowManager)),
-                trailing: const Icon(Icons.chevron_right_rounded),
-                onTap: () => _selectWindowManager(context, l, updateRoute),
-              ),
-              if (windowManager != 'system') ...[
-                Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.palette_outlined),
-                  title: Text(localText(context, 'uiDextopBook')),
-                  subtitle: Text(
-                    localText(context, 'uiAppearanceTaskbarAndStartMenu'),
-                  ),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => BookSettingsPage(bridge: bridge),
-                    ),
-                  ),
-                ),
-              ],
-            ],
-            Divider(height: 1),
-            ListTile(
-              leading: Icon(Icons.cast_rounded),
-              title: Text(currentLocalizations().castMode),
-              subtitle: Text(
-                castMode == 'receiver'
-                    ? currentLocalizations().castModeReceiver
-                    : currentLocalizations().castModeSimple,
-              ),
-              trailing: Icon(Icons.chevron_right_rounded),
-              onTap: () => _selectCastMode(context, updateRoute),
-            ),
-            DisplayEnvironmentSettingsCard(
-              bridge: bridge,
-              showDisplay: false,
-              showConvenience: false,
-              displayLeadingDivider: true,
-              wrapInCard: false,
-            ),
-          ]),
-          DextopFeaturesPage(
-            isRunning: active,
-            embedded: true,
-            category: 'display',
+          M3EListItem(
+            leading: const Icon(M3EIcons.desktop_windows_outlined),
+            headline: currentLocalizations().displaySettingsTitle,
+            supportingText: currentLocalizations().displaySettingsSummary,
+            supportingMaxLines: null,
+            trailing: const Icon(M3EIcons.chevron_right_rounded),
+            onTap: () => Navigator.of(context)
+                .push(dextopRoute<void>(DisplaySettingsPage(bridge: bridge))),
           ),
-          _displaySettingsSection(currentLocalizations().uiConvenience, [
-            DisplayEnvironmentSettingsCard(
-              bridge: bridge,
-              showDisplay: false,
-              wrapInCard: false,
+          M3EListItem(
+            enabled: !active,
+            leading: const Icon(M3EIcons.account_tree_outlined),
+            headline: l.mirrorBackend,
+            supportingText: _mirrorBackendLabel(l, mirrorBackend),
+            trailing: const Icon(M3EIcons.chevron_right_rounded),
+            onTap: active
+                ? null
+                : () => _selectMirrorBackend(context, l, updateRoute),
+          ),
+          M3EListItem(
+            leading: const Icon(M3EIcons.space_dashboard_outlined),
+            headline: l.windowManager,
+            supportingText: _windowManagerLabel(l, windowManager),
+            trailing: const Icon(M3EIcons.chevron_right_rounded),
+            onTap: () => _selectWindowManager(context, l, updateRoute),
+          ),
+          if (windowManager != 'system')
+            M3EListItem(
+              leading: const Icon(M3EIcons.palette_outlined),
+              headline: localText(context, 'uiDextopBook'),
+              supportingText: localText(
+                context,
+                'uiAppearanceTaskbarAndStartMenu',
+              ),
+              trailing: const Icon(M3EIcons.chevron_right_rounded),
+              onTap: () => Navigator.of(context)
+                  .push(dextopRoute<void>(BookSettingsPage(bridge: bridge))),
             ),
-            Divider(height: 1),
-            SwitchListTile(
-              title: Text(l.secureDisplay),
-              subtitle: Text(l.secureDisplayDescription),
-              secondary: Icon(Icons.lock_rounded),
-              value: secure,
-              onChanged: active
-                  ? null
-                  : (value) async {
-                      final previous = secure;
-                      updateRoute(() => secure = value);
-                      try {
-                        await setSecureDisplay(value);
-                      } catch (_) {
-                        updateRoute(() => secure = previous);
-                        rethrow;
-                      }
-                    },
-            ),
-          ]),
+          M3EListItem(
+            leading: const Icon(M3EIcons.cast_rounded),
+            headline: currentLocalizations().castMode,
+            supportingText: castMode == 'receiver'
+                ? currentLocalizations().castModeReceiver
+                : currentLocalizations().castModeSimple,
+            trailing: const Icon(M3EIcons.chevron_right_rounded),
+            onTap: () => _selectCastMode(context, updateRoute),
+          ),
         ],
-      );
+      ),
+      const SizedBox(height: 12),
+      DextopFeaturesPage(
+        isRunning: active,
+        embedded: true,
+        category: 'display',
+      ),
+      DextopSection(currentLocalizations().uiConvenience),
+      DisplayEnvironmentSettingsCard(
+        bridge: bridge,
+        showDisplay: false,
+        wrapInCard: true,
+      ),
+      const SizedBox(height: 10),
+      DextopGroup(
+        children: [
+          DextopToggle(
+            title: l.secureDisplay,
+            subtitle: l.secureDisplayDescription,
+            icon: M3EIcons.lock_rounded,
+            value: secure,
+            enabled: !active,
+            onChanged: active
+                ? null
+                : (value) async {
+                    final previous = secure;
+                    updateRoute(() => secure = value);
+                    try {
+                      await setSecureDisplay(value);
+                    } catch (_) {
+                      updateRoute(() => secure = previous);
+                      rethrow;
+                    }
+                  },
+          ),
+        ],
+      ),
+    ],
+  );
 
   String _windowManagerLabel(AppLocalizations l, String value) =>
       switch (value) {
@@ -632,44 +674,47 @@ extension _SettingsContent on _HomeScreenState {
     AppLocalizations l,
     StateSetter updateRoute,
   ) async {
-    final selected = await showDialog<String>(
-      context: routeContext,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(l.windowManager),
-        children: [
-          RadioGroup<String>(
-            groupValue: windowManager,
-            onChanged: (choice) => Navigator.pop(dialogContext, choice),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    final selected = await M3EDialog.show<String>(
+      routeContext,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: const Icon(M3EIcons.space_dashboard_outlined),
+            title: l.windowManager,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
               children: [
-                RadioListTile<String>(
+                DextopChoice<String>(
                   value: 'system',
-                  title: Text(l.windowManagerSystem),
-                  subtitle: Text(l.windowManagerSystemDescription),
+                  groupValue: windowManager,
+                  allowReselect: true,
+                  title: l.windowManagerSystem,
+                  subtitle: l.windowManagerSystemDescription,
+                  onChanged: (choice) => Navigator.pop(dialogContext, choice),
                 ),
-                RadioListTile<String>(
+                DextopChoice<String>(
                   value: 'dextop_book',
-                  title: Text(localText(context, 'uiDextopBook')),
-                  subtitle: Text(
-                    localText(
-                      context,
-                      'uiAMaterial3ExpressiveDesktopDateAndStatusOnTopADockAtTheBottomCentre',
-                    ),
+                  groupValue: windowManager,
+                  allowReselect: true,
+                  title: localText(context, 'uiDextopBook'),
+                  subtitle: localText(
+                    context,
+                    'uiAMaterial3ExpressiveDesktopDateAndStatusOnTopADockAtTheBottomCentre',
                   ),
+                  onChanged: (choice) => Navigator.pop(dialogContext, choice),
                 ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
     if (selected == null || selected == windowManager) return;
     updateRoute(() => windowManager = selected);
     await setWindowManager(selected);
     if (active && routeContext.mounted) {
-      ScaffoldMessenger.of(routeContext)
-          .showSnackBar(SnackBar(content: Text(l.windowManagerAppliedLive)));
+      M3ESnackbar.show(routeContext, message: l.windowManagerAppliedLive);
     }
   }
 
@@ -677,77 +722,43 @@ extension _SettingsContent on _HomeScreenState {
     BuildContext routeContext,
     StateSetter updateRoute,
   ) async {
-    final selected = await showDialog<String>(
-      context: routeContext,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(currentLocalizations().castMode),
-        children: [
-          RadioGroup<String>(
-            groupValue: castMode,
-            onChanged: (choice) => Navigator.pop(dialogContext, choice),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    final selected = await M3EDialog.show<String>(
+      routeContext,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: const Icon(M3EIcons.cast_rounded),
+            title: currentLocalizations().castMode,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
               children: [
-                RadioListTile<String>(
+                DextopChoice<String>(
                   value: 'simple',
-                  title: Text(currentLocalizations().castModeSimple),
-                  subtitle: Text(
-                    currentLocalizations().castModeSimpleDescription,
-                  ),
+                  groupValue: castMode,
+                  allowReselect: true,
+                  title: currentLocalizations().castModeSimple,
+                  subtitle: currentLocalizations().castModeSimpleDescription,
+                  onChanged: (choice) => Navigator.pop(dialogContext, choice),
                 ),
-                RadioListTile<String>(
+                DextopChoice<String>(
                   value: 'receiver',
-                  title: Text(currentLocalizations().castModeReceiver),
-                  subtitle: Text(
-                    currentLocalizations().castModeReceiverDescription,
-                  ),
+                  groupValue: castMode,
+                  allowReselect: true,
+                  title: currentLocalizations().castModeReceiver,
+                  subtitle: currentLocalizations().castModeReceiverDescription,
+                  onChanged: (choice) => Navigator.pop(dialogContext, choice),
                 ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
     if (selected == null || selected == castMode) return;
     updateRoute(() => castMode = selected);
     await setCastMode(selected);
   }
-
-  Widget _displaySettingsSection(String title, List<Widget> children) =>
-      Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
-              child: Text(
-                title,
-                style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.primary,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-            Card(
-              margin: EdgeInsets.zero,
-              child: ListTileTheme(
-                data: const ListTileThemeData(
-                  dense: true,
-                  minTileHeight: 56,
-                  minVerticalPadding: 4,
-                  contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                  visualDensity: VisualDensity(vertical: -2),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
-                  child: Column(children: children),
-                ),
-              ),
-            ),
-          ],
-        ),
-      );
 
   String _mirrorBackendLabel(AppLocalizations l, String value) =>
       switch (value) {
@@ -762,16 +773,16 @@ extension _SettingsContent on _HomeScreenState {
     AppLocalizations l,
     StateSetter updateRoute,
   ) async {
-    final selected = await showDialog<String>(
-      context: routeContext,
-      builder: (dialogContext) => SimpleDialog(
-        title: Text(l.mirrorBackend),
-        children: [
-          RadioGroup<String>(
-            groupValue: mirrorBackend,
-            onChanged: (choice) => Navigator.pop(dialogContext, choice),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
+    final selected = await M3EDialog.show<String>(
+      routeContext,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: const Icon(M3EIcons.account_tree_outlined),
+            title: l.mirrorBackend,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
               children: [
                 for (final value in const [
                   'auto',
@@ -779,17 +790,20 @@ extension _SettingsContent on _HomeScreenState {
                   'surface_control',
                   'virtual_display',
                 ])
-                  RadioListTile<String>(
+                  DextopChoice<String>(
                     value: value,
-                    title: Text(_mirrorBackendLabel(l, value)),
+                    groupValue: mirrorBackend,
+                    allowReselect: true,
+                    title: _mirrorBackendLabel(l, value),
                     subtitle: value == 'auto'
-                        ? Text(l.mirrorBackendAutoDescription)
+                        ? l.mirrorBackendAutoDescription
                         : null,
+                    onChanged: (choice) => Navigator.pop(dialogContext, choice),
                   ),
               ],
             ),
-          ),
-        ],
+          );
+        },
       ),
     );
     if (selected == null || selected == mirrorBackend) return;
@@ -800,10 +814,12 @@ extension _SettingsContent on _HomeScreenState {
   void _openDeviceSettings(AppLocalizations l) {
     AppAnalytics.screen('device_and_permissions');
     Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (_) => Scaffold(
-          appBar: AppBar(
-            title: Text(currentLocalizations().uiTerminalAndPermissions),
+      dextopRoute<void>(
+        Scaffold(
+          backgroundColor: Theme.of(context).colorScheme.surface,
+          appBar: M3EAppBar.top(
+            automaticallyImplyLeading: true,
+            titleText: currentLocalizations().uiTerminalAndPermissions,
           ),
           body: _deviceSettingsContent(l),
         ),
@@ -812,190 +828,130 @@ extension _SettingsContent on _HomeScreenState {
   }
 
   Widget _deviceSettingsContent(AppLocalizations l) => ListView(
-    padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+    padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
     children: [
-      settingsCard([
-        ListTile(
-          leading: Icon(Icons.smartphone_rounded),
-          title: Text(
-            [manufacturer, model].where((e) => e.isNotEmpty).join(' '),
+      DextopGroup(
+        children: [
+          M3EListItem(
+            leading: const Icon(M3EIcons.smartphone_rounded),
+            headline: [
+              manufacturer,
+              model,
+            ].where((e) => e.isNotEmpty).join(' '),
+            supportingText:
+                '${currentLocalizations().uiAndroid} $androidVersion',
           ),
-          subtitle: Text('${currentLocalizations().uiAndroid} $androidVersion'),
-        ),
-        Divider(height: 1),
-        ListTile(
-          leading: Icon(Icons.desktop_windows_rounded),
-          title: Text(l.desktopMode),
-          subtitle: Text(desktopMode),
-        ),
-        Divider(height: 1),
-        _KeepAwakeTile(),
-        Divider(height: 1),
-        actionTile(
-          Icons.accessibility_new_rounded,
-          l.accessibilitySettings,
-          l.accessibilityDescription,
-          bridge.openAccessibility,
-        ),
-      ]),
+          M3EListItem(
+            leading: const Icon(M3EIcons.desktop_windows_rounded),
+            headline: l.desktopMode,
+            supportingText: desktopMode,
+          ),
+          actionTile(
+            M3EIcons.accessibility_new_rounded,
+            l.accessibilitySettings,
+            l.accessibilityDescription,
+            bridge.openAccessibility,
+          ),
+        ],
+      ),
+      const SizedBox(height: 12),
+      const _KeepAwakeTile(),
     ],
   );
 
-  Widget rootMyGalaxyThemeSwitch(AppLocalizations l) {
-    return independentSegmentSwitch<ThemeMode>(
+  Widget rootMyGalaxyThemeSwitch(AppLocalizations l, {bool compact = false}) {
+    if (compact) {
+      final colors = Theme.of(context).colorScheme;
+      final modes = [
+        (ThemeMode.system, l.system),
+        (ThemeMode.light, l.light),
+        (ThemeMode.dark, l.dark),
+      ];
+      return DecoratedBox(
+        decoration: ShapeDecoration(
+          color: colors.surfaceContainerHigh,
+          shape: const StadiumBorder(),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(3),
+          child: Row(
+            children: [
+              for (final (mode, label) in modes)
+                Expanded(
+                  child: Material(
+                    color: widget.themeMode == mode
+                        ? colors.secondaryContainer
+                        : Colors.transparent,
+                    shape: const StadiumBorder(),
+                    clipBehavior: Clip.antiAlias,
+                    child: InkWell(
+                      onTap: () => widget.onThemeModeChanged(mode),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 8,
+                        ),
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          child: Text(
+                            label,
+                            maxLines: 1,
+                            style: Theme.of(context).textTheme.labelMedium
+                                ?.copyWith(
+                                  color: widget.themeMode == mode
+                                      ? colors.onSecondaryContainer
+                                      : colors.onSurfaceVariant,
+                                  fontWeight: widget.themeMode == mode
+                                      ? FontWeight.w700
+                                      : FontWeight.w500,
+                                ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+      );
+    }
+    return DextopChoiceGroup<ThemeMode>(
       choices: [
-        (ThemeMode.system, l.system, Icons.brightness_auto_rounded),
-        (ThemeMode.light, l.light, Icons.light_mode_rounded),
-        (ThemeMode.dark, l.dark, Icons.dark_mode_rounded),
+        (ThemeMode.system, l.system, M3EIcons.brightness_auto_rounded),
+        (ThemeMode.light, l.light, M3EIcons.light_mode_rounded),
+        (ThemeMode.dark, l.dark, M3EIcons.dark_mode_rounded),
       ],
       selected: widget.themeMode,
       onSelected: widget.onThemeModeChanged,
     );
   }
 
-  Widget independentSegmentSwitch<T>({
-    required List<(T, String, IconData)> choices,
-    required T selected,
-    required ValueChanged<T>? onSelected,
-  }) {
-    final colors = Theme.of(context).colorScheme;
-    return SizedBox(
-      height: 38,
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: List.generate(choices.length, (index) {
-          final item = choices[index];
-          final isSelected = item.$1 == selected;
-          final unselectedRadius = index == 0
-              ? BorderRadius.horizontal(
-                  left: Radius.circular(28),
-                  right: Radius.circular(8),
-                )
-              : index == choices.length - 1
-              ? BorderRadius.horizontal(
-                  left: Radius.circular(8),
-                  right: Radius.circular(28),
-                )
-              : BorderRadius.circular(8);
-          final radius = isSelected
-              ? BorderRadius.circular(28)
-              : unselectedRadius;
-          return Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(left: index == 0 ? 0 : 2),
-              child: AnimatedContainer(
-                duration: Duration(milliseconds: 200),
-                curve: Curves.fastOutSlowIn,
-                decoration: BoxDecoration(
-                  color: isSelected
-                      ? colors.primary
-                      : colors.surfaceContainerHighest,
-                  borderRadius: radius,
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    borderRadius: radius,
-                    splashFactory: NoSplash.splashFactory,
-                    overlayColor: WidgetStatePropertyAll(Colors.transparent),
-                    splashColor: Colors.transparent,
-                    highlightColor: Colors.transparent,
-                    hoverColor: Colors.transparent,
-                    focusColor: Colors.transparent,
-                    onTap: onSelected == null
-                        ? null
-                        : () => onSelected(item.$1),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          item.$3,
-                          size: 18,
-                          color: isSelected
-                              ? colors.onPrimary
-                              : colors.onSurfaceVariant,
-                        ),
-                        SizedBox(width: 8),
-                        Flexible(
-                          child: Text(
-                            item.$2,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: isSelected
-                                  ? colors.onPrimary
-                                  : colors.onSurfaceVariant,
-                              fontWeight: FontWeight.w600,
-                              fontSize: 12,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          );
-        }),
-      ),
-    );
-  }
-
-  Widget sectionTitle(String title) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(title, style: Theme.of(context).textTheme.headlineMedium),
-        ],
-      ),
-    );
-  }
-
-  Widget settingsCard(List<Widget> children) {
-    return Card(
-      child: ListTileTheme(
-        data: ListTileThemeData(
-          dense: true,
-          minTileHeight: 64,
-          minVerticalPadding: 6,
-          contentPadding: EdgeInsets.symmetric(horizontal: 16),
-          visualDensity: VisualDensity(vertical: -1),
-        ),
-        child: Column(children: children),
-      ),
-    );
-  }
-
-  Widget actionTile(
+  M3EListItem actionTile(
     IconData icon,
     String title,
     String subtitle,
     VoidCallback action,
-  ) {
-    return ListTile(
-      leading: Icon(icon),
-      title: Text(title),
-      subtitle: Text(subtitle),
-      trailing: Icon(Icons.chevron_right_rounded),
-      onTap: action,
-    );
-  }
+  ) => M3EListItem(
+    leading: Icon(icon),
+    headline: title,
+    supportingText: subtitle,
+    supportingMaxLines: null,
+    trailing: const Icon(M3EIcons.chevron_right_rounded),
+    onTap: action,
+  );
 
   Widget errorPanel() {
     final colors = Theme.of(context).colorScheme;
-    return Container(
-      padding: EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: colors.errorContainer,
-        borderRadius: BorderRadius.circular(24),
-      ),
+    return M3ECard(
+      variant: M3ECardVariant.filled,
+      color: colors.errorContainer,
+      borderRadius: BorderRadius.circular(24),
+      padding: const EdgeInsets.all(18),
       child: Row(
         children: [
-          Icon(Icons.error_rounded, color: colors.onErrorContainer),
-          SizedBox(width: 14),
+          Icon(M3EIcons.error_rounded, color: colors.onErrorContainer),
+          const SizedBox(width: 14),
           Expanded(
             child: Text(
               error!,
@@ -1044,9 +1000,6 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
       (_) => <String, dynamic>{},
     );
     if (!mounted) return;
-    // DPI and pointer acceleration are intentionally no longer supported.
-    // Remove values written by older releases so a stale setting cannot
-    // affect input after an upgrade (or leave the native side in a bad state).
     await store.remove('virtual_mouse_dpi');
     await store.remove('virtual_mouse_acceleration');
     final savedProfile = store.getString('virtual_pointer_profile');
@@ -1076,8 +1029,7 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
     } catch (error) {
       if (!mounted) return;
       setState(() => pointerProfile = previous);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(error.toString())));
+      M3ESnackbar.show(context, message: error.toString());
     }
   }
 
@@ -1097,125 +1049,160 @@ class _MouseSettingsPageState extends State<MouseSettingsPage> {
     unawaited(prefs?.setInt('pointer_haptics_strength', strength));
   }
 
+  Future<void> _pickOption<T>({
+    required String title,
+    required IconData icon,
+    required T value,
+    required Map<T, String> options,
+    required ValueChanged<T> onChanged,
+  }) async {
+    final selected = await M3EDialog.show<T>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: Icon(icon),
+            title: title,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
+              children: [
+                for (final entry in options.entries)
+                  DextopChoice<T>(
+                    value: entry.key,
+                    groupValue: value,
+                    allowReselect: true,
+                    title: entry.value,
+                    onChanged: (next) => Navigator.pop(dialogContext, next),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (selected != null && selected != value) {
+      onChanged(selected);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final profileOptions = {
+      'touchpad': l.virtualTouchpad,
+      'mouse': l.virtualPointerMouse,
+      'software': l.virtualPointerSoftware,
+    };
+    final scrollOptions = {
+      true: l.virtualMouseNaturalScroll,
+      false: l.virtualMouseStandardScroll,
+    };
     final content = ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
-        Card(
-          child: ListTileTheme(
-            data: const ListTileThemeData(
-              dense: true,
-              minTileHeight: 60,
-              minVerticalPadding: 6,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16),
-            ),
-            child: Column(
-              children: [
-                _mouseChoiceTile<String>(
-                  leading: const Icon(Icons.mouse_outlined),
-                  title: l.virtualPointerProfile,
-                  subtitle: switch (pointerProfile) {
-                    'touchpad' => l.virtualTouchpadDescription,
-                    'mouse' => l.virtualPointerMouseDescription,
-                    _ => l.virtualPointerSoftwareDescription,
-                  },
-                  value: pointerProfile,
-                  options: {
-                    'touchpad': l.virtualTouchpad,
-                    'mouse': l.virtualPointerMouse,
-                    'software': l.virtualPointerSoftware,
-                  },
-                  onChanged: _setPointerProfile,
-                ),
-                const Divider(height: 1),
-                _mouseChoiceTile<bool>(
-                  leading: const Icon(Icons.swap_vert_rounded),
-                  title: l.virtualMouseScrollDirection,
-                  subtitle: naturalScroll
-                      ? l.virtualMouseNaturalScroll
-                      : l.virtualMouseStandardScroll,
-                  value: naturalScroll,
-                  options: {
-                    true: l.virtualMouseNaturalScroll,
-                    false: l.virtualMouseStandardScroll,
-                  },
-                  onChanged: _setNaturalScroll,
-                ),
-                const Divider(height: 1),
-                SwitchListTile(
-                  secondary: const Icon(Icons.vibration_rounded),
-                  value: pointerHapticsEnabled,
-                  onChanged: loading ? null : _setPointerHapticsEnabled,
-                  title: Text(l.pointerHaptics),
-                  subtitle: Text(l.pointerHapticsDescription),
-                ),
-                if (pointerHapticsEnabled) ...[
-                  const Divider(height: 1),
-                  ListTile(
-                    leading: const Icon(Icons.tune_rounded),
-                    title: Text(l.hapticsStrength),
-                    subtitle: Slider(
-                      value: pointerHapticsStrength.toDouble(),
-                      min: 1,
-                      max: 100,
-                      divisions: 99,
-                      label: '$pointerHapticsStrength%',
-                      onChanged: loading
-                          ? null
-                          : (value) => setState(
-                              () => pointerHapticsStrength = value.round(),
-                            ),
-                      onChangeEnd: _setPointerHapticsStrength,
+        DextopGroup(
+          children: [
+            M3EListItem(
+              leading: const Icon(M3EIcons.mouse_outlined),
+              headline: l.virtualPointerProfile,
+              supportingText: switch (pointerProfile) {
+                'touchpad' => l.virtualTouchpadDescription,
+                'mouse' => l.virtualPointerMouseDescription,
+                _ => l.virtualPointerSoftwareDescription,
+              },
+              supportingMaxLines: null,
+              enabled: !loading,
+              trailing: DextopDropdownButton(
+                label: profileOptions[pointerProfile] ?? l.virtualTouchpad,
+                enabled: !loading,
+                onPressed: loading
+                    ? null
+                    : () => _pickOption<String>(
+                        title: l.virtualPointerProfile,
+                        icon: M3EIcons.mouse_outlined,
+                        value: pointerProfile,
+                        options: profileOptions,
+                        onChanged: _setPointerProfile,
+                      ),
+              ),
+              onTap: loading
+                  ? null
+                  : () => _pickOption<String>(
+                      title: l.virtualPointerProfile,
+                      icon: M3EIcons.mouse_outlined,
+                      value: pointerProfile,
+                      options: profileOptions,
+                      onChanged: _setPointerProfile,
                     ),
-                    trailing: Text('$pointerHapticsStrength%'),
-                  ),
-                ],
-              ],
             ),
-          ),
+            M3EListItem(
+              leading: const Icon(M3EIcons.swap_vert_rounded),
+              headline: l.virtualMouseScrollDirection,
+              enabled: !loading,
+              trailing: DextopDropdownButton(
+                label: scrollOptions[naturalScroll] ?? '',
+                enabled: !loading,
+                onPressed: loading
+                    ? null
+                    : () => _pickOption<bool>(
+                        title: l.virtualMouseScrollDirection,
+                        icon: M3EIcons.swap_vert_rounded,
+                        value: naturalScroll,
+                        options: scrollOptions,
+                        onChanged: _setNaturalScroll,
+                      ),
+              ),
+              onTap: loading
+                  ? null
+                  : () => _pickOption<bool>(
+                      title: l.virtualMouseScrollDirection,
+                      icon: M3EIcons.swap_vert_rounded,
+                      value: naturalScroll,
+                      options: scrollOptions,
+                      onChanged: _setNaturalScroll,
+                    ),
+            ),
+            DextopToggle(
+              icon: M3EIcons.vibration_rounded,
+              value: pointerHapticsEnabled,
+              enabled: !loading,
+              onChanged: loading ? null : _setPointerHapticsEnabled,
+              title: l.pointerHaptics,
+              subtitle: l.pointerHapticsDescription,
+            ),
+          ],
         ),
+        if (pointerHapticsEnabled) ...[
+          const SizedBox(height: 12),
+          DextopSliderTile(
+            icon: M3EIcons.tune_rounded,
+            title: l.hapticsStrength,
+            valueLabel: '$pointerHapticsStrength%',
+            value: pointerHapticsStrength.toDouble(),
+            min: 1,
+            max: 100,
+            divisions: 99,
+            onChanged: loading
+                ? null
+                : (value) =>
+                      setState(() => pointerHapticsStrength = value.round()),
+            onChangeEnd: loading ? null : _setPointerHapticsStrength,
+          ),
+        ],
       ],
     );
     if (widget.embedded) return content;
     return Scaffold(
-      appBar: AppBar(title: Text(l.mouseSettingsTitle)),
+      backgroundColor: colors.surface,
+      appBar: M3EAppBar.top(
+        automaticallyImplyLeading: true,
+        titleText: l.mouseSettingsTitle,
+      ),
       body: content,
     );
   }
-
-  Widget _mouseChoiceTile<T>({
-    required Widget leading,
-    required String title,
-    required String subtitle,
-    required T value,
-    required Map<T, String> options,
-    required ValueChanged<T> onChanged,
-  }) => ListTile(
-    leading: leading,
-    title: Text(title),
-    subtitle: Text(subtitle),
-    trailing: DropdownButtonHideUnderline(
-      child: DropdownButton<T>(
-        value: options.containsKey(value) ? value : options.keys.first,
-        borderRadius: BorderRadius.circular(16),
-        items: options.entries
-            .map(
-              (entry) => DropdownMenuItem<T>(
-                value: entry.key,
-                child: Text(entry.value),
-              ),
-            )
-            .toList(),
-        onChanged: loading
-            ? null
-            : (selected) {
-                if (selected != null) onChanged(selected);
-              },
-      ),
-    ),
-  );
 }
 
 class AutoSettingsPage extends StatefulWidget {
@@ -1252,9 +1239,6 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
         preferences.getBool('android_auto_scrcpy_streaming') ?? false;
     final migratedTo21 =
         preferences.getBool('android_auto_21_default_migrated') ?? false;
-    // 2.1 is the new stable default. Upgrade both the old 1.1.3 selection
-    // (false/false) and the former 2.0 selection to it exactly once. After
-    // this marker is written, an explicit user choice of legacy is retained.
     if (!migratedTo21) {
       savedHiddenDisplay = true;
       savedDecoratedDisplay = true;
@@ -1301,224 +1285,184 @@ class _AutoSettingsPageState extends State<AutoSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
     final body = ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
-        _settingsSection(localText(context, 'uiAutoHomeScreen'), [
-          RadioGroup<bool>(
-            groupValue: autoShell,
-            onChanged: (value) async {
-              if (loading || value == null) return;
-              final preferences = await SharedPreferences.getInstance();
-              await preferences.setString(
-                'android_auto_shell',
-                value ? 'dextop' : 'android',
-              );
-              if (mounted) setState(() => autoShell = value);
-            },
-            child: Column(
-              children: [
-                RadioListTile<bool>(
-                  value: false,
-                  enabled: !loading,
-                  title: Text(localText(context, 'uiAndroidDesktop')),
-                  subtitle: Text(localText(context, 'uiShowTheAndroidDesktop')),
-                ),
-                const Divider(height: 1),
-                RadioListTile<bool>(
-                  value: true,
-                  enabled: !loading,
-                  title: Text(localText(context, 'uiDextopAuto')),
-                  subtitle: Text(
-                    localText(
-                      context,
-                      'uiPrototypeCarHomeWithLargeControlsReconnectAutoToApply',
-                    ),
-                  ),
-                ),
-              ],
+        DextopSection(localText(context, 'uiAutoHomeScreen')),
+        DextopGroup(
+          children: [
+            DextopChoice<bool>(
+              value: false,
+              groupValue: autoShell,
+              enabled: !loading,
+              title: localText(context, 'uiAndroidDesktop'),
+              subtitle: localText(context, 'uiShowTheAndroidDesktop'),
+              onChanged: (value) async {
+                final preferences = await SharedPreferences.getInstance();
+                await preferences.setString('android_auto_shell', 'android');
+                if (mounted) setState(() => autoShell = false);
+              },
             ),
-          ),
-        ]),
-        _settingsSection(l.autoSettingsOptions, [
-          SwitchListTile(
-            secondary: const Icon(Icons.speed),
-            title: Text(localText(context, 'uiLimitDeckModeTo30Fps')),
-            subtitle: Text(
-              localText(
+            DextopChoice<bool>(
+              value: true,
+              groupValue: autoShell,
+              enabled: !loading,
+              title: localText(context, 'uiDextopAuto'),
+              subtitle: localText(
+                context,
+                'uiPrototypeCarHomeWithLargeControlsReconnectAutoToApply',
+              ),
+              onChanged: (value) async {
+                final preferences = await SharedPreferences.getInstance();
+                await preferences.setString('android_auto_shell', 'dextop');
+                if (mounted) setState(() => autoShell = true);
+              },
+            ),
+          ],
+        ),
+        DextopSection(l.autoSettingsOptions),
+        DextopGroup(
+          children: [
+            DextopToggle(
+              icon: M3EIcons.speed_rounded,
+              title: localText(context, 'uiLimitDeckModeTo30Fps'),
+              subtitle: localText(
                 context,
                 'uiApply30FpsPacingAndLowLatencySubmissionInputRemainsUnrestrictedReopenDeckModeToApply',
               ),
+              value: deck30Fps,
+              enabled: !loading,
+              onChanged: loading
+                  ? null
+                  : (value) async {
+                      final preferences = await SharedPreferences.getInstance();
+                      await preferences.setBool(
+                        'android_auto_deck_30fps',
+                        value,
+                      );
+                      if (mounted) setState(() => deck30Fps = value);
+                    },
             ),
-            value: deck30Fps,
-            onChanged: loading
-                ? null
-                : (value) async {
-                    final preferences = await SharedPreferences.getInstance();
-                    await preferences.setBool('android_auto_deck_30fps', value);
-                    if (mounted) setState(() => deck30Fps = value);
-                  },
-          ),
-          const Divider(height: 1),
-          SwitchListTile(
-            secondary: const Icon(Icons.sync),
-            title: Text(localText(context, 'uiDeckModeVSync')),
-            subtitle: Text(
-              localText(
+            DextopToggle(
+              icon: M3EIcons.sync_rounded,
+              title: localText(context, 'uiDeckModeVSync'),
+              subtitle: localText(
                 context,
                 'uiDisableVSyncWaitsForDeckRenderingAutoVideoCadenceIsUnchangedReopenDeckModeToApply',
               ),
+              value: deckVsync,
+              enabled: !loading,
+              onChanged: loading
+                  ? null
+                  : (value) async {
+                      final preferences = await SharedPreferences.getInstance();
+                      await preferences.setBool(
+                        'android_auto_deck_vsync',
+                        value,
+                      );
+                      if (mounted) setState(() => deckVsync = value);
+                    },
             ),
-            value: deckVsync,
-            onChanged: loading
-                ? null
-                : (value) async {
-                    final preferences = await SharedPreferences.getInstance();
-                    await preferences.setBool('android_auto_deck_vsync', value);
-                    if (mounted) setState(() => deckVsync = value);
-                  },
-          ),
-          const Divider(height: 1),
-          SwitchListTile(
-            secondary: const Icon(Icons.vertical_split_outlined),
-            title: Text(
-              localText(context, 'uiCorrectSplitScreenTransferToPhone'),
-            ),
-            subtitle: Text(
-              localText(
+            DextopToggle(
+              icon: M3EIcons.vertical_split_outlined,
+              title: localText(context, 'uiCorrectSplitScreenTransferToPhone'),
+              subtitle: localText(
                 context,
                 'uiReturnsAutoAppsSentToPhoneSplitScreenToASideBySideLayoutIn21',
               ),
+              value: correctAutoSplit,
+              enabled: !loading,
+              onChanged: loading
+                  ? null
+                  : (value) async {
+                      setState(() => correctAutoSplit = value);
+                      final preferences = await SharedPreferences.getInstance();
+                      await preferences.setBool(
+                        'android_auto_correct_split_transfer',
+                        value,
+                      );
+                    },
             ),
-            value: correctAutoSplit,
-            onChanged: loading
-                ? null
-                : (value) async {
-                    setState(() => correctAutoSplit = value);
-                    final preferences = await SharedPreferences.getInstance();
-                    await preferences.setBool(
-                      'android_auto_correct_split_transfer',
-                      value,
-                    );
-                  },
-          ),
-          const Divider(height: 1),
-          SwitchListTile(
-            secondary: const Icon(Icons.fit_screen_outlined),
-            title: Text(
-              localText(context, 'uiCorrectFullscreenTaskbarOverlap'),
-            ),
-            subtitle: Text(
-              localText(
+            DextopToggle(
+              icon: M3EIcons.fit_screen_outlined,
+              title: localText(context, 'uiCorrectFullscreenTaskbarOverlap'),
+              subtitle: localText(
                 context,
                 'uiFitsFullscreenAndMaximizedAppsAboveTheTaskbarSwitchingToWindowedModeWhenNeeded',
               ),
+              value: correctFullscreenOverlap,
+              enabled: !loading,
+              onChanged: loading
+                  ? null
+                  : (value) async {
+                      setState(() => correctFullscreenOverlap = value);
+                      final preferences = await SharedPreferences.getInstance();
+                      await preferences.setBool(
+                        'android_auto_correct_fullscreen_overlap',
+                        value,
+                      );
+                    },
             ),
-            value: correctFullscreenOverlap,
-            onChanged: loading
-                ? null
-                : (value) async {
-                    setState(() => correctFullscreenOverlap = value);
-                    final preferences = await SharedPreferences.getInstance();
-                    await preferences.setBool(
-                      'android_auto_correct_fullscreen_overlap',
-                      value,
-                    );
-                  },
-          ),
-          const Divider(height: 1),
-          SwitchListTile(
-            secondary: const Icon(Icons.screen_rotation_alt_outlined),
-            title: Text(l.autoMatchPhoneOrientation),
-            subtitle: Text(l.autoMatchPhoneOrientationDescription),
-            value: matchPhoneOrientation,
-            onChanged: loading ? null : _setMatchPhoneOrientation,
-          ),
-          const Divider(height: 1),
-          ListTile(
-            leading: const Icon(Icons.info_outline_rounded),
-            title: Text(l.display),
-            subtitle: Text(l.autoDisplayModeDescription),
-          ),
-        ]),
-        _settingsSection(localText(context, 'uiCarCompanionMode'), [
-          RadioGroup<int>(
-            groupValue: scrcpyStreaming ? 2 : (hiddenAutoDisplay ? 1 : 0),
-            onChanged: (value) {
-              if (!loading && value != null) _setCarCompanionMode(value);
-            },
-            child: Column(
-              children: [
-                RadioListTile<int>(
-                  secondary: const Icon(Icons.layers_outlined),
-                  title: Text(localText(context, 'uiCarCompanion113Legacy')),
-                  subtitle: Text(
-                    localText(
-                      context,
-                      'uiUsesTheOriginalOverlayDisplayAndMirrorsItToAndroidAuto',
-                    ),
-                  ),
-                  value: 0,
-                  enabled: !loading,
-                ),
-                const Divider(height: 1),
-                RadioListTile<int>(
-                  secondary: const Icon(Icons.stream_rounded),
-                  title: Text(localText(context, 'uiCarCompanion21Stable')),
-                  subtitle: Text(
-                    localText(
-                      context,
-                      'uiConnectsADecoratedVirtualDisplayDirectlyToTheAndroidAutoSurface',
-                    ),
-                  ),
-                  value: 2,
-                  enabled: !loading,
-                ),
-              ],
+            DextopToggle(
+              icon: M3EIcons.screen_rotation_alt_outlined,
+              title: l.autoMatchPhoneOrientation,
+              subtitle: l.autoMatchPhoneOrientationDescription,
+              value: matchPhoneOrientation,
+              enabled: !loading,
+              onChanged: loading ? null : _setMatchPhoneOrientation,
             ),
-          ),
-        ]),
+            M3EListItem(
+              leading: const Icon(M3EIcons.info_outline_rounded),
+              headline: l.display,
+              supportingText: l.autoDisplayModeDescription,
+              supportingMaxLines: null,
+            ),
+          ],
+        ),
+        DextopSection(localText(context, 'uiCarCompanionMode')),
+        DextopGroup(
+          children: [
+            DextopChoice<int>(
+              icon: M3EIcons.layers_outlined,
+              title: localText(context, 'uiCarCompanion113Legacy'),
+              subtitle: localText(
+                context,
+                'uiUsesTheOriginalOverlayDisplayAndMirrorsItToAndroidAuto',
+              ),
+              value: 0,
+              groupValue: scrcpyStreaming ? 2 : (hiddenAutoDisplay ? 1 : 0),
+              enabled: !loading,
+              onChanged: (value) {
+                if (!loading) _setCarCompanionMode(value);
+              },
+            ),
+            DextopChoice<int>(
+              icon: M3EIcons.stream_rounded,
+              title: localText(context, 'uiCarCompanion21Stable'),
+              subtitle: localText(
+                context,
+                'uiConnectsADecoratedVirtualDisplayDirectlyToTheAndroidAutoSurface',
+              ),
+              value: 2,
+              groupValue: scrcpyStreaming ? 2 : (hiddenAutoDisplay ? 1 : 0),
+              enabled: !loading,
+              onChanged: (value) {
+                if (!loading) _setCarCompanionMode(value);
+              },
+            ),
+          ],
+        ),
       ],
     );
     if (widget.embedded) return body;
     return Scaffold(
-      appBar: AppBar(title: Text(l.autoSettingsTitle)),
+      backgroundColor: colors.surface,
+      appBar: M3EAppBar.top(
+        automaticallyImplyLeading: true,
+        titleText: l.autoSettingsTitle,
+      ),
       body: body,
     );
   }
-
-  Widget _settingsSection(String title, List<Widget> children) => Padding(
-    padding: const EdgeInsets.only(bottom: 20),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 7),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.labelLarge?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        Card(
-          margin: EdgeInsets.zero,
-          child: ListTileTheme(
-            data: const ListTileThemeData(
-              dense: true,
-              minTileHeight: 56,
-              minVerticalPadding: 4,
-              contentPadding: EdgeInsets.symmetric(horizontal: 16),
-              visualDensity: VisualDensity(vertical: -2),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 4),
-              child: Column(children: children),
-            ),
-          ),
-        ),
-      ],
-    ),
-  );
 }

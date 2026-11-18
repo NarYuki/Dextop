@@ -14,14 +14,14 @@ extension _HomeContent on _HomeScreenState {
             mainAxisSize: MainAxisSize.min,
             children: [
               ClipRRect(
-                borderRadius: BorderRadius.circular(30),
+                borderRadius: BorderRadius.circular(28),
                 child: const Image(
                   image: AssetImage('assets/dextop_icon.png'),
-                  width: 120,
-                  height: 120,
+                  width: 112,
+                  height: 112,
                 ),
               ),
-              const SizedBox(height: 30),
+              const SizedBox(height: 28),
               Text(
                 localText(context, 'uiSetUpDextop'),
                 textAlign: TextAlign.center,
@@ -36,12 +36,14 @@ extension _HomeContent on _HomeScreenState {
                 textAlign: TextAlign.center,
                 style: theme.textTheme.titleMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
+                  fontWeight: FontWeight.w500,
                 ),
               ),
-              const SizedBox(height: 34),
-              FilledButton.icon(
+              const SizedBox(height: 32),
+              M3EButton.filled(
+                size: M3EButtonSize.md,
                 onPressed: widget.onStartSetup,
-                icon: const Icon(Icons.arrow_forward_rounded),
+                icon: const Icon(M3EIcons.arrow_forward_rounded),
                 label: Text(AppLocalizations.of(context).setupBegin),
               ),
             ],
@@ -56,55 +58,58 @@ extension _HomeContent on _HomeScreenState {
     final wide = wideLayout;
     final session = <Widget>[
       heroPanel(),
-      SizedBox(height: 16),
+      const SizedBox(height: 16),
       if (!active &&
           !autoActive &&
           !stopping &&
           recovery['recoverable'] == true) ...[
         recoveryPanel(),
-        SizedBox(height: 16),
+        const SizedBox(height: 16),
       ],
       workspacePanel(),
-      SizedBox(height: 16),
+      const SizedBox(height: 16),
       if (!loading &&
           !(secureSettingsGranted && shizukuRunning && shizukuGranted)) ...[
         shizukuPanel(),
-        SizedBox(height: wide ? 16 : 28),
+        SizedBox(height: wide ? 16 : 24),
       ],
     ];
     final display = <Widget>[
-      sectionTitle(currentLocalizations().display),
-      SizedBox(height: 12),
+      DextopSection(currentLocalizations().display),
       profileGrid(),
-      SizedBox(height: 12),
+      const SizedBox(height: 12),
       orientationControl(),
-      if (error != null) ...[SizedBox(height: 16), errorPanel()],
+      if (error != null) ...[const SizedBox(height: 16), errorPanel()],
     ];
     final actions = [
-      IconButton(onPressed: refresh, icon: Icon(Icons.refresh_rounded)),
-      SizedBox(width: 8),
+      M3EIconButton(
+        variant: M3EIconButtonVariant.standard,
+        onPressed: refresh,
+        icon: const Icon(M3EIcons.refresh_rounded),
+      ),
+      const SizedBox(width: 8),
     ];
     return CustomScrollView(
-      key: ValueKey('overview'),
+      key: const ValueKey('overview'),
       slivers: [
-        // A window has its own title bar; a compact bar keeps the content near the top.
         if (wide)
-          SliverAppBar(
+          M3EAppBar.sliver(
             pinned: true,
-            toolbarHeight: 64,
-            titleSpacing: 24,
-            title: Text(currentLocalizations().appName),
+            variant: M3EAppBarVariant.small,
+            titleText: currentLocalizations().appName,
             actions: actions,
           )
         else
-          SliverAppBar.large(
-            title: Text(currentLocalizations().appName),
+          M3EAppBar.sliver(
+            pinned: true,
+            variant: M3EAppBarVariant.largeFlexible,
+            titleText: currentLocalizations().appName,
             actions: actions,
           ),
         SliverPadding(
           padding: wide
-              ? EdgeInsets.fromLTRB(24, 8, 24, 32)
-              : EdgeInsets.fromLTRB(16, 0, 16, 32),
+              ? const EdgeInsets.fromLTRB(24, 12, 24, 32)
+              : const EdgeInsets.fromLTRB(16, 4, 16, 32),
           sliver: wide
               ? SliverToBoxAdapter(
                   child: Row(
@@ -117,47 +122,21 @@ extension _HomeContent on _HomeScreenState {
                           children: session,
                         ),
                       ),
-                      SizedBox(width: 24),
-                      // The display settings sit in a card level with the session card.
+                      const SizedBox(width: 24),
                       Expanded(
                         flex: 4,
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Card(
-                              child: Padding(
-                                padding: EdgeInsets.all(20),
-                                child: Column(
-                                  crossAxisAlignment:
-                                      CrossAxisAlignment.stretch,
-                                  children: [
-                                    Row(
-                                      children: [
-                                        Icon(
-                                          Icons.monitor_rounded,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .primary,
-                                        ),
-                                        SizedBox(width: 12),
-                                        Text(
-                                          currentLocalizations().display,
-                                          style: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium,
-                                        ),
-                                      ],
-                                    ),
-                                    SizedBox(height: 16),
-                                    profileGrid(),
-                                    SizedBox(height: 12),
-                                    orientationControl(),
-                                  ],
-                                ),
-                              ),
+                            DextopSection(
+                              currentLocalizations().display,
+                              padding: const EdgeInsets.fromLTRB(8, 2, 8, 10),
                             ),
+                            profileGrid(),
+                            const SizedBox(height: 12),
+                            orientationControl(),
                             if (error != null) ...[
-                              SizedBox(height: 16),
+                              const SizedBox(height: 16),
                               errorPanel(),
                             ],
                           ],
@@ -185,200 +164,172 @@ extension _HomeContent on _HomeScreenState {
     // handoff that flag can briefly change while the overlay remains alive.
     final autoOnly = autoActive && !active;
     final autoPlus = autoActive && active;
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                SizedBox.square(
-                  dimension: 28,
-                  child: Center(
-                    child: Icon(
-                      stopping
-                          ? Icons.hourglass_top_rounded
-                          : loading
-                          ? Icons.hourglass_top_rounded
-                          : needsAndroidRepair
-                          ? Icons.warning_amber_rounded
-                          : showRepairResult
-                          ? Icons.check_circle_rounded
-                          : hasExistingSession
-                          ? Icons.history_rounded
-                          : active || autoActive || ready
-                          ? Icons.check_circle_rounded
-                          : Icons.error_outline_rounded,
-                      size: 24,
-                      color: stopping
-                          ? colors.onSurfaceVariant
-                          : loading
-                          ? colors.onSurfaceVariant
-                          : needsAndroidRepair
-                          ? colors.tertiary
-                          : showRepairResult
-                          ? colors.primary
-                          : hasExistingSession
-                          ? colors.onSurfaceVariant
-                          : active || autoActive || ready
-                          ? colors.primary
-                          : colors.error,
-                    ),
-                  ),
-                ),
-                SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    stopping
-                        ? currentLocalizations().uiDextopStopping
-                        : loading
-                        ? currentLocalizations().uiChecking
-                        : autoPlus
-                        ? currentLocalizations().uiRunningAutoPlus.replaceFirst(
-                            'Auto+',
-                            autoMode.isEmpty ? 'Auto+' : 'Auto+/$autoMode',
-                          )
-                        : autoOnly
-                        ? currentLocalizations().uiRunningAuto.replaceFirst(
-                            'Auto',
-                            autoMode.isEmpty ? 'Auto' : 'Auto/$autoMode',
-                          )
-                        : active
-                        ? currentLocalizations().running
-                        : needsAndroidRepair
-                        ? currentLocalizations().uiAbnormalSessionWarning
-                        : showRepairResult
-                        ? currentLocalizations()
-                              .uiTerminationProcessingCompletedSuccessfully
-                        : hasExistingSession
-                        ? currentLocalizations().uiThereIsAnExistingSession
-                        : ready
-                        ? currentLocalizations().uiDextopIsReady
-                        : currentLocalizations().uiPreparationIsRequired,
-                    softWrap: true,
-                    overflow: TextOverflow.visible,
-                    strutStyle: StrutStyle(
-                      fontSize:
-                          Theme.of(context).textTheme.titleLarge?.fontSize ??
-                          22,
-                      height: 1.15,
-                      forceStrutHeight: true,
-                    ),
-                    style: Theme.of(context).textTheme.titleLarge
-                        ?.copyWith(height: 1.15),
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 20),
-            if (autoOnly) ...[
-              // Auto owns its independent virtual display. Starting another
-              // phone-side session while it is active is intentionally
-              // disabled until the two-session handoff is reintroduced.
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.tonal(
-                  onPressed: null,
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.phone_android_rounded, size: 20),
-                      SizedBox(width: 8),
-                      Text(currentLocalizations().uiStartPhoneDextop),
-                    ],
-                  ),
+
+    final statusTitle = stopping
+        ? currentLocalizations().uiDextopStopping
+        : loading
+        ? currentLocalizations().uiChecking
+        : autoPlus
+        ? currentLocalizations().uiRunningAutoPlus.replaceFirst(
+            'Auto+',
+            autoMode.isEmpty ? 'Auto+' : 'Auto+/$autoMode',
+          )
+        : autoOnly
+        ? currentLocalizations().uiRunningAuto.replaceFirst(
+            'Auto',
+            autoMode.isEmpty ? 'Auto' : 'Auto/$autoMode',
+          )
+        : active
+        ? currentLocalizations().running
+        : needsAndroidRepair
+        ? currentLocalizations().uiAbnormalSessionWarning
+        : showRepairResult
+        ? currentLocalizations().uiTerminationProcessingCompletedSuccessfully
+        : hasExistingSession
+        ? currentLocalizations().uiThereIsAnExistingSession
+        : ready
+        ? currentLocalizations().uiDextopIsReady
+        : currentLocalizations().uiPreparationIsRequired;
+
+    final cardColor = active || autoActive
+        ? colors.primaryContainer.withValues(alpha: 0.45)
+        : needsAndroidRepair
+        ? colors.tertiaryContainer.withValues(alpha: 0.55)
+        : !ready && !loading && !hasExistingSession && !showRepairResult
+        ? colors.errorContainer.withValues(alpha: 0.4)
+        : colors.surfaceContainerLow;
+
+    final statusIcon = stopping || loading
+        ? M3EIcons.hourglass_top_rounded
+        : needsAndroidRepair
+        ? M3EIcons.warning_amber_rounded
+        : showRepairResult
+        ? M3EIcons.check_circle_rounded
+        : hasExistingSession
+        ? M3EIcons.history_rounded
+        : active || autoActive || ready
+        ? M3EIcons.check_circle_rounded
+        : M3EIcons.error_outline_rounded;
+
+    final statusIconColor = stopping || loading
+        ? colors.onSurfaceVariant
+        : needsAndroidRepair
+        ? colors.tertiary
+        : showRepairResult
+        ? colors.primary
+        : hasExistingSession
+        ? colors.onSurfaceVariant
+        : active || autoActive || ready
+        ? colors.primary
+        : colors.error;
+
+    return M3ECard(
+      variant: M3ECardVariant.filled,
+      color: cardColor,
+      borderRadius: BorderRadius.circular(26),
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              SizedBox.square(
+                dimension: 28,
+                child: Center(
+                  child: Icon(statusIcon, size: 28, color: statusIconColor),
                 ),
               ),
-              SizedBox(height: 10),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text(
+                  statusTitle,
+                  softWrap: true,
+                  overflow: TextOverflow.visible,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.titleLarge?.copyWith(height: 1.18),
+                ),
+              ),
             ],
-            SizedBox(
-              width: double.infinity,
-              child: FilledButton(
-                style: needsAndroidRepair
-                    ? FilledButton.styleFrom(
-                        backgroundColor: Colors.amber.shade600,
-                        foregroundColor: Colors.black,
-                      )
-                    : null,
-                onPressed: stopping
-                    ? null
-                    : needsAndroidRepair
-                    ? () async {
-                        mutate(() => loading = true);
-                        await bridge.repairAndroid();
-                        if (!mounted) return;
-                        mutate(() {
-                          loading = false;
-                          androidRepairCompleted = true;
-                          androidRepair = {'required': false};
-                          recovery = {'recoverable': false};
-                        });
-                      }
-                    : showRepairResult
-                    ? bridge.restartApp
-                    : autoOnly
-                    ? bridge.stopAuto
-                    : loading || stopping || hasExistingSession
-                    ? null
-                    : !active && !ready
-                    ? connect
-                    : toggleDisplay,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    stopping
-                        ? SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : loading
-                        ? SizedBox.square(
-                            dimension: 20,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : Icon(
-                            needsAndroidRepair
-                                ? Icons.build_rounded
-                                : showRepairResult
-                                ? Icons.restart_alt_rounded
-                                : autoOnly
-                                ? Icons.stop_rounded
-                                : active
-                                ? Icons.stop_rounded
-                                : Icons.play_arrow_rounded,
-                            size: 20,
-                          ),
-                    SizedBox(width: 8),
-                    Text(
-                      stopping
-                          ? currentLocalizations().uiDextopStopping
-                          : needsAndroidRepair
-                          ? currentLocalizations().uiRestorePrivileges
-                          : showRepairResult
-                          ? currentLocalizations().uiRestartTheApp
-                          : autoOnly
-                          ? currentLocalizations().uiStopAndroidAuto
-                          : active
-                          ? currentLocalizations().stop
-                          : currentLocalizations().uiStart,
-                      strutStyle: StrutStyle(
-                        fontSize: 14,
-                        height: 1,
-                        forceStrutHeight: true,
-                      ),
-                      style: TextStyle(height: 1),
-                    ),
-                  ],
-                ),
-              ),
+          ),
+          const SizedBox(height: 20),
+          if (autoOnly) ...[
+            M3EButton.tonal(
+              size: M3EButtonSize.md,
+              onPressed: null,
+              enabled: false,
+              icon: const Icon(M3EIcons.phone_android_rounded, size: 20),
+              label: Text(currentLocalizations().uiStartPhoneDextop),
             ),
+            const SizedBox(height: 10),
           ],
-        ),
+          M3EButton.filled(
+            size: M3EButtonSize.md,
+            decoration: needsAndroidRepair
+                ? dextopButtonColors(
+                    background: Colors.amber.shade600,
+                    foreground: Colors.black,
+                  )
+                : active || autoOnly
+                ? dextopButtonColors(
+                    background: colors.error,
+                    foreground: colors.onError,
+                  )
+                : null,
+            onPressed: stopping
+                ? null
+                : needsAndroidRepair
+                ? () async {
+                    mutate(() => loading = true);
+                    await bridge.repairAndroid();
+                    if (!mounted) return;
+                    mutate(() {
+                      loading = false;
+                      androidRepairCompleted = true;
+                      androidRepair = {'required': false};
+                      recovery = {'recoverable': false};
+                    });
+                  }
+                : showRepairResult
+                ? bridge.restartApp
+                : autoOnly
+                ? bridge.stopAuto
+                : loading || stopping || hasExistingSession
+                ? null
+                : !active && !ready
+                ? connect
+                : toggleDisplay,
+            icon: stopping || loading
+                ? const SizedBox.square(
+                    dimension: 24,
+                    child: M3ELoadingIndicator(size: 24),
+                  )
+                : Icon(
+                    needsAndroidRepair
+                        ? M3EIcons.build_rounded
+                        : showRepairResult
+                        ? M3EIcons.restart_alt_rounded
+                        : autoOnly || active
+                        ? M3EIcons.stop_rounded
+                        : M3EIcons.play_arrow_rounded,
+                    size: 20,
+                  ),
+            label: Text(
+              stopping
+                  ? currentLocalizations().uiDextopStopping
+                  : needsAndroidRepair
+                  ? currentLocalizations().uiRestorePrivileges
+                  : showRepairResult
+                  ? currentLocalizations().uiRestartTheApp
+                  : autoOnly
+                  ? currentLocalizations().uiStopAndroidAuto
+                  : active
+                  ? currentLocalizations().stop
+                  : currentLocalizations().uiStart,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -387,100 +338,94 @@ extension _HomeContent on _HomeScreenState {
     final width = recovery['width'] as int? ?? profile.width;
     final height = recovery['height'] as int? ?? profile.height;
     final density = recovery['density'] as int? ?? profile.density;
-    return Card(
-      child: Padding(
-        padding: EdgeInsets.fromLTRB(16, 12, 16, 14),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Icon(Icons.restore_rounded),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        recovery['phase'] == 'running' ||
-                                recovery['phase'] == 'paused'
-                            ? currentLocalizations().uiDextopCanBeRestarted
-                            : currentLocalizations()
-                                  .uiYouCanRestoreYourPreviousSession,
-                        style: Theme.of(context).textTheme.titleMedium,
-                      ),
-                      SizedBox(height: 2),
-                      Text(
-                        '$width × $height / $density dpi',
-                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                          color: Theme.of(context).colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            SizedBox(height: 12),
-            Row(
-              children: [
-                Expanded(
-                  child: SizedBox(
-                    height: 40,
-                    child: FilledButton.tonal(
-                      onPressed: () async {
-                        final recovered = DisplayProfile(
-                          currentLocalizations().uiRecoverySession,
-                          '$density dpi',
-                          width,
-                          height,
-                          density,
-                          Icons.restore_rounded,
-                          id: 'recovery',
-                        );
-                        // Automatic resolution must be sampled again when a
-                        // paused foldable session resumes; the active panel may
-                        // have changed while Dextop was suspended.
-                        final resumeProfile = profile.isDevice
-                            ? profile
-                            : recovered;
-                        mutate(() => loading = true);
-                        await bridge.start(
-                          resumeProfile,
-                          // Resolve automatic orientation again when resuming:
-                          // the device may have rotated while suspended.
-                          resolveHomePortrait(),
-                          secure,
-                          decorations: effectiveDecorations,
-                          workspaceMagnificationPercent:
-                              workspaceMagnificationPercent,
-                          magnifyWindowsWithDisplay: magnifyWindowsWithDisplay,
-                        );
-                        await Future<void>.delayed(Duration(milliseconds: 350));
-                        await refresh();
-                      },
-                      child: Text(currentLocalizations().uiRestart),
+    final colors = Theme.of(context).colorScheme;
+    return M3ECard(
+      variant: M3ECardVariant.elevated,
+      borderRadius: BorderRadius.circular(26),
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Icon(M3EIcons.restore_rounded, color: colors.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      recovery['phase'] == 'running' ||
+                              recovery['phase'] == 'paused'
+                          ? currentLocalizations().uiDextopCanBeRestarted
+                          : currentLocalizations()
+                                .uiYouCanRestoreYourPreviousSession,
+                      style: Theme.of(context).textTheme.titleMedium,
                     ),
-                  ),
-                ),
-                SizedBox(width: 8),
-                Expanded(
-                  child: SizedBox(
-                    height: 40,
-                    child: TextButton(
-                      onPressed: () async {
-                        await bridge.clearRecovery();
-                        await refresh();
-                      },
-                      child: Text(currentLocalizations().uiDestruction),
+                    const SizedBox(height: 2),
+                    Text(
+                      '$width × $height / $density dpi',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: colors.onSurfaceVariant,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Expanded(
+                child: M3EButton.tonal(
+                  size: M3EButtonSize.sm,
+                  onPressed: () async {
+                    final recovered = DisplayProfile(
+                      currentLocalizations().uiRecoverySession,
+                      '$density dpi',
+                      width,
+                      height,
+                      density,
+                      M3EIcons.restore_rounded,
+                      id: 'recovery',
+                    );
+                    final resumeProfile = profile.isDevice
+                        ? profile
+                        : recovered;
+                    mutate(() => loading = true);
+                    await bridge.start(
+                      resumeProfile,
+                      resolveHomePortrait(),
+                      secure,
+                      decorations: effectiveDecorations,
+                      workspaceMagnificationPercent:
+                          workspaceMagnificationPercent,
+                      magnifyWindowsWithDisplay: magnifyWindowsWithDisplay,
+                    );
+                    await Future<void>.delayed(
+                      const Duration(milliseconds: 350),
+                    );
+                    await refresh();
+                  },
+                  child: Text(currentLocalizations().uiRestart),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: M3EButton.text(
+                  size: M3EButtonSize.sm,
+                  onPressed: () async {
+                    await bridge.clearRecovery();
+                    await refresh();
+                  },
+                  child: Text(currentLocalizations().uiDestruction),
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -488,8 +433,8 @@ extension _HomeContent on _HomeScreenState {
   Widget workspacePanel() {
     void openApps() => Navigator.of(context)
         .push(
-          MaterialPageRoute<void>(
-            builder: (_) => DextopFeaturesPage(
+          dextopRoute<void>(
+            DextopFeaturesPage(
               isRunning: active,
               category: 'apps',
               ensureDesktopRunning: ensureDesktopRunning,
@@ -497,107 +442,88 @@ extension _HomeContent on _HomeScreenState {
           ),
         )
         .then((_) => loadHomeWorkspaces());
-    return Card(
-      child: Column(
-        children: [
-          ListTile(
-            leading: Icon(Icons.apps_rounded),
-            title: Text(currentLocalizations().uiAppLauncher),
-            subtitle: Text(currentLocalizations().uiOpenAppOnDesktop),
-            trailing: Icon(Icons.chevron_right_rounded),
-            onTap: openApps,
-          ),
-          Divider(height: 1),
-          ListTile(
-            leading: Icon(Icons.space_dashboard_rounded),
-            title: Text(currentLocalizations().uiWorkSpace),
-            subtitle: Text(currentLocalizations().uiOpenASavedAppConfiguration),
-            trailing: AnimatedRotation(
-              turns: workspaceExpanded ? .5 : 0,
-              duration: Duration(milliseconds: 220),
-              child: Icon(Icons.expand_more_rounded),
+    final colors = Theme.of(context).colorScheme;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        DextopGroup(
+          children: [
+            M3EListItem(
+              leading: const Icon(M3EIcons.apps_rounded),
+              headline: currentLocalizations().uiAppLauncher,
+              supportingText: currentLocalizations().uiOpenAppOnDesktop,
+              trailing: const Icon(M3EIcons.chevron_right_rounded),
+              onTap: openApps,
             ),
-            onTap: () => mutate(() => workspaceExpanded = !workspaceExpanded),
-          ),
-          AnimatedSize(
-            duration: Duration(milliseconds: 260),
-            curve: Curves.easeInOutCubic,
-            alignment: Alignment.topCenter,
-            child: workspaceExpanded
-                ? Column(
+            M3EListItem(
+              leading: const Icon(M3EIcons.space_dashboard_rounded),
+              headline: currentLocalizations().uiWorkSpace,
+              supportingText:
+                  currentLocalizations().uiOpenASavedAppConfiguration,
+              trailing: AnimatedRotation(
+                turns: workspaceExpanded ? .5 : 0,
+                duration: const Duration(milliseconds: 220),
+                child: const Icon(M3EIcons.expand_more_rounded),
+              ),
+              onTap: () => mutate(() => workspaceExpanded = !workspaceExpanded),
+            ),
+          ],
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 260),
+          curve: Curves.easeInOutCubic,
+          alignment: Alignment.topCenter,
+          child: workspaceExpanded
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 6),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Divider(height: 1, indent: 16, endIndent: 16),
-                      if (homeWorkspaces.isEmpty)
-                        ListTile(
-                          contentPadding: EdgeInsets.symmetric(horizontal: 16),
-                          title: Text(
-                            currentLocalizations().uiNoSavedWorkspaces,
-                          ),
-                        ),
                       if (homeAppsLoading)
-                        Padding(
-                          padding: EdgeInsets.fromLTRB(16, 4, 16, 8),
-                          child: LinearProgressIndicator(
-                            minHeight: 3,
-                            borderRadius: BorderRadius.all(Radius.circular(3)),
-                          ),
+                        const Padding(
+                          padding: EdgeInsets.fromLTRB(4, 2, 4, 8),
+                          child: M3EProgressIndicator.linearWavy(),
                         ),
-                      ...homeWorkspaces.map(
-                        (workspace) => ListTile(
-                          contentPadding: EdgeInsets.only(
-                            left: 16,
-                            right: 16,
-                            top: 4,
-                            bottom: 4,
-                          ),
-                          title: Text('${workspace['name']}'),
-                          subtitle: Padding(
-                            padding: EdgeInsets.only(top: 8),
-                            child: Wrap(
-                              spacing: 6,
-                              runSpacing: 6,
-                              children: (workspace['apps'] as List)
-                                  .cast<String>()
-                                  .map(workspaceAppIcon)
-                                  .toList(),
+                      if (homeWorkspaces.isEmpty)
+                        DextopGroup(
+                          color: colors.surfaceContainer,
+                          children: [
+                            M3EListItem(
+                              headline:
+                                  currentLocalizations().uiNoSavedWorkspaces,
                             ),
-                          ),
-                          trailing: Icon(Icons.play_arrow_rounded),
-                          onTap: () => launchHomeWorkspace(workspace),
+                          ],
+                        )
+                      else
+                        DextopGroup(
+                          color: colors.surfaceContainer,
+                          children: [
+                            for (final workspace in homeWorkspaces)
+                              M3EListItem(
+                                headline: '${workspace['name']}',
+                                trailing: const Icon(
+                                  M3EIcons.play_arrow_rounded,
+                                ),
+                                leading: const Icon(
+                                  M3EIcons.workspaces_rounded,
+                                ),
+                                supportingText: (workspace['apps'] as List)
+                                    .cast<String>()
+                                    .map(
+                                      (pkg) =>
+                                          '${homeApps[pkg]?['label'] ?? pkg}',
+                                    )
+                                    .join(' · '),
+                                onTap: () => launchHomeWorkspace(workspace),
+                              ),
+                          ],
                         ),
-                      ),
                     ],
-                  )
-                : SizedBox.shrink(),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget workspaceAppIcon(String packageName) {
-    final bytes = homeApps[packageName]?['icon'];
-    if (bytes is Uint8List) {
-      return Tooltip(
-        message: '${homeApps[packageName]?['label'] ?? packageName}',
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.memory(bytes, width: 30, height: 30),
+                  ),
+                )
+              : const SizedBox.shrink(),
         ),
-      );
-    }
-    if (homeAppsLoading) {
-      return SizedBox.square(
-        dimension: 28,
-        child: Padding(
-          padding: EdgeInsets.all(5),
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
-      );
-    }
-    return Tooltip(
-      message: packageName,
-      child: Icon(Icons.android_rounded, size: 30),
+      ],
     );
   }
 
@@ -624,15 +550,21 @@ extension _HomeContent on _HomeScreenState {
   Widget shizukuPanel() {
     final colors = Theme.of(context).colorScheme;
     final embedded = privilegeProvider == 'embedded';
-    return ListTile(
-      contentPadding: EdgeInsets.symmetric(horizontal: 4),
-      leading: Icon(
-        embedded ? Icons.wifi_tethering_rounded : Icons.warning_amber_rounded,
-        color: colors.error,
-      ),
-      title: Text(privilegeConnectionLabel),
-      trailing: Icon(Icons.chevron_right_rounded),
-      onTap: connect,
+    return DextopGroup(
+      color: colors.errorContainer.withValues(alpha: 0.55),
+      children: [
+        M3EListItem(
+          leading: Icon(
+            embedded
+                ? M3EIcons.wifi_tethering_rounded
+                : M3EIcons.warning_amber_rounded,
+            color: colors.error,
+          ),
+          headline: privilegeConnectionLabel,
+          trailing: const Icon(M3EIcons.chevron_right_rounded),
+          onTap: connect,
+        ),
+      ],
     );
   }
 }

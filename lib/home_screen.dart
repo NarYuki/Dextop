@@ -142,7 +142,7 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       if (step > 0) ...[
-                        OutlinedButton.icon(
+                        M3EButton.outlined(
                           onPressed: () async {
                             await channel.invokeMethod<void>('hideOverlayDemo');
                             gesturePointers.clear();
@@ -150,14 +150,14 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                             setState(() => step = 0);
                             await applyOrientation();
                           },
-                          icon: const Icon(Icons.arrow_back_rounded),
+                          icon: const Icon(M3EIcons.arrow_back_rounded),
                           label: Text(localText(context, 'uiBack')),
                         ),
                         const SizedBox(width: 16),
                       ],
                       Text('${step + 1} / 2'),
                       const SizedBox(width: 24),
-                      FilledButton.icon(
+                      M3EButton.filled(
                         onPressed: () async {
                           if (step == 0) {
                             await channel.invokeMethod<void>('hideOverlayDemo');
@@ -171,8 +171,8 @@ class _MultiTouchUpgradeFlowState extends State<_MultiTouchUpgradeFlow> {
                         },
                         icon: Icon(
                           horizontal
-                              ? Icons.arrow_forward_rounded
-                              : Icons.check_rounded,
+                              ? M3EIcons.arrow_forward_rounded
+                              : M3EIcons.check_rounded,
                         ),
                         label: Text(
                           horizontal
@@ -324,7 +324,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     1920,
     1080,
     240,
-    Icons.smartphone_rounded,
+    M3EIcons.smartphone_rounded,
     id: 'device',
     isDevice: true,
   );
@@ -574,18 +574,20 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     final l = AppLocalizations.of(context);
     final title = l.appUpdatedTitle(currentVersion);
     final message = l.appUpdatedMessage;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.system_update_rounded),
-        title: Text(title),
-        content: Text(message),
-        actions: [
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(AppLocalizations.of(context).close),
-          ),
-        ],
+    await M3EDialog.show<void>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) => M3EDialog(
+          icon: const Icon(M3EIcons.system_update_rounded),
+          title: title,
+          content: Text(message),
+          actions: [
+            M3EButton.filled(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(AppLocalizations.of(context).close),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -766,42 +768,42 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   Future<void> _showUpdateDialog() async {
     if (!updateAvailable) return;
     final l = AppLocalizations.of(context);
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.system_update_alt_rounded),
-        title: Text(
-          isPlayDistribution
+    await M3EDialog.show<void>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) => M3EDialog(
+          icon: const Icon(M3EIcons.system_update_alt_rounded),
+          title: isPlayDistribution
               ? currentLocalizations().playUpdateAvailableTitle
               : l.updateAvailableTitle,
-        ),
-        content: Text(
-          isPlayDistribution
-              ? currentLocalizations().playUpdateAvailableDescription
-              : '${l.currentVersion}: $appVersion\n${l.latestVersion}: $latestReleaseVersion',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(l.close),
+          content: Text(
+            isPlayDistribution
+                ? currentLocalizations().playUpdateAvailableDescription
+                : '${l.currentVersion}: $appVersion\n${l.latestVersion}: $latestReleaseVersion',
           ),
-          if (latestReleaseUrl != null)
-            FilledButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                bridge.openUrl(latestReleaseUrl!);
-              },
-              child: Text(l.openOnGitHub),
+          actions: [
+            M3EButton.text(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(l.close),
             ),
-          if (isPlayDistribution && playUpdateInfo != null)
-            FilledButton(
-              onPressed: () async {
-                Navigator.pop(dialogContext);
-                await _startPlayStoreUpdate();
-              },
-              child: Text(currentLocalizations().updateNow),
-            ),
-        ],
+            if (latestReleaseUrl != null)
+              M3EButton.filled(
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  bridge.openUrl(latestReleaseUrl!);
+                },
+                child: Text(l.openOnGitHub),
+              ),
+            if (isPlayDistribution && playUpdateInfo != null)
+              M3EButton.filled(
+                onPressed: () async {
+                  Navigator.pop(dialogContext);
+                  await _startPlayStoreUpdate();
+                },
+                child: Text(currentLocalizations().updateNow),
+              ),
+          ],
+        ),
       ),
     );
   }
@@ -930,9 +932,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   }
 
   void _showShortcutMessage(String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(message)));
+    M3ESnackbar.show(context, message: message);
   }
 
   @override
@@ -967,7 +967,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       landscapeWidth,
       landscapeHeight,
       deviceDensity,
-      Icons.smartphone_rounded,
+      M3EIcons.smartphone_rounded,
       id: 'device',
       isDevice: true,
     );
@@ -1164,37 +1164,35 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     if (providers.isEmpty) return;
     final needsChoice = value['privilegeProviderSelectionRequired'] == true;
     final selectedId = needsChoice
-        ? await showDialog<String>(
-            context: context,
+        ? await M3EDialog.show<String>(
+            context,
             barrierDismissible: false,
-            builder: (dialogContext) => PopScope(
+            dialog: PopScope(
               canPop: false,
-              child: AlertDialog(
-                icon: const Icon(Icons.admin_panel_settings_rounded),
-                title: Text(l.setupProviderChoiceTitle),
-                content: Text(l.setupProviderChoiceDescription),
-                actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                actions: [
-                  Column(
+              child: Builder(
+                builder: (dialogContext) => M3EDialog(
+                  icon: const Icon(M3EIcons.admin_panel_settings_rounded),
+                  title: l.setupProviderChoiceTitle,
+                  content: Column(
+                    mainAxisSize: MainAxisSize.min,
                     crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children:
-                        providers
-                            .expand(
-                              (provider) => [
-                                FilledButton(
-                                  onPressed: () => Navigator.pop(
-                                    dialogContext,
-                                    '${provider['id']}',
-                                  ),
-                                  child: Text('${provider['name']}'),
-                                ),
-                                const SizedBox(height: 10),
-                              ],
-                            )
-                            .toList()
-                          ..removeLast(),
+                    children: [
+                      Text(l.setupProviderChoiceDescription),
+                      const SizedBox(height: 18),
+                      for (var i = 0; i < providers.length; i++) ...[
+                        if (i > 0) const SizedBox(height: 10),
+                        M3EButton.filled(
+                          size: M3EButtonSize.md,
+                          onPressed: () => Navigator.pop(
+                            dialogContext,
+                            '${providers[i]['id']}',
+                          ),
+                          child: Text('${providers[i]['name']}'),
+                        ),
+                      ],
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
           )
@@ -1451,53 +1449,78 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colors = theme.colorScheme;
     if (wideLayout) {
-      // A desktop window draws its own title bar: no status bar space above the pages.
+      final extended = MediaQuery.sizeOf(context).width >= 1200;
       return Scaffold(
+        backgroundColor: colors.surface,
         body: MediaQuery.removePadding(
           context: context,
-          removeTop: true,
+          removeTop: widget.desktopWindow,
           child: Row(
             children: [
-              LayoutBuilder(
-                builder: (context, constraints) => NavigationRail(
-                  extended: MediaQuery.sizeOf(context).width >= 1000,
-                  selectedIndex: page,
-                  onDestinationSelected: selectPage,
-                  leading: Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 20),
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(9),
-                      child: Image.asset(
-                        'assets/dextop_icon.png',
-                        width: 36,
-                        height: 36,
-                        fit: BoxFit.cover,
-                      ),
+              NavigationRail(
+                backgroundColor: colors.surfaceContainerLow,
+                extended: extended,
+                minWidth: 76,
+                minExtendedWidth: 184,
+                labelType: extended
+                    ? NavigationRailLabelType.none
+                    : NavigationRailLabelType.all,
+                useIndicator: true,
+                indicatorColor: colors.secondaryContainer,
+                indicatorShape: const StadiumBorder(),
+                selectedIconTheme: IconThemeData(
+                  color: colors.onSecondaryContainer,
+                ),
+                unselectedIconTheme: IconThemeData(
+                  color: colors.onSurfaceVariant,
+                ),
+                selectedLabelTextStyle: theme.textTheme.labelMedium?.copyWith(
+                  color: colors.onSurface,
+                  fontWeight: FontWeight.w700,
+                ),
+                unselectedLabelTextStyle: theme.textTheme.labelMedium?.copyWith(
+                  color: colors.onSurfaceVariant,
+                ),
+                selectedIndex: page,
+                onDestinationSelected: selectPage,
+                leading: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(11),
+                    child: Image.asset(
+                      'assets/dextop_icon.png',
+                      width: 34,
+                      height: 34,
+                      fit: BoxFit.cover,
                     ),
                   ),
-                  destinations: [
-                    NavigationRailDestination(
-                      icon: const Icon(Icons.space_dashboard_outlined),
-                      selectedIcon: const Icon(Icons.space_dashboard_rounded),
-                      label: Text(currentLocalizations().home),
-                    ),
-                    NavigationRailDestination(
-                      icon: const PenguinIcon(),
-                      selectedIcon: const PenguinIcon(filled: true),
-                      label: Text(
-                        currentLocalizations().nativePlasmaCategoryLinux,
-                      ),
-                    ),
-                    NavigationRailDestination(
-                      icon: _settingsNavigationIcon(Icons.tune_outlined),
-                      selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
-                      label: Text(currentLocalizations().settings),
-                    ),
-                  ],
                 ),
+                destinations: [
+                  NavigationRailDestination(
+                    icon: const Icon(M3EIcons.space_dashboard_outlined),
+                    selectedIcon: const Icon(M3EIcons.space_dashboard_rounded),
+                    label: Text(currentLocalizations().home),
+                  ),
+                  NavigationRailDestination(
+                    icon: const PenguinIcon(),
+                    selectedIcon: const PenguinIcon(filled: true),
+                    label: Text(
+                      currentLocalizations().nativePlasmaCategoryLinux,
+                    ),
+                  ),
+                  NavigationRailDestination(
+                    icon: _settingsNavigationIcon(M3EIcons.tune_outlined),
+                    selectedIcon: _settingsNavigationIcon(
+                      M3EIcons.tune_rounded,
+                    ),
+                    label: Text(currentLocalizations().settings),
+                  ),
+                ],
               ),
-              const VerticalDivider(width: 1),
+              const M3EDivider(axis: M3EDividerAxis.vertical),
               Expanded(child: pageContent()),
             ],
           ),
@@ -1505,24 +1528,27 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
       );
     }
     return Scaffold(
+      backgroundColor: colors.surface,
       body: pageContent(),
-      bottomNavigationBar: NavigationBar(
+      bottomNavigationBar: M3ENavigationBar(
         selectedIndex: page,
         onDestinationSelected: selectPage,
+        autoLayout: true,
         destinations: [
-          NavigationDestination(
-            icon: Icon(Icons.home_outlined),
-            selectedIcon: Icon(Icons.home_rounded),
+          M3ENavigationBarDestination(
+            icon: const Icon(M3EIcons.home_outlined),
+            selectedIcon: const Icon(M3EIcons.home_rounded),
             label: currentLocalizations().home,
           ),
-          NavigationDestination(
+          M3ENavigationBarDestination(
             icon: const PenguinIcon(),
             selectedIcon: const PenguinIcon(filled: true),
             label: currentLocalizations().nativePlasmaCategoryLinux,
           ),
-          NavigationDestination(
-            icon: _settingsNavigationIcon(Icons.tune_outlined),
-            selectedIcon: _settingsNavigationIcon(Icons.tune_rounded),
+          M3ENavigationBarDestination(
+            icon: const Icon(M3EIcons.tune_outlined),
+            selectedIcon: const Icon(M3EIcons.tune_rounded),
+            badgeDot: updateAvailable,
             label: currentLocalizations().settings,
           ),
         ],
@@ -1563,10 +1589,6 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
     });
   }
 
-  Widget _settingsNavigationIcon(IconData icon) => Badge(
-    isLabelVisible: updateAvailable,
-    smallSize: 8,
-    backgroundColor: Colors.red,
-    child: Icon(icon),
-  );
+  Widget _settingsNavigationIcon(IconData icon) =>
+      M3EBadge(showDot: updateAvailable, child: Icon(icon));
 }

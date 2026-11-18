@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:free_dextop/main.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -35,14 +36,16 @@ void main() {
     final label = find.text('Expand the Start menu');
     await tester.ensureVisible(label);
     await tester.pumpAndSettle();
-    final row = find.ancestor(of: label, matching: find.byType(SwitchListTile));
-    expect(tester.widget<SwitchListTile>(row).value, isTrue);
+    final row = find.ancestor(of: label, matching: find.byType(M3EListItem));
+    final toggle = find.descendant(of: row, matching: find.byType(M3ESwitch));
+    expect(tester.widget<M3ESwitch>(toggle).value, isTrue);
     await tester.tap(label);
     await tester.pumpAndSettle();
     expect(writes.single, {'key': 'launcher_expanded', 'value': false});
     await tester.pumpWidget(const SizedBox.shrink());
     await open();
     await tester.ensureVisible(label);
-    expect(tester.widget<SwitchListTile>(row).value, isFalse);
+    await tester.pumpAndSettle();
+    expect(tester.widget<M3ESwitch>(toggle).value, isFalse);
   });
 }
