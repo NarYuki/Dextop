@@ -1616,5 +1616,7 @@
   "uiSystemAndSharedServices": "시스템 및 공유 서비스",
   "uiAndroidIntegrationCategory": "Android 통합",
   "uiProcessesAndPerformance": "프로세스 및 성능",
-  "uiClipboardAndShortcuts": "클립보드 및 바로가기"
+  "uiClipboardAndShortcuts": "클립보드 및 바로가기",
+  "uiReceivePreReleases": "사전 출시 버전도 받기",
+  "uiReceivePreReleasesDescription": "정식 출시 전의 베타 버전도 업데이트로 알려 줍니다. 버그가 있을 수 있습니다."
 }
