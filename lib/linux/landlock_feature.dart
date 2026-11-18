@@ -39,9 +39,13 @@ class _LinuxFastModeExperimentalTileState
     final prefs = await SharedPreferences.getInstance();
     if (!mounted) return;
     setState(() {
-      mode = prefs.getBool(fastModePreferenceKey) != true
+      // Unset means the default, the unprotected fast mode. An opt-in saved
+      // before the modes existed (ON without a kind) stays protected.
+      final enabled = prefs.getBool(fastModePreferenceKey);
+      final kind = prefs.getString(fastModeKindPreferenceKey);
+      mode = enabled == false
           ? LinuxFastMode.disabled
-          : prefs.getString(fastModeKindPreferenceKey) == 'unprotected'
+          : kind == 'unprotected' || (enabled == null && kind == null)
           ? LinuxFastMode.unprotected
           : LinuxFastMode.protected;
       loading = false;

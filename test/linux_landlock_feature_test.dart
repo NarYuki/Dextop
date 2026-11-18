@@ -99,17 +99,17 @@ void main() {
   }
 
   testWidgets(
-    'defaults to Disabled in one selector, without a separate switch or Linux startup',
+    'defaults to Unprotected in one selector, without a separate switch or Linux startup',
     (tester) async {
       await open(tester);
-      expect(mode(tester), LinuxFastMode.disabled);
+      expect(mode(tester), LinuxFastMode.unprotected);
       expect(find.byType(M3ESwitch), findsNothing);
       expect(applied, isEmpty);
       await tester.tap(find.byType(DextopDropdownButton));
       await tester.pumpAndSettle();
       expect(find.byType(DextopChoice<LinuxFastMode>), findsNWidgets(3));
       // Re-selecting the active choice must still close the popup.
-      await tester.tap(find.text('Disabled').last);
+      await tester.tap(find.text('Unprotected').last);
       await tester.pumpAndSettle();
       expect(find.byType(DextopChoice<LinuxFastMode>), findsNothing);
       expect(applied, isEmpty);
@@ -157,8 +157,8 @@ void main() {
   ) async {
     offline = true;
     await open(tester);
-    await choose(tester, 'Unprotected');
-    expect(mode(tester), LinuxFastMode.unprotected);
+    await choose(tester, 'Protected + fast');
+    expect(mode(tester), LinuxFastMode.protected);
     expect(
       (await SharedPreferences.getInstance()).getBool(fastModePreferenceKey),
       true,
@@ -182,6 +182,8 @@ void main() {
     testWidgets('rows grow naturally with text in ${locale.languageCode}', (
       tester,
     ) async {
+      // The short Disabled summary keeps this unscrolled harness in bounds.
+      SharedPreferences.setMockInitialValues({fastModePreferenceKey: false});
       await tester.binding.setSurfaceSize(const Size(411, 1200));
       tester.binding.platformDispatcher.localeTestValue = locale;
       addTearDown(() {

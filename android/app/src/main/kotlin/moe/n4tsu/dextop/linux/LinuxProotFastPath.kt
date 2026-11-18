@@ -7,7 +7,7 @@ internal enum class LinuxFastMode(val id: String, val library: String, val resou
     PROTECTED("protected", "/usr/local/lib/libblfastpath.so", "libblfastpath-aarch64.bin"),
     UNPROTECTED("unprotected", "/usr/local/lib/libblfastpath-unprotected.so", "libblfastpath-unprotected-aarch64.bin");
     companion object {
-        fun from(value: String?) = entries.firstOrNull { it.id == value } ?: PROTECTED
+        fun from(value: String?) = entries.firstOrNull { it.id == value } ?: UNPROTECTED
     }
 }
 

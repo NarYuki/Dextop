@@ -66,7 +66,7 @@ internal object LinuxSettings {
         if (!chosen) it.put("gpu", it.optJSONObject("gpuProbe")?.takeIf { probe -> probe.optInt("version") >= LinuxGpuProbe.VERSION }
             ?.optString("recommended")?.takeIf { id -> id.isNotEmpty() }
             ?: (if (LinuxGraphics.turnipCapable) LinuxGpuMode.TURNIP else LinuxGpuMode.HARDWARE).id)
-        if (!it.has("landlockFastPath")) it.put("landlockFastPath", false)
+        if (!it.has("landlockFastPath")) it.put("landlockFastPath", true)
         it.put("fastPathMode", LinuxFastMode.from(it.optString("fastPathMode")).id)
         if (!it.has("uiScale")) it.put("uiScale", 100)
         if (!it.has("dnsServers")) it.put("dnsServers", org.json.JSONArray())
