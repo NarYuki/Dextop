@@ -135,11 +135,7 @@ class DextopDropdownButton extends StatelessWidget {
                 ),
               ),
               const SizedBox(width: 2),
-              Icon(
-                M3EIcons.arrow_drop_down_rounded,
-                size: 20,
-                color: fg,
-              ),
+              Icon(M3EIcons.arrow_drop_down_rounded, size: 20, color: fg),
             ],
           ),
         ),
@@ -171,16 +167,8 @@ class DextopKeyValueRow extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
       child: Row(
         children: [
-          if (leading != null) ...[
-            leading!,
-            const SizedBox(width: 14),
-          ],
-          Expanded(
-            child: Text(
-              label,
-              style: theme.textTheme.bodyMedium,
-            ),
-          ),
+          if (leading != null) ...[leading!, const SizedBox(width: 14)],
+          Expanded(child: Text(label, style: theme.textTheme.bodyMedium)),
           const SizedBox(width: 12),
           Flexible(
             child: Text(
@@ -326,10 +314,7 @@ class DextopToggle extends StatelessWidget implements DextopTappable {
     supportingMaxLines: null,
     enabled: enabled,
     leading: icon == null ? null : Icon(icon),
-    trailing: M3ESwitch(
-      value: value,
-      onChanged: enabled ? onChanged : null,
-    ),
+    trailing: M3ESwitch(value: value, onChanged: enabled ? onChanged : null),
     onTap: tap,
   );
 }
@@ -384,9 +369,7 @@ class DextopSliderTile extends StatelessWidget {
                 Icon(icon, color: colors.primary, size: 22),
                 const SizedBox(width: 12),
               ],
-              Expanded(
-                child: Text(title, style: theme.textTheme.titleMedium),
-              ),
+              Expanded(child: Text(title, style: theme.textTheme.titleMedium)),
               DextopStatusPill(
                 label: valueLabel,
                 containerColor: colors.secondaryContainer,
@@ -526,4 +509,54 @@ class DextopMenuRow extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
     ),
   );
+}
+
+/// One saved workspace: its name, its apps' icons, and trailing controls
+/// (a play affordance by default). The surrounding [DextopGroup] handles the
+/// tap through [DextopTappable].
+class DextopWorkspaceRow extends StatelessWidget implements DextopTappable {
+  const DextopWorkspaceRow({
+    super.key,
+    required this.name,
+    required this.icons,
+    required this.onTap,
+    this.trailing,
+  });
+
+  final String name;
+  final List<Widget> icons;
+  final VoidCallback onTap;
+  final Widget? trailing;
+
+  @override
+  VoidCallback? get tap => onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(name, style: theme.textTheme.titleMedium),
+                if (icons.isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Wrap(spacing: 6, runSpacing: 6, children: icons),
+                ],
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          IconTheme.merge(
+            data: IconThemeData(color: theme.colorScheme.onSurfaceVariant),
+            child: trailing ?? const Icon(M3EIcons.play_arrow_rounded),
+          ),
+        ],
+      ),
+    );
+  }
 }
