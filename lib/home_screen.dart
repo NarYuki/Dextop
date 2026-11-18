@@ -361,6 +361,7 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
   String? latestReleaseUrl;
   String? releaseCheckError;
   DateTime? releaseCheckedAt;
+
   /// GitHub builds only: also offer pre-releases (betas) as updates.
   var receivePreReleases = false;
   AppUpdateInfo? playUpdateInfo;
@@ -649,7 +650,10 @@ class _HomeScreenState extends State<HomeScreen> with WidgetsBindingObserver {
         throw FormatException(currentUiText('uiMissingAppVersion'));
       }
       final preferences = await SharedPreferences.getInstance();
-      final preReleases = preferences.getBool(_preReleasesKey) ?? false;
+      // Beta builds always follow the beta channel; stable builds opt in.
+      final preReleases =
+          isPreRelease(current) ||
+          (preferences.getBool(_preReleasesKey) ?? false);
       client = HttpClient()..connectionTimeout = const Duration(seconds: 5);
       // releases/latest never returns pre-releases; the list does.
       final request = await client.getUrl(

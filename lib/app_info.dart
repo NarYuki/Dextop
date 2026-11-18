@@ -174,17 +174,15 @@ class AppInfoPage extends StatelessWidget {
             onTap: checking ? null : onCheck,
           ),
         ),
-        if (onReceivePreReleasesChanged != null) ...[
+        // Beta builds always follow pre-releases, so the switch is only
+        // offered on stable GitHub builds.
+        if (onReceivePreReleasesChanged != null &&
+            !(appVersion.isNotEmpty && isPreRelease(appVersion))) ...[
           SizedBox(height: 12),
           Card(
-            child: SwitchListTile(
-              secondary: const Icon(Icons.science_outlined),
-              value: receivePreReleases,
-              onChanged: onReceivePreReleasesChanged,
-              title: Text(linuxText(context, 'uiReceivePreReleases')),
-              subtitle: Text(
-                linuxText(context, 'uiReceivePreReleasesDescription'),
-              ),
+            child: _PreReleaseSwitch(
+              initial: receivePreReleases,
+              onChanged: onReceivePreReleasesChanged!,
             ),
           ),
         ],
@@ -649,4 +647,32 @@ class _KeepAwakeTileState extends State<_KeepAwakeTile> {
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
   runApp(OverlayApp());
+}
+
+/// Keeps its own value: the page is pushed with a snapshot of the parent's
+/// state, so a plain switch would never redraw after a tap.
+class _PreReleaseSwitch extends StatefulWidget {
+  const _PreReleaseSwitch({required this.initial, required this.onChanged});
+
+  final bool initial;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  State<_PreReleaseSwitch> createState() => _PreReleaseSwitchState();
+}
+
+class _PreReleaseSwitchState extends State<_PreReleaseSwitch> {
+  late var _value = widget.initial;
+
+  @override
+  Widget build(BuildContext context) => SwitchListTile(
+    secondary: const Icon(Icons.science_outlined),
+    value: _value,
+    onChanged: (value) {
+      setState(() => _value = value);
+      widget.onChanged(value);
+    },
+    title: Text(linuxText(context, 'uiReceivePreReleases')),
+    subtitle: Text(linuxText(context, 'uiReceivePreReleasesDescription')),
+  );
 }
