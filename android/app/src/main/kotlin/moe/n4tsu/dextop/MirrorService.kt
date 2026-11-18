@@ -212,6 +212,8 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         private var pendingAutoSurface: Surface? = null
         private var pendingStartResult: ((Result<Map<String, Any>>) -> Unit)? = null
         private var pendingDemo = false
+        /** The service was turned on only to show a demo; turn it off again after. */
+        private var enabledForDemo = false
         private var pendingLaptopDemo = false
         private var pendingLaptopPreviewThemeId: String? = null
         private var active = false
@@ -503,7 +505,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
         fun showLaptopDemo(context: Context) {
             pendingDemo = true
             pendingLaptopDemo = true
-            instance?.showDemoWindow()
+            instance?.showDemoWindow() ?: enableForDemo(context)
         }
 
         fun setPendingLaptopPreviewTheme(themeId: String?) {
@@ -513,6 +515,7 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun hideLaptopDemo() {
             instance?.hideDemoWindow()
+            releaseDemoService()
             instance?.laptopPreviewThemeId = null
             pendingDemo = false
             pendingLaptopDemo = false
@@ -980,12 +983,53 @@ class MirrorService : AccessibilityService(), SurfaceHolder.Callback {
 
         fun showOverlayDemo(context: Context) {
             pendingDemo = true
-            instance?.showDemoWindow()
+            instance?.showDemoWindow() ?: enableForDemo(context)
+        }
+
+        /**
+         * GitHub builds turn the service on themselves. A reinstall or Android
+         * can leave it off, and the demo then showed nothing; enabling it here
+         * makes onServiceConnected show the pending demo.
+         */
+        private fun enableForDemo(context: Context) {
+            if (BuildConfig.DISTRIBUTION_CHANNEL != "github") return
+            if (context.checkSelfPermission(android.Manifest.permission.WRITE_SECURE_SETTINGS) !=
+                android.content.pm.PackageManager.PERMISSION_GRANTED
+            ) return
+            val component = ComponentName(context, MirrorService::class.java).flattenToString()
+            val services = Settings.Secure.getString(
+                context.contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES
+            ).orEmpty().split(':').filter { it.isNotBlank() }.toMutableSet()
+            runCatching {
+                enabledForDemo = true
+                if (services.add(component)) {
+                    Settings.Secure.putString(
+                        context.contentResolver,
+                        Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+                        services.joinToString(":")
+                    )
+                }
+                Settings.Secure.putInt(
+                    context.contentResolver,
+                    Settings.Secure.ACCESSIBILITY_ENABLED,
+                    1
+                )
+            }.onFailure { Log.w("DextopMirror", "enabling accessibility for the demo failed", it) }
         }
 
         fun hideOverlayDemo() {
             instance?.hideDemoWindow()
+            releaseDemoService()
             pendingDemo = false
+        }
+
+        /** Like a stopped session, leave nothing enabled that only the demo needed. */
+        private fun releaseDemoService() {
+            if (!enabledForDemo) return
+            enabledForDemo = false
+            val service = instance ?: return
+            if (!active && !service.stopping) service.disableSelf()
         }
 
         fun setSoftwareCursorFallbackEnabled(enabled: Boolean) {
