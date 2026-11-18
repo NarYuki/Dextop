@@ -1,5 +1,32 @@
 # Changelog
 
+## [2.0.0-beta.2](https://github.com/NarYuki/Dextop/compare/v2.0.0-beta.1...v2.0.0-beta.2) (2026-11-18)
+
+
+### New features
+
+* **ui:** move the app UI to Material 3 Expressive ([a7044d2](https://github.com/NarYuki/Dextop/commit/a7044d223cea83f9fb5da1a0629230650b36359a))
+* **ui:** move the app UI to Material 3 Expressive ([40f9301](https://github.com/NarYuki/Dextop/commit/40f9301cd57f6d1a97f2c7c4f0763aac01f94e53))
+* **ui:** slide between setup pages and dim disabled M3E controls ([4250982](https://github.com/NarYuki/Dextop/commit/425098259eb093e4a26feb9e2cdb5af35a994096))
+* **ui:** slide between setup pages and dim disabled M3E controls ([cefa62b](https://github.com/NarYuki/Dextop/commit/cefa62bb96d96129ff02321e92aa0d0d2b9e0dee))
+
+
+### Fixes
+
+* follow pre-releases automatically on beta builds ([8aa3c14](https://github.com/NarYuki/Dextop/commit/8aa3c14d1175077d93e157dc1d66669d0c3a5e9f))
+* keep the pre-release switch on stable builds and make it respond ([2b41e8c](https://github.com/NarYuki/Dextop/commit/2b41e8c8c63403e5bbd4c3546359ad4d26aeb45a))
+* **linux:** download FEX reliably while Launchpad's PPA host is busy ([e35f7d9](https://github.com/NarYuki/Dextop/commit/e35f7d9a9823817517ff1f27cba853860354614c))
+* **linux:** download FEX reliably while Launchpad's PPA host is busy ([4acc7b0](https://github.com/NarYuki/Dextop/commit/4acc7b01caedf24a28658f3d7bbdbca50f1a6949))
+* **linux:** keep extended attributes working in the unprotected fast mode ([400f212](https://github.com/NarYuki/Dextop/commit/400f2126981bf61ac49ead1e476a9412d69ca7f1))
+* **linux:** keep extended attributes working in the unprotected fast mode ([c9a5fca](https://github.com/NarYuki/Dextop/commit/c9a5fca8364bd39e2d8949e19eef72a0472b06a8))
+* pre-release switch responds; beta builds follow betas automatically ([ec6d952](https://github.com/NarYuki/Dextop/commit/ec6d9524e495b1cd1e21a275afd0feb2eb359bfa))
+* turn accessibility on for the gesture demo and off after it ([b7bd597](https://github.com/NarYuki/Dextop/commit/b7bd59705f03fc8d251c2b9d80bcb45dcc866345))
+* turn accessibility on for the gesture demo and off after it ([9593443](https://github.com/NarYuki/Dextop/commit/959344378892f6685c0fae83ff19d905b366acc9))
+* **ui:** show app icons in saved workspaces again ([5af09a6](https://github.com/NarYuki/Dextop/commit/5af09a699b02036ca12fd6d6c0b62c6fec7ee8c8))
+* **ui:** show app icons in saved workspaces again ([2babeab](https://github.com/NarYuki/Dextop/commit/2babeabfbc13c45c14e0da40e325385f28a501fd))
+* **ui:** smooth the setup page transition ([f5702c1](https://github.com/NarYuki/Dextop/commit/f5702c14c343b67568597e09dda3084d95e83b12))
+* **ui:** smooth the setup page transition ([dd3086d](https://github.com/NarYuki/Dextop/commit/dd3086d702521990cc309848597a6141199e8a5a))
+
 ## [2.0.0-beta.1](https://github.com/NarYuki/Dextop/compare/v1.7.0...v2.0.0-beta.1) (2026-11-17)
 
 
