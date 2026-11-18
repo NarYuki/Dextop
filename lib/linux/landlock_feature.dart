@@ -1,8 +1,10 @@
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import '../experimental_feature_style.dart';
+import '../expressive/dextop_expressive.dart';
+import '../expressive/dextop_widgets.dart';
 import 'linux_expressive.dart';
 
 // Keep the original enabled key so existing opt-ins survive the UI rename.
@@ -46,6 +48,20 @@ class _LinuxFastModeExperimentalTileState
     });
   }
 
+  String _modeLabel(BuildContext context, LinuxFastMode value) =>
+      linuxText(context, switch (value) {
+        LinuxFastMode.disabled => 'uiFastModeDisabled',
+        LinuxFastMode.protected => 'uiFastModeProtected',
+        LinuxFastMode.unprotected => 'uiFastModeUnprotected',
+      });
+
+  String _modeSummary(BuildContext context, LinuxFastMode value) =>
+      linuxText(context, switch (value) {
+        LinuxFastMode.disabled => 'uiFastModeDisabledSummary',
+        LinuxFastMode.protected => 'uiFastModeProtectedSummary',
+        LinuxFastMode.unprotected => 'uiFastModeUnprotectedSummary',
+      });
+
   Future<void> _update(LinuxFastMode value) async {
     setState(() => loading = true);
     try {
@@ -71,15 +87,12 @@ class _LinuxFastModeExperimentalTileState
       if (mounted) widget.onChanged?.call();
     } on Exception catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              error is PlatformException
-                  ? error.message ??
-                        linuxText(context, 'uiCannotSaveExperimentalFeature')
-                  : linuxText(context, 'uiCannotSaveExperimentalFeature'),
-            ),
-          ),
+        M3ESnackbar.show(
+          context,
+          message: error is PlatformException
+              ? error.message ??
+                    linuxText(context, 'uiCannotSaveExperimentalFeature')
+              : linuxText(context, 'uiCannotSaveExperimentalFeature'),
         );
       }
     } finally {
@@ -87,51 +100,56 @@ class _LinuxFastModeExperimentalTileState
     }
   }
 
-  @override
-  Widget build(BuildContext context) => Card(
-    child: ListTileTheme(
-      data: experimentalFeatureTileTheme,
-      child: ListTile(
-        leading: const Icon(Icons.speed_rounded),
-        title: Text(linuxText(context, 'uiFastMode')),
-        subtitle: Text(
-          linuxText(context, switch (mode) {
-            LinuxFastMode.disabled => 'uiFastModeDisabledSummary',
-            LinuxFastMode.protected => 'uiFastModeProtectedSummary',
-            LinuxFastMode.unprotected => 'uiFastModeUnprotectedSummary',
-          }),
-        ),
-        trailing: SizedBox(
-          width: 132,
-          child: DropdownButton<LinuxFastMode>(
-            isExpanded: true,
-            isDense: true,
-            style: Theme.of(context).textTheme.bodyMedium,
-            value: mode,
-            underline: const SizedBox.shrink(),
-            onChanged: loading
-                ? null
-                : (value) {
-                    if (value != null) _update(value);
-                  },
-            items: [
-              for (final value in LinuxFastMode.values)
-                DropdownMenuItem(
-                  value: value,
-                  child: Text(
-                    linuxText(context, switch (value) {
-                      LinuxFastMode.disabled => 'uiFastModeDisabled',
-                      LinuxFastMode.protected => 'uiFastModeProtected',
-                      LinuxFastMode.unprotected => 'uiFastModeUnprotected',
-                    }),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
+  Future<void> _chooseMode(BuildContext context) async {
+    final selected = await M3EDialog.show<LinuxFastMode>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: const Icon(M3EIcons.speed_rounded),
+            title: linuxText(context, 'uiFastMode'),
+            content: DextopGroup(
+              color: colors.surfaceContainer,
+              children: [
+                for (final value in LinuxFastMode.values)
+                  DextopChoice<LinuxFastMode>(
+                    value: value,
+                    groupValue: mode,
+                    allowReselect: true,
+                    title: _modeLabel(context, value),
+                    subtitle: _modeSummary(context, value),
+                    onChanged: (next) => Navigator.pop(dialogContext, next),
                   ),
-                ),
-            ],
-          ),
-        ),
+              ],
+            ),
+          );
+        },
       ),
+    );
+    if (selected != null && selected != mode) {
+      await _update(selected);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => EnsureDextopExpressive(
+    child: DextopGroup(
+      children: [
+        M3EListItem(
+          leading: const Icon(M3EIcons.speed_rounded),
+          headline: linuxText(context, 'uiFastMode'),
+          supportingText: _modeSummary(context, mode),
+          supportingMaxLines: null,
+          enabled: !loading,
+          trailing: DextopDropdownButton(
+            label: _modeLabel(context, mode),
+            enabled: !loading,
+            onPressed: loading ? null : () => _chooseMode(context),
+          ),
+          onTap: loading ? null : () => _chooseMode(context),
+        ),
+      ],
     ),
   );
 }

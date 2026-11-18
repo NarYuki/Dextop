@@ -113,10 +113,10 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
   };
 
   Widget _selector(_ReportResult value, ValueChanged<_ReportResult> changed) =>
-      SegmentedButton<_ReportResult>(
+      M3ESegmentedButton<_ReportResult>(
         segments: [
           for (final item in _ReportResult.values)
-            ButtonSegment(value: item, label: Text(_label(item))),
+            M3ESegment(value: item, label: _label(item)),
         ],
         selected: {value},
         onSelectionChanged: (selection) => changed(selection.first),
@@ -206,12 +206,10 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
       });
     } on PlatformException catch (error) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
+        M3ESnackbar.show(
+          context,
+          message:
               error.message ?? currentLocalizations().reportEmailUnavailable,
-            ),
-          ),
         );
       }
     } finally {
@@ -221,46 +219,78 @@ class _DeviceReportPageState extends State<DeviceReportPage> {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(currentLocalizations().deviceReport)),
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    appBar: M3EAppBar.top(
+      automaticallyImplyLeading: true,
+      titleText: currentLocalizations().deviceReport,
+    ),
     body: _loading
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(
+            child: M3ELoadingIndicator(
+              variant: M3ELoadingIndicatorVariant.contained,
+            ),
+          )
         : ListView(
             padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
             children: [
-              Text(currentLocalizations().deviceReportIntro),
-              const SizedBox(height: 20),
-              Text(
-                currentLocalizations().reportOverall,
-                style: Theme.of(context).textTheme.titleMedium,
+              M3ECard(
+                variant: M3ECardVariant.filled,
+                borderRadius: BorderRadius.circular(24),
+                padding: const EdgeInsets.all(18),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(currentLocalizations().deviceReportIntro),
+                    const SizedBox(height: 16),
+                    Text(
+                      currentLocalizations().reportOverall,
+                      style: Theme.of(context).textTheme.titleMedium,
+                    ),
+                    const SizedBox(height: 10),
+                    _selector(
+                      _overall,
+                      (value) => setState(() => _overall = value),
+                    ),
+                  ],
+                ),
               ),
-              const SizedBox(height: 8),
-              _selector(_overall, (value) => setState(() => _overall = value)),
-              const SizedBox(height: 24),
+              const SizedBox(height: 16),
               for (final feature in _features) ...[
-                Text(
-                  _featureLabel(feature),
-                  style: Theme.of(context).textTheme.titleSmall,
+                M3ECard(
+                  variant: M3ECardVariant.filled,
+                  borderRadius: BorderRadius.circular(22),
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        _featureLabel(feature),
+                        style: Theme.of(context).textTheme.titleSmall,
+                      ),
+                      const SizedBox(height: 10),
+                      _selector(
+                        _results[feature]!,
+                        (value) => setState(() => _results[feature] = value),
+                      ),
+                    ],
+                  ),
                 ),
                 const SizedBox(height: 8),
-                _selector(
-                  _results[feature]!,
-                  (value) => setState(() => _results[feature] = value),
-                ),
-                const Divider(height: 28),
               ],
-              TextField(
+              const SizedBox(height: 8),
+              M3ETextField(
                 controller: _notes,
                 minLines: 3,
                 maxLines: 8,
-                decoration: InputDecoration(
-                  labelText: currentLocalizations().reportNotes,
-                  border: const OutlineInputBorder(),
-                ),
+                variant: M3ETextFieldVariant.outlined,
+                label: currentLocalizations().reportNotes,
               ),
-              const SizedBox(height: 20),
-              FilledButton.icon(
+              const SizedBox(height: 18),
+              M3EButton.filled(
+                size: M3EButtonSize.md,
+                enabled: !_sending,
                 onPressed: _sending ? null : _send,
-                icon: const Icon(Icons.email_outlined),
+                icon: const Icon(M3EIcons.email_outlined),
                 label: Text(currentLocalizations().sendDeviceReport),
               ),
             ],

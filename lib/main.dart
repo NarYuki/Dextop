@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
-import 'package:material_3_expressive/material_3_expressive.dart'
-    show M3ESafeArea;
+import 'package:flutter_localizations/flutter_localizations.dart'
+    hide GlobalMaterialLocalizations;
+import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart';
+import 'package:free_dextop/expressive/dextop_expressive.dart';
+import 'package:free_dextop/expressive/dextop_widgets.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/l10n/current_localizations.dart';
 import 'package:free_dextop/analytics_service.dart';
@@ -28,7 +30,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'l10n/inline_text.dart';
-import 'experimental_feature_style.dart';
 
 part 'app_info.dart';
 part 'samsung_desktop_settings.dart';

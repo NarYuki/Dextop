@@ -10,30 +10,22 @@ class OverlayApp extends StatelessWidget {
       theme: _theme(Brightness.light),
       darkTheme: _theme(Brightness.dark),
       themeMode: ThemeMode.system,
-      home: OverlayMenu(),
+      builder: (context, child) => DextopExpressive(child: child!),
+      localizationsDelegates: const [
+        AppLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+        dextopMaterialUiLocalizations,
+      ],
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: const OverlayMenu(),
     );
   }
 
-  ThemeData _theme(Brightness brightness) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: Color(0xff6750a4),
-      brightness: brightness,
-      dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
-    );
-    return ThemeData(
-      useMaterial3: true,
-      colorScheme: scheme,
-      scaffoldBackgroundColor: Colors.transparent,
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: Size.fromHeight(54),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-      ),
-    );
-  }
+  ThemeData _theme(Brightness brightness) =>
+      DextopExpressive.buildMuiTheme(brightness).copyWith(
+        scaffoldBackgroundColor: Colors.transparent,
+      );
 }
 
 class OverlayMenu extends StatefulWidget {
@@ -81,6 +73,7 @@ class _OverlayMenuState extends State<OverlayMenu> {
   Widget build(BuildContext context) {
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
       backgroundColor: Colors.black38,
       body: GestureDetector(
@@ -92,8 +85,8 @@ class _OverlayMenuState extends State<OverlayMenu> {
             onTap: () {},
             child: TweenAnimationBuilder<double>(
               tween: Tween(begin: 0, end: 1),
-              duration: Duration(milliseconds: 320),
-              curve: Curves.easeOutCubic,
+              duration: const Duration(milliseconds: 340),
+              curve: Curves.easeOutBack,
               builder: (context, value, child) => Transform.translate(
                 offset: landscape
                     ? Offset((value - 1) * 380, 0)
@@ -101,13 +94,12 @@ class _OverlayMenuState extends State<OverlayMenu> {
                 child: child,
               ),
               child: Container(
-                width: landscape ? 360 : double.infinity,
-                margin: EdgeInsets.all(12),
-                padding: EdgeInsets.fromLTRB(22, 20, 22, 18),
+                width: landscape ? 372 : double.infinity,
+                margin: const EdgeInsets.all(14),
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surfaceContainerHigh,
+                  color: colors.surfaceContainerLow,
                   borderRadius: BorderRadius.circular(30),
-                  boxShadow: [
+                  boxShadow: const [
                     BoxShadow(
                       color: Colors.black38,
                       blurRadius: 32,
@@ -117,107 +109,117 @@ class _OverlayMenuState extends State<OverlayMenu> {
                 ),
                 child: SafeArea(
                   child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(22, 20, 22, 20),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Row(
                           children: [
-                            Icon(Icons.tune_rounded, size: 28),
-                            SizedBox(width: 12),
-                            Text(
-                              currentLocalizations().uiOperationMenu,
-                              style: Theme.of(context).textTheme.headlineSmall,
+                            Container(
+                              width: 40,
+                              height: 40,
+                              decoration: BoxDecoration(
+                                color: colors.primaryContainer,
+                                borderRadius: BorderRadius.circular(14),
+                              ),
+                              child: Icon(
+                                M3EIcons.tune_rounded,
+                                size: 22,
+                                color: colors.onPrimaryContainer,
+                              ),
                             ),
-                            Spacer(),
-                            IconButton(
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Text(
+                                currentLocalizations().uiOperationMenu,
+                                style: Theme.of(context).textTheme.titleLarge,
+                              ),
+                            ),
+                            M3EIconButton(
+                              variant: M3EIconButtonVariant.tonal,
                               onPressed: () => channel.invokeMethod('dismiss'),
-                              icon: Icon(Icons.close_rounded),
+                              icon: const Icon(M3EIcons.close_rounded),
                             ),
                           ],
                         ),
-                        SizedBox(height: 18),
+                        const SizedBox(height: 18),
                         Text(
                           currentLocalizations().uiTrackpad,
-                          style: Theme.of(context).textTheme.titleMedium,
+                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                            color: colors.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        SizedBox(height: 10),
-                        SegmentedButton<bool>(
-                          segments: [
-                            ButtonSegment(
-                              value: false,
-                              icon: Icon(Icons.mouse_rounded),
-                              label: Text(currentLocalizations().uiCursor),
+                        const SizedBox(height: 10),
+                        DextopChoiceGroup<bool>(
+                          choices: [
+                            (
+                              false,
+                              currentLocalizations().uiCursor,
+                              M3EIcons.mouse_rounded,
                             ),
-                            ButtonSegment(
-                              value: true,
-                              icon: Icon(Icons.touch_app_rounded),
-                              label: Text(currentLocalizations().uiTap),
+                            (
+                              true,
+                              currentLocalizations().uiTap,
+                              M3EIcons.touch_app_rounded,
                             ),
                           ],
-                          selected: {direct},
-                          onSelectionChanged: (value) {
-                            setState(() => direct = value.first);
+                          selected: direct,
+                          onSelected: (value) {
+                            setState(() => direct = value);
                             channel.invokeMethod('setTouchMode', {
                               'direct': direct,
                             });
                           },
                         ),
-                        SizedBox(height: 22),
-                        ListTile(
-                          contentPadding: EdgeInsets.symmetric(horizontal: 4),
-                          leading: Icon(Icons.monitor_rounded),
-                          title: Text(currentLocalizations().resolution),
-                          subtitle: Text(
-                            '${width.text} × ${height.text}  ${density.text} dpi',
-                          ),
-                          trailing: Icon(Icons.chevron_right_rounded),
-                          onTap: showResolutionSheet,
-                        ),
-                        SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.tonalIcon(
-                            onPressed: () =>
-                                channel.invokeMethod('exitFullscreen'),
-                            icon: Icon(Icons.fullscreen_exit_rounded),
-                            label: Text(
-                              currentLocalizations().uiCancelFullScreen,
+                        const SizedBox(height: 18),
+                        DextopGroup(
+                          color: colors.surfaceContainer,
+                          children: [
+                            M3EListItem(
+                              leading: const Icon(M3EIcons.monitor_rounded),
+                              headline: currentLocalizations().resolution,
+                              supportingText:
+                                  '${width.text} × ${height.text}  ${density.text} dpi',
+                              trailing: const Icon(M3EIcons.chevron_right_rounded),
+                              onTap: showResolutionSheet,
                             ),
-                          ),
+                          ],
                         ),
-                        SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.tonalIcon(
-                            onPressed: () =>
-                                channel.invokeMethod('orientation'),
-                            icon: Icon(Icons.screen_rotation_rounded),
-                            label: Text(
-                              landscape
-                                  ? currentLocalizations()
-                                        .uiChangeToPortraitOrientation
-                                  : currentLocalizations()
-                                        .uiChangeToHorizontalHold,
-                            ),
+                        const SizedBox(height: 12),
+                        M3EButton.tonal(
+                          size: M3EButtonSize.md,
+                          onPressed: () =>
+                              channel.invokeMethod('exitFullscreen'),
+                          icon: const Icon(M3EIcons.fullscreen_exit_rounded),
+                          label: Text(
+                            currentLocalizations().uiCancelFullScreen,
                           ),
                         ),
-                        SizedBox(height: 10),
-                        SizedBox(
-                          width: double.infinity,
-                          child: FilledButton.icon(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: Theme.of(
-                                context,
-                              ).colorScheme.errorContainer,
-                              foregroundColor: Theme.of(
-                                context,
-                              ).colorScheme.onErrorContainer,
-                            ),
-                            onPressed: () => channel.invokeMethod('stop'),
-                            icon: Icon(Icons.stop_circle_rounded),
-                            label: Text(currentLocalizations().uiEnd),
+                        const SizedBox(height: 10),
+                        M3EButton.tonal(
+                          size: M3EButtonSize.md,
+                          onPressed: () => channel.invokeMethod('orientation'),
+                          icon: const Icon(M3EIcons.screen_rotation_rounded),
+                          label: Text(
+                            landscape
+                                ? currentLocalizations()
+                                      .uiChangeToPortraitOrientation
+                                : currentLocalizations()
+                                      .uiChangeToHorizontalHold,
                           ),
+                        ),
+                        const SizedBox(height: 10),
+                        M3EButton.filled(
+                          size: M3EButtonSize.md,
+                          decoration: dextopButtonColors(
+                            background: colors.errorContainer,
+                            foreground: colors.onErrorContainer,
+                          ),
+                          onPressed: () => channel.invokeMethod('stop'),
+                          icon: const Icon(M3EIcons.stop_circle_rounded),
+                          label: Text(currentLocalizations().uiEnd),
                         ),
                       ],
                     ),
@@ -232,23 +234,15 @@ class _OverlayMenuState extends State<OverlayMenu> {
   }
 
   Widget overlayField(TextEditingController controller, String label) {
-    return TextField(
+    return M3ETextField(
       controller: controller,
-      // Keep the edit buffer intact for Samsung's hardware/IME composing
-      // events.  FilteringTextInputFormatter.digitsOnly can discard those
-      // events, which makes DPI look impossible to edit from the quick menu.
-      keyboardType: TextInputType.numberWithOptions(
+      label: label,
+      variant: M3ETextFieldVariant.outlined,
+      keyboardType: const TextInputType.numberWithOptions(
         decimal: false,
         signed: false,
       ),
       textInputAction: TextInputAction.next,
-      autocorrect: false,
-      enableSuggestions: false,
-      enableInteractiveSelection: true,
-      decoration: InputDecoration(
-        labelText: label,
-        border: OutlineInputBorder(),
-      ),
     );
   }
 
@@ -276,76 +270,77 @@ class _OverlayMenuState extends State<OverlayMenu> {
         currentLocalizations().uiTerminalResolution,
       ),
     ];
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
+    await M3EBottomSheet.show<void>(
+      context,
       showDragHandle: true,
-      builder: (sheetContext) => Padding(
-        padding: EdgeInsets.fromLTRB(
-          20,
-          0,
-          20,
-          MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
-        ),
-        child: SingleChildScrollView(
+      builder: (sheetContext) {
+        final colors = Theme.of(sheetContext).colorScheme;
+        return SingleChildScrollView(
+          padding: EdgeInsets.fromLTRB(
+            20,
+            0,
+            20,
+            MediaQuery.viewInsetsOf(sheetContext).bottom + 24,
+          ),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
                 currentLocalizations().resolution,
-                style: Theme.of(context).textTheme.headlineSmall,
+                style: Theme.of(sheetContext).textTheme.headlineSmall,
               ),
-              SizedBox(height: 12),
-              ...presets.map(
-                (preset) => ListTile(
-                  contentPadding: EdgeInsets.zero,
-                  title: Text(preset.$4),
-                  subtitle: Text(
-                    '${preset.$1} × ${preset.$2}  ${preset.$3} dpi',
-                  ),
-                  onTap: () {
-                    width.text = '${preset.$1}';
-                    height.text = '${preset.$2}';
-                    density.text = '${preset.$3}';
-                    Navigator.pop(sheetContext);
-                    applyResolution();
-                  },
-                ),
+              const SizedBox(height: 12),
+              DextopGroup(
+                color: colors.surfaceContainer,
+                children: [
+                  for (final preset in presets)
+                    M3EListItem(
+                      leading: const Icon(M3EIcons.monitor_rounded),
+                      headline: preset.$4,
+                      supportingText:
+                          '${preset.$1} × ${preset.$2}  ${preset.$3} dpi',
+                      onTap: () {
+                        width.text = '${preset.$1}';
+                        height.text = '${preset.$2}';
+                        density.text = '${preset.$3}';
+                        Navigator.pop(sheetContext);
+                        applyResolution();
+                      },
+                    ),
+                ],
               ),
-              Divider(height: 28),
+              const SizedBox(height: 20),
               Text(
                 currentLocalizations().customAdd,
-                style: Theme.of(context).textTheme.titleLarge,
+                style: Theme.of(sheetContext).textTheme.titleLarge,
               ),
-              SizedBox(height: 14),
+              const SizedBox(height: 14),
               Row(
                 children: [
                   Expanded(
                     child: overlayField(width, currentLocalizations().width),
                   ),
-                  SizedBox(width: 10),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: overlayField(height, currentLocalizations().height),
                   ),
                 ],
               ),
-              SizedBox(height: 10),
+              const SizedBox(height: 12),
               overlayField(density, 'dpi'),
-              SizedBox(height: 14),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton(
-                  onPressed: () {
-                    Navigator.pop(sheetContext);
-                    applyResolution();
-                  },
-                  child: Text(currentLocalizations().customAdd),
-                ),
+              const SizedBox(height: 16),
+              M3EButton.filled(
+                size: M3EButtonSize.md,
+                onPressed: () {
+                  Navigator.pop(sheetContext);
+                  applyResolution();
+                },
+                child: Text(currentLocalizations().customAdd),
               ),
             ],
           ),
-        ),
-      ),
+        );
+      },
     );
   }
 }
