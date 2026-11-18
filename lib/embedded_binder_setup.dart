@@ -1,8 +1,10 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:free_dextop/expressive/dextop_expressive.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
+import 'package:material_ui/material_ui.dart';
 
 /// A dedicated recovery flow for the Play build's embedded Binder.
 /// Pairing codes deliberately remain in Android's notification RemoteInput.
@@ -129,112 +131,143 @@ class _EmbeddedBinderSetupPageState extends State<EmbeddedBinderSetupPage>
     }
   }
 
-  void _message(String text) =>
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(text)));
+  void _message(String text) => M3ESnackbar.show(context, message: text);
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(l.setupEmbeddedTitle)),
-    body: SafeArea(
-      child: ListView(
-        padding: const EdgeInsets.fromLTRB(24, 20, 24, 32),
-        children: [
-          Icon(
-            _connected ? Icons.verified_rounded : Icons.wifi_tethering_rounded,
-            size: 64,
-            color: Theme.of(context).colorScheme.primary,
+  Widget build(BuildContext context) => EnsureDextopExpressive(
+    child: Builder(
+      builder: (context) {
+        final colors = Theme.of(context).colorScheme;
+        return Scaffold(
+          backgroundColor: colors.surface,
+          appBar: M3EAppBar.top(
+            automaticallyImplyLeading: true,
+            titleText: l.setupEmbeddedTitle,
           ),
-          const SizedBox(height: 18),
-          Text(
-            _connected ? l.setupAccessVerified : l.setupEmbeddedTitle,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.headlineSmall,
-          ),
-          const SizedBox(height: 10),
-          Text(
-            _connected
-                ? l.setupEmbeddedConnectedDescription
-                : l.setupEmbeddedDescription,
-            textAlign: TextAlign.center,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-              color: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 24),
-          _StepCard(
-            icon: Icons.notifications_rounded,
-            title: l.setupEmbeddedNotificationPermission,
-            complete: _notificationGranted,
-            active: !_notificationGranted,
-            action: !_notificationGranted
-                ? SizedBox(
-                    width: double.infinity,
-                    child: FilledButton.tonal(
-                      onPressed: _busy ? null : _allowNotifications,
-                      child: Text(l.setupEmbeddedAllowNotifications),
+          body: SafeArea(
+            child: ListView(
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+              children: [
+                Center(
+                  child: DecoratedBox(
+                    decoration: ShapeDecoration(
+                      shape: const CircleBorder(),
+                      color: colors.primaryContainer.withValues(alpha: 0.55),
                     ),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 12),
-          _StepCard(
-            icon: Icons.settings_rounded,
-            title: l.setupEmbeddedOpenWirelessDebugging,
-            complete: _connected,
-            active: _notificationGranted && !_connected,
-            body: _notificationGranted
-                ? l.setupEmbeddedWirelessDebuggingDescription
-                : null,
-            action: _connected || !_notificationGranted
-                ? null
-                : SizedBox(
-                    width: double.infinity,
-                    child: FilledButton(
-                      onPressed: _busy ? null : _openWirelessDebugging,
-                      child: Text(l.setupEmbeddedOpenWirelessDebugging),
+                    child: SizedBox.square(
+                      dimension: 88,
+                      child: Center(
+                        child: Icon(
+                          _connected
+                              ? M3EIcons.verified_rounded
+                              : M3EIcons.wifi_tethering_rounded,
+                          size: 42,
+                          color: colors.primary,
+                        ),
+                      ),
                     ),
                   ),
-          ),
-          const SizedBox(height: 12),
-          _StepCard(
-            icon: _pairingBusy ? Icons.sync_rounded : Icons.password_rounded,
-            // Once connected the search states no longer apply.
-            title: _connected ? l.setupEmbeddedPairingComplete : _pairingTitle,
-            complete: _connected,
-            active: _notificationGranted && !_connected,
-            last: true,
-            body: _connected ? null : _pairingDescription,
-            action: _connected || !_notificationGranted
-                ? null
-                : _pairingState == 'service_not_found' ||
-                      _pairingState == 'failed'
-                ? OutlinedButton.icon(
-                    onPressed: _busy ? null : _retryPairingDiscovery,
-                    icon: const Icon(Icons.refresh_rounded),
-                    label: Text(l.setupEmbeddedRetryPairing),
+                ),
+                const SizedBox(height: 18),
+                Text(
+                  _connected ? l.setupAccessVerified : l.setupEmbeddedTitle,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 10),
+                Text(
+                  _connected
+                      ? l.setupEmbeddedConnectedDescription
+                      : l.setupEmbeddedDescription,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
+                ),
+                const SizedBox(height: 24),
+                _StepCard(
+                  icon: M3EIcons.notifications_rounded,
+                  title: l.setupEmbeddedNotificationPermission,
+                  complete: _notificationGranted,
+                  active: !_notificationGranted,
+                  action: !_notificationGranted
+                      ? M3EButton.tonal(
+                          size: M3EButtonSize.md,
+                          enabled: !_busy,
+                          onPressed: _busy ? null : _allowNotifications,
+                          child: Text(l.setupEmbeddedAllowNotifications),
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 12),
+                _StepCard(
+                  icon: M3EIcons.settings_rounded,
+                  title: l.setupEmbeddedOpenWirelessDebugging,
+                  complete: _connected,
+                  active: _notificationGranted && !_connected,
+                  body: _notificationGranted
+                      ? l.setupEmbeddedWirelessDebuggingDescription
+                      : null,
+                  action: _connected || !_notificationGranted
+                      ? null
+                      : M3EButton.filled(
+                          size: M3EButtonSize.md,
+                          enabled: !_busy,
+                          onPressed: _busy ? null : _openWirelessDebugging,
+                          child: Text(l.setupEmbeddedOpenWirelessDebugging),
+                        ),
+                ),
+                const SizedBox(height: 12),
+                _StepCard(
+                  icon: _pairingBusy
+                      ? M3EIcons.sync_rounded
+                      : M3EIcons.password_rounded,
+                  title: _connected
+                      ? l.setupEmbeddedPairingComplete
+                      : _pairingTitle,
+                  complete: _connected,
+                  active: _notificationGranted && !_connected,
+                  last: true,
+                  body: _connected ? null : _pairingDescription,
+                  action: _connected || !_notificationGranted
+                      ? null
+                      : _pairingState == 'service_not_found' ||
+                            _pairingState == 'failed'
+                      ? M3EButton.outlined(
+                          size: M3EButtonSize.md,
+                          enabled: !_busy,
+                          onPressed: _busy ? null : _retryPairingDiscovery,
+                          icon: const Icon(M3EIcons.refresh_rounded),
+                          label: Text(l.setupEmbeddedRetryPairing),
+                        )
+                      : _pairingBusy
+                      ? const Padding(
+                          padding: EdgeInsets.only(top: 12),
+                          child: M3EProgressIndicator.linearWavy(),
+                        )
+                      : null,
+                ),
+                const SizedBox(height: 28),
+                if (_connected)
+                  M3EButton.filled(
+                    size: M3EButtonSize.md,
+                    onPressed: () => Navigator.of(context).pop(),
+                    icon: const Icon(M3EIcons.check_rounded),
+                    label: Text(l.done),
                   )
-                : _pairingBusy
-                ? const Padding(
-                    padding: EdgeInsets.only(top: 12),
-                    child: LinearProgressIndicator(),
-                  )
-                : null,
-          ),
-          const SizedBox(height: 28),
-          if (_connected)
-            FilledButton.icon(
-              onPressed: () => Navigator.of(context).pop(),
-              icon: const Icon(Icons.check_rounded),
-              label: Text(l.done),
-            )
-          else
-            OutlinedButton.icon(
-              onPressed: _busy ? null : _refresh,
-              icon: const Icon(Icons.refresh_rounded),
-              label: Text(l.setupValidate),
+                else
+                  M3EButton.outlined(
+                    size: M3EButtonSize.md,
+                    enabled: !_busy,
+                    onPressed: _busy ? null : _refresh,
+                    icon: const Icon(M3EIcons.refresh_rounded),
+                    label: Text(l.setupValidate),
+                  ),
+              ],
             ),
-        ],
-      ),
+          ),
+        );
+      },
     ),
   );
 }
@@ -283,8 +316,8 @@ class _StepCard extends StatelessWidget {
                 children: [
                   AnimatedContainer(
                     duration: const Duration(milliseconds: 180),
-                    width: 34,
-                    height: 34,
+                    width: 36,
+                    height: 36,
                     decoration: BoxDecoration(
                       color: complete || active
                           ? color.withValues(alpha: .16)
@@ -292,7 +325,7 @@ class _StepCard extends StatelessWidget {
                       shape: BoxShape.circle,
                     ),
                     child: Icon(
-                      complete ? Icons.check_rounded : icon,
+                      complete ? M3EIcons.check_rounded : icon,
                       size: 19,
                       color: color,
                     ),
@@ -314,20 +347,20 @@ class _StepCard extends StatelessWidget {
                 padding: EdgeInsets.only(bottom: last ? 0 : 18),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 180),
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: active
                         ? colors.primaryContainer.withValues(alpha: .36)
                         : colors.surfaceContainerLow,
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(24),
                     border: Border.all(
                       color: active
-                          ? color.withValues(alpha: .55)
-                          : colors.outlineVariant,
+                          ? color.withValues(alpha: .45)
+                          : colors.outlineVariant.withValues(alpha: 0.4),
                     ),
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       Text(
                         title,

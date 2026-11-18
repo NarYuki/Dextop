@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:free_dextop/expressive/dextop_widgets.dart';
 import 'package:free_dextop/l10n/app_localizations.dart';
 import 'package:free_dextop/linux/landlock_feature.dart';
 import 'package:free_dextop/main.dart';
+import 'package:material_3_expressive/material_3_expressive.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
@@ -77,34 +79,40 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  LinuxFastMode? mode(WidgetTester tester) => tester
-      .widget<DropdownButton<LinuxFastMode>>(
-        find.byType(DropdownButton<LinuxFastMode>),
-      )
-      .value;
+  LinuxFastMode? mode(WidgetTester tester) {
+    final label = tester
+        .widget<DextopDropdownButton>(find.byType(DextopDropdownButton))
+        .label;
+    return switch (label) {
+      'Disabled' => LinuxFastMode.disabled,
+      'Protected + fast' => LinuxFastMode.protected,
+      'Unprotected' => LinuxFastMode.unprotected,
+      _ => null,
+    };
+  }
+
   Future<void> choose(WidgetTester tester, String label) async {
-    await tester.tap(find.byType(DropdownButton<LinuxFastMode>));
+    await tester.tap(find.byType(DextopDropdownButton));
     await tester.pumpAndSettle();
     await tester.tap(find.text(label).last);
     await tester.pumpAndSettle();
   }
 
   testWidgets(
-    'defaults to Disabled in one dropdown, without a separate switch or Linux startup',
+    'defaults to Disabled in one selector, without a separate switch or Linux startup',
     (tester) async {
       await open(tester);
       expect(mode(tester), LinuxFastMode.disabled);
-      expect(find.byType(Switch), findsNothing);
+      expect(find.byType(M3ESwitch), findsNothing);
       expect(applied, isEmpty);
-      expect(
-        tester
-            .widget<DropdownButton<LinuxFastMode>>(
-              find.byType(DropdownButton<LinuxFastMode>),
-            )
-            .items!
-            .length,
-        3,
-      );
+      await tester.tap(find.byType(DextopDropdownButton));
+      await tester.pumpAndSettle();
+      expect(find.byType(DextopChoice<LinuxFastMode>), findsNWidgets(3));
+      // Re-selecting the active choice must still close the popup.
+      await tester.tap(find.text('Disabled').last);
+      await tester.pumpAndSettle();
+      expect(find.byType(DextopChoice<LinuxFastMode>), findsNothing);
+      expect(applied, isEmpty);
     },
   );
   testWidgets('all three choices apply immediately and survive reopening', (
@@ -166,8 +174,8 @@ void main() {
         await open(tester, locale: locale);
         expect(tester.takeException(), isNull);
         expect(
-          tester.getCenter(find.byType(DropdownButton<LinuxFastMode>)).dx,
-          greaterThan(tester.getCenter(find.byIcon(Icons.speed_rounded)).dx),
+          tester.getCenter(find.byType(DextopDropdownButton)).dx,
+          greaterThan(tester.getCenter(find.byIcon(M3EIcons.speed_rounded)).dx),
         );
       },
     );

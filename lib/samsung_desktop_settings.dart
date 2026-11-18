@@ -50,39 +50,37 @@ class _SamsungExperimentalSettingsTileState
   }
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: Column(
-      children: [
-        SwitchListTile(
-          secondary: const Icon(Icons.science_outlined),
-          value: enabled && supported,
-          onChanged: loading || !supported ? null : update,
-          title: Text(currentLocalizations().samsungExperimentalTitle),
-          subtitle: Text(
-            !supported && !loading
-                ? currentLocalizations().samsungUnavailable
-                : currentLocalizations().samsungExperimentalDescription,
-          ),
-        ),
-        if (enabled && supported)
-          ListTile(
-            leading: const Icon(Icons.desktop_windows_outlined),
-            title: Text(currentLocalizations().samsungSettingsTitle),
-            subtitle: Text(currentLocalizations().samsungSettingsSummary),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap:
-                widget.onOpenSettings ??
-                () => Navigator.of(context).push(
-                  MaterialPageRoute<void>(
-                    builder: (_) => SamsungDesktopSettingsPage(
-                      bridge: widget.bridge,
-                      isRunning: widget.isRunning,
-                    ),
+  Widget build(BuildContext context) => DextopGroup(
+    children: [
+      DextopToggle(
+        icon: M3EIcons.science_outlined,
+        value: enabled && supported,
+        enabled: !loading && supported,
+        onChanged: loading || !supported ? null : update,
+        title: currentLocalizations().samsungExperimentalTitle,
+        subtitle: !supported && !loading
+            ? currentLocalizations().samsungUnavailable
+            : currentLocalizations().samsungExperimentalDescription,
+      ),
+      if (enabled && supported)
+        M3EListItem(
+          leading: const Icon(M3EIcons.desktop_windows_outlined),
+          headline: currentLocalizations().samsungSettingsTitle,
+          supportingText: currentLocalizations().samsungSettingsSummary,
+          supportingMaxLines: null,
+          trailing: const Icon(M3EIcons.chevron_right_rounded),
+          onTap:
+              widget.onOpenSettings ??
+              () => Navigator.of(context).push(
+                dextopRoute<void>(
+                  SamsungDesktopSettingsPage(
+                    bridge: widget.bridge,
+                    isRunning: widget.isRunning,
                   ),
                 ),
-          ),
-      ],
-    ),
+              ),
+        ),
+    ],
   );
 }
 
@@ -120,6 +118,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    AppAnalytics.screen('samsung_desktop_settings');
     load();
   }
 
@@ -130,49 +129,30 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
   }
 
   @override
-  void didUpdateWidget(covariant SamsungDesktopSettingsPage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.isRunning != widget.isRunning) refreshRunningState();
-  }
-
-  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) refreshRunningState();
-  }
-
-  Future<void> refreshRunningState() async {
-    final status = await widget.bridge.status().catchError(
-      (_) => <String, dynamic>{},
-    );
-    if (mounted) {
-      setState(() => sessionRunning = status['active'] == true);
-    }
+    if (state == AppLifecycleState.resumed) load();
   }
 
   Future<void> load() async {
-    setState(() {
-      loading = true;
-      error = null;
-    });
+    final prefs = await SharedPreferences.getInstance();
+    var unlocked =
+        prefs.getBool('samsung_sensitive_settings_unlocked') ?? false;
+    if (!unlocked &&
+        ((prefs.getBool('samsung_display_settings_unlocked') ?? false) ||
+            (prefs.getBool('samsung_desktop_settings_unlocked') ?? false))) {
+      unlocked = true;
+      await prefs.setBool('samsung_sensitive_settings_unlocked', true);
+    }
     try {
-      final results = await Future.wait<dynamic>([
-        widget.bridge.samsungDesktopSettings(),
-        SharedPreferences.getInstance(),
-        widget.bridge.status().catchError((_) => <String, dynamic>{}),
-      ]);
-      final state = results[0] as Map<String, dynamic>;
-      final prefs = results[1] as SharedPreferences;
-      final status = results[2] as Map<String, dynamic>;
+      final state = await widget.bridge.samsungDesktopSettings();
       if (!mounted) return;
       setState(() {
         values = Map<String, dynamic>.from(state['values'] as Map? ?? const {});
         backupAvailable = state['backupAvailable'] == true;
-        sessionRunning = status['active'] == true;
-        sensitiveSettingsUnlocked =
-            prefs.getBool('samsung_sensitive_settings_unlocked') ??
-            (prefs.getBool('samsung_display_settings_unlocked') == true ||
-                prefs.getBool('samsung_desktop_settings_unlocked') == true);
+        sessionRunning = widget.isRunning || state['active'] == true;
+        sensitiveSettingsUnlocked = unlocked;
         loading = false;
+        error = null;
       });
     } catch (exception) {
       if (!mounted) return;
@@ -192,9 +172,7 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
       });
     } catch (exception) {
       if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(exception.toString())));
+      M3ESnackbar.show(context, message: exception.toString());
     }
   }
 
@@ -211,44 +189,36 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
         backupAvailable = false;
         sensitiveSettingsUnlocked = false;
       });
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(currentLocalizations().samsungRestoreSuccess)),
+      M3ESnackbar.show(
+        context,
+        message: currentLocalizations().samsungRestoreSuccess,
       );
     } catch (exception) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text(exception.toString())));
+        M3ESnackbar.show(context, message: exception.toString());
       }
     }
   }
 
   Future<void> requestUnlock() async {
-    final accepted = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        icon: const Icon(Icons.warning_amber_rounded),
-        title: Text(currentLocalizations().samsungConfirmTitle),
-        content: Text(currentLocalizations().samsungPermanentWarning),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                FilledButton(
-                  onPressed: () => Navigator.pop(dialogContext, true),
-                  child: Text(currentLocalizations().samsungAcceptEnable),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () => Navigator.pop(dialogContext, false),
-                  child: Text(currentLocalizations().uiCancel),
-                ),
-              ],
+    final accepted = await M3EDialog.show<bool>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) => M3EDialog(
+          icon: const Icon(M3EIcons.warning_amber_rounded),
+          title: currentLocalizations().samsungConfirmTitle,
+          content: Text(currentLocalizations().samsungPermanentWarning),
+          actions: [
+            M3EButton.text(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(currentLocalizations().uiCancel),
             ),
-          ),
-        ],
+            M3EButton.filled(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(currentLocalizations().samsungAcceptEnable),
+            ),
+          ],
+        ),
       ),
     );
     if (accepted != true) return;
@@ -271,12 +241,61 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
       (values[id] as num?)?.toDouble() ?? fallback;
   bool boolean(String id, bool fallback) => integer(id, fallback ? 1 : 0) == 1;
 
-  Widget section(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
-    child: Text(title, style: Theme.of(context).textTheme.titleSmall),
-  );
+  void _showSettingHelp(String id, String title) {
+    M3EDialog.show<void>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) => M3EDialog(
+          icon: const Icon(M3EIcons.info_outline_rounded),
+          title: title,
+          content: Text(settingHelp(id)),
+          actions: [
+            M3EButton.text(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(currentLocalizations().close),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-  Widget choice<T>(
+  Future<void> _selectChoice<T>(
+    String id,
+    String title,
+    T current,
+    Map<T, String> options,
+  ) async {
+    final selected = await M3EDialog.show<T>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            title: title,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
+              children: [
+                for (final entry in options.entries)
+                  DextopChoice<T>(
+                    value: entry.key,
+                    groupValue: current,
+                    allowReselect: true,
+                    title: entry.value,
+                    onChanged: (next) => Navigator.pop(dialogContext, next),
+                  ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+    if (selected != null && selected != current) {
+      await save(id, selected as Object);
+    }
+  }
+
+  M3EListItem choice<T>(
     String id,
     String title,
     T value,
@@ -284,71 +303,71 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
     String? subtitle,
     bool enabled = true,
     VoidCallback? lockedAction,
-  }) => ListTile(
-    enabled: enabled,
-    onTap: enabled ? null : lockedAction,
-    title: settingTitle(id, title),
-    subtitle: subtitle == null ? null : Text(subtitle),
-    trailing: DropdownButton<T>(
-      value: options.containsKey(value) ? value : options.keys.first,
-      items: options.entries
-          .map(
-            (entry) =>
-                DropdownMenuItem<T>(value: entry.key, child: Text(entry.value)),
-          )
-          .toList(),
-      onChanged: enabled
-          ? (next) {
-              if (next != null) save(id, next as Object);
-            }
-          : null,
-    ),
-  );
+  }) {
+    final resolved = options.containsKey(value) ? value : options.keys.first;
+    final onTap = enabled
+        ? () => _selectChoice<T>(id, title, resolved, options)
+        : lockedAction;
+    return M3EListItem(
+      enabled: enabled || lockedAction != null,
+      headline: title,
+      supportingText: subtitle,
+      supportingMaxLines: null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          DextopDropdownButton(
+            label: options[resolved] ?? '',
+            enabled: enabled || lockedAction != null,
+            onPressed: onTap,
+          ),
+          const SizedBox(width: 4),
+          M3EIconButton(
+            variant: M3EIconButtonVariant.standard,
+            tooltip: currentLocalizations().samsungAboutSetting,
+            onPressed: () => _showSettingHelp(id, title),
+            icon: const Icon(M3EIcons.info_outline_rounded, size: 20),
+          ),
+        ],
+      ),
+      onTap: onTap,
+    );
+  }
 
-  Widget toggle(
+  M3EListItem toggle(
     String id,
     String title, {
     String? subtitle,
     bool fallback = false,
     bool enabled = true,
     VoidCallback? lockedAction,
-  }) => ListTile(
-    enabled: enabled,
-    onTap: enabled
-        ? () => save(id, boolean(id, fallback) ? 0 : 1)
-        : lockedAction,
-    title: settingTitle(id, title),
-    subtitle: subtitle == null ? null : Text(subtitle),
-    trailing: Switch(
-      value: boolean(id, fallback),
-      onChanged: enabled ? (value) => save(id, value ? 1 : 0) : null,
-    ),
-  );
-
-  Widget settingTitle(String id, String title) => Row(
-    children: [
-      Expanded(child: Text(title)),
-      IconButton(
-        visualDensity: VisualDensity.compact,
-        tooltip: currentLocalizations().samsungAboutSetting,
-        onPressed: () => showDialog<void>(
-          context: context,
-          builder: (context) => AlertDialog(
-            scrollable: true,
-            title: Text(title),
-            content: Text(settingHelp(id)),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(currentLocalizations().close),
-              ),
-            ],
+  }) {
+    final current = boolean(id, fallback);
+    return M3EListItem(
+      enabled: enabled || lockedAction != null,
+      headline: title,
+      supportingText: subtitle,
+      supportingMaxLines: null,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          M3EIconButton(
+            variant: M3EIconButtonVariant.standard,
+            tooltip: currentLocalizations().samsungAboutSetting,
+            onPressed: () => _showSettingHelp(id, title),
+            icon: const Icon(M3EIcons.info_outline_rounded, size: 20),
           ),
-        ),
-        icon: const Icon(Icons.info_outline_rounded, size: 20),
+          M3ESwitch(
+            value: current,
+            onChanged: enabled ? (value) => save(id, value ? 1 : 0) : null,
+          ),
+        ],
       ),
-    ],
-  );
+      onTap: enabled
+          ? () => save(id, current ? 0 : 1)
+          : lockedAction,
+    );
+  }
 
   String settingHelp(String id) {
     final l = currentLocalizations();
@@ -377,8 +396,13 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final body = loading
-        ? const Center(child: CircularProgressIndicator())
+        ? const Center(
+            child: M3ELoadingIndicator(
+              variant: M3ELoadingIndicatorVariant.contained,
+            ),
+          )
         : error != null
         ? Center(
             child: Padding(
@@ -387,195 +411,221 @@ class _SamsungDesktopSettingsPageState extends State<SamsungDesktopSettingsPage>
             ),
           )
         : ListView(
-            padding: const EdgeInsets.only(bottom: 32),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
             children: [
-              Padding(
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
-                child: FilledButton.tonalIcon(
-                  onPressed: backupAvailable ? restoreEnvironment : null,
-                  icon: const Icon(Icons.restore_rounded),
-                  label: Text(currentLocalizations().samsungRestoreEnvironment),
-                ),
+              M3EButton.tonal(
+                size: M3EButtonSize.md,
+                enabled: backupAvailable,
+                onPressed: backupAvailable ? restoreEnvironment : null,
+                icon: const Icon(M3EIcons.restore_rounded),
+                label: Text(currentLocalizations().samsungRestoreEnvironment),
               ),
-              Padding(
+              const SizedBox(height: 12),
+              M3ECard(
+                variant: M3ECardVariant.filled,
+                borderRadius: BorderRadius.circular(24),
                 padding: const EdgeInsets.all(16),
-                child: Text(currentLocalizations().samsungSettingsIntro),
-              ),
-              if (!sensitiveSettingsUnlocked) unlockBanner(),
-              section(currentLocalizations().display),
-              choice<String>(
-                'resolution',
-                currentLocalizations().samsungResolution,
-                values['resolution']?.toString() ?? 'FHD',
-                const {
-                  'HD': 'HD',
-                  'FHD': 'FHD',
-                  'WQHD': 'WQHD',
-                  'UHD': 'UHD',
-                  'WUXGA': 'WUXGA',
-                  'WQXGA': 'WQXGA',
-                  'UWFHD': 'UWFHD',
-                  'UWQHD': 'UWQHD',
-                },
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              choice<int>(
-                'screenZoom',
-                currentLocalizations().samsungScreenZoom,
-                integer('screenZoom', 160),
-                const {
-                  100: '100',
-                  120: '120',
-                  140: '140',
-                  160: '160',
-                  180: '180',
-                  200: '200',
-                  220: '220',
-                  240: '240',
-                  280: '280',
-                  320: '320',
-                },
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              choice<double>(
-                'fontScale',
-                currentLocalizations().samsungFontScale,
-                decimal('fontScale', 1.0),
-                {
-                  0.85: '85%',
-                  1.0: '100%',
-                  1.15: '115%',
-                  1.3: '130%',
-                  1.5: '150%',
-                },
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              choice<int>(
-                'screenTimeout',
-                currentLocalizations().samsungScreenTimeout,
-                integer('screenTimeout', 600000),
-                {
-                  15000: currentLocalizations().samsungSeconds15,
-                  30000: currentLocalizations().samsungSeconds30,
-                  60000: currentLocalizations().samsungMinute1,
-                  120000: currentLocalizations().samsungMinutes2,
-                  300000: currentLocalizations().samsungMinutes5,
-                  600000: currentLocalizations().samsungMinutes10,
-                  1200000: currentLocalizations().samsungMinutes20,
-                  1800000: currentLocalizations().samsungMinutes30,
-                  3600000: currentLocalizations().samsungHour1,
-                },
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              toggle(
-                'audioOutput',
-                currentLocalizations().samsungAudioOutput,
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              choice<int>(
-                'displayOrientation',
-                currentLocalizations().samsungDisplayOrientation,
-                integer('displayOrientation', 0),
-                const {0: '0°', 1: '90°', 2: '180°', 3: '270°'},
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              choice<int>(
-                'displayArrangement',
-                currentLocalizations().samsungDisplayArrangement,
-                integer('displayArrangement', 2),
-                {
-                  0: currentLocalizations().samsungLeft,
-                  1: currentLocalizations().samsungRight,
-                  2: currentLocalizations().samsungAutomatic,
-                },
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              section(currentLocalizations().samsungSectionInput),
-              if (!inputSettingsHidden)
-                toggle(
-                  'autorunTouchpad',
-                  currentLocalizations().samsungAutorunTouchpad,
+                child: Text(
+                  currentLocalizations().samsungSettingsIntro,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: colors.onSurfaceVariant,
+                  ),
                 ),
-              toggle(
-                'touchpadScrollDirection',
-                currentLocalizations().samsungTouchpadScrollDirection,
               ),
-              if (!inputSettingsHidden)
-                toggle(
-                  'touchKeyboard',
-                  currentLocalizations().samsungTouchKeyboard,
-                ),
-              if (!inputSettingsHidden)
-                toggle(
-                  'keyboardDex',
-                  currentLocalizations().samsungKeyboardDex,
-                ),
-              toggle(
-                'spenInputMode',
-                currentLocalizations().samsungSpenInputMode,
-                fallback: true,
+              if (!sensitiveSettingsUnlocked) ...[
+                const SizedBox(height: 12),
+                unlockBanner(),
+              ],
+              DextopSection(currentLocalizations().display),
+              DextopGroup(
+                children: [
+                  choice<String>(
+                    'resolution',
+                    currentLocalizations().samsungResolution,
+                    values['resolution']?.toString() ?? 'FHD',
+                    const {
+                      'HD': 'HD',
+                      'FHD': 'FHD',
+                      'WQHD': 'WQHD',
+                      'UHD': 'UHD',
+                      'WUXGA': 'WUXGA',
+                      'WQXGA': 'WQXGA',
+                      'UWFHD': 'UWFHD',
+                      'UWQHD': 'UWQHD',
+                    },
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  choice<int>(
+                    'screenZoom',
+                    currentLocalizations().samsungScreenZoom,
+                    integer('screenZoom', 160),
+                    const {
+                      100: '100',
+                      120: '120',
+                      140: '140',
+                      160: '160',
+                      180: '180',
+                      200: '200',
+                      220: '220',
+                      240: '240',
+                      280: '280',
+                      320: '320',
+                    },
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  choice<double>(
+                    'fontScale',
+                    currentLocalizations().samsungFontScale,
+                    decimal('fontScale', 1.0),
+                    {
+                      0.85: '85%',
+                      1.0: '100%',
+                      1.15: '115%',
+                      1.3: '130%',
+                      1.5: '150%',
+                    },
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  choice<int>(
+                    'screenTimeout',
+                    currentLocalizations().samsungScreenTimeout,
+                    integer('screenTimeout', 600000),
+                    {
+                      15000: currentLocalizations().samsungSeconds15,
+                      30000: currentLocalizations().samsungSeconds30,
+                      60000: currentLocalizations().samsungMinute1,
+                      120000: currentLocalizations().samsungMinutes2,
+                      300000: currentLocalizations().samsungMinutes5,
+                      600000: currentLocalizations().samsungMinutes10,
+                      1200000: currentLocalizations().samsungMinutes20,
+                      1800000: currentLocalizations().samsungMinutes30,
+                      3600000: currentLocalizations().samsungHour1,
+                    },
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  toggle(
+                    'audioOutput',
+                    currentLocalizations().samsungAudioOutput,
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  choice<int>(
+                    'displayOrientation',
+                    currentLocalizations().samsungDisplayOrientation,
+                    integer('displayOrientation', 0),
+                    const {0: '0°', 1: '90°', 2: '180°', 3: '270°'},
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  choice<int>(
+                    'displayArrangement',
+                    currentLocalizations().samsungDisplayArrangement,
+                    integer('displayArrangement', 2),
+                    {
+                      0: currentLocalizations().samsungLeft,
+                      1: currentLocalizations().samsungRight,
+                      2: currentLocalizations().samsungAutomatic,
+                    },
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                ],
               ),
-              if (!inputSettingsHidden)
-                choice<int>(
-                  'threeFingerGesture',
-                  currentLocalizations().samsungThreeFingerGesture,
-                  integer('threeFingerGesture', 4),
-                  gestureOptions,
-                ),
-              if (!inputSettingsHidden)
-                choice<int>(
-                  'fourFingerGesture',
-                  currentLocalizations().samsungFourFingerGesture,
-                  integer('fourFingerGesture', 1),
-                  gestureOptions,
-                ),
-              section(currentLocalizations().samsungSectionDesktop),
-              toggle(
-                'autoHideTaskbar',
-                currentLocalizations().samsungAutoHideTaskbar,
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
+              DextopSection(currentLocalizations().samsungSectionInput),
+              DextopGroup(
+                children: [
+                  if (!inputSettingsHidden)
+                    toggle(
+                      'autorunTouchpad',
+                      currentLocalizations().samsungAutorunTouchpad,
+                    ),
+                  toggle(
+                    'touchpadScrollDirection',
+                    currentLocalizations().samsungTouchpadScrollDirection,
+                  ),
+                  if (!inputSettingsHidden)
+                    toggle(
+                      'touchKeyboard',
+                      currentLocalizations().samsungTouchKeyboard,
+                    ),
+                  if (!inputSettingsHidden)
+                    toggle(
+                      'keyboardDex',
+                      currentLocalizations().samsungKeyboardDex,
+                    ),
+                  toggle(
+                    'spenInputMode',
+                    currentLocalizations().samsungSpenInputMode,
+                    fallback: true,
+                  ),
+                  if (!inputSettingsHidden)
+                    choice<int>(
+                      'threeFingerGesture',
+                      currentLocalizations().samsungThreeFingerGesture,
+                      integer('threeFingerGesture', 4),
+                      gestureOptions,
+                    ),
+                  if (!inputSettingsHidden)
+                    choice<int>(
+                      'fourFingerGesture',
+                      currentLocalizations().samsungFourFingerGesture,
+                      integer('fourFingerGesture', 1),
+                      gestureOptions,
+                    ),
+                ],
               ),
-              toggle(
-                'dexCommandArrow',
-                currentLocalizations().samsungDexCommandArrow,
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
-              ),
-              toggle(
-                'mirrorPhoneDisplay',
-                currentLocalizations().samsungMirrorPhoneDisplay,
-                enabled: sensitiveSettingsUnlocked,
-                lockedAction: requestUnlock,
+              DextopSection(currentLocalizations().samsungSectionDesktop),
+              DextopGroup(
+                children: [
+                  toggle(
+                    'autoHideTaskbar',
+                    currentLocalizations().samsungAutoHideTaskbar,
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  toggle(
+                    'dexCommandArrow',
+                    currentLocalizations().samsungDexCommandArrow,
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                  toggle(
+                    'mirrorPhoneDisplay',
+                    currentLocalizations().samsungMirrorPhoneDisplay,
+                    enabled: sensitiveSettingsUnlocked,
+                    lockedAction: requestUnlock,
+                  ),
+                ],
               ),
             ],
           );
     if (widget.embedded) return body;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(currentLocalizations().samsungSettingsTitle),
+      backgroundColor: colors.surface,
+      appBar: M3EAppBar.top(
+        automaticallyImplyLeading: true,
+        titleText: currentLocalizations().samsungSettingsTitle,
         actions: [
-          IconButton(onPressed: load, icon: const Icon(Icons.refresh_rounded)),
+          M3EIconButton(
+            variant: M3EIconButtonVariant.standard,
+            onPressed: load,
+            icon: const Icon(M3EIcons.refresh_rounded),
+          ),
         ],
       ),
       body: body,
     );
   }
 
-  Widget unlockBanner() => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-    child: OutlinedButton.icon(
-      onPressed: requestUnlock,
-      icon: const Icon(Icons.lock_outline_rounded),
-      label: Text(currentLocalizations().samsungReviewEnable),
-    ),
+  Widget unlockBanner() => M3EButton.outlined(
+    size: M3EButtonSize.md,
+    onPressed: requestUnlock,
+    icon: const Icon(M3EIcons.lock_outline_rounded),
+    label: Text(currentLocalizations().samsungReviewEnable),
   );
 
   Map<int, String> get gestureOptions => {
