@@ -1,5 +1,19 @@
 # Changelog
 
+## [2.0.0-beta.3](https://github.com/NarYuki/Dextop/compare/v2.0.0-beta.2...v2.0.0-beta.3) (2026-11-18)
+
+
+### New features
+
+* **linux:** make the unprotected fast mode the default ([3368363](https://github.com/NarYuki/Dextop/commit/33683639e4f36ae0b66cc335df0da9abb8783c04))
+* **linux:** make the unprotected fast mode the default ([5abda62](https://github.com/NarYuki/Dextop/commit/5abda6215974524a0c72be3bc91c5ca9049bffe5))
+
+
+### Fixes
+
+* **linux:** let Steam verify its webhelper connections in fast mode ([689c1e4](https://github.com/NarYuki/Dextop/commit/689c1e4ed387e7dbe57954aa048743fa1d5a03a2))
+* **linux:** let Steam verify its webhelper connections in fast mode ([9116129](https://github.com/NarYuki/Dextop/commit/9116129ea68410e8c374d1f35bbf0f9790068f57))
+
 ## [2.0.0-beta.2](https://github.com/NarYuki/Dextop/compare/v2.0.0-beta.1...v2.0.0-beta.2) (2026-11-18)
 
 

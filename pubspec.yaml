@@ -1,7 +1,7 @@
 name: free_dextop
 description: Turn an Android device into a flexible desktop workspace.
 publish_to: none
-version: 2.0.0-beta.2+43
+version: 2.0.0-beta.3+-beta.2+43
 
 environment:
   sdk: ^3.13.0
