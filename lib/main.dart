@@ -4,6 +4,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/services.dart';
+import 'package:free_dextop/third_party_licenses.dart';
 import 'package:flutter_localizations/flutter_localizations.dart'
     hide GlobalMaterialLocalizations;
 import 'package:material_3_expressive/material_3_expressive.dart';
@@ -47,6 +48,7 @@ part 'plasma_settings.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  registerThirdPartyLicenses();
   // DPI and pointer acceleration were removed from the virtual-mouse
   // implementation. Clear values from older installations before any screen
   // or service can read them, including users who never open Mouse settings.

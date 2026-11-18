@@ -1,0 +1,9 @@
+Dextop is free software under the GNU General Public License version 3.
+The complete corresponding source of this build, including every component
+under third_party/, its local changes and build scripts, is published at
+https://github.com/NarYuki/Dextop
+under the tag of this version (for example v2.0.0-beta.2).
+
+Components distributed as prebuilt files from DroidDeck have their sources at
+the locations named in their notices (Droid-Deck/DroidDeck, Droid-Deck/Drivers-CI
+and Droid-Deck/DroidDeck-Components releases).

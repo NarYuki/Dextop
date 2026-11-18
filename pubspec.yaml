@@ -39,3 +39,35 @@ flutter:
   assets:
     - assets/dextop_icon.png
     - assets/setup_tutorial/
+    - LICENSE
+    - android/app/src/main/assets/terminal/LICENSE
+    - android/app/src/main/assets/terminal/LICENSE-DextopTermMono
+    - android/app/src/main/assets/terminal/LICENSE-SymbolsNerdFont
+    - android/app/src/main/res/raw/swipe_lexicons_notice.txt
+    - third_party/adrenotools/LICENSE
+    - third_party/adrenotools/lib/linkernsbypass/LICENSE
+    - third_party/dd-turnip/LICENSES/GPL-3.0.txt
+    - third_party/dd-turnip/LICENSES/mesa/MIT
+    - third_party/dd-turnip/LICENSES/mesa/license.rst
+    - third_party/dd-turnip/NOTICE
+    - third_party/deck-audio/COPYING
+    - third_party/deck-audio/LIBFFI-LICENSE
+    - third_party/deck-audio/NOTICE.md
+    - third_party/deck-audio/PULSEAUDIO-LICENSE
+    - third_party/deck-direct/NOTICE.md
+    - third_party/deck-gamescope/GAMESCOPE-LICENSE
+    - third_party/deck-gamescope/NOTICE.md
+    - third_party/droiddeck-fastpath/LICENSE
+    - third_party/libepoxy/COPYING
+    - third_party/libffi/LICENSE
+    - third_party/licenses/0BSD-xz-java.txt
+    - third_party/licenses/Apache-2.0.txt
+    - third_party/licenses/MIT-usb-serial-for-android.txt
+    - third_party/licenses/SOURCE.txt
+    - third_party/proot/COPYING
+    - third_party/talloc/COPYING
+    - third_party/virglrenderer/COPYING
+    - third_party/vulkan-headers/LICENSE.md
+    - third_party/wayland-protocols/COPYING
+    - third_party/wayland/COPYING
+    - third_party/zstd/LICENSE
