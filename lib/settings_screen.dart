@@ -107,10 +107,6 @@ extension _SettingsContent on _HomeScreenState {
                         onShowUpdate: _showUpdateDialog,
                         isRunning: active,
                         onExperimentalFeaturesChanged: _loadHomeSelections,
-                        receivePreReleases: receivePreReleases,
-                        onReceivePreReleasesChanged: isPlayDistribution
-                            ? null
-                            : _setReceivePreReleases,
                       ),
                     ),
                   ),
@@ -425,10 +421,6 @@ extension _SettingsContent on _HomeScreenState {
           onOpenDiagnosticLog: () =>
               mutate(() => desktopSettingsSection = 'diagnostics'),
           onExperimentalFeaturesChanged: _loadHomeSelections,
-          receivePreReleases: receivePreReleases,
-          onReceivePreReleasesChanged: isPlayDistribution
-              ? null
-              : _setReceivePreReleases,
         ),
         'samsung' => SamsungDesktopSettingsPage(
           bridge: bridge,
