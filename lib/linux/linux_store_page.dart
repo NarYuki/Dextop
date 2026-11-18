@@ -1,3 +1,4 @@
+import '../expressive/dextop_widgets.dart';
 import '../l10n/inline_text.dart';
 
 import 'dart:async';
@@ -1411,6 +1412,9 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
                 sliver: M3EList.sliver(
                   itemCount: others.length,
+                  outerRadius: dextopGroupOuterRadius,
+                  innerRadius: dextopGroupInnerRadius,
+                  gap: dextopGroupGap,
                   itemBuilder: (context, index) {
                     final update = others[index];
                     final job = store.jobs[update.name] ?? all;
@@ -1566,6 +1570,9 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
       padding: EdgeInsets.fromLTRB(16, top, 16, 32),
       sliver: M3EList.sliver(
         itemCount: apps.length,
+        outerRadius: dextopGroupOuterRadius,
+        innerRadius: dextopGroupInnerRadius,
+        gap: dextopGroupGap,
         onTap: (index) => Navigator.of(context)
             .push(StoreAppRoute(StoreAppPage(store: store, app: apps[index]))),
         itemBuilder: (context, index) =>
@@ -1581,6 +1588,9 @@ class _LinuxStorePageState extends State<LinuxStorePage> {
       padding: padding,
       sliver: M3EList.sliver(
         itemCount: part.length,
+        outerRadius: dextopGroupOuterRadius,
+        innerRadius: dextopGroupInnerRadius,
+        gap: dextopGroupGap,
         onTap: (index) => Navigator.of(context)
             .push(StoreAppRoute(StoreAppPage(store: store, app: part[index]))),
         itemBuilder: (context, index) =>

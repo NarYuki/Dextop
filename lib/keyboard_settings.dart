@@ -137,29 +137,43 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
         .where((item) => !_enabled.contains(item.$1))
         .toList();
     if (available.isEmpty) return;
-    final selected = await showModalBottomSheet<String>(
-      context: context,
+    final selected = await M3EBottomSheet.show<String>(
+      context,
       showDragHandle: true,
-      builder: (context) => SafeArea(
-        child: ListView(
-          shrinkWrap: true,
-          children: [
-            Padding(
-              padding: const EdgeInsets.fromLTRB(24, 8, 24, 12),
-              child: Text(
-                AppLocalizations.of(context).keyboardSwipeAddLanguage,
-                style: Theme.of(context).textTheme.titleLarge,
+      builder: (sheetContext) {
+        final colors = Theme.of(sheetContext).colorScheme;
+        return Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+                child: Text(
+                  AppLocalizations.of(sheetContext).keyboardSwipeAddLanguage,
+                  style: Theme.of(sheetContext).textTheme.titleLarge,
+                ),
               ),
-            ),
-            for (final language in available)
-              ListTile(
-                leading: const Icon(Icons.language_rounded),
-                title: Text(localText(context, language.$2)),
-                onTap: () => Navigator.pop(context, language.$1),
+              Flexible(
+                child: SingleChildScrollView(
+                  child: DextopGroup(
+                    color: colors.surfaceContainer,
+                    children: [
+                      for (final language in available)
+                        M3EListItem(
+                          leading: const Icon(M3EIcons.language_rounded),
+                          headline: localText(sheetContext, language.$2),
+                          onTap: () => Navigator.pop(sheetContext, language.$1),
+                        ),
+                    ],
+                  ),
+                ),
               ),
-          ],
-        ),
-      ),
+            ],
+          ),
+        );
+      },
     );
     if (selected != null) await _save({..._enabled, selected});
   }
@@ -167,146 +181,146 @@ class _KeyboardSettingsPageState extends State<KeyboardSettingsPage> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
+    final enabledLanguages = _languages
+        .where((item) => _enabled.contains(item.$1))
+        .toList();
     final content = ListView(
-      padding: const EdgeInsets.all(20),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: ListTile(
-            leading: const Icon(Icons.palette_outlined),
-            title: Text(l.keyboardThemesTitle),
-            subtitle: Text(l.keyboardThemesDescription),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            enabled: !widget.isRunning,
-            onTap: widget.isRunning
-                ? null
-                : () => Navigator.of(context).push(
-                    MaterialPageRoute<void>(
-                      builder: (_) => const KeyboardThemesPage(),
+        DextopGroup(
+          children: [
+            M3EListItem(
+              leading: const Icon(M3EIcons.palette_outlined),
+              headline: l.keyboardThemesTitle,
+              supportingText: l.keyboardThemesDescription,
+              supportingMaxLines: null,
+              trailing: const Icon(M3EIcons.chevron_right_rounded),
+              enabled: !widget.isRunning,
+              onTap: widget.isRunning
+                  ? null
+                  : () => Navigator.of(context).push(
+                      dextopRoute<void>(const KeyboardThemesPage()),
                     ),
-                  ),
-          ),
+            ),
+          ],
         ),
         const SizedBox(height: 12),
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              SwitchListTile(
-                secondary: const Icon(Icons.keyboard_rounded),
-                value: _blackBerryEnabled,
-                onChanged: widget.isRunning
-                    ? null
-                    : (value) => _setOption(_blackBerryEnabledKey, value),
-                title: Text(l.experimentalBlackBerryMode),
-                subtitle: Text(l.experimentalBlackBerryModeDescription),
-              ),
-              if (!_foldableDevice) ...[
-                const Divider(height: 1),
-                SwitchListTile(
-                  secondary: const Icon(Icons.play_circle_outline_rounded),
-                  value: _blackBerryAutoStart,
-                  onChanged: _blackBerryEnabled && !widget.isRunning
-                      ? (value) => _setOption(_blackBerryAutoStartKey, value)
-                      : null,
-                  title: Text(l.blackBerryAutoStart),
-                  subtitle: Text(l.blackBerryAutoStartDescription),
-                ),
-              ],
-              const Divider(height: 1),
-              SwitchListTile(
-                secondary: const Icon(Icons.vibration_rounded),
-                value: _hapticsEnabled,
-                onChanged: (value) => _setOption(_hapticsEnabledKey, value),
-                title: Text(l.keyboardHaptics),
-                subtitle: Text(l.keyboardHapticsDescription),
-              ),
-              if (_hapticsEnabled) ...[
-                const Divider(height: 1),
-                ListTile(
-                  leading: const Icon(Icons.tune_rounded),
-                  title: Text(l.hapticsStrength),
-                  subtitle: Slider(
-                    value: _hapticsStrength.toDouble(),
-                    min: 1,
-                    max: 100,
-                    divisions: 99,
-                    label: '$_hapticsStrength%',
-                    onChanged: (value) =>
-                        setState(() => _hapticsStrength = value.round()),
-                    onChangeEnd: _setHapticsStrength,
-                  ),
-                  trailing: Text('$_hapticsStrength%'),
-                ),
-              ],
-              const Divider(height: 1),
-              SwitchListTile(
-                secondary: const Icon(Icons.gesture_rounded),
-                value: _swipeEnabled,
-                onChanged: (value) => _setOption(_swipeEnabledKey, value),
-                title: Text(l.keyboardSwipeInput),
-                subtitle: Text(l.keyboardSwipeInputDescription),
-              ),
-              const Divider(height: 1),
-              SwitchListTile(
-                secondary: const Icon(Icons.auto_awesome_rounded),
-                value: _candidatesEnabled,
-                onChanged: _swipeEnabled
-                    ? (value) => _setOption(_candidatesEnabledKey, value)
+        DextopGroup(
+          children: [
+            DextopToggle(
+              icon: M3EIcons.keyboard_rounded,
+              value: _blackBerryEnabled,
+              enabled: !widget.isRunning,
+              onChanged: widget.isRunning
+                  ? null
+                  : (value) => _setOption(_blackBerryEnabledKey, value),
+              title: l.experimentalBlackBerryMode,
+              subtitle: l.experimentalBlackBerryModeDescription,
+            ),
+            if (!_foldableDevice)
+              DextopToggle(
+                icon: M3EIcons.play_circle_outline_rounded,
+                value: _blackBerryAutoStart,
+                enabled: _blackBerryEnabled && !widget.isRunning,
+                onChanged: _blackBerryEnabled && !widget.isRunning
+                    ? (value) => _setOption(_blackBerryAutoStartKey, value)
                     : null,
-                title: Text(l.keyboardSwipeCandidates),
-                subtitle: Text(l.keyboardSwipeCandidatesDescription),
+                title: l.blackBerryAutoStart,
+                subtitle: l.blackBerryAutoStartDescription,
               ),
-            ],
+            DextopToggle(
+              icon: M3EIcons.vibration_rounded,
+              value: _hapticsEnabled,
+              onChanged: (value) => _setOption(_hapticsEnabledKey, value),
+              title: l.keyboardHaptics,
+              subtitle: l.keyboardHapticsDescription,
+            ),
+            DextopToggle(
+              icon: M3EIcons.gesture_rounded,
+              value: _swipeEnabled,
+              onChanged: (value) => _setOption(_swipeEnabledKey, value),
+              title: l.keyboardSwipeInput,
+              subtitle: l.keyboardSwipeInputDescription,
+            ),
+            DextopToggle(
+              icon: M3EIcons.auto_awesome_rounded,
+              value: _candidatesEnabled,
+              enabled: _swipeEnabled,
+              onChanged: _swipeEnabled
+                  ? (value) => _setOption(_candidatesEnabledKey, value)
+                  : null,
+              title: l.keyboardSwipeCandidates,
+              subtitle: l.keyboardSwipeCandidatesDescription,
+            ),
+          ],
+        ),
+        if (_hapticsEnabled) ...[
+          const SizedBox(height: 12),
+          DextopSliderTile(
+            icon: M3EIcons.tune_rounded,
+            title: l.hapticsStrength,
+            valueLabel: '$_hapticsStrength%',
+            value: _hapticsStrength.toDouble(),
+            min: 1,
+            max: 100,
+            divisions: 99,
+            onChanged: (value) =>
+                setState(() => _hapticsStrength = value.round()),
+            onChangeEnd: _setHapticsStrength,
+          ),
+        ],
+        DextopSection(l.keyboardSwipeLanguages),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(8, 0, 8, 10),
+          child: Text(
+            l.keyboardSwipeLanguagesDescription,
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: colors.onSurfaceVariant),
           ),
         ),
-        const SizedBox(height: 24),
-        Text(
-          l.keyboardSwipeLanguages,
-          style: Theme.of(context).textTheme.titleLarge,
-        ),
-        const SizedBox(height: 4),
-        Text(l.keyboardSwipeLanguagesDescription),
-        const SizedBox(height: 12),
-        Card(
-          clipBehavior: Clip.antiAlias,
-          child: Column(
-            children: [
-              for (final language in _languages.where(
-                (item) => _enabled.contains(item.$1),
-              )) ...[
-                ListTile(
-                  leading: const Icon(Icons.language_rounded),
-                  title: Text(localText(context, language.$2)),
-                  trailing: language.$1 == 'en'
-                      ? Text(l.keyboardSwipeDefaultLanguage)
-                      : IconButton(
-                          tooltip: l.deleteResolution,
-                          icon: const Icon(Icons.remove_circle_outline),
-                          onPressed: () =>
-                              _save({..._enabled}..remove(language.$1)),
-                        ),
-                ),
-                if (language !=
-                    _languages.lastWhere((item) => _enabled.contains(item.$1)))
-                  const Divider(height: 1),
-              ],
-            ],
-          ),
+        DextopGroup(
+          children: [
+            for (final language in enabledLanguages)
+              M3EListItem(
+                leading: const Icon(M3EIcons.language_rounded),
+                headline: localText(context, language.$2),
+                trailing: language.$1 == 'en'
+                    ? DextopStatusPill(
+                        label: l.keyboardSwipeDefaultLanguage,
+                        containerColor: colors.secondaryContainer,
+                        contentColor: colors.onSecondaryContainer,
+                      )
+                    : M3EIconButton(
+                        variant: M3EIconButtonVariant.standard,
+                        tooltip: l.deleteResolution,
+                        icon: const Icon(M3EIcons.remove_circle_outline),
+                        onPressed: () =>
+                            _save({..._enabled}..remove(language.$1)),
+                      ),
+              ),
+          ],
         ),
         const SizedBox(height: 12),
-        FilledButton.tonalIcon(
+        M3EButton.tonal(
+          size: M3EButtonSize.md,
+          enabled: _swipeEnabled && _enabled.length < _languages.length,
           onPressed: !_swipeEnabled || _enabled.length == _languages.length
               ? null
               : _addLanguage,
-          icon: const Icon(Icons.add_rounded),
+          icon: const Icon(M3EIcons.add_rounded),
           label: Text(l.keyboardSwipeAddLanguage),
         ),
       ],
     );
     if (widget.embedded) return content;
     return Scaffold(
-      appBar: AppBar(title: Text(l.keyboardSettingsTitle)),
+      backgroundColor: colors.surface,
+      appBar: M3EAppBar.top(
+        automaticallyImplyLeading: true,
+        titleText: l.keyboardSettingsTitle,
+      ),
       body: content,
     );
   }

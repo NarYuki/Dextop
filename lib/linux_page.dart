@@ -919,7 +919,7 @@ class _LinuxPageState extends State<LinuxPage> {
                 Text(l.linuxRequiresPrivilege),
                 const SizedBox(height: 12),
                 M3EButton.tonal(
-                  icon: const Icon(Icons.security_rounded),
+                  icon: const Icon(M3EIcons.security_rounded),
                   onPressed: () async {
                     await Navigator.of(context).push<void>(
                       MaterialPageRoute(
@@ -1092,15 +1092,20 @@ class _LinuxPageState extends State<LinuxPage> {
     child: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        M3EShapeContainer(
-          kind: M3EShapeKind.cookie9Sided,
-          width: 112,
-          height: 112,
-          color: theme.colorScheme.primaryContainer,
-          child: Icon(
-            icon,
-            size: 48,
-            color: theme.colorScheme.onPrimaryContainer,
+        DecoratedBox(
+          decoration: ShapeDecoration(
+            shape: const CircleBorder(),
+            color: theme.colorScheme.primaryContainer,
+          ),
+          child: SizedBox.square(
+            dimension: 96,
+            child: Center(
+              child: Icon(
+                icon,
+                size: 44,
+                color: theme.colorScheme.onPrimaryContainer,
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 20),

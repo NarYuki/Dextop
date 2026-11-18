@@ -55,10 +55,7 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
       await write(prefs!);
       await widget.bridge.plasmaSettingsChanged();
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
-      }
+      if (mounted) M3ESnackbar.show(context, message: '$e');
     }
   }
 
@@ -71,206 +68,293 @@ class _BookSettingsPageState extends State<BookSettingsPage> {
           });
       if (mounted) setState(() => book = values ?? book);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('$e')));
-      }
+      if (mounted) M3ESnackbar.show(context, message: '$e');
     }
   }
 
-  Widget section(String title, List<Widget> children) => Padding(
-    padding: const EdgeInsets.only(bottom: 20),
-    child: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-          child: Text(title, style: Theme.of(context).textTheme.titleSmall),
-        ),
-        Card(
-          margin: EdgeInsets.zero,
-          child: Column(children: children),
-        ),
-      ],
-    ),
+  Widget section(String title, List<Widget> children) => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      DextopSection(title),
+      DextopGroup(children: children),
+    ],
   );
 
   Widget flag(String key, String title, IconData icon, {String? subtitle}) =>
-      SwitchListTile(
-        secondary: Icon(icon),
-        title: Text(title),
-        subtitle: subtitle == null ? null : Text(subtitle),
+      DextopToggle(
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
         value: book[key] == true,
         onChanged: (value) => setBook(key, value),
       );
 
-  @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(localText(context, 'uiDextopBook'))),
-    body: error != null
-        ? Center(
-            child: FilledButton.tonal(
-              onPressed: load,
-              child: Text(t('uiRetry')),
+  Future<void> _pickChoice<T>(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required T current,
+    required List<(T, String)> items,
+    required ValueChanged<T> onSelected,
+  }) async {
+    final selected = await M3EDialog.show<T>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) {
+          final colors = Theme.of(dialogContext).colorScheme;
+          return M3EDialog(
+            icon: Icon(icon),
+            title: title,
+            content: DextopGroup(
+              color: colors.surfaceContainer,
+              children: [
+                for (final item in items)
+                  DextopChoice<T>(
+                    value: item.$1,
+                    groupValue: current,
+                    allowReselect: true,
+                    title: item.$2,
+                    onChanged: (next) => Navigator.pop(dialogContext, next),
+                  ),
+              ],
             ),
-          )
-        : prefs == null
-        ? const Center(child: CircularProgressIndicator())
-        : ListView(
-            padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
-            children: [
-              section(t('uiAppearance'), [
-                ListTile(
-                  leading: const Icon(Icons.dark_mode_outlined),
-                  title: Text(t('uiTheme')),
-                  subtitle: Text(t('uiColoursFollowYourAndroidWallpaper')),
-                  trailing: DropdownButton<String>(
-                    value: theme,
-                    underline: const SizedBox.shrink(),
-                    items: [
-                      for (final item in {
-                        'system': t('uiSystem'),
-                        'light': t('uiLight'),
-                        'dark': t('uiDark'),
-                      }.entries)
-                        DropdownMenuItem(
-                          value: item.key,
-                          child: Text(item.value),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => theme = value);
-                      save((p) => p.setString('plasma_color_scheme', value));
-                    },
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.wallpaper_outlined),
-                  title: Text(t('uiWallpaper')),
-                  trailing: DropdownButton<String>(
-                    value: wallpaper,
-                    underline: const SizedBox.shrink(),
-                    items: [
-                      DropdownMenuItem(
-                        value: 'plasma',
-                        child: Text(localText(context, 'uiBook')),
-                      ),
-                      DropdownMenuItem(
-                        value: 'system',
-                        child: Text(t('uiAndroidWallpaper')),
-                      ),
-                    ],
-                    onChanged: (value) {
-                      if (value == null) return;
-                      setState(() => wallpaper = value);
-                      save((p) => p.setString('plasma_wallpaper', value));
-                    },
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.zoom_in_rounded),
-                  title: Text(t('uiExternalDisplaySize')),
-                  trailing: DropdownButton<int>(
-                    value: (book['display_scale'] as num?)?.toInt() ?? 0,
-                    underline: const SizedBox.shrink(),
-                    items: [
-                      for (final scale in [0, 100, 125, 150, 175, 200])
-                        DropdownMenuItem(
-                          value: scale,
-                          child: Text(scale == 0 ? t('uiAuto') : '$scale%'),
-                        ),
-                    ],
-                    onChanged: (value) {
-                      if (value != null) setBook('display_scale', value);
-                    },
-                  ),
-                ),
-              ]),
-              section(t('uiTaskbarAndStartMenu'), [
-                flag(
-                  'always_show_taskbar',
-                  t('uiAlwaysShowTheTaskbar'),
-                  Icons.dock_outlined,
-                ),
-                flag(
-                  'launcher_expanded',
-                  t('uiExpandTheStartMenu'),
-                  Icons.open_in_full_rounded,
-                  subtitle: t('uiChangesMadeInTheMenuAreAlsoSaved'),
-                ),
-              ]),
-              section(t('uiStatusBar'), [
-                flag(
-                  'live_activity',
-                  t('uiLiveActivity'),
-                  Icons.graphic_eq_rounded,
-                  subtitle: t('uiShowPlayingMedia'),
-                ),
-                flag(
-                  'notification_icons',
-                  t('uiNotificationIcons'),
-                  Icons.notifications_outlined,
-                ),
-                SwitchListTile(
-                  secondary: const Icon(Icons.battery_std_rounded),
-                  title: Text(t('uiBatteryPercentage')),
-                  value: battery,
-                  onChanged: (v) {
-                    setState(() => battery = v);
-                    save((p) => p.setBool('plasma_tray_battery_percent', v));
-                  },
-                ),
-              ]),
-              section(t('uiDesktopAndBehaviour'), [
-                flag(
-                  'desktop_icons',
-                  t('uiShowDesktopIcons'),
-                  Icons.grid_view_rounded,
-                ),
-                ListTile(
-                  leading: const Icon(Icons.view_carousel_outlined),
-                  title: Text(t('uiVirtualDesktops')),
-                  trailing: Text('$desktops'),
-                  subtitle: Slider(
-                    value: desktops.toDouble(),
-                    min: 1,
-                    max: 6,
-                    divisions: 5,
-                    label: '$desktops',
-                    onChanged: (v) => setState(() => desktops = v.round()),
-                    onChangeEnd: (v) => save(
-                      (p) => p.setInt('plasma_virtual_desktops', v.round()),
-                    ),
-                  ),
-                ),
-                ListTile(
-                  leading: const Icon(Icons.animation_outlined),
-                  title: Text(t('uiAnimationSpeed')),
-                  subtitle: Slider(
-                    value: speed,
-                    min: 0,
-                    max: 2,
-                    divisions: 8,
-                    label: speed == 0
-                        ? t('uiOff')
-                        : '${speed.toStringAsFixed(2)}×',
-                    onChanged: (v) => setState(() => speed = v),
-                    onChangeEnd: (v) =>
-                        save((p) => p.setDouble('plasma_animation_speed', v)),
-                  ),
-                ),
-                SwitchListTile(
-                  secondary: const Icon(Icons.north_west_rounded),
-                  title: Text(t('uiHotCorner')),
-                  value: hotCorner,
-                  onChanged: (v) {
-                    setState(() => hotCorner = v);
-                    save((p) => p.setBool('plasma_hot_corner', v));
-                  },
-                ),
-              ]),
-            ],
+          );
+        },
+      ),
+    );
+    if (selected != null && selected != current) {
+      onSelected(selected);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => EnsureDextopExpressive(
+    child: Builder(
+      builder: (context) {
+        final colors = Theme.of(context).colorScheme;
+        final themeOptions = <(String, String)>[
+          ('system', t('uiSystem')),
+          ('light', t('uiLight')),
+          ('dark', t('uiDark')),
+        ];
+        final wallpaperOptions = <(String, String)>[
+          ('plasma', localText(context, 'uiBook')),
+          ('system', t('uiAndroidWallpaper')),
+        ];
+        final scaleValue = (book['display_scale'] as num?)?.toInt() ?? 0;
+        final scaleOptions = <(int, String)>[
+          for (final scale in [0, 100, 125, 150, 175, 200])
+            (scale, scale == 0 ? t('uiAuto') : '$scale%'),
+        ];
+        return Scaffold(
+          backgroundColor: colors.surface,
+          appBar: M3EAppBar.top(
+            automaticallyImplyLeading: true,
+            titleText: localText(context, 'uiDextopBook'),
           ),
+          body: error != null
+              ? Center(
+                  child: M3EButton.tonal(
+                    onPressed: load,
+                    child: Text(t('uiRetry')),
+                  ),
+                )
+              : prefs == null
+              ? const Center(
+                  child: M3ELoadingIndicator(
+                    variant: M3ELoadingIndicatorVariant.contained,
+                  ),
+                )
+              : ListView(
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                  children: [
+                    section(t('uiAppearance'), [
+                      M3EListItem(
+                        leading: const Icon(M3EIcons.dark_mode_outlined),
+                        headline: t('uiTheme'),
+                        supportingText: t('uiColoursFollowYourAndroidWallpaper'),
+                        supportingMaxLines: null,
+                        trailing: DextopDropdownButton(
+                          label: themeOptions
+                              .firstWhere(
+                                (e) => e.$1 == theme,
+                                orElse: () => themeOptions.last,
+                              )
+                              .$2,
+                          onPressed: () => _pickChoice<String>(
+                            context,
+                            title: t('uiTheme'),
+                            icon: M3EIcons.dark_mode_outlined,
+                            current: theme,
+                            items: themeOptions,
+                            onSelected: (value) {
+                              setState(() => theme = value);
+                              save(
+                                (p) => p.setString('plasma_color_scheme', value),
+                              );
+                            },
+                          ),
+                        ),
+                        onTap: () => _pickChoice<String>(
+                          context,
+                          title: t('uiTheme'),
+                          icon: M3EIcons.dark_mode_outlined,
+                          current: theme,
+                          items: themeOptions,
+                          onSelected: (value) {
+                            setState(() => theme = value);
+                            save(
+                              (p) => p.setString('plasma_color_scheme', value),
+                            );
+                          },
+                        ),
+                      ),
+                      M3EListItem(
+                        leading: const Icon(M3EIcons.wallpaper_outlined),
+                        headline: t('uiWallpaper'),
+                        trailing: DextopDropdownButton(
+                          label: wallpaperOptions
+                              .firstWhere(
+                                (e) => e.$1 == wallpaper,
+                                orElse: () => wallpaperOptions.first,
+                              )
+                              .$2,
+                          onPressed: () => _pickChoice<String>(
+                            context,
+                            title: t('uiWallpaper'),
+                            icon: M3EIcons.wallpaper_outlined,
+                            current: wallpaper,
+                            items: wallpaperOptions,
+                            onSelected: (value) {
+                              setState(() => wallpaper = value);
+                              save((p) => p.setString('plasma_wallpaper', value));
+                            },
+                          ),
+                        ),
+                        onTap: () => _pickChoice<String>(
+                          context,
+                          title: t('uiWallpaper'),
+                          icon: M3EIcons.wallpaper_outlined,
+                          current: wallpaper,
+                          items: wallpaperOptions,
+                          onSelected: (value) {
+                            setState(() => wallpaper = value);
+                            save((p) => p.setString('plasma_wallpaper', value));
+                          },
+                        ),
+                      ),
+                      M3EListItem(
+                        leading: const Icon(M3EIcons.zoom_in_rounded),
+                        headline: t('uiExternalDisplaySize'),
+                        trailing: DextopDropdownButton(
+                          label: scaleValue == 0 ? t('uiAuto') : '$scaleValue%',
+                          onPressed: () => _pickChoice<int>(
+                            context,
+                            title: t('uiExternalDisplaySize'),
+                            icon: M3EIcons.zoom_in_rounded,
+                            current: scaleValue,
+                            items: scaleOptions,
+                            onSelected: (value) =>
+                                setBook('display_scale', value),
+                          ),
+                        ),
+                        onTap: () => _pickChoice<int>(
+                          context,
+                          title: t('uiExternalDisplaySize'),
+                          icon: M3EIcons.zoom_in_rounded,
+                          current: scaleValue,
+                          items: scaleOptions,
+                          onSelected: (value) =>
+                              setBook('display_scale', value),
+                        ),
+                      ),
+                    ]),
+                    section(t('uiTaskbarAndStartMenu'), [
+                      flag(
+                        'always_show_taskbar',
+                        t('uiAlwaysShowTheTaskbar'),
+                        M3EIcons.dock_outlined,
+                      ),
+                      flag(
+                        'launcher_expanded',
+                        t('uiExpandTheStartMenu'),
+                        M3EIcons.open_in_full_rounded,
+                        subtitle: t('uiChangesMadeInTheMenuAreAlsoSaved'),
+                      ),
+                    ]),
+                    section(t('uiStatusBar'), [
+                      flag(
+                        'live_activity',
+                        t('uiLiveActivity'),
+                        M3EIcons.graphic_eq_rounded,
+                        subtitle: t('uiShowPlayingMedia'),
+                      ),
+                      flag(
+                        'notification_icons',
+                        t('uiNotificationIcons'),
+                        M3EIcons.notifications_outlined,
+                      ),
+                      DextopToggle(
+                        icon: M3EIcons.battery_std_rounded,
+                        title: t('uiBatteryPercentage'),
+                        value: battery,
+                        onChanged: (v) {
+                          setState(() => battery = v);
+                          save(
+                            (p) => p.setBool('plasma_tray_battery_percent', v),
+                          );
+                        },
+                      ),
+                    ]),
+                    section(t('uiDesktopAndBehaviour'), [
+                      flag(
+                        'desktop_icons',
+                        t('uiShowDesktopIcons'),
+                        M3EIcons.grid_view_rounded,
+                      ),
+                      DextopToggle(
+                        icon: M3EIcons.north_west_rounded,
+                        title: t('uiHotCorner'),
+                        value: hotCorner,
+                        onChanged: (v) {
+                          setState(() => hotCorner = v);
+                          save((p) => p.setBool('plasma_hot_corner', v));
+                        },
+                      ),
+                    ]),
+                    const SizedBox(height: 12),
+                    DextopSliderTile(
+                      icon: M3EIcons.view_carousel_outlined,
+                      title: t('uiVirtualDesktops'),
+                      valueLabel: '$desktops',
+                      value: desktops.toDouble(),
+                      min: 1,
+                      max: 6,
+                      divisions: 5,
+                      onChanged: (v) => setState(() => desktops = v.round()),
+                      onChangeEnd: (v) => save(
+                        (p) => p.setInt('plasma_virtual_desktops', v.round()),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    DextopSliderTile(
+                      icon: M3EIcons.animation_outlined,
+                      title: t('uiAnimationSpeed'),
+                      valueLabel: speed == 0
+                          ? t('uiOff')
+                          : '${speed.toStringAsFixed(2)}×',
+                      value: speed,
+                      min: 0,
+                      max: 2,
+                      divisions: 8,
+                      onChanged: (v) => setState(() => speed = v),
+                      onChangeEnd: (v) =>
+                          save((p) => p.setDouble('plasma_animation_speed', v)),
+                    ),
+                  ],
+                ),
+        );
+      },
+    ),
   );
 }

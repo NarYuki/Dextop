@@ -195,25 +195,29 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _showCreateDialog() async {
     final controller = TextEditingController(text: 'Custom theme');
-    final name = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(_l10n.keyboardThemesNew),
-        content: TextField(
-          controller: controller,
-          autofocus: true,
-          decoration: InputDecoration(labelText: _l10n.keyboardThemesName),
+    final name = await M3EDialog.show<String>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) => M3EDialog(
+          icon: const Icon(M3EIcons.palette_outlined),
+          title: _l10n.keyboardThemesNew,
+          content: M3ETextField(
+            controller: controller,
+            autofocus: true,
+            variant: M3ETextFieldVariant.outlined,
+            label: _l10n.keyboardThemesName,
+          ),
+          actions: [
+            M3EButton.text(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(currentLocalizations().uiCancel),
+            ),
+            M3EButton.filled(
+              onPressed: () => Navigator.pop(dialogContext, controller.text),
+              child: Text(_l10n.keyboardThemesCreate),
+            ),
+          ],
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: Text(currentLocalizations().uiCancel),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(dialogContext, controller.text),
-            child: Text(_l10n.keyboardThemesCreate),
-          ),
-        ],
       ),
     );
     if (name != null) {
@@ -224,27 +228,27 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _showDeleteDialog(Map<String, dynamic> theme) async {
     if (_builtIns.any((item) => item['id'] == theme['id'])) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesBuiltIn)));
+      M3ESnackbar.show(context, message: _l10n.keyboardThemesBuiltIn);
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        alignment: Alignment.center,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        title: Text(_l10n.keyboardThemesDeleteTitle),
-        content: Text(_l10n.keyboardThemesDeleteBody(theme['name'] as String)),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: Text(currentLocalizations().uiCancel),
-          ),
-          FilledButton.tonal(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(currentLocalizations().uiDelete),
-          ),
-        ],
+    final confirmed = await M3EDialog.show<bool>(
+      context,
+      dialog: Builder(
+        builder: (dialogContext) => M3EDialog(
+          icon: const Icon(M3EIcons.delete_outline_rounded),
+          title: _l10n.keyboardThemesDeleteTitle,
+          content: Text(_l10n.keyboardThemesDeleteBody(theme['name'] as String)),
+          actions: [
+            M3EButton.text(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: Text(currentLocalizations().uiCancel),
+            ),
+            M3EButton.tonal(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(currentLocalizations().uiDelete),
+            ),
+          ],
+        ),
       ),
     );
     if (confirmed != true) return;
@@ -261,9 +265,7 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
             .invokeMethod<bool>('previewLaptopOverlay', {'themeId': themeId}) ??
         false;
     if (!shown && mounted) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text(_l10n.keyboardThemesStartFirst)));
+      M3ESnackbar.show(context, message: _l10n.keyboardThemesStartFirst);
     }
   }
 
@@ -397,24 +399,33 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: Text(_l10n.keyboardThemesTitle),
+      backgroundColor: colors.surface,
+      appBar: M3EAppBar.top(
+        automaticallyImplyLeading: true,
+        titleText: _l10n.keyboardThemesTitle,
         actions: [
-          IconButton(
+          M3EIconButton(
+            variant: M3EIconButtonVariant.standard,
             onPressed: _showCreateDialog,
-            icon: const Icon(Icons.add),
+            icon: const Icon(M3EIcons.add_rounded),
             tooltip: _l10n.keyboardThemesAdd,
           ),
-          IconButton(
+          M3EIconButton(
+            variant: M3EIconButtonVariant.standard,
             onPressed: _busy ? null : _import,
-            icon: const Icon(Icons.file_open_outlined),
+            icon: const Icon(M3EIcons.file_open_outlined),
             tooltip: currentLocalizations().uiImport,
           ),
         ],
       ),
       body: _themes.isEmpty
-          ? const Center(child: CircularProgressIndicator())
+          ? const Center(
+              child: M3ELoadingIndicator(
+                variant: M3ELoadingIndicatorVariant.contained,
+              ),
+            )
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
@@ -435,59 +446,59 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
                   itemCount: _themes.length,
                   itemBuilder: (context, index) {
                     final theme = _themes[index];
-                    return SizedBox(
-                      child: Card(
-                        clipBehavior: Clip.antiAlias,
-                        child: InkWell(
-                          onTap: () => _select(theme['id'] as String),
-                          onLongPress: () => _showDeleteDialog(theme),
-                          child: Padding(
-                            padding: const EdgeInsets.all(12),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _preview(
-                                    theme,
-                                    compact: true,
-                                    includeTrackpad: false,
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  theme['name'] as String,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                                Row(
-                                  children: [
-                                    const Expanded(child: SizedBox()),
-                                    IconButton(
-                                      icon: const Icon(Icons.preview_outlined),
-                                      tooltip: _l10n.keyboardThemesPreview,
-                                      onPressed: () => _showRealLaptopPreview(
-                                        theme['id'] as String,
-                                      ),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.edit_outlined),
-                                      tooltip: _l10n.keyboardThemesEditTip,
-                                      onPressed: () => _showEditDialog(theme),
-                                    ),
-                                    Radio<String>(
-                                      value: theme['id'] as String,
-                                      // ignore: deprecated_member_use
-                                      groupValue: _selected,
-                                      // ignore: deprecated_member_use
-                                      onChanged: (_) =>
-                                          _select(theme['id'] as String),
-                                    ),
-                                  ],
-                                ),
-                              ],
+                    final isSelected = _selected == theme['id'];
+                    return M3ECard(
+                      variant: M3ECardVariant.elevated,
+                      color: isSelected
+                          ? colors.secondaryContainer.withValues(alpha: 0.5)
+                          : colors.surfaceContainerLow,
+                      borderRadius: BorderRadius.circular(24),
+                      padding: const EdgeInsets.all(12),
+                      onPressed: () => _select(theme['id'] as String),
+                      onLongPress: () => _showDeleteDialog(theme),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _preview(
+                              theme,
+                              compact: true,
+                              includeTrackpad: false,
                             ),
                           ),
-                        ),
+                          const SizedBox(height: 8),
+                          Text(
+                            theme['name'] as String,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelLarge,
+                          ),
+                          Row(
+                            children: [
+                              const Expanded(child: SizedBox()),
+                              M3EIconButton(
+                                variant: M3EIconButtonVariant.standard,
+                                icon: const Icon(M3EIcons.preview_outlined),
+                                tooltip: _l10n.keyboardThemesPreview,
+                                onPressed: () => _showRealLaptopPreview(
+                                  theme['id'] as String,
+                                ),
+                              ),
+                              M3EIconButton(
+                                variant: M3EIconButtonVariant.standard,
+                                icon: const Icon(M3EIcons.edit_outlined),
+                                tooltip: _l10n.keyboardThemesEditTip,
+                                onPressed: () => _showEditDialog(theme),
+                              ),
+                              M3ERadio<String>(
+                                value: theme['id'] as String,
+                                groupValue: _selected,
+                                onChanged: (_) =>
+                                    _select(theme['id'] as String),
+                              ),
+                            ],
+                          ),
+                        ],
                       ),
                     );
                   },
@@ -500,8 +511,8 @@ class _KeyboardThemesPageState extends State<KeyboardThemesPage> {
 
   Future<void> _showEditDialog(Map<String, dynamic> theme) async {
     await Navigator.of(context).push<void>(
-      MaterialPageRoute(
-        builder: (_) => KeyboardThemeEditorPage(
+      dextopRoute<void>(
+        KeyboardThemeEditorPage(
           theme: theme,
           color: _color,
           colorLabel: _colorLabel,
@@ -680,18 +691,21 @@ class _KeyboardThemeEditorPageState extends State<KeyboardThemeEditorPage> {
   @override
   Widget build(BuildContext context) {
     final theme = widget.theme;
+    final colors = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(
-        title: Text('${l.keyboardThemesEdit} ${theme['name']}'),
+      backgroundColor: colors.surface,
+      appBar: M3EAppBar.top(
+        automaticallyImplyLeading: true,
+        titleText: '${l.keyboardThemesEdit} ${theme['name']}',
         actions: [
-          TextButton(
+          M3EButton.text(
             onPressed: () => Navigator.pop(context),
             child: Text(l.keyboardThemesDone),
           ),
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
         children: [
           Wrap(
             spacing: 8,
@@ -704,8 +718,10 @@ class _KeyboardThemeEditorPageState extends State<KeyboardThemeEditorPage> {
                 'text',
                 'trackpad',
               ])
-                ActionChip(
-                  label: Text(widget.colorLabel(key)),
+                M3EChip(
+                  type: M3EChipType.assist,
+                  elevated: true,
+                  label: widget.colorLabel(key),
                   avatar: CircleAvatar(
                     backgroundColor: widget.color(theme, key),
                   ),
@@ -716,39 +732,54 @@ class _KeyboardThemeEditorPageState extends State<KeyboardThemeEditorPage> {
                 ),
             ],
           ),
-          _editorSlider(l.keyboardThemesOpacity, 'opacity', .2, 1),
-          _editorSlider(l.keyboardThemesKeyOpacity, 'keyOpacity', .1, 1),
-          _editorSlider(l.keyboardThemesBlur, 'blur', 0, 30),
-          _editorSlider(l.keyboardThemesRadius, 'radius', 0, 28),
-          SwitchListTile.adaptive(
-            contentPadding: EdgeInsets.zero,
-            title: Text(l.keyboardThemesShowTrackpadLabel),
-            value: theme['showTrackpadLabel'] != false,
-            onChanged: (visible) {
-              setState(() => theme['showTrackpadLabel'] = visible);
-              widget.save();
-            },
+          const SizedBox(height: 16),
+          DextopGroup(
+            children: [
+              _editorSlider(l.keyboardThemesOpacity, 'opacity', .2, 1),
+              _editorSlider(l.keyboardThemesKeyOpacity, 'keyOpacity', .1, 1),
+              _editorSlider(l.keyboardThemesBlur, 'blur', 0, 30),
+              _editorSlider(l.keyboardThemesRadius, 'radius', 0, 28),
+              DextopToggle(
+                title: l.keyboardThemesShowTrackpadLabel,
+                value: theme['showTrackpadLabel'] != false,
+                onChanged: (visible) {
+                  setState(() => theme['showTrackpadLabel'] = visible);
+                  widget.save();
+                },
+              ),
+            ],
           ),
-          OutlinedButton.icon(
+          const SizedBox(height: 14),
+          M3EButton.tonal(
+            size: M3EButtonSize.md,
             onPressed: () async {
               await widget.pickImage(theme);
               if (mounted) setState(() {});
             },
-            icon: const Icon(Icons.image_outlined),
+            icon: const Icon(M3EIcons.image_outlined),
             label: Text(l.keyboardThemesImage),
           ),
-          OutlinedButton.icon(
+          const SizedBox(height: 10),
+          M3EButton.outlined(
+            size: M3EButtonSize.md,
             onPressed: () => widget.showDemo(theme['id'] as String),
-            icon: const Icon(Icons.preview_outlined),
+            icon: const Icon(M3EIcons.preview_outlined),
             label: Text(l.keyboardThemesPreview),
           ),
-          OutlinedButton.icon(
+          const SizedBox(height: 10),
+          M3EButton.outlined(
+            size: M3EButtonSize.md,
             onPressed: () => widget.exportTheme(theme),
-            icon: const Icon(Icons.archive_outlined),
+            icon: const Icon(M3EIcons.archive_outlined),
             label: Text(l.keyboardThemesExport),
           ),
           const SizedBox(height: 24),
-          SizedBox(height: 220, child: widget.preview(theme)),
+          M3ECard(
+            variant: M3ECardVariant.filled,
+            borderRadius: BorderRadius.circular(26),
+            padding: const EdgeInsets.all(14),
+            child: SizedBox(height: 220, child: widget.preview(theme)),
+          ),
         ],
       ),
     );
@@ -761,22 +792,22 @@ class _KeyboardThemeEditorPageState extends State<KeyboardThemeEditorPage> {
                 (theme['opacity'] as num?)?.toDouble() ??
                 1.0)
             .clamp(min, max);
-    return Row(
-      children: [
-        SizedBox(width: 120, child: Text(label)),
-        Expanded(
-          child: Slider(
-            value: value,
-            min: min,
-            max: max,
-            label: label,
-            onChanged: (next) {
-              setState(() => theme[key] = next);
-              widget.save();
-            },
-          ),
+    return M3EListItem(
+      headline: label,
+      supportingText: value.toStringAsFixed(2),
+      trailing: SizedBox(
+        width: 180,
+        child: M3ESlider(
+          value: value,
+          min: min,
+          max: max,
+          label: label,
+          onChanged: (next) {
+            setState(() => theme[key] = next);
+            widget.save();
+          },
         ),
-      ],
+      ),
     );
   }
 }

@@ -41,44 +41,46 @@ class AppInfoPage extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
+    final colors = Theme.of(context).colorScheme;
     final content = ListView(
-      padding: EdgeInsets.all(16),
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
       children: [
-        Card(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.all(Radius.circular(24)),
-                  child: Image(
-                    image: AssetImage('assets/dextop_icon.png'),
-                    width: 96,
-                    height: 96,
-                  ),
+        M3ECard(
+          variant: M3ECardVariant.filled,
+          borderRadius: BorderRadius.circular(26),
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            children: [
+              ClipRRect(
+                borderRadius: const BorderRadius.all(Radius.circular(24)),
+                child: const Image(
+                  image: AssetImage('assets/dextop_icon.png'),
+                  width: 96,
+                  height: 96,
                 ),
-                SizedBox(height: 16),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                currentLocalizations().appName,
+                style: Theme.of(context).textTheme.headlineMedium,
+              ),
+              const SizedBox(height: 6),
+              if (updateAvailable)
+                M3EButton.tonal(
+                  onPressed: onShowUpdate,
+                  icon: const Icon(M3EIcons.system_update_alt_rounded),
+                  label: Text(l.updateAvailable),
+                )
+              else
                 Text(
-                  currentLocalizations().appName,
-                  style: Theme.of(context).textTheme.headlineMedium,
+                  appVersion.isEmpty ? '—' : appVersion,
+                  style: Theme.of(context).textTheme.bodyMedium
+                      ?.copyWith(color: colors.onSurfaceVariant),
                 ),
-                SizedBox(height: 4),
-                if (updateAvailable)
-                  TextButton.icon(
-                    onPressed: onShowUpdate,
-                    icon: Icon(Icons.system_update_alt_rounded),
-                    label: Text(l.updateAvailable),
-                  )
-                else
-                  Text(
-                    appVersion.isEmpty ? '—' : appVersion,
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-              ],
-            ),
+            ],
           ),
         ),
-        SizedBox(height: 12),
+        const SizedBox(height: 14),
         FutureBuilder<Map<String, dynamic>>(
           future: bridge.status(),
           builder: (context, snapshot) {
@@ -88,79 +90,83 @@ class AppInfoPage extends StatelessWidget {
             final binderAlive = info?['shizukuBinderAlive'] == true;
             final granted = info?['shizukuGranted'] == true;
             final notifications = info?['embeddedNotificationGranted'] == true;
-            return Card(
+            return M3ECard(
+              variant: M3ECardVariant.filled,
+              borderRadius: BorderRadius.circular(26),
+              padding: const EdgeInsets.symmetric(vertical: 6),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  ListTile(
+                  M3EListItem(
                     leading: snapshot.connectionState == ConnectionState.waiting
                         ? const SizedBox.square(
                             dimension: 24,
-                            child: CircularProgressIndicator(strokeWidth: 2),
+                            child: M3ELoadingIndicator(size: 24),
                           )
                         : Icon(
                             included
-                                ? Icons.memory_rounded
-                                : Icons.memory_outlined,
+                                ? M3EIcons.memory_rounded
+                                : M3EIcons.memory_outlined,
                           ),
-                    title: Text(l.appInfoEmbeddedBinder),
-                    subtitle: Text(
-                      included
-                          ? l.appInfoEmbeddedBinderIncluded
-                          : l.appInfoEmbeddedBinderNotIncluded,
-                    ),
+                    headline: l.appInfoEmbeddedBinder,
+                    supportingText: included
+                        ? l.appInfoEmbeddedBinderIncluded
+                        : l.appInfoEmbeddedBinderNotIncluded,
                   ),
                   if (included && info != null) ...[
-                    const Divider(height: 1),
+                    const M3EDivider(inset: M3EDividerInset.inset),
+                    const SizedBox(height: 4),
                     _AppInfoStatusRow(
                       label: l.appInfoEmbeddedBinderProvider,
                       value: selected
                           ? l.appInfoEmbeddedBinderSelected
                           : l.appInfoEmbeddedBinderStandby,
                       active: selected,
-                    ),
+                    ).buildRow(context),
                     _AppInfoStatusRow(
                       label: l.appInfoEmbeddedBinderConnection,
                       value: binderAlive
                           ? l.appInfoStatusConnected
                           : l.appInfoStatusDisconnected,
                       active: binderAlive,
-                    ),
+                    ).buildRow(context),
                     _AppInfoStatusRow(
                       label: l.appInfoEmbeddedBinderPermission,
                       value: granted
                           ? l.appInfoStatusGranted
                           : l.appInfoStatusNotGranted,
                       active: granted,
-                    ),
+                    ).buildRow(context),
                     _AppInfoStatusRow(
                       label: l.appInfoEmbeddedBinderNotifications,
                       value: notifications
                           ? l.appInfoStatusGranted
                           : l.appInfoStatusNotGranted,
                       active: notifications,
-                    ),
+                    ).buildRow(context),
+                    const SizedBox(height: 4),
                   ],
                 ],
               ),
             );
           },
         ),
-        SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: checking
-                ? SizedBox.square(
-                    dimension: 24,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                : Icon(
-                    updateAvailable
-                        ? Icons.system_update_alt_rounded
-                        : Icons.update_rounded,
-                  ),
-            title: Text(l.checkForUpdates),
-            subtitle: Text(
-              checking
+        const SizedBox(height: 12),
+        DextopGroup(
+          children: [
+            M3EListItem(
+              leading: checking
+                  ? const SizedBox.square(
+                      dimension: 24,
+                      child: M3ELoadingIndicator(size: 24),
+                    )
+                  : Icon(
+                      updateAvailable
+                          ? M3EIcons.system_update_alt_rounded
+                          : M3EIcons.update_rounded,
+                    ),
+              headline: l.checkForUpdates,
+              supportingText: checking
                   ? l.checkingForUpdates
                   : updateAvailable
                   ? l.updateAvailable
@@ -169,94 +175,92 @@ class AppInfoPage extends StatelessWidget {
                   : checkSucceeded
                   ? l.upToDate
                   : l.updateNotChecked,
+              trailing: const Icon(M3EIcons.refresh_rounded),
+              enabled: !checking,
+              onTap: checking ? null : onCheck,
             ),
-            trailing: Icon(Icons.refresh_rounded),
-            onTap: checking ? null : onCheck,
-          ),
-        ),
-        // Beta builds always follow pre-releases, so the switch is only
-        // offered on stable GitHub builds.
-        if (onReceivePreReleasesChanged != null &&
-            !(appVersion.isNotEmpty && isPreRelease(appVersion))) ...[
-          SizedBox(height: 12),
-          Card(
-            child: _PreReleaseSwitch(
-              initial: receivePreReleases,
-              onChanged: onReceivePreReleasesChanged!,
-            ),
-          ),
-        ],
-        SizedBox(height: 12),
-        Card(
-          child: Column(
-            children: [
-              ListTile(
-                leading: Icon(Icons.code_rounded),
-                title: Text(currentLocalizations().uiGitHub),
-                subtitle: Text(currentLocalizations().uiGitHubRepository),
-                trailing: Icon(Icons.open_in_new_rounded),
-                onTap: () =>
-                    bridge.openUrl('https://github.com/NarYuki/Dextop'),
+            // Beta builds always follow pre-releases, so the switch is only
+            // offered on stable GitHub builds.
+            if (onReceivePreReleasesChanged != null &&
+                !(appVersion.isNotEmpty && isPreRelease(appVersion)))
+              _PreReleaseSwitch(
+                initial: receivePreReleases,
+                onChanged: onReceivePreReleasesChanged!,
               ),
-              ListTile(
-                leading: Icon(Icons.description_outlined),
-                title: Text(l.licenses),
-                subtitle: Text(l.licensesDescription),
-                trailing: Icon(Icons.chevron_right_rounded),
-                onTap: () => showLicensePage(
-                  context: context,
-                  applicationName: currentLocalizations().appName,
-                  applicationVersion: appVersion,
-                  applicationIcon: ClipRRect(
-                    borderRadius: BorderRadius.all(Radius.circular(16)),
-                    child: Image(
-                      image: AssetImage('assets/dextop_icon.png'),
-                      width: 64,
-                      height: 64,
-                    ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        DextopGroup(
+          children: [
+            M3EListItem(
+              leading: const Icon(M3EIcons.code_rounded),
+              headline: currentLocalizations().uiGitHub,
+              supportingText: currentLocalizations().uiGitHubRepository,
+              trailing: const Icon(M3EIcons.open_in_new_rounded),
+              onTap: () => bridge.openUrl('https://github.com/NarYuki/Dextop'),
+            ),
+            M3EListItem(
+              leading: const Icon(M3EIcons.description_outlined),
+              headline: l.licenses,
+              supportingText: l.licensesDescription,
+              trailing: const Icon(M3EIcons.chevron_right_rounded),
+              onTap: () => showLicensePage(
+                context: context,
+                applicationName: currentLocalizations().appName,
+                applicationVersion: appVersion,
+                applicationIcon: ClipRRect(
+                  borderRadius: const BorderRadius.all(Radius.circular(18)),
+                  child: const Image(
+                    image: AssetImage('assets/dextop_icon.png'),
+                    width: 64,
+                    height: 64,
                   ),
                 ),
               ),
-              ListTile(
-                leading: Icon(Icons.article_outlined),
-                title: Text(currentLocalizations().diagnosticLog),
-                subtitle: Text(currentLocalizations().diagnosticLogDescription),
-                trailing: Icon(Icons.chevron_right_rounded),
-                onTap:
-                    onOpenDiagnosticLog ??
-                    () => Navigator.of(context).push(
-                      MaterialPageRoute<void>(
-                        builder: (_) => _DiagnosticLogPage(bridge: bridge),
-                      ),
-                    ),
-              ),
-            ],
-          ),
+            ),
+            M3EListItem(
+              leading: const Icon(M3EIcons.article_outlined),
+              headline: currentLocalizations().diagnosticLog,
+              supportingText: currentLocalizations().diagnosticLogDescription,
+              trailing: const Icon(M3EIcons.chevron_right_rounded),
+              onTap:
+                  onOpenDiagnosticLog ??
+                  () => Navigator.of(
+                    context,
+                  ).push(dextopRoute<void>(_DiagnosticLogPage(bridge: bridge))),
+            ),
+          ],
         ),
-        SizedBox(height: 12),
-        Card(
-          child: ListTile(
-            leading: const Icon(Icons.science_outlined),
-            title: Text(currentLocalizations().uiExperimentalFeatures),
-            trailing: const Icon(Icons.chevron_right_rounded),
-            onTap: () => Navigator.of(context).push(
-              MaterialPageRoute<void>(
-                builder: (_) => _ExperimentalFeaturesPage(
-                  bridge: bridge,
-                  isRunning: isRunning,
-                  onOpenSamsungSettings: onOpenSamsungSettings,
-                  onChanged: onExperimentalFeaturesChanged,
+        const SizedBox(height: 12),
+        DextopGroup(
+          children: [
+            M3EListItem(
+              leading: const Icon(M3EIcons.science_outlined),
+              headline: currentLocalizations().uiExperimentalFeatures,
+              trailing: const Icon(M3EIcons.chevron_right_rounded),
+              onTap: () => Navigator.of(context).push(
+                dextopRoute<void>(
+                  _ExperimentalFeaturesPage(
+                    bridge: bridge,
+                    isRunning: isRunning,
+                    onOpenSamsungSettings: onOpenSamsungSettings,
+                    onChanged: onExperimentalFeaturesChanged,
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ),
       ],
     );
     return embedded
         ? content
         : Scaffold(
-            appBar: AppBar(title: Text(l.appInfo)),
+            backgroundColor: colors.surface,
+            appBar: M3EAppBar.top(
+              automaticallyImplyLeading: true,
+              titleText: l.appInfo,
+            ),
             body: content,
           );
   }
@@ -277,32 +281,30 @@ class _ExperimentalFeaturesPage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Scaffold(
-    appBar: AppBar(title: Text(currentLocalizations().uiExperimentalFeatures)),
-    body: ListTileTheme(
-      data: experimentalFeatureTileTheme,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          DisplayEnvironmentSettingsCard(
-            bridge: bridge,
-            showConvenience: false,
-          ),
-          const SizedBox(height: 12),
-          _MacosCompatibilityExperimentalTile(onChanged: onChanged),
-          const SizedBox(height: 12),
-          LinuxFastModeExperimentalTile(onChanged: onChanged),
-          const SizedBox(height: 12),
-          _GamepadExperimentalTile(isRunning: isRunning),
-          const SizedBox(height: 12),
-          _ForceLaptopModeExperimentalTile(isRunning: isRunning),
-          const SizedBox(height: 12),
-          _SamsungExperimentalSettingsTile(
-            bridge: bridge,
-            isRunning: isRunning,
-            onOpenSettings: onOpenSamsungSettings,
-          ),
-        ],
-      ),
+    backgroundColor: Theme.of(context).colorScheme.surface,
+    appBar: M3EAppBar.top(
+      automaticallyImplyLeading: true,
+      titleText: currentLocalizations().uiExperimentalFeatures,
+    ),
+    body: ListView(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
+      children: [
+        DisplayEnvironmentSettingsCard(bridge: bridge, showConvenience: false),
+        const SizedBox(height: 12),
+        _MacosCompatibilityExperimentalTile(onChanged: onChanged),
+        const SizedBox(height: 12),
+        LinuxFastModeExperimentalTile(onChanged: onChanged),
+        const SizedBox(height: 12),
+        _GamepadExperimentalTile(isRunning: isRunning),
+        const SizedBox(height: 12),
+        _ForceLaptopModeExperimentalTile(isRunning: isRunning),
+        const SizedBox(height: 12),
+        _SamsungExperimentalSettingsTile(
+          bridge: bridge,
+          isRunning: isRunning,
+          onOpenSettings: onOpenSamsungSettings,
+        ),
+      ],
     ),
   );
 }
@@ -355,19 +357,20 @@ class _MacosCompatibilityExperimentalTileState
   }
 
   @override
-  Widget build(BuildContext context) => Card(
-    child: SwitchListTile(
-      secondary: const Icon(Icons.computer_rounded),
-      value: enabled,
-      onChanged: loading ? null : _update,
-      title: Text(linuxText(context, 'uiMacOSCompatibility')),
-      subtitle: Text(
-        linuxText(
+  Widget build(BuildContext context) => DextopGroup(
+    children: [
+      DextopToggle(
+        icon: M3EIcons.computer_rounded,
+        value: enabled,
+        enabled: !loading,
+        onChanged: loading ? null : _update,
+        title: linuxText(context, 'uiMacOSCompatibility'),
+        subtitle: linuxText(
           context,
           'uiShowMacOSCompatibilityInLinuxSettingsAppSupportIsLimited',
         ),
       ),
-    ),
+    ],
   );
 }
 
@@ -409,14 +412,17 @@ class _GamepadExperimentalTileState extends State<_GamepadExperimentalTile> {
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Card(
-      child: SwitchListTile(
-        secondary: const Icon(Icons.sports_esports_rounded),
-        value: enabled,
-        onChanged: loading || widget.isRunning ? null : _update,
-        title: Text(l.experimentalGamepad),
-        subtitle: Text(l.experimentalGamepadDescription),
-      ),
+    return DextopGroup(
+      children: [
+        DextopToggle(
+          icon: M3EIcons.sports_esports_rounded,
+          value: enabled,
+          enabled: !loading && !widget.isRunning,
+          onChanged: loading || widget.isRunning ? null : _update,
+          title: l.experimentalGamepad,
+          subtitle: l.experimentalGamepadDescription,
+        ),
+      ],
     );
   }
 }
@@ -460,19 +466,22 @@ class _ForceLaptopModeExperimentalTileState
   @override
   Widget build(BuildContext context) {
     final l = AppLocalizations.of(context);
-    return Card(
-      child: SwitchListTile(
-        secondary: const Icon(Icons.laptop_chromebook_rounded),
-        value: enabled,
-        onChanged: loading || widget.isRunning ? null : _update,
-        title: Text(l.experimentalForceLaptopMode),
-        subtitle: Text(l.experimentalForceLaptopModeDescription),
-      ),
+    return DextopGroup(
+      children: [
+        DextopToggle(
+          icon: M3EIcons.laptop_chromebook_rounded,
+          value: enabled,
+          enabled: !loading && !widget.isRunning,
+          onChanged: loading || widget.isRunning ? null : _update,
+          title: l.experimentalForceLaptopMode,
+          subtitle: l.experimentalForceLaptopModeDescription,
+        ),
+      ],
     );
   }
 }
 
-class _AppInfoStatusRow extends StatelessWidget {
+class _AppInfoStatusRow {
   const _AppInfoStatusRow({
     required this.label,
     required this.value,
@@ -483,16 +492,19 @@ class _AppInfoStatusRow extends StatelessWidget {
   final String value;
   final bool active;
 
-  @override
-  Widget build(BuildContext context) => ListTile(
-    dense: true,
-    leading: Icon(
-      active ? Icons.check_circle_rounded : Icons.cancel_outlined,
-      color: active ? Theme.of(context).colorScheme.primary : null,
-    ),
-    title: Text(label),
-    trailing: Text(value),
-  );
+  Widget buildRow(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
+    return DextopKeyValueRow(
+      leading: Icon(
+        active ? M3EIcons.check_circle_rounded : M3EIcons.cancel_outlined,
+        size: 20,
+        color: active ? colors.primary : colors.onSurfaceVariant,
+      ),
+      label: label,
+      value: value,
+      valueColor: active ? colors.onSurface : colors.onSurfaceVariant,
+    );
+  }
 }
 
 class _DiagnosticLogPage extends StatefulWidget {
@@ -533,44 +545,58 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
 
   @override
   Widget build(BuildContext context) {
+    final colors = Theme.of(context).colorScheme;
     final actions = <Widget>[
-      IconButton(
+      M3EIconButton(
+        variant: M3EIconButtonVariant.standard,
         tooltip: currentLocalizations().copyDiagnosticLog,
         onPressed: report.isEmpty
             ? null
-            : () => Clipboard.setData(ClipboardData(text: report)),
-        icon: Icon(Icons.copy_rounded),
+            : () {
+                Clipboard.setData(ClipboardData(text: report));
+                M3ESnackbar.show(
+                  context,
+                  message: linuxText(context, 'uiCopied'),
+                );
+              },
+        icon: const Icon(M3EIcons.copy_rounded),
       ),
-      IconButton(
+      M3EIconButton(
+        variant: M3EIconButtonVariant.standard,
         tooltip: currentLocalizations().shareDiagnosticLog,
         onPressed: loading ? null : widget.bridge.shareDiagnosticReport,
-        icon: Icon(Icons.share_rounded),
+        icon: const Icon(M3EIcons.share_rounded),
       ),
-      PopupMenuButton<String>(
-        onSelected: (value) {
-          if (value == 'clear') clear();
-        },
-        itemBuilder: (_) => [
-          PopupMenuItem(
-            value: 'clear',
-            child: Text(currentLocalizations().clearDiagnosticLog),
-          ),
-        ],
+      M3EIconButton(
+        variant: M3EIconButtonVariant.standard,
+        tooltip: currentLocalizations().clearDiagnosticLog,
+        onPressed: loading ? null : clear,
+        icon: const Icon(M3EIcons.delete_sweep_rounded),
       ),
     ];
     final body = loading
-        ? Center(child: CircularProgressIndicator())
-        : RefreshIndicator(
+        ? const Center(
+            child: M3ELoadingIndicator(
+              variant: M3ELoadingIndicatorVariant.contained,
+            ),
+          )
+        : M3ERefreshIndicator.contained(
+            elevation: 0,
             onRefresh: load,
             child: ListView(
-              padding: EdgeInsets.all(16),
+              padding: const EdgeInsets.all(16),
               children: [
-                SelectableText(
-                  report,
-                  style: TextStyle(
-                    fontFamily: 'monospace',
-                    fontSize: 12,
-                    height: 1.35,
+                M3ECard(
+                  variant: M3ECardVariant.filled,
+                  borderRadius: BorderRadius.circular(24),
+                  padding: const EdgeInsets.all(18),
+                  child: SelectableText(
+                    report,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                      height: 1.4,
+                    ),
                   ),
                 ),
               ],
@@ -578,8 +604,10 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
           );
     if (!widget.embedded) {
       return Scaffold(
-        appBar: AppBar(
-          title: Text(currentLocalizations().diagnosticLog),
+        backgroundColor: colors.surface,
+        appBar: M3EAppBar.top(
+          automaticallyImplyLeading: true,
+          titleText: currentLocalizations().diagnosticLog,
           actions: actions,
         ),
         body: body,
@@ -595,7 +623,7 @@ class _DiagnosticLogPageState extends State<_DiagnosticLogPage> {
             child: Row(mainAxisSize: MainAxisSize.min, children: actions),
           ),
         ),
-        const Divider(height: 1),
+        const M3EDivider(),
         Expanded(child: body),
       ],
     );
@@ -632,21 +660,24 @@ class _KeepAwakeTileState extends State<_KeepAwakeTile> {
   }
 
   @override
-  Widget build(BuildContext context) => SwitchListTile(
-    secondary: Icon(Icons.screen_lock_portrait_rounded),
-    value: enabled,
-    onChanged: update,
-    title: Text(currentLocalizations().uiDoNotSleepWhileRunningDextop),
-    subtitle: Text(
-      currentLocalizations().uiPreventsTheScreenFromTurningOffAutomatically,
-    ),
+  Widget build(BuildContext context) => DextopGroup(
+    children: [
+      DextopToggle(
+        icon: M3EIcons.screen_lock_portrait_rounded,
+        value: enabled,
+        onChanged: update,
+        title: currentLocalizations().uiDoNotSleepWhileRunningDextop,
+        subtitle: currentLocalizations()
+            .uiPreventsTheScreenFromTurningOffAutomatically,
+      ),
+    ],
   );
 }
 
 @pragma('vm:entry-point')
 void overlayMain() {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(OverlayApp());
+  runApp(const OverlayApp());
 }
 
 /// Keeps its own value: the page is pushed with a snapshot of the parent's
@@ -665,14 +696,14 @@ class _PreReleaseSwitchState extends State<_PreReleaseSwitch> {
   late var _value = widget.initial;
 
   @override
-  Widget build(BuildContext context) => SwitchListTile(
-    secondary: const Icon(Icons.science_outlined),
+  Widget build(BuildContext context) => DextopToggle(
+    icon: M3EIcons.science_outlined,
     value: _value,
     onChanged: (value) {
       setState(() => _value = value);
       widget.onChanged(value);
     },
-    title: Text(linuxText(context, 'uiReceivePreReleases')),
-    subtitle: Text(linuxText(context, 'uiReceivePreReleasesDescription')),
+    title: linuxText(context, 'uiReceivePreReleases'),
+    subtitle: linuxText(context, 'uiReceivePreReleasesDescription'),
   );
 }

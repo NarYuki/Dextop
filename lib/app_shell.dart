@@ -34,8 +34,7 @@ class _DextopAppState extends State<DextopApp> {
       setState(() {
         desktopWindow = context['desktopWindow'] == true;
         externalDisplay = context['externalDisplay'] == true;
-        final accent = context['accentColor'];
-        if (accent is int) LinuxExpressive.seed = Color(accent);
+        DextopExpressive.applyLaunchContext(context);
         // M3E bars read the raw inset, not MediaQuery.
         M3ESafeArea.ignoreTop = externalDisplay;
       });
@@ -94,9 +93,9 @@ class _DextopAppState extends State<DextopApp> {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       themeMode: themeMode,
-      theme: appTheme(Brightness.light),
-      darkTheme: appTheme(Brightness.dark),
-      builder: (context, child) => LinuxExpressive(
+      theme: DextopExpressive.buildMuiTheme(Brightness.light),
+      darkTheme: DextopExpressive.buildMuiTheme(Brightness.dark),
+      builder: (context, child) => DextopExpressive(
         child: MediaQuery.removePadding(
           context: context,
           removeTop: externalDisplay,
@@ -105,14 +104,13 @@ class _DextopAppState extends State<DextopApp> {
       ),
       localizationsDelegates: const [
         AppLocalizations.delegate,
-        GlobalMaterialLocalizations.delegate,
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
-        linuxMaterialUiLocalizations,
+        dextopMaterialUiLocalizations,
       ],
       supportedLocales: AppLocalizations.supportedLocales,
       home: setupCompleted == null || desktopWindow == null
-          ? const Scaffold(body: Center(child: CircularProgressIndicator()))
+          ? const Scaffold(body: Center(child: M3ELoadingIndicator()))
           : setupCompleted == false && !linuxOnly
           ? DextopSetupPage(
               onCompleted: () => setState(() => setupCompleted = true),
@@ -126,70 +124,6 @@ class _DextopAppState extends State<DextopApp> {
               linuxOnly: setupCompleted == false,
               onStartSetup: startFullSetup,
             ),
-    );
-  }
-
-  ThemeData appTheme(Brightness brightness) {
-    final scheme = ColorScheme.fromSeed(
-      seedColor: LinuxExpressive.seed,
-      brightness: brightness,
-      dynamicSchemeVariant: DynamicSchemeVariant.tonalSpot,
-    );
-    return ThemeData(
-      useMaterial3: true,
-      brightness: brightness,
-      colorScheme: scheme,
-      scaffoldBackgroundColor: scheme.surface,
-      textTheme: const TextTheme(
-        displaySmall: TextStyle(
-          fontSize: 38,
-          height: 1.12,
-          fontWeight: FontWeight.w300,
-        ),
-        headlineMedium: TextStyle(
-          fontSize: 29,
-          height: 1.2,
-          fontWeight: FontWeight.w500,
-        ),
-        titleLarge: TextStyle(
-          fontSize: 21,
-          height: 1.28,
-          fontWeight: FontWeight.w600,
-        ),
-        titleMedium: TextStyle(
-          fontSize: 17,
-          height: 1.35,
-          fontWeight: FontWeight.w600,
-        ),
-        bodyLarge: TextStyle(fontSize: 16, height: 1.5),
-        bodyMedium: TextStyle(fontSize: 14, height: 1.5),
-        labelLarge: TextStyle(
-          fontSize: 14,
-          height: 1.4,
-          fontWeight: FontWeight.w600,
-        ),
-      ),
-      cardTheme: CardThemeData(
-        elevation: 0,
-        color: scheme.surfaceContainer,
-        margin: EdgeInsets.zero,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-      ),
-      navigationBarTheme: NavigationBarThemeData(
-        height: 76,
-        elevation: 0,
-        backgroundColor: scheme.surfaceContainer,
-        indicatorColor: scheme.secondaryContainer,
-        indicatorShape: const StadiumBorder(),
-      ),
-      filledButtonTheme: FilledButtonThemeData(
-        style: FilledButton.styleFrom(
-          minimumSize: const Size(64, 56),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-          ),
-        ),
-      ),
     );
   }
 }
