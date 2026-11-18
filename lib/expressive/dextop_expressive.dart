@@ -209,6 +209,7 @@ class DextopExpressive extends StatelessWidget {
           iconSize: 22,
           containerColor: scheme.surfaceContainerLow,
           selectedContainerColor: scheme.secondaryContainer,
+          disabledStateOpacity: 0,
         ),
       ),
       navigationBarTheme: base.navigationBarTheme.copyWith(

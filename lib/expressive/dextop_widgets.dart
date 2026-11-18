@@ -105,8 +105,10 @@ class DextopDropdownButton extends StatelessWidget {
     final active = enabled && onPressed != null;
     final bg = active
         ? colors.secondaryContainer
-        : colors.surfaceContainerHighest;
-    final fg = active ? colors.onSecondaryContainer : colors.onSurfaceVariant;
+        : colors.onSurface.withValues(alpha: 0.12);
+    final fg = active
+        ? colors.onSecondaryContainer
+        : colors.onSurface.withValues(alpha: 0.38);
     final border = active
         ? colors.outlineVariant.withValues(alpha: 0.55)
         : colors.outlineVariant.withValues(alpha: 0.25);
