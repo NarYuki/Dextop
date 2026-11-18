@@ -431,8 +431,7 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                                       );
                                       if (picked != null) {
                                         setDialogState(
-                                          () =>
-                                              positions[packageName] = picked,
+                                          () => positions[packageName] = picked,
                                         );
                                       }
                                     },
@@ -878,7 +877,8 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                   ),
                 ],
               ),
-            ] else if (widget.category == null || widget.category == 'apps') ...[
+            ] else if (widget.category == null ||
+                widget.category == 'apps') ...[
               DextopSection(currentLocalizations().uiAppLauncher),
               M3ESearchBar(
                 margin: 0,
@@ -1033,21 +1033,13 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                 DextopGroup(
                   children: [
                     for (final entry in workspaces.indexed)
-                      M3EListItem(
-                        leading: const Icon(
-                          M3EIcons.dashboard_customize_rounded,
-                        ),
-                        headline: '${entry.$2['name']}',
-                        supportingText: (entry.$2['apps'] as List)
-                            .cast<String>()
-                            .map((pkg) {
-                              final found = apps
-                                  .where((item) => item['package'] == pkg)
-                                  .firstOrNull;
-                              return '${found?['label'] ?? pkg}';
-                            })
-                            .join(' · '),
-                        supportingMaxLines: 2,
+                      DextopWorkspaceRow(
+                        name: '${entry.$2['name']}',
+                        icons: [
+                          for (final pkg
+                              in (entry.$2['apps'] as List).cast<String>())
+                            _workspaceAppIcon(pkg),
+                        ],
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -1102,8 +1094,8 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                       onChanged: widget.isRunning ? null : updateCoverDisplay,
                       icon: M3EIcons.flip_to_back_rounded,
                       title: currentLocalizations().nativeCoverDisplay,
-                      subtitle: currentLocalizations()
-                          .nativeCoverDisplayDescription,
+                      subtitle:
+                          currentLocalizations().nativeCoverDisplayDescription,
                     ),
                 ],
               ),
@@ -1196,8 +1188,8 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
                     DextopToggle(
                       value: performanceHud,
                       onChanged: updatePerformanceHud,
-                      title: currentLocalizations()
-                          .uiPerformanceDisplayOnDextop,
+                      title:
+                          currentLocalizations().uiPerformanceDisplayOnDextop,
                       subtitle: currentLocalizations()
                           .uiRealTimeDisplayOfFpsMemoryPower,
                     ),
@@ -1316,6 +1308,25 @@ class _DextopFeaturesPageState extends State<DextopFeaturesPage> {
           ? currentLocalizations().uiAppLauncherSettings
           : currentLocalizations().uiDesktopFeatures,
   };
+
+  Widget _workspaceAppIcon(String packageName) {
+    final app = apps
+        .where((item) => item['package'] == packageName)
+        .firstOrNull;
+    if (app != null && app['icon'] is Uint8List) {
+      return M3ETooltip(
+        message: '${app['label']}',
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(7),
+          child: Image.memory(app['icon'] as Uint8List, width: 28, height: 28),
+        ),
+      );
+    }
+    return M3ETooltip(
+      message: packageName,
+      child: const Icon(M3EIcons.android_rounded, size: 28),
+    );
+  }
 
   Widget _appIcon(Map<String, dynamic> app) {
     final bytes = app['icon'];

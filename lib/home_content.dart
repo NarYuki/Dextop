@@ -246,9 +246,8 @@ extension _HomeContent on _HomeScreenState {
                   statusTitle,
                   softWrap: true,
                   overflow: TextOverflow.visible,
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleLarge?.copyWith(height: 1.18),
+                  style: Theme.of(context).textTheme.titleLarge
+                      ?.copyWith(height: 1.18),
                 ),
               ),
             ],
@@ -366,9 +365,8 @@ extension _HomeContent on _HomeScreenState {
                     const SizedBox(height: 2),
                     Text(
                       '$width × $height / $density dpi',
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: colors.onSurfaceVariant,
-                      ),
+                      style: Theme.of(context).textTheme.bodyMedium
+                          ?.copyWith(color: colors.onSurfaceVariant),
                     ),
                   ],
                 ),
@@ -499,21 +497,14 @@ extension _HomeContent on _HomeScreenState {
                           color: colors.surfaceContainer,
                           children: [
                             for (final workspace in homeWorkspaces)
-                              M3EListItem(
-                                headline: '${workspace['name']}',
-                                trailing: const Icon(
-                                  M3EIcons.play_arrow_rounded,
-                                ),
-                                leading: const Icon(
-                                  M3EIcons.workspaces_rounded,
-                                ),
-                                supportingText: (workspace['apps'] as List)
-                                    .cast<String>()
-                                    .map(
-                                      (pkg) =>
-                                          '${homeApps[pkg]?['label'] ?? pkg}',
-                                    )
-                                    .join(' · '),
+                              DextopWorkspaceRow(
+                                name: '${workspace['name']}',
+                                icons: [
+                                  for (final pkg
+                                      in (workspace['apps'] as List)
+                                          .cast<String>())
+                                    workspaceAppIcon(pkg),
+                                ],
                                 onTap: () => launchHomeWorkspace(workspace),
                               ),
                           ],
@@ -524,6 +515,34 @@ extension _HomeContent on _HomeScreenState {
               : const SizedBox.shrink(),
         ),
       ],
+    );
+  }
+
+  /// A workspace's apps as their icons, so they can be told apart at a glance.
+  Widget workspaceAppIcon(String packageName) {
+    final label = '${homeApps[packageName]?['label'] ?? packageName}';
+    final bytes = homeApps[packageName]?['icon'];
+    if (bytes is Uint8List) {
+      return M3ETooltip(
+        message: label,
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(8),
+          child: Image.memory(bytes, width: 30, height: 30),
+        ),
+      );
+    }
+    if (homeAppsLoading) {
+      return const SizedBox.square(
+        dimension: 30,
+        child: Padding(
+          padding: EdgeInsets.all(5),
+          child: M3ELoadingIndicator(),
+        ),
+      );
+    }
+    return M3ETooltip(
+      message: label,
+      child: const Icon(M3EIcons.android_rounded, size: 30),
     );
   }
 
