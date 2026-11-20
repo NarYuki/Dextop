@@ -179,22 +179,22 @@ androidComponents {
 }
 
 dependencies {
-    implementation("commons-codec:commons-codec:1.19.0")
+    implementation("commons-codec:commons-codec:1.23.0")
     implementation("com.caverock:androidsvg-aar:1.4")
     implementation("androidx.window:window:1.5.1")
-    implementation("androidx.appcompat:appcompat:1.7.1")
+    implementation("androidx.appcompat:appcompat:1.8.0")
     // Material 3 Expressive (MaterialExpressiveTheme, floating toolbar, MaterialShapes) for Dextop Book.
     implementation("androidx.compose.material3:material3:1.5.0-alpha18")
     implementation("com.google.android.gms:play-services-cast-framework:21.5.0")
     implementation("androidx.media3:media3-muxer:1.10.1")
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
-    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.1")
+    implementation("org.lsposed.hiddenapibypass:hiddenapibypass:6.2")
     // Decompresses Linux container root filesystems (rootfs.tar.xz).
-    implementation("org.tukaani:xz:1.10")
+    implementation("org.tukaani:xz:1.12")
     implementation("org.apache.commons:commons-compress:1.28.0")
     // 2.1.1 is the newest Kadb line compatible with this project's compileSdk 36.
-    implementation("com.flyfishxu:kadb:2.1.1")
+    implementation("com.flyfishxu:kadb:2.1.5")
     // Signs the generated home-screen launchers of Linux applications on the device.
     implementation("com.android.tools.build:apksig:8.11.1")
     // Reads winget package manifests (YAML) for the Store's Windows applications.
