@@ -28,7 +28,7 @@ jobs:
     env:
       MACOS_COMPONENTS: ${{ inputs.components || 'core' }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - name: Test the execution wrapper
@@ -126,7 +126,7 @@ jobs:
             --metadata build/macos/runtime/build-info.json \
             --output "build/macos/darling-$MACOS_COMPONENTS-arm64.tar.gz" \
             | tee build/macos/runtime-package.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: darling-${{ env.MACOS_COMPONENTS }}-arm64-${{ github.sha }}
